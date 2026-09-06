@@ -34,9 +34,11 @@ import (
 // Resolver answers the two questions authorize() asks, inside the same
 // transaction the eventual store calls run in.
 type Resolver struct {
-	historicalRecoveryBeforePrivacy bool
-	sq                              *sqlitegen.Queries
-	pg                              *pggen.Queries
+	historicalRecoveryBeforePrivacy    bool
+	historicalRecoveryBeforeSelfConfig bool
+	selfConfigOrgID                    domain.OrgID
+	sq                                 *sqlitegen.Queries
+	pg                                 *pggen.Queries
 }
 
 // NewSQLite binds a Resolver to an open sqlite transaction (or, for
@@ -261,8 +263,12 @@ func (r *Resolver) resolveEnv(ctx context.Context, s domain.Scope) (domain.Scope
 // one, which is the contract. Current policy is read inside the operation's
 // own transaction; there is no authorization cache (permission-model ADR).
 func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
+	r.selfConfigOrgID = ""
 	if r.historicalRecoveryBeforePrivacy {
 		return r.recoveryGrantsBeforePrivacy(ctx, p)
+	}
+	if r.historicalRecoveryBeforeSelfConfig {
+		return r.recoveryGrantsBeforeSelfConfig(ctx, p)
 	}
 	if r.sq != nil {
 		rows, err := r.sq.ListGrantsForPrincipal(ctx, string(p))
@@ -271,6 +277,7 @@ func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.G
 		}
 		out := make([]domain.Grant, 0, len(rows))
 		for _, row := range rows {
+			r.selfConfigOrgID = domain.OrgID(row.SelfConfigOrgID)
 			g, err := grantFrom(row.Capability, row.OrgID.String, row.ProjectID.String, row.EnvID.String)
 			if err != nil {
 				return nil, err
@@ -285,6 +292,7 @@ func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.G
 	}
 	out := make([]domain.Grant, 0, len(rows))
 	for _, row := range rows {
+		r.selfConfigOrgID = domain.OrgID(row.SelfConfigOrgID)
 		g, err := grantFrom(row.Capability, row.OrgID.String, row.ProjectID.String, row.EnvID.String)
 		if err != nil {
 			return nil, err
@@ -325,10 +333,16 @@ func (r *Resolver) OrgsForPrincipal(ctx context.Context, p domain.PrincipalID) (
 	if err != nil {
 		return nil, err
 	}
+	instanceConfig := false
+	for _, g := range grants {
+		if g.Capability == domain.CapInstanceConfig && g.Scope == (domain.Scope{}) {
+			instanceConfig = true
+		}
+	}
 	seen := map[domain.OrgID]bool{}
 	ids := make([]domain.OrgID, 0, len(grants))
 	for _, g := range grants {
-		if g.Scope.Org == "" || seen[g.Scope.Org] {
+		if g.Scope.Org == "" || seen[g.Scope.Org] || (!instanceConfig && g.Scope.Org == r.selfConfigOrgID) {
 			continue
 		}
 		seen[g.Scope.Org] = true

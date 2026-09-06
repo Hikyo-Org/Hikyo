@@ -208,6 +208,12 @@ func TestRemoteContractSurfaceIsPinned(t *testing.T) {
 // THIS instance's own data — its configuration, its metadata, a snapshot it
 // stored — and never fetches, relays or forwards on behalf of the caller.
 var pinnedContractSurface = map[string]bool{
+	// Owner-local immutable binding only. Test sends through the configured SMTP relay; no remote API proxy.
+	"GET /api/v1/instance/config":            true,
+	"GET /api/v1/instance/config/adoption":   true,
+	"POST /api/v1/instance/config/adoption":  true,
+	"POST /api/v1/instance/config/apply":     true,
+	"POST /api/v1/instance/config/mail/test": true,
 	// Deployment adapters (#65): these rows, plans, jobs and conflict
 	// artifacts are this instance's own durable state. Plan/test contact only
 	// the immutable origin stored on the addressed adapter; no request member

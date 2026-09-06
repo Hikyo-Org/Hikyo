@@ -461,3 +461,26 @@ func (k pgKeys) insertScopeGenerationRow(ctx context.Context, scope string) erro
 	}
 	return err
 }
+
+// insertInitialProjectDEK is an initial-only scoped insertion. It cannot alter
+// existing key versions or write another project's key, and it shares the
+// master rotation fence with normal key creation.
+func insertInitialProjectDEK(ctx context.Context, p authz.Proof, key crypto.WrappedKey, adapter keyMutationAdapter) error {
+	chain, err := authz.Verify(p, authz.StoreKeysInsertInitialProjectDEK, adapter.txToken())
+	if err != nil {
+		return err
+	}
+	if chain.Project == "" || key.Purpose != crypto.PurposeProject || key.OrgID != string(chain.Org) || key.ProjectID != string(chain.Project) || key.Version != 1 {
+		return ErrConflict
+	}
+	if err := adapter.acquireHierarchy(ctx); err != nil {
+		return err
+	}
+	if err := assertActiveMaster(ctx, key.MasterKeyVersion, adapter); err != nil {
+		return err
+	}
+	if err := adapter.insertTier3Row(ctx, key); err != nil {
+		return err
+	}
+	return adapter.insertScopeGenerationRow(ctx, scopeGenerationKey(key.Purpose, key.OrgID, key.ProjectID))
+}

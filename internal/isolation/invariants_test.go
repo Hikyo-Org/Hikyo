@@ -203,7 +203,7 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 			t.Errorf("store method %q has no registered operation and no system mint site — it is unreachable and unauthorized by construction, register or remove it", method)
 		}
 		if viaOperation && viaSite {
-			if (systemRegistered[op] != authz.SiteScheduler || !sharedSchedulerOps[op]) && !(systemRegistered[op] == authz.SiteEscrow && op == authz.StoreAuditInstanceInsert) {
+			if (systemRegistered[op] != authz.SiteScheduler || !sharedSchedulerOps[op]) && !(systemRegistered[op] == authz.SiteEscrow && op == authz.StoreAuditInstanceInsert) && !((systemRegistered[op] == authz.SiteSelfConfigRuntime || systemRegistered[op] == authz.SiteSelfConfigRecovery) && selfConfigSharedDoors[op]) {
 				t.Errorf("store method %q is registered both to an operation and to system site %q without a reviewed shared-door pin", method, systemRegistered[op])
 			} else {
 				seenShared[op] = true
@@ -316,12 +316,14 @@ func TestInvariant09bTransactionResultsAreDetached(t *testing.T) {
 func TestInvariant11SystemProofEnumeration(t *testing.T) {
 	sites := facts.SystemSites()
 	want := map[authz.SystemSite]bool{
-		authz.SiteEscrow:            true,
-		authz.SiteBoot:              true,
-		authz.SiteMigration:         true,
-		authz.SiteRecoveryReconcile: true,
-		authz.SiteBreakGlass:        true,
-		authz.SiteScheduler:         true,
+		authz.SiteSelfConfigRuntime:  true,
+		authz.SiteSelfConfigRecovery: true,
+		authz.SiteEscrow:             true,
+		authz.SiteBoot:               true,
+		authz.SiteMigration:          true,
+		authz.SiteRecoveryReconcile:  true,
+		authz.SiteBreakGlass:         true,
+		authz.SiteScheduler:          true,
 	}
 	if len(sites) != len(want) {
 		t.Errorf("system mint sites = %d entries, want exactly %d — amending the set reopens the tenant-isolation ADR", len(sites), len(want))
@@ -392,6 +394,22 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 	for site, ops := range sites {
 		if !want[site] {
 			t.Errorf("unregistered system mint site %q", site)
+		}
+
+		if site == authz.SiteSelfConfigRuntime || site == authz.SiteSelfConfigRecovery {
+			expected := selfConfigRuntimeDoors
+			if site == authz.SiteSelfConfigRecovery {
+				expected = selfConfigRecoveryDoors
+			}
+			if len(ops) != len(expected) {
+				t.Errorf("%s site has unexpected operations: %v", site, ops)
+			}
+			for _, op := range ops {
+				if !expected[op] {
+					t.Errorf("%s site gained %q", site, op)
+				}
+			}
+			continue
 		}
 		if site == authz.SiteEscrow {
 			if len(ops) != len(wantEscrow) {
@@ -578,4 +596,19 @@ func TestInvariant06aFormulaPinning(t *testing.T) {
 	if string(got) != string(want) {
 		t.Fatalf("the operation→formula map drifted from its pin; re-review authority changes and update %s.\ncurrent:\n%s\npinned:\n%s", fixturePath, got, want)
 	}
+}
+
+// Reviewed 2026-09-06 self-configuration amendment. These pins are intentionally
+// independent of the production registry and fail on either widening or drift.
+var selfConfigSharedDoors = map[authz.StoreOp]bool{
+	authz.StoreSelfConfigBinding: true, authz.StoreSelfConfigJobs: true, authz.StoreSelfConfigJob: true, authz.StoreSelfConfigNodes: true, authz.StoreSelfConfigRetained: true, authz.StoreSelfConfigFinishJob: true,
+	authz.StoreSnapshotsAtRevision: true, authz.StoreSnapshotsEntries: true, authz.StoreCatalogueList: true, authz.StoreCatalogueRevisionGet: true, authz.StoreAuditTenantInsert: true,
+}
+var selfConfigRuntimeDoors = map[authz.StoreOp]bool{
+	authz.StoreSelfConfigBinding: true, authz.StoreSelfConfigJobs: true, authz.StoreSelfConfigJob: true, authz.StoreSelfConfigNodes: true, authz.StoreSelfConfigRetained: true, authz.StoreSelfConfigPutNode: true, authz.StoreSelfConfigFinishJob: true, authz.StoreSelfConfigFenceRestored: true,
+	authz.StoreSnapshotsAtRevision: true, authz.StoreSnapshotsEntries: true, authz.StoreCatalogueList: true, authz.StoreCatalogueRevisionGet: true, authz.StoreAuditTenantInsert: true,
+}
+var selfConfigRecoveryDoors = map[authz.StoreOp]bool{
+	authz.StoreSelfConfigBinding: true, authz.StoreSelfConfigJobs: true, authz.StoreSelfConfigNodes: true, authz.StoreSelfConfigRetained: true, authz.StoreSelfConfigRecoverTarget: true,
+	authz.StoreSnapshotsAtRevision: true, authz.StoreSnapshotsEntries: true, authz.StoreCatalogueList: true, authz.StoreCatalogueRevisionGet: true, authz.StoreAuditTenantInsert: true,
 }

@@ -136,6 +136,7 @@ type DefinitionsService interface {
 
 // API implements the generated strict server.
 type API struct {
+	SelfConfig      *service.SelfConfig
 	Auth            AuthService
 	SAMLAuth        SAMLAuthService
 	Orgs            OrgService

@@ -17,6 +17,7 @@ import (
 	api "github.com/Hikyo-Org/hikyo/api"
 	"github.com/go-chi/chi/v5"
 	"github.com/oapi-codegen/runtime"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // Defines values for ActiveSessionArtifact.
@@ -207,25 +208,25 @@ func (e AdapterMoveKind) Valid() bool {
 
 // Defines values for AdapterMoveState.
 const (
-	Activating        AdapterMoveState = "activating"
-	AttentionRequired AdapterMoveState = "attention_required"
-	Canceled          AdapterMoveState = "canceled"
-	Completed         AdapterMoveState = "completed"
-	Scrubbing         AdapterMoveState = "scrubbing"
+	AdapterMoveStateActivating        AdapterMoveState = "activating"
+	AdapterMoveStateAttentionRequired AdapterMoveState = "attention_required"
+	AdapterMoveStateCanceled          AdapterMoveState = "canceled"
+	AdapterMoveStateCompleted         AdapterMoveState = "completed"
+	AdapterMoveStateScrubbing         AdapterMoveState = "scrubbing"
 )
 
 // Valid indicates whether the value is a known member of the AdapterMoveState enum.
 func (e AdapterMoveState) Valid() bool {
 	switch e {
-	case Activating:
+	case AdapterMoveStateActivating:
 		return true
-	case AttentionRequired:
+	case AdapterMoveStateAttentionRequired:
 		return true
-	case Canceled:
+	case AdapterMoveStateCanceled:
 		return true
-	case Completed:
+	case AdapterMoveStateCompleted:
 		return true
-	case Scrubbing:
+	case AdapterMoveStateScrubbing:
 		return true
 	default:
 		return false
@@ -654,6 +655,9 @@ const (
 	CLIReauthStartRequestOperationAdapterSync          CLIReauthStartRequestOperation = "adapter.sync"
 	CLIReauthStartRequestOperationApprovalBypass       CLIReauthStartRequestOperation = "approval.bypass"
 	CLIReauthStartRequestOperationApprovalVote         CLIReauthStartRequestOperation = "approval.vote"
+	CLIReauthStartRequestOperationSelfConfigAdopt      CLIReauthStartRequestOperation = "self-config.adopt"
+	CLIReauthStartRequestOperationSelfConfigApply      CLIReauthStartRequestOperation = "self-config.apply"
+	CLIReauthStartRequestOperationSelfConfigTest       CLIReauthStartRequestOperation = "self-config.test"
 	CLIReauthStartRequestOperationValueCopyDestination CLIReauthStartRequestOperation = "value.copy-destination"
 	CLIReauthStartRequestOperationValueCopySource      CLIReauthStartRequestOperation = "value.copy-source"
 	CLIReauthStartRequestOperationValueReveal          CLIReauthStartRequestOperation = "value.reveal"
@@ -674,6 +678,12 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 		return true
 	case CLIReauthStartRequestOperationApprovalVote:
 		return true
+	case CLIReauthStartRequestOperationSelfConfigAdopt:
+		return true
+	case CLIReauthStartRequestOperationSelfConfigApply:
+		return true
+	case CLIReauthStartRequestOperationSelfConfigTest:
+		return true
 	case CLIReauthStartRequestOperationValueCopyDestination:
 		return true
 	case CLIReauthStartRequestOperationValueCopySource:
@@ -687,13 +697,14 @@ func (e CLIReauthStartRequestOperation) Valid() bool {
 
 // Defines values for CLIReauthStartRequestPurpose.
 const (
-	CLIReauthStartRequestPurposeAdapter CLIReauthStartRequestPurpose = "adapter"
-	CLIReauthStartRequestPurposeApprove CLIReauthStartRequestPurpose = "approve"
-	CLIReauthStartRequestPurposeBypass  CLIReauthStartRequestPurpose = "bypass"
-	CLIReauthStartRequestPurposeCopy    CLIReauthStartRequestPurpose = "copy"
-	CLIReauthStartRequestPurposePublish CLIReauthStartRequestPurpose = "publish"
-	CLIReauthStartRequestPurposeReject  CLIReauthStartRequestPurpose = "reject"
-	CLIReauthStartRequestPurposeReveal  CLIReauthStartRequestPurpose = "reveal"
+	CLIReauthStartRequestPurposeAdapter    CLIReauthStartRequestPurpose = "adapter"
+	CLIReauthStartRequestPurposeApprove    CLIReauthStartRequestPurpose = "approve"
+	CLIReauthStartRequestPurposeBypass     CLIReauthStartRequestPurpose = "bypass"
+	CLIReauthStartRequestPurposeCopy       CLIReauthStartRequestPurpose = "copy"
+	CLIReauthStartRequestPurposePublish    CLIReauthStartRequestPurpose = "publish"
+	CLIReauthStartRequestPurposeReject     CLIReauthStartRequestPurpose = "reject"
+	CLIReauthStartRequestPurposeReveal     CLIReauthStartRequestPurpose = "reveal"
+	CLIReauthStartRequestPurposeSelfConfig CLIReauthStartRequestPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the CLIReauthStartRequestPurpose enum.
@@ -713,6 +724,8 @@ func (e CLIReauthStartRequestPurpose) Valid() bool {
 		return true
 	case CLIReauthStartRequestPurposeReveal:
 		return true
+	case CLIReauthStartRequestPurposeSelfConfig:
+		return true
 	default:
 		return false
 	}
@@ -726,6 +739,9 @@ const (
 	CLIReauthTransactionOperationAdapterSync          CLIReauthTransactionOperation = "adapter.sync"
 	CLIReauthTransactionOperationApprovalBypass       CLIReauthTransactionOperation = "approval.bypass"
 	CLIReauthTransactionOperationApprovalVote         CLIReauthTransactionOperation = "approval.vote"
+	CLIReauthTransactionOperationSelfConfigAdopt      CLIReauthTransactionOperation = "self-config.adopt"
+	CLIReauthTransactionOperationSelfConfigApply      CLIReauthTransactionOperation = "self-config.apply"
+	CLIReauthTransactionOperationSelfConfigTest       CLIReauthTransactionOperation = "self-config.test"
 	CLIReauthTransactionOperationValueCopyDestination CLIReauthTransactionOperation = "value.copy-destination"
 	CLIReauthTransactionOperationValueCopySource      CLIReauthTransactionOperation = "value.copy-source"
 	CLIReauthTransactionOperationValueReveal          CLIReauthTransactionOperation = "value.reveal"
@@ -746,6 +762,12 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 		return true
 	case CLIReauthTransactionOperationApprovalVote:
 		return true
+	case CLIReauthTransactionOperationSelfConfigAdopt:
+		return true
+	case CLIReauthTransactionOperationSelfConfigApply:
+		return true
+	case CLIReauthTransactionOperationSelfConfigTest:
+		return true
 	case CLIReauthTransactionOperationValueCopyDestination:
 		return true
 	case CLIReauthTransactionOperationValueCopySource:
@@ -759,13 +781,14 @@ func (e CLIReauthTransactionOperation) Valid() bool {
 
 // Defines values for CLIReauthTransactionPurpose.
 const (
-	CLIReauthTransactionPurposeAdapter CLIReauthTransactionPurpose = "adapter"
-	CLIReauthTransactionPurposeApprove CLIReauthTransactionPurpose = "approve"
-	CLIReauthTransactionPurposeBypass  CLIReauthTransactionPurpose = "bypass"
-	CLIReauthTransactionPurposeCopy    CLIReauthTransactionPurpose = "copy"
-	CLIReauthTransactionPurposePublish CLIReauthTransactionPurpose = "publish"
-	CLIReauthTransactionPurposeReject  CLIReauthTransactionPurpose = "reject"
-	CLIReauthTransactionPurposeReveal  CLIReauthTransactionPurpose = "reveal"
+	CLIReauthTransactionPurposeAdapter    CLIReauthTransactionPurpose = "adapter"
+	CLIReauthTransactionPurposeApprove    CLIReauthTransactionPurpose = "approve"
+	CLIReauthTransactionPurposeBypass     CLIReauthTransactionPurpose = "bypass"
+	CLIReauthTransactionPurposeCopy       CLIReauthTransactionPurpose = "copy"
+	CLIReauthTransactionPurposePublish    CLIReauthTransactionPurpose = "publish"
+	CLIReauthTransactionPurposeReject     CLIReauthTransactionPurpose = "reject"
+	CLIReauthTransactionPurposeReveal     CLIReauthTransactionPurpose = "reveal"
+	CLIReauthTransactionPurposeSelfConfig CLIReauthTransactionPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the CLIReauthTransactionPurpose enum.
@@ -784,6 +807,8 @@ func (e CLIReauthTransactionPurpose) Valid() bool {
 	case CLIReauthTransactionPurposeReject:
 		return true
 	case CLIReauthTransactionPurposeReveal:
+		return true
+	case CLIReauthTransactionPurposeSelfConfig:
 		return true
 	default:
 		return false
@@ -1089,14 +1114,15 @@ func (e DynamicProviderState) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ErrorCodeBadRequest      ErrorCode = "bad_request"
-	ErrorCodeConflict        ErrorCode = "conflict"
-	ErrorCodeForbidden       ErrorCode = "forbidden"
-	ErrorCodeInternal        ErrorCode = "internal"
-	ErrorCodeLimitExceeded   ErrorCode = "limit_exceeded"
-	ErrorCodeNotFound        ErrorCode = "not_found"
-	ErrorCodeTooManyRequests ErrorCode = "too_many_requests"
-	ErrorCodeUnauthenticated ErrorCode = "unauthenticated"
+	ErrorCodeBadRequest         ErrorCode = "bad_request"
+	ErrorCodeConflict           ErrorCode = "conflict"
+	ErrorCodeForbidden          ErrorCode = "forbidden"
+	ErrorCodeInternal           ErrorCode = "internal"
+	ErrorCodeLimitExceeded      ErrorCode = "limit_exceeded"
+	ErrorCodeNotFound           ErrorCode = "not_found"
+	ErrorCodeServiceUnavailable ErrorCode = "service_unavailable"
+	ErrorCodeTooManyRequests    ErrorCode = "too_many_requests"
+	ErrorCodeUnauthenticated    ErrorCode = "unauthenticated"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -1113,6 +1139,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeLimitExceeded:
 		return true
 	case ErrorCodeNotFound:
+		return true
+	case ErrorCodeServiceUnavailable:
 		return true
 	case ErrorCodeTooManyRequests:
 		return true
@@ -1159,6 +1187,84 @@ func (e ImpactChangeStatus) Valid() bool {
 	case ImpactChangeStatusNotEdited:
 		return true
 	case ImpactChangeStatusRemoved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceConfigJobState.
+const (
+	InstanceConfigJobStateCompleted InstanceConfigJobState = "completed"
+	InstanceConfigJobStateFailed    InstanceConfigJobState = "failed"
+	InstanceConfigJobStatePartial   InstanceConfigJobState = "partial"
+	InstanceConfigJobStatePending   InstanceConfigJobState = "pending"
+	InstanceConfigJobStatePreparing InstanceConfigJobState = "preparing"
+)
+
+// Valid indicates whether the value is a known member of the InstanceConfigJobState enum.
+func (e InstanceConfigJobState) Valid() bool {
+	switch e {
+	case InstanceConfigJobStateCompleted:
+		return true
+	case InstanceConfigJobStateFailed:
+		return true
+	case InstanceConfigJobStatePartial:
+		return true
+	case InstanceConfigJobStatePending:
+		return true
+	case InstanceConfigJobStatePreparing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceConfigNodeState.
+const (
+	InstanceConfigNodeStateActive  InstanceConfigNodeState = "active"
+	InstanceConfigNodeStateFenced  InstanceConfigNodeState = "fenced"
+	InstanceConfigNodeStatePending InstanceConfigNodeState = "pending"
+	InstanceConfigNodeStateUnknown InstanceConfigNodeState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the InstanceConfigNodeState enum.
+func (e InstanceConfigNodeState) Valid() bool {
+	switch e {
+	case InstanceConfigNodeStateActive:
+		return true
+	case InstanceConfigNodeStateFenced:
+		return true
+	case InstanceConfigNodeStatePending:
+		return true
+	case InstanceConfigNodeStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for InstanceConfigStatusState.
+const (
+	InstanceConfigStatusStateActive           InstanceConfigStatusState = "active"
+	InstanceConfigStatusStatePartial          InstanceConfigStatusState = "partial"
+	InstanceConfigStatusStatePending          InstanceConfigStatusState = "pending"
+	InstanceConfigStatusStateRecoveryRequired InstanceConfigStatusState = "recovery_required"
+	InstanceConfigStatusStateUnmanaged        InstanceConfigStatusState = "unmanaged"
+)
+
+// Valid indicates whether the value is a known member of the InstanceConfigStatusState enum.
+func (e InstanceConfigStatusState) Valid() bool {
+	switch e {
+	case InstanceConfigStatusStateActive:
+		return true
+	case InstanceConfigStatusStatePartial:
+		return true
+	case InstanceConfigStatusStatePending:
+		return true
+	case InstanceConfigStatusStateRecoveryRequired:
+		return true
+	case InstanceConfigStatusStateUnmanaged:
 		return true
 	default:
 		return false
@@ -1479,14 +1585,15 @@ func (e ProjectRetentionPolicyMode) Valid() bool {
 
 // Defines values for ReauthPurpose.
 const (
-	ReauthPurposeAdapter ReauthPurpose = "adapter"
-	ReauthPurposeApprove ReauthPurpose = "approve"
-	ReauthPurposeBypass  ReauthPurpose = "bypass"
-	ReauthPurposeCopy    ReauthPurpose = "copy"
-	ReauthPurposeMint    ReauthPurpose = "mint"
-	ReauthPurposePublish ReauthPurpose = "publish"
-	ReauthPurposeReject  ReauthPurpose = "reject"
-	ReauthPurposeReveal  ReauthPurpose = "reveal"
+	ReauthPurposeAdapter    ReauthPurpose = "adapter"
+	ReauthPurposeApprove    ReauthPurpose = "approve"
+	ReauthPurposeBypass     ReauthPurpose = "bypass"
+	ReauthPurposeCopy       ReauthPurpose = "copy"
+	ReauthPurposeMint       ReauthPurpose = "mint"
+	ReauthPurposePublish    ReauthPurpose = "publish"
+	ReauthPurposeReject     ReauthPurpose = "reject"
+	ReauthPurposeReveal     ReauthPurpose = "reveal"
+	ReauthPurposeSelfConfig ReauthPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the ReauthPurpose enum.
@@ -1507,6 +1614,8 @@ func (e ReauthPurpose) Valid() bool {
 	case ReauthPurposeReject:
 		return true
 	case ReauthPurposeReveal:
+		return true
+	case ReauthPurposeSelfConfig:
 		return true
 	default:
 		return false
@@ -1951,6 +2060,27 @@ func (e ScimBlastWarningSeverity) Valid() bool {
 	}
 }
 
+// Defines values for SelfConfigReauthIntentAction.
+const (
+	SelfConfigReauthIntentActionAdopt    SelfConfigReauthIntentAction = "adopt"
+	SelfConfigReauthIntentActionApply    SelfConfigReauthIntentAction = "apply"
+	SelfConfigReauthIntentActionMailTest SelfConfigReauthIntentAction = "mail-test"
+)
+
+// Valid indicates whether the value is a known member of the SelfConfigReauthIntentAction enum.
+func (e SelfConfigReauthIntentAction) Valid() bool {
+	switch e {
+	case SelfConfigReauthIntentActionAdopt:
+		return true
+	case SelfConfigReauthIntentActionApply:
+		return true
+	case SelfConfigReauthIntentActionMailTest:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ServiceAccountKind.
 const (
 	Automation ServiceAccountKind = "automation"
@@ -2031,14 +2161,15 @@ func (e TotpAdapterReauthRequestOperation) Valid() bool {
 
 // Defines values for TotpAdapterReauthRequestPurpose.
 const (
-	TotpAdapterReauthRequestPurposeAdapter TotpAdapterReauthRequestPurpose = "adapter"
-	TotpAdapterReauthRequestPurposeApprove TotpAdapterReauthRequestPurpose = "approve"
-	TotpAdapterReauthRequestPurposeBypass  TotpAdapterReauthRequestPurpose = "bypass"
-	TotpAdapterReauthRequestPurposeCopy    TotpAdapterReauthRequestPurpose = "copy"
-	TotpAdapterReauthRequestPurposeMint    TotpAdapterReauthRequestPurpose = "mint"
-	TotpAdapterReauthRequestPurposePublish TotpAdapterReauthRequestPurpose = "publish"
-	TotpAdapterReauthRequestPurposeReject  TotpAdapterReauthRequestPurpose = "reject"
-	TotpAdapterReauthRequestPurposeReveal  TotpAdapterReauthRequestPurpose = "reveal"
+	TotpAdapterReauthRequestPurposeAdapter    TotpAdapterReauthRequestPurpose = "adapter"
+	TotpAdapterReauthRequestPurposeApprove    TotpAdapterReauthRequestPurpose = "approve"
+	TotpAdapterReauthRequestPurposeBypass     TotpAdapterReauthRequestPurpose = "bypass"
+	TotpAdapterReauthRequestPurposeCopy       TotpAdapterReauthRequestPurpose = "copy"
+	TotpAdapterReauthRequestPurposeMint       TotpAdapterReauthRequestPurpose = "mint"
+	TotpAdapterReauthRequestPurposePublish    TotpAdapterReauthRequestPurpose = "publish"
+	TotpAdapterReauthRequestPurposeReject     TotpAdapterReauthRequestPurpose = "reject"
+	TotpAdapterReauthRequestPurposeReveal     TotpAdapterReauthRequestPurpose = "reveal"
+	TotpAdapterReauthRequestPurposeSelfConfig TotpAdapterReauthRequestPurpose = "self-config"
 )
 
 // Valid indicates whether the value is a known member of the TotpAdapterReauthRequestPurpose enum.
@@ -2059,6 +2190,23 @@ func (e TotpAdapterReauthRequestPurpose) Valid() bool {
 	case TotpAdapterReauthRequestPurposeReject:
 		return true
 	case TotpAdapterReauthRequestPurposeReveal:
+		return true
+	case TotpAdapterReauthRequestPurposeSelfConfig:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TotpSelfConfigReauthRequestPurpose.
+const (
+	TotpSelfConfigReauthRequestPurposeSelfConfig TotpSelfConfigReauthRequestPurpose = "self-config"
+)
+
+// Valid indicates whether the value is a known member of the TotpSelfConfigReauthRequestPurpose enum.
+func (e TotpSelfConfigReauthRequestPurpose) Valid() bool {
+	switch e {
+	case TotpSelfConfigReauthRequestPurposeSelfConfig:
 		return true
 	default:
 		return false
@@ -3302,7 +3450,8 @@ type CLIReauthStartRequest struct {
 	Purpose       CLIReauthStartRequestPurpose   `json:"purpose"`
 
 	// RedirectUri Exact ephemeral loopback callback, http://127.0.0.1:PORT/callback or the bracketed ::1 equivalent.
-	RedirectUri string `json:"redirect_uri"`
+	RedirectUri string                  `json:"redirect_uri"`
+	SelfConfig  *SelfConfigReauthIntent `json:"self_config,omitempty"`
 }
 
 // CLIReauthStartRequestOperation defines model for CLIReauthStartRequest.Operation.
@@ -3323,6 +3472,7 @@ type CLIReauthTransaction struct {
 	Operation   CLIReauthTransactionOperation `json:"operation"`
 	Purpose     CLIReauthTransactionPurpose   `json:"purpose"`
 	RedirectUri string                        `json:"redirect_uri"`
+	SelfConfig  *SelfConfigReauthIntent       `json:"self_config,omitempty"`
 	State       string                        `json:"state"`
 }
 
@@ -4290,7 +4440,7 @@ type EnvironmentSignals struct {
 // Error defines model for Error.
 type Error struct {
 	Error struct {
-		// Code Closed set — never grows. Clients branch on this, not on prose.
+		// Code Closed response-code set. Clients branch on this, not on prose.
 		Code ErrorCode `json:"code"`
 
 		// Detail Present only on `bad_request`, where it names the offending
@@ -4312,7 +4462,7 @@ type Error struct {
 	} `json:"error"`
 }
 
-// ErrorCode Closed set — never grows. Clients branch on this, not on prose.
+// ErrorCode Closed response-code set. Clients branch on this, not on prose.
 type ErrorCode string
 
 // EstablishCredentialRequest Accepts a credential-establishment authority issued by bootstrap,
@@ -4755,6 +4905,96 @@ type ImportValuesResult struct {
 	// overwrite named. Listed by name, never silently dropped.
 	Skipped []KeyName `json:"skipped"`
 }
+
+// InstanceConfigAdoptRequest defines model for InstanceConfigAdoptRequest.
+type InstanceConfigAdoptRequest struct {
+	IdempotencyKey string `json:"idempotency_key"`
+	PreviewToken   string `json:"preview_token"`
+}
+
+// InstanceConfigAdoptionPreview defines model for InstanceConfigAdoptionPreview.
+type InstanceConfigAdoptionPreview struct {
+	ConfiguredKeys  []string `json:"configured_keys"`
+	OwnerInstanceId string   `json:"owner_instance_id"`
+	PreviewToken    string   `json:"preview_token"`
+	SchemaVersion   int      `json:"schema_version"`
+	Warnings        []string `json:"warnings"`
+}
+
+// InstanceConfigApplyRequest defines model for InstanceConfigApplyRequest.
+type InstanceConfigApplyRequest struct {
+	// ConfirmRestoredCredentials Required true only when clearing the restore fence after reviewing credentials and reconciling access grants.
+	ConfirmRestoredCredentials bool   `json:"confirm_restored_credentials"`
+	ExpectedGeneration         int64  `json:"expected_generation"`
+	IdempotencyKey             string `json:"idempotency_key"`
+	Revision                   int64  `json:"revision"`
+	SchemaVersion              int    `json:"schema_version"`
+}
+
+// InstanceConfigBinding defines model for InstanceConfigBinding.
+type InstanceConfigBinding struct {
+	EnvironmentId string `json:"environment_id"`
+	OrgId         string `json:"org_id"`
+	ProjectId     string `json:"project_id"`
+	SchemaVersion int    `json:"schema_version"`
+}
+
+// InstanceConfigJob defines model for InstanceConfigJob.
+type InstanceConfigJob struct {
+	CompletedAt *time.Time             `json:"completed_at,omitempty"`
+	CreatedAt   time.Time              `json:"created_at"`
+	Error       *string                `json:"error,omitempty"`
+	Generation  int64                  `json:"generation"`
+	Id          string                 `json:"id"`
+	Revision    int64                  `json:"revision"`
+	State       InstanceConfigJobState `json:"state"`
+}
+
+// InstanceConfigJobState defines model for InstanceConfigJob.State.
+type InstanceConfigJobState string
+
+// InstanceConfigMailTestRequest defines model for InstanceConfigMailTestRequest.
+type InstanceConfigMailTestRequest struct {
+	ExpectedGeneration int64               `json:"expected_generation"`
+	Revision           int64               `json:"revision"`
+	SchemaVersion      int                 `json:"schema_version"`
+	To                 openapi_types.Email `json:"to"`
+}
+
+// InstanceConfigMailTestResult defines model for InstanceConfigMailTestResult.
+type InstanceConfigMailTestResult struct {
+	Revision int64 `json:"revision"`
+	Sent     bool  `json:"sent"`
+}
+
+// InstanceConfigNode defines model for InstanceConfigNode.
+type InstanceConfigNode struct {
+	ActiveGeneration int64                   `json:"active_generation"`
+	ActiveRevision   *int64                  `json:"active_revision"`
+	Error            *string                 `json:"error,omitempty"`
+	NodeId           string                  `json:"node_id"`
+	State            InstanceConfigNodeState `json:"state"`
+	UpdatedAt        time.Time               `json:"updated_at"`
+}
+
+// InstanceConfigNodeState defines model for InstanceConfigNode.State.
+type InstanceConfigNodeState string
+
+// InstanceConfigStatus defines model for InstanceConfigStatus.
+type InstanceConfigStatus struct {
+	Binding         *InstanceConfigBinding    `json:"binding"`
+	DesiredRevision *int64                    `json:"desired_revision"`
+	Generation      int64                     `json:"generation"`
+	Job             *InstanceConfigJob        `json:"job"`
+	LatestRevision  *int64                    `json:"latest_revision"`
+	Managed         bool                      `json:"managed"`
+	Nodes           []InstanceConfigNode      `json:"nodes"`
+	OwnerInstanceId string                    `json:"owner_instance_id"`
+	State           InstanceConfigStatusState `json:"state"`
+}
+
+// InstanceConfigStatusState defines model for InstanceConfigStatus.State.
+type InstanceConfigStatusState string
 
 // InstanceConnection defines model for InstanceConnection.
 type InstanceConnection struct {
@@ -6726,6 +6966,23 @@ type ScimMintResult struct {
 // named refusal.
 type ScimResource map[string]interface{}
 
+// SelfConfigReauthIntent defines model for SelfConfigReauthIntent.
+type SelfConfigReauthIntent struct {
+	Action SelfConfigReauthIntentAction `json:"action"`
+
+	// ConfirmRestoredCredentials Explicit confirmation of reviewed credentials and reconciled access grants after restore; false for other decisions.
+	ConfirmRestoredCredentials bool   `json:"confirm_restored_credentials"`
+	ExpectedGeneration         int64  `json:"expected_generation"`
+	OwnerInstanceId            string `json:"owner_instance_id"`
+	PreviewToken               string `json:"preview_token"`
+	Revision                   int64  `json:"revision"`
+	SchemaVersion              int    `json:"schema_version"`
+	To                         string `json:"to"`
+}
+
+// SelfConfigReauthIntentAction defines model for SelfConfigReauthIntent.Action.
+type SelfConfigReauthIntentAction string
+
 // ServiceAccount defines model for ServiceAccount.
 type ServiceAccount struct {
 	// CreatedAt RFC 3339 UTC, microsecond precision.
@@ -6977,6 +7234,16 @@ type TotpProofRequest struct {
 type TotpReauthRequest struct {
 	union json.RawMessage
 }
+
+// TotpSelfConfigReauthRequest defines model for TotpSelfConfigReauthRequest.
+type TotpSelfConfigReauthRequest struct {
+	Code       string                             `json:"code"`
+	Purpose    TotpSelfConfigReauthRequestPurpose `json:"purpose"`
+	SelfConfig SelfConfigReauthIntent             `json:"self_config"`
+}
+
+// TotpSelfConfigReauthRequestPurpose defines model for TotpSelfConfigReauthRequest.Purpose.
+type TotpSelfConfigReauthRequestPurpose string
 
 // TotpStatus defines model for TotpStatus.
 type TotpStatus struct {
@@ -7338,7 +7605,8 @@ type WebauthnReauthStartRequest struct {
 	// binding, not a label: without it an assertion given to `reveal` would be
 	// spendable on `publish` over the same environment and keys — the same
 	// unit, a different decision, and the human agreed to only one of them.
-	Operation ReauthPurpose `json:"operation"`
+	Operation  ReauthPurpose           `json:"operation"`
+	SelfConfig *SelfConfigReauthIntent `json:"self_config,omitempty"`
 }
 
 // WebauthnReauthStartRequestAdapterOperation defines model for WebauthnReauthStartRequest.AdapterOperation.
@@ -7667,6 +7935,9 @@ type Internal = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// ServiceUnavailable defines model for ServiceUnavailable.
+type ServiceUnavailable = Error
 
 // TooManyRequests defines model for TooManyRequests.
 type TooManyRequests = Error
@@ -8203,6 +8474,15 @@ type RedeemWorkspaceHandoffJSONRequestBody = RedeemWorkspaceHandoffRequest
 // StartWorkspaceHandoffJSONRequestBody defines body for StartWorkspaceHandoff for application/json ContentType.
 type StartWorkspaceHandoffJSONRequestBody = StartWorkspaceHandoffRequest
 
+// AdoptInstanceConfigJSONRequestBody defines body for AdoptInstanceConfig for application/json ContentType.
+type AdoptInstanceConfigJSONRequestBody = InstanceConfigAdoptRequest
+
+// ApplyInstanceConfigJSONRequestBody defines body for ApplyInstanceConfig for application/json ContentType.
+type ApplyInstanceConfigJSONRequestBody = InstanceConfigApplyRequest
+
+// TestInstanceConfigMailJSONRequestBody defines body for TestInstanceConfigMail for application/json ContentType.
+type TestInstanceConfigMailJSONRequestBody = InstanceConfigMailTestRequest
+
 // MintInstanceConnectionJSONRequestBody defines body for MintInstanceConnection for application/json ContentType.
 type MintInstanceConnectionJSONRequestBody = MintInstanceConnectionRequest
 
@@ -8602,6 +8882,32 @@ func (t *TotpReauthRequest) MergeTotpAdapterReauthRequest(v TotpAdapterReauthReq
 	return err
 }
 
+// AsTotpSelfConfigReauthRequest returns the union data inside the TotpReauthRequest as a TotpSelfConfigReauthRequest
+func (t TotpReauthRequest) AsTotpSelfConfigReauthRequest() (TotpSelfConfigReauthRequest, error) {
+	var body TotpSelfConfigReauthRequest
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromTotpSelfConfigReauthRequest overwrites any union data inside the TotpReauthRequest as the provided TotpSelfConfigReauthRequest
+func (t *TotpReauthRequest) FromTotpSelfConfigReauthRequest(v TotpSelfConfigReauthRequest) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeTotpSelfConfigReauthRequest performs a merge with any union data inside the TotpReauthRequest, using the provided TotpSelfConfigReauthRequest
+func (t *TotpReauthRequest) MergeTotpSelfConfigReauthRequest(v TotpSelfConfigReauthRequest) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
 func (t TotpReauthRequest) MarshalJSON() ([]byte, error) {
 	b, err := t.union.MarshalJSON()
 	return b, err
@@ -8796,6 +9102,21 @@ type ServerInterface interface {
 	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string)
+	// GetInstanceConfig Read this owner instance configuration status.
+	// (GET /api/v1/instance/config)
+	GetInstanceConfig(w http.ResponseWriter, r *http.Request)
+	// PreviewInstanceConfigAdoption Preview one-time adoption without disclosing values.
+	// (GET /api/v1/instance/config/adoption)
+	PreviewInstanceConfigAdoption(w http.ResponseWriter, r *http.Request)
+	// AdoptInstanceConfig Adopt the exact previewed effective configuration.
+	// (POST /api/v1/instance/config/adoption)
+	AdoptInstanceConfig(w http.ResponseWriter, r *http.Request)
+	// ApplyInstanceConfig Apply one published revision on this logical instance.
+	// (POST /api/v1/instance/config/apply)
+	ApplyInstanceConfig(w http.ResponseWriter, r *http.Request)
+	// TestInstanceConfigMail Send one test message using exactly the selected revision.
+	// (POST /api/v1/instance/config/mail/test)
+	TestInstanceConfigMail(w http.ResponseWriter, r *http.Request)
 	// ListInstanceConnections The connection credentials this instance has minted.
 	// (GET /api/v1/instance/connections)
 	ListInstanceConnections(w http.ResponseWriter, r *http.Request)
@@ -9723,6 +10044,36 @@ func (_ Unimplemented) StartWorkspaceHandoff(w http.ResponseWriter, r *http.Requ
 // ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 // (GET /api/v1/auth/workspace/transactions/{state})
 func (_ Unimplemented) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Request, state string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetInstanceConfig Read this owner instance configuration status.
+// (GET /api/v1/instance/config)
+func (_ Unimplemented) GetInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PreviewInstanceConfigAdoption Preview one-time adoption without disclosing values.
+// (GET /api/v1/instance/config/adoption)
+func (_ Unimplemented) PreviewInstanceConfigAdoption(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AdoptInstanceConfig Adopt the exact previewed effective configuration.
+// (POST /api/v1/instance/config/adoption)
+func (_ Unimplemented) AdoptInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ApplyInstanceConfig Apply one published revision on this logical instance.
+// (POST /api/v1/instance/config/apply)
+func (_ Unimplemented) ApplyInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TestInstanceConfigMail Send one test message using exactly the selected revision.
+// (POST /api/v1/instance/config/mail/test)
+func (_ Unimplemented) TestInstanceConfigMail(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -11829,6 +12180,76 @@ func (siw *ServerInterfaceWrapper) ShowWorkspaceHandoff(w http.ResponseWriter, r
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ShowWorkspaceHandoff(w, r, state)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInstanceConfig operation middleware
+func (siw *ServerInterfaceWrapper) GetInstanceConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInstanceConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewInstanceConfigAdoption operation middleware
+func (siw *ServerInterfaceWrapper) PreviewInstanceConfigAdoption(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewInstanceConfigAdoption(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AdoptInstanceConfig operation middleware
+func (siw *ServerInterfaceWrapper) AdoptInstanceConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AdoptInstanceConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyInstanceConfig operation middleware
+func (siw *ServerInterfaceWrapper) ApplyInstanceConfig(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyInstanceConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TestInstanceConfigMail operation middleware
+func (siw *ServerInterfaceWrapper) TestInstanceConfigMail(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestInstanceConfigMail(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -21515,6 +21936,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/credentials/{credential}", wrapper.RevokeMachineCredential)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/config", wrapper.GetInstanceConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/config/adoption", wrapper.PreviewInstanceConfigAdoption)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/config/adoption", wrapper.AdoptInstanceConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/config/apply", wrapper.ApplyInstanceConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/config/mail/test", wrapper.TestInstanceConfigMail)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/instance/credential-policy", wrapper.GetCredentialPolicy)
 	})
 	r.Group(func(r chi.Router) {
@@ -21902,6 +22338,15 @@ type ForbiddenJSONResponse Error
 type InternalJSONResponse Error
 
 type NotFoundJSONResponse Error
+
+type ServiceUnavailableResponseHeaders struct {
+	RetryAfter int
+}
+type ServiceUnavailableJSONResponse struct {
+	Body Error
+
+	Headers ServiceUnavailableResponseHeaders
+}
 
 type TooManyRequestsResponseHeaders struct {
 	RetryAfter int
@@ -25402,6 +25847,684 @@ func (response ShowWorkspaceHandoff500JSONResponse) VisitShowWorkspaceHandoffRes
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfigRequestObject struct {
+}
+
+type GetInstanceConfigResponseObject interface {
+	VisitGetInstanceConfigResponse(w http.ResponseWriter) error
+}
+
+type GetInstanceConfig200JSONResponse InstanceConfigStatus
+
+func (response GetInstanceConfig200JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response GetInstanceConfig400JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetInstanceConfig401JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetInstanceConfig403JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetInstanceConfig404JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig409JSONResponse struct{ ConflictJSONResponse }
+
+func (response GetInstanceConfig409JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetInstanceConfig429JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetInstanceConfig500JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceConfig503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetInstanceConfig503JSONResponse) VisitGetInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoptionRequestObject struct {
+}
+
+type PreviewInstanceConfigAdoptionResponseObject interface {
+	VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error
+}
+
+type PreviewInstanceConfigAdoption200JSONResponse InstanceConfigAdoptionPreview
+
+func (response PreviewInstanceConfigAdoption200JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PreviewInstanceConfigAdoption400JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PreviewInstanceConfigAdoption401JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PreviewInstanceConfigAdoption403JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PreviewInstanceConfigAdoption404JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PreviewInstanceConfigAdoption409JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PreviewInstanceConfigAdoption429JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption500JSONResponse struct{ InternalJSONResponse }
+
+func (response PreviewInstanceConfigAdoption500JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PreviewInstanceConfigAdoption503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PreviewInstanceConfigAdoption503JSONResponse) VisitPreviewInstanceConfigAdoptionResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfigRequestObject struct {
+	Body *AdoptInstanceConfigJSONRequestBody
+}
+
+type AdoptInstanceConfigResponseObject interface {
+	VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error
+}
+
+type AdoptInstanceConfig200JSONResponse InstanceConfigStatus
+
+func (response AdoptInstanceConfig200JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response AdoptInstanceConfig400JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response AdoptInstanceConfig401JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response AdoptInstanceConfig403JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response AdoptInstanceConfig404JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig409JSONResponse struct{ ConflictJSONResponse }
+
+func (response AdoptInstanceConfig409JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response AdoptInstanceConfig429JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig500JSONResponse struct{ InternalJSONResponse }
+
+func (response AdoptInstanceConfig500JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AdoptInstanceConfig503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response AdoptInstanceConfig503JSONResponse) VisitAdoptInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfigRequestObject struct {
+	Body *ApplyInstanceConfigJSONRequestBody
+}
+
+type ApplyInstanceConfigResponseObject interface {
+	VisitApplyInstanceConfigResponse(w http.ResponseWriter) error
+}
+
+type ApplyInstanceConfig202JSONResponse InstanceConfigStatus
+
+func (response ApplyInstanceConfig202JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ApplyInstanceConfig400JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ApplyInstanceConfig401JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ApplyInstanceConfig403JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ApplyInstanceConfig404JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ApplyInstanceConfig409JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ApplyInstanceConfig429JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig500JSONResponse struct{ InternalJSONResponse }
+
+func (response ApplyInstanceConfig500JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApplyInstanceConfig503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ApplyInstanceConfig503JSONResponse) VisitApplyInstanceConfigResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMailRequestObject struct {
+	Body *TestInstanceConfigMailJSONRequestBody
+}
+
+type TestInstanceConfigMailResponseObject interface {
+	VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error
+}
+
+type TestInstanceConfigMail200JSONResponse InstanceConfigMailTestResult
+
+func (response TestInstanceConfigMail200JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TestInstanceConfigMail400JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TestInstanceConfigMail401JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TestInstanceConfigMail403JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TestInstanceConfigMail404JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TestInstanceConfigMail409JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TestInstanceConfigMail429JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail500JSONResponse struct{ InternalJSONResponse }
+
+func (response TestInstanceConfigMail500JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TestInstanceConfigMail503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TestInstanceConfigMail503JSONResponse) VisitTestInstanceConfigMailResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -29847,6 +30970,21 @@ func (response GetUpdateStatus500JSONResponse) VisitGetUpdateStatusResponse(w ht
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpdateStatus503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetUpdateStatus503JSONResponse) VisitGetUpdateStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -47535,6 +48673,21 @@ type StrictServerInterface interface {
 	// ShowWorkspaceHandoff Load the authoritative shape of a live workspace handoff.
 	// (GET /api/v1/auth/workspace/transactions/{state})
 	ShowWorkspaceHandoff(ctx context.Context, request ShowWorkspaceHandoffRequestObject) (ShowWorkspaceHandoffResponseObject, error)
+	// GetInstanceConfig Read this owner instance configuration status.
+	// (GET /api/v1/instance/config)
+	GetInstanceConfig(ctx context.Context, request GetInstanceConfigRequestObject) (GetInstanceConfigResponseObject, error)
+	// PreviewInstanceConfigAdoption Preview one-time adoption without disclosing values.
+	// (GET /api/v1/instance/config/adoption)
+	PreviewInstanceConfigAdoption(ctx context.Context, request PreviewInstanceConfigAdoptionRequestObject) (PreviewInstanceConfigAdoptionResponseObject, error)
+	// AdoptInstanceConfig Adopt the exact previewed effective configuration.
+	// (POST /api/v1/instance/config/adoption)
+	AdoptInstanceConfig(ctx context.Context, request AdoptInstanceConfigRequestObject) (AdoptInstanceConfigResponseObject, error)
+	// ApplyInstanceConfig Apply one published revision on this logical instance.
+	// (POST /api/v1/instance/config/apply)
+	ApplyInstanceConfig(ctx context.Context, request ApplyInstanceConfigRequestObject) (ApplyInstanceConfigResponseObject, error)
+	// TestInstanceConfigMail Send one test message using exactly the selected revision.
+	// (POST /api/v1/instance/config/mail/test)
+	TestInstanceConfigMail(ctx context.Context, request TestInstanceConfigMailRequestObject) (TestInstanceConfigMailResponseObject, error)
 	// ListInstanceConnections The connection credentials this instance has minted.
 	// (GET /api/v1/instance/connections)
 	ListInstanceConnections(ctx context.Context, request ListInstanceConnectionsRequestObject) (ListInstanceConnectionsResponseObject, error)
@@ -49427,6 +50580,147 @@ func (sh *strictHandler) ShowWorkspaceHandoff(w http.ResponseWriter, r *http.Req
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ShowWorkspaceHandoffResponseObject); ok {
 		if err := validResponse.VisitShowWorkspaceHandoffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInstanceConfig operation middleware
+func (sh *strictHandler) GetInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	var request GetInstanceConfigRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInstanceConfig(ctx, request.(GetInstanceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInstanceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInstanceConfigResponseObject); ok {
+		if err := validResponse.VisitGetInstanceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewInstanceConfigAdoption operation middleware
+func (sh *strictHandler) PreviewInstanceConfigAdoption(w http.ResponseWriter, r *http.Request) {
+	var request PreviewInstanceConfigAdoptionRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewInstanceConfigAdoption(ctx, request.(PreviewInstanceConfigAdoptionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewInstanceConfigAdoption")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewInstanceConfigAdoptionResponseObject); ok {
+		if err := validResponse.VisitPreviewInstanceConfigAdoptionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AdoptInstanceConfig operation middleware
+func (sh *strictHandler) AdoptInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	var request AdoptInstanceConfigRequestObject
+
+	var body AdoptInstanceConfigJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AdoptInstanceConfig(ctx, request.(AdoptInstanceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AdoptInstanceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AdoptInstanceConfigResponseObject); ok {
+		if err := validResponse.VisitAdoptInstanceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyInstanceConfig operation middleware
+func (sh *strictHandler) ApplyInstanceConfig(w http.ResponseWriter, r *http.Request) {
+	var request ApplyInstanceConfigRequestObject
+
+	var body ApplyInstanceConfigJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyInstanceConfig(ctx, request.(ApplyInstanceConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyInstanceConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyInstanceConfigResponseObject); ok {
+		if err := validResponse.VisitApplyInstanceConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TestInstanceConfigMail operation middleware
+func (sh *strictHandler) TestInstanceConfigMail(w http.ResponseWriter, r *http.Request) {
+	var request TestInstanceConfigMailRequestObject
+
+	var body TestInstanceConfigMailJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TestInstanceConfigMail(ctx, request.(TestInstanceConfigMailRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TestInstanceConfigMail")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TestInstanceConfigMailResponseObject); ok {
+		if err := validResponse.VisitTestInstanceConfigMailResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

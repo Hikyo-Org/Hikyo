@@ -20,6 +20,12 @@ type Operation string
 // The registered operations. Service code names operations through these
 // constants; the registry below is keyed by them.
 const (
+	OpSelfConfigPreview          Operation = "self-config.preview"
+	OpSelfConfigStatus           Operation = "self-config.status"
+	OpSelfConfigAdopt            Operation = "self-config.adopt"
+	OpSelfConfigApply            Operation = "self-config.apply"
+	OpSelfConfigTest             Operation = "self-config.test"
+	OpSelfConfigProvisionProject Operation = "self-config.provision-project"
 	// The hierarchy surface (#48): Organization, Project, Environment, Folder.
 	//
 	// Org creation and enumeration are instance-scoped — a create has no
@@ -595,14 +601,28 @@ const (
 type StoreOp string
 
 const (
-	StoreOrgsCreate       StoreOp = "orgs.Create"
-	StoreOrgsGet          StoreOp = "orgs.Get"
-	StoreOrgsList         StoreOp = "orgs.List"
-	StoreOrgsCount        StoreOp = "orgs.Count"
-	StoreOrgsRename       StoreOp = "orgs.Rename"
-	StoreOrgsLock         StoreOp = "orgs.Lock"
-	StoreOrgsSetRetention StoreOp = "orgs.SetRetention"
-	StoreOrgsDelete       StoreOp = "orgs.Delete"
+	StoreSelfConfigRecoverTarget       StoreOp = "selfconfig.RecoverTarget"
+	StoreSelfConfigBinding             StoreOp = "selfconfig.Binding"
+	StoreSelfConfigJobs                StoreOp = "selfconfig.Jobs"
+	StoreSelfConfigJob                 StoreOp = "selfconfig.Job"
+	StoreSelfConfigJobByIdempotencyKey StoreOp = "selfconfig.JobByIdempotencyKey"
+	StoreSelfConfigNodes               StoreOp = "selfconfig.Nodes"
+	StoreSelfConfigRetained            StoreOp = "selfconfig.Retained"
+	StoreSelfConfigCreateBinding       StoreOp = "selfconfig.CreateBinding"
+	StoreSelfConfigBeginJob            StoreOp = "selfconfig.BeginJob"
+	StoreSelfConfigCommitJob           StoreOp = "selfconfig.CommitJob"
+	StoreSelfConfigFinishJob           StoreOp = "selfconfig.FinishJob"
+	StoreSelfConfigPutNode             StoreOp = "selfconfig.PutNode"
+	StoreSelfConfigFenceRestored       StoreOp = "selfconfig.FenceRestored"
+	StoreKeysInsertInitialProjectDEK   StoreOp = "keys.InsertInitialProjectDEK"
+	StoreOrgsCreate                    StoreOp = "orgs.Create"
+	StoreOrgsGet                       StoreOp = "orgs.Get"
+	StoreOrgsList                      StoreOp = "orgs.List"
+	StoreOrgsCount                     StoreOp = "orgs.Count"
+	StoreOrgsRename                    StoreOp = "orgs.Rename"
+	StoreOrgsLock                      StoreOp = "orgs.Lock"
+	StoreOrgsSetRetention              StoreOp = "orgs.SetRetention"
+	StoreOrgsDelete                    StoreOp = "orgs.Delete"
 
 	StoreProjectsCreate StoreOp = "projects.Create"
 	StoreProjectsGet    StoreOp = "projects.Get"
@@ -1443,6 +1463,33 @@ var registry = mustNewRegistry(operationTable)
 // invariant 6. The table is never read directly: newRegistry validates it into
 // the immutable registry below, so no lookup can observe an unvalidated row.
 var operationTable = map[Operation]opSpec{
+	OpSelfConfigPreview: {class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapManageMembers, At: domain.LevelNone}}, storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreAuditInstanceInsert: true}, events: []audit.EventType{audit.EventSelfConfigStatusRead}},
+	OpSelfConfigStatus: {
+		class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventSelfConfigStatusRead},
+	},
+	OpSelfConfigAdopt: {
+		class: ClassInstance, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigCreateBinding: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventSelfConfigAdopted},
+	},
+	OpSelfConfigApply: {
+		class: ClassTenant, level: domain.LevelEnv, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapRead, At: domain.LevelEnv}, {Cap: domain.CapPublish, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigJobByIdempotencyKey: true, StoreSelfConfigNodes: true, StoreSelfConfigBeginJob: true, StoreSelfConfigCommitJob: true, StoreSelfConfigFinishJob: true, StoreSnapshotsAtRevision: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSelfConfigApplyRequested, audit.EventSelfConfigTargetCommitted, audit.EventSelfConfigResumed},
+	},
+	OpSelfConfigTest: {
+		class: ClassTenant, level: domain.LevelEnv, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSelfConfigTestRequested, audit.EventSelfConfigTestCompleted},
+	},
+	OpSelfConfigProvisionProject: {
+		class: ClassTenant, level: domain.LevelProject, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreKeysInsertInitialProjectDEK: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSelfConfigProjectPrepared},
+	},
+
 	// The Org aggregate (#48). Creation and enumeration are instance-scoped: a
 	// create has no parent tenant to authorize against, and an enumeration of
 	// every org is cross-tenant by definition. Creation also needs
@@ -4167,12 +4214,14 @@ var scimGroupMutationEvents = []audit.EventType{
 type SystemSite string
 
 const (
-	SiteEscrow            SystemSite = "local-escrow-verification"
-	SiteBoot              SystemSite = "boot"
-	SiteMigration         SystemSite = "migration"
-	SiteRecoveryReconcile SystemSite = "recovery-mode-reconciliation"
-	SiteBreakGlass        SystemSite = "break-glass"
-	SiteScheduler         SystemSite = "scheduler"
+	SiteSelfConfigRecovery SystemSite = "self-config-recovery"
+	SiteSelfConfigRuntime  SystemSite = "self-config-runtime"
+	SiteEscrow             SystemSite = "local-escrow-verification"
+	SiteBoot               SystemSite = "boot"
+	SiteMigration          SystemSite = "migration"
+	SiteRecoveryReconcile  SystemSite = "recovery-mode-reconciliation"
+	SiteBreakGlass         SystemSite = "break-glass"
+	SiteScheduler          SystemSite = "scheduler"
 )
 
 // systemSites maps each mint site to the store operations it may invoke. A
@@ -4183,11 +4232,13 @@ const (
 // and recovery reconciliation and break-glass arrive with #54/#55 — for
 // those three an empty set is the fail-closed default.
 var systemSites = map[SystemSite]map[StoreOp]bool{
-	SiteEscrow:            {StoreKeysActiveMasterWrappers: true, StoreKeysAllOpenableTier3: true, StoreKeysAcquireHierarchyGeneration: true, StoreEscrowVerificationWrite: true, StoreAuditInstanceInsert: true},
-	SiteBoot:              bootKeyringOps,
-	SiteMigration:         {},
-	SiteRecoveryReconcile: {},
-	SiteBreakGlass:        {},
+	SiteSelfConfigRecovery: {StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigRecoverTarget: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
+	SiteSelfConfigRuntime:  {StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigPutNode: true, StoreSelfConfigFinishJob: true, StoreSelfConfigFenceRestored: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
+	SiteEscrow:             {StoreKeysActiveMasterWrappers: true, StoreKeysAllOpenableTier3: true, StoreKeysAcquireHierarchyGeneration: true, StoreEscrowVerificationWrite: true, StoreAuditInstanceInsert: true},
+	SiteBoot:               bootKeyringOps,
+	SiteMigration:          {},
+	SiteRecoveryReconcile:  {},
+	SiteBreakGlass:         {},
 	SiteScheduler: {
 		StoreOpsDiagnosticsRead: true,
 		StoreRetentionEligible:  true, StoreRetentionMarkCollected: true,
@@ -4231,7 +4282,9 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 }
 
 var systemSiteEvents = map[SystemSite][]audit.EventType{
-	SiteEscrow: {audit.EventRootEscrowVerified},
+	SiteSelfConfigRecovery: {audit.EventSelfConfigRecovered},
+	SiteSelfConfigRuntime:  {audit.EventSelfConfigApplied, audit.EventSelfConfigRecoveryFenced, audit.EventSelfConfigTestCompleted},
+	SiteEscrow:             {audit.EventRootEscrowVerified},
 	SiteScheduler: {
 		audit.EventAuditRetentionChanged, audit.EventAuditRetentionPruned,
 		audit.EventRetentionPayloadGC,

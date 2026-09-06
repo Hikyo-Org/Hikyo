@@ -67,6 +67,7 @@ SELECT ranked.id, ranked.org_id, ranked.project_id, ranked.environment_id,
 FROM ranked
 WHERE NOT ranked.is_unlimited
   AND ranked.payload_present
+  AND NOT EXISTS (SELECT 1 FROM self_config_retention r WHERE r.snapshot_id = ranked.id)
   AND ranked.age_expired
   AND ranked.newest_rank > ranked.revision_count
   AND NOT EXISTS (
@@ -160,6 +161,7 @@ SET payload_present = FALSE,
     collected_at = $1,
     collected_policy = $2
 WHERE snapshots.id = $3 AND snapshots.payload_present
+  AND NOT EXISTS (SELECT 1 FROM self_config_retention r WHERE r.snapshot_id = snapshots.id)
   AND NOT EXISTS (
       SELECT 1 FROM revision_pins
       WHERE revision_pins.snapshot_id = snapshots.id

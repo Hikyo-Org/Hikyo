@@ -205,7 +205,7 @@ func shouldCheckForUpdate(command string) bool {
 }
 
 func runServer(ctx context.Context, args []string) int {
-	cfg, warnings, err := config.Load("server", args, os.Getenv, os.Environ())
+	cfg, warnings, err := config.LoadBootstrap("server", args, os.Getenv, os.Environ())
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hikyo server:", err)
 		return 1
@@ -296,7 +296,7 @@ func runOperator(ctx context.Context, name string, args []string,
 	if len(args) > 0 && args[0] == "--dev" {
 		configurationArgs, args = args[:1], args[1:]
 	}
-	cfg, warnings, err := config.Load(name, configurationArgs, os.Getenv, os.Environ())
+	cfg, warnings, err := config.LoadBootstrap(name, configurationArgs, os.Getenv, os.Environ())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hikyo %s: %v\n", name, err)
 		return 2

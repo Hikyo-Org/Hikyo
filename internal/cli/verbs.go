@@ -206,6 +206,12 @@ contexts:
   hikyo context delete <name>
   hikyo context delete --instance <ref>            forget a trust-store entry
 
+managed configuration:
+  hikyo instance-config status [-o table|json]
+  hikyo instance-config adopt [--yes]              preview or adopt effective settings
+  hikyo instance-config apply --revision N --expected-generation N
+  hikyo instance-config test-email --revision N --expected-generation N --to ADDRESS
+
 diagnostics:
   hikyo doctor [--instance REF] [-o table|json] [--evidence]
                                                  report health or JSON collection evidence

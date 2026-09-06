@@ -54,6 +54,10 @@ type UpgradeConfiguration struct {
 }
 
 type Config struct {
+	// ManagedInputs are unvalidated one-time seed inputs. The owning service
+	// consults them only after the database confirms no managed binding exists.
+	// In particular, stale file paths must never be read after adoption.
+	ManagedInputs     map[string]string
 	Upgrade           UpgradeConfiguration
 	Dev               bool
 	Listen            string
@@ -239,6 +243,15 @@ var knownEnv = map[string]bool{
 	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE":     true,
 	"HIKYO_REAUTH_WINDOW_SECONDS":          true,
 	"HIKYO_UPDATE_CHANNEL":                 true,
+	"HIKYO_MAIL_ADDR":                      true,
+	"HIKYO_MAIL_TLS":                       true,
+	"HIKYO_MAIL_USER":                      true,
+	"HIKYO_MAIL_PASSWORD":                  true,
+	"HIKYO_MAIL_PASSWORD_FILE":             true,
+	"HIKYO_MAIL_FROM":                      true,
+	"HIKYO_MAIL_EHLO":                      true,
+	"HIKYO_MAIL_ALLOWED_CIDRS":             true,
+	"HIKYO_MAIL_CA_FILE":                   true,
 	"HIKYO_UPDATER_SOCKET":                 true,
 	"HIKYO_HA":                             true,
 	"HIKYO_NODE_ID":                        true,

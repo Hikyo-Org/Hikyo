@@ -704,6 +704,22 @@ func (s *Auth) ReauthPasskeyFinish(ctx context.Context, presented string, respon
 			AuthenticatedAt: now, WindowExpiresAt: windowExpires, HardExpiresAt: hardExpires,
 			CredentialEpoch: epoch, CreatedAt: now,
 		}
+		if intent, ok, err := parseSelfConfigBinding(ceremony.OperationBinding); err != nil {
+			return err
+		} else if ok {
+			binding, err := intent.bindingFor("")
+			if err != nil {
+				return err
+			}
+			window.BoundPurpose = string(binding.purpose)
+			window.BoundOperation = string(binding.operation)
+			window.BoundKeySet = binding.keySet
+			window.SingleDecision = true
+			single = true
+			window.WindowExpiresAt = now.Add(5 * time.Minute)
+			window.HardExpiresAt = window.WindowExpiresAt
+			windowExpires = window.WindowExpiresAt
+		}
 		if binding, ok, err := parseAdapterOperationBinding(ceremony.OperationBinding); err != nil {
 			return err
 		} else if ok {
@@ -769,6 +785,14 @@ func (s *Auth) beginAccountCeremony(ctx context.Context, presented, purpose, ope
 		// An empty environment id is the ACCOUNT ceremonies (enrol, step-up):
 		// they address no environment, so there is nothing to authorize.
 		for _, authorizedEnvironmentID := range environmentIDs {
+			if _, ok, err := parseSelfConfigBinding(operationBinding); err != nil {
+				return err
+			} else if ok {
+				if err := authorizeSelfConfigCeremony(ctx, az, id, authorizedEnvironmentID); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := authorizeEnvironmentRead(ctx, az, id, authorizedEnvironmentID); err != nil {
 				return err
 			}
@@ -1468,7 +1492,7 @@ func parseAdapterOperationBinding(raw string) (adapterReauthBinding, bool, error
 	if err := json.Unmarshal([]byte(raw), &binding); err != nil {
 		return adapterReauthBinding{}, false, err
 	}
-	if binding.Purpose == "" {
+	if binding.Purpose == "" || binding.Purpose == "self-config" {
 		return adapterReauthBinding{}, false, nil
 	}
 	if binding.Purpose != string(PurposeAdapter) || !adapterReauthOperation(authz.Operation(binding.Operation)) ||

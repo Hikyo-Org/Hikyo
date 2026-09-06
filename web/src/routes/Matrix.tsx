@@ -1,3 +1,5 @@
+import { useSelfConfig } from '../api/selfConfig.ts';
+import { SystemProjectNotice } from './InstanceConfig.tsx';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, Link, useParams } from 'react-router';
@@ -131,6 +133,9 @@ export function Matrix({
   // stays available and any real refusal surfaces at the write.
   const definitionsSettings = useDefinitionsSettings(ref.org, ref.project);
   const gitManaged = definitionsSettings.data?.definitions_source === 'git';
+  const selfConfig = useSelfConfig();
+  const systemManaged = selfConfig.data?.binding?.org_id === ref.org && selfConfig.data.binding.project_id === ref.project;
+  const declarationsLocked = gitManaged || systemManaged;
 
   const environmentRows = matrix.environmentRows;
   const environments = environmentRows.map((row) => row.environment);
@@ -201,11 +206,11 @@ export function Matrix({
   // points have already vanished. The declareKey guard is the write-time
   // backstop; this closes the surface the operator can see.
   useEffect(() => {
-    if (gitManaged && create !== null) {
+    if (declarationsLocked && create !== null) {
       setCreate(null);
       setCreateError(null);
     }
-  }, [gitManaged, create]);
+  }, [declarationsLocked, create]);
 
   const matrixScroll = useRef<HTMLDivElement>(null);
   const matrixTable = useRef<HTMLTableElement>(null);
@@ -699,7 +704,7 @@ export function Matrix({
     // Fail closed: if the settings read resolved to git-managed after the modal
     // opened (the entry buttons vanish, but an open form could still submit),
     // refuse before any write rather than trust a stale gate.
-    if (gitManaged) {
+    if (declarationsLocked) {
       setCreate(null);
       return;
     }
@@ -888,6 +893,7 @@ export function Matrix({
           publish. The level-1 heading stays, every surface carries one (see
           shell.spec), but its restated key/env count is gone; the matrix says
           that itself. */}
+      <SystemProjectNotice org={ref.org} project={ref.project} />
       <div className="matrix__head">
         <h1 id="matrix-title">Environment matrix</h1>
         <span className="matrix__head-spacer" />
@@ -909,7 +915,7 @@ export function Matrix({
         {/* #495: import a .env file. Value import is not git-gated, so the entry
             stays available on a git-managed project; the wizard skips new keys
             there. Needs at least one environment to target. */}
-        {environments.length > 0 ? (
+        {environments.length > 0 && !systemManaged ? (
           <button
             type="button"
             className="btn matrix__import"
@@ -920,12 +926,12 @@ export function Matrix({
         ) : null}
         {/* #493: folder & key-group lifecycle. Project-scoped organisation in its
             own dialog, reachable here and from the empty state. */}
-        <button type="button" className="btn matrix__manage" onClick={() => setManageOpen(true)}>
+        {systemManaged ? null : <button type="button" className="btn matrix__manage" onClick={() => setManageOpen(true)}>
           Folders &amp; linked keys
-        </button>
+        </button>}
         {/* env-matrix 31 / #492: the header's primary declare action. Git-managed
             projects disable it and say why, value actions still work. */}
-        {environments.length > 0 && !gitManaged ? (
+        {environments.length > 0 && !declarationsLocked ? (
           <button
             type="button"
             className="btn btn--primary matrix__new-key"
@@ -1199,7 +1205,7 @@ export function Matrix({
                               {/* env-matrix 31: declare a key straight into this
                                   group. Hidden while collapsed to match the
                                   prototype, you open a group, then add to it. */}
-                              {collapsed || gitManaged ? null : (
+                              {collapsed || declarationsLocked ? null : (
                                 <button
                                   type="button"
                                   className="matrix__add-key"
@@ -1357,7 +1363,12 @@ export function Matrix({
             for (const change of changes) {
               try {
                 if (change.operation === 'set') {
-                  const normalizedValue = normalizeMatrixDraftValue(change.value);
+                  // Owner metadata can still be loading. Preserve the SMTP
+                  // password at this boundary; the server's protected profile
+                  // decides normalization without an asynchronous UI guess.
+                  const normalizedValue = selectedKey.classification === 'secret' && selectedKey.name === 'HIKYO_MAIL_PASSWORD'
+                    ? change.value
+                    : normalizeMatrixDraftValue(change.value);
                   if (normalizedValue !== change.value) normalizedCount += 1;
                   const staged = await stage.mutateAsync({
                     environment: change.environmentId,

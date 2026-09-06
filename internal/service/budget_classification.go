@@ -93,6 +93,12 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDynamicProviderConfigure, authz.OpDynamicProviderCredentialSet, authz.OpLeaseMint)
 
 	// ---- EXEMPT ----
+	add(budgetClassExempt, "self-configuration: one unresolved durable apply, 10 intents/minute/instance and 30-second preparation deadline",
+		authz.OpSelfConfigApply)
+	add(budgetClassExempt, "self-configuration: shared instance mail-test lease, 5/hour/principal and 15-second delivery deadline",
+		authz.OpSelfConfigTest)
+	add(budgetClassExempt, "self-configuration: fixed nine-key catalogue and atomic one-time adoption; authenticated API admission bounds preview/status",
+		authz.OpSelfConfigStatus, authz.OpSelfConfigPreview, authz.OpSelfConfigAdopt, authz.OpSelfConfigProvisionProject)
 	add(budgetClassExempt, "SSE admission caps (§10, 4/32/128) own concurrency; per-event authz must not be budgeted",
 		authz.OpAdvisoryWatch, authz.OpAdvisoryEvent)
 	add(budgetClassExempt, "reveal ceremony + per-key gate limiter (GateAttemptsPerMinute) bound it",

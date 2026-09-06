@@ -862,6 +862,7 @@ const zServing = z.object({
   key: z.string(),
   value: z.string(),
   dbPath: z.string(),
+  otpauth: z.string(),
 });
 
 export type ServingSeed = z.infer<typeof zServing>;
@@ -944,7 +945,7 @@ async function seedServingProject(
   await api(serving, 'POST', `/api/v1/orgs/${org}/projects/${project}/environments/${dev}/publish`, {
     version_ids: [staged.version_id],
   });
-  return { org, project, dev, key: 'API_URL', value };
+  return { org, project, dev, key: 'API_URL', value, otpauth };
 }
 
 /**

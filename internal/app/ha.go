@@ -10,6 +10,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/server"
+	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/migrate"
 )
@@ -62,8 +63,9 @@ const accountBackoffRetention = time.Hour
 // enabled. The probe pointer is atomic so it can be set after construction
 // without racing a scrape of /readyz.
 type readyChecker struct {
-	base    server.ReadyChecker
-	haProbe atomic.Pointer[func(ctx context.Context) error]
+	base       server.ReadyChecker
+	selfConfig *service.SelfConfig
+	haProbe    atomic.Pointer[func(ctx context.Context) error]
 }
 
 func (r *readyChecker) setHAProbe(probe func(context.Context) error) {
@@ -73,6 +75,11 @@ func (r *readyChecker) setHAProbe(probe func(context.Context) error) {
 func (r *readyChecker) Ready(ctx context.Context) error {
 	if err := r.base.Ready(ctx); err != nil {
 		return err
+	}
+	if r.selfConfig != nil {
+		if _, err := r.selfConfig.Capture(ctx); err != nil {
+			return err
+		}
 	}
 	if p := r.haProbe.Load(); p != nil {
 		if err := (*p)(ctx); err != nil {

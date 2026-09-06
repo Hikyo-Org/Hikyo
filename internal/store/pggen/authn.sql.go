@@ -1732,7 +1732,9 @@ func (q *Queries) ListExternalIdentitiesForAccount(ctx context.Context, accountI
 }
 
 const listGrantsForPrincipal = `-- name: ListGrantsForPrincipal :many
-SELECT g.capability, g.org_id, g.project_id, g.env_id FROM grants AS g
+SELECT g.capability, g.org_id, g.project_id, g.env_id,
+  CAST(COALESCE((SELECT org_id FROM self_config_binding WHERE id = 1), '') AS TEXT) AS self_config_org_id
+FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
 WHERE g.principal_id = $1
   AND p.privacy_state = 'active'
@@ -1740,10 +1742,11 @@ WHERE g.principal_id = $1
 `
 
 type ListGrantsForPrincipalRow struct {
-	Capability string
-	OrgID      pgtype.Text
-	ProjectID  pgtype.Text
-	EnvID      pgtype.Text
+	Capability      string
+	OrgID           pgtype.Text
+	ProjectID       pgtype.Text
+	EnvID           pgtype.Text
+	SelfConfigOrgID string
 }
 
 // The grant lookup authorize() makes, carrying the restore-reconciliation
@@ -1767,6 +1770,7 @@ func (q *Queries) ListGrantsForPrincipal(ctx context.Context, principalID string
 			&i.OrgID,
 			&i.ProjectID,
 			&i.EnvID,
+			&i.SelfConfigOrgID,
 		); err != nil {
 			return nil, err
 		}
@@ -2194,6 +2198,48 @@ func (q *Queries) ReconcilePrincipal(ctx context.Context, id string) (int64, err
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const recoveryListGrantsBeforeSelfConfig = `-- name: RecoveryListGrantsBeforeSelfConfig :many
+SELECT g.capability, g.org_id, g.project_id, g.env_id FROM grants AS g
+JOIN principals AS p ON p.id = g.principal_id
+WHERE g.principal_id = $1
+  AND p.privacy_state = 'active'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+`
+
+type RecoveryListGrantsBeforeSelfConfigRow struct {
+	Capability string
+	OrgID      pgtype.Text
+	ProjectID  pgtype.Text
+	EnvID      pgtype.Text
+}
+
+// Verified source schema 47 retains privacy and restore reconciliation gates.
+// hikyo:authn-resolution
+func (q *Queries) RecoveryListGrantsBeforeSelfConfig(ctx context.Context, principalID string) ([]RecoveryListGrantsBeforeSelfConfigRow, error) {
+	rows, err := q.db.Query(ctx, recoveryListGrantsBeforeSelfConfig, principalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RecoveryListGrantsBeforeSelfConfigRow
+	for rows.Next() {
+		var i RecoveryListGrantsBeforeSelfConfigRow
+		if err := rows.Scan(
+			&i.Capability,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const reencryptOidcProvider = `-- name: ReencryptOidcProvider :execrows

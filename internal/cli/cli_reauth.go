@@ -41,6 +41,10 @@ func runCLIDisclosureReauth(ctx context.Context, client *Client, state *State, a
 }
 
 func runCLIReauthHandoff(ctx context.Context, client *Client, state *State, artifact SessionArtifact, purpose, operation string, environmentIDs, keyIDs []string, openURL func(string) error) error {
+	return runCLIReauthHandoffTarget(ctx, client, state, artifact, purpose, operation, environmentIDs, keyIDs, nil, openURL)
+}
+
+func runCLIReauthHandoffTarget(ctx context.Context, client *Client, state *State, artifact SessionArtifact, purpose, operation string, environmentIDs, keyIDs []string, selfConfig *apigen.SelfConfigReauthIntent, openURL func(string) error) error {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return failf(ExitUnavailable, "binding the CLI reauthentication callback: %v", err)
@@ -60,6 +64,7 @@ func runCLIReauthHandoff(ctx context.Context, client *Client, state *State, arti
 		environments[i] = apigen.ID(environmentID)
 	}
 	request := apigen.CLIReauthStartRequest{
+		SelfConfig:     selfConfig,
 		Purpose:        apigen.CLIReauthStartRequestPurpose(purpose),
 		Operation:      apigen.CLIReauthStartRequestOperation(operation),
 		EnvironmentIds: environments,

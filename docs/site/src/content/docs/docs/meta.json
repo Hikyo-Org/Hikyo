@@ -32,6 +32,7 @@
     "---Operations---",
     "self-hosting",
     "configuration",
+    "managed-configuration",
     "high-availability",
     "backup-and-restore",
     "upgrades",

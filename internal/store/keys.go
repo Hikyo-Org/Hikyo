@@ -52,6 +52,7 @@ type KeyReader interface {
 // transaction — the fence that will serialize key creation against master
 // rotation (encryption-model ADR § Rotation; the rotation operations land later).
 type KeyRepo interface {
+	InsertInitialProjectDEK(ctx context.Context, pf authz.Proof, key crypto.WrappedKey) error
 	KeyReader
 	AcquireHierarchyGeneration(ctx context.Context, pf authz.Proof) error
 	InsertMaster(ctx context.Context, pf authz.Proof, k crypto.WrappedKey) error
@@ -492,4 +493,11 @@ func (k pgKeys) RootKeyRotateFinalize(ctx context.Context, pf authz.Proof) (uint
 
 func (k pgKeys) InsertScopeGeneration(ctx context.Context, pf authz.Proof, p crypto.Purpose, orgID, projectID string) error {
 	return insertScopeGeneration(ctx, pf, p, orgID, projectID, k)
+}
+
+func (k sqliteKeys) InsertInitialProjectDEK(ctx context.Context, p authz.Proof, key crypto.WrappedKey) error {
+	return insertInitialProjectDEK(ctx, p, key, k)
+}
+func (k pgKeys) InsertInitialProjectDEK(ctx context.Context, p authz.Proof, key crypto.WrappedKey) error {
+	return insertInitialProjectDEK(ctx, p, key, k)
 }

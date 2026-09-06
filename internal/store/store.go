@@ -404,6 +404,7 @@ type RemoteRepo interface {
 // word and the accessors keep them apart, so no caller can reach one meaning
 // to while holding the other.
 type Repos interface {
+	SelfConfig() SelfConfigRepo
 	Orgs() OrgRepo
 	Keys() KeyRepo
 	Catalogue() CatalogueRepo
@@ -473,6 +474,7 @@ type ScanningDismissalRepo interface {
 // transaction. There is no proof-free read path: authorization is evaluated
 // in-transaction, so reads run under internal/store/tx too.
 type ReadRepos interface {
+	SelfConfig() SelfConfigReader
 	Orgs() OrgReader
 	Keys() KeyReader
 	Catalogue() CatalogueReader

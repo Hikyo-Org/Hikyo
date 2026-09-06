@@ -504,9 +504,9 @@ export type ScanFinding = {
 };
 
 /**
- * Closed set — never grows. Clients branch on this, not on prose.
+ * Closed response-code set. Clients branch on this, not on prose.
  */
-export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'too_many_requests' | 'internal';
+export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'too_many_requests' | 'service_unavailable' | 'internal';
 
 /**
  * An exact closed allowlist. `additionalProperties: false` is the
@@ -678,7 +678,27 @@ export type TotpCodeRequest = {
 /**
  * A disclosure reauthentication by TOTP in exactly one canonical intent shape.
  */
-export type TotpReauthRequest = TotpEnvironmentReauthRequest | TotpAdapterReauthRequest;
+export type TotpReauthRequest = TotpEnvironmentReauthRequest | TotpAdapterReauthRequest | TotpSelfConfigReauthRequest;
+
+export type TotpSelfConfigReauthRequest = {
+    purpose: 'self-config';
+    self_config: SelfConfigReauthIntent;
+    code: string;
+};
+
+export type SelfConfigReauthIntent = {
+    action: 'adopt' | 'apply' | 'mail-test';
+    owner_instance_id: string;
+    revision: number;
+    schema_version: number;
+    expected_generation: number;
+    preview_token: string;
+    to: string;
+    /**
+     * Explicit confirmation of reviewed credentials and reconciled access grants after restore; false for other decisions.
+     */
+    confirm_restored_credentials: boolean;
+};
 
 /**
  * A disclosure reauthentication by TOTP. `environment_id` is what the
@@ -715,8 +735,9 @@ export type TotpAdapterReauthRequest = {
  *
  */
 export type CliReauthStartRequest = {
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass';
+    self_config?: SelfConfigReauthIntent;
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test';
     environment_ids: Array<Id>;
     /**
      * The enumerated unit of a non-adapter purpose; absent or empty for `adapter`.
@@ -760,9 +781,10 @@ export type CliReauthEnvironmentPolicy = {
 };
 
 export type CliReauthTransaction = {
+    self_config?: SelfConfigReauthIntent;
     state: string;
-    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass';
-    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass';
+    purpose: 'adapter' | 'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'self-config';
+    operation: 'adapter.configure' | 'adapter.credential-set' | 'adapter.adopt' | 'adapter.sync' | 'value.reveal' | 'value.copy-source' | 'value.copy-destination' | 'approval.vote' | 'approval.bypass' | 'self-config.adopt' | 'self-config.apply' | 'self-config.test';
     environments: Array<CliReauthEnvironmentPolicy>;
     /**
      * The enumerated unit the ceremony binds; empty for `adapter`.
@@ -2525,6 +2547,80 @@ export type ReconcileOfflineRecordsResponse = {
     duplicates: number;
 };
 
+export type InstanceConfigBinding = {
+    org_id: string;
+    project_id: string;
+    environment_id: string;
+    schema_version: number;
+};
+
+export type InstanceConfigNode = {
+    node_id: string;
+    active_generation: number;
+    active_revision: number | null;
+    state: 'active' | 'pending' | 'unknown' | 'fenced';
+    updated_at: string;
+    error?: string;
+};
+
+export type InstanceConfigJob = {
+    id: string;
+    state: 'preparing' | 'pending' | 'partial' | 'completed' | 'failed';
+    revision: number;
+    generation: number;
+    created_at: string;
+    completed_at?: string;
+    error?: string;
+};
+
+export type InstanceConfigStatus = {
+    owner_instance_id: string;
+    managed: boolean;
+    binding: InstanceConfigBinding | null;
+    generation: number;
+    desired_revision: number | null;
+    latest_revision: number | null;
+    state: 'unmanaged' | 'active' | 'pending' | 'partial' | 'recovery_required';
+    nodes: Array<InstanceConfigNode>;
+    job: InstanceConfigJob | null;
+};
+
+export type InstanceConfigAdoptionPreview = {
+    owner_instance_id: string;
+    schema_version: number;
+    configured_keys: Array<string>;
+    warnings: Array<string>;
+    preview_token: string;
+};
+
+export type InstanceConfigAdoptRequest = {
+    preview_token: string;
+    idempotency_key: string;
+};
+
+export type InstanceConfigApplyRequest = {
+    revision: number;
+    expected_generation: number;
+    idempotency_key: string;
+    schema_version: number;
+    /**
+     * Required true only when clearing the restore fence after reviewing credentials and reconciling access grants.
+     */
+    confirm_restored_credentials: boolean;
+};
+
+export type InstanceConfigMailTestRequest = {
+    revision: number;
+    expected_generation: number;
+    schema_version: number;
+    to: string;
+};
+
+export type InstanceConfigMailTestResult = {
+    revision: number;
+    sent: boolean;
+};
+
 export type CredentialPolicy = {
     max_finite_lifetime_seconds: number;
     allow_indefinite: boolean;
@@ -3356,6 +3452,7 @@ export type WebauthnEnrolStartRequest = {
 };
 
 export type WebauthnReauthStartRequest = {
+    self_config?: SelfConfigReauthIntent;
     operation: ReauthPurpose;
     environment_id: string;
     /**
@@ -3373,7 +3470,7 @@ export type WebauthnReauthStartRequest = {
  * unit, a different decision, and the human agreed to only one of them.
  *
  */
-export type ReauthPurpose = 'reveal' | 'copy' | 'publish' | 'mint' | 'adapter' | 'approve' | 'reject' | 'bypass';
+export type ReauthPurpose = 'reveal' | 'copy' | 'publish' | 'mint' | 'adapter' | 'self-config' | 'approve' | 'reject' | 'bypass';
 
 /**
  * The account-security proof for removing a credential — the pre-existing
@@ -12248,6 +12345,10 @@ export type GetUpdateStatusErrors = {
      * An unexpected server fault. The cause is logged, never returned.
      */
     500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
 };
 
 export type GetUpdateStatusError = GetUpdateStatusErrors[keyof GetUpdateStatusErrors];
@@ -13483,6 +13584,411 @@ export type RevokeMachineCredentialResponses = {
 };
 
 export type RevokeMachineCredentialResponse = RevokeMachineCredentialResponses[keyof RevokeMachineCredentialResponses];
+
+export type GetInstanceConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/config';
+};
+
+export type GetInstanceConfigErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetInstanceConfigError = GetInstanceConfigErrors[keyof GetInstanceConfigErrors];
+
+export type GetInstanceConfigResponses = {
+    /**
+     * Owner-local result. No configuration values are disclosed.
+     */
+    200: InstanceConfigStatus;
+};
+
+export type GetInstanceConfigResponse = GetInstanceConfigResponses[keyof GetInstanceConfigResponses];
+
+export type PreviewInstanceConfigAdoptionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/config/adoption';
+};
+
+export type PreviewInstanceConfigAdoptionErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PreviewInstanceConfigAdoptionError = PreviewInstanceConfigAdoptionErrors[keyof PreviewInstanceConfigAdoptionErrors];
+
+export type PreviewInstanceConfigAdoptionResponses = {
+    /**
+     * Owner-local result. No configuration values are disclosed.
+     */
+    200: InstanceConfigAdoptionPreview;
+};
+
+export type PreviewInstanceConfigAdoptionResponse = PreviewInstanceConfigAdoptionResponses[keyof PreviewInstanceConfigAdoptionResponses];
+
+export type AdoptInstanceConfigData = {
+    body: InstanceConfigAdoptRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/config/adoption';
+};
+
+export type AdoptInstanceConfigErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type AdoptInstanceConfigError = AdoptInstanceConfigErrors[keyof AdoptInstanceConfigErrors];
+
+export type AdoptInstanceConfigResponses = {
+    /**
+     * Owner-local result. No configuration values are disclosed.
+     */
+    200: InstanceConfigStatus;
+};
+
+export type AdoptInstanceConfigResponse = AdoptInstanceConfigResponses[keyof AdoptInstanceConfigResponses];
+
+export type ApplyInstanceConfigData = {
+    body: InstanceConfigApplyRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/config/apply';
+};
+
+export type ApplyInstanceConfigErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ApplyInstanceConfigError = ApplyInstanceConfigErrors[keyof ApplyInstanceConfigErrors];
+
+export type ApplyInstanceConfigResponses = {
+    /**
+     * Owner-local result. No configuration values are disclosed.
+     */
+    202: InstanceConfigStatus;
+};
+
+export type ApplyInstanceConfigResponse = ApplyInstanceConfigResponses[keyof ApplyInstanceConfigResponses];
+
+export type TestInstanceConfigMailData = {
+    body: InstanceConfigMailTestRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/config/mail/test';
+};
+
+export type TestInstanceConfigMailErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TestInstanceConfigMailError = TestInstanceConfigMailErrors[keyof TestInstanceConfigMailErrors];
+
+export type TestInstanceConfigMailResponses = {
+    /**
+     * Owner-local result. No configuration values are disclosed.
+     */
+    200: InstanceConfigMailTestResult;
+};
+
+export type TestInstanceConfigMailResponse = TestInstanceConfigMailResponses[keyof TestInstanceConfigMailResponses];
 
 export type GetCredentialPolicyData = {
     body?: never;

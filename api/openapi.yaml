@@ -4624,6 +4624,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "500":
           $ref: "#/components/responses/Internal"
 
@@ -5256,6 +5258,208 @@ paths:
           $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/config:
+    get:
+      operationId: getInstanceConfig
+      tags: [instance]
+      summary: Read this owner instance configuration status.
+      description: |
+        Human administration on the owning instance. Remote workspaces call the
+        owner directly. Instance authority never substitutes for bound project grants.
+      x-hikyo-class: instance
+      x-hikyo-operation: self-config.status
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Owner-local result. No configuration values are disclosed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceConfigStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/config/adoption:
+    get:
+      operationId: previewInstanceConfigAdoption
+      tags: [instance]
+      summary: Preview one-time adoption without disclosing values.
+      description: |
+        Human administration on the owning instance. Remote workspaces call the
+        owner directly. Instance authority never substitutes for bound project grants.
+      x-hikyo-class: instance
+      x-hikyo-operation: self-config.preview
+      x-hikyo-formula: [instance-config@instance, manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "200":
+          description: Owner-local result. No configuration values are disclosed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceConfigAdoptionPreview"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+    post:
+      operationId: adoptInstanceConfig
+      tags: [instance]
+      summary: Adopt the exact previewed effective configuration.
+      description: |
+        Human administration on the owning instance. Remote workspaces call the
+        owner directly. Instance authority never substitutes for bound project grants.
+      x-hikyo-class: instance
+      x-hikyo-operation: self-config.adopt
+      x-hikyo-formula: [instance-config@instance, manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstanceConfigAdoptRequest"
+      responses:
+        "200":
+          description: Owner-local result. No configuration values are disclosed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceConfigStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/config/apply:
+    post:
+      operationId: applyInstanceConfig
+      tags: [instance]
+      summary: Apply one published revision on this logical instance.
+      description: |
+        Human administration on the owning instance. Remote workspaces call the
+        owner directly. Instance authority never substitutes for bound project grants.
+      x-hikyo-class: tenant
+      x-hikyo-operation: self-config.apply
+      x-hikyo-formula: [instance-config@instance, publish@environment, read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstanceConfigApplyRequest"
+      responses:
+        "202":
+          description: Owner-local result. No configuration values are disclosed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceConfigStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/instance/config/mail/test:
+    post:
+      operationId: testInstanceConfigMail
+      tags: [instance]
+      summary: Send one test message using exactly the selected revision.
+      description: |
+        Human administration on the owning instance. Remote workspaces call the
+        owner directly. Instance authority never substitutes for bound project grants.
+      x-hikyo-class: tenant
+      x-hikyo-operation: self-config.test
+      x-hikyo-formula: [instance-config@instance, read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InstanceConfigMailTestRequest"
+      responses:
+        "200":
+          description: Owner-local result. No configuration values are disclosed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstanceConfigMailTestResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
         "500":
           $ref: "#/components/responses/Internal"
 
@@ -10530,6 +10734,16 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    ServiceUnavailable:
+      description: The owner is temporarily unable to serve this operation while configuration converges.
+      headers:
+        Retry-After:
+          required: true
+          schema: {type: integer, minimum: 1}
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     Internal:
       description: An unexpected server fault. The cause is logged, never returned.
       content:
@@ -11202,7 +11416,7 @@ components:
 
     ErrorCode:
       type: string
-      description: Closed set — never grows. Clients branch on this, not on prose.
+      description: Closed response-code set. Clients branch on this, not on prose.
       enum:
         - bad_request
         - unauthenticated
@@ -11211,6 +11425,7 @@ components:
         - conflict
         - limit_exceeded
         - too_many_requests
+        - service_unavailable
         - internal
 
     Meta:
@@ -11470,6 +11685,30 @@ components:
       oneOf:
         - $ref: "#/components/schemas/TotpEnvironmentReauthRequest"
         - $ref: "#/components/schemas/TotpAdapterReauthRequest"
+        - $ref: "#/components/schemas/TotpSelfConfigReauthRequest"
+
+    TotpSelfConfigReauthRequest:
+      type: object
+      x-hikyo-zod-strict: true
+      additionalProperties: false
+      required: [purpose, self_config, code]
+      properties:
+        purpose: {type: string, const: self-config}
+        self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
+        code: {type: string, minLength: 6, maxLength: 10}
+    SelfConfigReauthIntent:
+      type: object
+      additionalProperties: false
+      required: [action, owner_instance_id, revision, schema_version, expected_generation, preview_token, to, confirm_restored_credentials]
+      properties:
+        action: {type: string, enum: [adopt, apply, mail-test]}
+        owner_instance_id: {type: string, minLength: 1, maxLength: 128}
+        revision: {type: integer, format: int64, minimum: 0}
+        schema_version: {type: integer, minimum: 1}
+        expected_generation: {type: integer, format: int64, minimum: 0}
+        preview_token: {type: string, maxLength: 1024}
+        to: {type: string, maxLength: 320}
+        confirm_restored_credentials: {type: boolean, description: Explicit confirmation of reviewed credentials and reconciled access grants after restore; false for other decisions.}
 
     TotpEnvironmentReauthRequest:
       type: object
@@ -11525,9 +11764,10 @@ components:
         browser runs the same purpose-bound ceremony the UI runs, so `key_ids`
         names exactly the unit the decision covers.
       properties:
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass]}
-        environment_ids: {type: array, minItems: 1, uniqueItems: true, items: {$ref: "#/components/schemas/ID"}}
+        self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test]}
+        environment_ids: {type: array, uniqueItems: true, items: {$ref: "#/components/schemas/ID"}}
         key_ids:
           type: array
           uniqueItems: true
@@ -11579,10 +11819,11 @@ components:
       additionalProperties: false
       required: [state, purpose, operation, environments, key_ids, redirect_uri, expires_at]
       properties:
+        self_config: {$ref: "#/components/schemas/SelfConfigReauthIntent"}
         state: {type: string, minLength: 1}
-        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass]}
-        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass]}
-        environments: {type: array, minItems: 1, items: {$ref: "#/components/schemas/CLIReauthEnvironmentPolicy"}}
+        purpose: {type: string, enum: [adapter, reveal, copy, publish, approve, reject, bypass, self-config]}
+        operation: {type: string, enum: [adapter.configure, adapter.credential-set, adapter.adopt, adapter.sync, value.reveal, value.copy-source, value.copy-destination, approval.vote, approval.bypass, self-config.adopt, self-config.apply, self-config.test]}
+        environments: {type: array, items: {$ref: "#/components/schemas/CLIReauthEnvironmentPolicy"}}
         key_ids:
           type: array
           items: {$ref: "#/components/schemas/ID"}
@@ -14074,6 +14315,109 @@ components:
           type: integer
           minimum: 0
 
+    InstanceConfigBinding:
+      type: object
+      additionalProperties: false
+      required: [org_id, project_id, environment_id, schema_version]
+      properties:
+        org_id: {type: string}
+        project_id: {type: string}
+        environment_id: {type: string}
+        schema_version: {type: integer, minimum: 1}
+    InstanceConfigNode:
+      type: object
+      additionalProperties: false
+      required: [node_id, active_generation, active_revision, state, updated_at]
+      properties:
+        node_id: {type: string}
+        active_generation: {type: integer, format: int64, minimum: 0}
+        active_revision: {type: [integer, "null"], format: int64, minimum: 1}
+        state: {type: string, enum: [active, pending, unknown, fenced]}
+        updated_at: {type: string, format: date-time}
+        error: {type: string}
+    InstanceConfigJob:
+      type: object
+      additionalProperties: false
+      required: [id, state, revision, generation, created_at]
+      properties:
+        id: {type: string}
+        state: {type: string, enum: [preparing, pending, partial, completed, failed]}
+        revision: {type: integer, format: int64, minimum: 1}
+        generation: {type: integer, format: int64, minimum: 0}
+        created_at: {type: string, format: date-time}
+        completed_at: {type: string, format: date-time}
+        error: {type: string}
+    InstanceConfigStatus:
+      type: object
+      additionalProperties: false
+      required: [owner_instance_id, managed, binding, generation, desired_revision, latest_revision, state, nodes, job]
+      properties:
+        owner_instance_id: {type: string}
+        managed: {type: boolean}
+        binding:
+          oneOf:
+            - $ref: "#/components/schemas/InstanceConfigBinding"
+            - type: "null"
+        generation: {type: integer, format: int64, minimum: 0}
+        desired_revision: {type: [integer, "null"], format: int64, minimum: 1}
+        latest_revision: {type: [integer, "null"], format: int64, minimum: 1}
+        state: {type: string, enum: [unmanaged, active, pending, partial, recovery_required]}
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/InstanceConfigNode"
+        job:
+          oneOf:
+            - $ref: "#/components/schemas/InstanceConfigJob"
+            - type: "null"
+    InstanceConfigAdoptionPreview:
+      type: object
+      additionalProperties: false
+      required: [owner_instance_id, schema_version, configured_keys, warnings, preview_token]
+      properties:
+        owner_instance_id: {type: string}
+        schema_version: {type: integer, minimum: 1}
+        configured_keys:
+          type: array
+          items: {type: string}
+        warnings:
+          type: array
+          items: {type: string}
+        preview_token: {type: string, minLength: 1}
+    InstanceConfigAdoptRequest:
+      type: object
+      additionalProperties: false
+      required: [preview_token, idempotency_key]
+      properties:
+        preview_token: {type: string, minLength: 1}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+    InstanceConfigApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, expected_generation, idempotency_key, schema_version, confirm_restored_credentials]
+      properties:
+        revision: {type: integer, format: int64, minimum: 1}
+        expected_generation: {type: integer, format: int64, minimum: 0}
+        idempotency_key: {type: string, minLength: 1, maxLength: 128}
+        schema_version: {type: integer, minimum: 1}
+        confirm_restored_credentials: {type: boolean, description: Required true only when clearing the restore fence after reviewing credentials and reconciling access grants.}
+    InstanceConfigMailTestRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, expected_generation, schema_version, to]
+      properties:
+        revision: {type: integer, format: int64, minimum: 1}
+        expected_generation: {type: integer, format: int64, minimum: 0}
+        schema_version: {type: integer, minimum: 1}
+        to: {type: string, format: email}
+    InstanceConfigMailTestResult:
+      type: object
+      additionalProperties: false
+      required: [revision, sent]
+      properties:
+        revision: {type: integer, format: int64, minimum: 1}
+        sent: {type: boolean}
+
     CredentialPolicy:
       type: object
       additionalProperties: false
@@ -15415,6 +15759,8 @@ components:
       additionalProperties: false
       required: [operation, environment_id, key_ids]
       properties:
+        self_config:
+          $ref: "#/components/schemas/SelfConfigReauthIntent"
         operation:
           $ref: "#/components/schemas/ReauthPurpose"
         environment_id:
@@ -15448,6 +15794,7 @@ components:
         - publish
         - mint
         - adapter
+        - self-config
         - approve
         - reject
         - bypass

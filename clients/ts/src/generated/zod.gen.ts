@@ -470,7 +470,7 @@ export const zScanFinding = z.object({
 });
 
 /**
- * Closed set — never grows. Clients branch on this, not on prose.
+ * Closed response-code set. Clients branch on this, not on prose.
  */
 export const zErrorCode = z.enum([
     'bad_request',
@@ -480,6 +480,7 @@ export const zErrorCode = z.enum([
     'conflict',
     'limit_exceeded',
     'too_many_requests',
+    'service_unavailable',
     'internal'
 ]);
 
@@ -604,6 +605,27 @@ export const zTotpCodeRequest = z.object({
     code: z.string().min(6).max(10)
 });
 
+export const zSelfConfigReauthIntent = z.object({
+    action: z.enum([
+        'adopt',
+        'apply',
+        'mail-test'
+    ]),
+    owner_instance_id: z.string().min(1).max(128),
+    revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    schema_version: z.int().gte(1),
+    expected_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    preview_token: z.string().max(1024),
+    to: z.string().max(320),
+    confirm_restored_credentials: z.boolean()
+});
+
+export const zTotpSelfConfigReauthRequest = z.object({
+    purpose: z.literal('self-config'),
+    self_config: zSelfConfigReauthIntent,
+    code: z.string().min(6).max(10)
+}).strict();
+
 /**
  * A disclosure reauthentication by TOTP. `environment_id` is what the
  * window is opened OVER — the reveal guard is per environment, so a
@@ -623,6 +645,7 @@ export const zTotpEnvironmentReauthRequest = z.object({
  *
  */
 export const zCliReauthStartRequest = z.object({
+    self_config: zSelfConfigReauthIntent.optional(),
     purpose: z.enum([
         'adapter',
         'reveal',
@@ -630,7 +653,8 @@ export const zCliReauthStartRequest = z.object({
         'publish',
         'approve',
         'reject',
-        'bypass'
+        'bypass',
+        'self-config'
     ]),
     operation: z.enum([
         'adapter.configure',
@@ -641,9 +665,12 @@ export const zCliReauthStartRequest = z.object({
         'value.copy-source',
         'value.copy-destination',
         'approval.vote',
-        'approval.bypass'
+        'approval.bypass',
+        'self-config.adopt',
+        'self-config.apply',
+        'self-config.test'
     ]),
-    environment_ids: z.array(zId).min(1),
+    environment_ids: z.array(zId),
     key_ids: z.array(zId).max(500).optional(),
     pkce_challenge: z.string().length(43).regex(/^[A-Za-z0-9_-]{43}$/),
     redirect_uri: z.url().max(256)
@@ -671,6 +698,7 @@ export const zCliReauthEnvironmentPolicy = z.object({
 });
 
 export const zCliReauthTransaction = z.object({
+    self_config: zSelfConfigReauthIntent.optional(),
     state: z.string().min(1),
     purpose: z.enum([
         'adapter',
@@ -679,7 +707,8 @@ export const zCliReauthTransaction = z.object({
         'publish',
         'approve',
         'reject',
-        'bypass'
+        'bypass',
+        'self-config'
     ]),
     operation: z.enum([
         'adapter.configure',
@@ -690,9 +719,12 @@ export const zCliReauthTransaction = z.object({
         'value.copy-source',
         'value.copy-destination',
         'approval.vote',
-        'approval.bypass'
+        'approval.bypass',
+        'self-config.adopt',
+        'self-config.apply',
+        'self-config.test'
     ]),
-    environments: z.array(zCliReauthEnvironmentPolicy).min(1),
+    environments: z.array(zCliReauthEnvironmentPolicy),
     key_ids: z.array(zId),
     redirect_uri: z.url(),
     expires_at: zTimestamp
@@ -1530,6 +1562,94 @@ export const zFederatedBinding = z.object({
 export const zReconcileOfflineRecordsResponse = z.object({
     accepted: z.int().gte(0),
     duplicates: z.int().gte(0)
+});
+
+export const zInstanceConfigBinding = z.object({
+    org_id: z.string(),
+    project_id: z.string(),
+    environment_id: z.string(),
+    schema_version: z.int().gte(1)
+});
+
+export const zInstanceConfigNode = z.object({
+    node_id: z.string(),
+    active_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    active_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
+    state: z.enum([
+        'active',
+        'pending',
+        'unknown',
+        'fenced'
+    ]),
+    updated_at: z.iso.datetime(),
+    error: z.string().optional()
+});
+
+export const zInstanceConfigJob = z.object({
+    id: z.string(),
+    state: z.enum([
+        'preparing',
+        'pending',
+        'partial',
+        'completed',
+        'failed'
+    ]),
+    revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    created_at: z.iso.datetime(),
+    completed_at: z.iso.datetime().optional(),
+    error: z.string().optional()
+});
+
+export const zInstanceConfigStatus = z.object({
+    owner_instance_id: z.string(),
+    managed: z.boolean(),
+    binding: zInstanceConfigBinding.nullable(),
+    generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    desired_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
+    latest_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).nullable(),
+    state: z.enum([
+        'unmanaged',
+        'active',
+        'pending',
+        'partial',
+        'recovery_required'
+    ]),
+    nodes: z.array(zInstanceConfigNode),
+    job: zInstanceConfigJob.nullable()
+});
+
+export const zInstanceConfigAdoptionPreview = z.object({
+    owner_instance_id: z.string(),
+    schema_version: z.int().gte(1),
+    configured_keys: z.array(z.string()),
+    warnings: z.array(z.string()),
+    preview_token: z.string().min(1)
+});
+
+export const zInstanceConfigAdoptRequest = z.object({
+    preview_token: z.string().min(1),
+    idempotency_key: z.string().min(1).max(128)
+});
+
+export const zInstanceConfigApplyRequest = z.object({
+    revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    expected_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    idempotency_key: z.string().min(1).max(128),
+    schema_version: z.int().gte(1),
+    confirm_restored_credentials: z.boolean()
+});
+
+export const zInstanceConfigMailTestRequest = z.object({
+    revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    expected_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    schema_version: z.int().gte(1),
+    to: z.email()
+});
+
+export const zInstanceConfigMailTestResult = z.object({
+    revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    sent: z.boolean()
 });
 
 export const zCredentialPolicy = z.object({
@@ -2538,6 +2658,7 @@ export const zReauthPurpose = z.enum([
     'publish',
     'mint',
     'adapter',
+    'self-config',
     'approve',
     'reject',
     'bypass'
@@ -2563,10 +2684,12 @@ export const zTotpAdapterReauthRequest = z.object({
  */
 export const zTotpReauthRequest = z.union([
     zTotpEnvironmentReauthRequest,
-    zTotpAdapterReauthRequest
+    zTotpAdapterReauthRequest,
+    zTotpSelfConfigReauthRequest
 ]);
 
 export const zWebauthnReauthStartRequest = z.object({
+    self_config: zSelfConfigReauthIntent.optional(),
     operation: zReauthPurpose,
     environment_id: z.string().max(64),
     key_ids: z.array(z.string().max(256)),
@@ -4803,6 +4926,37 @@ export const zRevokeMachineCredentialPath = z.object({
  * Revoked.
  */
 export const zRevokeMachineCredentialResponse = z.void();
+
+/**
+ * Owner-local result. No configuration values are disclosed.
+ */
+export const zGetInstanceConfigResponse = zInstanceConfigStatus;
+
+/**
+ * Owner-local result. No configuration values are disclosed.
+ */
+export const zPreviewInstanceConfigAdoptionResponse = zInstanceConfigAdoptionPreview;
+
+export const zAdoptInstanceConfigBody = zInstanceConfigAdoptRequest;
+
+/**
+ * Owner-local result. No configuration values are disclosed.
+ */
+export const zAdoptInstanceConfigResponse = zInstanceConfigStatus;
+
+export const zApplyInstanceConfigBody = zInstanceConfigApplyRequest;
+
+/**
+ * Owner-local result. No configuration values are disclosed.
+ */
+export const zApplyInstanceConfigResponse = zInstanceConfigStatus;
+
+export const zTestInstanceConfigMailBody = zInstanceConfigMailTestRequest;
+
+/**
+ * Owner-local result. No configuration values are disclosed.
+ */
+export const zTestInstanceConfigMailResponse = zInstanceConfigMailTestResult;
 
 /**
  * The instance credential policy.

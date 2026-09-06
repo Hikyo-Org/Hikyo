@@ -1,5 +1,9 @@
 # Hikyo audit logging & event model (ADR, locked 2026-08-02)
 
+> **Declared amendment (2026-09-06, user-approved Hikyo self-configuration):** The [approved self-configuration design](../spec/self-configuration-proposal.md) adds `self_config.status_read`, `self_config.adopted`, `self_config.project_prepared`, `self_config.apply_requested`, `self_config.resumed`, `self_config.target_committed`, `self_config.applied`, `self_config.test_requested`, `self_config.test_completed` and `self_config.recovery_fenced` and `self_config.recovered`. Status/adoption use the instance trail; project preparation, activation, test and fencing use the bound tenant trail. Preparation records apply-requested intent; target-committed intent commits with the durable target transaction. Runtime completion records the executing system site while preserving the initiating authority separately; later revocation of that human does not undo a committed target or suppress an actual test outcome.
+>
+> Event payloads contain required owner-instance identity and optional revision/generation/job/node identifiers plus a closed error-code vocabulary. They contain no configuration values, SMTP credentials, custom trust contents, recipient addresses, arbitrary transport errors or seed fingerprints. Configuration edits, publish, normal reveal and history continue to emit their existing ordinary project events. An accepted job is not a successful activation event: completion requires all admitted participants to acknowledge the committed generation.
+
 > **Declared amendment (2026-09-05, self-hosted privacy controls):**
 > [Self-hosted compliance support](../spec/self-hosted-compliance.md) replaces
 > unlimited security-audit retention with a bounded 365-day default. Access

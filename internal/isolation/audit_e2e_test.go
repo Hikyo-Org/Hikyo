@@ -573,6 +573,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// preceding negative corpus intentionally carries corrupt ciphertext and
 		// cannot honestly prove readable escrow. Both trails remain actual emitters.
 		recovered := runBackupLifecycle(t, db.Engine())
+		managed := runSelfConfigAuditLifecycle(t, db.Engine())
 
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
@@ -580,10 +581,12 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 			if spec.Trails[audit.TrailTenant] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, recovered, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
+				seen += queryInt(t, managed, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = '"+string(typ)+"'")
 			}
 			if spec.Trails[audit.TrailInstance] {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, recovered, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
+				seen += queryInt(t, managed, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
 			}
 			if seen == 0 {
 				t.Errorf("registered event type %s was never emitted — declaration without an emitter", typ)
@@ -1333,4 +1336,29 @@ func runCatalogueLifecycle(t *testing.T, db *store.DB, actor service.Actor, scop
 			t.Fatal(err)
 		}
 	}
+}
+
+// openSelfConfigAuditDB owns a separate engine-matched instance. Its reset
+// cannot erase the main audit corpus or the backup lifecycle's restored trail.
+func openSelfConfigAuditDB(t *testing.T, engine store.Engine) *store.DB {
+	t.Helper()
+	if engine == store.EngineSQLite {
+		return openSQLite(t)
+	}
+	dsn := derivedDatabase(t, postgresTestDSN(t), "_selfconfigaudit")
+	reset, err := pgx.Connect(t.Context(), dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reset.Exec(t.Context(), "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
+		_ = reset.Close(t.Context())
+		t.Fatal(err)
+	}
+	_ = reset.Close(t.Context())
+	db, err := openIsolationFixture(t, store.Config{Engine: store.EnginePostgres, DSN: dsn})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
 }

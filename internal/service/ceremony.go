@@ -282,6 +282,8 @@ func (s *Reveal) Window(ctx context.Context, actor Actor, scope domain.Scope) (R
 // the approval decisions below.
 type ReauthPurpose string
 
+const PurposeSelfConfig ReauthPurpose = "self-config"
+
 const (
 	// PurposeReveal renders plaintext to the principal — cell, bulk or diff.
 	PurposeReveal ReauthPurpose = "reveal"

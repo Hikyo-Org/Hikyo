@@ -398,7 +398,7 @@ func writeCell(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto
 		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		EnvironmentID: string(scope.Env), KeyID: key.ID,
 	}
-	sealed, err := sealer.SealValue(valueAAD(entry), []byte(schema.Normalize(value)))
+	sealed, err := sealer.SealValue(valueAAD(entry), []byte(normalizeStoredValue(p, key, value)))
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -538,7 +538,7 @@ func (s *Values) stage(ctx context.Context, actor Actor, scope domain.Scope, key
 		if operation == store.PendingSet {
 			if sealed, err = sealer.SealField(
 				pendingAAD(string(scope.Org), string(scope.Project), string(scope.Env), key.ID, versionID),
-				[]byte(schema.Normalize(value))); err != nil {
+				[]byte(normalizeStoredValue(p, key, value))); err != nil {
 				return stageWriteResult{}, err
 			}
 			// Writer fence: refuse if the sealer's DEK version was retired by a

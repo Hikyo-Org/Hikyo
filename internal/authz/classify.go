@@ -92,11 +92,16 @@ func mustNewWireRegistry(table map[string]wireEntry) map[string]wireEntry {
 }
 
 var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
-	"http:GET /healthz":   {Class: ClassUnauthenticated},
-	"http:GET /metrics":   {Class: ClassUnauthenticated},
-	"http:GET /readyz":    {Class: ClassUnauthenticated},
-	"mcp:server/discover": {Class: ClassUnauthenticated},
-	"mcp:tools/list":      {Class: ClassUnauthenticated},
+	"http:GET /api/v1/instance/config":            {Class: ClassInstance, Ops: []Operation{OpSelfConfigStatus}},
+	"http:GET /api/v1/instance/config/adoption":   {Class: ClassInstance, Ops: []Operation{OpSelfConfigPreview}},
+	"http:POST /api/v1/instance/config/adoption":  {Class: ClassInstance, Ops: []Operation{OpSelfConfigAdopt, OpSelfConfigProvisionProject}},
+	"http:POST /api/v1/instance/config/apply":     {Class: ClassTenant, Ops: []Operation{OpSelfConfigApply}},
+	"http:POST /api/v1/instance/config/mail/test": {Class: ClassTenant, Ops: []Operation{OpSelfConfigTest}},
+	"http:GET /healthz":                           {Class: ClassUnauthenticated},
+	"http:GET /metrics":                           {Class: ClassUnauthenticated},
+	"http:GET /readyz":                            {Class: ClassUnauthenticated},
+	"mcp:server/discover":                         {Class: ClassUnauthenticated},
+	"mcp:tools/list":                              {Class: ClassUnauthenticated},
 
 	// The contract surface (#47). Every entry below exists in
 	// api/openapi.yaml and carries the same class there under

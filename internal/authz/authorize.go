@@ -161,6 +161,14 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrNotFound
 	}
+	protected, permitted, err := a.selfConfigProfile(ctx, caller, op, chain, grants)
+	if err != nil {
+		return nil, err
+	}
+	if !permitted {
+		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
+		return nil, domain.ErrNotFound
+	}
 	// The machine-reveal conjunct (source-of-truth ADR; machine-identities ADR
 	// "every fetch re-authorizes against current policy"). A workload or
 	// automation principal satisfies a `reveal` atom only while the project's
@@ -183,7 +191,7 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrUnauthorized
 	}
-	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok}, nil
+	return &proof{kind: kindTenant, op: op, chain: chain, tok: a.tok, selfConfig: protected}, nil
 }
 
 // machineRevealWithdrawn reports whether a machine caller is reaching for a
@@ -243,6 +251,10 @@ func (a *TxAuthorizer) MachineRevealOptIn(ctx context.Context, caller Identity, 
 }
 
 func (a *TxAuthorizer) authorizeInstance(ctx context.Context, caller Identity, op Operation, spec authorizationSpec) (Proof, error) {
+	if (op == OpSelfConfigStatus || op == OpSelfConfigAdopt || op == OpSelfConfigPreview) && caller.Class != "" && caller.Class != domain.ClassHuman {
+		a.captureDenial(ctx, caller.Principal, op, spec, resolutionResolvable, domain.Scope{}, domain.Scope{})
+		return nil, domain.ErrUnauthorized
+	}
 	principal := caller.Principal
 	grants, err := a.r.Grants(ctx, principal)
 	if err != nil {
@@ -258,7 +270,7 @@ func (a *TxAuthorizer) authorizeInstance(ctx context.Context, caller Identity, o
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, domain.Scope{}, domain.Scope{})
 		return nil, domain.ErrUnauthorized
 	}
-	return &proof{kind: kindInstance, op: op, tok: a.tok}, nil
+	return &proof{kind: kindInstance, op: op, tok: a.tok, selfConfigAdmin: evaluate(Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, domain.Scope{}, grants)}, nil
 }
 
 // SystemAuthority mints a SystemProof for one of the closed no-principal
@@ -269,6 +281,9 @@ func (a *TxAuthorizer) authorizeInstance(ctx context.Context, caller Identity, o
 // operation set in the system registry — growth of either set fails the
 // build until the tenant-isolation ADR is amended (invariant 11).
 func SystemAuthority(site SystemSite, tok *TxToken) (Proof, error) {
+	if site == SiteSelfConfigRuntime || site == SiteSelfConfigRecovery {
+		return nil, errors.New("authz: self-config runtime authority requires its bound resolver")
+	}
 	if _, ok := systemSites[site]; !ok {
 		return nil, fmt.Errorf("authz: %q is not a registered system mint site", site)
 	}
@@ -283,6 +298,9 @@ func SystemAuthority(site SystemSite, tok *TxToken) (Proof, error) {
 // the acted-on tenant trail: callers may supply identifiers, but the proof
 // carries only the canonical chain resolved inside this transaction.
 func (a *TxAuthorizer) ScopedSystemAuthority(ctx context.Context, site SystemSite, scope domain.Scope) (Proof, error) {
+	if site == SiteSelfConfigRuntime || site == SiteSelfConfigRecovery {
+		return nil, errors.New("authz: self-config runtime authority requires its bound resolver")
+	}
 	if _, ok := systemSites[site]; !ok {
 		return nil, fmt.Errorf("authz: %q is not a registered system mint site", site)
 	}
@@ -508,5 +526,9 @@ func (a *TxAuthorizer) principalFormulaEvaluation(ctx context.Context, principal
 	if err != nil {
 		return authorizationSpec{}, domain.Scope{}, false, err
 	}
-	return spec, chain, evaluate(spec.formula, chain, grants), nil
+	_, permitted, err := a.selfConfigProfile(ctx, Identity{Principal: principal}, op, chain, grants)
+	if err != nil {
+		return authorizationSpec{}, domain.Scope{}, false, err
+	}
+	return spec, chain, permitted && evaluate(spec.formula, chain, grants), nil
 }

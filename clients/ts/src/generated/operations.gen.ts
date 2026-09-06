@@ -63,8 +63,10 @@ import {
   addRemote,
   addWorkspaceOrigin,
   adoptAdapterTargetNames,
+  adoptInstanceConfig,
   applyDefinitionsPlan,
   applyEnvTemplate,
+  applyInstanceConfig,
   applyInstanceTemplate,
   applyOrgTemplate,
   applyProjectTemplate,
@@ -134,6 +136,7 @@ import {
   getEnvironmentSettings,
   getEnvironmentSignals,
   getFolder,
+  getInstanceConfig,
   getInstanceUpdateJob,
   getKey,
   getKeyGroup,
@@ -208,6 +211,7 @@ import {
   patchSamlProvider,
   pauseAdapterTarget,
   planAdapterTarget,
+  previewInstanceConfigAdoption,
   publishPendingChanges,
   putOidcProvider,
   putSamlProvider,
@@ -312,6 +316,7 @@ import {
   stepUpTotp,
   syncAdapterTarget,
   testAdapterTarget,
+  testInstanceConfigMail,
   unlinkIdentity,
   updateAdapterOrigin,
   updateAdapterTarget,
@@ -329,8 +334,10 @@ import type {
   AddRemoteData,
   AddWorkspaceOriginData,
   AdoptAdapterTargetNamesData,
+  AdoptInstanceConfigData,
   ApplyDefinitionsPlanData,
   ApplyEnvTemplateData,
+  ApplyInstanceConfigData,
   ApplyInstanceTemplateData,
   ApplyOrgTemplateData,
   ApplyProjectTemplateData,
@@ -400,6 +407,7 @@ import type {
   GetEnvironmentSettingsData,
   GetEnvironmentSignalsData,
   GetFolderData,
+  GetInstanceConfigData,
   GetInstanceUpdateJobData,
   GetKeyData,
   GetKeyGroupData,
@@ -474,6 +482,7 @@ import type {
   PatchSamlProviderData,
   PauseAdapterTargetData,
   PlanAdapterTargetData,
+  PreviewInstanceConfigAdoptionData,
   PublishPendingChangesData,
   PutOidcProviderData,
   PutSamlProviderData,
@@ -578,6 +587,7 @@ import type {
   StepUpTotpData,
   SyncAdapterTargetData,
   TestAdapterTargetData,
+  TestInstanceConfigMailData,
   UnlinkIdentityData,
   UpdateAdapterOriginData,
   UpdateAdapterTargetData,
@@ -595,8 +605,10 @@ import {
   zAddRemoteResponse,
   zAddWorkspaceOriginResponse,
   zAdoptAdapterTargetNamesResponse,
+  zAdoptInstanceConfigResponse,
   zApplyDefinitionsPlanResponse,
   zApplyEnvTemplateResponse,
+  zApplyInstanceConfigResponse,
   zApplyInstanceTemplateResponse,
   zApplyOrgTemplateResponse,
   zApplyProjectTemplateResponse,
@@ -653,6 +665,7 @@ import {
   zGetEnvironmentSettingsResponse,
   zGetEnvironmentSignalsResponse,
   zGetFolderResponse,
+  zGetInstanceConfigResponse,
   zGetInstanceUpdateJobResponse,
   zGetKeyGroupResponse,
   zGetKeyResponse,
@@ -726,6 +739,7 @@ import {
   zPatchSamlProviderResponse,
   zPauseAdapterTargetResponse,
   zPlanAdapterTargetResponse,
+  zPreviewInstanceConfigAdoptionResponse,
   zPublishPendingChangesResponse,
   zPutOidcProviderResponse,
   zPutSamlProviderResponse,
@@ -814,6 +828,7 @@ import {
   zStepUpTotpResponse,
   zSyncAdapterTargetResponse,
   zTestAdapterTargetResponse,
+  zTestInstanceConfigMailResponse,
   zUnlinkIdentityResponse,
   zUpdateAdapterOriginResponse,
   zUpdateAdapterTargetResponse,
@@ -831,8 +846,10 @@ export const addAdapterTargetOp: BodyOperation<AddAdapterTargetData, typeof zAdd
 export const addRemoteOp: BodyOperation<AddRemoteData, typeof zAddRemoteResponse> = /* @__PURE__ */ new GeneratedBodyOperation(addRemote, [201], zAddRemoteResponse);
 export const addWorkspaceOriginOp: BodyOperation<AddWorkspaceOriginData, typeof zAddWorkspaceOriginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(addWorkspaceOrigin, [201], zAddWorkspaceOriginResponse);
 export const adoptAdapterTargetNamesOp: BodyOperation<AdoptAdapterTargetNamesData, typeof zAdoptAdapterTargetNamesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(adoptAdapterTargetNames, [202], zAdoptAdapterTargetNamesResponse);
+export const adoptInstanceConfigOp: BodyOperation<AdoptInstanceConfigData, typeof zAdoptInstanceConfigResponse> = /* @__PURE__ */ new GeneratedBodyOperation(adoptInstanceConfig, [200], zAdoptInstanceConfigResponse);
 export const applyDefinitionsPlanOp: BodyOperation<ApplyDefinitionsPlanData, typeof zApplyDefinitionsPlanResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyDefinitionsPlan, [200], zApplyDefinitionsPlanResponse);
 export const applyEnvTemplateOp: BodyOperation<ApplyEnvTemplateData, typeof zApplyEnvTemplateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyEnvTemplate, [200], zApplyEnvTemplateResponse);
+export const applyInstanceConfigOp: BodyOperation<ApplyInstanceConfigData, typeof zApplyInstanceConfigResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyInstanceConfig, [202], zApplyInstanceConfigResponse);
 export const applyInstanceTemplateOp: BodyOperation<ApplyInstanceTemplateData, typeof zApplyInstanceTemplateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyInstanceTemplate, [200], zApplyInstanceTemplateResponse);
 export const applyOrgTemplateOp: BodyOperation<ApplyOrgTemplateData, typeof zApplyOrgTemplateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyOrgTemplate, [200], zApplyOrgTemplateResponse);
 export const applyProjectTemplateOp: BodyOperation<ApplyProjectTemplateData, typeof zApplyProjectTemplateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(applyProjectTemplate, [200], zApplyProjectTemplateResponse);
@@ -889,6 +906,7 @@ export const getEnvironmentOp: BodyOperation<GetEnvironmentData, typeof zGetEnvi
 export const getEnvironmentSettingsOp: BodyOperation<GetEnvironmentSettingsData, typeof zGetEnvironmentSettingsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSettings, [200], zGetEnvironmentSettingsResponse);
 export const getEnvironmentSignalsOp: BodyOperation<GetEnvironmentSignalsData, typeof zGetEnvironmentSignalsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSignals, [200], zGetEnvironmentSignalsResponse);
 export const getFolderOp: BodyOperation<GetFolderData, typeof zGetFolderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFolder, [200], zGetFolderResponse);
+export const getInstanceConfigOp: BodyOperation<GetInstanceConfigData, typeof zGetInstanceConfigResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceConfig, [200], zGetInstanceConfigResponse);
 export const getInstanceUpdateJobOp: BodyOperation<GetInstanceUpdateJobData, typeof zGetInstanceUpdateJobResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceUpdateJob, [200], zGetInstanceUpdateJobResponse);
 export const getKeyOp: BodyOperation<GetKeyData, typeof zGetKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKey, [200], zGetKeyResponse);
 export const getKeyGroupOp: BodyOperation<GetKeyGroupData, typeof zGetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKeyGroup, [200], zGetKeyGroupResponse);
@@ -962,6 +980,7 @@ export const passkeyLoginStartOp: BodyOperation<PasskeyLoginStartData, typeof zP
 export const patchSamlProviderOp: BodyOperation<PatchSamlProviderData, typeof zPatchSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(patchSamlProvider, [200], zPatchSamlProviderResponse);
 export const pauseAdapterTargetOp: BodyOperation<PauseAdapterTargetData, typeof zPauseAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(pauseAdapterTarget, [200], zPauseAdapterTargetResponse);
 export const planAdapterTargetOp: BodyOperation<PlanAdapterTargetData, typeof zPlanAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(planAdapterTarget, [200], zPlanAdapterTargetResponse);
+export const previewInstanceConfigAdoptionOp: BodyOperation<PreviewInstanceConfigAdoptionData, typeof zPreviewInstanceConfigAdoptionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(previewInstanceConfigAdoption, [200], zPreviewInstanceConfigAdoptionResponse);
 export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200, 202], zPublishPendingChangesResponse);
 export const putOidcProviderOp: BodyOperation<PutOidcProviderData, typeof zPutOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOidcProvider, [200], zPutOidcProviderResponse);
 export const putSamlProviderOp: BodyOperation<PutSamlProviderData, typeof zPutSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putSamlProvider, [200], zPutSamlProviderResponse);
@@ -1050,6 +1069,7 @@ export const stepUpPasskeyStartOp: BodyOperation<StepUpPasskeyStartData, typeof 
 export const stepUpTotpOp: BodyOperation<StepUpTotpData, typeof zStepUpTotpResponse> = /* @__PURE__ */ new GeneratedBodyOperation(stepUpTotp, [200], zStepUpTotpResponse);
 export const syncAdapterTargetOp: BodyOperation<SyncAdapterTargetData, typeof zSyncAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(syncAdapterTarget, [202], zSyncAdapterTargetResponse);
 export const testAdapterTargetOp: BodyOperation<TestAdapterTargetData, typeof zTestAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(testAdapterTarget, [200], zTestAdapterTargetResponse);
+export const testInstanceConfigMailOp: BodyOperation<TestInstanceConfigMailData, typeof zTestInstanceConfigMailResponse> = /* @__PURE__ */ new GeneratedBodyOperation(testInstanceConfigMail, [200], zTestInstanceConfigMailResponse);
 export const unlinkIdentityOp: BodyOperation<UnlinkIdentityData, typeof zUnlinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(unlinkIdentity, [200], zUnlinkIdentityResponse);
 export const updateAdapterOriginOp: BodyOperation<UpdateAdapterOriginData, typeof zUpdateAdapterOriginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterOrigin, [202], zUpdateAdapterOriginResponse);
 export const updateAdapterTargetOp: BodyOperation<UpdateAdapterTargetData, typeof zUpdateAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterTarget, [200, 202], zUpdateAdapterTargetResponse);

@@ -66,14 +66,15 @@ type WireError struct {
 // this table with the OpenAPI enum, so adding a public code without deciding
 // all four fields fails the suite.
 var wirePolicies = map[apigen.ErrorCode]WireError{
-	apigen.ErrorCodeBadRequest:      {status: http.StatusBadRequest, code: apigen.ErrorCodeBadRequest, message: "the request does not satisfy the API contract", detailPolicy: allowSafeDetail},
-	apigen.ErrorCodeUnauthenticated: {status: http.StatusUnauthorized, code: apigen.ErrorCodeUnauthenticated, message: "authentication required", detailPolicy: redactDetail},
-	apigen.ErrorCodeForbidden:       {status: http.StatusForbidden, code: apigen.ErrorCodeForbidden, message: "not permitted", detailPolicy: redactDetail},
-	apigen.ErrorCodeNotFound:        {status: http.StatusNotFound, code: apigen.ErrorCodeNotFound, message: "not found", detailPolicy: redactDetail},
-	apigen.ErrorCodeConflict:        {status: http.StatusConflict, code: apigen.ErrorCodeConflict, message: "the current state of this resource refuses the request", detailPolicy: allowSafeDetail},
-	apigen.ErrorCodeLimitExceeded:   {status: http.StatusConflict, code: apigen.ErrorCodeLimitExceeded, message: limitExceededMessage, detailPolicy: redactDetail},
-	apigen.ErrorCodeTooManyRequests: {status: http.StatusTooManyRequests, code: apigen.ErrorCodeTooManyRequests, message: "too many requests", detailPolicy: redactDetail},
-	apigen.ErrorCodeInternal:        {status: http.StatusInternalServerError, code: apigen.ErrorCodeInternal, message: "internal error", detailPolicy: redactDetail},
+	apigen.ErrorCodeServiceUnavailable: {status: http.StatusServiceUnavailable, code: apigen.ErrorCodeServiceUnavailable, message: "runtime configuration is not ready; retry shortly", detailPolicy: redactDetail},
+	apigen.ErrorCodeBadRequest:         {status: http.StatusBadRequest, code: apigen.ErrorCodeBadRequest, message: "the request does not satisfy the API contract", detailPolicy: allowSafeDetail},
+	apigen.ErrorCodeUnauthenticated:    {status: http.StatusUnauthorized, code: apigen.ErrorCodeUnauthenticated, message: "authentication required", detailPolicy: redactDetail},
+	apigen.ErrorCodeForbidden:          {status: http.StatusForbidden, code: apigen.ErrorCodeForbidden, message: "not permitted", detailPolicy: redactDetail},
+	apigen.ErrorCodeNotFound:           {status: http.StatusNotFound, code: apigen.ErrorCodeNotFound, message: "not found", detailPolicy: redactDetail},
+	apigen.ErrorCodeConflict:           {status: http.StatusConflict, code: apigen.ErrorCodeConflict, message: "the current state of this resource refuses the request", detailPolicy: allowSafeDetail},
+	apigen.ErrorCodeLimitExceeded:      {status: http.StatusConflict, code: apigen.ErrorCodeLimitExceeded, message: limitExceededMessage, detailPolicy: redactDetail},
+	apigen.ErrorCodeTooManyRequests:    {status: http.StatusTooManyRequests, code: apigen.ErrorCodeTooManyRequests, message: "too many requests", detailPolicy: redactDetail},
+	apigen.ErrorCodeInternal:           {status: http.StatusInternalServerError, code: apigen.ErrorCodeInternal, message: "internal error", detailPolicy: redactDetail},
 }
 
 // wirePolicyForCode fails closed for an unrecognized public code. Callers that
@@ -151,6 +152,9 @@ func safeDetailOf(err error) string {
 // writeError renders a refusal. It never writes anything derived from the
 // cause beyond the code itself; the cause is the process log's business.
 func writeError(w http.ResponseWriter, policy WireError, detail string) {
+	if policy.code == apigen.ErrorCodeServiceUnavailable {
+		w.Header().Set("Retry-After", "2")
+	}
 	if policy.code == apigen.ErrorCodeTooManyRequests {
 		w.Header().Set("Retry-After", strconv.Itoa(int(admission.RetryAfter.Seconds())))
 	}
@@ -166,6 +170,8 @@ var wireErrorRules = []struct {
 	match error
 	code  apigen.ErrorCode
 }{
+	{service.ErrSelfConfigUnavailable, apigen.ErrorCodeServiceUnavailable},
+	{service.ErrSelfConfigMailLimited, apigen.ErrorCodeTooManyRequests},
 	// Reveal and account-security refusals.
 	{service.ErrNoReauthWindow, apigen.ErrorCodeForbidden},
 	{service.ErrReauthWindowExpired, apigen.ErrorCodeForbidden},

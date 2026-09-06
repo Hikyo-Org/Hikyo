@@ -88,6 +88,7 @@ var authRuleRows = []authRuleRow{
 		"sa list", "sa create", "sa delete", "sa credential list", "sa credential mint",
 		"sa credential rotate", "sa credential revoke", "sa binding create",
 		"instance-config credential-policy get", "instance-config credential-policy set",
+		"instance-config status", "instance-config adopt", "instance-config apply", "instance-config test-email",
 		"instance-config federation-issuer list", "instance-config federation-issuer add",
 		"instance-config federation-issuer update", "instance-config federation-issuer remove",
 		"instance-config saml-sp-key list", "instance-config saml-sp-key rotate",

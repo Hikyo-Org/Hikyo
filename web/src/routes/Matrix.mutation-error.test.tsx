@@ -7,7 +7,9 @@ import { renderForm, settle } from '../testkit/renderForm.tsx';
 import { Matrix } from './Matrix.tsx';
 
 const mocks = vi.hoisted(() => ({
-  stage: vi.fn<() => Promise<{ readonly findings: readonly never[] }>>(),
+  stage: vi.fn<(input: { value: string }) => Promise<{ readonly findings: readonly never[] }>>(),
+  system: false,
+  systemMetadataReady: true,
 }));
 
 vi.mock('@tanstack/react-virtual', () => ({
@@ -23,6 +25,11 @@ vi.mock('@tanstack/react-virtual', () => ({
 vi.mock('../api/transport.tsx', async (importActual) => {
   const actual = await importActual<typeof import('../api/transport.tsx')>();
   return { ...actual, useWorkspaceContext: () => null };
+});
+
+vi.mock('../api/selfConfig.ts', async (importActual) => {
+  const actual = await importActual<typeof import('../api/selfConfig.ts')>();
+  return { ...actual, useSelfConfig: () => ({ data: mocks.system && mocks.systemMetadataReady ? { binding: { org_id: 'org_a', project_id: 'project_a' }, state: 'active' } : undefined }) };
 });
 
 vi.mock('../api/matrix.ts', async (importActual) => {
@@ -51,9 +58,9 @@ vi.mock('../api/matrix.ts', async (importActual) => {
             id: 'key_a',
             org_id: 'org_a',
             project_id: 'project_a',
-            name: 'LOG_LEVEL',
+            name: mocks.system ? 'HIKYO_MAIL_PASSWORD' : 'LOG_LEVEL',
             folder_path: '',
-            classification: 'config',
+            classification: mocks.system ? 'secret' : 'config',
             description: '',
             deprecated: false,
             deprecation_note: '',
@@ -87,8 +94,8 @@ vi.mock('../api/matrix.ts', async (importActual) => {
           data: {
             items: [{
               key_id: 'key_a',
-              name: 'LOG_LEVEL',
-              classification: 'config',
+              name: mocks.system ? 'HIKYO_MAIL_PASSWORD' : 'LOG_LEVEL',
+              classification: mocks.system ? 'secret' : 'config',
               set: true,
               revealed: true,
               value: 'info',
@@ -125,8 +132,29 @@ vi.mock('./useProtectedPublishCeremony.ts', () => ({
 }));
 
 beforeEach(() => {
+  mocks.system = false;
+  mocks.systemMetadataReady = true;
   mocks.stage.mockReset();
   mocks.stage.mockRejectedValue(new Error('stage rejected'));
+});
+
+it.each(['  padded password  ', '   ', '\tpassword\n'].flatMap((password) => [true, false].map((metadataReady) => ({ password, metadataReady }))))('preserves managed mail password bytes with metadata ready: $metadataReady, value: $password', async ({ password, metadataReady }) => {
+  mocks.system = true;
+  mocks.systemMetadataReady = metadataReady;
+  mocks.stage.mockResolvedValue({ findings: [] });
+  const view = await renderMatrix();
+  try {
+    await settle();
+    const cell = [...view.container.querySelectorAll('button')].find((candidate) => candidate.getAttribute('aria-label')?.startsWith('HIKYO_MAIL_PASSWORD in development:'));
+    if (cell === undefined) throw new Error('Managed password cell missing');
+    await act(async () => cell.click());
+    const textarea = view.container.querySelector('textarea');
+    if (!(textarea instanceof HTMLTextAreaElement)) throw new Error('Password editor missing');
+    await act(async () => typeInto(textarea, password));
+    await act(async () => buttonNamed(view.container, 'Save 1 draft').click());
+    await settle();
+    expect(mocks.stage).toHaveBeenCalledWith(expect.objectContaining({ key: 'HIKYO_MAIL_PASSWORD', value: password }));
+  } finally { await view.unmount(); }
 });
 
 describe('Matrix mutation refusal ownership', () => {

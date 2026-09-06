@@ -43,6 +43,8 @@ func AdminUsage(w io.Writer) {
   hikyo admin privacy reapply --receipt PATH --output-file PATH --confirm
   hikyo admin grant --principal ID --capability CAP
                     [--org ID [--project ID [--env ID]]]
+  hikyo admin config status
+  hikyo admin config recover --revision NUMBER
 
 For a development datastore, put --dev immediately after the group:
   hikyo admin --dev create --username USER
@@ -89,6 +91,8 @@ func RunAdmin(ctx context.Context, cfg *config.Config, log *slog.Logger, args []
 		return runAdminReset(ctx, cfg, log, args, stderr, terminalSession, terminalError)
 	case "privacy":
 		return runAdminPrivacy(ctx, cfg, log, args[1:], stderr)
+	case "config":
+		return runAdminConfig(ctx, cfg, log, args[1:], stderr)
 	case "grant":
 		return runAdminGrant(ctx, cfg, log, args, stderr)
 	default:
@@ -189,7 +193,9 @@ func adminAuthWithResources(ctx context.Context, cfg *config.Config, log *slog.L
 		return nil, nil, err
 	}
 	guard.disarm()
-	return &service.Auth{DB: db, Keyring: kr, KDF: kdf, Admission: limiter, Log: log}, func() { _ = resources.closeDatabase(db) }, nil
+	auth := &service.Auth{DB: db, Keyring: kr, KDF: kdf, Admission: limiter, Log: log}
+	auth.SelfConfig = newSelfConfig(cfg, db, kr, auth)
+	return auth, func() { _ = resources.closeDatabase(db) }, nil
 }
 
 // runAdminReset is the break-glass recovery verb: `hikyo admin reset-credential

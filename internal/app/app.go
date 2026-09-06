@@ -95,6 +95,7 @@ type Server struct {
 	adapterWorker      *adapter.Worker
 	dynamicWorker      *dynamicWorker
 	updateReconciler   *service.Updates
+	selfConfig         *service.SelfConfig
 }
 
 // devRootKeyName sits beside the dev sqlite database (cwd when no sqlite
@@ -357,6 +358,9 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		ExternalOrigin: cfg.ExternalOrigin, ReauthWindow: cfg.ReauthWindow,
 		FederationPolicy: federationPolicy,
 	}
+	selfConfig := newSelfConfig(cfg, db, kr, authSvc)
+	selfConfig.Budget = budget
+	authSvc.SelfConfig = selfConfig
 	samlProviders := service.NewSAMLProviders(db, kr, cfg.ExternalOrigin)
 	// RP ID + expected origins are immutable instance config derived from the
 	// configured external origin, never a request header (human-auth ADR §5). An
@@ -469,7 +473,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
 	}
 
-	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log}
+	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log, SelfConfig: selfConfig}
 	// One RED collector shared by the API middleware (writer) and the
 	// operational /metrics handler (reader) (#513). The limiter supplies its
 	// admission-pressure gauges at scrape time.
@@ -537,6 +541,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		Retention:       retentionSvc,
 		RetentionHealth: retentionSvc,
 		Updates:         updatesService,
+		SelfConfig:      selfConfig,
 		Providers: &service.Providers{
 			DB: db, Keyring: kr, ExternalOrigin: cfg.ExternalOrigin, Log: log,
 			FederationPolicy: federationPolicy,
@@ -604,7 +609,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	// The operational readiness check is the datastore-and-schema probe, plus
 	// an optional HA lease-datastore probe attached below when HA is enabled so
 	// /readyz fails closed if the lease table becomes unreachable.
-	readyChk := &readyChecker{base: &service.System{DB: db, Store: sc}}
+	readyChk := &readyChecker{base: &service.System{DB: db, Store: sc}, selfConfig: selfConfig}
 	// Construct the complete owner before disarming: future fallible work added
 	// to construction stays inside the guard's protection.
 	srv := &Server{
@@ -657,6 +662,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		adapterWorker:    adapterWorker,
 		dynamicWorker:    &dynamicWorker{svc: dynamicService, id: "dynamic-worker-" + uuid.Must(uuid.NewV7()).String(), log: log},
 		updateReconciler: updatesService,
+		selfConfig:       selfConfig,
 	}
 	if cfg.BackupScheduled() {
 		srv.scheduler.Jobs = append(srv.scheduler.Jobs, backupJobs(cfg, log, backupSvc)...)
@@ -681,6 +687,9 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		// concurrency semaphore stays per node. Wired before the listener
 		// accepts, so the limiter is not yet serving concurrently.
 		limiter.UseShared(coord, log)
+	}
+	if err := selfConfig.LoadRuntime(ctx); err != nil {
+		return nil, fmt.Errorf("boot: self-configuration: %w", err)
 	}
 	// Ownership transfers only after the Server is complete. Nothing remains
 	// between disarm and return, so Server.Close is now the sole owner.
@@ -850,6 +859,18 @@ func (s *Server) serve(ctx context.Context, ready func()) error {
 		return s.serveMaintenance(ctx, ready)
 	}
 	defer s.db.Close()
+	configCtx, stopConfig := context.WithCancel(ctx)
+	var configDone chan struct{}
+	if s.selfConfig != nil {
+		configDone = make(chan struct{})
+		go func() { defer close(configDone); s.selfConfig.Run(configCtx) }()
+	}
+	defer func() {
+		stopConfig()
+		if configDone != nil {
+			<-configDone
+		}
+	}()
 	schedulerCtx, stopScheduler := context.WithCancel(ctx)
 	var schedulerDone chan struct{}
 	if s.scheduler != nil {

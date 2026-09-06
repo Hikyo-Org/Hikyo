@@ -1,5 +1,7 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { reauthenticateSelfConfig } from '../api/selfConfig.ts';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { useSensitiveMutation, useSensitiveState } from '../api/sensitiveMutation.ts';
 
 import {
   approveCLIReauth,
@@ -24,7 +26,7 @@ export function CLIReauth() {
   const [state] = useState(
     () => new URLSearchParams(globalThis.location.search).get('transaction') ?? '',
   );
-  const [totp, setTOTP] = useState('');
+  const [totp, setTOTP] = useSensitiveState('');
   const totpStatus = useTotpStatus();
   const methods = useAuthMethods();
   const oidcProvider = useSessionOIDCProvider();
@@ -33,16 +35,21 @@ export function CLIReauth() {
     queryFn: () => loadCLIReauthTransaction(state),
     enabled: state !== '' && auth.state.status === 'authenticated',
   });
-  const approve = useMutation({
+  const approve = useSensitiveMutation({
     mutationFn: async (strategy: 'factor' | 'oidc') => {
+      const code = totp;
+      setTOTP('');
       const handoff = transaction.data;
       if (handoff === undefined) {
         throw new Error('the CLI authorization transaction is unavailable');
       }
       const environmentIds = handoff.environments.map((environment) => environment.environment_id);
-      if (handoff.purpose === 'adapter') {
+      if (handoff.purpose === 'self-config') {
+        if (handoff.self_config === undefined) throw new Error('The configuration decision is unavailable.');
+        await reauthenticateSelfConfig(handoff.self_config, code.trim() === '' ? { kind: 'passkey' } : { kind: 'totp', code: code.trim() });
+      } else if (handoff.purpose === 'adapter') {
         if (handoff.environments.some((environment) => !environment.requires_webauthn)) {
-          await runAdapterTOTPCeremony(adapterOperation(handoff.operation), environmentIds, totp);
+          await runAdapterTOTPCeremony(adapterOperation(handoff.operation), environmentIds, code);
         }
         for (const environment of handoff.environments.filter(
           (candidate) => candidate.requires_webauthn,
@@ -65,8 +72,8 @@ export function CLIReauth() {
         for (const environment of handoff.environments) {
           if (strategy === 'oidc' && !environment.requires_webauthn && oidcProvider !== null) {
             await runOIDCCeremony(oidcProvider.slug, environment.environment_id);
-          } else if (!environment.requires_webauthn && totp.trim() !== '') {
-            await runTOTPCeremony(environment.environment_id, totp.trim());
+          } else if (!environment.requires_webauthn && code.trim() !== '') {
+            await runTOTPCeremony(environment.environment_id, code.trim());
           } else {
             await runPasskeyCeremony({
               operation: handoff.purpose,
@@ -78,8 +85,9 @@ export function CLIReauth() {
         if (strategy === 'oidc') await auth.refreshSession();
       }
       const approved = await approveCLIReauth(handoff.state);
-      globalThis.location.assign(cliReauthCallbackURL(handoff, approved));
+      return cliReauthCallbackURL(handoff, approved);
     },
+    onSuccess: (callback) => { globalThis.location.assign(callback); },
   });
 
   if (state === '') {
@@ -102,7 +110,8 @@ export function CLIReauth() {
     return <Login />;
   }
 
-  const disclosure = transaction.data !== undefined && transaction.data.purpose !== 'adapter';
+  const selfConfig = transaction.data?.purpose === 'self-config';
+  const disclosure = transaction.data !== undefined && transaction.data.purpose !== 'adapter' && !selfConfig;
   const slidingEnvironments =
     transaction.data?.environments.filter((environment) => !environment.requires_webauthn) ?? [];
   // An adapter handoff needs a code for every sliding environment (its
@@ -110,8 +119,8 @@ export function CLIReauth() {
   // offers the code only where it can do anything - a sliding environment and
   // an enrolled authenticator - and the passkey otherwise.
   const hasTotp = totpStatus.isSuccess && totpStatus.data.confirmed;
-  const requiresTOTP = !disclosure && slidingEnvironments.length > 0;
-  const offersTOTP = disclosure && slidingEnvironments.length > 0 && hasTotp;
+  const requiresTOTP = !disclosure && !selfConfig && slidingEnvironments.length > 0;
+  const offersTOTP = (selfConfig || (disclosure && slidingEnvironments.length > 0)) && hasTotp;
   const offersOIDC =
     disclosure && slidingEnvironments.length > 0 && oidcProvider !== null;
   const methodsFailed =
@@ -131,7 +140,7 @@ export function CLIReauth() {
         {transaction.data !== undefined ? (
           <>
             <p className="login__lede">
-              {transaction.data.purpose === 'adapter' ? (
+              {transaction.data.purpose === 'self-config' && transaction.data.self_config !== undefined ? <>Authorize <strong>{transaction.data.self_config.action}</strong> on <code>{transaction.data.self_config.owner_instance_id}</code>, revision r{String(transaction.data.self_config.revision)}, generation {String(transaction.data.self_config.expected_generation)}, schema {transaction.data.self_config.schema_version}. {transaction.data.self_config.to === '' ? '' : `Send to ${transaction.data.self_config.to}.`} {transaction.data.self_config.confirm_restored_credentials ? 'This also confirms reviewed restored credentials and reconciled access grants.' : ''} This decision can be used once.</> : transaction.data.purpose === 'adapter' ? (
                 <>
                   Approve <span className="mono">{transaction.data.operation}</span> for the
                   environments below.

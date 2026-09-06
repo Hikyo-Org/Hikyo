@@ -76,7 +76,7 @@ export const FLOWS: readonly Flow[] = [
   {
     id: 'instance-admin',
     spec: 'flows/instance-admin.spec.ts',
-    surfaces: ['instance-admin', 'instance-members'],
+    surfaces: ['instance-admin', 'instance-members', 'instance-config'],
   },
   { id: 'reveal', spec: 'flows/reveal.spec.ts', surfaces: ['values'] },
   { id: 'matrix', spec: 'flows/matrix.spec.ts', surfaces: ['matrix'] },

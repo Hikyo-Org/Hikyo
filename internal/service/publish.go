@@ -1123,6 +1123,9 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 	if err := groups.validateResolvedPublish(cells, string(scope.Env)); err != nil {
 		return PublishedEnvironment{}, err
 	}
+	if err := validateSelfConfigCells(p, cells); err != nil {
+		return PublishedEnvironment{}, err
+	}
 
 	// Refused BY NAME at publish, never discovered at delivery: a resolved
 	// environment that would render a target larger than a Kubernetes Secret can
@@ -1401,7 +1404,7 @@ func putCell(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.P
 		ID: id, OrgID: string(scope.Org), ProjectID: string(scope.Project),
 		EnvironmentID: string(scope.Env), KeyID: key.ID,
 	}
-	sealed, err := sealer.SealValue(valueAAD(entry), []byte(schema.Normalize(value)))
+	sealed, err := sealer.SealValue(valueAAD(entry), []byte(normalizeStoredValue(p, key, value)))
 	if err != nil {
 		return "", err
 	}

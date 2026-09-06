@@ -1,10 +1,12 @@
+import type { zCliReauthTransaction } from '@hikyo/zod';
+import type { z } from 'zod';
+type CliReauthTransaction = z.infer<typeof zCliReauthTransaction>;
 import {
   approveCliReauthOp,
   showCliReauthTransactionOp,
 } from '@hikyo/operations';
 import {
   type CliReauthApproved,
-  type CliReauthTransaction,
 } from '@hikyo/client';
 
 import { parsed } from './client.ts';

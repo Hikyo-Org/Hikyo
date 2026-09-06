@@ -22,12 +22,29 @@ func (a *API) StartCLIReauth(ctx context.Context, req apigen.StartCLIReauthReque
 	}
 	var intent service.ReauthIntent
 	var err error
-	if req.Body.Purpose == apigen.CLIReauthStartRequestPurposeAdapter {
+	if req.Body.Purpose == apigen.CLIReauthStartRequestPurposeSelfConfig {
+		if req.Body.SelfConfig == nil || len(environments) != 0 || len(keyIDs) != 0 {
+			return nil, domain.ErrInvalid
+		}
+		intent, err = selfConfigReauthIntent(*req.Body.SelfConfig)
+		if err == nil {
+			op, e := intent.Operation()
+			if e != nil || string(op) != string(req.Body.Operation) {
+				return nil, domain.ErrInvalid
+			}
+		}
+	} else if req.Body.Purpose == apigen.CLIReauthStartRequestPurposeAdapter {
+		if req.Body.SelfConfig != nil {
+			return nil, domain.ErrInvalid
+		}
 		if len(keyIDs) != 0 {
 			return nil, fmt.Errorf("%w: adapter reauthentication does not carry key ids", domain.ErrInvalid)
 		}
 		intent, err = service.NewAdapterReauthIntent(string(req.Body.Operation), environments)
 	} else {
+		if req.Body.SelfConfig != nil {
+			return nil, domain.ErrInvalid
+		}
 		intent, err = service.NewDisclosureReauthIntent(service.ReauthPurpose(req.Body.Purpose), environments, keyIDs)
 		if err == nil {
 			operation, operationErr := intent.Operation()
@@ -60,7 +77,12 @@ func (a *API) ShowCLIReauthTransaction(ctx context.Context, req apigen.ShowCLIRe
 	for _, keyID := range result.KeyIDs {
 		keyIDs = append(keyIDs, apigen.ID(keyID))
 	}
-	return apigen.ShowCLIReauthTransaction200JSONResponse{State: result.State, Purpose: apigen.CLIReauthTransactionPurpose(result.Purpose), Operation: apigen.CLIReauthTransactionOperation(result.Operation), Environments: environments, KeyIds: keyIDs, RedirectUri: result.RedirectURI, ExpiresAt: result.ExpiresAt}, nil
+	var target *apigen.SelfConfigReauthIntent
+	if result.SelfConfig != nil {
+		v := result.SelfConfig
+		target = &apigen.SelfConfigReauthIntent{Action: apigen.SelfConfigReauthIntentAction(v.Action), OwnerInstanceId: v.OwnerInstanceID, Revision: v.Revision, SchemaVersion: v.SchemaVersion, ExpectedGeneration: v.ExpectedGeneration, PreviewToken: v.PreviewToken, To: v.To, ConfirmRestoredCredentials: v.ConfirmRestoredCredentials}
+	}
+	return apigen.ShowCLIReauthTransaction200JSONResponse{SelfConfig: target, State: result.State, Purpose: apigen.CLIReauthTransactionPurpose(result.Purpose), Operation: apigen.CLIReauthTransactionOperation(result.Operation), Environments: environments, KeyIds: keyIDs, RedirectUri: result.RedirectURI, ExpiresAt: result.ExpiresAt}, nil
 }
 
 func (a *API) ApproveCLIReauth(ctx context.Context, req apigen.ApproveCLIReauthRequestObject) (apigen.ApproveCLIReauthResponseObject, error) {

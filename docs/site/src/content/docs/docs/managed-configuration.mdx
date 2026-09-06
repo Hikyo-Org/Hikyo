@@ -1,0 +1,136 @@
+---
+title: Manage Hikyo with Hikyo
+description: Edit, publish, test and apply Hikyo mail and notification settings through its own protected project.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/managed-configuration.mdx
+---
+
+Hikyo owns a protected configuration project on each logical instance. Open
+**Instance settings → Manage Hikyo configuration** to find the project, the
+running revision and the state of every admitted node.
+
+## Set up or adopt
+
+Fresh administrator setup provisions a protected `Hikyo` organization, an
+instance project and its `Production` environment. Existing installations use
+**Preview adoption**. The preview lists configured key names and any import
+warnings without displaying secret values. Review it, then adopt with fresh
+reauthentication. Adoption imports the server's effective settings once.
+
+Adoption grants the initiating administrator normal scoped project access.
+Sign in again when requested so the session reflects those grants. Instance
+administration alone does not grant secret reveal or history disclosure.
+
+Once adopted, the applied revision owns the supported settings. Stale startup
+variables and imported file paths cannot override it. Database connectivity,
+root keys, listeners, origin, HA node identity and other bootstrap settings
+remain externally configured. See [Configuration](/docs/configuration/).
+
+## Change mail settings without restarting
+
+1. Open **Edit configuration project**. Change values in the normal matrix.
+2. Publish the drafts. Publishing creates a revision; running settings stay unchanged.
+3. Return to **Hikyo configuration**, select the exact published revision and optionally send a test email to a named recipient.
+4. Select **Apply selected revision**, then authorize that specific revision with a fresh authenticator code or passkey.
+5. Check the node list. A pending or partial apply is still converging; only completed node acknowledgements establish that all admitted nodes use the target.
+
+A test uses the selected revision and does not activate it. Apply validates
+locally and does not contact the mail relay. A relay connection failure does
+not roll back the applied configuration. In-flight operations can finish using
+the bundle they started with; subsequent operations use the new bundle.
+
+## Supported catalogue
+
+| Key | Meaning |
+| --- | --- |
+| `HIKYO_MAIL_ADDR` | SMTP host and port. Absence of the entire mail group disables mail. |
+| `HIKYO_MAIL_TLS` | `implicit` or `starttls`; required when mail is enabled. |
+| `HIKYO_MAIL_USER` | Optional SMTP authentication username. |
+| `HIKYO_MAIL_PASSWORD` | Secret password; required when a username is set. |
+| `HIKYO_MAIL_FROM` | Sender mailbox; required when mail is enabled. |
+| `HIKYO_MAIL_EHLO` | Optional SMTP greeting hostname. |
+| `HIKYO_MAIL_ALLOWED_CIDRS` | Explicit mail-only exceptions for private relay networks. |
+| `HIKYO_MAIL_CA_PEM` | Optional custom certificate authority PEM contents. Private keys are refused. |
+| `HIKYO_UPDATE_CHANNEL` | Release notifications: `stable`, `nightly` or `off`. |
+
+The project schema belongs to the runtime. Values use ordinary drafts,
+publication, encryption and history. Users cannot change the catalogue's types,
+secret classification or source mode. Certificate and password files are
+imported as contents once during adoption. Remote apply never reads arbitrary
+server filesystem paths.
+
+## Independent remotes and HA
+
+The root management view groups project references. Each remote owns its
+organization, project, schema, secrets and generation. Open an owner reference
+to connect through that instance's human workspace session. Requests go directly
+from the browser to the owner. A local administrator or directory credential
+has no remote configuration authority.
+
+Only HA replicas of the same logical instance share one project and apply.
+Two independent remotes can configure different values and optional mail settings; their revision
+numbers are unrelated. Disconnecting a remote from the viewing interface does
+not remove its project or stop its application. See
+[High availability](/docs/high-availability/).
+
+A passkey must run on its owner's origin. From a remote workspace, use the
+fresh authenticator code or the **Use a passkey on owner** link to complete the
+same workflow directly on the owner.
+
+## Status, conflict and rollback
+
+An apply records one durable target generation. Before that commit, validation
+failure leaves the old target intact. After commit, a failed node swap remains
+pending or partial and reconciles to the committed target. Refresh status
+before retrying an uncertain response. The API's expected generation refuses
+concurrent stale decisions; the idempotency key identifies retries of one apply.
+
+To roll back, open **History and rollback**, restore the chosen revision into
+drafts, publish and apply that new revision. Existing unrelated drafts remain
+visible. History permissions and fresh reauthentication still apply. Required
+runtime snapshots are retained while active or involved in an apply.
+
+After backup restore, outbound use stays fenced until access reconciliation and
+explicit configuration resumption. Recovery runs on the affected owner, not the
+viewing instance. See [Backup and restore](/docs/backup-and-restore/) and
+[Troubleshooting](/docs/troubleshooting/).
+
+## Human CLI
+
+The same operations are available to a human CLI session:
+
+```sh
+hikyo instance-config status -o json
+hikyo instance-config adopt
+hikyo instance-config adopt --yes
+hikyo instance-config apply --revision 3 --expected-generation 2
+hikyo instance-config test-email --revision 3 --expected-generation 2 --to admin@example.com
+```
+
+Mutations open the existing browser authorization handoff. It shows the exact
+owner, action, revision and generation, then returns a single-use decision to
+the initiating CLI session. Machine credentials cannot adopt, apply or test.
+Use `--idempotency-key` to retain the same apply identity when retrying an
+uncertain result. The `--instance` flag selects the owning instance.
+
+After a restore, Apply requires confirmation that the restored credentials have been reviewed and access grants reconciled. This confirmation is part of the exact reauthentication decision. The CLI equivalent is `--confirm-restored-credentials` on `instance-config apply`; use it only while the owner reports `recovery_required`.
+
+## Recover an invalid applied revision on the host
+
+If an invalid stored revision prevents normal startup, use local host authority
+with the same database and root-key configuration as the affected instance:
+
+```sh
+hikyo admin config status
+hikyo admin config recover --revision 3
+```
+
+Stop every replica and wait at least 30 seconds before `recover`. Recovery
+refuses live consumers, validates the exact retained published revision against
+the current catalogue, cancels any stalled apply and records the new target in
+one transaction. It never accepts arbitrary environment overrides or reads
+configuration files named in project values. Restart the replicas afterward.
+
+Recovery preserves the outbound fence after a backup restore. Reconcile access
+and confirm the restored credentials through the normal Apply ceremony before
+resuming outbound use. These commands have no network endpoint and require
+access to the server host and its existing root-key custody.

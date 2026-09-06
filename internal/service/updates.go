@@ -23,14 +23,15 @@ const updateRecentAuthentication = 5 * time.Minute
 // Updates owns the authenticated release-notification read. No database
 // transaction remains open across the bounded public release lookup.
 type Updates struct {
-	DB        *store.DB
-	Source    updatecheck.Source
-	Version   string
-	Channel   updatecheck.Channel
-	Control   updater.Control
-	Now       func() time.Time
-	Log       *slog.Logger
-	outcomeMu sync.Mutex
+	SelfConfig *SelfConfig
+	DB         *store.DB
+	Source     updatecheck.Source
+	Version    string
+	Channel    updatecheck.Channel
+	Control    updater.Control
+	Now        func() time.Time
+	Log        *slog.Logger
+	outcomeMu  sync.Mutex
 }
 
 // Run reconciles helper-owned terminal outcomes independently of any browser.
@@ -101,9 +102,17 @@ func (s *Updates) GetStatus(ctx context.Context, actor Actor) (updatecheck.Statu
 	if err != nil {
 		return updatecheck.Status{}, err
 	}
+	channel := s.Channel
+	if s.SelfConfig != nil {
+		bundle, captureErr := s.SelfConfig.Capture(ctx)
+		if captureErr != nil {
+			return updatecheck.Status{}, captureErr
+		}
+		channel = updatecheck.Channel(bundle.UpdateChannel())
+	}
 	var status updatecheck.Status
-	if s.Channel == updatecheck.ChannelOff || s.Version == "dev" {
-		status, err = updatecheck.Select(s.Version, s.Channel, nil)
+	if channel == updatecheck.ChannelOff || s.Version == "dev" {
+		status, err = updatecheck.Select(s.Version, channel, nil)
 	} else {
 		if s.Source == nil {
 			return updatecheck.Status{}, errors.New("updates: release source is not configured")
@@ -111,7 +120,7 @@ func (s *Updates) GetStatus(ctx context.Context, actor Actor) (updatecheck.Statu
 		var releases []updatecheck.Release
 		releases, err = s.Source.Releases(ctx)
 		if err == nil {
-			status, err = updatecheck.Select(s.Version, s.Channel, releases)
+			status, err = updatecheck.Select(s.Version, channel, releases)
 		}
 	}
 	if err != nil {
@@ -127,7 +136,7 @@ func (s *Updates) GetStatus(ctx context.Context, actor Actor) (updatecheck.Statu
 		}
 		event, err := domainEvent(ctx, audit.EventUpdateStatusRead, caller.Principal,
 			audit.Object{Type: "update_status", ID: "release_channel"}, audit.Payload{
-				"channel": string(s.Channel), "current_version": s.Version,
+				"channel": string(channel), "current_version": s.Version,
 			})
 		if err != nil {
 			return err

@@ -29,11 +29,11 @@ SELECT id FROM orgs WHERE id = ?;
 -- name: ListOrgs :many
 SELECT id, name, active, metadata, created_at,
        retention_mode, retention_age_seconds, retention_revision_count
-FROM orgs ORDER BY name;
+FROM orgs WHERE (sqlc.arg(include_self_config) = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name;
 
 -- hikyo:instance-scoped
 -- name: CountOrgs :one
-SELECT COUNT(*) FROM orgs;
+SELECT COUNT(*) FROM orgs WHERE (sqlc.arg(include_self_config) = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id));
 
 -- name: RenameOrg :execrows
 UPDATE orgs SET name = ? WHERE id = ?;

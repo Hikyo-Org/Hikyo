@@ -1036,6 +1036,65 @@ type SecretValueOccurrence struct {
 	EnvironmentID string
 }
 
+type SelfConfigBinding struct {
+	ID                 int64
+	OwnerInstanceID    string
+	AdoptionKey        string
+	AdoptedBy          string
+	OrgID              string
+	ProjectID          string
+	EnvironmentID      string
+	SchemaVersion      int64
+	Generation         int64
+	DesiredRevision    int64
+	DesiredSnapshotID  string
+	PreviousSnapshotID string
+	Incarnation        string
+	Suspended          int64
+	CreatedAt          string
+	UpdatedAt          string
+}
+
+type SelfConfigJob struct {
+	ID                         string
+	IdempotencyKey             string
+	ConfirmRestoredCredentials int64
+	PrincipalID                string
+	SnapshotID                 string
+	Revision                   int64
+	SchemaVersion              int64
+	ExpectedGeneration         int64
+	Generation                 int64
+	Status                     string
+	ErrorCode                  string
+	CreatedAt                  string
+	UpdatedAt                  string
+}
+
+type SelfConfigNode struct {
+	NodeID           string
+	JobID            string
+	SchemaVersion    int64
+	Prepared         int64
+	ActiveGeneration int64
+	ActiveRevision   int64
+	Incarnation      string
+	ErrorCode        string
+	UpdatedAt        string
+}
+
+type SelfConfigRetention struct {
+	Slot       string
+	SnapshotID string
+}
+
+type SelfConfigSeedAttestation struct {
+	NodeID        string
+	SchemaVersion int64
+	Fingerprint   string
+	HeartbeatAt   string
+}
+
 type ServiceAccount struct {
 	ID          string
 	PrincipalID string
