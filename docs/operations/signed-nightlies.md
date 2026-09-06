@@ -85,6 +85,24 @@ operator evidence, upgrades with the candidate binary, and checks readiness,
 secret readability and restart. The first signed release has no authenticated
 predecessor, so only its fresh-install route is automatically exercised.
 
+## Revoke one published nightly
+
+Every nightly bundles the policy it was built under, and a GitHub release is
+immutable, so a revocation cannot be written into the release itself. Online
+verifiers (`hikyo upgrade`, `hikyo update`, the first-use bootstrap and the
+release preflight) therefore also fetch the currently published
+`release/trust/nightly/policy.json` and refuse any manifest it lists in
+`revoked_manifests`, even when the release's own bundled policy is clean.
+
+To revoke a nightly, add its `release-manifest.json` SHA-256 to
+`revoked_manifests` in the reviewed policy, regenerate the catalog with the next
+sequence while keeping the earlier policy digest listed, and recovery-sign the
+catalog. Keeping the earlier digest lets other nightlies from that policy period
+keep verifying; dropping it refuses all of them at once. Publish the policy and
+catalog together. The offline server boot gate keeps using the bundled policy;
+a revoked release that is already installed remains inspectable and is never
+selected again as an upgrade target.
+
 ## Bridge existing unsigned installations once
 
 A pre-ledger database remains `legacy/v1`, identified by its inspected schema
