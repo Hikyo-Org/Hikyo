@@ -1,4 +1,4 @@
-package main
+package selfupdate
 
 import (
 	"os"
@@ -6,10 +6,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func openDocument(root *os.Root, name string) (*os.File, error) {
+func openNightlyFile(root *os.Root, name string) (*os.File, error) {
 	return root.OpenFile(name, os.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW, 0)
 }
 
-func publishDirectory(stage, output string) error {
+func publishNightlyDirectory(stage, output string) error {
 	return unix.Renameat2(unix.AT_FDCWD, stage, unix.AT_FDCWD, output, unix.RENAME_NOREPLACE)
 }

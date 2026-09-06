@@ -1,4 +1,4 @@
-package main
+package upgradeassembly
 
 import (
 	"context"
@@ -60,7 +60,9 @@ func readMember(root *os.Root, name string) ([]byte, error) {
 	return raw, nil
 }
 
-func readPath(path string) ([]byte, error) {
+// ReadDocument reads a bounded, regular public document without following a
+// final symlink. This is intended for independently pinned roots and trust floors.
+func ReadDocument(path string) ([]byte, error) {
 	root, err := openDirectory(filepath.Dir(path))
 	if err != nil {
 		return nil, err

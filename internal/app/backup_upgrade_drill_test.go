@@ -106,7 +106,7 @@ type upgradeDrillFixture struct {
 	root     []byte
 }
 
-func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy bool) upgradeDrillFixture {
+func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy bool, prepare ...func(*store.DB)) upgradeDrillFixture {
 	t.Helper()
 	cfg := upgradeDrillDatabase(t, engine)
 	root, err := crypto.GenerateRootKey()
@@ -148,6 +148,9 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 			t.Fatal(err)
 		}
 		drillExec(t, db, `INSERT INTO value_entries (id,org_id,project_id,environment_id,key_id,ciphertext,updated_at,updated_by) VALUES ('val_drill','org_drill','prj_drill','env_drill','key_drill',$1,'2026-09-05T00:00:00Z','usr_drill')`, sealed)
+	}
+	for _, fn := range prepare {
+		fn(db)
 	}
 	// Construct a historical pre-ledger fixture only after real runtime admission
 	// and key writes. Removing the new control storage models the archive produced

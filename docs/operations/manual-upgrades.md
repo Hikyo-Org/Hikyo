@@ -1,5 +1,11 @@
 # Manual verified installation and upgrade
 
+For nightly releases on a Linux systemd host with local SQLite, use
+`sudo hikyo upgrade`. It automates the procedure below, including encrypted local
+operator custody, signed legacy bridges, backup restoration to scratch and
+service health checks. See the [one-command upgrade instructions](https://hikyo.app/docs/upgrades/).
+This manual runbook remains available for other deployment types and recovery.
+
 Every production boot and `hikyo migrate` authenticates its exact build and
 offline release bundle. Installing an image or binary alone is insufficient.
 Remote apply, the old host helpers and WebUI apply remain disabled. The

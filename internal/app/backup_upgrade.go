@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -55,6 +56,7 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 	fs.SetOutput(out)
 	bundleDir := fs.String("bundle", trust.BundleDirectory, "verified offline release artifact directory")
 	dir := fs.String("out", cfg.BackupDir, "public ciphertext and receipt destination")
+	jsonOutput := fs.Bool("json", false, "emit machine-readable ciphertext and receipt paths")
 	var recipients recipientList
 	fs.Var(&recipients, "recipient", "public age X25519 recipient; repeatable")
 	if err := fs.Parse(args); err != nil {
@@ -104,6 +106,12 @@ func runUpgradeExport(ctx context.Context, cfg *config.Config, args []string, ou
 		}
 		if exported.Receipt == nil || exported.Receipt.Snapshot.InstanceID != trust.OperatorPin.InstanceID() {
 			return errors.New("exported source differs from current installation operator pin")
+		}
+		if *jsonOutput {
+			return json.NewEncoder(out).Encode(struct {
+				Ciphertext string `json:"ciphertext"`
+				Receipt    string `json:"receipt"`
+			}{exported.Path, exported.ReceiptPath})
 		}
 		_, err = fmt.Fprintf(out, "ciphertext: %s\nreceipt: %s\n", exported.Path, exported.ReceiptPath)
 		return err

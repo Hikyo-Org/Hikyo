@@ -1,11 +1,62 @@
 ---
 title: Upgrades
-description: Upgrade a Hikyo instance with an encrypted rollback artifact and explicit schema control.
+description: Upgrade a systemd nightly with one command, including signed release verification and a tested encrypted backup.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/upgrades.mdx
 ---
 
 Hikyo migrations move forward only. A downgrade means restoring a pre-upgrade
 archive with a compatible binary, not running a down migration.
+
+## One-command nightly upgrade
+
+On a Linux systemd server with a local SQLite database, run:
+
+```sh
+sudo hikyo upgrade
+```
+
+The command verifies the signed nightly and its complete migration route,
+assembles release evidence, stops writers, exports an encrypted backup, restores
+it to scratch, proves key and credential recovery, and upgrades the service.
+Intermediate releases stay in maintenance. The command reports success only
+after the exact final executable and database state pass health checks.
+
+The first run creates `/etc/hikyo/upgrade.json` for the standard `hikyo.service`
+installation and prompts twice for a recovery-key passphrase. Subsequent runs
+prompt once to unlock the encrypted operator keys. Custom deployments can supply
+a root-owned config with `--config FILE`; unsupported unit settings fail before
+the service stops. This command currently supports nightly releases on a single
+Linux systemd host with SQLite. Compose, Kubernetes, PostgreSQL and stable
+deployment upgrades use the manual procedure below.
+
+Older nightlies, including the pre-ledger releases, do not contain this command.
+After a signed release containing it is published, bootstrap the new coordinator
+without replacing the working server first. The bootstrap needs `curl`,
+`python3` and `openssl` on the server, plus an interactive terminal for the
+recovery-key passphrase:
+
+```sh
+curl --fail --silent --show-error --proto '=https' https://hikyo.app/upgrade-nightly.sh | sudo sh
+```
+
+The bootstrap verifies the release before running the staged coordinator. Future
+upgrades use `sudo hikyo upgrade`. The first legacy transition still requires an
+exact recovery-signed bridge; the command finds and verifies it automatically.
+
+Encrypted operator custody lives in `/etc/hikyo/upgrade-keys/operator.age`, owned
+by root and inaccessible to the runtime user. It includes the backup identity,
+independent attestation key and root escrow. The passphrase is never saved.
+This explicitly chosen local custody model does not provide an off-host recovery
+copy. Preserve the encrypted vault and passphrase through your recovery process.
+No operator private key enters the service configuration or release workflow.
+
+If an upgrade is interrupted, rerun the same command. During the first upgrade,
+an intermediate older binary can still lack `hikyo upgrade`; in that case rerun
+the bootstrap command above. Its durable journal and
+systemd startup fence survive reboot. Proven pre-write attempts and known healthy
+or schema-applied targets can continue. An uncertain or failed schema change
+leaves the service stopped and requires explicit operator recovery; the command
+never automatically rolls back the database or starts an older binary.
 
 ## Release channels
 
@@ -21,8 +72,8 @@ nightly history cannot hide the latest published stable release.
 
 Server-side and remote workspace checks are notification-only. Remote apply is
 disabled for every release channel because the legacy helper cannot prove safe
-rollback once a migration has started. Signed release discovery and verified
-manual downloads remain available.
+rollback once a migration has started. The local operator command above and
+verified manual downloads remain available.
 
 Release binaries also check their own CLI track before dispatching a command
 when stderr and a controlling terminal are available. Stable artifacts default to `stable`, nightly artifacts default to
@@ -35,8 +86,9 @@ At most once per 24 hours, Hikyo refreshes the selected track. When a newer
 release exists, the controlling terminal offers the appropriate download flow.
 Nightlies require an immutable release, authenticated policy, complete Sigstore
 bundle and the exact closed inventory of all published payloads. Accepting stages
-the verified download and prints its path; it preserves the current executable.
-Server upgrades also require the runtime bundle and backup/drill evidence below.
+the verified download and assembled runtime bundle and prints their paths; it
+preserves the current executable. Use `sudo hikyo upgrade` to upgrade a supported
+server, including its installation-specific backup and restore proof.
 Unsigned historical nightlies cannot pass this verification.
 
 Stable updates download the exact archive for the running OS and architecture,
@@ -64,8 +116,9 @@ confirmation flow immediately.
 
 The legacy `hikyo updater` helper and its Compose, systemd, and Flux adapters are
 retired. They could automatically restore a database after schema writes had
-started; the Flux adapter also used ambient Git credentials. Replacement platform application remains disabled. Manual installation and
-migration use the same mandatory signed-release gate as server startup.
+started; the Flux adapter also used ambient Git credentials. Remote platform
+application remains disabled. The operator-invoked systemd command and manual
+installation use the same mandatory signed-release gate as server startup.
 
 `HIKYO_UPDATER_SOCKET` now prevents server startup. Remove that setting to start
 the server with release notifications. `hikyo updater` refuses before reading
@@ -84,14 +137,14 @@ reached apply, investigate the datastore and use the operator-led recovery
 procedure below. Retirement does not mark existing jobs successful or restored.
 
 Every connected workspace still checks release metadata directly. Administrators
-retain update notifications and links to release notes. Upgrades use the manual
-signed-bundle and maintenance procedure below. The viewing instance holds no
+retain update notifications and links to release notes. An operator runs the
+local command above or the manual procedure below. The viewing instance holds no
 fleet deployment credentials.
 
 For stable artifacts, use the [installation and release-verification instructions](/docs/installation/)
 to obtain and verify the signed bundle before the maintenance window.
 
-## Required upgrade inputs
+## Manual upgrade inputs
 
 Every production boot and `hikyo migrate` needs `HIKYO_UPGRADE_BUNDLE`, naming
 a complete authenticated offline release bundle, and the installation's public
@@ -109,7 +162,8 @@ For nightlies, follow the [signed nightly runbook](https://github.com/Hikyo-Org/
 It covers the one-time recovery authorization, automated publication and
 complete-download assembly. Existing unsigned pre-ledger databases additionally
 require an exact recovery-signed legacy bridge and fresh operator backup proof.
-The CLI download flow does not install that bridge or replace the server binary.
+The notification/download flow does not replace the server binary. The explicit
+`sudo hikyo upgrade` command handles the bridge and deployment on supported hosts.
 
 ## Before the change
 

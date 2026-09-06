@@ -170,6 +170,37 @@ runtime writers, and crashes after each phase and each migration commit.
 
 ## Backup and restore custody
 
+### Operator-approved local custody for nightly CLI upgrades (2026-09-06)
+
+The operator explicitly approved running a single `sudo hikyo upgrade` command
+on the server, with encrypted operator-only recovery keys stored locally. For
+this nightly CLI flow, the operator process may hold an encrypted age identity,
+an independent attestation key and root-key escrow in a root-owned directory
+outside the runtime user's writable paths. Unlocking requires an interactive
+operator passphrase. Private material is decrypted only in operator-process
+memory and is never placed in server environment variables, command arguments,
+public evidence directories or the database. The unprivileged server and host
+adapter receive public evidence only. This explicit exception supersedes the
+off-host custody requirement below for this flow; it does not establish an
+off-host disaster-recovery copy or authorize unattended key unlocking.
+
+The CLI automates authenticated release discovery, complete bundle assembly,
+encrypted export, real scratch restore and credential proof, installation,
+migration and bounded health checks. Build trust pins and migration policy are
+embedded. The final release signature remains detached because its signed
+manifest covers the final executable bytes; the CLI fetches and verifies it.
+No manual evidence assembly is required. Existing unsigned installations enter
+through their exact recovery-signed bridge. Intermediate hops remain in
+maintenance, and every executable independently enforces the runtime gate.
+
+The operator CLI owns a durable host journal and persistent systemd startup
+fence. Before invoking migration it records an uncertain-write boundary. A
+failed or interrupted post-boundary operation never automatically restarts an
+older binary or restores a database. A later invocation reconciles the journal
+with authenticated database state before continuing. The retired remote apply
+protocol remains disabled; this exception grants no service-control privilege
+to the Hikyo server, browser or remote client.
+
 Populated-database upgrades require a verified pre-upgrade backup; this
 explicitly supersedes the existing loud no-recipient skip as a successful
 upgrade outcome. A fresh empty database needs no source-data backup. Ordinary
@@ -219,6 +250,14 @@ Compose project or unit from the browser. It verifies the pinned plan and releas
 proof itself, retains a durable journal, drains the configured deployment,
 applies digest-pinned artifacts, checks health and reconciles restart state.
 The server receives no Docker socket or systemd control authority.
+
+A failed platform candidate health check first retains the service fence and
+records a terminal host `restore-required` journal; automatic retries are refused.
+If the exact runtime operation is still `schema-applied`, the coordinator also
+advances that database operation to `restore-required` through its existing CAS.
+If runtime-local health already established `healthy` before platform readiness
+failed, its applied identity remains intact behind the terminal host fence;
+operator recovery is required without rewriting successful database history.
 
 Flux uses a separate pull-based upgrade controller with narrowly scoped access
 to one declared deployment and Git path. Credentials can update only a dedicated single-application repository and protected ref. Ordinary Git

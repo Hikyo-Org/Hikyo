@@ -88,6 +88,15 @@ func (a RecoveryAdmission) CheckOwner() error {
 	return a.state.preparation.state.session.check()
 }
 
+// CheckScratch excludes operator recovery of a live restored database. Only
+// an authenticated disposable drill may select a reconciliation automatically.
+func (a RecoveryAdmission) CheckScratch() error {
+	if a.state == nil || a.state.kind != authenticatedScratch {
+		return ErrConflict
+	}
+	return a.CheckOwner()
+}
+
 // CheckPostgresOwner rejects a lost physical migration owner before commit.
 func (a RecoveryAdmission) CheckPostgresOwner(ctx context.Context) error {
 	if err := a.CheckOwner(); err != nil {

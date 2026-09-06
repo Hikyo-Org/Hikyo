@@ -42,6 +42,9 @@ type UpgradeDrillRequest struct {
 	Scope      domain.Scope
 	Now        time.Time
 	Lifetime   time.Duration
+	// AutoCredentialProof selects one existing authorized principal only in
+	// this isolated scratch restore. Ordinary manual drills remain explicit.
+	AutoCredentialProof bool
 }
 
 // DrillUpgrade is a local operator operation. It consumes separately supplied
@@ -51,6 +54,9 @@ func DrillUpgrade(ctx context.Context, request UpgradeDrillRequest) (UpgradeDril
 	defer crypto.Zero(request.RootKey)
 	if request.Ciphertext == nil || !request.Operator.Valid() || request.Now.IsZero() || request.Lifetime <= 0 || request.Lifetime > backupreceipt.MaxAttestationLifetime {
 		return UpgradeDrillResult{}, errors.New("upgrade drill requires complete operator custody and bounded validity")
+	}
+	if request.AutoCredentialProof && (request.Principal != "" || request.Scope != (domain.Scope{})) {
+		return UpgradeDrillResult{}, errors.New("automatic scratch credential selection cannot be combined with an explicit principal or project")
 	}
 	receipt, err := backupreceipt.ParseReceipt(request.Receipt)
 	if err != nil {
@@ -145,6 +151,11 @@ func DrillUpgrade(ctx context.Context, request UpgradeDrillRequest) (UpgradeDril
 		}
 		if len(status.Pending) == 0 {
 			result.CredentialProof = "authoritatively-no-unreconciled-principal"
+		} else if request.AutoCredentialProof {
+			if err := recovery.AutoCredentialProof(ctx, kr); err != nil {
+				return fmt.Errorf("automatic scratch credential proof: %w", err)
+			}
+			result.CredentialProof = "reconciled-minted-revoked"
 		} else {
 			if request.Principal == "" {
 				return errors.New("populated identity inventory requires an explicit scratch reconciliation principal and project")
