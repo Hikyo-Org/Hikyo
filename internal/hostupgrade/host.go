@@ -70,11 +70,13 @@ func New(c Config) (*Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	// 31 bits: the IDs are later passed to os.Chown and compared with
+	// fileOwner as int, so they must fit a signed 32-bit integer everywhere.
+	uid, err := strconv.ParseUint(u.Uid, 10, 31)
 	if err != nil || uid == 0 {
 		return nil, errors.New("invalid runtime UID")
 	}
-	gid, err := strconv.ParseUint(g.Gid, 10, 32)
+	gid, err := strconv.ParseUint(g.Gid, 10, 31)
 	if err != nil || gid == 0 {
 		return nil, errors.New("invalid runtime GID")
 	}

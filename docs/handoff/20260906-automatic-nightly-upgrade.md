@@ -114,9 +114,17 @@ release and CI script packages; both Docker acceptance scripts (root adapter and
 real systemd); bootstrap shell tests; ShellCheck; actionlint; docs check, build
 and verify-docs.
 
-Open items for the human: the standing Codex review of the Claude-authored fixes
-could not run (Codex usage limit until 2026-09-13); a fallback reviewer model
-needs Marc's choice. Merge of #691 and of the feature PR is gated on CI green plus
-that review. The server on nightly 23 still cannot upgrade until a nightly
-containing this feature is published; then the bootstrap command in the Upgrades
-docs applies.
+Decisions taken on 2026-09-07: Marc skipped the standing Codex review of the
+Claude-authored fixes (Codex usage limit until 2026-09-13) and accepted the two
+internal reviewer passes plus local verification; the merge gate for the feature
+PR is CI green. The revocation replay limit stays documented rather than adding
+a current-policy field to the recovery-signed catalog. PR #691 merged as
+`5a5cd0dd`. GitHub closed the stacked #692 when that base branch was deleted;
+#693 is the same branch rebased onto main. CI on the stacked run also tripped
+invariant 12, so the verified nightly download directories are registered as
+`selfupdate.nightly-downloads`.
+
+Still open: the server on nightly 23 cannot upgrade until a nightly containing
+this feature is published; then the bootstrap command in the Upgrades docs
+applies. The stale worktree `~/.t3/worktrees/wenv/t3code-4827c9b7` and its
+local `feat/automatic-systemd-upgrade` branch can be removed after merge.
