@@ -1,0 +1,480 @@
+<!doctype html>
+<!--
+  Direction: switchboard  (industrial instrument panel, Rams / Braun / Swiss datasheet)
+  Fonts (OFL, fontsource):  @fontsource/schibsted-grotesk  (UI)   @fontsource/martian-mono  (keys, values, counts)
+  Zero border radius. No cards. 2px ink rules divide panels, 1px hairlines inside.
+  One signal colour (safety orange) reserved for violations and the PROTECTED guard. Slate for Δ.
+
+  MOBILE 390 ANSWER: the left column collapses to ONE 44px top plate (ORG / PROJECT selectors side by side + Menu).
+  Breadcrumb and "acting as" are desktop only. Title + engraved metadata + one 44px actions row (with the solid
+  + New key at the right end). The matrix keeps the key column sticky-left (168px, names truncate with ellipsis,
+  glyphs on a second small line). The three env columns become full-width channels (calc(100vw - 168px) each)
+  inside a horizontal scroll container with scroll-snap-type: x mandatory and scroll-padding-left equal to the
+  key column, so a swipe lands exactly one env in view, never a cropped table. The channel strip IS the column
+  header on phone (three 44px tap targets: env name over "rev 12 · history"); the desktop thead is hidden.
+  The inspector becomes a bottom sheet with a 44px handle (checkbox toggle, no script). Group collapse works via the row toggle.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Environment matrix · demo · acme · hikyo</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/schibsted-grotesk:vf@latest/wght.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/martian-mono:vf@latest/wdth.css">
+<style>
+/* ---------- tokens ----------
+   contrast on paper (computed, WCAG relative luminance):
+   ink   oklch(0.20 0.006 80) on paper oklch(0.955 0.006 80)  = 15.9 : 1   (body,  target 7:1)
+   ink-2 oklch(0.48 0.012 80) on paper                          =  5.7 : 1   (secondary, target 4.5:1)
+   signal text uses oklch(0.55 0.18 45) = 4.6:1; the guard hatch uses the brighter 0.65 tint at low alpha,
+   nothing is set on top of the hatch. slate Δ oklch(0.50 0.04 250) = 5.2:1 */
+:root{
+  --paper: oklch(0.955 0.006 80);
+  --paper-2: oklch(0.925 0.008 80);
+  --ink: oklch(0.20 0.006 80);
+  --ink-2: oklch(0.48 0.012 80);
+  --rule: oklch(0.80 0.010 80);
+  --signal: oklch(0.55 0.18 45);
+  --signal-hatch: oklch(0.65 0.19 45);
+  --slate: oklch(0.50 0.04 250);
+  --ui: "Schibsted Grotesk Variable", "Helvetica Neue", sans-serif;
+  --mono: "Martian Mono Variable", ui-monospace, monospace;
+  --keycol: 200px;
+}
+html:has(#t-dark:checked){
+  --paper: oklch(0.20 0.006 80);
+  --paper-2: oklch(0.24 0.008 80);
+  --ink: oklch(0.93 0.006 80);
+  --ink-2: oklch(0.70 0.012 80);
+  --rule: oklch(0.36 0.010 80);
+  --signal: oklch(0.74 0.17 50);
+  --slate: oklch(0.72 0.05 250);
+}
+*{box-sizing:border-box;border-radius:0 !important;margin:0;padding:0}
+html,body{background:var(--paper);color:var(--ink);font:14px/1.35 var(--ui);font-feature-settings:"tnum" 1;font-variation-settings:"wdth" 90;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.mono{font-family:var(--mono);font-size:12px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.caps{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);font-family:var(--mono)}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-columns:208px minmax(0,1fr) 268px;min-height:100vh}
+.nav{border-right:2px solid var(--ink);display:flex;flex-direction:column}
+.plate{border-bottom:2px solid var(--ink)}
+.sel{display:flex;align-items:center;gap:10px;height:44px;padding:0 16px;border-bottom:1px solid var(--rule)}
+.sel:last-child{border-bottom:0}
+.sel .k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--ink-2);width:58px}
+.sel .v{font-weight:600;flex:1}
+.sel .v::after{content:" \25BE";font-size:10px;color:var(--ink-2)}
+.dest{list-style:none;padding:6px 0;border-bottom:2px solid var(--ink)}
+.dest li a,.dest li span.row{display:flex;align-items:center;min-height:32px;padding:0 16px;gap:8px}
+.dest li a[aria-current]{background:var(--ink);color:var(--paper)}
+.dest li a .n{font-family:var(--mono);font-size:11px;margin-left:auto;color:var(--ink-2)}
+.dest li a[aria-current] .n{color:var(--paper)}
+.dest li.sub a{padding-left:28px;min-height:26px;color:var(--ink-2)}
+.dest li.sub a .n{color:inherit}
+.dest li.sub a .n.bad,.dest li.sub a .bad{color:var(--signal);font-weight:700}
+.dest .hd{padding:10px 16px 4px}
+.foot{margin-top:auto;border-top:2px solid var(--ink)}
+.foot .sel{height:40px}
+.foot .who{display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid var(--rule)}
+.foot .who .al{font-family:var(--mono);font-size:11px;background:var(--ink);color:var(--paper);width:28px;height:28px;display:grid;place-items:center;font-weight:700}
+.foot .who small{display:block;color:var(--ink-2);font-size:11px}
+.foot .ver{font-family:var(--mono);font-size:10px;color:var(--ink-2);margin-left:auto}
+.theme{display:flex;gap:0;margin-left:auto}
+.theme label{font-family:var(--mono);font-size:10px;letter-spacing:.06em;padding:0 8px;height:24px;border:1px solid var(--ink);color:var(--ink);display:inline-flex;align-items:center;cursor:pointer}
+.theme label + label{border-left:0}
+.theme:has(#t-light:checked) label[for="t-light"],.theme:has(#t-dark:checked) label[for="t-dark"]{background:var(--ink);color:var(--paper)}
+.menu-btn{display:none}
+
+/* ---------- main ---------- */
+.main{min-width:0;display:flex;flex-direction:column}
+.crumb{height:36px;display:flex;align-items:center;padding:0 24px;border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:11px;color:var(--ink-2);gap:6px;flex-wrap:wrap}
+.crumb b{color:var(--ink);font-weight:500}
+.crumb .ctx{margin-left:auto}
+.hplate{padding:20px 24px 14px;border-bottom:2px solid var(--ink);display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap}
+.hplate h1{font-size:30px;line-height:1;font-weight:700;letter-spacing:-.02em}
+.hplate .meta{margin-top:8px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2)}
+.hplate .meta .bad{color:var(--signal);font-weight:700}
+.actions{margin-left:auto;display:flex;align-items:center;gap:20px}
+.act{padding:0 0 2px;border-bottom:1px solid var(--ink);line-height:1.2;min-height:24px;display:inline-flex;align-items:flex-end}
+.act.q{font-family:var(--mono);width:24px;justify-content:center}
+.btn{background:var(--ink);color:var(--paper);padding:0 14px;height:34px;font-weight:600;display:inline-flex;align-items:center}
+.envs{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+.envs::after{content:" \25BE"}
+
+/* channel strip: mobile only */
+.strip{display:none}
+
+/* ---------- matrix ---------- */
+.mx-wrap{overflow-x:auto;overscroll-behavior-x:contain;position:relative}
+table{border-collapse:collapse;width:100%;table-layout:fixed}
+col.key{width:var(--keycol)}
+th,td{text-align:left;vertical-align:middle;padding:0 12px;border-bottom:1px solid var(--rule);height:36px;white-space:nowrap}
+thead th{height:auto;vertical-align:top;padding:0;border-bottom:2px solid var(--ink)}
+thead th.key{padding:14px 12px 10px}
+thead th.key .caps{display:block}
+.chan{padding:12px 12px 10px;border-left:1px solid var(--rule);display:flex;flex-direction:column;gap:3px;min-height:100%}
+.chan .name{font-weight:700;font-size:15px;letter-spacing:-.01em}
+.chan .rev{font-family:var(--mono);font-size:10.5px;color:var(--ink-2)}
+.chan .rev a{border-bottom:1px solid var(--ink-2);padding-bottom:1px}
+.chan .guard{margin-top:6px;height:12px;display:flex;align-items:center;gap:8px}
+.chan .guard i{flex:1;height:8px;background:repeating-linear-gradient(135deg,var(--signal-hatch) 0 3px,transparent 3px 6px);opacity:.75}
+.chan .guard b{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--signal)}
+tbody.grp tr.gh th{height:34px;padding:0 12px;background:var(--paper-2);border-top:2px solid var(--ink);border-bottom:1px solid var(--rule)}
+tbody.grp:first-of-type tr.gh th{border-top:0}
+tr.gh th .fold{display:flex;align-items:center;gap:8px;width:100%;font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.02em;text-align:left;height:100%;min-height:34px}
+tr.gh th .fold .tri{width:10px;display:inline-block;font-size:10px}
+tr.gh th .fold .cnt{color:var(--ink-2);font-weight:400}
+tr.gh th .fold .bad{color:var(--signal)}
+tr.gh .gt{display:flex;justify-content:space-between;align-items:center;gap:16px}
+tr.gh .addk{margin-left:auto;font-size:12px;border-bottom:1px solid var(--ink);line-height:1.2}
+tr.gh td{background:var(--paper-2);border-top:2px solid var(--ink);border-bottom:1px solid var(--rule);text-align:right;height:34px}
+tbody.grp.closed tr.gh td.tail .tt{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+tbody.grp.closed tr.kr{display:none}
+tr.kr th{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:-.01em;overflow:hidden}
+tr.kr th .kw{display:flex;align-items:center;gap:6px;min-width:0}
+tr.kr th .ico{width:11px;height:11px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5}
+tr.kr th .ico.lnk{color:var(--ink-2)}
+tr.kr th .req{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--ink-2)}
+tr.kr th .kname{overflow:hidden;text-overflow:ellipsis}
+td.c{font-family:var(--mono);font-size:12px;border-left:1px solid var(--rule);cursor:pointer}
+td.c .cell{display:flex;align-items:center;gap:8px;min-width:0}
+td.c .val{overflow:hidden;text-overflow:ellipsis;min-width:0}
+td.c .val.sec{letter-spacing:.06em;color:var(--ink-2)}
+td.c .g{margin-left:auto;display:inline-flex;gap:6px;flex:none;font-size:11px}
+td.c .g .d{color:var(--slate)}
+td.c .g .mine{color:var(--ink)}
+td.c .g .other{color:var(--ink-2)}
+td.c.absent .val{color:var(--ink-2)}
+td.c.bad{color:var(--signal);font-weight:600;box-shadow:inset 0 0 0 1.5px var(--signal)}
+td.c.bad .g .d{color:var(--signal)}
+td.c.bad .val{overflow:visible}
+td.c[aria-selected="true"]{background:var(--paper-2);box-shadow:inset 3px 0 0 var(--ink)}
+
+/* legend */
+.legend{padding:18px 24px 40px;border-top:2px solid var(--ink);margin-top:auto}
+.legend h2{font-size:12px;font-weight:700;letter-spacing:.02em;margin-bottom:8px}
+.legend dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2px 24px;font-size:12px}
+.legend dl > div{display:flex;gap:10px;min-height:26px;align-items:center;border-bottom:1px solid var(--rule)}
+.legend dt{font-family:var(--mono);font-size:11px;width:150px;flex:none}
+.legend dd{color:var(--ink-2)}
+.legend .d{color:var(--slate)} .legend .bad{color:var(--signal);font-weight:700}
+
+/* ---------- inspector ---------- */
+.insp{border-left:2px solid var(--ink);display:flex;flex-direction:column;min-width:0}
+.insp .handle{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-bottom:2px solid var(--ink);font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);cursor:default}
+.insp .handle .tog{display:none}
+.insp .handle .sm-cell{display:none}
+.insp .body{padding:0}
+.insp .sec{padding:12px 16px;border-bottom:1px solid var(--rule)}
+.insp .sec .l{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin-bottom:5px}
+.insp .keyname{font-family:var(--mono);font-size:14px;font-weight:700;letter-spacing:-.01em;word-break:break-all}
+.insp .at{font-family:var(--mono);font-size:11px;color:var(--ink-2)}
+.insp .val{font-family:var(--mono);font-size:16px;font-weight:500}
+.insp .val .d{color:var(--slate);font-size:12px;margin-left:6px}
+.insp .prov{font-family:var(--mono);font-size:11px;line-height:1.6}
+.insp .prov b{font-weight:600}
+.insp dl.decl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-family:var(--mono);font-size:11.5px}
+.insp dl.decl dt{color:var(--ink-2)}
+.insp .acts{display:flex;flex-direction:column}
+.insp .acts a{display:flex;align-items:center;min-height:44px;padding:0 16px;border-bottom:1px solid var(--rule);font-weight:600}
+.insp .acts a .hint{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--ink-2);font-weight:400}
+.insp .acts a.inert{color:var(--ink-2);font-weight:500}
+.insp .acts a::before{content:"\2192  ";color:var(--ink-2);font-family:var(--mono);margin-right:8px}
+
+/* ---------- 390 ---------- */
+@media (max-width:760px){
+  :root{--keycol:168px}
+  .shell{display:block}
+  .nav{border-right:0;border-bottom:2px solid var(--ink)}
+  .nav .plate{display:grid;grid-template-columns:1fr 1fr auto;border-bottom:0}
+  .nav .plate .sel{border-bottom:0;border-right:1px solid var(--rule);gap:6px;height:44px;padding:0 12px}
+  .nav .plate .sel .k{width:auto}
+  .menu-btn{display:flex;align-items:center;justify-content:center;min-width:64px;height:44px;font-weight:600}
+  .menu-btn::after{content:" \25BE";font-size:10px;margin-left:4px}
+  #menu{display:none}
+  #menu:checked ~ .drawer{display:block}
+  .drawer{display:none}
+  .dest li a{min-height:44px}
+  .dest li.sub a{min-height:44px}
+  .foot .sel{height:44px}
+  .theme label{height:44px;flex:1;justify-content:center}
+  .chan .rev a{display:inline-block;padding:15px 0;margin:-15px 0}
+  .crumb{display:none}
+  .hplate{padding:10px 10px 4px;gap:4px;align-items:stretch}
+  .hplate > div{min-width:0}
+  .hplate h1{font-size:20px;white-space:nowrap}
+  .hplate .meta{margin-top:3px;letter-spacing:.02em;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .actions{margin-left:0;width:100%;gap:8px;flex-wrap:nowrap;height:44px}
+  .act{min-height:44px;align-items:center;font-size:12.5px;white-space:nowrap}
+  .act.q{width:20px;flex:none}
+  .btn{height:44px;padding:0 10px;margin-left:auto;font-size:12.5px;white-space:nowrap}
+  .envs{white-space:nowrap}
+  /* channel strip = the column header on phone */
+  thead{display:none}
+  .strip{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:2px solid var(--ink)}
+  .strip button{height:44px;padding:0 6px;color:var(--ink-2);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;font-size:13px;font-weight:500}
+  .strip button .rev{font-family:var(--mono);font-size:9.5px;letter-spacing:.02em;color:var(--ink-2)}
+  .strip button .rev u{text-decoration:none;border-bottom:1px solid var(--ink-2)}
+  .strip button + button{border-left:1px solid var(--rule)}
+  .strip button[aria-current="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink);font-weight:700}
+  .strip button[aria-current="true"] .rev{color:var(--ink)}
+  .strip button .pr{color:var(--signal);font-size:9px}
+  .strip button[data-env="2"]{background:repeating-linear-gradient(135deg,var(--signal-hatch) 0 3px,transparent 3px 6px) bottom/100% 4px no-repeat}
+  /* matrix: sticky key + snapping channels */
+  .mx-wrap{scroll-snap-type:x mandatory;scroll-padding-left:var(--keycol);-webkit-overflow-scrolling:touch}
+  table{width:calc(var(--keycol) + 3 * (100vw - var(--keycol)))}
+  col.env{width:calc(100vw - var(--keycol))}
+  th.key,tr.kr th,tr.gh th{position:sticky;left:0;background:var(--paper);z-index:2}
+  tr.gh th{background:var(--paper-2)}
+  thead th.env,td.c{scroll-snap-align:start}
+  th,td{height:44px}
+  tr.kr th{height:44px;padding-right:8px;font-size:11px;font-variation-settings:"wdth" 80}
+  tr.kr th .kw{flex-wrap:wrap;row-gap:1px}
+  tr.kr th .kname{flex-basis:100%;max-width:100%;order:-1;min-width:0}
+  tr.gh th{white-space:normal}
+  tr.gh th .fold{flex-wrap:wrap;line-height:1.15;row-gap:0}
+  tr.gh th,tr.gh td{height:44px}
+  tr.gh th .fold{min-height:44px}
+  .envs{min-height:44px;display:inline-flex;align-items:center}
+  tr.gh td{text-align:left}
+  tr.gh .gt{display:inline-flex;position:sticky;left:calc(var(--keycol) + 12px);max-width:calc(100vw - var(--keycol) - 24px);gap:12px}
+  tr.gh .gt .tt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  tr.gh .addk{flex-shrink:0}
+  tr.gh .addk{margin-left:0;display:inline-block;padding:15px 0;margin-top:-15px;margin-bottom:-15px}
+  .legend dl{grid-template-columns:1fr}
+  /* inspector: bottom sheet */
+  .insp{position:fixed;left:0;right:0;bottom:0;border-left:0;border-top:2px solid var(--ink);background:var(--paper);max-height:50vh;overflow:auto;z-index:5}
+  .insp .handle{cursor:pointer;color:var(--ink);position:sticky;top:0;background:var(--paper)}
+  .insp .handle .tog{display:inline;margin-left:auto}
+  .insp .handle .sm-lab{display:none}
+  .insp .handle .sm-cell{display:inline;text-transform:none;letter-spacing:0;font-weight:700}
+  #insp-toggle:not(:checked) ~ .body{display:none}
+  #insp-toggle:checked ~ .handle .tog::after{content:"\25BE"} #insp-toggle:not(:checked) ~ .handle .tog::after{content:"\25B4"}
+  .legend{padding-bottom:calc(50vh + 24px)}
+}
+@media (prefers-reduced-motion:no-preference){.mx-wrap{scroll-behavior:smooth}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ================= NAV ================= -->
+<nav class="nav" aria-label="Primary">
+  <div class="plate">
+    <a class="sel" href="#" aria-haspopup="listbox"><span class="k">ORG</span><span class="v">acme</span><span class="sr">, switch organisation: acme, sandbox</span></a>
+    <a class="sel" href="#" aria-haspopup="listbox"><span class="k">PROJECT</span><span class="v">demo</span><span class="sr">, switch project: demo, website, mobile-app</span></a>
+    <label class="menu-btn" for="menu">Menu</label>
+  </div>
+  <input type="checkbox" id="menu" class="sr">
+  <div class="drawer">
+    <ul class="dest">
+      <li class="hd caps">Project · demo</li>
+      <li><a href="#" aria-current="page">Environment matrix <span class="n">8</span></a></li>
+      <li class="sub"><a href="#g-app">app/ <span class="n">3</span></a></li>
+      <li class="sub"><a href="#g-db">db/ <span class="n">2</span></a></li>
+      <li class="sub"><a href="#g-auth">auth/ <span class="n bad">!1</span></a></li>
+      <li class="sub"><a href="#g-auth"><span class="bad">!</span> problems <span class="n bad">1</span></a></li>
+      <li><a href="#">Machine access</a></li>
+      <li><a href="#">Change approvals</a></li>
+      <li><a href="#">Deployment adapters</a></li>
+      <li><a href="#">Project audit</a></li>
+      <li><a href="#">Members</a></li>
+      <li><a href="#">Project settings</a></li>
+    </ul>
+    <ul class="dest">
+      <li class="hd caps">Organisation · acme</li>
+      <li><a href="#">Overview</a></li>
+      <li><a href="switchboard-projects.html">Projects <span class="n">3</span></a></li>
+      <li><a href="#">Remotes</a></li>
+      <li><a href="#">Members</a></li>
+      <li><a href="#">Organisation settings</a></li>
+      <li><a href="#">SCIM provisioning</a></li>
+      <li><a href="#">Audit</a></li>
+    </ul>
+    <div class="foot">
+      <a class="sel" href="#"><span class="k">INSTANCE</span><span class="v" style="font-weight:500">Settings</span></a>
+      <div class="sel" style="height:40px"><span class="k">THEME</span>
+        <div class="theme" role="group" aria-label="Theme">
+          <input class="sr" type="radio" name="theme" id="t-light" checked><label for="t-light">LIGHT</label><input class="sr" type="radio" name="theme" id="t-dark"><label for="t-dark">DARK</label>
+        </div>
+      </div>
+      <a class="who" href="#"><span class="al">AL</span><span>Alex Lee<small>alex · org+instance admin</small></span><span class="ver">v0.9.5</span></a>
+    </div>
+  </div>
+</nav>
+
+<!-- ================= MAIN ================= -->
+<main class="main">
+  <div class="crumb">hikyo <span>/</span> acme <span>/</span> demo <span>/</span> <b>Environment matrix</b>
+    <span class="ctx">acting as alex · 2 orgs · org+instance admin</span></div>
+
+  <header class="hplate">
+    <div>
+      <h1>Environment matrix</h1>
+      <div class="meta">3 environments · 8 keys · rev 12 · <span class="bad">1 problem</span></div>
+    </div>
+    <div class="actions">
+      <a class="act q" href="#legend" aria-label="Legend">?</a>
+      <a class="act" href="#">Import</a>
+      <a class="act" href="#">Folders &amp; linked keys</a>
+      <a class="envs" href="#">envs 3/3</a>
+      <a class="btn" href="#">+ New key</a>
+    </div>
+  </header>
+
+  <!-- mobile channel strip -->
+  <div class="strip" role="tablist" aria-label="Environment in view">
+    <button type="button" data-env="0" aria-current="true"><span>development</span><span class="rev">rev 12 · <u>history</u></span></button>
+    <button type="button" data-env="1"><span>staging</span><span class="rev">rev 12 · <u>history</u></span></button>
+    <button type="button" data-env="2"><span>production <span class="pr" aria-hidden="true">&#9642;</span></span><span class="rev">rev 12 · <u>history</u></span></button>
+  </div>
+
+  <div class="mx-wrap" id="mx">
+  <table>
+    <colgroup><col class="key"><col class="env"><col class="env"><col class="env"></colgroup>
+    <thead>
+      <tr>
+        <th class="key" scope="col"><span class="caps">Key</span></th>
+        <th class="env" scope="col"><div class="chan"><span class="name">development</span><span class="rev">rev 12 · <a href="#">history</a></span></div></th>
+        <th class="env" scope="col"><div class="chan"><span class="name">staging</span><span class="rev">rev 12 · <a href="#">history</a></span></div></th>
+        <th class="env" scope="col"><div class="chan"><span class="name">production</span><span class="rev">rev 12 · <a href="#">history</a></span><span class="guard"><i aria-hidden="true"></i><b>PROTECTED</b></span></div></th>
+      </tr>
+    </thead>
+
+    <tbody class="grp" id="g-app">
+      <tr class="gh"><th scope="rowgroup" colspan="1"><button class="fold" type="button" onclick="fold(this)"><span class="tri" aria-hidden="true">&#9662;</span>app/ <span class="cnt">3</span></button></th>
+        <td colspan="3"><span class="gt"><a class="addk" href="#">+ Key</a></span></td></tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><span class="kname" title="LOG_LEVEL">LOG_LEVEL</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group logging</span></span></th>
+        <td class="c"><span class="cell"><span class="val">debug</span><span class="g"><span class="d" title="changed since last publish">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val">info</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val">warn</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span><span class="other" title="another editor has a draft">◌<span class="sr"> another editor has a draft</span></span></span></span></td>
+      </tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><span class="kname" title="FEATURE_CHECKOUT">FEATURE_CHECKOUT</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group checkout-flags</span></span></th>
+        <td class="c"><span class="cell"><span class="val">true</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c" aria-selected="true"><span class="cell"><span class="val">true</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span><span class="mine" title="my unpublished draft">●<span class="sr"> draft</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val">false</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><span class="kname" title="PUBLIC_APP_URL">PUBLIC_APP_URL</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group public-urls</span></span></th>
+        <td class="c"><span class="cell"><span class="val" title="http://localhost:8080">http://localhost:8080</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val" title="https://staging.example.test">https://staging.example.test</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val" title="https://app.example.test">https://app.example.test</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+    </tbody>
+
+    <tbody class="grp" id="g-db">
+      <tr class="gh"><th scope="rowgroup"><button class="fold" type="button" onclick="fold(this)"><span class="tri" aria-hidden="true">&#9662;</span>db/ <span class="cnt">2</span></button></th>
+        <td colspan="3"><span class="gt"><a class="addk" href="#">+ Key</a></span></td></tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">secret</span><span class="kname" title="DATABASE_URL">DATABASE_URL</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group datastores</span><span class="req">req</span></span></th>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">secret</span><span class="kname" title="REDIS_URL">REDIS_URL</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group datastores</span></span></th>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+    </tbody>
+
+    <tbody class="grp" id="g-auth">
+      <tr class="gh"><th scope="rowgroup"><button class="fold" type="button" onclick="fold(this)"><span class="tri" aria-hidden="true">&#9662;</span>auth/ <span class="cnt">1</span> <span class="bad">!1 problem</span></button></th>
+        <td colspan="3"><span class="gt"><a class="addk" href="#">+ Key</a></span></td></tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">secret</span><span class="kname" title="AUTH_SECRET">AUTH_SECRET</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group auth</span><span class="req">req</span></span></th>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c bad"><span class="cell"><span class="val">! required · absent</span><span class="sr">, violation, publish blocked</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+    </tbody>
+
+    <tbody class="grp closed" id="g-mail">
+      <tr class="gh"><th scope="rowgroup"><button class="fold" type="button" onclick="fold(this)"><span class="tri" aria-hidden="true">&#9656;</span>mail/ <span class="cnt">2</span></button></th>
+        <td colspan="3" class="tail"><span class="gt"><span class="tt">SMTP_HOST, SMTP_PASSWORD</span><a class="addk" href="#">+ Key</a></span></td></tr>
+      <tr class="kr"><th scope="row"><span class="kw"><span class="kname" title="SMTP_HOST">SMTP_HOST</span></span></th><td class="c"><span class="cell"><span class="val">localhost</span></span></td><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td></tr>
+      <tr class="kr"><th scope="row"><span class="kw"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">secret</span><span class="kname" title="SMTP_PASSWORD">SMTP_PASSWORD</span></span></th><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <section class="legend" id="legend" aria-label="Legend">
+    <h2>Legend</h2>
+    <dl>
+      <div><dt>value</dt><dd>set in this environment</dd></div>
+      <div><dt>•••••••• <svg class="ico" style="width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5;vertical-align:-1px" aria-hidden="true"><use href="#i-lock"/></svg></dt><dd>secret set (lock on the key)</dd></div>
+      <div><dt>· absent</dt><dd>not set</dd></div>
+      <div><dt class="bad">! required · absent</dt><dd>violation, publish blocked</dd></div>
+      <div><dt class="bad">✕ value</dt><dd>fails declaration</dd></div>
+      <div><dt class="d">Δ</dt><dd>changed since last publish</dd></div>
+      <div><dt>●</dt><dd>unpublished draft of mine</dd></div>
+      <div><dt>◌</dt><dd>another editor has a draft here</dd></div>
+      <div><dt><svg class="ico" style="width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5;vertical-align:-1px" aria-hidden="true"><use href="#i-link"/></svg> link</dt><dd>linked key, group named on the key</dd></div>
+      <div><dt>req</dt><dd>required in every environment</dd></div>
+      <div><dt><span class="guard" style="display:inline-flex;gap:6px;align-items:center"><i style="width:22px;height:8px;background:repeating-linear-gradient(135deg,var(--signal-hatch) 0 3px,transparent 3px 6px)"></i>PROTECTED</span></dt><dd>publish requires approval</dd></div>
+    </dl>
+  </section>
+</main>
+
+<!-- ================= INSPECTOR ================= -->
+<aside class="insp" aria-label="Inspector">
+  <input type="checkbox" id="insp-toggle" class="sr">
+  <label class="handle" for="insp-toggle"><span class="sm-lab">Inspector</span><span class="sm-cell">FEATURE_CHECKOUT @ staging</span> <span class="tog" aria-hidden="true"></span></label>
+  <div class="body">
+    <div class="sec">
+      <div class="l">Selected cell</div>
+      <div class="keyname">FEATURE_CHECKOUT</div>
+      <div class="at">@ staging · app/</div>
+    </div>
+    <div class="sec">
+      <div class="l">Value</div>
+      <div class="val">true<span class="d">Δ ● draft</span></div>
+    </div>
+    <div class="sec">
+      <div class="l">Provenance</div>
+      <div class="prov"><b>set here</b> · r12 · alex · 3 days ago<br>base chain: development → staging<br>published value: true (r11)</div>
+    </div>
+    <div class="sec">
+      <div class="l">Declaration</div>
+      <dl class="decl">
+        <dt>type</dt><dd>boolean</dd>
+        <dt>required</dt><dd>no</dd>
+        <dt>secret</dt><dd>no</dd>
+        <dt>linked</dt><dd>checkout-flags (3 keys)</dd>
+        <dt>declared</dt><dd>r4 · alex</dd>
+      </dl>
+    </div>
+    <nav class="acts" aria-label="Cell actions">
+      <a href="#">Edit <span class="hint">E</span></a>
+      <a href="#">Copy <span class="hint">C</span></a>
+      <a href="#">Clear <span class="hint">unset in staging</span></a>
+      <a href="#" class="inert" aria-disabled="true">Reveal <span class="hint">not a secret</span></a>
+    </nav>
+  </div>
+</aside>
+
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-lock" viewBox="0 0 12 12"><rect x="2" y="5.5" width="8" height="5.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 12 12"><path d="M5 7.5 7 5.5M4.2 8.8 3 10a1.7 1.7 0 0 1-2.4-2.4L2.9 5.3M7.8 3.2 9 2a1.7 1.7 0 0 1 2.4 2.4L9.1 6.7"/></symbol>
+</svg>
+
+<script>
+// Only script: group fold + mobile channel strip.
+function fold(b){var g=b.closest('tbody');g.classList.toggle('closed');b.querySelector('.tri').textContent=g.classList.contains('closed')?'▸':'▾';}
+(function(){
+  var wrap=document.getElementById('mx'),btns=document.querySelectorAll('.strip button');
+  var keyw=function(){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keycol'))};
+  btns.forEach(function(b){b.addEventListener('click',function(){var w=wrap.clientWidth-keyw();wrap.scrollTo({left:+b.dataset.env*w});});});
+  wrap.addEventListener('scroll',function(){var w=wrap.clientWidth-keyw();var i=Math.round(wrap.scrollLeft/w);btns.forEach(function(b,j){b.setAttribute('aria-current',j===i)});},{passive:true});
+})();
+</script>
+</body>
+</html>

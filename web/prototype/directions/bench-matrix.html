@@ -1,0 +1,587 @@
+<!doctype html>
+<!--
+  Direction: bench  (Switchboard's industrial instrument panel + Console's text tree + Ledger's toolbar/pending/inspector habits)
+  Fonts (OFL, fontsource):  @fontsource/hanken-grotesk  (UI, 400/500/600)   @fontsource/commit-mono  (keys, values, counts, 400)
+  Quiet skin: 1px low-contrast separators, lighter row hairlines, 4px radius on controls, no hatch, calm red for violations.
+
+  SHELL: left 240px = collapsible text tree (org › project › surfaces, folder counts in mono; switch org/project by
+  moving up the tree). Content = compact plate header, ONE toolbar row (filter, envs, ?, Import, Folders, Δ pending,
+  + New key), the matrix, inline legend. Right 280px inspector, CLOSED by default, opens on cell click; the selected
+  cell keeps its outline while it is closed.
+
+  MOBILE 390 ANSWER: the tree collapses to ONE 44px top plate (ORG / PROJECT + Menu; Menu opens the tree full-screen).
+  Title 20px with the engraved metadata under it on one line, then ONE 44px row: filter (flex 1) + envs 3/3 + ⋯
+  (Import / Folders / Legend behind it). The channel strip IS the column header on phone (three 44px tap targets:
+  env name over "rev 12 · history", hatch on production). The matrix keeps the key column sticky-left (168px) and the
+  three env columns become full-width channels (calc(100vw - 168px)) inside a scroll-snap container, so a swipe lands
+  exactly one env in view, never a cropped table. A FIXED 52px bottom bar is the thumb row: Δ 8 unpublished, outlined
+  Publish, solid + New key. The inspector is a bottom sheet over that bar (max 45dvh, 44px close row), closed by default.
+
+  THEME: light = Switchboard's exact values; dark = the same system inverted (warm near-black paper, warm off-white ink).
+  Default follows prefers-color-scheme; the LIGHT | DARK plate sets data-theme on <html>.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Environment matrix · demo · acme · hikyo</title>
+<script>
+// theme: follow the OS until the LIGHT | DARK plate is used. Runs before paint so there is no flash.
+document.documentElement.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+function setTheme(t){ document.documentElement.dataset.theme = t; }
+</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/hanken-grotesk@latest/index.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/hanken-grotesk@latest/500.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/hanken-grotesk@latest/600.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/fontsource/css/commit-mono@latest/index.css">
+<style>
+/* ---------- tokens ----------
+   contrast (computed, WCAG relative luminance from OKLCH → linear sRGB):
+   LIGHT  ink   oklch(0.22 0.008 80) on paper oklch(0.965 0.005 80) = 15.6 : 1   (body, target 7:1)
+          ink-2 oklch(0.50 0.012 80) on paper                        =  5.4 : 1   (secondary, target 4.5:1)
+          signal oklch(0.52 0.15 25) = 5.4:1, slate Δ oklch(0.50 0.04 250) = 5.4:1
+   DARK   ink   oklch(0.92 0.008 85) on paper oklch(0.17 0.006 80)  = 15.1 : 1   (body)
+          ink-2 oklch(0.70 0.012 80) on paper                        =  7.2 : 1   (secondary)
+          signal oklch(0.74 0.12 25) = 7.9:1, slate Δ oklch(0.74 0.05 250) = 8.3:1
+   tints are paper mixed a few percent toward ink (group rows 3/4%, production column 4/5%, active tree line 6/8%). */
+:root{
+  --paper: oklch(0.965 0.005 80);
+  --ink: oklch(0.22 0.008 80);
+  --ink-2: oklch(0.50 0.012 80);
+  --rule: oklch(0.86 0.006 80);
+  --hair: oklch(0.90 0.006 80);
+  --signal: oklch(0.52 0.15 25);
+  --slate: oklch(0.50 0.04 250);
+  --paper-2: color-mix(in oklch, var(--paper) 97%, var(--ink));
+  --prod: color-mix(in oklch, var(--paper) 96%, var(--ink));
+  --active: color-mix(in oklch, var(--paper) 94%, var(--ink));
+  --ui: "Hanken Grotesk", "Helvetica Neue", sans-serif;
+  --mono: "Commit Mono", ui-monospace, monospace;
+  --keycol: 200px;
+  --bar: 52px;
+  color-scheme: light;
+}
+html[data-theme="dark"]{
+  --paper: oklch(0.17 0.006 80);
+  --ink: oklch(0.92 0.008 85);
+  --ink-2: oklch(0.70 0.012 80);
+  --rule: oklch(0.30 0.008 80);
+  --hair: oklch(0.26 0.008 80);
+  --signal: oklch(0.74 0.12 25);
+  --slate: oklch(0.74 0.05 250);
+  --paper-2: color-mix(in oklch, var(--paper) 96%, var(--ink));
+  --prod: color-mix(in oklch, var(--paper) 95%, var(--ink));
+  --active: color-mix(in oklch, var(--paper) 92%, var(--ink));
+  color-scheme: dark;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--paper);color:var(--ink);font:14px/1.4 var(--ui);font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;text-align:left}
+input{font:inherit;color:inherit;background:none}
+summary{list-style:none;cursor:pointer}
+summary::-webkit-details-marker{display:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.caps{font-size:12px;color:var(--ink-2);font-weight:500}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-columns:240px minmax(0,1fr) 280px;min-height:100vh}
+.shell:has(.insp[hidden]){grid-template-columns:240px minmax(0,1fr)}
+.nav{border-right:1px solid var(--rule);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:auto}
+.brand{display:flex;align-items:center;height:24px;padding:0 16px;border-bottom:1px solid var(--rule);font-weight:600;letter-spacing:-.01em}
+.brand .ver{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ink-2);font-weight:400}
+.plate{display:none}
+.menu-btn{display:none}
+.drawer{display:flex;flex-direction:column;flex:1}
+
+/* text tree */
+.tree{list-style:none;padding:3px 0;border-bottom:1px solid var(--rule)}
+.tree ul{list-style:none}
+.ln{display:flex;align-items:center;gap:8px;min-height:28px;padding:0 16px 0 var(--d,16px)}
+.d0{--d:16px} .d1{--d:30px} .d2{--d:44px} .d3{--d:60px}
+.ln .tri{width:10px;flex:none;font-size:10px;color:var(--ink-2)}
+details > summary .tri::before{content:"\25BE"}
+details:not([open]) > summary .tri::before{content:"\25B8"}
+.ln .n{font-family:var(--mono);font-size:12.5px;margin-left:auto;color:var(--ink-2)}
+.ln .tag{font-size:12px;color:var(--ink-2);margin-left:auto}
+.ln .bad,.ln .n.bad{color:var(--signal);font-weight:500}
+.ln[aria-current]{background:var(--active);font-weight:500}
+.ln.org{font-weight:500}
+.ln.prj{font-weight:500}
+.d3.ln{color:var(--ink-2);min-height:24px}
+.d3.ln .n{color:inherit}
+.sep{border-top:1px solid var(--rule);margin:4px 0}
+.foot{margin-top:auto}
+.sel{display:flex;align-items:center;gap:10px;height:34px;padding:0 16px;border-top:1px solid var(--hair)}
+.sel .k{font-size:12px;color:var(--ink-2);width:58px}
+.sel .v{font-weight:500;flex:1}
+.sel .v::after{content:" \25BE";font-size:10px;color:var(--ink-2)}
+.foot .who{display:flex;align-items:center;gap:10px;padding:6px 16px;border-top:1px solid var(--hair)}
+.foot .who .al{font-family:var(--mono);font-size:11px;background:var(--ink);color:var(--paper);width:28px;height:28px;display:grid;place-items:center;font-weight:500;border-radius:4px;flex:none}
+.foot .who small{display:block;color:var(--ink-2);font-size:11px}
+.theme{display:flex;margin-left:auto;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.theme button{font-size:12px;font-weight:500;padding:0 10px;height:24px;color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center}
+.theme button + button{border-left:1px solid var(--rule)}
+html[data-theme="light"] .theme [data-set="light"],html[data-theme="dark"] .theme [data-set="dark"]{background:var(--active);color:var(--ink)}
+
+/* ---------- main ---------- */
+.main{min-width:0;display:flex;flex-direction:column}
+.hplate{padding:14px 24px 12px;border-bottom:1px solid var(--rule);display:flex;align-items:baseline;gap:16px;white-space:nowrap;min-width:0}
+.hplate h1{font-size:20px;line-height:1;font-weight:600;letter-spacing:-.01em}
+.hplate .meta{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.hplate .meta .bad{color:var(--signal)}
+.toolbar{display:flex;align-items:center;gap:14px;padding:0 24px;height:46px;border-bottom:1px solid var(--rule);flex-wrap:nowrap;min-width:0}
+.filter{flex:1 1 120px;min-width:90px;height:32px;border:1px solid var(--rule);border-radius:4px;padding:0 10px;font-family:var(--mono);font-size:12.5px;outline:none}
+.filter::placeholder{color:var(--ink-2)}
+.filter:focus{border-color:var(--ink)}
+.act{color:var(--ink-2);line-height:1.2;display:inline-flex;align-items:center;white-space:nowrap;flex:none}
+.act:hover{text-decoration:underline;text-underline-offset:3px}
+.act.q{font-family:var(--mono);width:24px;height:24px;justify-content:center;border:1px solid var(--rule);border-radius:4px}
+.act.q:hover{text-decoration:none;color:var(--ink)}
+.btn{background:var(--ink);color:var(--paper);padding:0 14px;height:34px;font-weight:500;border-radius:4px;display:inline-flex;align-items:center;white-space:nowrap;flex:none}
+.btn.ghost{background:var(--paper);color:var(--ink);border:1px solid var(--rule)}
+.envs{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);white-space:nowrap;flex:none;display:inline-flex;align-items:center}
+.envs::after{content:" \25BE"}
+.pending{font-family:var(--mono);font-size:12.5px;color:var(--slate);white-space:nowrap;display:inline-flex;align-items:center;gap:6px;flex:none}
+.pending .act{font-family:var(--ui);font-size:13px;color:var(--ink);font-weight:500}
+.more{display:none}
+
+/* channel strip: mobile only */
+.strip{display:none}
+.bar{display:none}
+
+/* ---------- matrix ---------- */
+.mx-wrap{overflow-x:auto;overscroll-behavior-x:contain;position:relative}
+table{border-collapse:collapse;width:100%;table-layout:fixed}
+col.key{width:var(--keycol)}
+th,td{text-align:left;vertical-align:middle;padding:0 12px;border-bottom:1px solid var(--hair);height:36px;white-space:nowrap}
+thead th{height:auto;vertical-align:top;padding:0;border-bottom:1px solid var(--rule)}
+thead th.key{padding:14px 12px 10px}
+thead th.key .caps{display:block}
+.chan{padding:12px 12px 10px;display:flex;flex-direction:column;gap:3px;min-height:100%}
+.chan .name{font-weight:500;font-size:14px;display:flex;align-items:center;gap:8px}
+.chan .rev{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.chan .rev a:hover{text-decoration:underline;text-underline-offset:3px}
+.guard{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:400;color:var(--ink-2)}
+.guard .ico{width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5}
+thead th.env:last-child,td.c:last-child{background:var(--prod)}
+tbody.grp tr.gh th{height:34px;padding:0 12px;background:var(--paper-2);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+tbody.grp:first-of-type tr.gh th{border-top:0}
+tr.gh th .fold{display:flex;align-items:center;gap:8px;width:100%;font-family:var(--mono);font-size:12.5px;font-weight:600;text-align:left;height:100%;min-height:34px}
+tr.gh th .fold .tri{width:10px;display:inline-block;font-size:10px}
+tr.gh th .fold .cnt{color:var(--ink-2);font-weight:400}
+tr.gh th .fold .bad{color:var(--signal)}
+tr.gh .gt{display:flex;justify-content:space-between;align-items:center;gap:16px}
+tr.gh .addk{margin-left:auto;font-size:12px;color:var(--ink-2);line-height:1.2}
+tr.gh .addk:hover{text-decoration:underline;text-underline-offset:3px}
+tr.gh td{background:var(--paper-2);border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);text-align:right;height:34px}
+tbody.grp:first-of-type tr.gh td{border-top:0}
+tbody.grp.closed tr.gh td.tail .tt{font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
+tbody.grp.closed tr.kr{display:none}
+tr.kr th{font-family:var(--mono);font-size:12.5px;font-weight:400;overflow:hidden;border-right:1px solid var(--hair)}
+tr.gh th,thead th.key{border-right:1px solid var(--hair)}
+tr.kr th .kw{display:flex;align-items:center;gap:6px;min-width:0}
+tr.kr th .ico{width:11px;height:11px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5}
+tr.kr th .ico.lnk{color:var(--ink-2)}
+tr.kr th .req{font-size:11px;color:var(--ink-2)}
+tr.kr th .kname{overflow:hidden;text-overflow:ellipsis}
+td.c{font-family:var(--mono);font-size:12.5px;cursor:pointer}
+td.c .cell{display:flex;align-items:center;gap:8px;min-width:0}
+td.c .val{overflow:hidden;text-overflow:ellipsis;min-width:0}
+td.c .val.sec{letter-spacing:.06em;color:var(--ink-2)}
+td.c .g{margin-left:auto;display:inline-flex;gap:6px;flex:none;font-size:11px}
+td.c .g .d{color:var(--slate)}
+td.c .g .mine{color:var(--ink)}
+td.c .g .other{color:var(--ink-2)}
+td.c.absent .val{color:var(--ink-2)}
+td.c.bad{color:var(--signal);box-shadow:inset 0 0 0 1px var(--signal)}
+td.c.bad .g .d{color:var(--signal)}
+td.c.bad .val{overflow:visible}
+td.c[aria-selected="true"]{background:var(--active);box-shadow:inset 0 0 0 1px var(--ink)}
+
+/* legend */
+.legend{padding:18px 24px 40px;border-top:1px solid var(--rule);margin-top:auto}
+.legend h2{font-size:13px;font-weight:500;margin-bottom:8px}
+.legend dl{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:2px 24px;font-size:12px}
+.legend dl > div{display:flex;gap:10px;min-height:26px;align-items:center;border-bottom:1px solid var(--hair)}
+.legend dt{font-family:var(--mono);font-size:12.5px;width:150px;flex:none}
+.legend dd{color:var(--ink-2)}
+.legend .d{color:var(--slate)} .legend .bad{color:var(--signal)}
+
+/* ---------- inspector (closed by default) ---------- */
+.insp{border-left:1px solid var(--rule);display:flex;flex-direction:column;min-width:0;position:sticky;top:0;height:100vh;overflow:auto;background:var(--paper)}
+.insp[hidden]{display:none}
+.insp .handle{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 0 0 16px;border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:12.5px;font-weight:400}
+.insp .handle .close{margin-left:auto;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:var(--ink-2);border-left:1px solid var(--hair)}
+.insp .sec{padding:12px 16px;border-bottom:1px solid var(--hair)}
+.insp .sec .l{font-size:12px;color:var(--ink-2);margin-bottom:4px}
+.insp .keyname{font-family:var(--mono);font-size:13px;word-break:break-all}
+.insp .at{font-family:var(--mono);font-size:12.5px;color:var(--ink-2)}
+.insp .val{font-family:var(--mono);font-size:15px}
+.insp .val .d{color:var(--slate);font-size:12px;margin-left:6px}
+.insp .prov{font-family:var(--mono);font-size:12.5px;line-height:1.6}
+.insp .prov b{font-weight:400;color:var(--ink)}
+.insp dl.decl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-family:var(--mono);font-size:12.5px}
+.insp dl.decl dt{color:var(--ink-2)}
+.insp .acts{display:flex;flex-direction:column}
+.insp .acts a{display:flex;align-items:center;min-height:44px;padding:0 16px;border-bottom:1px solid var(--hair);font-weight:500}
+.insp .acts a .hint{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--ink-2);font-weight:400}
+.insp .acts a.inert{color:var(--ink-2);font-weight:500}
+.insp .acts a::before{content:"\2192  ";color:var(--ink-2);font-family:var(--mono);margin-right:8px}
+
+/* ---------- 390 ---------- */
+@media (max-width:699px){
+  :root{--keycol:168px}
+  .shell{display:block}
+  .nav{border-right:0;position:static;height:auto;overflow:visible;display:block}
+  .brand{flex:none}
+  .plate{display:grid;grid-template-columns:1fr 1fr auto;border-bottom:1px solid var(--rule);position:sticky;top:0;background:var(--paper);z-index:9}
+  .plate .sel{border-top:0;border-right:1px solid var(--hair);gap:6px;height:44px;padding:0 12px}
+  .plate .sel .k{width:auto}
+  .menu-btn{display:flex;align-items:center;justify-content:center;min-width:64px;height:44px;font-weight:500}
+  .menu-btn::after{content:" \25BE";font-size:10px;margin-left:4px}
+  #menu:checked ~ .plate .menu-btn::after{content:" \25B4"}
+  .drawer{display:none}
+  #menu:checked ~ .drawer{display:flex;position:fixed;top:45px;left:0;right:0;bottom:0;overflow:auto;background:var(--paper);z-index:8}
+  .ln,.d3.ln{min-height:44px}
+  .sel{height:44px}
+  .theme button{height:44px;flex:1}
+  .theme{flex:1}
+  .hplate{padding:8px 10px 6px;display:block;white-space:normal}
+  .hplate h1{font-size:20px;line-height:1.1;white-space:nowrap}
+  .hplate .meta{display:block;margin-top:3px;letter-spacing:.02em;font-size:10px;white-space:nowrap}
+  .toolbar{padding:0 10px;gap:10px;height:46px}
+  .filter{height:44px;border:0;border-radius:0;border-bottom:1px solid var(--rule);padding:0 4px}
+  .act,.pending,.btn,.q{display:none}
+  .envs{min-height:44px}
+  .more{display:block;position:relative}
+  .more summary{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center;font-size:18px;letter-spacing:.1em;border-radius:4px}
+  .more .panel{position:absolute;right:0;top:44px;background:var(--paper);border:1px solid var(--rule);border-radius:6px 6px 0 0;min-width:220px;z-index:4;box-shadow:0 6px 16px oklch(0 0 0 / .08)}
+  .more .panel a{display:flex;align-items:center;min-height:44px;padding:0 14px;border-bottom:1px solid var(--hair);font-weight:500}
+  .more .panel a:last-child{border-bottom:0}
+  /* channel strip = the column header on phone */
+  thead{display:none}
+  .strip{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid var(--rule)}
+  .strip button{height:44px;padding:0 6px;color:var(--ink-2);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;font-size:13px;font-weight:500;text-align:center}
+  .strip button .rev{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+  .strip button .rev u{text-decoration:none}
+  .strip button + button{border-left:1px solid var(--hair)}
+  .strip button[aria-current="true"]{color:var(--ink);box-shadow:inset 0 -1px 0 var(--ink);font-weight:500}
+  .strip button[aria-current="true"] .rev{color:var(--ink)}
+  .strip button .guard{font-size:11px}
+  .strip button[data-env="2"]{background:var(--prod)}
+  /* matrix: sticky key + snapping channels */
+  .mx-wrap{scroll-snap-type:x mandatory;scroll-padding-left:var(--keycol);-webkit-overflow-scrolling:touch}
+  table{width:calc(var(--keycol) + 3 * (100vw - var(--keycol)))}
+  col.env{width:calc(100vw - var(--keycol))}
+  th.key,tr.kr th,tr.gh th{position:sticky;left:0;background:var(--paper);z-index:2}
+  tr.gh th{background:var(--paper-2)}
+  thead th.env,td.c{scroll-snap-align:start}
+  th,td{height:44px}
+  tr.kr th{height:44px;padding-right:8px;font-size:11px;font-variation-settings:"wdth" 80}
+  tr.kr th .kw{flex-wrap:wrap;row-gap:1px}
+  tr.kr th .kname{flex-basis:100%;max-width:100%;order:-1;min-width:0}
+  tr.gh th{white-space:normal}
+  tr.gh th .fold{flex-wrap:wrap;line-height:1.15;row-gap:0}
+  tr.gh th,tr.gh td{height:44px}
+  tr.gh th .fold{min-height:44px}
+  tr.gh td{text-align:left}
+  tr.gh .gt{display:inline-flex;position:sticky;left:calc(var(--keycol) + 12px);max-width:calc(100vw - var(--keycol) - 24px);gap:12px}
+  tr.gh .gt .tt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  tr.gh .addk{margin-left:0;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px}
+  .legend dl{grid-template-columns:1fr}
+  .legend{padding-bottom:calc(var(--bar) + 24px)}
+  body:has(.insp:not([hidden])) .legend{padding-bottom:calc(45dvh + 24px)}
+  /* fixed bottom bar: the thumb row */
+  .bar{display:flex;align-items:center;gap:10px;position:fixed;left:0;right:0;bottom:0;height:var(--bar);padding:0 10px;border-top:1px solid var(--rule);background:var(--paper);z-index:5}
+  .bar .pending{display:inline-flex;font-size:12.5px}
+  .bar .btn{display:inline-flex;height:44px;padding:0 12px;font-size:13px}
+  .bar .btn.solid{margin-left:auto}
+  /* inspector: bottom sheet over the bar */
+  .insp{position:fixed;left:0;right:0;top:auto;bottom:0;height:auto;border-left:0;border-top:1px solid var(--rule);border-radius:6px 6px 0 0;max-height:45dvh;overflow:auto;z-index:7;box-shadow:0 -6px 16px oklch(0 0 0 / .08)}
+  .insp .handle{position:sticky;top:0;background:var(--paper)}
+}
+@media (prefers-reduced-motion:no-preference){.mx-wrap{scroll-behavior:smooth}}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ================= NAV: text tree ================= -->
+<nav class="nav" aria-label="Primary">
+  <input type="checkbox" id="menu" class="sr">
+  <div class="plate">
+    <a class="sel" href="#" aria-haspopup="listbox"><span class="k">Org</span><span class="v">acme</span><span class="sr">, switch organisation: acme, sandbox</span></a>
+    <a class="sel" href="#" aria-haspopup="listbox"><span class="k">Project</span><span class="v">demo</span><span class="sr">, switch project: demo, website, mobile-app</span></a>
+    <label class="menu-btn" for="menu">Menu</label>
+  </div>
+  <div class="drawer">
+    <div class="brand">hikyo<span class="ver">v0.9.5</span></div>
+    <ul class="tree">
+      <li><details open>
+        <summary class="ln d0 org"><span class="tri" aria-hidden="true"></span>acme<span class="tag">org</span></summary>
+        <ul>
+          <li><details open>
+            <summary class="ln d1 prj"><span class="tri" aria-hidden="true"></span>demo<span class="tag">project</span></summary>
+            <ul>
+              <li><details open>
+                <summary class="ln d2" aria-current="page"><span class="tri" aria-hidden="true"></span>Environment matrix<span class="n">8</span></summary>
+                <ul>
+                  <li><a class="ln d3" href="#g-app">app/<span class="n">3</span></a></li>
+                  <li><a class="ln d3" href="#g-db">db/<span class="n">2</span></a></li>
+                  <li><a class="ln d3" href="#g-auth">auth/<span class="n bad">!1</span></a></li>
+                  <li><a class="ln d3" href="#g-auth"><span class="bad">!</span> problems<span class="n bad">1</span></a></li>
+                </ul>
+              </details></li>
+              <li><a class="ln d2" href="#">Machine access</a></li>
+              <li><a class="ln d2" href="#">Change approvals</a></li>
+              <li><a class="ln d2" href="#">Deployment adapters</a></li>
+              <li><a class="ln d2" href="#">Project audit</a></li>
+              <li><a class="ln d2" href="#">Members</a></li>
+              <li><a class="ln d2" href="#">Project settings</a></li>
+            </ul>
+          </details></li>
+          <li><details>
+            <summary class="ln d1 prj"><span class="tri" aria-hidden="true"></span>website<span class="tag">project</span></summary>
+            <ul>
+              <li><a class="ln d2" href="#">Environment matrix<span class="n">14</span></a></li>
+              <li><a class="ln d2" href="#">Machine access</a></li>
+              <li><a class="ln d2" href="#">Change approvals</a></li>
+              <li><a class="ln d2" href="#">Deployment adapters</a></li>
+              <li><a class="ln d2" href="#">Project audit</a></li>
+              <li><a class="ln d2" href="#">Members</a></li>
+              <li><a class="ln d2" href="#">Project settings</a></li>
+            </ul>
+          </details></li>
+          <li><details>
+            <summary class="ln d1 prj"><span class="tri" aria-hidden="true"></span>mobile-app<span class="tag">project</span></summary>
+            <ul>
+              <li><a class="ln d2" href="#">Environment matrix<span class="n">6</span></a></li>
+              <li><a class="ln d2" href="#">Machine access</a></li>
+              <li><a class="ln d2" href="#">Change approvals</a></li>
+              <li><a class="ln d2" href="#">Deployment adapters</a></li>
+              <li><a class="ln d2" href="#">Project audit</a></li>
+              <li><a class="ln d2" href="#">Members</a></li>
+              <li><a class="ln d2" href="#">Project settings</a></li>
+            </ul>
+          </details></li>
+          <li class="sep" aria-hidden="true"></li>
+          <li><a class="ln d1" href="#">Overview</a></li>
+          <li><a class="ln d1" href="bench-projects.html">Projects<span class="n">3</span></a></li>
+          <li><a class="ln d1" href="#">Remotes</a></li>
+          <li><a class="ln d1" href="#">Members</a></li>
+          <li><a class="ln d1" href="#">Organisation settings</a></li>
+          <li><a class="ln d1" href="#">SCIM provisioning</a></li>
+          <li><a class="ln d1" href="#">Audit</a></li>
+        </ul>
+      </details></li>
+      <li><details>
+        <summary class="ln d0 org"><span class="tri" aria-hidden="true"></span>sandbox<span class="tag">org</span></summary>
+        <ul>
+          <li><a class="ln d1" href="#">Overview</a></li>
+          <li><a class="ln d1" href="#">Projects<span class="n">1</span></a></li>
+        </ul>
+      </details></li>
+    </ul>
+    <div class="foot">
+      <a class="sel" href="#"><span class="k">Instance</span><span class="v" style="font-weight:500">Settings</span></a>
+      <a class="who" href="#"><span class="al">AL</span><span>Alex Lee<small>alex · 2 orgs · org+instance admin</small></span></a>
+      <div class="sel"><span class="k">Theme</span>
+        <div class="theme" role="group" aria-label="Theme">
+          <button type="button" data-set="light" onclick="setTheme('light')">Light</button><button type="button" data-set="dark" onclick="setTheme('dark')">Dark</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- ================= MAIN ================= -->
+<main class="main">
+  <header class="hplate">
+    <h1>Environment matrix</h1>
+    <span class="meta">3 environments · 8 keys · rev 12 · <span class="bad">1 problem</span></span>
+  </header>
+
+  <div class="toolbar">
+    <input class="filter" type="search" aria-label="Filter keys" placeholder="filter keys, e.g. DATABASE_ or auth/" autocomplete="off" spellcheck="false">
+    <a class="envs" href="#">envs 3/3</a>
+    <a class="act q" href="#legend" aria-label="Legend">?</a>
+    <a class="act" href="#">Import</a>
+    <a class="act" href="#">Folders &amp; linked keys</a>
+    <span class="pending"><span aria-hidden="true">Δ</span> 8 unpublished · <a class="act" href="#">Publish</a></span>
+    <a class="btn" href="#">+ New key</a>
+    <details class="more">
+      <summary aria-label="More actions">⋯</summary>
+      <div class="panel">
+        <a href="#">Import</a>
+        <a href="#">Folders &amp; linked keys</a>
+        <a href="#legend">Legend</a>
+      </div>
+    </details>
+  </div>
+
+  <!-- mobile channel strip -->
+  <div class="strip" role="tablist" aria-label="Environment in view">
+    <button type="button" data-env="0" aria-current="true"><span>development</span><span class="rev">rev 12 · <u>history</u></span></button>
+    <button type="button" data-env="1"><span>staging</span><span class="rev">rev 12 · <u>history</u></span></button>
+    <button type="button" data-env="2"><span>production <span class="guard"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">protected</span></span></span><span class="rev">rev 12 · <u>history</u></span></button>
+  </div>
+
+  <div class="mx-wrap" id="mx">
+  <table>
+    <colgroup><col class="key"><col class="env"><col class="env"><col class="env"></colgroup>
+    <thead>
+      <tr>
+        <th class="key" scope="col"><span class="caps">Key</span></th>
+        <th class="env" scope="col"><div class="chan"><span class="name">development</span><span class="rev">rev 12 · <a href="#">history</a></span></div></th>
+        <th class="env" scope="col"><div class="chan"><span class="name">staging</span><span class="rev">rev 12 · <a href="#">history</a></span></div></th>
+        <th class="env" scope="col"><div class="chan"><span class="name">production <span class="guard"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>protected</span></span><span class="rev">rev 12 · <a href="#">history</a></span></div></th>
+      </tr>
+    </thead>
+
+    <tbody class="grp" id="g-app">
+      <tr class="gh"><th scope="rowgroup"><button class="fold" type="button" onclick="fold(this)"><span class="tri" aria-hidden="true">&#9662;</span>app/ <span class="cnt">3</span></button></th>
+        <td colspan="3"><span class="gt"><a class="addk" href="#">+ Key</a></span></td></tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><span class="kname" title="LOG_LEVEL">LOG_LEVEL</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group logging</span></span></th>
+        <td class="c"><span class="cell"><span class="val">debug</span><span class="g"><span class="d" title="changed since last publish">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val">info</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val">warn</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span><span class="other" title="another editor has a draft">◌<span class="sr"> another editor has a draft</span></span></span></span></td>
+      </tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><span class="kname" title="FEATURE_CHECKOUT">FEATURE_CHECKOUT</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group checkout-flags</span></span></th>
+        <td class="c"><span class="cell"><span class="val">true</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c" aria-selected="true"><span class="cell"><span class="val">true</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span><span class="mine" title="my unpublished draft">●<span class="sr"> draft</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val">false</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><span class="kname" title="PUBLIC_APP_URL">PUBLIC_APP_URL</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group public-urls</span></span></th>
+        <td class="c"><span class="cell"><span class="val" title="http://localhost:8080">http://localhost:8080</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val" title="https://staging.example.test">https://staging.example.test</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val" title="https://app.example.test">https://app.example.test</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+    </tbody>
+
+    <tbody class="grp" id="g-db">
+      <tr class="gh"><th scope="rowgroup"><button class="fold" type="button" onclick="fold(this)"><span class="tri" aria-hidden="true">&#9662;</span>db/ <span class="cnt">2</span></button></th>
+        <td colspan="3"><span class="gt"><a class="addk" href="#">+ Key</a></span></td></tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">secret</span><span class="kname" title="DATABASE_URL">DATABASE_URL</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group datastores</span><span class="req">req</span></span></th>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">secret</span><span class="kname" title="REDIS_URL">REDIS_URL</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group datastores</span></span></th>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+    </tbody>
+
+    <tbody class="grp" id="g-auth">
+      <tr class="gh"><th scope="rowgroup"><button class="fold" type="button" onclick="fold(this)"><span class="tri" aria-hidden="true">&#9662;</span>auth/ <span class="cnt">1</span> <span class="bad">!1 problem</span></button></th>
+        <td colspan="3"><span class="gt"><a class="addk" href="#">+ Key</a></span></td></tr>
+      <tr class="kr">
+        <th scope="row"><span class="kw"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">secret</span><span class="kname" title="AUTH_SECRET">AUTH_SECRET</span><svg class="ico lnk" aria-hidden="true"><use href="#i-link"/></svg><span class="sr">linked key, group auth</span><span class="req">req</span></span></th>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c"><span class="cell"><span class="val sec">••••••••<span class="sr"> secret set</span></span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+        <td class="c bad"><span class="cell"><span class="val">! required · absent</span><span class="sr">, violation, publish blocked</span><span class="g"><span class="d">Δ<span class="sr"> changed</span></span></span></span></td>
+      </tr>
+    </tbody>
+
+    <tbody class="grp closed" id="g-mail">
+      <tr class="gh"><th scope="rowgroup"><button class="fold" type="button" onclick="fold(this)"><span class="tri" aria-hidden="true">&#9656;</span>mail/ <span class="cnt">2</span></button></th>
+        <td colspan="3" class="tail"><span class="gt"><span class="tt">SMTP_HOST, SMTP_PASSWORD</span><a class="addk" href="#">+ Key</a></span></td></tr>
+      <tr class="kr"><th scope="row"><span class="kw"><span class="kname" title="SMTP_HOST">SMTP_HOST</span></span></th><td class="c"><span class="cell"><span class="val">localhost</span></span></td><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td></tr>
+      <tr class="kr"><th scope="row"><span class="kw"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg><span class="sr">secret</span><span class="kname" title="SMTP_PASSWORD">SMTP_PASSWORD</span></span></th><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td><td class="c absent"><span class="cell"><span class="val">· absent</span></span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <section class="legend" id="legend" aria-label="Legend">
+    <h2>Legend</h2>
+    <dl>
+      <div><dt>value</dt><dd>set in this environment</dd></div>
+      <div><dt>•••••••• <svg class="ico" style="width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5;vertical-align:-1px" aria-hidden="true"><use href="#i-lock"/></svg></dt><dd>secret set (lock on the key)</dd></div>
+      <div><dt>· absent</dt><dd>not set</dd></div>
+      <div><dt class="bad">! required · absent</dt><dd>violation, publish blocked</dd></div>
+      <div><dt class="bad">✕ value</dt><dd>fails declaration</dd></div>
+      <div><dt class="d">Δ</dt><dd>changed since last publish</dd></div>
+      <div><dt>●</dt><dd>unpublished draft of mine</dd></div>
+      <div><dt>◌</dt><dd>another editor has a draft here</dd></div>
+      <div><dt><svg class="ico" style="width:10px;height:10px;fill:none;stroke:currentColor;stroke-width:1.5;vertical-align:-1px" aria-hidden="true"><use href="#i-link"/></svg> link</dt><dd>linked key, group named on the key</dd></div>
+      <div><dt>req</dt><dd>required in every environment</dd></div>
+      <div><dt><span class="guard"><svg class="ico" aria-hidden="true"><use href="#i-lock"/></svg>protected</span></dt><dd>publish requires approval</dd></div>
+    </dl>
+  </section>
+</main>
+
+<!-- ================= INSPECTOR (closed by default) ================= -->
+<aside class="insp" id="insp" aria-label="Inspector" hidden>
+  <div class="handle"><span>FEATURE_CHECKOUT @ staging</span><button class="close" type="button" onclick="closeInsp()">Close</button></div>
+  <div class="body">
+    <div class="sec">
+      <div class="l">Selected cell</div>
+      <div class="keyname">FEATURE_CHECKOUT</div>
+      <div class="at">@ staging · app/</div>
+    </div>
+    <div class="sec">
+      <div class="l">Value</div>
+      <div class="val">true<span class="d">Δ ● draft</span></div>
+    </div>
+    <div class="sec">
+      <div class="l">Provenance</div>
+      <div class="prov"><b>set here</b> · r12 · alex · 3 days ago<br>base chain: development → staging<br>published value: true (r11)</div>
+    </div>
+    <div class="sec">
+      <div class="l">Declaration</div>
+      <dl class="decl">
+        <dt>type</dt><dd>boolean</dd>
+        <dt>required</dt><dd>no</dd>
+        <dt>secret</dt><dd>no</dd>
+        <dt>linked</dt><dd>checkout-flags (3 keys)</dd>
+        <dt>declared</dt><dd>r4 · alex</dd>
+      </dl>
+    </div>
+    <nav class="acts" aria-label="Cell actions">
+      <a href="#">Edit <span class="hint">E</span></a>
+      <a href="#">Copy <span class="hint">C</span></a>
+      <a href="#">Clear <span class="hint">unset in staging</span></a>
+      <a href="#" class="inert" aria-disabled="true">Reveal <span class="hint">not a secret</span></a>
+    </nav>
+  </div>
+</aside>
+
+<!-- mobile bottom bar: the thumb row -->
+<div class="bar">
+  <span class="pending"><span aria-hidden="true">Δ</span> 8 unpublished</span>
+  <a class="btn ghost" href="#">Publish</a>
+  <a class="btn solid" href="#">+ New key</a>
+</div>
+
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-lock" viewBox="0 0 12 12"><rect x="2" y="5.5" width="8" height="5.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 12 12"><path d="M5 7.5 7 5.5M4.2 8.8 3 10a1.7 1.7 0 0 1-2.4-2.4L2.9 5.3M7.8 3.2 9 2a1.7 1.7 0 0 1 2.4 2.4L9.1 6.7"/></symbol>
+</svg>
+
+<script>
+// Script: group fold, mobile channel strip, inspector open/close, theme (in head).
+function fold(b){var g=b.closest('tbody');g.classList.toggle('closed');b.querySelector('.tri').textContent=g.classList.contains('closed')?'▸':'▾';}
+function closeInsp(){document.getElementById('insp').hidden=true;}
+(function(){
+  var wrap=document.getElementById('mx'),btns=document.querySelectorAll('.strip button'),insp=document.getElementById('insp');
+  var keyw=function(){return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--keycol'))};
+  btns.forEach(function(b){b.addEventListener('click',function(){var w=wrap.clientWidth-keyw();wrap.scrollTo({left:+b.dataset.env*w});});});
+  wrap.addEventListener('scroll',function(){var w=wrap.clientWidth-keyw();var i=Math.round(wrap.scrollLeft/w);btns.forEach(function(b,j){b.setAttribute('aria-current',j===i)});},{passive:true});
+  // inspector: closed by default, opens on cell click; the selected cell keeps its outline while closed
+  document.querySelectorAll('td.c').forEach(function(td){td.addEventListener('click',function(){
+    document.querySelectorAll('td.c[aria-selected]').forEach(function(x){x.removeAttribute('aria-selected')});
+    td.setAttribute('aria-selected','true');insp.hidden=false;});});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeInsp();});
+})();
+</script>
+</body>
+</html>
