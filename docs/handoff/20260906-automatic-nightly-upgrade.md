@@ -124,6 +124,14 @@ a current-policy field to the recovery-signed catalog. PR #691 merged as
 invariant 12, so the verified nightly download directories are registered as
 `selfupdate.nightly-downloads`.
 
+PR validation runs the base branch's `ci.yml` (`pull_request_target` in
+`ci-control.yml`), so the three CI steps this branch adds (bootstrap refusal
+test, root adapter Docker test, real-systemd Docker test) first execute on main's
+push CI after merge. All three pass locally on Docker Desktop (arm64 Linux
+engine); the GitHub `ubuntu-latest` amd64 engine is their first CI run. If the
+privileged systemd container fails there, diagnose runner support before
+changing the test.
+
 Still open: the server on nightly 23 cannot upgrade until a nightly containing
 this feature is published; then the bootstrap command in the Upgrades docs
 applies. The stale worktree `~/.t3/worktrees/wenv/t3code-4827c9b7` and its
