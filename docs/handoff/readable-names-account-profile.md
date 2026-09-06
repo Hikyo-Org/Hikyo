@@ -49,6 +49,11 @@ Delivery authorized: signed commit, pull request, and merge after green checks.
 Rebased onto main after #684, preserving its revision diff and adapter findings.
 Account profile migration is 49; adapter findings remains migration 48.
 Rebase validation: 905 web tests passed; generated clients rebuilt from the combined contract.
+CI follow-up: extended the guarded legacy upgrade fixture through migration 49,
+reviewed and pinned self-profile queries and the read-only audit exemption, and
+updated browser selectors to exercise readable names while checking immutable IDs.
+Real Cosign upgrade drills passed on SQLite and PostgreSQL 18; both isolation
+pin invariants and eight focused desktop membership/instance lifecycle tests passed.
 Disposable PostgreSQL test containers were removed after verification.
 Current actor names are presentation labels, not immutable historical evidence;
 audit event IDs and original attribution remain intact.
