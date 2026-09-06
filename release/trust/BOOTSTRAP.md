@@ -29,15 +29,21 @@ owner numeric IDs were checked against GitHub. Production SCT verification is
 enabled. Cosign v3.1.3 was checked against both its upstream checksum asset and
 GitHub's release-asset SHA-256.
 
-Recovery-signed metadata sequence 1 and catalog sequence 1 authorize the nightly
-policy. There are no approved stable releases or legacy bridges. The metadata's
+Recovery-signed metadata sequence 1 and initial catalog sequence 1 authorize the
+nightly policy. Catalog sequence 2 additionally authorizes the two exact
+[legacy bridges](BRIDGES.md) into the first published signed nightly. There are
+no approved stable releases. The metadata's
 `pending_release` of `1.0.0` is the schema-required unsigned bootstrap placeholder;
 it is not a release approval. This root remains technically capable of
 authorizing stable releases. Its online/local custody must be considered before
 future stable activation; it must never be described as an offline-generated root.
 
 Local verification passed `nightly preflight` and `verify-bundle.sh --trust-only`.
-Public files are prepared in the checkout. GitHub publication and the first
-actual OIDC-signed nightly require the changes to be reviewed and merged. After
-that target exists, exact legacy bridge statements still need recovery
-authorization before populated pre-ledger databases can upgrade.
+PRs #687 and #689 activated the public bootstrap and corrected Rekor shard-index
+verification. The first actual OIDC-signed nightly,
+`v0.0.1-nightly.20260906.26.g52c8b012`, passed independent verification of every
+published asset and packaged production startup/restart on both engines.
+Its legacy bridge statements and catalog sequence 2 were subsequently signed
+with the same encrypted local recovery key under the approved nightly custody
+exception. They require separate installation backup/drill evidence and a full
+writer stop; signing these public documents does not upgrade a running server.

@@ -60,14 +60,15 @@ Mac; public files now exist in `release/trust`. Both default `nightly preflight`
 and `verify-bundle.sh --trust-only` pass. Private keys remain outside the checkout
 with passphrases in macOS Keychain. See the exact provenance and fingerprints in
 [the bootstrap record](../../release/trust/BOOTSTRAP.md). This was explicitly not
-an offline ceremony. Actual GitHub OIDC signing/publication and a live installation
-remain unverified pending review/merge and a successful nightly run. After the first signed
-target exists, its exact legacy bridge statements need a second offline recovery
-authorization and advancing catalog before old populated databases can upgrade.
+an offline ceremony. Actual GitHub OIDC signing/publication and packaged fresh
+startup are now verified as recorded below. The first target's legacy bridge
+statements and advancing catalog were signed under the same local nightly
+exception. A live existing-database upgrade remains a separate operator action.
 
 The workflow uses Rekor v1 signed integrated-time and inclusion/checkpoint
-evidence. Policy changes, log/root rotation and legacy bridges require offline
-recovery authorization; ordinary nightlies under the same policy do not. Private
+evidence. Policy changes, log/root rotation and legacy bridges require recovery
+authorization, normally offline; this operator's nightly custody exception is
+recorded explicitly. Ordinary nightlies under the same policy need no ceremony. Private
 project keys stay off Actions. Runtime installation still follows the manual
 backup/drill and full-stop writer procedure. Review/merge, bootstrap activation
 and deployment are separate from local validation.
@@ -94,5 +95,30 @@ packages passed, as did the focused race test. Review returned CLEAN. A local
 probe recovered the actual public Rekor entry and verified its exact OIDC
 identity/commit, SCT, SET, checkpoint, inclusion proof and signature over manifest
 SHA-256 `830c059cf9275ec8d14cf344ec0d5a161e21709aab861133f51abc1262060cbb`.
-The corrected verifier still requires a new green merge and successful nightly
-run before publication is established.
+PR #689 subsequently merged as `52c8b012f1fa45634572d7266c6ab7d3a9d5eed8`,
+with 30 passing PR checks and all 39 main CI jobs passing. Retry
+[34053156703](https://github.com/Hikyo-Org/Hikyo/actions/runs/34053156703)
+published immutable `v0.0.1-nightly.20260906.26.g52c8b012`. Actual OIDC verification
+and packaged fresh production startup/restart passed on both engines. All 22
+published assets were downloaded and independently verified on the operator's
+Mac. Manifest: `e54e0bdb3b9298e234070d27ad75680ed0a6abf75c59aff3815a8c1c30e9d0ee`.
+
+## Existing-database bridge activation
+
+Two exact legacy44-to-nightly26/migration49 statements and catalog sequence 2
+were prepared, reviewed CLEAN and signed using the approved encrypted local
+nightly recovery key. All 43 source migration-file hashes per engine match the
+operator's recovered September 5 commit. The actual signed runtime bundle loads,
+both engine routes require a maintenance bridge and operator attestation, and
+wrong source schemas, absent bridges and catalog rollback refuse. See
+[the public bridge record](../../release/trust/BRIDGES.md).
+
+Local public artifacts are retained beneath
+`~/Library/Application Support/hikyo/nightly-bootstrap/`: the complete release
+in `verified-nightlies/v0.0.1-nightly.20260906.26.g52c8b012`, assembled public
+runtime bundle in `runtime-bundle-20260906.26`, verification output in
+`legacy-bridge-verification.txt` and verified catalog floor in
+`bridge-verification-floor.json`. `verify-legacy-bridges.go` retains the probe;
+run a temporary copy inside this Go module to permit its internal imports.
+No live installation was modified. Its first upgrade still needs actual
+database inspection, its own backup/drill proof and a full legacy writer stop.
