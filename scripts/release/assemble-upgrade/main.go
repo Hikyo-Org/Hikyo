@@ -36,7 +36,7 @@ func (d *directories) Set(value string) error {
 
 type options struct {
 	root, recovery, snapshot, keys, output, floor string
-	releases, bridges                             directories
+	releases, nightlies, bridges                  directories
 }
 
 func main() {
@@ -57,11 +57,12 @@ func run(ctx context.Context, args []string, out io.Writer) error {
 	fs.StringVar(&o.output, "out", "", "new output directory; never overwrite")
 	fs.StringVar(&o.floor, "floor", "", "optional existing SnapshotFloor JSON; never updated by assembly")
 	fs.Var(&o.releases, "release", "directory containing four stable public release proofs; repeat for source and route hops")
+	fs.Var(&o.nightlies, "nightly", "complete flat signed nightly download; repeat for source and route hops")
 	fs.Var(&o.bridges, "bridge", "directory containing statement.json and statement.sigstore.json; repeat for every authorized bridge")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 || o.root == "" || o.recovery == "" || o.snapshot == "" || o.keys == "" || o.output == "" || len(o.releases) == 0 || len(o.releases) > upgradecompat.MaxReleases || len(o.bridges) > upgradecompat.MaxEdges {
+	if fs.NArg() != 0 || o.root == "" || o.recovery == "" || o.snapshot == "" || o.keys == "" || o.output == "" || len(o.releases)+len(o.nightlies) == 0 || len(o.releases)+len(o.nightlies) > upgradecompat.MaxReleases || len(o.bridges) > upgradecompat.MaxEdges {
 		return errors.New("require --root, --recovery-key, --snapshot, --keys, --release and --out with bounded inventories")
 	}
 	if err := assemble(ctx, o); err != nil {
@@ -180,6 +181,18 @@ func assemble(ctx context.Context, o options) error {
 				return err
 			}
 		}
+	}
+	for _, directory := range o.nightlies {
+		release, err := upgradebundle.CopyNightlyRelease(ctx, directory, filepath.Join(stage, "releases"), snapshot)
+		if err != nil {
+			return err
+		}
+		digest := release.Identity().ManifestSHA256
+		if seen[digest] {
+			return errors.New("duplicate release manifest")
+		}
+		seen[digest] = true
+		index.Releases = append(index.Releases, upgradebundle.ReleaseEntry{Profile: releaseidentity.NightlyV1, ManifestSHA256: digest})
 	}
 	seen = map[releaseidentity.Digest]bool{}
 	for _, directory := range o.bridges {

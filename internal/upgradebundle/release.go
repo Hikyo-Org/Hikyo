@@ -145,7 +145,9 @@ func (r *payloadReader) Read(p []byte) (int, error) {
 func (r *payloadReader) Close() error {
 	r.done = true
 	if r.file != nil {
-		return r.file.Close()
+		file := r.file
+		r.file = nil
+		return file.Close()
 	}
 	return nil
 }

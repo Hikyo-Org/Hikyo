@@ -22,6 +22,8 @@ import (
 // Fixture exposes mutable untrusted claims so tests can sign malformed evidence
 // and demonstrate that the real verifier refuses it.
 type Fixture struct {
+	// SignNightly reuses the same test-local OIDC policy for subsequent releases.
+	SignNightly    func([]byte, string, uint64) releasetrust.NightlyMaterial
 	Pinned         releasetrust.PinnedTrust
 	Metadata       releasetrust.Metadata
 	Catalog        releasetrust.Catalog

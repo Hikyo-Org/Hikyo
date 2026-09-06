@@ -1,0 +1,13 @@
+{
+  "schema": "hikyo.dev/trust-root/v1",
+  "recovery": {
+    "id": "recovery-1",
+    "public_key": "recovery-1.pub",
+    "sha256": "1eb7ad2092668b73621c21a1eeb801ed6391bc794df1909abce8e1d45e03a229"
+  },
+  "bootstrap_primary": {
+    "id": "primary-1",
+    "public_key": "primary-1.pub",
+    "sha256": "a91737eeacfb9a756a8c2705e4c43187512762a59bc094a6883bef31436c55e5"
+  }
+}

@@ -174,6 +174,9 @@ func PlanRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 				continue
 			}
 			for _, edge := range declaration.Sources {
+				if edge.Source.Genesis == releaseidentity.LegacyGenesisV1 && node.Identity().Profile == releaseidentity.NightlyV1 {
+					continue // populated unsigned installations require a recovery-signed legacy bridge
+				}
 				var sourcePolicy releaseidentity.Digest
 				if edge.Source.IsRelease() {
 					from, authenticated := byIdentity[edge.Source.Release]
@@ -208,7 +211,7 @@ func PlanRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 		}
 		seenBridges[bridge.Digest()] = true
 		statement := bridge.Statement()
-		pair := nodeKey(releaseidentity.Source{Release: statement.Source}) + ">" + nodeKey(releaseidentity.Source{Release: statement.Target}) + ":" + string(statement.SourceMigrations.Engine)
+		pair := nodeKey(statement.SourceIdentity()) + ">" + nodeKey(releaseidentity.Source{Release: statement.Target}) + ":" + string(statement.SourceMigrations.Engine)
 		if seenBridgePairs[pair] {
 			return Plan{}, errors.New("duplicate recovery bridge pair")
 		}
@@ -216,7 +219,7 @@ func PlanRoute(snapshot releasetrust.Snapshot, source InstalledSource, target re
 		if statement.SourceMigrations.Engine != engine {
 			continue
 		}
-		fromSource := releaseidentity.Source{Release: statement.Source}
+		fromSource := statement.SourceIdentity()
 		if fromSource != source.Identity {
 			if _, present := byIdentity[statement.Source]; !present {
 				continue

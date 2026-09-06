@@ -21,6 +21,25 @@ func healthy(t *testing.T, s *Session, state State) State {
 	return state
 }
 
+func TestNightlySequenceDoesNotRequireAStableRelease(t *testing.T) {
+	both(t, func(t *testing.T, cfg Config) {
+		for _, profile := range []releaseidentity.Profile{releaseidentity.StableV1, releaseidentity.NightlyV1} {
+			err := WithLock(t.Context(), cfg, func(s *Session) error {
+				op := operation(Source{Genesis: FreshGenesis}, emptyManifest(cfg.Engine))
+				op.Acceptance.Floor.HighestReleaseSequence = 0
+				if profile == releaseidentity.NightlyV1 {
+					op.Target.Profile, op.Target.Version = profile, "1.1.0-nightly.1"
+				}
+				_, err := s.Bootstrap(t.Context(), emptyManifest(cfg.Engine), op, Production)
+				return err
+			})
+			if (err == nil) != (profile == releaseidentity.NightlyV1) {
+				t.Fatalf("profile %s with no stable release: %v", profile, err)
+			}
+		}
+	})
+}
+
 func nextOperation(state State) Operation {
 	op := operation(state.Applied, emptyManifest(releaseidentity.SQLite))
 	op.SourceMigrationDigest = state.MigrationDigest

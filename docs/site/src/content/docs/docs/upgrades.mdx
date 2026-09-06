@@ -9,11 +9,11 @@ archive with a compatible binary, not running a down migration.
 
 ## Release channels
 
-`stable` follows signed production releases. `nightly` follows unsigned GitHub
+`stable` follows signed production releases. `nightly` follows signed GitHub
 prereleases built from the newest green, changed `main` commit. A stable
 `1.0.0` makes the nightly line `1.1.0-nightly.<date>.<run>.g<sha>`; after stable
-`1.1.0`, it advances to `1.2.0-nightly...`. Nightlies are evaluation artifacts,
-not production releases.
+`1.1.0`, it advances to `1.2.0-nightly...`. Nightlies use the distinct
+recovery-authorized `nightly/v1` keyless signing policy. They remain prereleases.
 
 Before any stable release exists, the first line is
 `0.0.1-nightly.<date>.<run>.g<sha>`. Release discovery is paginated; a long
@@ -32,15 +32,20 @@ artifact's default. Source builds remain `off`; install a published artifact to
 join a release channel.
 
 At most once per 24 hours, Hikyo refreshes the selected track. When a newer
-release exists, the controlling terminal asks whether to install it. Accepting
-downloads the exact archive for the running OS and architecture. Nightlies
-require GitHub's immutable asset digest plus GoReleaser's `checksums.txt`.
-Stable updates additionally require an immutable release and use Hikyo's
+release exists, the controlling terminal offers the appropriate download flow.
+Nightlies require an immutable release, authenticated policy, complete Sigstore
+bundle and the exact closed inventory of all published payloads. Accepting stages
+the verified download and prints its path; it preserves the current executable.
+Server upgrades also require the runtime bundle and backup/drill evidence below.
+Unsigned historical nightlies cannot pass this verification.
+
+Stable updates download the exact archive for the running OS and architecture,
+require an immutable release and use Hikyo's
 in-process, recovery-root-pinned signature verifier over the current trust
 metadata, signed manifest, candidate, and selected archive. No external shell,
 `jq`, or `cosign` executable participates in the self-update trust boundary.
 
-After verification Hikyo extracts only the expected executable, takes a
+After stable verification Hikyo extracts only the expected executable, takes a
 cross-process replacement lock, and writes and syncs a unique same-directory
 file. Unix atomically renames it over the resolved binary. Windows recoverably
 moves the mapped old image aside before publishing the replacement at the
@@ -99,6 +104,12 @@ covers bundle layout, native commands, Compose and Helm PVC wiring. The
 produces the compatibility declaration and recovery-signed trust catalog.
 Official production bundle publication remains a release-owner obligation;
 unsigned evaluation artifacts cannot replace it.
+
+For nightlies, follow the [signed nightly runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/signed-nightlies.md).
+It covers the one-time recovery authorization, automated publication and
+complete-download assembly. Existing unsigned pre-ledger databases additionally
+require an exact recovery-signed legacy bridge and fresh operator backup proof.
+The CLI download flow does not install that bridge or replace the server binary.
 
 ## Before the change
 

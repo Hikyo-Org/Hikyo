@@ -42,6 +42,12 @@ import (
 // All authenticity here is real: ephemeral certificate chain, maintained DSSE
 // signer, Rekor SET, Merkle proof and signed checkpoint, then serialized bundle.
 func Nightly(t testing.TB, compatibility []byte, wrongCommit bool) (*Fixture, releasetrust.NightlyMaterial, *protobundle.Bundle) {
+	return NightlyWithPayloads(t, compatibility, wrongCommit, nil, nil)
+}
+
+// NightlyWithPayloads signs caller-provided test payload bytes using the same
+// ephemeral certificate and real transparency-log proof as Nightly.
+func NightlyWithPayloads(t testing.TB, compatibility []byte, wrongCommit bool, payloads map[string][]byte, artifacts []releasetrust.Artifact) (*Fixture, releasetrust.NightlyMaterial, *protobundle.Bundle) {
 	t.Helper()
 	virtual, err := ca.NewVirtualSigstore()
 	if err != nil {
@@ -84,113 +90,125 @@ func Nightly(t testing.TB, compatibility []byte, wrongCommit bool) (*Fixture, re
 	policy.RekorLogID = rekorID
 	policy.CheckpointOrigin = "rekor.fixture.invalid - 1"
 	policyRaw = JSON(t, policy)
-	commit := strings.Repeat("a", 40)
-	payloads := map[string][]byte{releasetrust.CompatibilityArtifact: compatibility, "hikyo_linux_arm64.tar.gz": []byte("real bytes bound by fixture"), "binary-provenance.json": []byte("{}"), "checksums.txt": []byte("fixture checksums")}
-	artifacts := []releasetrust.Artifact{{Name: releasetrust.CompatibilityArtifact, Kind: "upgrade-compatibility"}, {Name: "hikyo_linux_arm64.tar.gz", Kind: "binary", Platform: "linux/arm64"}, {Name: "binary-provenance.json", Kind: "binary-provenance"}, {Name: "checksums.txt", Kind: "checksum"}}
-	for i := range artifacts {
-		artifacts[i].SHA256 = string(releaseidentity.Hash(payloads[artifacts[i].Name]))
-	}
-	manifest := JSON(t, releasetrust.NightlyManifest{Schema: "hikyo.dev/nightly-manifest/v1", Profile: releaseidentity.NightlyV1, Version: "1.1.0-nightly.1", Tag: "v1.1.0-nightly.1", SourceCommit: commit, ReleaseSequence: 2, Artifacts: artifacts})
-	workflow := policy.RepositoryURI + "/" + policy.WorkflowPath + "@" + policy.ProtectedRef
-	uri, err := url.Parse(workflow)
-	if err != nil {
-		t.Fatal(err)
-	}
-	certCommit := commit
-	if wrongCommit {
-		certCommit = strings.Repeat("b", 40)
-	}
-	extensions := []struct {
-		oid   asn1.ObjectIdentifier
-		value string
-	}{
-		{certificate.OIDIssuerV2, policy.Issuer}, {certificate.OIDBuildSignerURI, workflow}, {certificate.OIDBuildSignerDigest, certCommit},
-		{certificate.OIDRunnerEnvironment, policy.RunnerEnvironment}, {certificate.OIDSourceRepositoryURI, policy.RepositoryURI}, {certificate.OIDSourceRepositoryDigest, certCommit},
-		{certificate.OIDSourceRepositoryRef, policy.ProtectedRef}, {certificate.OIDSourceRepositoryIdentifier, policy.RepositoryID}, {certificate.OIDSourceRepositoryOwnerURI, policy.RepositoryOwnerURI},
-		{certificate.OIDSourceRepositoryOwnerIdentifier, policy.RepositoryOwnerID}, {certificate.OIDBuildConfigURI, workflow}, {certificate.OIDBuildConfigDigest, certCommit},
-	}
-	// The leaf is expired at verification wall time. Its signed integrated time
-	// remains inside validity, proving verification never substitutes time.Now.
-	integrated := time.Now().Add(-10 * time.Minute).Truncate(time.Second)
-	template := &x509.Certificate{SerialNumber: big.NewInt(2), URIs: []*url.URL{uri}, NotBefore: integrated.Add(-time.Minute), NotAfter: integrated.Add(time.Minute), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning}}
-	for _, extension := range extensions {
-		raw, err := asn1.Marshal(extension.value)
+	f := New(t)
+	f.Catalog.NightlyPolicies = append(f.Catalog.NightlyPolicies, releaseidentity.Hash(policyRaw))
+	sign := func(compatibility []byte, version string, sequence uint64, payloads map[string][]byte, artifacts []releasetrust.Artifact) (releasetrust.NightlyMaterial, *protobundle.Bundle) {
+		commit := strings.Repeat("a", 40)
+		if payloads == nil {
+			payloads = map[string][]byte{releasetrust.CompatibilityArtifact: compatibility, "hikyo_linux_arm64.tar.gz": []byte("real bytes bound by fixture"), "binary-provenance.json": []byte("{}"), "checksums.txt": []byte("fixture checksums")}
+			artifacts = []releasetrust.Artifact{{Name: releasetrust.CompatibilityArtifact, Kind: "upgrade-compatibility"}, {Name: "hikyo_linux_arm64.tar.gz", Kind: "binary", Platform: "linux/arm64"}, {Name: "binary-provenance.json", Kind: "binary-provenance"}, {Name: "checksums.txt", Kind: "checksum"}}
+		}
+		payloads["nightly-policy.json"], payloads["sigstore-trusted-root.json"] = policyRaw, rootRaw
+		artifacts = append(artifacts, releasetrust.Artifact{Name: "nightly-policy.json", Kind: "nightly-policy"}, releasetrust.Artifact{Name: "sigstore-trusted-root.json", Kind: "sigstore-trusted-root"})
+		for i := range artifacts {
+			artifacts[i].SHA256 = string(releaseidentity.Hash(payloads[artifacts[i].Name]))
+		}
+		manifest := JSON(t, releasetrust.NightlyManifest{Schema: "hikyo.dev/nightly-manifest/v1", Profile: releaseidentity.NightlyV1, Version: version, Tag: "v" + version, SourceCommit: commit, ReleaseSequence: sequence, Artifacts: artifacts})
+		workflow := policy.RepositoryURI + "/" + policy.WorkflowPath + "@" + policy.ProtectedRef
+		uri, err := url.Parse(workflow)
 		if err != nil {
 			t.Fatal(err)
 		}
-		template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{Id: extension.oid, Value: raw})
+		certCommit := commit
+		if wrongCommit {
+			certCommit = strings.Repeat("b", 40)
+		}
+		extensions := []struct {
+			oid   asn1.ObjectIdentifier
+			value string
+		}{
+			{certificate.OIDIssuerV2, policy.Issuer}, {certificate.OIDBuildSignerURI, workflow}, {certificate.OIDBuildSignerDigest, certCommit},
+			{certificate.OIDRunnerEnvironment, policy.RunnerEnvironment}, {certificate.OIDSourceRepositoryURI, policy.RepositoryURI}, {certificate.OIDSourceRepositoryDigest, certCommit},
+			{certificate.OIDSourceRepositoryRef, policy.ProtectedRef}, {certificate.OIDSourceRepositoryIdentifier, policy.RepositoryID}, {certificate.OIDSourceRepositoryOwnerURI, policy.RepositoryOwnerURI},
+			{certificate.OIDSourceRepositoryOwnerIdentifier, policy.RepositoryOwnerID}, {certificate.OIDBuildConfigURI, workflow}, {certificate.OIDBuildConfigDigest, certCommit},
+		}
+		// The leaf is expired at verification wall time. Its signed integrated time
+		// remains inside validity, proving verification never substitutes time.Now.
+		integrated := time.Now().Add(-10 * time.Minute).Truncate(time.Second)
+		template := &x509.Certificate{SerialNumber: big.NewInt(2), URIs: []*url.URL{uri}, NotBefore: integrated.Add(-time.Minute), NotAfter: integrated.Add(time.Minute), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning}}
+		for _, extension := range extensions {
+			raw, err := asn1.Marshal(extension.value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			template.ExtraExtensions = append(template.ExtraExtensions, pkix.Extension{Id: extension.oid, Value: raw})
+		}
+		private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		certRaw, err := x509.CreateCertificate(rand.Reader, template, rootCert, &private.PublicKey, rootKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cert, err := x509.ParseCertificate(certRaw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		signer, err := signature.LoadSigner(private, crypto.SHA256)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dsseSigner, err := dsse.NewEnvelopeSigner(&sigdsse.SignerAdapter{SignatureSigner: signer, Pub: cert.PublicKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		statement := JSON(t, map[string]any{"_type": "https://in-toto.io/Statement/v1", "subject": []any{map[string]any{"name": "release-manifest.json", "digest": map[string]string{"sha256": string(releaseidentity.Hash(manifest))}}}, "predicateType": "https://hikyo.dev/nightly-manifest/v1", "predicate": map[string]any{}})
+		envelope, err := dsseSigner.SignPayload(context.Background(), "application/vnd.in-toto+json", statement)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sig, err := base64.StdEncoding.DecodeString(envelope.Signatures[0].Sig)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry, err := virtual.GenerateTlogEntry(cert, envelope, sig, integrated.Unix(), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The maintained fixture's deprecated constructor keeps the SET and kind
+		// outside its protobuf. Populate the wire representation explicitly.
+		tlogEntry := entry.TransparencyLogEntry()
+		var body struct {
+			Kind       string `json:"kind"`
+			APIVersion string `json:"apiVersion"`
+		}
+		if err := json.Unmarshal(tlogEntry.CanonicalizedBody, &body); err != nil {
+			t.Fatal(err)
+		}
+		tlogEntry.KindVersion = &protorekor.KindVersion{Kind: body.Kind, Version: body.APIVersion}
+		tlogEntry.LogId.KeyId = rekorIDBytes
+		payload := JSON(t, tlog.RekorPayload{LogID: string(rekorID), IntegratedTime: integrated.Unix(), LogIndex: tlogEntry.LogIndex, Body: base64.StdEncoding.EncodeToString(tlogEntry.CanonicalizedBody)})
+		canonical, err := jsoncanonicalizer.Transform(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		set, err := rekorSigner.SignMessage(bytes.NewReader(canonical))
+		if err != nil {
+			t.Fatal(err)
+		}
+		tlogEntry.InclusionPromise = &protorekor.InclusionPromise{SignedEntryTimestamp: set}
+		leafHash := rfc6962.DefaultHasher.HashLeaf(tlogEntry.CanonicalizedBody)
+		checkpoint, err := util.CreateAndSignCheckpoint(context.Background(), "rekor.fixture.invalid", 1, 1, leafHash, rekorSigner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tlogEntry.InclusionProof = &protorekor.InclusionProof{LogIndex: 0, TreeSize: 1, RootHash: leafHash, Hashes: [][]byte{}, Checkpoint: &protorekor.Checkpoint{Envelope: string(checkpoint)}}
+		pb := &protobundle.Bundle{MediaType: "application/vnd.dev.sigstore.bundle.v0.3+json", VerificationMaterial: &protobundle.VerificationMaterial{Content: &protobundle.VerificationMaterial_Certificate{Certificate: &common.X509Certificate{RawBytes: certRaw}}, TlogEntries: []*protorekor.TransparencyLogEntry{entry.TransparencyLogEntry()}}, Content: &protobundle.Bundle_DsseEnvelope{DsseEnvelope: &protodsse.Envelope{Payload: statement, PayloadType: envelope.PayloadType, Signatures: []*protodsse.Signature{{Sig: sig}}}}}
+		bundleRaw, err := protojson.Marshal(pb)
+		if err != nil {
+			t.Fatal(err)
+		}
+		readers := map[string]io.Reader{}
+		for name, raw := range payloads {
+			readers[name] = bytes.NewReader(raw)
+		}
+		return releasetrust.NightlyMaterial{Policy: policyRaw, TrustedRoot: rootRaw, Manifest: manifest, Bundle: bundleRaw, Compatibility: payloads[releasetrust.CompatibilityArtifact], Artifacts: readers}, pb
 	}
-	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
+	f.SignNightly = func(compatibility []byte, version string, sequence uint64) releasetrust.NightlyMaterial {
+		material, _ := sign(compatibility, version, sequence, nil, nil)
+		return material
 	}
-	certRaw, err := x509.CreateCertificate(rand.Reader, template, rootCert, &private.PublicKey, rootKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cert, err := x509.ParseCertificate(certRaw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer, err := signature.LoadSigner(private, crypto.SHA256)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dsseSigner, err := dsse.NewEnvelopeSigner(&sigdsse.SignerAdapter{SignatureSigner: signer, Pub: cert.PublicKey})
-	if err != nil {
-		t.Fatal(err)
-	}
-	statement := JSON(t, map[string]any{"_type": "https://in-toto.io/Statement/v1", "subject": []any{map[string]any{"name": "release-manifest.json", "digest": map[string]string{"sha256": string(releaseidentity.Hash(manifest))}}}, "predicateType": "https://hikyo.dev/nightly-manifest/v1", "predicate": map[string]any{}})
-	envelope, err := dsseSigner.SignPayload(context.Background(), "application/vnd.in-toto+json", statement)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sig, err := base64.StdEncoding.DecodeString(envelope.Signatures[0].Sig)
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry, err := virtual.GenerateTlogEntry(cert, envelope, sig, integrated.Unix(), true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The maintained fixture's deprecated constructor keeps the SET and kind
-	// outside its protobuf. Populate the wire representation explicitly.
-	tlogEntry := entry.TransparencyLogEntry()
-	var body struct {
-		Kind       string `json:"kind"`
-		APIVersion string `json:"apiVersion"`
-	}
-	if err := json.Unmarshal(tlogEntry.CanonicalizedBody, &body); err != nil {
-		t.Fatal(err)
-	}
-	tlogEntry.KindVersion = &protorekor.KindVersion{Kind: body.Kind, Version: body.APIVersion}
-	tlogEntry.LogId.KeyId = rekorIDBytes
-	payload := JSON(t, tlog.RekorPayload{LogID: string(rekorID), IntegratedTime: integrated.Unix(), LogIndex: tlogEntry.LogIndex, Body: base64.StdEncoding.EncodeToString(tlogEntry.CanonicalizedBody)})
-	canonical, err := jsoncanonicalizer.Transform(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	set, err := rekorSigner.SignMessage(bytes.NewReader(canonical))
-	if err != nil {
-		t.Fatal(err)
-	}
-	tlogEntry.InclusionPromise = &protorekor.InclusionPromise{SignedEntryTimestamp: set}
-	leafHash := rfc6962.DefaultHasher.HashLeaf(tlogEntry.CanonicalizedBody)
-	checkpoint, err := util.CreateAndSignCheckpoint(context.Background(), "rekor.fixture.invalid", 1, 1, leafHash, rekorSigner)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tlogEntry.InclusionProof = &protorekor.InclusionProof{LogIndex: 0, TreeSize: 1, RootHash: leafHash, Hashes: [][]byte{}, Checkpoint: &protorekor.Checkpoint{Envelope: string(checkpoint)}}
-	pb := &protobundle.Bundle{MediaType: "application/vnd.dev.sigstore.bundle.v0.3+json", VerificationMaterial: &protobundle.VerificationMaterial{Content: &protobundle.VerificationMaterial_Certificate{Certificate: &common.X509Certificate{RawBytes: certRaw}}, TlogEntries: []*protorekor.TransparencyLogEntry{entry.TransparencyLogEntry()}}, Content: &protobundle.Bundle_DsseEnvelope{DsseEnvelope: &protodsse.Envelope{Payload: statement, PayloadType: envelope.PayloadType, Signatures: []*protodsse.Signature{{Sig: sig}}}}}
-	bundleRaw, err := protojson.Marshal(pb)
-	if err != nil {
-		t.Fatal(err)
-	}
-	f := New(t)
-	f.Catalog.NightlyPolicies = append(f.Catalog.NightlyPolicies, releaseidentity.Hash(policyRaw))
-	readers := map[string]io.Reader{}
-	for name, raw := range payloads {
-		readers[name] = bytes.NewReader(raw)
-	}
-	return f, releasetrust.NightlyMaterial{Policy: policyRaw, TrustedRoot: rootRaw, Manifest: manifest, Bundle: bundleRaw, Compatibility: payloads[releasetrust.CompatibilityArtifact], Artifacts: readers}, pb
+	material, pb := sign(compatibility, "1.1.0-nightly.1", 2, payloads, artifacts)
+	return f, material, pb
 }

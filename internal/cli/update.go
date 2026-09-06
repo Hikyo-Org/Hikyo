@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/console"
+	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
 	"github.com/gofrs/flock"
 )
@@ -252,9 +253,11 @@ func promptAndApplyUpdate(ctx context.Context, ios IO, status updatecheck.Status
 	if ios.TerminalSession == nil {
 		return false, nil
 	}
-	confirmed, err := ios.TerminalSession.Confirm(
-		fmt.Sprintf("Update Hikyo to %s now?", status.LatestVersion),
-	)
+	prompt := fmt.Sprintf("Update Hikyo to %s now?", status.LatestVersion)
+	if status.Channel == updatecheck.ChannelNightly && status.Prerelease {
+		prompt = fmt.Sprintf("Download and verify Hikyo %s for a manual server upgrade?", status.LatestVersion)
+	}
+	confirmed, err := ios.TerminalSession.Confirm(prompt)
 	if err != nil {
 		return false, fmt.Errorf("confirmation: %w", err)
 	}
@@ -265,6 +268,11 @@ func promptAndApplyUpdate(ctx context.Context, ios IO, status updatecheck.Status
 		return false, errors.New("binary updater is unavailable")
 	}
 	if err := ios.BinaryUpdater.Apply(ctx, status); err != nil {
+		var staged *selfupdate.StagedNightly
+		if errors.As(err, &staged) {
+			fmt.Fprintln(ios.Stderr, staged.Error())
+			return false, nil
+		}
 		return false, err
 	}
 	fmt.Fprintf(ios.Stderr, "Hikyo %s is verified and updated in place. Restart the command to use it.\n",

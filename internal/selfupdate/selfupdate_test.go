@@ -217,17 +217,17 @@ func TestNightlyTrackVerifiesAPromotedStableWithThePinnedRoot(t *testing.T) {
 	}
 }
 
-func TestInstallerAppliesTheSelectedReleaseInPlace(t *testing.T) {
+func TestUnsignedNightlyCannotReplaceWorkingBinary(t *testing.T) {
 	installer, status, target, _ := installerFixture(t, "")
-	if err := installer.Apply(t.Context(), status); err != nil {
-		t.Fatal(err)
+	if err := installer.Apply(t.Context(), status); err == nil {
+		t.Fatal("unsigned nightly accepted")
 	}
 	raw, err := os.ReadFile(target)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := string(raw); got != "new hikyo binary\n" {
-		t.Fatalf("updated binary = %q", got)
+	if got := string(raw); got != "old hikyo binary\n" {
+		t.Fatalf("working binary changed = %q", got)
 	}
 }
 

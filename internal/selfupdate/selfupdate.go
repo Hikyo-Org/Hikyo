@@ -112,6 +112,9 @@ func (i *Installer) Apply(ctx context.Context, status updatecheck.Status) error 
 	if !bytes.Equal(wantArchiveDigest, gotArchiveDigest[:]) {
 		return fmt.Errorf("selfupdate: archive checksum mismatch for %s", archiveFile)
 	}
+	if isPrerelease {
+		return i.stageNightly(ctx, status)
+	}
 	if !isPrerelease {
 		if err := i.verifyStable(ctx, status, archiveFile, archive); err != nil {
 			return err
