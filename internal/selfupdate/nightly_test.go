@@ -48,7 +48,7 @@ func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T
 				responses[trustURL(bridgePath+"statement.sigstore.json")] = []byte("{}")
 			}
 			if mutation == "bridge missing" {
-				delete(responses, trustURL(bridgePath+"statement.json"))
+				responses[trustURL(bridgePath+"statement.json")] = nil
 			}
 			installer.config.TrustRootBase64 = base64.StdEncoding.EncodeToString(trust.Pinned.Root)
 			installer.config.RecoveryKeyBase64 = base64.StdEncoding.EncodeToString(trust.Pinned.RecoveryPublicKey)
@@ -68,7 +68,7 @@ func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T
 				responses[trustURL(name)] = raw
 			}
 			if mutation == "current policy missing" {
-				delete(responses, trustURL("nightly/policy.json"))
+				responses[trustURL("nightly/policy.json")] = nil
 			}
 			status.Assets = nil
 			add := func(name string, raw []byte) {

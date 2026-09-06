@@ -48,6 +48,10 @@ by root and inaccessible to the runtime user. It includes the backup identity,
 independent attestation key and root escrow. The passphrase is never saved.
 This explicitly chosen local custody model does not provide an off-host recovery
 copy. Preserve the encrypted vault and passphrase through your recovery process.
+After each completed upgrade the command keeps only the encrypted backup taken
+before the current schema under `/var/lib/hikyo-upgrade`; earlier `backup-*`,
+`bundle-*` and `evidence-*` directories there are removed. Copy any backup you
+want to keep elsewhere.
 No operator private key enters the service configuration or release workflow.
 
 If an upgrade is interrupted, rerun the same command. During the first upgrade,
