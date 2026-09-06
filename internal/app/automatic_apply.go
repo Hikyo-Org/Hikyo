@@ -22,6 +22,7 @@ type automaticApplyHost interface {
 	ConfigureRuntime(context.Context, hostupgrade.RuntimeEvidence) error
 	StartCandidate(context.Context, string, bool, time.Duration) error
 	Complete(context.Context) error
+	PrunePublic(hostupgrade.RuntimeEvidence) error
 }
 
 type automaticInspection interface {
@@ -152,7 +153,12 @@ func applyAutomaticRoute(ctx context.Context, host automaticApplyHost, database 
 		return err
 	}
 	journal.Phase = "complete"
-	return writeAutomaticJournal(journalPath, journal)
+	if err := writeAutomaticJournal(journalPath, journal); err != nil {
+		return err
+	}
+	// Earlier runs' public bundles, one-use attestations and backups are no
+	// longer referenced; only this run's evidence and encrypted backup remain.
+	return host.PrunePublic(journal.Runtime)
 }
 
 func validateAutomaticPosition(plan upgradecompat.Plan, journal *automaticJournal) error {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 var publicName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$`)
@@ -128,4 +129,41 @@ func (h *Host) PreparePublicOutput(name string) (string, error) {
 		return "", err
 	}
 	return path, syncDirectory(h.config.PublicDirectory)
+}
+
+// PrunePublic removes the bundle-*, evidence-* and backup-* directories that
+// earlier upgrade runs left under the public directory, keeping only the
+// entries the given evidence still references. The caller passes the journal
+// of the run that just completed, so the retained encrypted backup is always
+// the one taken before the current schema. Other names are never touched.
+func (h *Host) PrunePublic(keep RuntimeEvidence) error {
+	if err := trustedDirectory(h.config.PublicDirectory); err != nil {
+		return err
+	}
+	retained := map[string]bool{}
+	for _, path := range []string{keep.BundleDirectory, keep.EvidenceDirectory, keep.CiphertextPath} {
+		if path == "" {
+			continue
+		}
+		if !safePath(path) || !within(h.config.PublicDirectory, path) || path == h.config.PublicDirectory {
+			return errors.New("retained upgrade evidence must be inside the public upgrade directory")
+		}
+		rel := strings.TrimPrefix(path, h.config.PublicDirectory+string(filepath.Separator))
+		retained[strings.SplitN(rel, string(filepath.Separator), 2)[0]] = true
+	}
+	entries, err := os.ReadDir(h.config.PublicDirectory)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		generated := strings.HasPrefix(name, "bundle-") || strings.HasPrefix(name, "evidence-") || strings.HasPrefix(name, "backup-")
+		if !generated || retained[name] || !entry.IsDir() {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(h.config.PublicDirectory, name)); err != nil {
+			return err
+		}
+	}
+	return syncDirectory(h.config.PublicDirectory)
 }
