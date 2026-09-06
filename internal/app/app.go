@@ -386,7 +386,11 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	}
 	selfConfig.Budget = owner.budget
 	if cfg.HA {
-		owner.haCoord, owner.haTick, owner.haStatus, err = configureHA(ctx, cfg, log, db, sc, kr)
+		installedStamp := ""
+		if selfConfig.Deployment != nil {
+			installedStamp = selfConfig.Deployment.Identity().TemplateStamp
+		}
+		owner.haCoord, owner.haTick, owner.haStatus, err = configureHA(ctx, cfg, log, db, sc, kr, installedStamp)
 		if err != nil {
 			return nil, err
 		}

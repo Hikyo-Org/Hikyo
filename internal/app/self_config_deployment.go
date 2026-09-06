@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -72,9 +74,6 @@ func configureBootstrapDeployment(ctx context.Context, cfg *config.Config, db *s
 	if cfg.ConfigRolloutEnrollment == "" && cfg.ConfigRolloutSigningKey == "" {
 		return nil, nil
 	}
-	if cfg.HA {
-		return nil, configrollout.ErrUnsupported
-	}
 	if db == nil || kr == nil || cfg.ConfigRolloutEnrollment == "" || cfg.ConfigRolloutSigningKey == "" {
 		return nil, configrollout.ErrUnavailable
 	}
@@ -94,7 +93,10 @@ func configureBootstrapDeployment(ctx context.Context, cfg *config.Config, db *s
 	if nodeID == "" {
 		nodeID = "local"
 	}
-	if nodeID != enrollment.Target.StableNodeID {
+	if cfg.HA && len(enrollment.Target.TopologyNodeIDs) == 0 {
+		return nil, configrollout.ErrUnsupported
+	}
+	if nodeID != enrollment.Target.StableNodeID && !slices.Contains(enrollment.Target.TopologyNodeIDs, nodeID) {
 		return nil, configrollout.ErrConflict
 	}
 	signer, err := readDeploymentSigner(cfg.ConfigRolloutSigningKey)
@@ -237,10 +239,33 @@ func (d *bootstrapDeployment) PrepareCommand(ctx context.Context, intent configr
 		changes.Upgrade = &configrollout.SourceProof{Alias: selected.UpgradeSource, SourceDigest: configrollout.UpgradeSourceDigest(source), ProofDigest: proof.MaterialDigest}
 		d.rememberProof(proof.MaterialDigest, deploymentSourceProof{upgrade: &proof, expires: time.Now().Add(5 * time.Minute)})
 	}
-	if changes.Database == nil && changes.Root == nil && changes.Upgrade == nil {
-		return configrollout.SignedCommand{}, configrollout.ErrInvalid
+	if selected.Topology != d.installed.Topology && (changes.Database != nil || changes.Root != nil || changes.Upgrade != nil) {
+		return configrollout.SignedCommand{}, configrollout.ErrUnsupported
 	}
-	return d.sign(ctx, configrollout.Command{EnrollmentID: d.enrollment.ID, Sequence: sequence, Action: configrollout.ActionPrepare, Intent: intent, Bootstrap: changes})
+	if changes.Database == nil && changes.Root == nil && changes.Upgrade == nil {
+		change := domain.SingletonTopologyChange{Before: d.installed.Topology, After: selected.Topology}
+		if err := d.validateTopology(ctx, change); err != nil {
+			return configrollout.SignedCommand{}, err
+		}
+		return d.sign(ctx, configrollout.Command{EnrollmentID: d.enrollment.ID, Sequence: sequence, Action: configrollout.ActionPrepare, Intent: intent, Topology: &change})
+	}
+	command := configrollout.Command{EnrollmentID: d.enrollment.ID, Sequence: sequence, Action: configrollout.ActionPrepare, Intent: intent, Bootstrap: changes}
+	if d.installed.Topology.NodeID != "" {
+		metadata, err := d.db.Coordination().CurrentSelfConfigGeneration(ctx)
+		if err != nil {
+			return configrollout.SignedCommand{}, configrollout.ErrUnavailable
+		}
+		if metadata.Topology == nil {
+			// The first source rollout on an already-enrolled singleton needs
+			// durable membership/stamp fencing even if its mode never changed.
+			correspondence := domain.SingletonTopologyChange{Before: d.installed.Topology, After: d.installed.Topology}
+			if err := d.validateTopology(ctx, correspondence); err != nil {
+				return configrollout.SignedCommand{}, err
+			}
+			command.Topology = &correspondence
+		}
+	}
+	return d.sign(ctx, command)
 }
 
 // RootPreparation returns the exact encrypted candidate bound by the signed
@@ -284,8 +309,17 @@ func (d *bootstrapDeployment) DecisionCommand(ctx context.Context, prepared conf
 		if prepared.Command.Action != configrollout.ActionPrepare || ack != nil {
 			return configrollout.SignedCommand{}, configrollout.ErrInvalid
 		}
-		if err := d.validatePreparedSources(ctx, prepared.Command.Bootstrap); err != nil {
-			return configrollout.SignedCommand{}, err
+		if prepared.Command.Topology != nil {
+			if err := d.validateTopology(ctx, *prepared.Command.Topology); err != nil {
+				return configrollout.SignedCommand{}, err
+			}
+		}
+		if prepared.Command.Bootstrap != nil {
+			if err := d.validatePreparedSources(ctx, prepared.Command.Bootstrap); err != nil {
+				return configrollout.SignedCommand{}, err
+			}
+		} else if prepared.Command.Topology == nil {
+			return configrollout.SignedCommand{}, configrollout.ErrInvalid
 		}
 	case configrollout.ActionObserve:
 		if ack != nil && (ack.Intent != prepared.Command.Intent || ack.PlanDigest != planDigest || string(ack.DeploymentUID) != d.identity.DeploymentUID) {
@@ -298,7 +332,7 @@ func (d *bootstrapDeployment) DecisionCommand(ctx context.Context, prepared conf
 	default:
 		return configrollout.SignedCommand{}, configrollout.ErrInvalid
 	}
-	return d.sign(ctx, configrollout.Command{EnrollmentID: d.enrollment.ID, Sequence: sequence, Action: action, Intent: prepared.Command.Intent, PlanDigest: planDigest, Acknowledgement: ack})
+	return d.sign(ctx, configrollout.Command{EnrollmentID: d.enrollment.ID, Sequence: sequence, Action: action, Intent: prepared.Command.Intent, PlanDigest: planDigest, Acknowledgement: ack, Topology: prepared.Command.Topology, PreviousTemplateStamp: prepared.Command.PreviousTemplateStamp})
 }
 
 func (d *bootstrapDeployment) RenewCommand(ctx context.Context, committed configrollout.SignedCommand, sequence uint64) (configrollout.SignedCommand, error) {
@@ -347,6 +381,9 @@ func (d *bootstrapDeployment) verifySelections(ctx context.Context, expected con
 	if err != nil || selected != d.installed || stamp != d.identity.TemplateStamp {
 		return service.ErrDeploymentSourcesPending
 	}
+	if expected.Topology.NodeID != "" && expected.Topology != d.installed.Topology {
+		return service.ErrDeploymentSourcesPending
+	}
 	if expected.DatabaseSource != "" {
 		if selected.DatabaseSource != expected.DatabaseSource {
 			return service.ErrDeploymentSourcesPending
@@ -393,6 +430,9 @@ func (d *bootstrapDeployment) verifySelections(ctx context.Context, expected con
 }
 
 func (d *bootstrapDeployment) sign(ctx context.Context, command configrollout.Command) (configrollout.SignedCommand, error) {
+	if command.Action == configrollout.ActionPrepare {
+		command.PreviousTemplateStamp = d.identity.TemplateStamp
+	}
 	command.IssuedAt = time.Now().UTC()
 	command.ExpiresAt = command.IssuedAt.Add(5 * time.Minute)
 	// A metadata roundtrip detaches nested input pointers before signing and
@@ -556,7 +596,10 @@ func (d *bootstrapDeployment) readSelection() (config.ManagedBootstrapSources, s
 		}
 	}
 	selected := config.ManagedBootstrapSources{UpgradeSource: values["upgrade-alias"], DatabaseSource: values["database-alias"], RootSource: values["root-alias"]}
-	if selected.DatabaseSource != "" || selected.RootSource != "" || selected.UpgradeSource != "" {
+	if len(d.enrollment.Target.TopologyNodeIDs) > 0 {
+		selected.Topology = domain.SingletonTopology{HA: d.cfg.HA, NodeID: d.cfg.NodeID}
+	}
+	if selected.DatabaseSource != "" || selected.RootSource != "" || selected.Topology.NodeID != "" || selected.UpgradeSource != "" {
 		selected.Version = 1
 	}
 	if selected.DatabaseSource != "" {
@@ -620,4 +663,22 @@ func readDeploymentFile(path string, private bool) ([]byte, error) {
 		return nil, configrollout.ErrUnavailable
 	}
 	return raw, nil
+}
+
+func (d *bootstrapDeployment) validateTopology(ctx context.Context, change domain.SingletonTopologyChange) error {
+	if err := d.verifySelections(ctx, d.installed); err != nil {
+		return err
+	}
+	if len(d.enrollment.Target.TopologyNodeIDs) == 0 || change.Before != d.installed.Topology || !slices.Contains(d.enrollment.Target.TopologyNodeIDs, change.After.NodeID) {
+		return configrollout.ErrUnsupported
+	}
+	// Mode transitions require the already-installed shared PostgreSQL and key
+	// custody, never an implicit datastore migration or a development local key.
+	if change.After.HA && (d.db.Engine() != store.EnginePostgres || d.cfg.RootKeyFile == "" && !d.cfg.RootKeyFromEnv) {
+		return configrollout.ErrUnsupported
+	}
+	if err := d.db.CheckAdmission(ctx); err != nil {
+		return configrollout.ErrUnavailable
+	}
+	return nil
 }

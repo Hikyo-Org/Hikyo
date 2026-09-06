@@ -101,14 +101,24 @@ func (c *Controller) reconcile(ctx context.Context) error {
 	if journal.Response != nil {
 		return c.writeResponse(ctx, *journal.Response)
 	}
+	if command.Action != ActionPrepare && (journal.Plan == nil || digest(command.Topology) != digest(journal.Plan.Plan.Topology) || command.PreviousTemplateStamp != previousTemplateStamp(journal.Plan.Plan)) {
+		return ErrConflict
+	}
 	response := Response{EnrollmentID: e.ID, Sequence: command.Sequence, CommandDigest: digest(signed), PlanDigest: command.PlanDigest}
 	switch command.Action {
 	case ActionPrepare:
 		var plan *Plan
-		if command.Bootstrap != nil {
+		if command.Topology != nil && command.Bootstrap != nil {
+			plan, err = c.executor.PrepareBootstrapWithTopology(ctx, command.Intent, *command.Bootstrap, *command.Topology)
+		} else if command.Topology != nil {
+			plan, err = c.executor.PrepareTopology(ctx, command.Intent, *command.Topology)
+		} else if command.Bootstrap != nil {
 			plan, err = c.executor.PrepareBootstrap(ctx, command.Intent, command.Changes, *command.Bootstrap)
 		} else {
 			plan, err = c.executor.Prepare(ctx, command.Intent, command.Changes)
+		}
+		if err == nil && command.PreviousTemplateStamp != previousTemplateStamp(plan.data) {
+			return ErrConflict
 		}
 		if err == nil {
 			journal.Plan = &record{Digest: plan.Digest(), Plan: plan.data}
@@ -184,4 +194,11 @@ func (c *Controller) writeResponse(ctx context.Context, response Response) error
 		return apiError(err)
 	}
 	return nil
+}
+
+func previousTemplateStamp(plan planData) string {
+	if plan.Delta.BeforeStamp == nil {
+		return ""
+	}
+	return *plan.Delta.BeforeStamp
 }

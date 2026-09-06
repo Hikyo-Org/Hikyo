@@ -196,6 +196,32 @@ func (q *Queries) FenceSelfConfigRestored(ctx context.Context, arg FenceSelfConf
 	return result.RowsAffected()
 }
 
+const fenceSelfConfigTopologyLease = `-- name: FenceSelfConfigTopologyLease :exec
+UPDATE singleton_leases SET fence_token=fence_token+1,expires_at=?1 WHERE name='scheduler'
+`
+
+// hikyo:instance-scoped
+func (q *Queries) FenceSelfConfigTopologyLease(ctx context.Context, expiresAt string) error {
+	_, err := q.db.ExecContext(ctx, fenceSelfConfigTopologyLease, expiresAt)
+	return err
+}
+
+const getLatestSelfConfigTopology = `-- name: GetLatestSelfConfigTopology :one
+SELECT r.command_json FROM self_config_rollouts r
+JOIN self_config_jobs j ON j.id=r.job_id
+JOIN self_config_binding b ON b.id=1 AND b.incarnation=r.incarnation
+WHERE j.generation<=b.generation AND j.status NOT IN ('preparing','aborted') AND json_type(r.command_json,'$.command.topology')='object'
+ORDER BY j.generation DESC LIMIT 1
+`
+
+// hikyo:instance-scoped
+func (q *Queries) GetLatestSelfConfigTopology(ctx context.Context) (string, error) {
+	row := q.db.QueryRowContext(ctx, getLatestSelfConfigTopology)
+	var command_json string
+	err := row.Scan(&command_json)
+	return command_json, err
+}
+
 const getSelfConfigBinding = `-- name: GetSelfConfigBinding :one
 SELECT id, owner_instance_id, adoption_key, adopted_by, org_id, project_id, environment_id, schema_version, generation, desired_revision, desired_snapshot_id, previous_snapshot_id, incarnation, suspended, created_at, updated_at FROM self_config_binding WHERE id = 1
 `

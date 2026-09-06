@@ -20,6 +20,7 @@ type SelfConfig struct {
 	Auth         *Auth
 	Budget       *Budget
 	NodeID       string
+	HAMode       bool
 	Now          func() time.Time
 	Seed         func() (map[string]string, error)
 	SeedNode     func() (map[string]string, error)

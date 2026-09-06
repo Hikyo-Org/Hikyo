@@ -4,6 +4,8 @@ import (
 	"context"
 	"maps"
 
+	"github.com/Hikyo-Org/hikyo/internal/domain"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -96,6 +98,20 @@ func (k *Kubernetes) validBootstrap(b *BootstrapChanges) bool {
 // Callers must persist and authorize the actual proof before signing submit;
 // a nonempty digest by itself is not verification of a datastore or root key.
 func (k *Kubernetes) PrepareBootstrap(ctx context.Context, intent Intent, changes []Change, bootstrap BootstrapChanges) (*Plan, error) {
+	return k.prepareBootstrap(ctx, intent, changes, bootstrap, nil)
+}
+
+// PrepareBootstrapWithTopology records the installed singleton correspondence
+// without changing mode or identity. The executor verifies both literal inputs;
+// only the independently proven source selection may change in this plan.
+func (k *Kubernetes) PrepareBootstrapWithTopology(ctx context.Context, intent Intent, bootstrap BootstrapChanges, topology domain.SingletonTopologyChange) (*Plan, error) {
+	if topology.Before != topology.After || !k.validTopology(&topology) {
+		return nil, ErrUnsupported
+	}
+	return k.prepareBootstrap(ctx, intent, nil, bootstrap, &topology)
+}
+
+func (k *Kubernetes) prepareBootstrap(ctx context.Context, intent Intent, changes []Change, bootstrap BootstrapChanges, topology *domain.SingletonTopologyChange) (*Plan, error) {
 	if !k.validBootstrap(&bootstrap) {
 		return nil, ErrInvalid
 	}
@@ -112,7 +128,7 @@ func (k *Kubernetes) PrepareBootstrap(ctx context.Context, intent Intent, change
 		value := *copy.Upgrade
 		copy.Upgrade = &value
 	}
-	return k.prepare(ctx, intent, changes, &copy)
+	return k.prepare(ctx, intent, changes, &copy, topology)
 }
 
 func databaseEnv(source SecretSource) corev1.EnvVar {
@@ -183,6 +199,9 @@ func (k *Kubernetes) validBootstrapDelta(p planData) bool {
 	if !k.validBootstrap(p.Bootstrap) {
 		return false
 	}
+	if p.Topology != nil {
+		return k.validTopologyDelta(p)
+	}
 	if p.Bootstrap == nil {
 		return p.Delta.RootSource == nil && len(p.Delta.Environment) == len(p.Changes) && len(p.Delta.SourceAliases) == 0
 	}
@@ -237,6 +256,7 @@ func (k *Kubernetes) validBootstrapDelta(p planData) bool {
 
 // cloneEnrollment detaches installation maps from caller mutation.
 func cloneEnrollment(e Enrollment) Enrollment {
+	e.Target.TopologyNodeIDs = append([]string(nil), e.Target.TopologyNodeIDs...)
 	e.Target.DatabaseSources = maps.Clone(e.Target.DatabaseSources)
 	e.Target.RootSources = maps.Clone(e.Target.RootSources)
 	e.Target.UpgradeSources = maps.Clone(e.Target.UpgradeSources)

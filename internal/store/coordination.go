@@ -16,7 +16,10 @@ import (
 // not tenant data, so it does not pass through authz.Verify or a TxToken;
 // like the migrator and the adapter outbox worker it runs at the app layer,
 // and its tables carry no tenant chain (scope class instance).
-type Coordination struct{ db *DB }
+type Coordination struct {
+	db                                  *DB
+	runtimeNodeID, runtimeTemplateStamp string
+}
 
 // Coordination returns the coordination surface bound to this datastore.
 func (d *DB) Coordination() *Coordination { return &Coordination{db: d} }
@@ -65,6 +68,11 @@ var ErrMixedRootKey = errors.New("store: another live node registered a differen
 // stale token and its guarded writes match zero rows. held is false when a
 // live holder still owns the lease.
 func (c *coordinationTx) ClaimLease(ctx context.Context, name, owner string, now, expires time.Time) (fence int64, held bool, err error) {
+	if name == "scheduler" {
+		if err := c.topologyLeaseAllowed(ctx, owner); err != nil {
+			return 0, false, err
+		}
+	}
 	switch c.db.engine {
 	case EnginePostgres:
 		err = c.db.pool.QueryRow(ctx,
@@ -111,6 +119,11 @@ func (c *coordinationTx) ClaimLease(ctx context.Context, name, owner string, now
 // turns on. now must be datastore time (the scheduler reads it via Now) so the
 // comparison is not subject to per-node clock skew.
 func (c *coordinationTx) RenewLease(ctx context.Context, name, owner string, fence int64, now, expires time.Time) (held bool, err error) {
+	if name == "scheduler" {
+		if err := c.topologyLeaseAllowed(ctx, owner); err != nil {
+			return false, err
+		}
+	}
 	var affected int64
 	switch c.db.engine {
 	case EnginePostgres:
@@ -235,6 +248,9 @@ type HANode struct {
 // UpsertNode records or refreshes a node's registry row. StartedAt is only set
 // on first insert; the heartbeat advances on every call.
 func (c *coordinationTx) UpsertNode(ctx context.Context, n HANode) error {
+	if err := c.topologyLeaseAllowed(ctx, n.NodeID); err != nil {
+		return err
+	}
 	var err error
 	switch c.db.engine {
 	case EnginePostgres:
@@ -281,6 +297,9 @@ const (
 // proceed. On sqlite there is a single node and no race, so it is a plain
 // upsert. since bounds which peers count as live.
 func (c *coordinationTx) RegisterNodeChecked(ctx context.Context, n HANode, since time.Time) error {
+	if err := c.topologyLeaseAllowed(ctx, n.NodeID); err != nil {
+		return err
+	}
 	switch c.db.engine {
 	case EnginePostgres:
 		tx := c.db.pool
@@ -735,4 +754,10 @@ func (c *coordinationTx) PruneAdmissionWindows(ctx context.Context, cutoff time.
 		return fmt.Errorf("store: prune admission windows: %w", err)
 	}
 	return nil
+}
+
+// ForSingletonProcess binds a coordinator to the immutable startup identity.
+// This restricts existing host coordination; it does not grant tenant access.
+func (c *Coordination) ForSingletonProcess(nodeID, templateStamp string) *Coordination {
+	return &Coordination{db: c.db, runtimeNodeID: nodeID, runtimeTemplateStamp: templateStamp}
 }

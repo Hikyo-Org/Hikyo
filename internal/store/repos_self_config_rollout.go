@@ -51,6 +51,10 @@ func (r selfConfigRepo) PutRollout(ctx context.Context, p authz.Proof, want Self
 	if job.Status != "preparing" && job.Status != "applying" && job.Status != "partial" {
 		return domain.ErrConflict
 	}
+	topology, action, err := rolloutTopology(want.CommandJSON)
+	if err != nil {
+		return err
+	}
 	previous, err := r.q.rollout(ctx, want.JobID)
 	if errors.Is(err, domain.ErrNotFound) {
 		if want.RowVersion != 0 || job.Status != "preparing" || job.ExpectedGeneration != b.Generation || want.PlanDigest != "" || want.ExternalPhase != "" {
@@ -59,6 +63,21 @@ func (r selfConfigRepo) PutRollout(ctx context.Context, p authz.Proof, want Self
 	} else if err != nil {
 		return err
 	} else {
+		oldTopology, _, parseErr := rolloutTopology(previous.CommandJSON)
+		var oldStamp, newStamp struct {
+			Command struct {
+				PreviousTemplateStamp string `json:"previous_template_stamp"`
+			} `json:"command"`
+		}
+		if json.Unmarshal([]byte(previous.CommandJSON), &oldStamp) != nil || json.Unmarshal([]byte(want.CommandJSON), &newStamp) != nil || oldStamp.Command.PreviousTemplateStamp != newStamp.Command.PreviousTemplateStamp {
+			return domain.ErrConflict
+		}
+		if parseErr != nil || (oldTopology == nil) != (topology == nil) || (oldTopology != nil && *oldTopology != *topology) {
+			return domain.ErrConflict
+		}
+		if previous.PlanDigest != "" && previous.ResponseJSON != want.ResponseJSON {
+			return domain.ErrConflict
+		}
 		if previous.ExternalPhase != "" && previous.ExternalPhase != want.ExternalPhase {
 			return domain.ErrConflict
 		}
@@ -67,6 +86,18 @@ func (r selfConfigRepo) PutRollout(ctx context.Context, p authz.Proof, want Self
 		}
 		if want.Sequence == previous.Sequence && want.CommandJSON != previous.CommandJSON {
 			return domain.ErrConflict
+		}
+	}
+	if action == "restore" {
+		if err := r.q.lockMembership(ctx); err != nil {
+			return err
+		}
+		at, err := r.q.currentTime(ctx)
+		if err != nil {
+			return err
+		}
+		if err := r.q.fenceTopologyLease(ctx, at); err != nil {
+			return err
 		}
 	}
 	return r.q.putRollout(ctx, want)

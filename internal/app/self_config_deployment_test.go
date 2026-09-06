@@ -360,9 +360,9 @@ func TestBootstrapDeploymentBootSeedsSelectorsAndKeepsPendingRepairFenced(t *tes
 	}
 }
 
-func TestBootstrapDeploymentRefusesHAEnrollmentBeforeReadingCustody(t *testing.T) {
+func TestBootstrapDeploymentRefusesUninitializedHAEnrollmentBeforeReadingCustody(t *testing.T) {
 	cfg := &config.Config{HA: true, ConfigRolloutEnrollment: "/must-not-read/enrollment", ConfigRolloutSigningKey: "/must-not-read/authority"}
-	if _, err := configureBootstrapDeployment(t.Context(), cfg, nil, nil); !errors.Is(err, configrollout.ErrUnsupported) {
+	if _, err := configureBootstrapDeployment(t.Context(), cfg, nil, nil); !errors.Is(err, configrollout.ErrUnavailable) {
 		t.Fatalf("HA enrollment: %v", err)
 	}
 	cfg.ConfigRolloutEnrollment, cfg.ConfigRolloutSigningKey = "", ""

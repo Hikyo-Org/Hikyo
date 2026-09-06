@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/domain"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -56,6 +58,13 @@ func TestUpgradeSourceEnrollmentRejectsArbitraryInputs(t *testing.T) {
 }
 
 func TestUpgradeBootstrapRolloutBindsCompleteTupleAndRestores(t *testing.T) {
+	for _, mode := range []string{"unenrolled", "singleton", "ha"} {
+		t.Run(mode, func(t *testing.T) { checkUpgradeBootstrapRolloutAndRestore(t, mode) })
+	}
+}
+
+func checkUpgradeBootstrapRolloutAndRestore(t *testing.T, mode string) {
+	t.Helper()
 	f := newFixture(t)
 	initial := upgradeSourceFixture()
 	next := initial
@@ -68,12 +77,18 @@ func TestUpgradeBootstrapRolloutBindsCompleteTupleAndRestores(t *testing.T) {
 	next.LegacyWritersStopped = true
 	f.target.UpgradeSources = map[string]UpgradeCustodySource{"initial": initial, "next": next}
 	f.target.InitialUpgradeSource = "initial"
+	if mode != "unenrolled" {
+		f.target.TopologyNodeIDs = []string{f.target.StableNodeID, "renamed"}
+	}
 	var err error
 	f.executor, err = NewKubernetes(f.client, f.target)
 	if err != nil {
 		t.Fatal(err)
 	}
 	before := f.deployment(t)
+	if mode == "ha" {
+		container(before, "server").Env = append(container(before, "server").Env, corev1.EnvVar{Name: string(HA), Value: "true"})
+	}
 	before.Spec.Template.Annotations[upgradeAliasAnnotation] = "initial"
 	before.Spec.Template.Annotations[upgradeProofAnnotation] = ""
 	container(before, "server").Env = append(container(before, "server").Env, initial.Environment()...)
@@ -83,10 +98,31 @@ func TestUpgradeBootstrapRolloutBindsCompleteTupleAndRestores(t *testing.T) {
 	}
 	f.client.ClearActions()
 	proof := &SourceProof{Alias: "next", SourceDigest: UpgradeSourceDigest(next), ProofDigest: strings.Repeat("b", 64)}
-	plan, err := f.executor.PrepareBootstrap(t.Context(), f.intent, nil, BootstrapChanges{Upgrade: proof})
+	var plan *Plan
+	if mode == "unenrolled" {
+		plan, err = f.executor.PrepareBootstrap(t.Context(), f.intent, nil, BootstrapChanges{Upgrade: proof})
+	} else {
+		installed := domain.SingletonTopology{HA: mode == "ha", NodeID: f.target.StableNodeID}
+		same := domain.SingletonTopologyChange{Before: installed, After: installed}
+		plan, err = f.executor.PrepareBootstrapWithTopology(t.Context(), f.intent, BootstrapChanges{Upgrade: proof}, same)
+		changed := same
+		changed.After.NodeID = "renamed"
+		if _, mixedErr := f.executor.PrepareBootstrapWithTopology(t.Context(), f.intent, BootstrapChanges{Upgrade: proof}, changed); mixedErr == nil {
+			t.Fatal("upgrade plan also changed topology")
+		}
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(plan.data.Delta.Environment) != 7 {
+		t.Fatal("upgrade correspondence emitted extra environment mutations")
+	}
+	originalProof := *proof
+	proof.RootEpoch = 99
+	if !f.executor.validPlan(plan.data) {
+		t.Fatal("prepared upgrade proof retained mutable caller authority")
+	}
+	*proof = originalProof
 	for _, action := range f.client.Actions() {
 		if action.GetVerb() != "get" {
 			t.Fatal("prepare mutated cluster")

@@ -187,10 +187,12 @@ spec:
             {{- if .Values.ha.enabled }}
             - name: HIKYO_HA
               value: "true"
+            {{- if not .Values.rollout.enabled }}
             - name: HIKYO_NODE_ID
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            {{- end }}
             {{- end }}
             - name: HIKYO_UPDATE_CHANNEL
               value: {{ .Values.updates.channel | quote }}

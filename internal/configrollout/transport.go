@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -54,16 +55,18 @@ type Enrollment struct {
 // decision. Sequence is a durable per-enrollment counter. A prepare response's
 // PlanDigest must be committed before signing submit.
 type Command struct {
-	EnrollmentID    string                      `json:"enrollment_id"`
-	Sequence        uint64                      `json:"sequence"`
-	Action          Action                      `json:"action"`
-	Intent          Intent                      `json:"intent"`
-	PlanDigest      string                      `json:"plan_digest,omitempty"`
-	Changes         []Change                    `json:"changes,omitempty"`
-	Bootstrap       *BootstrapChanges           `json:"bootstrap,omitempty"`
-	Acknowledgement *ApplicationAcknowledgement `json:"acknowledgement,omitempty"`
-	IssuedAt        time.Time                   `json:"issued_at"`
-	ExpiresAt       time.Time                   `json:"expires_at"`
+	EnrollmentID          string                          `json:"enrollment_id"`
+	Sequence              uint64                          `json:"sequence"`
+	Action                Action                          `json:"action"`
+	Intent                Intent                          `json:"intent"`
+	PlanDigest            string                          `json:"plan_digest,omitempty"`
+	Changes               []Change                        `json:"changes,omitempty"`
+	PreviousTemplateStamp string                          `json:"previous_template_stamp,omitempty"`
+	Topology              *domain.SingletonTopologyChange `json:"topology,omitempty"`
+	Bootstrap             *BootstrapChanges               `json:"bootstrap,omitempty"`
+	Acknowledgement       *ApplicationAcknowledgement     `json:"acknowledgement,omitempty"`
+	IssuedAt              time.Time                       `json:"issued_at"`
+	ExpiresAt             time.Time                       `json:"expires_at"`
 }
 
 type SignedCommand struct {
@@ -84,7 +87,7 @@ type Response struct {
 }
 
 func validEnrollment(e Enrollment) bool {
-	if !safeName(e.ID) || !safeName(e.OwnerInstanceID) || !safeName(e.Incarnation) || !safeName(e.Target.StableNodeID) || e.CommandSecretUID == "" || e.ResponseSecretUID == "" || e.JournalSecretUID == "" || e.LeaseUID == "" || e.Target.DeploymentUID == "" || len(validation.IsDNS1123Label(e.Target.Namespace)) != 0 {
+	if !safeName(e.ID) || !safeName(e.OwnerInstanceID) || !safeName(e.Incarnation) || !safeName(e.Target.StableNodeID) || !validTopologyEnrollment(e.Target) || e.CommandSecretUID == "" || e.ResponseSecretUID == "" || e.JournalSecretUID == "" || e.LeaseUID == "" || e.Target.DeploymentUID == "" || len(validation.IsDNS1123Label(e.Target.Namespace)) != 0 {
 		return false
 	}
 	seen := map[string]bool{}
@@ -110,9 +113,18 @@ func validCommand(c Command, e Enrollment) bool {
 	if c.EnrollmentID != e.ID || c.Sequence == 0 || !validIntent(c.Intent) || c.Intent.OwnerInstanceID != e.OwnerInstanceID || c.Intent.Incarnation != e.Incarnation || c.IssuedAt.IsZero() || !c.ExpiresAt.After(c.IssuedAt) || c.ExpiresAt.Sub(c.IssuedAt) > 10*time.Minute {
 		return false
 	}
+	if c.PreviousTemplateStamp != "" && !validDigest(c.PreviousTemplateStamp) {
+		return false
+	}
+	if !(&Kubernetes{target: e.Target}).validTopology(c.Topology) {
+		return false
+	}
+	if c.Topology != nil && (len(c.Changes) != 0 || (c.Bootstrap != nil && c.Topology.Before != c.Topology.After)) {
+		return false
+	}
 	switch c.Action {
 	case ActionPrepare:
-		return c.PlanDigest == "" && (len(c.Changes) > 0 || c.Bootstrap != nil) && len(c.Changes) <= 32 && c.Acknowledgement == nil && (&Kubernetes{target: e.Target}).validBootstrap(c.Bootstrap)
+		return c.PlanDigest == "" && (len(c.Changes) > 0 || c.Bootstrap != nil || c.Topology != nil) && len(c.Changes) <= 32 && c.Acknowledgement == nil && (&Kubernetes{target: e.Target}).validBootstrap(c.Bootstrap)
 	case ActionSubmit, ActionRestore:
 		return validDigest(c.PlanDigest) && len(c.Changes) == 0 && c.Bootstrap == nil && c.Acknowledgement == nil
 	case ActionObserve:

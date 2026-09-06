@@ -150,7 +150,25 @@ with tempfile.TemporaryDirectory(prefix="hikyo-rollout-chart-") as temporary:
         changed.update(change)
         settings.write_text(yaml.safe_dump(changed))
         run("helm", "template", release, str(chart), "--kube-version", "1.36.1", "-f", str(settings), allowed=False)
-    print("rollout chart: fixed names, isolated authority, private projections and stable singleton identity pass")
+    topology = copy.deepcopy(values)
+    topology["ha"] = {"enabled": True, "replicaCount": 1, "minAvailable": 1}
+    topology["rollout"]["topologyNodeIDs"] = [name + "-server", "replacement-server"]
+    topology_docs = render(topology)
+    topology_server = next(d for d in topology_docs if d["kind"] == "Deployment")["spec"]
+    assert topology_server["replicas"] == 1 and topology_server["strategy"]["type"] == "Recreate"
+    topology_env = topology_server["template"]["spec"]["containers"][0]["env"]
+    assert len([e for e in topology_env if e["name"] == "HIKYO_NODE_ID"]) == 1
+    assert next(e for e in topology_env if e["name"] == "HIKYO_NODE_ID")["value"] == name + "-server"
+    assert next(e for e in topology_env if e["name"] == "HIKYO_HA")["value"] == "true"
+    topology_enrollment = json.loads(next(d for d in topology_docs if d["kind"] == "ConfigMap" and d["metadata"]["name"] == executor + "-enrollment")["data"]["enrollment.json"])
+    assert topology_enrollment["target"]["topology_node_ids"] == topology["rollout"]["topologyNodeIDs"]
+    for bad in [["replacement-server"], [name + "-server", name + "-server"]]:
+        invalid = copy.deepcopy(topology)
+        invalid["rollout"]["topologyNodeIDs"] = bad
+        settings.write_text(yaml.safe_dump(invalid))
+        run("helm", "template", release, str(chart), "--kube-version", "1.36.1", "-f", str(settings), allowed=False)
+    render(values)
+    print("rollout chart: fixed names, isolated authority, private projections and enrolled singleton topology pass")
 
     template = one("Deployment")["spec"]["template"]
     assert template["metadata"]["annotations"][UPGRADE_SOURCE_ANNOTATION] == "current"
@@ -261,6 +279,12 @@ with tempfile.TemporaryDirectory(prefix="hikyo-rollout-chart-") as temporary:
     if not options.live_context:
         raise SystemExit(0)
 
+    # Exercise the intersection of topology and upgrade enrollment. A separate
+    # topology-specific rule must not conceal a generic managed-env rejection
+    # of the initial literal NodeID on even an unchanged/source-only PUT.
+    values["rollout"]["topologyNodeIDs"] = [name + "-server", "replacement-server"]
+    docs = render(values)
+
     kubectl = ["kubectl", "--context", options.live_context]
 
     def kube(*args, **kwargs):
@@ -365,6 +389,11 @@ printf 'same persistent custody object: %s = %s; device:inode %s; bidirectional 
             ("undeclared-root", lambda o: root_volume(o)["secret"].__setitem__("secretName", "foreign-root"), False),
             ("stale-custody", lambda o: o["metadata"]["annotations"].__setitem__("hikyo.dev/rollout-custody", "old-pod:0"), False),
             ("node-identity", lambda o: env(o, "HIKYO_NODE_ID").__setitem__("value", "other-node"), False),
+            ("enrolled-node-identity", lambda o: env(o, "HIKYO_NODE_ID").__setitem__("value", "replacement-server"), True),
+            ("missing-node-identity", lambda o: server_of(o)["env"].remove(env(o, "HIKYO_NODE_ID")), False),
+            ("node-secret-reference", lambda o: (env(o, "HIKYO_NODE_ID").pop("value"), env(o, "HIKYO_NODE_ID").update({"valueFrom": {"secretKeyRef": {"name": executor + "-config", "key": "HIKYO_NODE_ID"}}})), False),
+            ("singleton-ha", lambda o: server_of(o)["env"].append({"name": "HIKYO_HA", "value": "true"}), True),
+            ("ha-secret-reference", lambda o: server_of(o)["env"].append({"name": "HIKYO_HA", "valueFrom": {"secretKeyRef": {"name": executor + "-config", "key": "HIKYO_HA"}}}), False),
         ]
         def select_upgrade(obj, alias):
             source = values["rollout"]["upgradeSources"][alias]

@@ -40,6 +40,9 @@ func (s *SelfConfig) Capture(ctx context.Context) (*runtimeconfig.Bundle, error)
 		return nil, ErrSelfConfigUnavailable
 	}
 	if metadata.Managed {
+		if metadata.Topology != nil && (metadata.Topology.After.NodeID != s.NodeID || metadata.Topology.After.HA != s.HAMode || s.Deployment == nil || s.Deployment.Identity().TemplateStamp != metadata.TopologyStamp) {
+			return nil, ErrSelfConfigUnavailable
+		}
 		owner, incarnation, err := s.DB.RecoveryIdentity()
 		if err != nil || owner != metadata.OwnerInstanceID || incarnation != metadata.Incarnation || metadata.Suspended || metadata.DeploymentRestoring || active.owner != metadata.OwnerInstanceID || active.generation != metadata.Generation || active.incarnation != metadata.Incarnation {
 			return nil, ErrSelfConfigUnavailable
@@ -270,6 +273,14 @@ func (s *SelfConfig) ReconcileRuntime(ctx context.Context) error {
 				return err
 			}
 		}
+		metadata, err := s.DB.Coordination().CurrentSelfConfigGeneration(ctx)
+		if err != nil {
+			return err
+		}
+		if metadata.Topology != nil && (metadata.Topology.After.NodeID != s.NodeID || metadata.Topology.After.HA != s.HAMode || s.Deployment == nil || s.Deployment.Identity().TemplateStamp != metadata.TopologyStamp || metadata.DeploymentRestoring) {
+			s.active.Store(nil)
+			return ErrDeploymentSourcesPending
+		}
 		if err := s.activateInstallation(ctx, binding.DesiredSnapshotID, binding.Incarnation, bundle); err != nil {
 			s.active.Store(nil)
 			return errors.Join(err, s.recordRuntimeRefusal(ctx, binding, nodes, "activation_failed"))
@@ -439,6 +450,12 @@ func (s *SelfConfig) recordRuntimeRefusal(ctx context.Context, b store.SelfConfi
 }
 
 func validateSelfConfigParticipants(bundle *runtimeconfig.Bundle, nodes []store.SelfConfigNode) error {
+	if topology := bundle.BootstrapSources().Topology; topology.NodeID != "" {
+		if len(nodes) != 1 {
+			return domain.ErrConflict
+		}
+		return bundle.ValidateNodeMembership([]string{topology.NodeID})
+	}
 	if !bundle.HasNodeValues() {
 		return nil
 	}

@@ -11,7 +11,7 @@ import (
 // The request Secret is a protocol boundary too. A recomputed digest must not
 // turn its typed deltas into arbitrary environment or argument authority.
 func (k *Kubernetes) validPlan(p planData) bool {
-	if !validIntent(p.Intent) || !validDigest(p.BeforeMetadataDigest) || p.TargetDigest != k.targetDigest || p.Replicas < 1 || len(p.Changes) == 0 && p.Bootstrap == nil || len(p.Changes) > 32 || !k.validBootstrapDelta(p) {
+	if !validIntent(p.Intent) || !validDigest(p.BeforeMetadataDigest) || p.TargetDigest != k.targetDigest || p.Replicas < 1 || len(p.Changes) == 0 && p.Bootstrap == nil && p.Topology == nil || len(p.Changes) > 32 || !k.validBootstrapDelta(p) {
 		return false
 	}
 	after := cloneData(p.ConfigBefore)

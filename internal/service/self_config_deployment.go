@@ -61,6 +61,9 @@ func (s *SelfConfig) prepareDeployment(ctx context.Context, b store.SelfConfigBi
 	if err != nil {
 		return false, err
 	}
+	if previous.BootstrapSources().Topology.NodeID != "" && sources.Topology.NodeID == "" {
+		return false, domain.ErrInvalid
+	}
 	if sources == (config.ManagedBootstrapSources{}) {
 		if previous.BootstrapSources() != (config.ManagedBootstrapSources{}) {
 			return false, domain.ErrInvalid
@@ -71,7 +74,13 @@ func (s *SelfConfig) prepareDeployment(ctx context.Context, b store.SelfConfigBi
 		return false, configrollout.ErrUnsupported
 	}
 	if s.Deployment.VerifyInstalled(ctx, bundle) == nil {
-		return true, nil
+		metadata, err := s.DB.Coordination().CurrentSelfConfigGeneration(ctx)
+		if err != nil {
+			return false, err
+		}
+		if !metadata.TopologyRestoring {
+			return true, nil
+		}
 	}
 	var row store.SelfConfigRollout
 	var sequence int64

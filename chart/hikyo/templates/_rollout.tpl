@@ -11,7 +11,11 @@ namespace and rollout identity so equal release names can coexist. */}}
 
 {{- define "hikyo.rollout.validate" -}}
 {{- if .Values.rollout.enabled -}}
-{{- if or .Values.ha.enabled (ne (int .Values.replicaCount) 1) -}}{{- fail "enrolled config rollout requires one server replica and stable deployment-owned node identity; HA bootstrap rollout is not supported" -}}{{- end -}}
+{{- if or (ne (int .Values.replicaCount) 1) (and .Values.ha.enabled (or (empty .Values.rollout.topologyNodeIDs) (ne (int .Values.ha.replicaCount) 1))) -}}{{- fail "enrolled config rollout requires one server replica; singleton HA requires explicit topology identity enrollment" -}}{{- end -}}
+{{- if .Values.rollout.topologyNodeIDs -}}
+{{- $stable := printf "%s-server" (include "hikyo.fullname" .) -}}
+{{- if not (has $stable .Values.rollout.topologyNodeIDs) -}}{{- fail "rollout.topologyNodeIDs must include the installed stable server identity" -}}{{- end -}}
+{{- end -}}
 {{- if .Values.rollout.enrolled -}}
 {{- if not (semverCompare ">=1.36.0-0 <1.37.0-0" .Capabilities.KubeVersion.Version) -}}
 {{- fail "enrolled config rollout requires Kubernetes 1.36 for its closed field-shape admission contract" -}}
@@ -59,6 +63,7 @@ namespace and rollout identity so equal release names can coexist. */}}
 {{- define "hikyo.rollout.enrollment" -}}
 {{- $name := include "hikyo.rollout.name" . -}}
 {{- $target := dict "namespace" .Release.Namespace "deployment" (include "hikyo.fullname" .) "deployment_uid" .Values.rollout.deploymentUID "container" "server" "stable_node_id" (printf "%s-server" (include "hikyo.fullname" .)) "config_secret" (printf "%s-config" $name) "rollback_secret" (printf "%s-rollback" $name) "request_secret" (printf "%s-plan" $name) "receipt_secret" (printf "%s-receipt" $name) "sources" .Values.rollout.fileSources "database_sources" .Values.rollout.databaseSources "root_sources" .Values.rollout.rootSources "upgrade_sources" .Values.rollout.upgradeSources "initial_upgrade_source" .Values.rollout.initialUpgradeSource -}}
+{{- if .Values.rollout.topologyNodeIDs -}}{{- $_ := set $target "topology_node_ids" .Values.rollout.topologyNodeIDs -}}{{- end -}}
 {{- dict "id" .Values.rollout.enrollmentID "owner_instance_id" .Values.rollout.ownerInstanceID "incarnation" .Values.rollout.incarnation "target" $target "command_secret" (printf "%s-command" $name) "command_secret_uid" .Values.rollout.commandSecretUID "response_secret" (printf "%s-response" $name) "response_secret_uid" .Values.rollout.responseSecretUID "journal_secret" (printf "%s-journal" $name) "journal_secret_uid" .Values.rollout.journalSecretUID "lease_name" $name "lease_uid" .Values.rollout.leaseUID "executor_pod" (printf "%s-0" $name) | toJson -}}
 {{- end -}}
 

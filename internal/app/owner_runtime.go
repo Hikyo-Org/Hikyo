@@ -120,7 +120,11 @@ func (o *ownerRuntime) Prepare(ctx context.Context, bundle *runtimeconfig.Bundle
 	node := maps.Clone(o.seedNodeValues)
 	if bundle.HasNodeValues() {
 		var err error
-		node, err = bundle.NodeValues(o.selfConfig.NodeID)
+		nodeID := o.selfConfig.NodeID
+		if target := bundle.BootstrapSources().Topology; target.NodeID != "" {
+			nodeID = target.NodeID
+		}
+		node, err = bundle.NodeValues(nodeID)
 		if err != nil {
 			return nil, err
 		}

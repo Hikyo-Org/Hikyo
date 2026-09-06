@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -90,6 +91,7 @@ type Target struct {
 	UpgradeSources       map[string]UpgradeCustodySource `json:"upgrade_sources,omitempty"`
 	InitialUpgradeSource string                          `json:"initial_upgrade_source,omitempty"`
 	StableNodeID         string                          `json:"stable_node_id"`
+	TopologyNodeIDs      []string                        `json:"topology_node_ids,omitempty"`
 }
 
 // Intent is copied from the durably committed, exact-MFA SelfConfigJob.
@@ -144,19 +146,20 @@ type deploymentDelta struct {
 	SourceAliases []sourceAliasDelta `json:"source_aliases,omitempty"`
 }
 type planData struct {
-	Intent               Intent            `json:"intent"`
-	TargetDigest         string            `json:"target_digest"`
-	Resources            ResourceVersions  `json:"resources"`
-	Changes              []Change          `json:"changes"`
-	ConfigBefore         map[string][]byte `json:"config_before"`
-	ConfigAfter          map[string][]byte `json:"config_after"`
-	ConfigBeforeStamp    *string           `json:"config_before_stamp,omitempty"`
-	Delta                deploymentDelta   `json:"delta"`
-	BeforeMetadataDigest string            `json:"before_metadata_digest"`
-	BeforeSpecDigest     string            `json:"before_spec_digest"`
-	AfterSpecDigest      string            `json:"after_spec_digest"`
-	Replicas             int32             `json:"replicas"`
-	Bootstrap            *BootstrapChanges `json:"bootstrap,omitempty"`
+	Topology             *domain.SingletonTopologyChange `json:"topology,omitempty"`
+	Intent               Intent                          `json:"intent"`
+	TargetDigest         string                          `json:"target_digest"`
+	Resources            ResourceVersions                `json:"resources"`
+	Changes              []Change                        `json:"changes"`
+	ConfigBefore         map[string][]byte               `json:"config_before"`
+	ConfigAfter          map[string][]byte               `json:"config_after"`
+	ConfigBeforeStamp    *string                         `json:"config_before_stamp,omitempty"`
+	Delta                deploymentDelta                 `json:"delta"`
+	BeforeMetadataDigest string                          `json:"before_metadata_digest"`
+	BeforeSpecDigest     string                          `json:"before_spec_digest"`
+	AfterSpecDigest      string                          `json:"after_spec_digest"`
+	Replicas             int32                           `json:"replicas"`
+	Bootstrap            *BootstrapChanges               `json:"bootstrap,omitempty"`
 }
 
 // Plan is opaque to callers. Its digest binds the decision, target, prior
@@ -236,9 +239,10 @@ type Kubernetes struct {
 }
 
 func NewKubernetes(client kubernetes.Interface, target Target) (*Kubernetes, error) {
-	if client == nil || target.DeploymentUID == "" || !safeName(target.StableNodeID) || len(validation.IsDNS1123Label(target.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(target.Deployment)) != 0 || len(validation.IsDNS1123Label(target.Container)) != 0 {
+	if !validTopologyEnrollment(target) || client == nil || target.DeploymentUID == "" || !safeName(target.StableNodeID) || len(validation.IsDNS1123Label(target.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(target.Deployment)) != 0 || len(validation.IsDNS1123Label(target.Container)) != 0 {
 		return nil, ErrInvalid
 	}
+	target.TopologyNodeIDs = slices.Clone(target.TopologyNodeIDs)
 	names := []string{target.ConfigSecret, target.RollbackSecret, target.RequestSecret, target.ReceiptSecret}
 	seen := map[string]bool{}
 	for _, name := range names {
@@ -357,7 +361,7 @@ func (k *Kubernetes) get(ctx context.Context) (*appsv1.Deployment, map[string]*c
 	stable := false
 	for _, env := range container(d, k.target.Container).Env {
 		if env.Name == string(NodeID) {
-			if stable || env.Value != k.target.StableNodeID || env.ValueFrom != nil {
+			if stable || !k.allowedNodeID(env.Value) || env.ValueFrom != nil {
 				return nil, nil, ErrUnsupported
 			}
 			stable = true
@@ -392,11 +396,11 @@ func (k *Kubernetes) resources(d *appsv1.Deployment, s map[string]*corev1.Secret
 }
 
 func (k *Kubernetes) Prepare(ctx context.Context, intent Intent, changes []Change) (*Plan, error) {
-	return k.prepare(ctx, intent, changes, nil)
+	return k.prepare(ctx, intent, changes, nil, nil)
 }
 
-func (k *Kubernetes) prepare(ctx context.Context, intent Intent, changes []Change, bootstrap *BootstrapChanges) (*Plan, error) {
-	if !validIntent(intent) || len(changes) == 0 && bootstrap == nil || len(changes) > 32 {
+func (k *Kubernetes) prepare(ctx context.Context, intent Intent, changes []Change, bootstrap *BootstrapChanges, topology *domain.SingletonTopologyChange) (*Plan, error) {
+	if !validIntent(intent) || len(changes) == 0 && bootstrap == nil && topology == nil || len(changes) > 32 {
 		return nil, ErrInvalid
 	}
 	d, secrets, err := k.get(ctx)
@@ -419,6 +423,7 @@ func (k *Kubernetes) prepare(ctx context.Context, intent Intent, changes []Chang
 	}
 	p.Delta.BeforeStamp = annotation(d.Spec.Template.Annotations)
 	p.Bootstrap = bootstrap
+	p.Topology = topology
 	c := container(d, k.target.Container)
 	for index, change := range changes {
 		if index > 0 && changes[index-1].Variable == change.Variable {
@@ -451,6 +456,9 @@ func (k *Kubernetes) prepare(ctx context.Context, intent Intent, changes []Chang
 		}
 	}
 	if err := k.prepareBootstrapDelta(d, &p); err != nil {
+		return nil, err
+	}
+	if err := k.prepareTopologyDelta(d, &p); err != nil {
 		return nil, err
 	}
 	// Derive a stable stamp from the exact decision and changes, then include

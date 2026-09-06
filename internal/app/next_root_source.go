@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
@@ -52,7 +53,7 @@ func loadEnrolledRootSources(cfg *config.Config, directory string) (enrolledRoot
 	if nodeID == "" {
 		nodeID = "local"
 	}
-	if err != nil || cfg.HA || enrollment.Target.StableNodeID != nodeID {
+	if err != nil || cfg.HA && len(enrollment.Target.TopologyNodeIDs) == 0 || (enrollment.Target.StableNodeID != nodeID && !slices.Contains(enrollment.Target.TopologyNodeIDs, nodeID)) {
 		return enrolledRootSources{}, errNextRootEnrollment
 	}
 	return enrolledRootSources{enrollment: enrollment, directory: directory}, nil

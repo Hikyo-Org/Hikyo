@@ -110,7 +110,7 @@ func haReadinessProbe(coord *store.Coordination) func(context.Context) error {
 // failure), records this node in the live registry, and returns the
 // coordination surface plus the per-tick maintenance closure the scheduler
 // runs on every node. Any error is a boot refusal.
-func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *store.DB, sc store.Config, kr *crypto.Keyring) (*store.Coordination, func(context.Context), *haStatus, error) {
+func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *store.DB, sc store.Config, kr *crypto.Keyring, installedStamp string) (*store.Coordination, func(context.Context), *haStatus, error) {
 	// Defence in depth beyond config.Load: HA is Postgres-only. sqlite is
 	// single-writer and cannot back multi-node coordination, so refuse rather
 	// than degrade even when a caller constructs the config directly.
@@ -132,7 +132,16 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 		return nil, nil, nil, fmt.Errorf("ha: schema version: %w", err)
 	}
 
-	coord := db.Coordination()
+	coord := db.Coordination().ForSingletonProcess(cfg.NodeID, installedStamp)
+	metadata, err := coord.CurrentSelfConfigGeneration(ctx)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	assignmentPending := metadata.Topology != nil && (metadata.DeploymentRestoring || metadata.Topology.After.NodeID != cfg.NodeID || !metadata.Topology.After.HA || metadata.TopologyStamp != installedStamp)
+	// Keep the startup-bound coordinator even in a repair graph. Capture and
+	// coordination refuse its authority until a fresh repair permits this exact
+	// identity and template. Dropping it would permanently omit the scheduler
+	// lease and shared admission after a same-process source repair.
 	now, err := coord.Now(ctx)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("ha: datastore clock: %w", err)
@@ -148,13 +157,18 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 	// Atomic check-and-register under a datastore lock: a mixed-root-key
 	// installation is refused before this node serves, and two nodes starting
 	// at once cannot both slip past the check.
-	if err := coord.RegisterNodeChecked(ctx, node, now.Add(-nodeLivenessWindow)); err != nil {
-		return nil, nil, nil, fmt.Errorf("ha: refusing to serve: %w", err)
+	registered := !assignmentPending
+	if registered {
+		if err := coord.RegisterNodeChecked(ctx, node, now.Add(-nodeLivenessWindow)); err != nil {
+			return nil, nil, nil, fmt.Errorf("ha: refusing to serve: %w", err)
+		}
 	}
 	log.Info("multi-node HA enabled", "node", cfg.NodeID, "schema_version", schemaVersion, "binary_version", Version)
 
 	status := &haStatus{}
-	status.nodesSeen.Store(1)
+	if registered {
+		status.nodesSeen.Store(1)
+	}
 
 	onTick := func(tickCtx context.Context) {
 		// Use datastore time so every node's heartbeat and liveness windows
@@ -168,9 +182,18 @@ func configureHA(ctx context.Context, cfg *config.Config, log *slog.Logger, db *
 		// initial register, and this closure runs on the scheduler goroutine.
 		hb := node
 		hb.HeartbeatAt = now
-		if err := coord.UpsertNode(tickCtx, hb); err != nil {
-			log.Warn("ha: node heartbeat failed", "node", cfg.NodeID, "err", err)
+		if !registered {
+			// A repair boot deferred the mixed-key check. Its first permitted
+			// heartbeat must perform the same atomic admission as an ordinary boot.
+			err = coord.RegisterNodeChecked(tickCtx, hb, now.Add(-nodeLivenessWindow))
+		} else {
+			err = coord.UpsertNode(tickCtx, hb)
 		}
+		if err != nil {
+			log.Warn("ha: node heartbeat refused", "node", cfg.NodeID, "err", err)
+			return
+		}
+		registered = true
 		if err := coord.PruneAdmissionWindows(tickCtx, now.Add(-admissionWindowRetention)); err != nil {
 			log.Warn("ha: admission window sweep failed", "err", err)
 		}

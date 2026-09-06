@@ -56,6 +56,7 @@ const (
 // path itself is never the imported value. Other filesystem references remain
 // external until a dedicated content or deployment workflow owns them.
 type VariableDescriptor struct {
+	ManagedField            string             `json:"managedField,omitempty"`
 	Key                     string             `json:"key"`
 	Audience                VariableAudience   `json:"audience"`
 	Scope                   VariableScope      `json:"scope"`
@@ -99,7 +100,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_DYNAMIC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_DYNAMIC_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_ENV", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_EXTERNAL_ORIGIN", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
-	{Key: "HIKYO_HA", Audience: VariableServer, Scope: VariableOwner, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_HA", ManagedField: "HIKYO_BOOTSTRAP_SOURCES.topology.ha", Audience: VariableServer, Scope: VariableOwner, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_INSTANCE", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_LISTEN", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_MAIL_ADDR", Audience: VariableServer, Scope: VariableOwner, Activation: VariableComponent, Secret: false, Import: VariableValue},
@@ -114,7 +115,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_MCP_ALLOWED_ORIGINS", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_MCP_ENABLED", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_NEW_ROOT_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal, ReferencedContentSecret: true},
-	{Key: "HIKYO_NODE_ID", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_NODE_ID", ManagedField: "HIKYO_BOOTSTRAP_SOURCES.topology.node_id", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_OIDC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_OIDC_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_OPERATIONAL_LISTEN", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_ORG", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},

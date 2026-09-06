@@ -56,6 +56,9 @@ func PrepareForNode(values map[string]string, base *config.Config, nodeID string
 	if err != nil {
 		return nil, err
 	}
+	if topology := bundle.BootstrapSources().Topology; topology.NodeID != "" {
+		nodeID = topology.NodeID
+	}
 	node, err := bundle.NodeValues(nodeID)
 	if err != nil {
 		return nil, err

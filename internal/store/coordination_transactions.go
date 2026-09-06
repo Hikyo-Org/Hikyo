@@ -2,21 +2,23 @@ package store
 
 import (
 	"context"
-	"github.com/jackc/pgx/v5"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // Coordination SQL can only be reached through an admitted transaction. Nested
 // coordination helpers reuse it; no pool-backed autocommit writer remains.
 type coordinationTx struct{ db *coordinationQueries }
 type coordinationQueries struct {
-	engine          Engine
-	pool            *PostgresTransaction
-	sqWrite, sqRead *SQLiteTransaction
+	runtimeNodeID, runtimeTemplateStamp string
+	engine                              Engine
+	pool                                *PostgresTransaction
+	sqWrite, sqRead                     *SQLiteTransaction
 }
 
 func (c *Coordination) transaction(ctx context.Context, readonly bool, fn func(*coordinationTx) error) error {
-	q := &coordinationQueries{engine: c.db.engine}
+	q := &coordinationQueries{engine: c.db.engine, runtimeNodeID: c.runtimeNodeID, runtimeTemplateStamp: c.runtimeTemplateStamp}
 	if c.db.engine == EnginePostgres {
 		options := pgx.TxOptions{IsoLevel: pgx.ReadCommitted}
 		if readonly {

@@ -28,7 +28,7 @@ spec:
     - name: before
       expression: oldObject.spec.template.spec.containers.filter(c, c.name == 'server')[0]
     - name: managed
-      expression: "['HIKYO_ADMISSION_BUDGET_MIB','HIKYO_PG_POOL_MAX','HIKYO_LISTEN','HIKYO_OPERATIONAL_LISTEN','HIKYO_HA','HIKYO_BACKUP_DIR','HIKYO_ADAPTER_EGRESS_POLICY_FILE','HIKYO_DYNAMIC_EGRESS_POLICY_FILE','HIKYO_OIDC_EGRESS_POLICY_FILE','HIKYO_TLS_CERT_FILE','HIKYO_TLS_KEY_FILE','HIKYO_DB'{{ if .Values.rollout.upgradeSources }},'HIKYO_UPGRADE_BUNDLE','HIKYO_UPGRADE_STATE_DIR','HIKYO_UPGRADE_EVIDENCE','HIKYO_UPGRADE_BACKUP','HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY','HIKYO_UPGRADE_TARGET_MANIFEST','HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED'{{ end }}]"
+      expression: "['HIKYO_ADMISSION_BUDGET_MIB','HIKYO_PG_POOL_MAX','HIKYO_LISTEN','HIKYO_OPERATIONAL_LISTEN','HIKYO_HA'{{ if .Values.rollout.topologyNodeIDs }},'HIKYO_NODE_ID'{{ end }},'HIKYO_BACKUP_DIR','HIKYO_ADAPTER_EGRESS_POLICY_FILE','HIKYO_DYNAMIC_EGRESS_POLICY_FILE','HIKYO_OIDC_EGRESS_POLICY_FILE','HIKYO_TLS_CERT_FILE','HIKYO_TLS_KEY_FILE','HIKYO_DB'{{ if .Values.rollout.upgradeSources }},'HIKYO_UPGRADE_BUNDLE','HIKYO_UPGRADE_STATE_DIR','HIKYO_UPGRADE_EVIDENCE','HIKYO_UPGRADE_BACKUP','HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY','HIKYO_UPGRADE_TARGET_MANIFEST','HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED'{{ end }}]"
     - name: sourcePairs
       expression: >-
         [{{ printf "%s:HIKYO_DB" .Values.database.existingSecret | quote }}{{ range $alias, $source := .Values.rollout.databaseSources }},{{ printf "%s:%s" $source.name $source.key | quote }}{{ end }}]
@@ -87,6 +87,13 @@ spec:
         object.spec.?paused == oldObject.spec.?paused &&
         object.spec.?progressDeadlineSeconds == oldObject.spec.?progressDeadlineSeconds
       message: Deployment authority outside configuration fields is immutable.
+    {{- if .Values.rollout.topologyNodeIDs }}
+    - expression: >-
+        variables.server.env.filter(e, e.name == 'HIKYO_NODE_ID').size() == 1 &&
+        variables.server.env.filter(e, e.name == 'HIKYO_NODE_ID').all(e, has(e.value) && e.value in {{ .Values.rollout.topologyNodeIDs | toJson }} && !has(e.valueFrom)) &&
+        variables.server.env.filter(e, e.name == 'HIKYO_HA').all(e, has(e.value) && e.value in ['true','false'] && !has(e.valueFrom))
+      message: Topology changes require a literal enrolled singleton identity and HA mode.
+    {{- end }}
     - expression: >-
         object.spec.template.spec.?initContainers == oldObject.spec.template.spec.?initContainers &&
         object.spec.template.spec.?ephemeralContainers == oldObject.spec.template.spec.?ephemeralContainers &&
@@ -169,6 +176,9 @@ spec:
           (has(e.value) && ((e.name in ['HIKYO_ADMISSION_BUDGET_MIB','HIKYO_PG_POOL_MAX'] && e.value.matches('^[1-9][0-9]{0,9}$')) ||
           (e.name in ['HIKYO_LISTEN','HIKYO_OPERATIONAL_LISTEN'] && e.value.matches('^[0-9a-fA-F.\\[\\]:]+:[0-9]{1,5}$')) ||
           (e.name == 'HIKYO_HA' && e.value in ['true','false'])
+          {{- if .Values.rollout.topologyNodeIDs }}
+          || (e.name == 'HIKYO_NODE_ID' && e.value in {{ .Values.rollout.topologyNodeIDs | toJson }} && !has(e.valueFrom))
+          {{- end }}
           {{- range $key,$aliases := .Values.rollout.fileSources }}
           {{- range $alias,$path := $aliases }}
           || (e.name == {{ $key | quote }} && e.value == {{ $path | quote }})

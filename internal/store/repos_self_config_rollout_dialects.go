@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
+
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/jackc/pgx/v5"
-	"time"
 )
 
 func (r sqliteSelfConfigStorage) rollout(ctx context.Context, id string) (SelfConfigRollout, error) {
@@ -87,4 +88,18 @@ func (r pgSelfConfigStorage) currentTime(ctx context.Context) (time.Time, error)
 		return time.Time{}, err
 	}
 	return parseTime("self config clock", "observed_at", stamp)
+}
+
+func (r sqliteSelfConfigStorage) topology(ctx context.Context) (string, error) {
+	return r.q.GetLatestSelfConfigTopology(ctx)
+}
+func (r pgSelfConfigStorage) topology(ctx context.Context) (string, error) {
+	return r.q.GetLatestSelfConfigTopology(ctx)
+}
+
+func (r sqliteSelfConfigStorage) fenceTopologyLease(ctx context.Context, at time.Time) error {
+	return r.q.FenceSelfConfigTopologyLease(ctx, CanonTime(at).Format(timeFormat))
+}
+func (r pgSelfConfigStorage) fenceTopologyLease(ctx context.Context, at time.Time) error {
+	return r.q.FenceSelfConfigTopologyLease(ctx, pgTimestamp(at))
 }

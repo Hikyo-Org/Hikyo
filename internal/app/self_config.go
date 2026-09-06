@@ -20,7 +20,7 @@ func newSelfConfig(cfg *config.Config, db *store.DB, kr *crypto.Keyring, auth *s
 	if nodeID == "" {
 		nodeID = "local"
 	}
-	coordinator := &service.SelfConfig{DB: db, Keyring: kr, Auth: auth, NodeID: nodeID}
+	coordinator := &service.SelfConfig{DB: db, Keyring: kr, Auth: auth, NodeID: nodeID, HAMode: cfg.HA}
 	var once sync.Once
 	var node map[string]string
 	var seedErr error

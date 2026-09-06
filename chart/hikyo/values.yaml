@@ -138,6 +138,9 @@ operator:
 # Fixed-target self-configuration executor. First enable creates empty custody
 # objects; enroll with their UIDs after setup. No automatic UID discovery.
 rollout:
+  # Explicit stable singleton identities permitted for controlled HA/identity replacement.
+  # Include the installed <fullname>-server ID. Empty preserves fixed identity.
+  topologyNodeIDs: []
   enabled: false
   enrolled: false
   enrollmentID: ""

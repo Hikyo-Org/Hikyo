@@ -151,3 +151,15 @@ JOIN self_config_jobs j ON j.generation=b.generation
 JOIN self_config_rollouts r ON r.job_id=j.id AND r.incarnation=b.incarnation
 WHERE b.id=1 AND j.status IN ('applying','partial','applied','superseded')
 AND r.external_phase<>'applied';
+
+-- hikyo:instance-scoped
+-- name: GetLatestSelfConfigTopology :one
+SELECT r.command_json FROM self_config_rollouts r
+JOIN self_config_jobs j ON j.id=r.job_id
+JOIN self_config_binding b ON b.id=1 AND b.incarnation=r.incarnation
+WHERE j.generation<=b.generation AND j.status NOT IN ('preparing','aborted') AND jsonb_typeof(r.command_json::jsonb->'command'->'topology')='object'
+ORDER BY j.generation DESC LIMIT 1;
+
+-- hikyo:instance-scoped
+-- name: FenceSelfConfigTopologyLease :exec
+UPDATE singleton_leases SET fence_token=fence_token+1,expires_at=sqlc.arg(expires_at) WHERE name='scheduler';

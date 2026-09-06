@@ -70,6 +70,6 @@ func Catalogue() []Key {
 		keys = append(keys, key)
 	}
 	keys = append(keys, text(config.ManagedNodeOverridesKey, "Versioned per-node configuration, including TLS private-key contents. Each admitted node requires its own exact entry.", true))
-	keys = append(keys, text(config.ManagedBootstrapSourcesKey, "Installed database, root-key and upgrade-custody source aliases. Changes require a reviewed controlled rollout and fresh authentication.", false))
+	keys = append(keys, text(config.ManagedBootstrapSourcesKey, "Installed database, root-key and upgrade-custody source aliases and enrolled singleton topology (HA mode and node identity). Changes require a reviewed controlled rollout and fresh authentication.", false))
 	return keys
 }

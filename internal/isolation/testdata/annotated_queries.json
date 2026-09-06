@@ -517,6 +517,12 @@
   },
   {
     "engine": "postgres",
+    "name": "FenceSelfConfigTopologyLease",
+    "annotation": "instance-scoped",
+    "hash": "3f038edc925ca2586ef7ef2732d0a0f25f43f80946b2ba32266eb170e9b2b35e"
+  },
+  {
+    "engine": "postgres",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
     "hash": "f22fcf605ccefe1e4ee90340a474bb91be732a17eb1e45d64b7cd6f994c08cf3"
@@ -622,6 +628,12 @@
     "name": "GetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "c7b306eee3ac685784898bc2e65b0689770d9298de994b4ba77fdeb09ee609d0"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetLatestSelfConfigTopology",
+    "annotation": "instance-scoped",
+    "hash": "2135e12d46536b59fc2560d3d6f6f9d2e90387aca4a37e23f87992c1331cba56"
   },
   {
     "engine": "postgres",
@@ -2461,6 +2473,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "FenceSelfConfigTopologyLease",
+    "annotation": "instance-scoped",
+    "hash": "3f038edc925ca2586ef7ef2732d0a0f25f43f80946b2ba32266eb170e9b2b35e"
+  },
+  {
+    "engine": "sqlite",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
     "hash": "a2dc8f82948bab44902e2554f555f5d15a179f7f5acac627f9469b7e18ec6f63"
@@ -2566,6 +2584,12 @@
     "name": "GetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "c7b306eee3ac685784898bc2e65b0689770d9298de994b4ba77fdeb09ee609d0"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetLatestSelfConfigTopology",
+    "annotation": "instance-scoped",
+    "hash": "f6bb795ab6c2fc472a0b60402bc28201f479b8418f62341360203644ada50a8d"
   },
   {
     "engine": "sqlite",

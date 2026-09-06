@@ -30,6 +30,8 @@ type selfConfigStorage interface {
 	jobs(context.Context) ([]SelfConfigJob, error)
 	job(context.Context, string, bool) (SelfConfigJob, error)
 	nodes(context.Context) ([]SelfConfigNode, error)
+	topology(context.Context) (string, error)
+	fenceTopologyLease(context.Context, time.Time) error
 	insertBinding(context.Context, SelfConfigBinding) error
 	insertJob(context.Context, SelfConfigJob) error
 	updateJob(context.Context, SelfConfigJob, string) error
@@ -221,6 +223,24 @@ func (r selfConfigRepo) BeginJob(ctx context.Context, p authz.Proof, want SelfCo
 	if err != nil {
 		return SelfConfigJob{}, err
 	}
+	if raw, topologyErr := r.q.topology(ctx); topologyErr == nil {
+		topology, action, parseErr := rolloutTopology(raw)
+		if parseErr != nil {
+			return SelfConfigJob{}, parseErr
+		}
+		if topology != nil {
+			assigned := topology.After
+			if action == "restore" {
+				assigned = topology.Before
+			}
+			if want.LocalNodeID != assigned.NodeID {
+				return SelfConfigJob{}, domain.ErrConflict
+			}
+			participants = []string{assigned.NodeID}
+		}
+	} else if !isNoRows(topologyErr) && !errors.Is(topologyErr, domain.ErrNotFound) {
+		return SelfConfigJob{}, topologyErr
+	}
 	if len(participants) == 0 {
 		if want.LocalNodeID == "" {
 			return SelfConfigJob{}, domain.ErrInvalid
@@ -290,6 +310,9 @@ func (r selfConfigRepo) CommitJob(ctx context.Context, p authz.Proof, id string,
 		}
 	}
 	if err := r.q.retain(ctx, "desired", j.SnapshotID); err != nil {
+		return SelfConfigBinding{}, err
+	}
+	if err := r.commitTopologyParticipant(ctx, j, nodes, at); err != nil {
 		return SelfConfigBinding{}, err
 	}
 	if err := r.q.commit(ctx, j, at); err != nil {
@@ -381,6 +404,20 @@ func (r selfConfigRepo) PutNode(ctx context.Context, p authz.Proof, n SelfConfig
 		admitted, err := r.q.participants(ctx, n.UpdatedAt.Add(-30*time.Second))
 		if err != nil {
 			return err
+		}
+		if raw, topologyErr := r.q.topology(ctx); topologyErr == nil {
+			topology, action, err := rolloutTopology(raw)
+			if err != nil {
+				return err
+			}
+			if topology != nil {
+				if (action == "restore" && topology.Before != topology.After) || n.NodeID != topology.After.NodeID {
+					return domain.ErrConflict
+				}
+				admitted = []string{topology.After.NodeID}
+			}
+		} else if !isNoRows(topologyErr) && !errors.Is(topologyErr, domain.ErrNotFound) {
+			return topologyErr
 		}
 		if len(admitted) > 0 && !slices.Contains(admitted, n.NodeID) {
 			return domain.ErrConflict
