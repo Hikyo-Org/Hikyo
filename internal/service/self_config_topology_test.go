@@ -33,7 +33,8 @@ func (p *topologyDeploymentProbe) Identity() DeploymentIdentity {
 	return id
 }
 func (p *topologyDeploymentProbe) PrepareCommand(_ context.Context, intent configrollout.Intent, b *runtimeconfig.Bundle, sequence uint64) (configrollout.SignedCommand, error) {
-	target := b.BootstrapSources().Topology
+	configured := b.BootstrapSources().Topology
+	target := domain.SingletonTopology{HA: configured.HA, NodeID: configured.NodeID}
 	if b.BootstrapSources().DatabaseSource != p.source {
 		command := configrollout.Command{EnrollmentID: p.Identity().EnrollmentID, Sequence: sequence, Action: configrollout.ActionPrepare, Intent: intent, PreviousTemplateStamp: p.stamp, Bootstrap: &configrollout.BootstrapChanges{Database: &configrollout.SourceProof{Alias: b.BootstrapSources().DatabaseSource}}}
 		if p.initialCorrespondence {
@@ -50,7 +51,8 @@ func (p *topologyDeploymentProbe) DecisionCommand(ctx context.Context, c configr
 	return next, err
 }
 func (p *topologyDeploymentProbe) VerifyInstalled(_ context.Context, b *runtimeconfig.Bundle) error {
-	target := b.BootstrapSources().Topology
+	configured := b.BootstrapSources().Topology
+	target := domain.SingletonTopology{HA: configured.HA, NodeID: configured.NodeID}
 	if (target.NodeID == "" || target == p.actual) && b.BootstrapSources().DatabaseSource == p.source {
 		return nil
 	}
@@ -93,7 +95,7 @@ func publishTopology(t *testing.T, s *SelfConfig, local Actor, target domain.Sin
 		t.Fatal(err)
 	}
 	scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
-	sources, err := json.Marshal(config.ManagedBootstrapSources{Version: 1, Topology: target})
+	sources, err := json.Marshal(config.ManagedBootstrapSources{Version: 1, Topology: config.ManagedSingletonTopology{HA: target.HA, NodeID: target.NodeID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +314,7 @@ func TestSelfConfigTopologySurvivesSourceRestoreAndOrdinaryRepair(t *testing.T) 
 					t.Fatal(err)
 				}
 				scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
-				sources, err := json.Marshal(config.ManagedBootstrapSources{Version: 1, Topology: target, DatabaseSource: "next"})
+				sources, err := json.Marshal(config.ManagedBootstrapSources{Version: 1, Topology: config.ManagedSingletonTopology{HA: target.HA, NodeID: target.NodeID}, DatabaseSource: "next"})
 				if err != nil {
 					t.Fatal(err)
 				}

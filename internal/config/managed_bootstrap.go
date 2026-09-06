@@ -3,16 +3,21 @@ package config
 import (
 	"encoding/json"
 	"errors"
-
-	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
 const ManagedBootstrapSourcesKey = "HIKYO_BOOTSTRAP_SOURCES"
 
+// ManagedSingletonTopology is the configured process identity. The app converts
+// this wire value into the domain correspondence used by controlled rollouts.
+type ManagedSingletonTopology struct {
+	HA     bool   `json:"ha"`
+	NodeID string `json:"node_id"`
+}
+
 // ManagedBootstrapSources selects installation-owned aliases. It cannot carry
 // a locator, path, credential or root key. Enrollment determines their custody.
 type ManagedBootstrapSources struct {
-	Topology       domain.SingletonTopology `json:"topology,omitempty"`
+	Topology       ManagedSingletonTopology `json:"topology,omitempty"`
 	Version        int                      `json:"version"`
 	DatabaseSource string                   `json:"database_source,omitempty"`
 	RootSource     string                   `json:"root_source,omitempty"`
@@ -36,7 +41,7 @@ func ParseManagedBootstrapSources(raw string) (ManagedBootstrapSources, error) {
 			}
 		case "topology":
 			var topologyFields map[string]json.RawMessage
-			var topology domain.SingletonTopology
+			var topology ManagedSingletonTopology
 			if json.Unmarshal(value, &topologyFields) != nil || len(topologyFields) != 2 || topologyFields["ha"] == nil || topologyFields["node_id"] == nil || json.Unmarshal(value, &topology) != nil || !ValidManagedNodeID(topology.NodeID) || (string(topologyFields["ha"]) != "true" && string(topologyFields["ha"]) != "false") {
 				return ManagedBootstrapSources{}, refusal
 			}
@@ -62,7 +67,7 @@ func (s ManagedBootstrapSources) MarshalJSON() ([]byte, error) {
 		Version        int                       `json:"version"`
 		DatabaseSource string                    `json:"database_source,omitempty"`
 		RootSource     string                    `json:"root_source,omitempty"`
-		Topology       *domain.SingletonTopology `json:"topology,omitempty"`
+		Topology       *ManagedSingletonTopology `json:"topology,omitempty"`
 	}
 	out := sources{UpgradeSource: s.UpgradeSource, Version: s.Version, DatabaseSource: s.DatabaseSource, RootSource: s.RootSource}
 	if s.Topology.NodeID != "" {

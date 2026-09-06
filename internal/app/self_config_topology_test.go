@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -18,7 +19,7 @@ func TestBootstrapSingletonTopologyRequiresActualPrerequisites(t *testing.T) {
 			d.cfg.NodeID = "local"
 			d.cfg.RootKeyFile = devRootKeyPath(d.cfg)
 			d.enrollment.Target.TopologyNodeIDs = []string{"local", "renamed"}
-			d.installed.Topology = domain.SingletonTopology{NodeID: "local"}
+			d.installed.Topology = config.ManagedSingletonTopology{NodeID: "local"}
 			selected := d.installed
 			selected.Topology.HA = true
 			prepared, err := d.PrepareCommand(t.Context(), deploymentIntent(d), deploymentBundle(t, selected), 1)
@@ -31,7 +32,7 @@ func TestBootstrapSingletonTopologyRequiresActualPrerequisites(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if prepared.Command.Topology == nil || prepared.Command.Topology.After != selected.Topology {
+			if prepared.Command.Topology == nil || prepared.Command.Topology.After != (domain.SingletonTopology{HA: true, NodeID: "local"}) {
 				t.Fatal("missing signed mode correspondence")
 			}
 			submitted, err := d.DecisionCommand(t.Context(), prepared, configrollout.ActionSubmit, 2, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil)
@@ -135,14 +136,14 @@ func TestBootstrapInitialHASourceCarriesUnchangedCorrespondenceAndReproof(t *tes
 	d, _, _ := deploymentAdapterFixture(t, true)
 	d.cfg.HA, d.cfg.NodeID, d.cfg.RootKeyFile = true, "local", devRootKeyPath(d.cfg)
 	d.enrollment.Target.TopologyNodeIDs = []string{"local", "renamed"}
-	d.installed.Topology = domain.SingletonTopology{HA: true, NodeID: "local"}
+	d.installed.Topology = config.ManagedSingletonTopology{HA: true, NodeID: "local"}
 	selected := d.installed
 	selected.DatabaseSource = "database-next"
 	prepared, err := d.PrepareCommand(t.Context(), deploymentIntent(d), deploymentBundle(t, selected), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if prepared.Command.Topology == nil || prepared.Command.Topology.Before != d.installed.Topology || prepared.Command.Topology.After != d.installed.Topology || prepared.Command.Bootstrap == nil {
+	if prepared.Command.Topology == nil || prepared.Command.Topology.Before != (domain.SingletonTopology{HA: true, NodeID: "local"}) || prepared.Command.Topology.After != (domain.SingletonTopology{HA: true, NodeID: "local"}) || prepared.Command.Bootstrap == nil {
 		t.Fatal("initial source plan omitted unchanged membership correspondence")
 	}
 	submitted, err := d.DecisionCommand(t.Context(), prepared, configrollout.ActionSubmit, 2, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", nil)

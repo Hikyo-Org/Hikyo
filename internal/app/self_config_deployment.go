@@ -243,7 +243,7 @@ func (d *bootstrapDeployment) PrepareCommand(ctx context.Context, intent configr
 		return configrollout.SignedCommand{}, configrollout.ErrUnsupported
 	}
 	if changes.Database == nil && changes.Root == nil && changes.Upgrade == nil {
-		change := domain.SingletonTopologyChange{Before: d.installed.Topology, After: selected.Topology}
+		change := domain.SingletonTopologyChange{Before: configurationTopology(d.installed.Topology), After: configurationTopology(selected.Topology)}
 		if err := d.validateTopology(ctx, change); err != nil {
 			return configrollout.SignedCommand{}, err
 		}
@@ -258,7 +258,7 @@ func (d *bootstrapDeployment) PrepareCommand(ctx context.Context, intent configr
 		if metadata.Topology == nil {
 			// The first source rollout on an already-enrolled singleton needs
 			// durable membership/stamp fencing even if its mode never changed.
-			correspondence := domain.SingletonTopologyChange{Before: d.installed.Topology, After: d.installed.Topology}
+			correspondence := domain.SingletonTopologyChange{Before: configurationTopology(d.installed.Topology), After: configurationTopology(d.installed.Topology)}
 			if err := d.validateTopology(ctx, correspondence); err != nil {
 				return configrollout.SignedCommand{}, err
 			}
@@ -597,7 +597,7 @@ func (d *bootstrapDeployment) readSelection() (config.ManagedBootstrapSources, s
 	}
 	selected := config.ManagedBootstrapSources{UpgradeSource: values["upgrade-alias"], DatabaseSource: values["database-alias"], RootSource: values["root-alias"]}
 	if len(d.enrollment.Target.TopologyNodeIDs) > 0 {
-		selected.Topology = domain.SingletonTopology{HA: d.cfg.HA, NodeID: d.cfg.NodeID}
+		selected.Topology = config.ManagedSingletonTopology{HA: d.cfg.HA, NodeID: d.cfg.NodeID}
 	}
 	if selected.DatabaseSource != "" || selected.RootSource != "" || selected.Topology.NodeID != "" || selected.UpgradeSource != "" {
 		selected.Version = 1
@@ -665,11 +665,15 @@ func readDeploymentFile(path string, private bool) ([]byte, error) {
 	return raw, nil
 }
 
+func configurationTopology(value config.ManagedSingletonTopology) domain.SingletonTopology {
+	return domain.SingletonTopology{HA: value.HA, NodeID: value.NodeID}
+}
+
 func (d *bootstrapDeployment) validateTopology(ctx context.Context, change domain.SingletonTopologyChange) error {
 	if err := d.verifySelections(ctx, d.installed); err != nil {
 		return err
 	}
-	if len(d.enrollment.Target.TopologyNodeIDs) == 0 || change.Before != d.installed.Topology || !slices.Contains(d.enrollment.Target.TopologyNodeIDs, change.After.NodeID) {
+	if len(d.enrollment.Target.TopologyNodeIDs) == 0 || change.Before != configurationTopology(d.installed.Topology) || !slices.Contains(d.enrollment.Target.TopologyNodeIDs, change.After.NodeID) {
 		return configrollout.ErrUnsupported
 	}
 	// Mode transitions require the already-installed shared PostgreSQL and key
