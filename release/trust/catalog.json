@@ -1,9 +1,12 @@
 {
   "schema": "hikyo.dev/upgrade-trust/v1",
-  "sequence": 1,
+  "sequence": 2,
   "stable_metadata_sha256": "cc7470eb6d2aac727bdaff9f5bb30c5c1fbbbaa3de9d2e8a0b5a9bb77a4c8d09",
   "nightly_policies": [
     "afaeb19fc0299f700234a74aa0817f77ce0833853b327a9d9d9d126d25d5b04f"
   ],
-  "bridges": []
+  "bridges": [
+    "afb19f55f6e8fc47f7946653b5c9ec558cb4d5215c52edf43653e59fd6920b63",
+    "e0a262775b4d9dfccbc81de2d97879b6102f00d7fc4f5a16a835f342d3d65705"
+  ]
 }
