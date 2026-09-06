@@ -1,10 +1,10 @@
 # Complete Hikyo configuration and remote Apply
 
-Status: selected implementation design, 2026-09-06. **The catalogue expansion, application-generation replacement and deployment integration described here are not implemented or verified.** This document does not claim deployment support, merge approval or production changes.
+Status: selected implementation design, 2026-09-06. **Implementation is in progress. Local tests now cover the 26-key owner catalogue and application-generation replacement. Node overlays and deployment integration remain unfinished.** This document does not claim deployment support, merge approval or production changes.
 
 ## Authority and delivery boundary
 
-The user revised D11: “every variable, with ability to remote apply. But only instance admin with 2fa auth (passkey, totp) can do it”. This supersedes the earlier nine-key scope. The user previously approved applying from Hikyo without restarting the container, separate projects for independent remotes, configuration sharing only within HA, and delegated subsequent recommendations.
+The user revised D11: “every variable, with ability to remote apply. But only instance admin with 2fa auth (passkey, totp) can do it”. This supersedes the earlier nine-key scope. The user previously approved applying from Hikyo without restarting the container, separate projects for independent remotes, configuration sharing only within HA, and delegated subsequent recommendations. The user subsequently explicitly approved controlled bootstrap rollouts when required by startup-injected settings, while ordinary settings reload live.
 
 Selected recommendation: cover the complete server configuration surface, retain one explicit authority per setting, and add a narrow managed deployment integration for settings whose durable authority lives outside the running application. Bootstrap transitions are part of completion, not exclusions hidden behind a read-only inventory. Unsupported or unconnected deployment integrations must produce an explicit unavailable operation, never a successful Apply.
 
@@ -51,7 +51,7 @@ Canonical names for new content-based TLS and egress settings must be fixed in t
 
 Extract application graph construction from resource acquisition and serving. Keep an app-owned supervisor responsible for the datastore/keyring identity, configuration coordinator, listener ownership and recovery control. A generation owns immutable configuration, request handlers, outbound clients and worker contexts. No global `os.Setenv` mutation is an activation mechanism.
 
-Proposed seam, not an existing API:
+Implemented lifecycle seam, covered by both-engine installer tests:
 
 ```go
 type PreparedActivation interface {
@@ -82,7 +82,7 @@ Hikyo cannot persist new root sources or DB locators across replacement when Kub
 | Kubernetes managed resources | Narrow RBAC over declared workload/bootstrap resources; source-version CAS, staged resource creation, Secret/custody integration, safe delivery to nodes, replacement-pod observation and retained recovery material | Required design; no implemented Kubernetes provider claimed |
 | GitOps-managed Kubernetes | Change the canonical GitOps source through its authorized workflow and observe controller reconciliation; never rely on a live patch that reconciliation will undo | Required design; no implemented GitOps provider claimed |
 
-Active in-process configuration changes should not restart containers. Some immutable Kubernetes delivery mechanisms require pod replacement to receive changed external inputs. The provider must report that requirement before an apply plan is committed. A target cannot satisfy the complete no-container-restart contract until its supported bootstrap delivery mechanism makes the new source available to the running supervisor and persists it for replacement pods. Do not silently weaken that contract or label a rollout an in-process reload.
+Active in-process configuration changes should not restart containers. Some immutable Kubernetes delivery mechanisms require pod replacement to receive changed external inputs. The provider must report that requirement before an apply plan is committed. The user explicitly approved that controlled rollout exception for bootstrap settings. Show the rollout impact before exact MFA authorization, persist the desired external source, observe replacement pods and report actual convergence. Ordinary setting activation must remain in-process. Never label a pod rollout an in-process reload.
 
 Initial provider enrollment, resource authority and credential custody must be implemented and validated explicitly. Delegated product-design recommendations are not evidence that a provider is installed or that a deployment grants access. No current deployment credentials, endpoint, resource names or permissions are assumed by this design.
 

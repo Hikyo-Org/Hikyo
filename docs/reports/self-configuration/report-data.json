@@ -8,7 +8,8 @@
       "Apply from Hikyo UI without restarting the container.",
       "Require instance-admin access for system configuration changes.",
       "Independent remote instances use separate configuration projects; only HA replicas of the same logical instance share configuration.",
-      "D11: every Hikyo variable, with remote Apply; only the target instance administrator with passkey or TOTP authentication may apply it."
+      "D11: every Hikyo variable, with remote Apply; only the target instance administrator with passkey or TOTP authentication may apply it.",
+      "Allow controlled bootstrap rollouts when startup inputs require them; ordinary settings reload live."
     ],
     "delegation": "I trust your instincts, assume I agree with the coming recommendations.",
     "scope": "Remaining decisions selected under user-delegated authority. These are design decisions, not individual user answers or shipped behavior."
@@ -1225,7 +1226,7 @@
       ]
     }
   ],
-  "revisionNote": "The user replaced the original nine-key D11 scope with every Hikyo variable and remote Apply, restricted to target-instance administrators using passkey or TOTP. Existing PR #686 and its green checks prove the earlier nine-key implementation only. The expanded catalogue, application lifecycle and bootstrap transition work are not yet implemented or verified. Merge and production deployment have not occurred.",
+  "revisionNote": "D11 now covers every supported server variable and remote Apply, restricted to target-instance administrators using passkey or TOTP. Controlled bootstrap rollouts are explicitly approved; ordinary settings reload live. Local validation now covers a 26-key runtime catalogue and application generation replacement. The approved bootstrap executor and remaining node-specific settings are still under implementation. PR #686 remains a draft. Its green pushed checks cover the preceding implementation, not these uncommitted extensions. Merge and production deployment have not occurred.",
   "topology": {
     "heading": "One root view. One project per instance.",
     "summary": "Independent remotes own independent configuration. Only HA replicas of one logical instance share a project and applied revision.",
@@ -1280,7 +1281,7 @@
       "Independent standards and spec reviews are clean after three fixes. Full SQLite/PostgreSQL isolation, core checks with failed-package reruns, race suites, Go vet, 919 web tests, 20 SDK tests and the 44-page docs build pass."
     ]
   ],
-  "pendingClarification": {
+  "bootstrapRolloutDecision": {
     "question": "May bootstrap Apply perform a controlled rollout when the deployment cannot deliver the new source to a running container?",
     "options": [
       [
@@ -1294,6 +1295,7 @@
     ],
     "recommendation": "Allow controlled bootstrap rollouts when required, with explicit impact shown before the exact MFA-authorized Apply.",
     "reason": "The earlier no-container-restart instruction and the expanded all-variable scope conflict on immutable startup inputs. The current Helm deployment injects the database locator through a Secret-backed environment variable and stages the root key at pod startup.",
-    "status": "Awaiting user clarification; no rollout exception has been assumed."
+    "status": "Explicitly approved by the user: allow controlled bootstrap rollouts. Ordinary settings continue to reload live.",
+    "approved": true
   }
 }
