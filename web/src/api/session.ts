@@ -20,7 +20,7 @@ import { useAuth } from '../app/AuthProvider.tsx';
  *
  * Only a 401 is a credential refusal. Presenting a network outage, a 500 or a
  * schema violation as "wrong password" sends the human to reset a credential
- * that was never the problem — and hides a server regression behind the one
+ * that was never the problem, and hides a server regression behind the one
  * message nobody investigates.
  */
 export function loginFailureText(error: unknown): string {
@@ -50,7 +50,7 @@ const orgsKey = ['orgs'] as const;
  * name.
  *
  * Deliberately NOT `listOrgs`. That one enumerates every org on the instance
- * under `instance-config`, which is MFA-mandatory — so a password-only session
+ * under `instance-config`, which is MFA-mandatory, so a password-only session
  * was refused and the rail showed an empty shell with a "you need a second
  * factor" notice. That notice was the UI apologising for asking the wrong
  * question: navigation is not operator enumeration, and a member's own orgs
@@ -58,7 +58,7 @@ const orgsKey = ['orgs'] as const;
  */
 export function useOrgs(enabled: boolean): UseQueryResult<MyOrgList> {
   // Transport-aware so the workspace project browser (#71) reads the REMOTE's
-  // "my orgs" — the human's own grants over there — while the local nav rail,
+  // "my orgs", the human's own grants over there, while the local nav rail,
   // rendered outside any workspace provider, still reads this instance's.
   const transport = useTransport();
   return useQuery({
@@ -71,7 +71,7 @@ export function useOrgs(enabled: boolean): UseQueryResult<MyOrgList> {
 /**
  * useLogin asks for a BROWSER artifact explicitly. The server then delivers
  * the session token only on the HttpOnly cookie and its synchronizer token on
- * the readable companion — nothing replayable lands in JavaScript's hands.
+ * the readable companion, nothing replayable lands in JavaScript's hands.
  * The parsed response lets the root auth owner bind its cache epoch to the
  * returned session id without another request.
  */
@@ -81,7 +81,7 @@ export function useLogin() {
     onMutate: auth.captureTransition,
     mutationFn: async (input: { username: string; password: string }) => {
       // Parsed, not discarded. The session itself arrives on cookies, but the
-      // response body is still contract-bearing — a server that answered a
+      // response body is still contract-bearing, a server that answered a
       // shape the document does not describe must fail here, naming the
       // member, rather than being ignored because the caller happened not to
       // need it.

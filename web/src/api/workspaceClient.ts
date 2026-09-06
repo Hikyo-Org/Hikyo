@@ -12,7 +12,7 @@ import {
  * workspace is, and is not).
  *
  * The shell renders a remote's data with its OWN components against the
- * remote's ordinary `/api/v1` — the same generated SDK the shell uses on
+ * remote's ordinary `/api/v1`, the same generated SDK the shell uses on
  * itself, pointed at another origin. That redirection is this file: a second
  * hey-api client, one per remote origin, that the api-wrapper hooks pass as
  * `options.client` so the exact same `listValues`/`setValue`/`revealValue`
@@ -21,14 +21,14 @@ import {
  * It shares NOTHING with the same-origin singleton in `client.ts`, and the
  * differences are load-bearing, not stylistic:
  *
- *   - `credentials: 'omit'` — the workspace bearer rides an `Authorization`
+ *   - `credentials: 'omit'`, the workspace bearer rides an `Authorization`
  *     header precisely so cookies never cross the origin. Omit is what keeps
  *     the remote's CORS out of credentials mode and its CSRF posture untouched.
- *   - NO synchronizer-token interceptor — that token is a cookie-session
+ *   - NO synchronizer-token interceptor, that token is a cookie-session
  *     defence and there is no cookie here; echoing this instance's CSRF token
  *     to a foreign server would leak it for nothing.
  *   - the bearer is read from the LIVE store at request time, never captured at
- *     client creation — a reconnect (or a step-up, which rotates the bearer in
+ *     client creation, a reconnect (or a step-up, which rotates the bearer in
  *     place) must be picked up by the very next call, not stranded behind a
  *     value frozen when the client was built.
  */
@@ -36,7 +36,7 @@ import {
 /**
  * createWorkspaceClient builds the origin-scoped transport for one remote.
  *
- * `origin` is a bare `https://host[:port]` — the same canonical origin the
+ * `origin` is a bare `https://host[:port]`, the same canonical origin the
  * bearer is stored under. Every call this client makes appends the contract's
  * own path to it; the origin itself is never taken from anything a foreign
  * server said.
@@ -61,7 +61,7 @@ export function createWorkspaceClient(origin: string): Client {
       // FAIL CLOSED. No bearer means no workspace: rather than let a call go
       // out unauthenticated (or, worse, pick up an ambient credential), refuse
       // it here. The provider renders the reconnect state whenever the bearer
-      // is gone, so in practice a live view never reaches this — but a race
+      // is gone, so in practice a live view never reaches this, but a race
       // between a drop and an in-flight render must not leak an anonymous
       // request to a foreign origin.
       throw new WorkspaceError(
@@ -75,10 +75,10 @@ export function createWorkspaceClient(origin: string): Client {
 
   client.interceptors.response.use((response, request) => {
     // ONLY a 401 kills the session. A 401 is what every death of the workspace
-    // session answers — a revoked or expired bearer, and the origin-binding
+    // session answers, a revoked or expired bearer, and the origin-binding
     // mismatch the chokepoint enforces (session.go returns ErrUnauthenticated,
     // never a 403). A 403 is the opposite: an AUTHENTICATED human who lacks the
-    // capability for THIS operation — no `publish` on this project, say. That is
+    // capability for THIS operation, no `publish` on this project, say. That is
     // an ordinary authorization denial the surface must render as such; dropping
     // the whole workspace on it would replace a real "you can't publish here"
     // with a spurious reconnect and disconnect every other surface too. (A
@@ -87,9 +87,9 @@ export function createWorkspaceClient(origin: string): Client {
     if (response.status === 401) {
       const session = sentUnder.get(request);
       if (session !== undefined) {
-        // The remote has stopped honouring this bearer. Drop it now — the
+        // The remote has stopped honouring this bearer. Drop it now, the
         // kill switch bites at the next request the ADR promises, and this is
-        // that request — so the shell shows "reconnect" without waiting for
+        // that request, so the shell shows "reconnect" without waiting for
         // the liveness poll to notice.
         dropWorkspaceSession(session);
       }

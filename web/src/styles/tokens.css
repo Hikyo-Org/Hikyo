@@ -15,7 +15,7 @@
 :root {
   color-scheme: dark light;
 
-  /* Colour — OKLCH throughout, tinted neutrals plus one teal accent. */
+  /* Colour, OKLCH throughout, tinted neutrals plus one teal accent. */
   --bg: oklch(0.19 0.012 220);
   --bg-raise: oklch(0.23 0.014 220);
   --bg-panel: oklch(0.225 0.014 220);
@@ -28,6 +28,9 @@
   --tx-faint: oklch(0.71 0.012 215);
   --accent: oklch(0.82 0.09 195);
   --on-accent: oklch(0.2 0.02 220);
+  /* Text on an identity-coloured surface: the same ink in both themes, because
+     the hue behind it is the user's, not the theme's. */
+  --tx-on-accent: oklch(0.2 0.02 220);
   --danger: oklch(0.72 0.13 25);
   --changed: oklch(0.78 0.07 250);
 
@@ -36,9 +39,10 @@
      only per-theme part, because a 14% wash that reads correctly on a dark
      surface is too heavy on paper. */
   --accent-soft: color-mix(in oklch, var(--accent) 14%, transparent);
+  --danger-soft: color-mix(in oklch, var(--danger) 14%, transparent);
   --changed-soft: color-mix(in oklch, var(--changed) 14%, transparent);
 
-  /* Shape — radius carries a role (DESIGN.md, app-chrome iteration 8). */
+  /* Shape, radius carries a role (DESIGN.md, app-chrome iteration 8). */
   --radius-container: 6px;
   --radius-control: 4px;
   --radius-badge: 3px;
@@ -49,13 +53,13 @@
   --font-ui: 'Instrument Sans Variable', 'Instrument Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
 
-  /* Density — matrix rows ~36px desktop, ~44px touch targets on mobile. */
+  /* Density, matrix rows ~36px desktop, ~44px touch targets on mobile. */
   --row: 36px;
   --touch: 44px;
   --rail: 56px;
 
-  /* Motion */
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Motion: ease-out-quart. */
+  --ease: cubic-bezier(0.25, 1, 0.5, 1);
   --dur: 180ms;
 }
 
@@ -78,6 +82,7 @@
     --danger: oklch(0.48 0.14 30);
     --changed: oklch(0.45 0.08 250);
     --accent-soft: color-mix(in oklch, var(--accent) 10%, transparent);
+    --danger-soft: color-mix(in oklch, var(--danger) 10%, transparent);
     --changed-soft: color-mix(in oklch, var(--changed) 12%, transparent);
   }
 }
@@ -99,6 +104,7 @@
   --danger: oklch(0.48 0.14 30);
   --changed: oklch(0.45 0.08 250);
   --accent-soft: color-mix(in oklch, var(--accent) 10%, transparent);
+  --danger-soft: color-mix(in oklch, var(--danger) 10%, transparent);
   --changed-soft: color-mix(in oklch, var(--changed) 12%, transparent);
 }
 

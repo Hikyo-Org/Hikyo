@@ -18,7 +18,7 @@ type HandoffFailureStage = 'prepare' | 'authorise';
 export type WorkspaceHandoffPreparation =
   | { readonly kind: 'establishment' }
   | { readonly kind: 'step-up'; readonly params: StepUpParams }
-  | { readonly kind: 'unavailable'; readonly message: string };
+  | { readonly kind: 'refused'; readonly message: string };
 
 type WorkspaceHandoffOptions = {
   readonly preparation: WorkspaceHandoffPreparation;
@@ -71,7 +71,7 @@ export function useWorkspaceHandoff(
   options: WorkspaceHandoffOptions,
 ): WorkspaceHandoff {
   const [phase, setPhase] = useState<HandoffPhase>(() =>
-    options.preparation.kind === 'unavailable'
+    options.preparation.kind === 'refused'
       ? { kind: 'failed', message: options.preparation.message }
       : { kind: 'contacting' },
   );
@@ -93,15 +93,15 @@ export function useWorkspaceHandoff(
   const keySetKey =
     options.preparation.kind === 'step-up' ? options.preparation.params.keySet.join(',') : undefined;
   const unavailableMessage =
-    options.preparation.kind === 'unavailable' ? options.preparation.message : undefined;
+    options.preparation.kind === 'refused' ? options.preparation.message : undefined;
   const visiblePhase: HandoffPhase =
-    preparationKind === 'unavailable'
+    preparationKind === 'refused'
       ? { kind: 'failed', message: unavailableMessage ?? 'Workspace handoff is unavailable.' }
       : phase;
 
   const retry = useCallback(() => {
     const attempt = ++operationRef.current;
-    if (preparationKind === 'unavailable') {
+    if (preparationKind === 'refused') {
       const failed: HandoffPhase = {
         kind: 'failed',
         message: unavailableMessage ?? 'Workspace handoff is unavailable.',

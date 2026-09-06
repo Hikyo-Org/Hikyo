@@ -205,6 +205,11 @@ type Identity struct {
 	// update status) require. It is a reflection of the caller's own grant, not
 	// an authorization — every one of those reads is still judged per request.
 	InstanceOperator bool
+	// DisplayName is the human account's chosen name, the same value login
+	// returns, so a reloaded SPA can name its holder instead of showing a
+	// principal id. Empty for principals that have no account row (a machine
+	// bearer resolving its own identity).
+	DisplayName string
 }
 
 func identityOf(i authz.Identity) Identity {
@@ -878,6 +883,11 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 			return err
 		}
 		out = identityOf(id)
+		if account, accountErr := az.AccountByPrincipal(ctx, id.Principal); accountErr == nil {
+			out.DisplayName = account.DisplayName
+		} else if !errors.Is(accountErr, domain.ErrNotFound) {
+			return accountErr
+		}
 		if id.ProviderID != "" && strings.HasPrefix(id.Assurance.Method, "oidc:") {
 			provider, err := az.ProviderForCallback(ctx, id.ProviderID)
 			if err != nil {

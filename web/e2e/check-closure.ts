@@ -5,7 +5,7 @@
  * all and each leg's globalTeardown skips the execution-closure check (its run
  * is a positional-spec partial by design). This script restores that check's
  * full force in the `web-closure` aggregator job: given the concatenation of
- * every leg's `.runs/pinned.log`, it runs both halves of the registry gate —
+ * every leg's `.runs/pinned.log`, it runs both halves of the registry gate , 
  * the declarative closure (every locked surface has a flow, every flow's spec
  * exists) and the execution closure (every flow×surface×theme claim actually
  * ran, for every viewport project present in the merged log).

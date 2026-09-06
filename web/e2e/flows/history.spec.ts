@@ -34,7 +34,7 @@ import { zHistoryRollbackResult } from '../../src/api/history.ts';
 /**
  * Flow: the revision-history drawer (registry surface `history`).
  *
- * Covers mvp-boundary **C5 [UI]** — the restore flow from the history drawer —
+ * Covers mvp-boundary **C5 [UI]**, the restore flow from the history drawer , 
  * and the history half of **S3**: drawer, per-key filter, restore and the pin
  * lifecycle, on both viewport projects under the pinned assertion set.
  *
@@ -73,7 +73,7 @@ const DEV = `${PROJECT}/environments/${seed.history.dev}`;
 // pins around. One instance serves the whole suite and runs it once per viewport
 // project, so pass two starts from whatever pass one left. Every number this
 // flow asserts is therefore DERIVED at `beforeAll`, and the two pieces of state
-// pass one moves — the leftover invalid draft and the pins — are put back.
+// pass one moves, the leftover invalid draft and the pins, are put back.
 //
 // The alternative, seeding two projects, buys the same property at the cost of a
 // second fixture to keep in step; repairing is what the matrix flow does too,
@@ -217,7 +217,7 @@ async function expectNoFixtureSecret(surface: Locator): Promise<void> {
  * Selects one revision, on either viewport.
  *
  * Below 800px the drawer shows ONE pane at a time, so the revision list is not
- * on screen while a detail is open — and an element that is not rendered is not
+ * on screen while a detail is open, and an element that is not rendered is not
  * in the accessibility tree, which is a click that waits forever rather than a
  * click that fails. The back affordance is `display: none` on a desktop, so this
  * is a no-op there.
@@ -238,8 +238,8 @@ test.describe('revision history', () => {
 
   // The pinned assertion set runs FIRST, deliberately.
   //
-  // The two ceremony-bearing tests below reissue the browser session — a
-  // disclosure reauthentication mints a new cookie — so the suite's shared
+  // The two ceremony-bearing tests below reissue the browser session, a
+  // disclosure reauthentication mints a new cookie, so the suite's shared
   // storage state is stale afterwards. Asserting the surface before anything
   // mutates it keeps the S3 evidence off that dependency entirely, and it reads
   // the seeded state rather than whatever the last restore left behind.
@@ -250,7 +250,7 @@ test.describe('revision history', () => {
         await page.goto(DEV_HISTORY);
 
         const drawer = page.locator('.history');
-        const heading = page.getByRole('heading', { name: '↺ Revision history' });
+        const heading = page.getByRole('heading', { name: 'Revision history' });
         const row = page.locator('.history__row').first();
         const retention = page.locator('.history__retention');
         const tab = page.locator('.history__tab').first();
@@ -313,7 +313,7 @@ test.describe('revision history', () => {
 
     const drawer = page.getByRole('complementary', { name: 'Revision history' });
     await expectNoFixtureSecret(drawer);
-    await expect(drawer.getByRole('heading', { name: '↺ Revision history' })).toBeVisible();
+    await expect(drawer.getByRole('heading', { name: 'Revision history' })).toBeVisible();
     await expect(drawer).toContainText(`current r${String(facts.current)}`);
 
     // Three revisions of lineage, newest first.
@@ -325,15 +325,16 @@ test.describe('revision history', () => {
     await expect(list.getByRole('button').first()).toContainText('current');
 
     // The read-only retention line: effective window, inheritance, and a
-    // pointer at the surface that owns the knob. No editing here.
+    // pointer at the surface that owns the knob. No editing here: the only
+    // control is the link that takes you to the surface that edits.
     const retention = drawer.locator('.history__retention');
     await expect(retention).toContainText('values kept:');
     await expect(retention).toContainText('plus pinned');
     await expect(retention).toContainText('inherits org');
     await expect(retention).toContainText('→ change it in project settings › Policy');
-    await expect(
-      retention.locator(INTERACTIVE_ELEMENT_SELECTOR),
-    ).toHaveCount(0);
+    const retentionControls = retention.locator(INTERACTIVE_ELEMENT_SELECTOR);
+    await expect(retentionControls).toHaveCount(1);
+    await expect(retentionControls.first()).toHaveAttribute('href', /\/settings#project-policy$/);
 
     // Environment tabs: a second environment with its own, shorter history.
     await drawer.getByRole('button', { name: 'staging' }).click();
@@ -356,7 +357,7 @@ test.describe('revision history', () => {
     await expect(drawer).toContainText('Published by');
     await expect(drawer).toContainText('Schema revision pinned');
 
-    // r2 is the secret edit. Write-presence only — the marker and the
+    // r2 is the secret edit. Write-presence only, the marker and the
     // transition, never a value, a length or a comparison.
     const changes = drawer.locator('.history__changes');
     await expect(changes).toContainText(`🔒 ${seed.history.secretKey}`);
@@ -460,7 +461,7 @@ test.describe('revision history', () => {
       await expect(preview.locator('.history__impact')).toContainText(
         `${facts.configBeforeRestore} → debug`,
       );
-      await expect(preview.locator('.notice')).toContainText('Staged as ordinary drafts');
+      await expect(preview.locator('.notice')).toContainText('Drafts are staged; they are also visible on the matrix.');
       await expectNoFixtureSecret(preview);
 
       // The in-drawer path spends the exact token and exact version set returned
@@ -621,7 +622,7 @@ test.describe('revision history', () => {
       const impact = sheet.locator('.history__impact');
       const secretImpact = impact.getByRole('listitem').filter({ hasText: seed.history.secretKey });
       await expect(secretImpact.locator('.history__impact-values')).toHaveText(
-        'secret — edited, write-presence only',
+        'secret: edited, write-presence only',
       );
       await expect(secretImpact.locator('.history__impact-values')).not.toContainText('→');
       await expectNoFixtureSecret(sheet);
@@ -742,7 +743,7 @@ test.describe('revision history', () => {
     await openRevision(page, pinnedRevision);
     const pinRow = drawer.locator('.history__pin').filter({ hasText: seed.history.pinnedWorkload });
     await expect(pinRow.locator('.history__pin-gap')).toHaveText(
-      `${seed.history.pinnedWorkload} still runs on r${String(pinnedRevision)}'s values — ${String(behind)} publishes behind latest (r${String(latest)}). New publishes don't reach it.`,
+      `${seed.history.pinnedWorkload} still runs on r${String(pinnedRevision)}'s values, ${String(behind)} publishes behind latest (r${String(latest)}). New publishes don't reach it.`,
     );
     await expect(pinRow.locator('.history__expiry--month')).toHaveText(
       `! expires in ${String(expiryDays)} d`,
@@ -777,7 +778,7 @@ test.describe('revision history', () => {
       const moveSheet = page.getByRole('dialog');
       await expectNoFixtureSecret(moveSheet);
       await moveSheet.getByLabel('Workload').selectOption({
-        label: `${seed.history.pinnedWorkload} — pinned to r${String(existing.revision)}`,
+        label: `${seed.history.pinnedWorkload}: pinned to r${String(existing.revision)}`,
       });
       await moveSheet.locator('#history-pin-submit').click();
 
@@ -802,7 +803,7 @@ test.describe('revision history', () => {
       await drawer.getByRole('button', { name: `Pin r${String(facts.configEdit)}…` }).click();
       const compareSheet = page.getByRole('dialog');
       await compareSheet.getByLabel('Workload').selectOption({
-        label: `${seed.history.spareWorkload} — follows latest`,
+        label: `${seed.history.spareWorkload}: follows latest`,
       });
       await expectNoFixtureSecret(compareSheet);
       const trailBeforeComparison = countDisclosureEvents();
@@ -878,7 +879,7 @@ test.describe('revision history', () => {
       const pinSheet = page.getByRole('dialog');
       await expectNoFixtureSecret(pinSheet);
       await pinSheet.getByLabel('Workload').selectOption({
-        label: `${seed.history.pinnedWorkload} — pinned to r${String(latest)}`,
+        label: `${seed.history.pinnedWorkload}: pinned to r${String(latest)}`,
       });
       const tooFar = new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       await pinSheet.getByLabel(/Expires on/).fill(tooFar);
@@ -908,7 +909,7 @@ test.describe('revision history', () => {
       const overrideSheet = page.getByRole('dialog');
       await expectNoFixtureSecret(overrideSheet);
       await overrideSheet.getByLabel('Workload').selectOption({
-        label: `${seed.history.spareWorkload} — follows latest`,
+        label: `${seed.history.spareWorkload}: follows latest`,
       });
       await expect(overrideSheet.getByRole('checkbox')).toHaveCount(0);
       await overrideSheet.locator('#history-pin-submit').click();

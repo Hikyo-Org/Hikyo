@@ -20,7 +20,7 @@ import { parseAllDocuments } from 'yaml';
  * Two invariants carried over verbatim from the Go framework:
  *
  *   - EVERY FOREIGN BYTE IS SECRET UNTIL CLASSIFIED. No refusal here carries
- *     source content — messages name keys, paths, bounds and codes, never a
+ *     source content, messages name keys, paths, bounds and codes, never a
  *     value fragment or a parser's echo. Foreign NAMES are rendered only through
  *     `safeName` (control bytes escaped, length-capped), the single safe
  *     renderer, because the ADR requires errors to name keys.
@@ -95,7 +95,7 @@ function refuse(message: string): never {
   throw new Refusal(message);
 }
 
-/** UTF-8 byte length — Go's `len(string)`, which the value/name bounds use. */
+/** UTF-8 byte length, Go's `len(string)`, which the value/name bounds use. */
 const ENCODER = new TextEncoder();
 function byteLength(value: string): number {
   return ENCODER.encode(value).length;
@@ -103,7 +103,7 @@ function byteLength(value: string): number {
 
 /**
  * The run budget, mirroring `importer.Budget`: it charges EVERY leaf a connector
- * decodes — record count and decoded bytes — while parsing, so resource
+ * decodes, record count and decoded bytes, while parsing, so resource
  * exhaustion is impossible before a result exists and a skipped leaf still costs
  * its slot (`b.Record`/`b.Bytes` in the Go connectors). Exceeding a bound fails
  * loud, naming it.
@@ -130,7 +130,7 @@ function newBudget(): Budget {
 }
 
 /**
- * safeName is THE ONLY way foreign text is rendered by this module — the mirror
+ * safeName is THE ONLY way foreign text is rendered by this module, the mirror
  * of Go's `quoteName`. Control bytes, DEL and the quote/backslash are escaped so
  * a hostile source name (literally `"\x1b[2J\x1b]0;pwned\x07"`) cannot smuggle
  * terminal escapes or markup into a message; the length cap runs after escaping,
@@ -182,8 +182,8 @@ function recordPath(record: SourceRecord): string {
  * transform cannot resolve is a hard stop requiring an explicit rename.
  *
  * The documented transform, in full: lowercase ASCII → uppercase; `-`, `.`, `/`,
- * `\` → `_`; a leading digit takes one leading `_`. Everything else — a space,
- * `=`, `:`, any non-ASCII — is unmappable.
+ * `\` → `_`; a leading digit takes one leading `_`. Everything else, a space,
+ * `=`, `:`, any non-ASCII, is unmappable.
  */
 export function transformName(source: string): { readonly target: string } | { readonly error: true } {
   if (KEY_NAME.test(source) && byteLength(source) <= MAX_KEY_NAME_BYTES) {
@@ -240,7 +240,7 @@ function isJsonNumber(value: unknown): value is JsonNumber {
   return value instanceof JsonNumber;
 }
 
-/** A JSON field that is present and non-null but not a string — what Go's typed
+/** A JSON field that is present and non-null but not a string, what Go's typed
  * `json.Unmarshal` into a `string`/`*string` field refuses. Absent or null is
  * allowed (Go leaves the zero value / nil). */
 function mistyped(field: JsonValue | undefined): boolean {
@@ -280,7 +280,7 @@ class JsonParser {
     this.skipWhitespace();
     const char = this.s[this.i];
     // Bound nesting the way `importer.normalizeTree` does (depth 32). Without
-    // this a deeply nested leaf would recurse until the JS stack overflows — an
+    // this a deeply nested leaf would recurse until the JS stack overflows, an
     // uncaught error, not a loud refusal at the bound.
     if (char === '{' || char === '[') {
       this.depth += 1;
@@ -441,7 +441,7 @@ class JsonParser {
 /**
  * canonicalJson is THE deterministic conversion for non-scalar leaves, mirroring
  * `importer.canonicalJSON`: object members ordered by key, HTML escaping OFF
- * (`<`, `>`, `&` survive — JS `JSON.stringify` already leaves them), no
+ * (`<`, `>`, `&` survive, JS `JSON.stringify` already leaves them), no
  * indentation, no trailing newline, and number literals preserved exactly. A
  * SOPS array and a Vault object serialize identically through it.
  */
@@ -524,7 +524,7 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
       }
       refuse(`the ${where} is not parseable as YAML or JSON`);
     }
-    // An empty document — a trailing `---` — is skipped, as `kubectl` emits them.
+    // An empty document, a trailing `---`, is skipped, as `kubectl` emits them.
     if (object === null || object === undefined) {
       return;
     }
@@ -557,7 +557,7 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
         }
         const decoded = decodeK8sData(name, dataKey, encoded);
         // Charge the DECODED bytes, matching Go's `b.Bytes(len(raw))` after
-        // base64 decoding — the file cap alone does not bound base64 expansion.
+        // base64 decoding, the file cap alone does not bound base64 expansion.
         budget.bytes(decoded.byteLength);
         merged.set(dataKey, decoded);
       }
@@ -573,7 +573,7 @@ function readK8s(text: string, budget: Budget): SourceRecord[] {
           refuse(`the Secret ${safeName(name)} \`stringData\` entry ${safeName(stringKey)} is not a string`);
         }
         budget.bytes(byteLength(raw));
-        // stringData wins, silently and correctly — the admission merge.
+        // stringData wins, silently and correctly, the admission merge.
         merged.set(stringKey, { value: raw, byteLength: byteLength(raw), binary: raw.includes('\u0000') });
       }
     }
@@ -599,7 +599,7 @@ function decodeK8sData(
   encoded: string,
 ): { value: string; byteLength: number; binary: boolean } {
   // Go's `base64.StdEncoding.DecodeString` is strict on the alphabet, requires
-  // correct `=` padding, and a length that is a multiple of 4 — but it DOES skip
+  // correct `=` padding, and a length that is a multiple of 4, but it DOES skip
   // `\r`/`\n` (a YAML block scalar can wrap base64 across lines). `atob` is
   // otherwise too forgiving (accepts unpadded input, ignores all whitespace), so
   // strip only CR/LF, then validate strictly, or the browser would decode bytes
@@ -645,7 +645,7 @@ function readInfisical(text: string, budget: Budget): { records: SourceRecord[];
   if (trimmed[0] !== '[') {
     refuse(
       'this is not the pinned structured export (a JSON array): a flattened export carries no folder or ' +
-        'override provenance — export it with `infisical export --format=json --env <slug> --path <path>` (' +
+        'override provenance. Export it with `infisical export --format=json --env <slug> --path <path>` (' +
         `${INFISICAL_MINIMUM_VERSION} or newer), or route the flattened form through the .env import instead`,
     );
   }
@@ -666,8 +666,8 @@ function readInfisical(text: string, budget: Budget): { records: SourceRecord[];
     const entry = raw;
     // Mirror Go's typed `json.Unmarshal`: a field present with the wrong JSON
     // type refuses the WHOLE export (before mapping and before the personal-skip
-    // branch), never coerces. Coercing a non-string `value` to `""` — the
-    // pre-fix behaviour — declared and imported an empty secret where the CLI
+    // branch), never coerces. Coercing a non-string `value` to `""`, the
+    // pre-fix behaviour, declared and imported an empty secret where the CLI
     // refuses the file.
     if (mistyped(entry.key) || mistyped(entry.value) || mistyped(entry.type) ||
         mistyped(entry.secretPath) || mistyped(entry['_id'])) {
@@ -766,7 +766,7 @@ function readVault(text: string, budget: Budget): { records: SourceRecord[]; ski
       refuse(`the ${where} secret path exceeds the ${MAX_DEPTH}-level depth bound`);
     }
     // Charge every record now (Go charges in this first pass): a deleted/
-    // destroyed record costs one slot, a live one costs a slot per data field —
+    // destroyed record costs one slot, a live one costs a slot per data field , 
     // so a capture of 50 000 deleted records cannot walk past the record cap.
     if (capture.deleted || capture.destroyed) {
       budget.record();
@@ -869,7 +869,7 @@ const INT64_MIN = -9223372036854775808n;
 const INT64_MAX = 9223372036854775807n;
 
 /** A JSON number as a Go `int`: the exact integer, or null if the literal is
- * fractional, has an exponent, or overflows signed 64-bit — all of which
+ * fractional, has an exponent, or overflows signed 64-bit, all of which
  * `json.Unmarshal` into `int` refuses. */
 function asInteger(number: JsonNumber): number | null {
   if (!/^-?[0-9]+$/.test(number.literal)) {
@@ -926,7 +926,7 @@ function targetFolderPath(folder: readonly string[]): string {
 /**
  * mapRecords runs the rename transform and the post-transform collision check
  * over every record, mirroring `plan.go`'s `mapRecords`. Every offender is
- * collected before refusing — an unmappable or colliding name is one fix in one
+ * collected before refusing, an unmappable or colliding name is one fix in one
  * edit, not one run each. `k8s` collapses a single-Secret folder onto the
  * environment root; other connectors carry their folder chain.
  */
@@ -1017,7 +1017,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * parseSource is the boundary: it runs the named connector over the file text
- * and returns the normalized entries, renames and skips — or a single
+ * and returns the normalized entries, renames and skips, or a single
  * content-free refusal. Infisical requires its source env slug; the others take
  * none. The order of checks mirrors the CLI: file size → parse → per-value
  * bounds → name mapping and collisions.

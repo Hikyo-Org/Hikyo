@@ -14,6 +14,6 @@ test('withRemote appends the marker with the right separator', () => {
   expect(withRemote('/orgs/o/projects/p/matrix/history?env=e&key=k', 'peer-b')).toBe(
     '/orgs/o/projects/p/matrix/history?env=e&key=k&remote=peer-b',
   );
-  // The name is encoded — a remote name is a display string, not a URL token.
+  // The name is encoded, a remote name is a display string, not a URL token.
   expect(withRemote('/x', 'a b')).toBe('/x?remote=a%20b');
 });

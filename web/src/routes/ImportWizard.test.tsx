@@ -31,7 +31,7 @@ const environments = [
 
 // Phase 1a candidates carry the default `secret` intent; 1b carries `config`.
 // The mock uses that to answer 1a with the new key still undeclared and 1b with
-// every declaration landed — the exact transition the wizard depends on.
+// every declaration landed, the exact transition the wizard depends on.
 function occurrenceList(input: {
   environment: string;
   candidates: readonly { name: string; classification: string }[];
@@ -246,8 +246,14 @@ describe('ImportWizard git-managed', () => {
     await pickDotenv(container);
     await selectFile(container, FILE);
     await click(button(container, 'Review'));
-    // The git-managed block names the skipped new keys on the classify step.
+    // The git-managed notice is its own alert; the dropped-keys line names the
+    // skipped keys and the recovery.
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('managed in Git');
     expect(container.textContent).toContain('cannot be declared here');
+    expect(container.textContent).toContain(
+      'Declare the missing keys with definitions plan / definitions apply, then import again.',
+    );
+    expect(container.querySelector('.matrix-editor__eyebrow')?.textContent).toBe('Import · Step 3 of 5');
     await click(button(container, 'Review changes'));
     await click(button(container, 'Import'));
     expect(createKey).not.toHaveBeenCalled();

@@ -29,7 +29,7 @@ Binds the design system ([DESIGN.md](../../DESIGN.md) — dual theme dark-defaul
 
 ## Git-mode definitions state ([source-of-truth.md](../adr/source-of-truth.md))
 
-When `definitions_source: git`, definition-editing surfaces are read-only with a persistent banner: **"Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`."** A blocked edit explains itself with that sentence plus the last-applied provenance labels (commit/ref/actor) when present — labels are display-only, never trusted. Hikyo stores no repository URL (it never reads a repository), so the banner names the mechanism, not a repo link.
+When `definitions_source: git`, definition-editing surfaces are read-only with a persistent banner: **"Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`."** A blocked edit explains itself with that sentence plus the last-applied provenance labels (commit/ref/actor) when present — labels are display-only, never trusted. Hikyo stores no repository URL (it never reads a repository), so the banner names the mechanism, not a repo link.
 
 **Declaration authoring statement** (every declaration ingress, both modes): free-text declaration fields (descriptions, enum labels, schema annotations) are **exported to Git in definitions bundles and are to be treated as public — never paste secret values**. This is the UI restatement of the bundle's documentation-class guarantee; the structural backstop is S2 scanning.
 

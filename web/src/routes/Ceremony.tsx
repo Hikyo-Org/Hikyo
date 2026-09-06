@@ -21,7 +21,7 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
 
 /**
  * The purpose-bound ceremony modal (#58, locked prototype #21 iteration 6,
- * approach **a** — the centred ceremony modal; the inline popover, the
+ * approach **a**, the centred ceremony modal; the inline popover, the
  * hold-to-reveal cell and the session drawer were all rejected).
  *
  * Four properties are load-bearing and none of them is decoration:
@@ -35,7 +35,7 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
  *  3. **Disclosure reauth is not account step-up.** Said in the modal, because
  *     the two look identical to a human and only one of them ends with a
  *     secret on screen.
- *  4. **A protected environment offers no TOTP option at all.** Not disabled —
+ *  4. **A protected environment offers no TOTP option at all.** Not disabled , 
  *     absent, with the reason stated. A greyed-out control invites a support
  *     ticket; a sentence explaining that this environment takes a passkey
  *     every time is the answer to the question that ticket would ask.
@@ -43,7 +43,7 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
  * It is a NATIVE `<dialog>` opened with `showModal()`. That is the whole
  * accessibility story rather than a starting point for one: the platform gives
  * a real focus trap (Tab cannot leave), inert content behind it, Escape, and
- * the top layer — every part of which a hand-rolled `role="dialog"` has to
+ * the top layer, every part of which a hand-rolled `role="dialog"` has to
  * reimplement, and the focus trap is the part everyone gets wrong. A ceremony
  * a keyboard user can Tab out of while it is "modal" is a ceremony they can
  * answer without seeing what they are answering about.
@@ -58,7 +58,7 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
  *
  * It is deliberately finer than the operation the assertion signs: taking a
  * secret to the clipboard and putting it on screen are the same disclosure to
- * the server — the same route, the same audit surface — but they are not the
+ * the server, the same route, the same audit surface, but they are not the
  * same sentence to a person, and the modal owes them the true one.
  */
 export type CeremonyPurpose =
@@ -86,13 +86,13 @@ const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
 
 /**
  * SIGNED_OPERATION maps what the human is told to what the assertion COMMITS
- * TO, which must be the operation the server will consume — otherwise the
+ * TO, which must be the operation the server will consume, otherwise the
  * ceremony is spent against a binding that does not match and the disclosure
  * is refused for a reason nobody can act on.
  *
  * Clipboard copy signs `reveal` because that is the route it takes: the ADR
  * gates and audits it exactly like a reveal ("clipboard copy is gated and
- * audited exactly like reveal — including copy without display"), and the
+ * audited exactly like reveal, including copy without display"), and the
  * server cannot tell the two apart because there is nothing to tell apart.
  * `copy` is the source leg of moving material INTO another environment, which
  * is a different route and a different decision.
@@ -109,7 +109,7 @@ const SIGNED_OPERATION: Record<
   // value decrypts it, and pinning a non-current revision routes it to a
   // workload. The service gates both with `PurposeReveal` over the enumerated
   // secret-key unit (`internal/service/{rollback,pins}.go`), so that is what the
-  // assertion has to commit to — while the modal still tells the human which of
+  // assertion has to commit to, while the modal still tells the human which of
   // the two decisions they are actually taking.
   restore: 'reveal',
   pin: 'reveal',
@@ -118,14 +118,29 @@ const SIGNED_OPERATION: Record<
   bypass: 'bypass',
 };
 
+/**
+ * LEDE_NOUN is what the sentence "This confirms a …" names, by what the
+ * assertion signs: a reveal is a disclosure, a publish is a publish, and a
+ * change decision is neither.
+ */
+const LEDE_NOUN: Record<(typeof SIGNED_OPERATION)[CeremonyPurpose], string> = {
+  reveal: 'disclosure',
+  copy: 'copy of secret material out of this environment',
+  publish: 'publish into a protected environment',
+  approve: 'change decision',
+  reject: 'change decision',
+  bypass: 'change decision',
+};
+
 export type CeremonyRequest = {
   purpose: CeremonyPurpose;
+  /** Each key's classification, so the list can mark the secrets. */
   /** The environment the decision authorises, by id. */
   environmentId: string;
   /** The environment's human name, for the title. */
   environmentName: string;
   /** The enumerated unit: what the modal lists and what the challenge binds. */
-  keys: ReadonlyArray<{ id: string; name: string }>;
+  keys: ReadonlyArray<{ id: string; name: string; classification?: 'secret' | 'config' }>;
   /** The guard's state, which decides whether TOTP is on the table. */
   window: RevealWindow;
 };
@@ -140,7 +155,11 @@ export function Ceremony({
   onCancel: () => void;
 }) {
   const [code, setCode] = useSensitiveState('');
-  const [busy, setBusy] = useState(false);
+  // Which factor is mid-flight: every factor disables while one runs, but only
+  // the running one relabels, so pressing the passkey never says "waiting for
+  // your identity provider" on the OIDC button.
+  const [pending, setPending] = useState<'passkey' | 'oidc' | 'totp' | null>(null);
+  const busy = pending !== null;
   const [failure, setFailure] = useState<string | null>(null);
   const first = useRef<HTMLButtonElement>(null);
   const dialog = useModalDialog(first);
@@ -148,7 +167,7 @@ export function Ceremony({
   // bound to THIS origin's relying-party id, and the remote would reject it. So
   // inside a workspace the modal hands off to the remote's own origin in a
   // popup (#71), where the remote runs its own locked ceremony and elevates the
-  // workspace session — the same modal, a different executor.
+  // workspace session, the same modal, a different executor.
   const workspace = useWorkspaceContext();
   const auth = useAuth();
   const assurance = auth.identity?.session.assurance;
@@ -157,8 +176,8 @@ export function Ceremony({
   const oidcProvider = useSessionOIDCProvider();
   const offersOIDC = request.window.totp_offered && oidcProvider !== null;
 
-  const attempt = async (run: () => Promise<void>) => {
-    setBusy(true);
+  const attempt = async (factor: 'passkey' | 'oidc' | 'totp', run: () => Promise<void>) => {
+    setPending(factor);
     setFailure(null);
     try {
       await run();
@@ -166,12 +185,12 @@ export function Ceremony({
     } catch (err) {
       setFailure(ceremonyRefusalText(err));
     } finally {
-      setBusy(false);
+      setPending(null);
     }
   };
 
   const onPasskey = () =>
-    void attempt(() =>
+    void attempt('passkey', () =>
       runPasskeyCeremony({
         operation: SIGNED_OPERATION[request.purpose],
         environmentId: request.environmentId,
@@ -181,13 +200,13 @@ export function Ceremony({
 
   const onCode = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    void attempt(() => runTOTPCeremony(request.environmentId, code));
+    void attempt('totp', () => runTOTPCeremony(request.environmentId, code));
     setCode('');
   };
 
   const onOIDC = () => {
     if (oidcProvider === null) return;
-    void attempt(async () => {
+    void attempt('oidc', async () => {
       await runOIDCCeremony(oidcProvider.slug, request.environmentId);
       await auth.refreshSession();
     });
@@ -201,7 +220,7 @@ export function Ceremony({
       aria-labelledby="ceremony-title"
       aria-describedby="ceremony-scope"
       ref={dialog}
-      // Escape is the platform's, not ours — but the close it fires has to
+      // Escape is the platform's, not ours, but the close it fires has to
       // reach the caller, or the modal disappears while the act stays staged.
       onCancel={(event) => {
         event.preventDefault();
@@ -212,13 +231,13 @@ export function Ceremony({
         {title}
       </h2>
       <p className="ceremony__lede">
-        This confirms a <strong>{request.purpose === 'approve' || request.purpose === 'reject' || request.purpose === 'bypass' ? 'change decision' : 'disclosure'}</strong>, not your account security. It is separate from
+        This confirms a <strong>{LEDE_NOUN[SIGNED_OPERATION[request.purpose]]}</strong>, not your account security. It is separate from
         signing in and from any step-up you have already done.
         {workspace === null ? null : (
           <>
             {' '}
-            You will authorise it on <span className="mono">{workspace.origin}</span> — the instance
-            that holds this value — in a popup on its own origin.
+            You will authorise it on <span className="mono">{workspace.origin}</span>, the instance
+            that holds this value, in a popup on its own origin.
           </>
         )}
       </p>
@@ -230,6 +249,12 @@ export function Ceremony({
       <ul className="ceremony__keys" aria-label="Keys this decision covers">
         {request.keys.map((key) => (
           <li className="mono" key={key.id}>
+            {key.classification === 'secret' ? (
+              <>
+                <span aria-hidden="true">🔒 </span>
+                <span className="visually-hidden">secret </span>
+              </>
+            ) : null}
             {key.name}
           </li>
         ))}
@@ -276,17 +301,24 @@ export function Ceremony({
               onClick={onPasskey}
               disabled={busy}
             >
-              {busy ? 'Waiting for your passkey…' : 'Use a passkey'}
-            </button>
-            <button className="btn" type="button" onClick={onCancel} disabled={busy}>
-              Cancel
+              {pending === 'passkey' ? 'Waiting for your passkey…' : 'Use a passkey'}
             </button>
             {offersOIDC ? (
               <button className="btn" type="button" onClick={onOIDC} disabled={busy}>
-                {busy ? 'Waiting for your identity provider…' : `Re-authenticate with ${oidcProvider.display_name}`}
+                {pending === 'oidc' ? 'Waiting for your identity provider…' : `Re-authenticate with ${oidcProvider.display_name}`}
               </button>
             ) : null}
+            <button className="btn" type="button" onClick={onCancel} disabled={busy}>
+              Cancel
+            </button>
           </div>
+
+          {request.window.totp_offered && !request.window.single_decision ? (
+            <p className="ceremony__window">
+              Success opens a sliding reveal window. While it runs, non-protected disclosures skip
+              this prompt; the permission check still runs on every disclosure.
+            </p>
+          ) : null}
 
           {request.window.totp_offered ? (
             <form className="ceremony__totp" onSubmit={onCode}>
@@ -326,8 +358,8 @@ export function Ceremony({
  * WorkspaceStepUp is the modal's executor when the disclosure is a remote's.
  *
  * The elevation transaction is opened EAGERLY on mount, because the window that
- * completes it can only be opened from a real user gesture — a `window.open`
- * after an `await` is a blocked popup — so the network round trip happens first
+ * completes it can only be opened from a real user gesture, a `window.open`
+ * after an `await` is a blocked popup, so the network round trip happens first
  * and the button that opens the popup is synchronous to the click. On approval
  * the remote elevates this very workspace session in place (a rotated bearer,
  * the same session id), `openPrepared` installs it, and the caller resumes the
@@ -351,8 +383,8 @@ export function WorkspaceStepUp({
   onCancel: () => void;
 }) {
   // The decision's key set as a STABLE dependency. `keyIds` is a fresh array on
-  // every parent render — Ceremony rebuilds it from `request.keys.map(...)`, and
-  // the matrix behind it re-renders every couple of seconds as signals poll — so
+  // every parent render, Ceremony rebuilds it from `request.keys.map(...)`, and
+  // the matrix behind it re-renders every couple of seconds as signals poll, so
   // depending on the array identity would open a fresh handoff transaction on
   // the remote on every one of those renders and rate-limit the human out of
   // their own ceremony. The content, joined, changes only when the target does.
@@ -362,7 +394,7 @@ export function WorkspaceStepUp({
     preparation:
       bearer === undefined
         ? {
-            kind: 'unavailable',
+            kind: 'refused',
             message:
               'This workspace is no longer connected. Reconnect to the remote and try again.',
           }

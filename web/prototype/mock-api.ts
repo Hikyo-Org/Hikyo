@@ -1,4 +1,4 @@
-// PROTOTYPE — in-memory API for viewing the bundled UI without the Go application.
+// PROTOTYPE, in-memory API for viewing the bundled UI without the Go application.
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -658,6 +658,41 @@ export function prototypeReadFixture(
   return undefined;
 }
 
+export const prototypeMeta = {
+  server_version: '0.9.5',
+  api_revision: 1,
+  protocol_capabilities: [],
+};
+
+/** Shaped by the generated contract (`zRetentionHealth`); the mock test pins it. */
+export function prototypeRetentionHealth(scenario: Scenario) {
+  const attention = scenario === 'attention';
+  return {
+    last_prune_success: attention ? '2026-08-20T08:15:00Z' : fixtureTime,
+    stale: attention,
+    stale_after_seconds: 86400,
+    peak_project_bytes: attention ? 1_610_612_736 : 92_274_688,
+    storage_warn: attention,
+    backup: {
+      scheduled: true,
+      last_success_at: attention ? '2026-08-19T02:00:00Z' : fixtureTime,
+      artifact_age_seconds: attention ? 432_000 : 3_600,
+      rpo_seconds: 86_400,
+      rpo_exceeded: attention,
+      last_failure_at: attention ? '2026-08-20T02:00:00Z' : null,
+      last_failure_reason: attention ? 'destination refused the archive' : '',
+      last_prune_at: fixtureTime,
+      last_drill_at: attention ? null : fixtureTime,
+      last_drill_ok: !attention,
+      drill_stale: attention,
+    },
+    adapter_targets_failed: attention ? 1 : 0,
+    adapter_targets_paused: 0,
+    adapter_targets_attention: attention ? 1 : 0,
+    adapter_jobs_queued: 0,
+  };
+}
+
 function mockApi(request: IncomingMessage, response: ServerResponse): boolean | Promise<boolean> {
   const method = request.method ?? 'GET';
   const url = new URL(request.url ?? '/', 'http://prototype.local');
@@ -680,7 +715,7 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
   }
 
   // The advisory stream (#510). The prototype has no event source to subscribe
-  // to, but the matrix asks for one and — without an answer — reconnects at
+  // to, but the matrix asks for one and, without an answer, reconnects at
   // its backoff forever while the fallback poll runs. Answer with a healthy,
   // never-ending stream of heartbeats instead: the stream goes healthy, the
   // fallback poll never starts, and the prototype exercises the same
@@ -1065,14 +1100,12 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     });
     return true;
   }
+  if (path === '/api/v1/meta' && method === 'GET') {
+    send(response, 200, prototypeMeta);
+    return true;
+  }
   if (path === '/api/v1/instance/retention-health' && method === 'GET') {
-    send(response, 200, {
-      last_prune_success: scenario === 'attention' ? '2026-08-20T08:15:00Z' : fixtureTime,
-      stale: scenario === 'attention',
-      stale_after_seconds: 86400,
-      peak_project_bytes: scenario === 'attention' ? 1_610_612_736 : 92_274_688,
-      storage_warn: scenario === 'attention',
-    });
+    send(response, 200, prototypeRetentionHealth(scenario));
     return true;
   }
   if (path === '/api/v1/instance/update-status' && method === 'GET') {
@@ -1287,7 +1320,7 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
 
   // The catalogue declaration detail (#491): one key's full declaration, and
   // its metadata edit. The store is the same `keys` array the list serves, so
-  // an edit here shows through on the matrix and survives a prototype reload —
+  // an edit here shows through on the matrix and survives a prototype reload , 
   // the same in-memory persistence the create handler above relies on.
   const keyDetailMatch = new RegExp(`^${projectRoot}/keys/([^/]+)$`).exec(path);
   if (keyDetailMatch !== null && (method === 'GET' || method === 'PATCH' || method === 'DELETE')) {

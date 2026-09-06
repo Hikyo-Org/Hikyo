@@ -14,7 +14,7 @@ import { QueryClient } from '@tanstack/react-query';
  *
  *   - `staleTime` is short because authorization is evaluated per request at
  *     the server's chokepoint and never cached there. A long client cache
- *     would not be an authorization cache — the server still decides — but it
+ *     would not be an authorization cache, the server still decides, but it
  *     would show a revoked reader stale data, so the window stays small.
  *   - `retry: false` because a refused request is an answer, not a blip: a 403
  *     retried three times is three denials in the audit trail for one act.

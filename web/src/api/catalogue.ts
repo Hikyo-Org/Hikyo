@@ -32,8 +32,8 @@ import { useTransport } from './transport.tsx';
  * presence edits, key rename/delete and group membership, and folder and
  * key-group lifecycle.
  *
- * Every write here is a Surface-2 scanning chokepoint (#74/#183) — a rule
- * change, a folder or group name — so its request carries `acknowledgements`
+ * Every write here is a Surface-2 scanning chokepoint (#74/#183), a rule
+ * change, a folder or group name, so its request carries `acknowledgements`
  * and its refusal can arrive with redacted findings on `ApiError.findings`. No
  * secret value is ever read to edit a declaration: the whole surface builds on
  * `key.get` and the list endpoints alone.
@@ -55,8 +55,8 @@ function ackBody(input: Acknowledgeable): { acknowledgements?: string[] } {
  * scanFindings returns the Surface-2 findings a refusal carries, or null when
  * the error is anything else. `ApiError.findings` is always an array (empty for
  * a non-scanner refusal), so an empty list reads as null and callers branch
- * cleanly. A 404 NEVER opens a findings dialog even if one somehow rode it —
- * that would leak existence through the uniform missing-resource mask — matching
+ * cleanly. A 404 NEVER opens a findings dialog even if one somehow rode it , 
+ * that would leak existence through the uniform missing-resource mask, matching
  * the foundation's own `scanBlockFrom` guard.
  */
 export function scanFindings(error: unknown): readonly RefusalFinding[] | null {
@@ -93,7 +93,7 @@ export function catalogueRefusalText(error: unknown, action: CatalogueAction): s
       return `You do not have permission to ${action} in this project.`;
     }
     if (error.status === 404) {
-      return 'This no longer exists — reload the catalogue to see its current state.';
+      return 'This no longer exists: reload the catalogue to see its current state.';
     }
     if (error.status === 409) {
       return `The server refused this change to avoid overwriting a concurrent edit; reload and ${action} again.`;

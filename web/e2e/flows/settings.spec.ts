@@ -26,7 +26,7 @@ import { surfacesForFlow } from '../registry.ts';
 
 /**
  * Flow: organisation and project settings (registry surfaces `org-settings`
- * and `project-settings`) — mvp-boundary S3's "project/org settings incl.
+ * and `project-settings`), mvp-boundary S3's "project/org settings incl.
  * retention + danger zones", against the locked prototype #29 iterations 14
  * (org) and 15/16 (project, retention).
  *
@@ -464,7 +464,7 @@ test.describe('project settings', () => {
 
     // Reload BEFORE re-encrypting: the pending walk lives only in the server's
     // cursor now. A fresh page with no client state must resume it to a clean
-    // complete end — the interrupted-then-resumed recovery.
+    // complete end, the interrupted-then-resumed recovery.
     await page.reload();
     await keys.getByRole('button', { name: 'Re-encrypt the project' }).click();
     await expect(page.locator('.notice')).toContainText('Project re-encryption complete');
@@ -532,10 +532,10 @@ test.describe('project settings', () => {
       await source.selectOption('git');
       const gitNotice = policy.getByRole('alert').filter({
         hasText:
-          'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.',
+          'Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`.',
       });
       await expect(gitNotice.locator('span').last()).toHaveText(
-        'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.',
+        'Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`.',
       );
       await expect(source).toHaveValue('git');
 
@@ -545,7 +545,7 @@ test.describe('project settings', () => {
       await expect(persistedSource).toHaveValue('git');
       const persistedNotice = persistedPolicy.getByRole('alert').filter({
         hasText:
-          'Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`.',
+          'Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`.',
       });
       await expect(persistedNotice).toBeVisible();
 

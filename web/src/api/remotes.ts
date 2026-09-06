@@ -35,10 +35,10 @@ import { ok, parsed, parsedPick } from './client.ts';
  * Everything here talks to THIS instance and nothing else. The two halves it
  * serves are deliberately different instances' concerns and only look alike:
  *
- *   - `useRemotes` is the VIEWING side — the entries this instance holds and
+ *   - `useRemotes` is the VIEWING side, the entries this instance holds and
  *     the last-known directory of each. The fetch to the remote happens on the
  *     server, under a pinned connection; the browser never touches it.
- *   - `useWorkspaceOrigins` is the SERVING side — the origins this instance
+ *   - `useWorkspaceOrigins` is the SERVING side, the origins this instance
  *     consents to be operated from. Removing one is the ADR's atomic kill
  *     switch, not a headers change.
  *
@@ -57,7 +57,7 @@ export type InstanceConnectionList = z.infer<typeof zInstanceConnectionList>;
  * The only fields the display-once ceremony reads back. It is a NARROW pick on
  * purpose: parsing the whole `MintedInstanceConnection` would let a drift in an
  * unrelated `connection` member throw away the one value nothing in the system
- * can ever return again — the same discipline the machine-credential mint keeps
+ * can ever return again, the same discipline the machine-credential mint keeps
  * (`identities.ts`). The label the operator typed is carried separately, so the
  * dialog never needs the echoed `connection` object at all.
  */
@@ -77,11 +77,11 @@ const connectionsKey = ['instance-connections'] as const;
  * POLLING, and that is a locked decision rather than a shortcut: the update
  * channel is `EventSource`, native `EventSource` cannot set an `Authorization`
  * header, and the ADR's answer is the polling fallback the architecture already
- * ships — never a weakened SSE authentication.
+ * ships, never a weakened SSE authentication.
  *
  * TWENTY seconds because the per-viewer trigger budget is 6/min and a human has
  * more than one tab: 3/min per tab keeps two tabs of the same human inside it.
- * A third tab, or jitter across the window edge, spends the budget — and that
+ * A third tab, or jitter across the window edge, spends the budget, and that
  * degrades to a snapshot marked stale with its age, which is the freshness
  * model working, not an error. It is still a rate worth staying under: a card
  * that is quietly rate-limited refreshes no faster than one that is not.
@@ -178,7 +178,7 @@ export function useRemoveWorkspaceOrigin() {
  * The receiving side's connection credentials (#498).
  *
  * These are minted on THIS instance for a peer to hold and present at its
- * server-side directory fetch — the write-only counterpart to the `credential`
+ * server-side directory fetch, the write-only counterpart to the `credential`
  * a `useAddRemote` entry consumes over on the viewing instance. The value is
  * disclosed exactly once at mint and never read back: every hook here trades in
  * metadata alone, and the plaintext lives only in the mint mutation's own
@@ -202,7 +202,7 @@ export type MintConnectionInput = {
  * TanStack mutation on purpose: a mutation caches its `data`, and this data is
  * an irretrievable plaintext credential that must never outlive the dialog it
  * is handed to. So the value flows straight back to the caller and touches no
- * query or mutation cache — the same discipline the machine-credential mint
+ * query or mutation cache, the same discipline the machine-credential mint
  * follows. `lifetime_seconds` and `indefinite` are mutually exclusive at the
  * contract; the form makes the choice a radio so the both-named 400 is
  * unreachable from the UI.
@@ -260,7 +260,7 @@ export function useRevokeConnection() {
     mutationFn: (connection: string) =>
       ok(revokeInstanceConnectionOp, { path: { connection } }),
     // Refresh on SETTLE, not just success: a 409 means another tab already
-    // revoked it, so the inventory is stale in exactly that case — refetching
+    // revoked it, so the inventory is stale in exactly that case, refetching
     // flips the row to revoked and drops its Revoke action rather than leaving
     // a credential that reads live and cannot be revoked again.
     onSettled: () => queries.invalidateQueries({ queryKey: connectionsKey }),
@@ -297,36 +297,83 @@ export function safeOriginOf(url: string): string {
   }
 }
 
+/** The closed remote states plus the client-derived duplicate-identity mark. */
+export type RemoteState = Remote['state'] | 'duplicate-identity';
+
 /**
- * remoteStateText is the human sentence for each of the seven closed states.
- *
- * The card must never carry a state by colour alone, so this text IS the state
- * — the colour is decoration on top of it. `credential-rejected` is called out
- * as its own loud sentence rather than folded into "unreachable": the two have
- * completely different fixes, and an operator who reads "unreachable" will go
- * and check the network.
+ * remoteStateText is the short label for each state, badge-sized. The badge
+ * must never carry a state by colour alone, so this text IS the state and the
+ * colour is decoration on top of it. The recovery sentence for the states that
+ * have one lives in `remoteRecoveryText`.
  */
-export function remoteStateText(remote: Remote): string {
-  switch (remote.state) {
+export function remoteStateText(state: RemoteState): string {
+  switch (state) {
     case 'ok':
       return 'Reachable';
     case 'unreachable':
       return 'Unreachable';
     case 'credential-rejected':
-      return 'Credential rejected — this instance is reachable and is refusing our credential. Mint a fresh one on the peer and re-add the entry.';
+      return 'Credential rejected';
     case 'pin-mismatch':
-      return 'Certificate pin mismatch — the key at that URL is not the one this entry pinned. Do not re-add until you know why.';
+      return 'Certificate pin mismatch';
     case 'redirect-refused':
-      return 'Refused: that URL answered a redirect, and a directory fetch never follows one.';
+      return 'Redirect refused';
     case 'identity-conflict':
-      return 'Identity conflict — that URL now answers as a different instance than the one this entry was added for.';
+      return 'Identity conflict';
     case 'self-connected':
-      return 'This entry points at this instance itself.';
+      return 'This instance';
+    case 'duplicate-identity':
+      return 'Duplicate identity';
   }
 }
 
 /**
- * stalenessText is the "unreachable for Xh — showing last known" sentence.
+ * remoteRecoveryText is the sentence under the badge: what happened and what to
+ * do about it. `credential-rejected` is its own loud sentence rather than
+ * folded into "unreachable": the two have completely different fixes, and an
+ * operator who reads "unreachable" will go and check the network. A reachable
+ * entry has nothing to say, and an unreachable one says only how long, via
+ * `stalenessText`.
+ */
+export function remoteRecoveryText(remote: Remote, state: RemoteState): string | null {
+  switch (state) {
+    case 'ok':
+    case 'unreachable':
+      return null;
+    case 'credential-rejected':
+      return `The pinned credential was rejected. Mint a new connection credential on ${remote.name} and replace it here.`;
+    case 'pin-mismatch':
+      return 'The key at that URL is not the one this entry pinned. Do not re-add until you know why.';
+    case 'redirect-refused':
+      return 'That URL answered a redirect, and a directory fetch never follows one.';
+    case 'identity-conflict':
+      return 'That URL now answers as a different instance than the one this entry was added for.';
+    case 'self-connected':
+      return 'This entry points at this instance itself. A remote must be another instance.';
+    case 'duplicate-identity':
+      return 'Another entry resolves to the same instance identity. Neither entry opens a workspace until one is removed.';
+  }
+}
+
+/**
+ * duplicateIdentities returns the identities more than one entry resolves to.
+ * Both entries are marked and neither is served: the directory cannot tell
+ * which URL the operator meant.
+ */
+export function duplicateIdentities(remotes: readonly Remote[]): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const remote of remotes) {
+    if (remote.identity === undefined) continue;
+    if (seen.has(remote.identity)) duplicates.add(remote.identity);
+    seen.add(remote.identity);
+  }
+  return duplicates;
+}
+
+/**
+ * stalenessText is the one state sentence for a stale snapshot: "Unreachable
+ * for 2 hours. Showing the last known directory."
  *
  * It is derived from `stale_for_seconds`, which the server computes from the
  * OUTCOME rather than from the age: a snapshot that is old because nothing
@@ -337,8 +384,10 @@ export function stalenessText(remote: Remote): string | null {
   if (!remote.stale) {
     return null;
   }
-  const seconds = remote.stale_for_seconds ?? 0;
-  return `Showing the last known directory, ${humanAge(seconds)} old.`;
+  const age = humanAge(remote.stale_for_seconds ?? 0);
+  return remote.state === 'unreachable'
+    ? `Unreachable for ${age}. Showing the last known directory.`
+    : `Showing the last known directory, ${age} old.`;
 }
 
 function humanAge(seconds: number): string {

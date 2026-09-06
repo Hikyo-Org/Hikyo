@@ -79,8 +79,8 @@ export function useLeases(
  * useRefreshLeases re-reads one environment's lease listing.
  *
  * It exists for the mint's no-`onSuccess` path: the mint is a plain async call
- * (below), so a mint whose response was lost — but may have COMMITTED, leaving a
- * live role whose password is gone forever — has to be able to invalidate the
+ * (below), so a mint whose response was lost, but may have COMMITTED, leaving a
+ * live role whose password is gone forever, has to be able to invalidate the
  * listing the operator will scan to find and revoke it.
  */
 export function useRefreshLeases(p: ProjectRef): (environment: string) => void {
@@ -118,7 +118,7 @@ export function useDynamicProviders(
 /**
  * useRefreshProviders re-reads the provider listing. It exists because the
  * credential-bearing writes below are plain async calls (not mutations), so they
- * have no `onSuccess` — and because a write whose response never arrived may
+ * have no `onSuccess`, and because a write whose response never arrived may
  * still have COMMITTED, so the caller must be able to refresh on the failure path
  * too.
  */
@@ -136,7 +136,7 @@ export function useRefreshProviders(p: ProjectRef): () => void {
  *
  * Deliberately NOT a `useMutation`: TanStack retains a mutation's VARIABLES in
  * its cache until garbage collection, and the request body carries the
- * write-only admin credential in plaintext — a mutation would leave that secret
+ * write-only admin credential in plaintext, a mutation would leave that secret
  * reachable from the query client long after the dialog closed. A plain async
  * call keeps it on the stack and nowhere else (mirrors `mintCredential`).
  */
@@ -177,7 +177,7 @@ export function useDeleteDynamicProvider(p: ProjectRef) {
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: providersKey(p.org, p.project) });
       // A delete cascades to lease revocation across every environment, so the
-      // whole project's lease listings are stale — invalidate by the shared prefix.
+      // whole project's lease listings are stale, invalidate by the shared prefix.
       void queries.invalidateQueries({ queryKey: leasesForProjectKey(p.org, p.project) });
     },
   });
@@ -264,7 +264,7 @@ export function useRevokeLease(p: ProjectRef) {
 }
 
 /**
- * useSettleLease re-triggers reconcile on an `unknown` lease — the only state it
+ * useSettleLease re-triggers reconcile on an `unknown` lease, the only state it
  * accepts. The worker re-probes the provider and settles the lease to its true
  * terminal or active state.
  */
@@ -284,7 +284,7 @@ export function useSettleLease(p: ProjectRef) {
 /**
  * zLeaseMinted narrows the mint result to what the caller may keep: the
  * username and the display-once password, plus its expiry. Deliberately not the
- * whole `lease` member — that is re-read from the listing a moment later, and
+ * whole `lease` member, that is re-read from the listing a moment later, and
  * parsing it here would let a drift in an unrelated field throw away the one
  * value nothing in the system can ever return again.
  */
@@ -297,7 +297,7 @@ const zLeaseMinted = mintLeaseOp.response.pick({
 export type LeaseMinted = z.infer<typeof zLeaseMinted>;
 
 /**
- * mintLease is the display-once lease mint, and — like `mintCredential` — it is
+ * mintLease is the display-once lease mint, and, like `mintCredential`, it is
  * deliberately NOT a `useMutation`: TanStack keeps a mutation's result cached
  * until garbage collection, and the password's whole contract is that it lives
  * in exactly one place, the ephemeral dialog that renders it once.
@@ -330,7 +330,7 @@ function withDetail(base: string, error: unknown): string {
  * createProviderRefusalText names a provider-create refusal in its own
  * vocabulary. The load-bearing case is 400: the server probes the origin with
  * the credential before storing anything, so a 400 is "malformed, unreachable,
- * or the credential was refused" — the detail says which.
+ * or the credential was refused", the detail says which.
  */
 export function createProviderRefusalText(error: unknown): string {
   if (error instanceof ApiError) {
@@ -374,7 +374,7 @@ export function setCredentialRefusalText(error: unknown): string {
       case 403:
         return 'Replacing the credential needs manage-identities on this project.';
       case 404:
-        return 'That provider is no longer here — someone may have deleted it.';
+        return 'That provider is no longer here: someone may have deleted it.';
       case 429:
         return 'Too many requests right now. Wait a moment and try again.';
       default:
@@ -393,7 +393,7 @@ export function revokeCredentialRefusalText(error: unknown): string {
       case 403:
         return 'Revoking the credential needs manage-identities on this project.';
       case 404:
-        return 'That provider is no longer here — someone may have deleted it.';
+        return 'That provider is no longer here: someone may have deleted it.';
       case 429:
         return 'Too many requests right now. Wait a moment and try again.';
       default:
@@ -415,7 +415,7 @@ export function deleteProviderRefusalText(error: unknown): string {
       case 403:
         return 'Deleting a provider needs manage-identities on this project.';
       case 404:
-        return 'That provider is no longer here — someone may have deleted it already.';
+        return 'That provider is no longer here: someone may have deleted it already.';
       case 409:
         return 'This provider still has live leases. Confirm the cascade to revoke them as part of the delete.';
       case 429:
@@ -463,7 +463,7 @@ export function leaseMintRefusalText(error: unknown): string {
  * leaseMintFailureText is the refusal for a mint request that WAS ISSUED. The
  * pre-commit refusals (a malformed request, authorization, a provider conflict
  * that discloses nothing, the budget) carry no ambiguity and stay the plain
- * sentence. Anything else — a dropped response, a 5xx, an unparseable body — may
+ * sentence. Anything else, a dropped response, a 5xx, an unparseable body, may
  * have left a live role whose password is gone forever, so it says so.
  */
 export function leaseMintFailureText(error: unknown): string {
@@ -485,7 +485,7 @@ export function leaseActionRefusalText(
         return 'The session could not be authenticated. Reload and sign in first.';
       case 403:
         return verb === 'renew'
-          ? 'The server refused the renewal. Renewing re-checks read over this environment — a principal that lost it cannot renew.'
+          ? 'The server refused the renewal. Renewing re-checks read over this environment: a principal that lost it cannot renew.'
           : `The server refused to ${verb} this lease.`;
       case 404:
         return 'That lease is no longer here.';

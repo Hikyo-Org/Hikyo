@@ -7,9 +7,12 @@ import { ApiError } from '../api/client.ts';
 import { isoDay } from '../api/identities.ts';
 import { useProjects } from '../api/settings.ts';
 import {
+  duplicateIdentities,
+  remoteRecoveryText,
   remoteStateText,
   safeOriginOf,
   stalenessText,
+  type RemoteState,
   useAddRemote,
   useAddWorkspaceOrigin,
   useConnections,
@@ -71,6 +74,7 @@ import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHando
  */
 export function Remotes() {
   const remotes = useRemotes();
+  const duplicates = duplicateIdentities(remotes.data?.items ?? []);
 
   return (
     <>
@@ -96,7 +100,7 @@ export function Remotes() {
 
         {remotes.isSuccess && remotes.data.items.length === 0 ? (
           <p role="status">
-            No remotes yet. Add one below — you will need its URL, its certificate fingerprint and a
+            No remotes yet. Add one below. You will need its URL, its certificate fingerprint and a
             connection credential, which whoever runs that instance mints from the{' '}
             <strong>Connection credentials</strong> section of its own Remotes page.
           </p>
@@ -104,7 +108,11 @@ export function Remotes() {
 
         <ul className="remotes">
           {(remotes.data?.items ?? []).map((remote) => (
-            <RemoteCard key={remote.id} remote={remote} />
+            <RemoteCard
+              key={remote.id}
+              remote={remote}
+              duplicateIdentity={remote.identity !== undefined && duplicates.has(remote.identity)}
+            />
           ))}
         </ul>
       </section>
@@ -156,7 +164,16 @@ export function ThisInstance() {
   );
 }
 
-function RemoteCard({ remote }: { remote: Remote }) {
+function RemoteCard({
+  remote,
+  duplicateIdentity,
+}: {
+  remote: Remote;
+  /** Two entries resolve to the same identity: both marked, neither served. */
+  duplicateIdentity: boolean;
+}) {
+  const state: RemoteState = duplicateIdentity ? 'duplicate-identity' : remote.state;
+  const recovery = remoteRecoveryText(remote, state);
   const rename = useRenameRemote();
   const remove = useRemoveRemote();
   const workspaces = useWorkspaces();
@@ -167,9 +184,11 @@ function RemoteCard({ remote }: { remote: Remote }) {
   const handoff = useWorkspaceHandoff(origin, {
     // A live card hides the launcher and must not stage an unused transaction.
     preparation:
-      live === undefined
-        ? { kind: 'establishment' }
-        : { kind: 'unavailable', message: 'This workspace is already open.' },
+      duplicateIdentity
+        ? { kind: 'refused', message: remoteRecoveryText(remote, 'duplicate-identity') ?? '' }
+        : live === undefined
+          ? { kind: 'establishment' }
+          : { kind: 'refused', message: 'This workspace is already open in another tab.' },
     onFailMessage: (error) =>
       error instanceof WorkspaceError
         ? error.message
@@ -224,34 +243,36 @@ function RemoteCard({ remote }: { remote: Remote }) {
         <h2 className="remote__name">{remote.name}</h2>
         {/* The state is TEXT first. The badge's colour is decoration on top of
             a sentence that already says everything. */}
-        <span className="badge" data-state={remote.state}>
-          {remote.state}
+        <span className="badge" data-state={state}>
+          {remoteStateText(state)}
         </span>
       </div>
       <p className="mono remote__url">{remote.url}</p>
 
-      <p className={remote.state === 'ok' ? 'remote__state' : 'alert'} role="status">
-        {remote.state === 'ok' ? null : (
+      {/* The badge already names the state; this line is the recovery. It is
+          an alert only when there is something to do. */}
+      {recovery === null ? null : (
+        <p className="alert" role="alert">
           <span className="alert__glyph" aria-hidden="true">
             !
           </span>
-        )}
-        <span>
-          {remoteStateText(remote)}
-          {/* A rejected credential is fixed on the PEER's own Connection
-              credentials section — link straight to it rather than describe
-              where it lives (AC#1). */}
-          {remote.state === 'credential-rejected' ? (
-            <>
-              {' '}
-              <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
-                Manage connection credentials on {origin}
-              </a>
-              .
-            </>
-          ) : null}
-        </span>
-      </p>
+          <span>
+            {recovery}
+            {/* A rejected credential is fixed on the PEER's own Connection
+                credentials section: link straight to it rather than describe
+                where it lives (AC#1). */}
+            {state === 'credential-rejected' ? (
+              <>
+                {' '}
+                <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
+                  Manage connection credentials on {origin}
+                </a>
+                .
+              </>
+            ) : null}
+          </span>
+        </p>
+      )}
       {staleness === null ? null : (
         <p className="remote__stale" role="status">
           {staleness}
@@ -260,13 +281,13 @@ function RemoteCard({ remote }: { remote: Remote }) {
 
       <dl className="remote__facts">
         <dt>Identity</dt>
-        <dd className="mono">{remote.identity ?? 'not yet observed'}</dd>
+        <dd className="mono">{remote.identity ?? <Absent />}</dd>
         <dt>Version</dt>
-        <dd className="mono">{remote.version ?? 'unknown'}</dd>
+        <dd className="mono">{remote.version ?? <Absent />}</dd>
         <dt>Organisations</dt>
-        <dd>{remote.org_count ?? 0}</dd>
+        <dd>{remote.org_count ?? <Absent />}</dd>
         <dt>Projects</dt>
-        <dd>{remote.project_count ?? 0}</dd>
+        <dd>{remote.project_count ?? <Absent />}</dd>
       </dl>
 
       {remote.orgs === undefined || remote.orgs.length === 0 ? null : (
@@ -289,7 +310,9 @@ function RemoteCard({ remote }: { remote: Remote }) {
         </p>
       )}
 
-      {live !== undefined || handoff.phase.kind !== 'failed' ? null : (
+      {/* A duplicate identity's refusal is the recovery line above; the
+          handoff's own failed phase would only repeat it. */}
+      {live !== undefined || duplicateIdentity || handoff.phase.kind !== 'failed' ? null : (
         <p className="alert" role="alert">
           <span className="alert__glyph" aria-hidden="true">
             !
@@ -311,7 +334,7 @@ function RemoteCard({ remote }: { remote: Remote }) {
             !
           </span>
           <span>
-            Workspace session ended — that instance revoked it, withdrew consent for this origin,
+            Workspace session ended: that instance revoked it, withdrew consent for this origin,
             or became unreachable. Reconnect to continue.
           </span>
         </p>
@@ -357,16 +380,20 @@ function RemoteCard({ remote }: { remote: Remote }) {
             className="btn btn--primary"
             type="button"
             onClick={handoffAction.onClick}
-            disabled={handoffAction.disabled}
+            disabled={handoffAction.disabled || duplicateIdentity}
           >
-            {handoffAction.label}
+            {duplicateIdentity ? 'Open workspace' : handoffAction.label}
           </button>
         ) : null}
         {live === undefined ? null : (
           <>
-            <span className="badge" role="status">
-              Workspace open
-            </span>
+            {/* A duplicate is not served even while a bearer is still held:
+                the open badge and picker go, Close stays so it can be dropped. */}
+            {duplicateIdentity ? null : (
+              <span className="badge" role="status">
+                Workspace open
+              </span>
+            )}
             <button className="btn" type="button" onClick={() => forgetWorkspace(origin)}>
               Close workspace
             </button>
@@ -388,10 +415,12 @@ function RemoteCard({ remote }: { remote: Remote }) {
           Remove
         </button>
       </div>
-      {live === undefined ? null : <WorkspacePicker origin={origin} remoteName={remote.name} />}
+      {live === undefined || duplicateIdentity ? null : (
+        <WorkspacePicker origin={origin} remoteName={remote.name} />
+      )}
       {remove.isSuccess ? (
         <p role="status">
-          Removed here. That does <strong>not</strong> revoke the credential — revoke it in the
+          Removed here. That does <strong>not</strong> revoke the credential. Revoke it in the
           Connection credentials section of{' '}
           <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
             {origin}
@@ -406,10 +435,10 @@ function RemoteCard({ remote }: { remote: Remote }) {
 /**
  * Renders a terminal update-job outcome. A `failed` outcome (`failed`,
  * `rolled-back`, or `rollback-failed`) surfaces as an `alert` region carrying
- * the diagnostic `failure_code` — the instance did not reach the requested
+ * the diagnostic `failure_code`, the instance did not reach the requested
  * version and needs an operator. Everything else stays a plain status line.
  * The `isError` alert (query could not read the job) is a separate concern the
- * caller renders — and the caller suppresses it while this shows a `failed`
+ * caller renders, and the caller suppresses it while this shows a `failed`
  * outcome, since a refetch error can arrive with the last terminal `data` still
  * cached and the two must not double up.
  */
@@ -430,7 +459,7 @@ export function UpdateJobStatus({
         <span>
           Update job <span className="mono">{jobID}</span> {job?.state}
           {job?.phase === undefined ? '' : ` (${job.phase})`}
-          {outcome.failureCode === undefined ? '' : ` — ${outcome.failureCode}`}. Inspect the
+          {outcome.failureCode === undefined ? '' : ` (${outcome.failureCode})`}. Inspect the
           remote instance logs.
         </span>
       </p>
@@ -442,6 +471,11 @@ export function UpdateJobStatus({
       {job?.phase === undefined ? '' : ` (${job.phase})`}
     </p>
   );
+}
+
+/** One vocabulary for a fact the server has not sent: never "unknown", never 0. */
+function Absent() {
+  return <span className="values__absent">absent</span>;
 }
 
 export function AddRemote() {
@@ -462,6 +496,10 @@ export function AddRemote() {
       setValidationFailure(
         'Enter a bare HTTPS origin, for example https://hikyo.example, with no path, query, fragment, or user information.',
       );
+      return;
+    }
+    if (submittedOrigin === globalThis.location.origin) {
+      setValidationFailure('That is this instance. A remote must be another instance.');
       return;
     }
     const duplicate = remotes.data?.items.find(
@@ -492,7 +530,7 @@ export function AddRemote() {
       <h2 id="add-remote-title">Add a remote</h2>
       <p>
         The URL must be <span className="mono">https</span> and the fingerprint is checked on every
-        connection — it replaces the certificate authority as the trust root, which is what makes a
+        connection. It replaces the certificate authority as the trust root, which is what makes a
         self-signed instance on your own network safe to point at.
       </p>
       <form className="form" onSubmit={onSubmit} noValidate>
@@ -571,7 +609,7 @@ function OriginAllowlist() {
       <h2 id="allowlist-title">Workspace origins</h2>
       <p>
         The sites allowed to operate <strong>this</strong> instance from a browser. Exact origins
-        only — no wildcards, no subdomain matching. What you are trusting is the code served at that
+        only: no wildcards, no subdomain matching. What you are trusting is the code served at that
         origin.
       </p>
 
@@ -649,7 +687,7 @@ function OriginAllowlist() {
  * It is deliberately NOT the same thing as a directory card. A card is this
  * instance VIEWING a peer, holding a credential minted over there. This is the
  * SERVING side: the write-only credentials a peer presents at our own directory
- * fetch. The two look alike — both say "credential" — so the copy names the
+ * fetch. The two look alike, both say "credential", so the copy names the
  * distinction rather than trusting the layout to carry it.
  */
 /** A minted value paired with the label the operator typed for it. */
@@ -668,7 +706,7 @@ export function ConnectionCredentials() {
       <h2 id="connections-title">Connection credentials</h2>
       <p>
         The credentials <strong>this</strong> instance issues for another to hold. A peer presents
-        one at this instance&apos;s server-side directory fetch — it is the write-only counterpart to
+        one at this instance&apos;s server-side directory fetch. It is the write-only counterpart to
         the connection credential you paste into <strong>Add a remote</strong> over on the viewing
         instance. It is <strong>not</strong> a directory card: a card is this instance reading a
         peer, this is a peer reading us.
@@ -830,7 +868,7 @@ function MintConnectionForm({
     <form className="form" onSubmit={onSubmit} noValidate>
       <h3>Mint a credential</h3>
       <p>
-        The label names the peer for the audit trail. It is descriptive, not enforced — this
+        The label names the peer for the audit trail. It is descriptive, not enforced; this
         instance cannot verify who holds the value.
       </p>
       {mint.error !== null ? (
@@ -950,7 +988,7 @@ function ConnectionMintDialog({
       }}
     >
       <h2 className="ceremony__title" id="connection-mint-title">
-        Connection credential minted — shown exactly once
+        Connection credential minted, shown exactly once
       </h2>
       <p className="ceremony__scope">
         For <strong>{minted.label}</strong>. Hand this value to that peer; it goes into its{' '}
@@ -964,7 +1002,7 @@ function ConnectionMintDialog({
           </span>
           <span>
             The instance lifetime ceiling shortened this credential. It expires earlier than asked
-            for — said now rather than discovered when it dies.
+            for, said now rather than discovered when it dies.
           </span>
         </p>
       ) : null}
@@ -1019,7 +1057,7 @@ function ConnectionMintDialog({
           <span className="alert__glyph" aria-hidden="true">
             !
           </span>
-          <span>Confirm you have stored it — there is no second look at this value.</span>
+          <span>Confirm you have stored it. There is no second look at this value.</span>
         </p>
       ) : null}
       <div className="ceremony__actions">
@@ -1035,8 +1073,8 @@ function ConnectionMintDialog({
  * RevokeConnectionDialog states the consequence before it commits (AC#4).
  *
  * Revocation retires the credential and its principal. It does NOT touch
- * workspace sessions — those are governed by the origin allowlist, not this
- * credential — so the copy says exactly what it does and does not do, and a
+ * workspace sessions, those are governed by the origin allowlist, not this
+ * credential, so the copy says exactly what it does and does not do, and a
  * double revoke surfaces the 409 rather than pretending a second act happened.
  */
 function RevokeConnectionDialog({
@@ -1071,7 +1109,7 @@ function RevokeConnectionDialog({
       </h2>
       <p className="ceremony__scope">
         The credential and its principal are retired together. The peer holding it loses this
-        instance&apos;s directory fetch at its <strong>next</strong> presentation — its card over
+        instance&apos;s directory fetch at its <strong>next</strong> presentation; its card over
         there flips to <span className="mono">credential rejected</span>. Active workspace sessions
         are <strong>unaffected</strong>: those follow the origin allowlist, not this credential.
       </p>
@@ -1140,7 +1178,7 @@ function revokeFailureText(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.status) {
       case 409:
-        return 'This credential was already revoked — nothing more to do, and no second event recorded.';
+        return 'This credential was already revoked. Nothing more to do, and no second event recorded.';
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
       default:
@@ -1153,8 +1191,8 @@ function revokeFailureText(error: unknown): string {
 /**
  * useWorkspaceLiveness keeps the card honest about a session it does not own.
  *
- * Both of the remote's kill switches — de-allowlisting this origin and revoking
- * the session in its own active-session list — take effect at the remote's next
+ * Both of the remote's kill switches, de-allowlisting this origin and revoking
+ * the session in its own active-session list, take effect at the remote's next
  * request. This IS that request, so a workspace killed over there stops
  * claiming to be open over here within one poll rather than at the next thing
  * the human tries to do.
@@ -1186,7 +1224,7 @@ function useWorkspaceLiveness(bearer: WorkspaceBearer | undefined, onEnded: () =
  * It reads live rather than from the directory snapshot for a load-bearing
  * reason: the matrix is addressed by org and project IDS, and the snapshot
  * carries only names. The ids exist only on the remote, so the shell resolves
- * them there, over the same bearer everything else in the workspace uses — which
+ * them there, over the same bearer everything else in the workspace uses, which
  * is why this renders inside the workspace transport with its own isolated
  * cache, exactly like the surfaces it links to.
  */

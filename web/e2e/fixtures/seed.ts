@@ -23,7 +23,7 @@ import { ADMIN } from './instance.ts';
  *
  * It is seeded through the REAL API with a real session, never by writing to
  * the datastore: a value is a sealed envelope bound to its own row, and a
- * fixture that inserted bytes directly would produce cells nothing can open —
+ * fixture that inserted bytes directly would produce cells nothing can open , 
  * a flow that then "passed" would be proving something about a broken row.
  *
  * Two capabilities on the seeding path are MFA-mandatory (`instance-config`
@@ -68,7 +68,7 @@ export type Seeded = {
   /**
    * The secret the write-only flow REPLACES.
    *
-   * Its own key, because a blind rotation changes what is stored — and a test
+   * Its own key, because a blind rotation changes what is stored, and a test
    * that rotated a value another test asserts by literal would pass alone and
    * fail in the suite, which is the worst kind of failure to read.
    */
@@ -81,7 +81,7 @@ export type Seeded = {
    * The revision-history fixture (#59), all in `dev`.
    *
    * Three published revisions with a secret edit and a config edit between
-   * them, plus one key whose declaration is TIGHTENED after publication — the
+   * them, plus one key whose declaration is TIGHTENED after publication, the
    * only way to produce a historical state that is not restorable as-is, and
    * the same recipe the `schema_failing_restore_blocks_loud` conformance
    * scenario uses.
@@ -119,12 +119,12 @@ export type Seeded = {
   /**
    * NO REVISION NUMBERS travel in this fixture, deliberately.
    *
-   * The flow MUTATES this project — it restores and publishes — and a two-pass
+   * The flow MUTATES this project, it restores and publishes, and a two-pass
    * run (desktop then mobile, one instance) would have the second pass asserting
    * numbers the first one moved. The flow derives them at `beforeAll` instead,
    * from the same `listRevisions` projection the seeding used.
    */
-  /** The seeding session's bearer token — the flows use cookies, not this. */
+  /** The seeding session's bearer token, the flows use cookies, not this. */
   token: string;
   principal: string;
   /**
@@ -140,7 +140,7 @@ export type Seeded = {
    * The newest TOTP step the SEEDING session spent a code on.
    *
    * Every code is single-use per (account, step), and seeding spends several
-   * in a row — so a flow presenting a code has to pick a step beyond this one
+   * in a row, so a flow presenting a code has to pick a step beyond this one
    * or be refused as a replay, which looks exactly like a wrong code.
    */
   lastTotpStep: number;
@@ -156,7 +156,7 @@ export type Seeded = {
   machine: {
     /** The workload holding `read` on development, with a federated binding. */
     workload: string;
-    /** The automation principal — no journey, different allowlist. */
+    /** The automation principal, no journey, different allowlist. */
     automation: string;
     /** The workload the mint flow mints on, so counts stay predictable. */
     mintable: string;
@@ -196,7 +196,7 @@ function decodeBase32(secret: string): Buffer {
   return Buffer.from(out);
 }
 
-/** totpCode is RFC 6238, SHA-1, 6 digits, 30-second steps — the server's parameters. */
+/** totpCode is RFC 6238, SHA-1, 6 digits, 30-second steps, the server's parameters. */
 export function totpCode(otpauthURI: string, at: Date = new Date()): string {
   const secret = new URL(otpauthURI).searchParams.get('secret');
   if (secret === null) {
@@ -225,8 +225,8 @@ const zWhoAmI = z.object({ principal: z.object({ id: z.string() }) });
 /**
  * lastStep is the newest time step this process has spent a code on.
  *
- * Every TOTP code is single-use per (account, step) — enrolment's confirming
- * code included — so two presentations in the same second cannot both succeed,
+ * Every TOTP code is single-use per (account, step), enrolment's confirming
+ * code included, so two presentations in the same second cannot both succeed,
  * and a step two ahead of now is outside the server's accepted skew. The only
  * honest way through is to wait for the clock, which is what `consumeCode`
  * does: at most one 30-second step per presentation, in global setup, once.
@@ -236,7 +236,7 @@ let lastStep = -1;
 async function consumeCode(token: string, uri: string, path: string): Promise<string> {
   const step = () => Math.floor(Date.now() / 1000 / 30);
   // The next step nothing has spent. A code is single-use per (account, step)
-  // — the enrolment's own start reserves one too — so each presentation has to
+  // the enrolment's own start reserves one too, so each presentation has to
   // move forward.
   const want = Math.max(step(), lastStep + 1);
   // Wait ONLY when the wanted step is out of the server's ±1 skew. One step
@@ -280,7 +280,7 @@ const REVEAL_GRANT = { capability: 'reveal', scope: 'instance' } as const;
  * conformance scenario uses: publish a value that satisfies the declaration in
  * force, publish a replacement, then TIGHTEN the declaration. The older
  * revision is now not restorable as-is and not pinnable without a recorded
- * override — a state that cannot be created any other way, because publication
+ * override, a state that cannot be created any other way, because publication
  * correctly refuses a value its own schema rejects.
  */
 const HISTORY = {
@@ -343,7 +343,7 @@ export async function seedTenant(
   //
   // `reveal` is deliberately NOT here: it is granted through the API below, so
   // it carries a `manual` origin. Break-glass grants carry a `break-glass`
-  // origin, and the grant API releases only the origins it owns — so a
+  // origin, and the grant API releases only the origins it owns, so a
   // break-glass `reveal` could not be revoked over the network, and the
   // write-only editing flow needs to take it away and give it back.
   for (const capability of [
@@ -359,7 +359,7 @@ export async function seedTenant(
     'manage-identities',
     // The history drawer's own two (#59). `pin` is the pin lifecycle's
     // authority; `reveal-history` is the independent grant that historical
-    // secret material takes — a restore that reads a superseded secret and a
+    // secret material takes, a restore that reads a superseded secret and a
     // pin onto a non-current revision are both historical disclosures, and
     // neither is covered by `reveal`.
     'pin',
@@ -367,12 +367,12 @@ export async function seedTenant(
     // Remote cryptographic maintenance (#503). `rotate-dek` authorizes the DEK
     // rotations (and rides for the token/scanning rotations); `reencrypt` is the
     // operator authority the instance and project re-encryption walks take. Both
-    // are content-invisible — they re-wrap ciphertext without touching plaintext
-    // — so granting them to the fixture principal disturbs no other flow.
+    // are content-invisible, they re-wrap ciphertext without touching plaintext
+    // so granting them to the fixture principal disturbs no other flow.
     'rotate-dek',
     'reencrypt',
     // The audit surface's own authority (#502). `audit-read` is a standalone
-    // capability — no role template expands into it — so the trail is
+    // capability, no role template expands into it, so the trail is
     // unreadable without its own grant. Instance scope reaches every org's
     // trail by the same downward inheritance the rest of this list relies on.
     'audit-read',
@@ -426,7 +426,7 @@ export async function seedTenant(
     static_jwks:
       '{"keys":[{"kty":"OKP","crv":"Ed25519","x":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA","kid":"e2e-seed","use":"sig"}]}',
     // The API server's own audience, which no binding may name and no token may
-    // carry — the rule the mandatory audience exists to enforce.
+    // carry, the rule the mandatory audience exists to enforce.
     refused_audiences: ['https://kubernetes.default.svc'],
   });
 
@@ -530,13 +530,13 @@ export async function seedTenant(
   );
 
   // `reveal` through the API, under the instance `manage-members` the operator
-  // template seeds — the ADR's own unheld-capability granting power, at the
+  // template seeds, the ADR's own unheld-capability granting power, at the
   // scope where the threat model actually extends that trust.
   await grantReveal(token, principal);
 
   // That grant killed the session with it. Nothing left to seed is
-  // MFA-mandatory — `manage-projects`, `definitions-edit`, `edit`, `publish`
-  // and `project-settings` are all ordinary capabilities — so a plain password
+  // MFA-mandatory, `manage-projects`, `definitions-edit`, `edit`, `publish`
+  // and `project-settings` are all ordinary capabilities, so a plain password
   // session finishes the job with no further codes.
   token = await signIn();
 
@@ -565,7 +565,7 @@ export async function seedTenant(
   // Since #51 a value PUT only STAGES a pending change; delivery and the
   // matrix's published state come from the selective publish that follows.
   // The fixture publishes everything it staged, per environment, because the
-  // flows exercise PUBLISHED values — staging is its own surface.
+  // flows exercise PUBLISHED values, staging is its own surface.
   const devVersions: string[] = [];
   for (const [name, value] of [
     ['DB_PASSWORD', 'hunter2-development'],
@@ -619,7 +619,7 @@ export async function seedTenant(
     { version_ids: prodVersions },
   );
 
-  // A required-absent state cannot be CREATED — schema publication correctly
+  // A required-absent state cannot be CREATED, schema publication correctly
   // vetoes it. The matrix fixture therefore walks the real user path: publish
   // a valid value, make it required, then STAGE a clear. Saving stays free;
   // the pending unset is the publish-veto problem the matrix must compute.
@@ -646,8 +646,8 @@ export async function seedTenant(
     zStaged,
   );
 
-  // Development gets an explicit sliding window. The INSTANCE default is 0 —
-  // fail-closed, and the concrete default is the operations spec's to fix — so
+  // Development gets an explicit sliding window. The INSTANCE default is 0 , 
+  // fail-closed, and the concrete default is the operations spec's to fix, so
   // without this every environment would take a ceremony per disclosure and
   // the sliding half of the guard would have no subject.
   await call(
@@ -658,7 +658,7 @@ export async function seedTenant(
     { protected: false, reauth_window_seconds: 300 },
   );
 
-  // Production is protected, which caps its window at 0 — the state the
+  // Production is protected, which caps its window at 0, the state the
   // "WebAuthn per disclosure, TOTP refused" criterion is about.
   await call(
     token,
@@ -713,20 +713,20 @@ export async function seedTenant(
     );
   };
 
-  // r1 — everything present. WORKERS holds a value the CURRENT declaration
+  // r1, everything present. WORKERS holds a value the CURRENT declaration
   // still accepts; the tightening below is what makes r1 unrestorable.
   await publishHistory(historyDev, [
     [HISTORY.configKey, 'debug'],
     [HISTORY.secretKey, 'hunter2-r1'],
     [HISTORY.tightenedKey, 'not-an-integer'],
   ]);
-  // r2 — the SECRET edit, and WORKERS moves to a value the tightened
+  // r2, the SECRET edit, and WORKERS moves to a value the tightened
   // declaration will still accept, so restoring r2 stays clean.
   await publishHistory(historyDev, [
     [HISTORY.secretKey, 'hunter2-r2'],
     [HISTORY.tightenedKey, '12'],
   ]);
-  // r3 — the CONFIG edit, and the current revision. Restoring r2 therefore
+  // r3, the CONFIG edit, and the current revision. Restoring r2 therefore
   // stages exactly one row: LOG_LEVEL back to `debug`.
   await publishHistory(historyDev, [[HISTORY.configKey, 'info']]);
   // Staging gets its own single revision, so the drawer's environment tabs
@@ -766,9 +766,9 @@ export async function seedTenant(
   // reveal-history ceremony. Its expiry sits inside the 30-day warning tier,
   // which is what the drawer's expiry badge renders.
   // The revision to pin is READ, never assumed: every schema act mints a
-  // revision of its own in every environment of the project — creating a key and
+  // revision of its own in every environment of the project, creating a key and
   // tightening a declaration each advance the environment even though they
-  // change no value — so the three publishes above are emphatically not r1..r3.
+  // change no value, so the three publishes above are emphatically not r1..r3.
   const devHistory = await call(
     token,
     'GET',

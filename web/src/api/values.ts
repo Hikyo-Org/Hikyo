@@ -44,8 +44,8 @@ import { useTransport } from './transport.tsx';
  * One rule is carried here rather than in the components, because it is the
  * one that is easy to get subtly wrong: **the window gates the prompt, never
  * the check**. So a refusal from a disclosure route is NOT read as "the window
- * lapsed, prompt again". A 403 there means the server refused the disclosure —
- * most often a grant revoked under an open window — and the honest response is
+ * lapsed, prompt again". A 403 there means the server refused the disclosure , 
+ * most often a grant revoked under an open window, and the honest response is
  * to remask and say so, not to loop the human through a ceremony that will
  * refuse again.
  */
@@ -56,7 +56,7 @@ export type RevealWindow = z.infer<typeof zRevealWindow>;
 
 export type EnvironmentList = z.infer<typeof zEnvironmentList>;
 
-/** useEnvironments lists the project's environments — the copy destinations. */
+/** useEnvironments lists the project's environments, the copy destinations. */
 export function useEnvironments(env: EnvRef): UseQueryResult<EnvironmentList> {
   const transport = useTransport();
   return useQuery({
@@ -87,7 +87,7 @@ export function useValues(env: EnvRef): UseQueryResult<ValueList> {
  * fetchRevealWindow reads the guard's state for ONE environment on demand.
  *
  * The hook below covers the environment the surface is standing in; this
- * covers the one an act is aimed AT — a copy destination, which has its own
+ * covers the one an act is aimed AT, a copy destination, which has its own
  * protected flag and therefore its own answer. Reusing the source's state
  * there would let a live window in development stand in for authority over
  * production, which is exactly what the protected cap exists to refuse.
@@ -137,7 +137,7 @@ export function useRevealWindow(
 
 /**
  * base64url helpers. WebAuthn's JSON shapes carry binary as base64url and the
- * browser's credential API wants ArrayBuffers, so exactly one place converts —
+ * browser's credential API wants ArrayBuffers, so exactly one place converts , 
  * exported so the account-security enrolment ceremonies (#60) share it rather
  * than growing a second, subtly different copy.
  */
@@ -169,7 +169,7 @@ export type PasskeyCeremonyInput = {
   /**
    * The decision this ceremony authorizes. It goes into the SIGNED binding, so
    * an assertion given to `reveal` cannot be spent on `publish` over the same
-   * environment and keys — the same unit, a different decision.
+   * environment and keys, the same unit, a different decision.
    *
    * `mint` is the machine-identity row (#61/#67): the credential mint and the
    * grant-widening gate both consume a window opened under this purpose, over
@@ -439,7 +439,7 @@ export function disclosureRefusalText(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.status) {
       case 403:
-        return 'The server refused this disclosure. Your access may have changed, or the reauthentication no longer covers these keys — nothing was shown.';
+        return 'The server refused this disclosure. Your access may have changed, or the reauthentication no longer covers these keys. Nothing was shown.';
       case 404:
         return 'Nothing here to disclose.';
       case 429:
@@ -520,7 +520,7 @@ export function useRevealAll(env: EnvRef) {
  *
  * It STAGES (#51): the edit lands in the caller's own working state and the
  * environment keeps delivering what it delivered, so what comes back is the
- * immutable version id a later publish names — not a cell. The value cache is
+ * immutable version id a later publish names, not a cell. The value cache is
  * still invalidated, because the matrix's pending marker moved even though the
  * delivered value did not.
  */

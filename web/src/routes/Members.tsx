@@ -105,7 +105,7 @@ const projectGrantCapabilities = [
  *
  * One surface for the whole organisation, and that is a decision rather than a
  * shortcut: `listOrgGrants` answers org-, project- AND environment-scoped
- * lines in one read, and there is deliberately no `grant.list-env` — "who can
+ * lines in one read, and there is deliberately no `grant.list-env`, "who can
  * reach this environment" has to include the lines above it, so an
  * environment-only listing could only answer a narrower question while looking
  * like the whole one. Project settings therefore links to a filtered projection
@@ -203,7 +203,11 @@ export function Members({ scope }: { scope: MembersScope }) {
           ['staging', 'production', 'project', 'org'],
         )
       : [...projectOptions, ...allOptions.filter((option) => option.scope.kind === 'org')];
-  const lines = grants.data?.items ?? [];
+  // A refused listing blanks everything derived from it: react-query keeps the
+  // last successful page in `data` across a failed refetch, and a manager whose
+  // second factor has lapsed must not keep seeing (or acting on) rows the
+  // server just declined to show.
+  const lines = grants.isError ? [] : (grants.data?.items ?? []);
   const visibleLines = projectId === ''
     ? lines
     : lines.filter((grant) => {
@@ -215,9 +219,16 @@ export function Members({ scope }: { scope: MembersScope }) {
   // The prototype's compact project presentation never applies at instance
   // scope: there is no project to be compact about.
   const compactPresentation = projectId !== '' || (prototypeMode && !instance);
+  // `manage-members` is MFA-mandatory at every scope, so a 403 here is the
+  // second-factor refusal and nothing else (grantFailureText documents the pin);
+  // a 404 is the uniform nonexistent shape: no manage-members, or no such scope.
   const secondFactorRefused =
-    instance && grants.error instanceof ApiError && grants.error.status === 403;
-  const nondisclosed = instance && grants.error instanceof ApiError && grants.error.status === 404;
+    grants.error instanceof ApiError && grants.error.status === 403;
+  const nondisclosed = grants.error instanceof ApiError && grants.error.status === 404;
+  // Either refusal leaves nothing to grant, invite or reset from here, so those
+  // actions are absent rather than dead; the second-factor case keeps its
+  // recovery path (the step-up banner) in the sentence above the list.
+  const noManageMembers = secondFactorRefused || nondisclosed;
 
   const [draft, setDraft] = useState<GrantDraft>({
     principal: '',
@@ -228,7 +239,7 @@ export function Members({ scope }: { scope: MembersScope }) {
   });
 
   // The safe default is computed from the topology, so it can only settle once
-  // the environments — and their protection — have actually been read.
+  // the environments, and their protection, have actually been read.
   useEffect(() => {
     if (modal === 'grant' && topologyReady && draft.scope === '' && grantOptions.length > 0) {
       // Instance scope has one option and nothing narrower to prefer, so it
@@ -298,11 +309,15 @@ export function Members({ scope }: { scope: MembersScope }) {
 
       {secondFactorRefused ? (
         <Alert>
-          Instance grants require a second factor. Present your authenticator code or passkey in
-          the banner above.
+          {instance ? 'Instance grants' : 'Managing members'} require{instance ? '' : 's'} a second
+          factor. Present your authenticator code or passkey in the banner above, then reload.
         </Alert>
       ) : nondisclosed ? (
-        <p role="status">Instance grants are not disclosed to this session.</p>
+        <p role="status">
+          {instance
+            ? 'Instance grants are not disclosed to this session.'
+            : 'You hold no manage-members here: this list shows only what you are allowed to see.'}
+        </p>
       ) : grants.isError ? (
         <Alert>{membershipFailureText(grants.error)}</Alert>
       ) : null}
@@ -487,6 +502,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           </table>
         )}
 
+        {noManageMembers ? null : (
         <div className="panel__actions">
           {topologyPending ? (
             <p role="status">Loading the complete organisation topology before a new grant can open…</p>
@@ -524,6 +540,7 @@ export function Members({ scope }: { scope: MembersScope }) {
             </button>
           ) : null}
         </div>
+        )}
       </Panel>
 
       {modal === 'invite' ? (
@@ -1008,8 +1025,8 @@ function GrantModal({
         <p className="ceremony__lede">
           <strong>{draft.principal}</strong> would get <span className="mono">{composed}</span> on{' '}
           <strong>every project and environment in {orgName}</strong>, current and future. Grants
-          inherit downward and there are no deny rules, so there is no per-project exception under
-          an organisation grant.
+          inherit automatically, with no further decision, and there are no deny rules, so there is
+          no per-project exception under an organisation grant.
         </p>
         {topologyPending ? (
           <p role="status" aria-live="polite">

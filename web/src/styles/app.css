@@ -1,6 +1,6 @@
 /*
  * The chrome skeleton: org rail, sidebar, header, content well, and the login
- * page. Structure and navigation only — the deep surfaces (matrix, reveal,
+ * page. Structure and navigation only, the deep surfaces (matrix, reveal,
  * history, machine access) are later tickets and land as routes into the
  * content well.
  *
@@ -69,14 +69,14 @@ select {
   padding: 0 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
   cursor: pointer;
   transition: background var(--dur) var(--ease);
 }
 
 .btn:hover {
-  background: color-mix(in oklch, var(--bg-raise), var(--tx) 8%);
+  background: color-mix(in oklch, var(--bg-panel), var(--tx) 8%);
 }
 
 .btn--primary {
@@ -91,14 +91,14 @@ select {
 }
 
 /* `[disabled]` covers real controls; the modifier covers the ones that cannot
-   carry the attribute — a <label> standing in for a file input, for instance. */
+   carry the attribute, a <label> standing in for a file input, for instance. */
 .btn[disabled],
 .btn--disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-/* A square control that holds a single glyph — the theme toggle. Keeps the
+/* A square control that holds a single glyph, the theme toggle. Keeps the
    control radius and the touch floor the pinned set asserts. */
 .btn--icon {
   width: var(--touch);
@@ -178,7 +178,33 @@ select {
   font-size: 12px;
 }
 
-/* Identity circles and count badges — the only pills outside the matrix. */
+/* Badge tiers ride beside the word that names the state; colour only echoes. */
+.badge--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.badge--warn {
+  border-color: var(--changed);
+  color: var(--changed);
+}
+
+.badge[data-state='ok'] {
+  border-color: var(--accent);
+}
+
+.badge[data-state='unreachable'],
+.badge[data-state='credential-rejected'],
+.badge[data-state='pin-mismatch'],
+.badge[data-state='duplicate-identity'],
+.badge[data-state='self-connected'],
+.badge[data-state='redirect-refused'],
+.badge[data-state='inactive'] {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Identity circles and count badges, the only pills outside the matrix. */
 .avatar {
   display: grid;
   place-items: center;
@@ -186,7 +212,7 @@ select {
   height: 36px;
   border-radius: var(--radius-pill);
   border: 1px solid var(--line);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
   font-size: 13px;
   font-weight: 500;
@@ -457,18 +483,18 @@ select {
   border: 1px solid var(--danger);
   border-radius: var(--radius-container);
   color: var(--tx);
-  background: color-mix(in oklch, var(--bg-raise), var(--danger) 8%);
+  background: color-mix(in oklch, var(--bg-panel), var(--danger) 8%);
   box-shadow: 0 12px 36px color-mix(in srgb, black 30%, transparent);
 }
 
 .toast--success {
   border-color: var(--accent);
-  background: color-mix(in oklch, var(--bg-raise), var(--accent) 8%);
+  background: color-mix(in oklch, var(--bg-panel), var(--accent) 8%);
 }
 
 .toast--info {
   border-color: var(--accent);
-  background: color-mix(in oklch, var(--bg-raise), var(--accent) 8%);
+  background: color-mix(in oklch, var(--bg-panel), var(--accent) 8%);
 }
 
 .toast--info .alert__glyph {
@@ -502,7 +528,7 @@ select {
 }
 
 .toast__dismiss:hover {
-  background: color-mix(in oklch, var(--bg-raise), var(--tx) 8%);
+  background: var(--bg-hover);
 }
 
 /* --- Chrome -------------------------------------------------------------- */
@@ -517,7 +543,7 @@ select {
 /* DESIGN.md's `--bg-panel` is the persistent-chrome surface (the prototype's
    `--bg2`): raised above the page in dark, RECESSED below it in light. The
    distinction is invisible in dark, where both tokens sit near 0.23, and
-   load-bearing in light, where `--bg-raise` is 0.995 — brighter than the 0.965
+   load-bearing in light, where `--bg-raise` is 0.995, brighter than the 0.965
    page, which inverts the chrome/content relationship the prototype draws. */
 .rail {
   /* The account menu is absolutely positioned against this column so it opens
@@ -650,8 +676,8 @@ select {
   right: -3px;
   width: 10px;
   height: 10px;
-  border: 2px solid var(--bg-raise);
-  border-radius: 50%;
+  border: 2px solid var(--bg-panel);
+  border-radius: var(--radius-pill);
   background: var(--accent);
   pointer-events: none;
 }
@@ -738,7 +764,7 @@ select {
 
 /* Sidebar treatment e (app-chrome iteration 18): sub-items hang off a hairline,
    and the rule belongs to the ROWS, not to the list around them. That is what
-   lets the current row own its own segment of the line and turn it accent — a
+   lets the current row own its own segment of the line and turn it accent, a
    rule on the container plus a second accent line inside the row draws two
    lines where the design has one. */
 .sidebar__link,
@@ -777,7 +803,7 @@ select {
   width: 22px;
   height: 22px;
   flex: none;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--bg);
   color: var(--tx);
   font-size: 9px;
@@ -863,7 +889,7 @@ select {
   margin: 0;
   overflow: hidden;
   padding: 16px 16px 6px;
-  color: var(--tx-dim);
+  color: var(--tx-faint);
   font-family: var(--font-ui);
   font-size: 10px;
   font-weight: 700;
@@ -928,7 +954,7 @@ select {
   padding: 8px 16px;
   /* The same structural rule the rail and the sidebar draw. Reaching for
      `--line` here made the header seam brighter than the rail seam in dark and
-     darker in light — an inconsistency the prototype does not have, because it
+     darker in light, an inconsistency the prototype does not have, because it
      has one hairline value for all three. */
   border-bottom: 1px solid var(--chrome-line);
 }
@@ -1037,9 +1063,21 @@ select {
   background: color-mix(in oklch, var(--bg), var(--danger) 8%);
 }
 
+/* Severity is named by the attribute and the text; the tint only echoes it. */
+.retention-warning[data-severity='warn'] {
+  border-color: var(--line);
+  background: color-mix(in oklch, var(--bg), var(--changed) 8%);
+}
+
+.retention-warning[data-severity='unknown'] {
+  border-style: dashed;
+  border-color: var(--line);
+  background: transparent;
+}
+
 /* The workspace banner (#71): a persistent accent bar naming the remote a
-   subtree is operating. Accent, not danger — this is a legitimate live state,
-   not a warning — and it sits at the top of the operated surface, above its
+   subtree is operating. Accent, not danger, this is a legitimate live state,
+   not a warning, and it sits at the top of the operated surface, above its
    own content. */
 .workspace-banner {
   display: flex;
@@ -1057,7 +1095,7 @@ select {
   flex: none;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--accent);
 }
 
@@ -1160,7 +1198,7 @@ select {
 }
 
 .menu__item:hover {
-  background: color-mix(in oklch, var(--bg-raise), var(--tx) 8%);
+  background: var(--bg-hover);
 }
 
 /* Skip link: the first tab stop, visible the moment it is focused. */
@@ -1170,7 +1208,7 @@ select {
   top: 8px;
   z-index: 20;
   /* It is a control like any other once it is visible, so it carries the same
-     touch floor — found by the pinned set's sweep over every interactive
+     touch floor, found by the pinned set's sweep over every interactive
      element, which is the point of sweeping rather than listing. */
   display: inline-flex;
   align-items: center;
@@ -1178,7 +1216,7 @@ select {
   padding: 8px 12px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-control);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
 }
 
@@ -1294,14 +1332,23 @@ select {
     gap: 5px;
   }
 
-  .header__identity-label {
-    display: none;
-  }
-
+  /* On a phone the fixed account avatar at the header's right edge already
+     names the holder (and opens the account menu), so the identity link would
+     be a second, truncated copy fighting the crumbs for one row. */
   .header__identity {
     display: none;
   }
 
+  /* The 30px section margin already breathes; the heading's own top padding
+     on top of it made the gap 46px. */
+  .sidebar > .sidebar__section + .sidebar__section > h2,
+  .sidebar__mobile-projects > h2 {
+    padding-top: 0;
+  }
+
+  /* The account avatar is fixed at right: 64px on a phone; the spacer is the
+     last flow item before the theme toggle, so it holds the avatar's width
+     plus a gap clear. */
   .header__spacer {
     min-width: 52px;
   }
@@ -1385,6 +1432,17 @@ select {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  min-height: 0;
+}
+
+/* The matrix fills the content well so its own scroller, not the well, is what
+   scrolls: that is what keeps the sticky header and group rows pinned. The
+   well's child margin becomes padding so 100% is exact. A step-up banner
+   sibling, when present, pushes the well into overflow; acceptable. */
+.content > .matrix {
+  height: 100%;
+  margin-top: 0;
+  padding-top: 24px;
 }
 
 .matrix__head {
@@ -1424,7 +1482,7 @@ select {
 }
 
 /* Drafts surface as a pill in the accent-for-change hue, and only once there is
-   something to publish — the disabled "No unpublished drafts" button is gone. */
+   something to publish, the disabled "No unpublished drafts" button is gone. */
 .matrix__drafts {
   padding: 6px 12px;
   border: 1px solid var(--changed);
@@ -1453,7 +1511,7 @@ select {
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
 }
 
 .matrix__publish h2 {
@@ -1536,7 +1594,9 @@ select {
 }
 
 .matrix__layout {
-  display: block;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
   min-height: 420px;
   min-width: 0;
 }
@@ -1588,7 +1648,9 @@ select {
 .matrix__surface {
   position: relative;
   display: flex;
+  flex: 1;
   flex-direction: column;
+  min-height: 0;
   min-width: 0;
   border-top: 1px solid var(--line);
   background: var(--bg);
@@ -1668,7 +1730,7 @@ select {
   z-index: 8;
 }
 
-/* The protected marker: a word, not a colour — the state has to survive being
+/* The protected marker: a word, not a colour, the state has to survive being
    read aloud and being read by someone who cannot see the red. */
 .matrix__protected {
   color: var(--danger);
@@ -1683,7 +1745,7 @@ select {
 }
 
 /* #451: a column whose reads failed or were denied. A word in the header, same
-   as the protected marker — the state is legible read aloud and without colour.
+   as the protected marker, the state is legible read aloud and without colour.
    Uses the ordinary muted text token so it passes contrast on any surface. */
 .matrix__degraded {
   display: block;
@@ -1732,7 +1794,7 @@ select {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   box-shadow: 0 10px 30px rgb(0 0 0 / 30%);
 }
 
@@ -1755,7 +1817,7 @@ select {
 
 .matrix__environment-picker label:hover,
 .matrix-editor__copy label:hover {
-  background: color-mix(in oklch, var(--bg-raise), var(--tx) 7%);
+  background: var(--bg-hover);
 }
 
 .matrix__environment-picker input,
@@ -1766,7 +1828,7 @@ select {
 }
 
 .matrix__scroll {
-  height: min(70vh, 720px);
+  flex: 1;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -1787,10 +1849,16 @@ select {
 
 .matrix__table th,
 .matrix__table td {
-  padding: 5px 10px;
+  padding: 0 10px;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: middle;
+}
+
+/* The row token measures the row itself, not a padding sum that drifts. */
+.matrix__key-row > th,
+.matrix__key-row > td {
+  height: var(--row);
 }
 
 .matrix__table thead th {
@@ -1810,9 +1878,12 @@ select {
   position: sticky;
   left: 0;
   z-index: 5;
-  width: 190px;
-  min-width: 160px;
-  max-width: 220px;
+  /* Table cells ignore max-width, so the column is pinned: wide enough for a
+     20-character key with its lock, narrow enough that four environments still
+     fit beside it at 1280px (the locked reference sits at 190px). */
+  width: 236px;
+  min-width: 236px;
+  max-width: 236px;
   background: var(--bg);
 }
 
@@ -1882,7 +1953,7 @@ select {
   min-height: 0;
   padding: 4px 12px;
   border: 1px dashed var(--line);
-  /* Rounded rect, not a full pill — DESIGN.md reserves the pill for identity
+  /* Rounded rect, not a full pill, DESIGN.md reserves the pill for identity
      circles and count badges (expectNoStrayPills). */
   border-radius: var(--radius-control);
   color: var(--tx-faint);
@@ -1907,8 +1978,11 @@ select {
   transform: rotate(-90deg);
 }
 
+/* A count badge by role, but a rounded rect rather than the pill the shared
+   `.matrix__count` rule draws: it sits inline with uppercase group text. */
 .matrix__problem-count {
   padding: 2px 8px;
+  border-radius: var(--radius-badge);
   letter-spacing: 0;
   text-transform: none;
 }
@@ -1926,8 +2000,9 @@ select {
 
 .matrix__key {
   display: inline-block;
-  max-width: calc(100% - 46px);
-  padding: 0;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 6px 0;
   overflow: hidden;
   border: 0;
   background: transparent;
@@ -1960,7 +2035,7 @@ select {
   gap: 6px;
   max-width: 240px;
   min-height: var(--row);
-  padding: 5px 10px;
+  padding: 0 10px;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
   background: transparent;
@@ -1971,12 +2046,12 @@ select {
 }
 
 .matrix-cell:hover {
-  background: var(--bg-raise);
+  background: var(--bg-hover);
 }
 
 /* The editable-slot affordance (env-matrix iteration 22): every slot you can
    edit carries a faint trailing pencil, accent on hover. A pseudo-element
-   rather than a span because it is decoration — it is not in the accessibility
+   rather than a span because it is decoration, it is not in the accessibility
    tree, cannot be selected, and can never become the click target inside a
    button that is already one.
    The two problem states are deliberately excluded: they already carry a
@@ -2001,7 +2076,7 @@ select {
 }
 
 /* env-matrix 31 marks: a `Δ` glyph for changed-since-publish and a filled dot
-   for an unpublished draft — the words move to the tooltip and aria-label. */
+   for an unpublished draft, the words move to the tooltip and aria-label. */
 .matrix-cell__delta {
   color: var(--changed);
   font-size: 11px;
@@ -2012,9 +2087,9 @@ select {
   display: inline-block;
   width: 6px;
   height: 6px;
-  /* Half of the 6px box — a full circle, but a small px radius so it is not read
+  /* Half of the 6px box: a full circle at the badge radius, so it is not read
      as a reserved "pill" shape (DESIGN.md; expectNoStrayPills). */
-  border-radius: 3px;
+  border-radius: var(--radius-badge);
   background: var(--changed);
   flex: none;
 }
@@ -2124,7 +2199,7 @@ select {
   margin: 0;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-container);
   background: var(--bg);
 }
 
@@ -2172,7 +2247,7 @@ select {
   padding: 10px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-container);
   background: var(--bg);
   color: var(--tx-dim);
   font-size: 11px;
@@ -2187,7 +2262,7 @@ select {
   margin: 0;
   padding: 10px;
   border-left: 2px solid var(--accent);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   overflow-wrap: anywhere;
 }
 
@@ -2199,6 +2274,8 @@ select {
 .matrix-editor__value {
   width: 100%;
   min-height: 92px;
+  max-block-size: 40vh;
+  field-sizing: content;
   padding: 10px 12px;
   resize: vertical;
   border: 1px solid var(--line);
@@ -2214,7 +2291,7 @@ select {
   margin: 0;
   padding: 10px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-container);
 }
 
 .matrix-row-editor__fill,
@@ -2224,7 +2301,7 @@ select {
   gap: 8px;
   padding: 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-container);
   background: var(--bg);
 }
 
@@ -2233,20 +2310,17 @@ select {
   gap: 8px;
 }
 
-.matrix-row-editor__fill input {
+/* The fill control is a textarea wearing `.matrix-editor__value`; this only
+   lets it share the row with its apply button. */
+.matrix-row-editor__fill textarea {
   min-width: 0;
   min-height: var(--touch);
   flex: 1;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg-raise);
-  color: var(--tx);
 }
 
 .matrix-row-editor__rows {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 12px;
 }
 
@@ -2452,7 +2526,7 @@ select {
   flex-wrap: wrap;
   padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-container);
   background: var(--bg);
 }
 
@@ -2529,6 +2603,10 @@ select {
     margin-top: 16px;
   }
 
+  .content > .matrix {
+    padding-top: 16px;
+  }
+
   .panel {
     /* The index wraps to more rows at a phone's width (~165px). */
     scroll-margin-top: 176px;
@@ -2558,14 +2636,21 @@ select {
     max-width: 170px;
   }
 
+  .matrix__key-row > th,
+  .matrix__key-row > td {
+    height: var(--touch);
+  }
+
   .matrix__key {
     min-height: var(--touch);
+    min-inline-size: var(--touch);
+    padding-block: 0;
     line-height: var(--touch);
   }
 
   /* env-matrix 31 added two matrix-head/group controls that opt out of a
      touch-height base (`+ key` zeroes the group-row button floor; drafts is a
-     bare pill). Both need the 44px floor back on a phone — the add-key selector
+     bare pill). Both need the 44px floor back on a phone, the add-key selector
      matches the base's specificity so this later rule wins. */
   .matrix__group-row .matrix__add-key {
     min-height: var(--touch);
@@ -2589,10 +2674,6 @@ select {
     margin: auto;
     padding: 16px 12px;
     border-radius: var(--radius-container);
-  }
-
-  .matrix-row-editor__rows {
-    grid-template-columns: minmax(0, 1fr);
   }
 
   .matrix-row-editor__fill > div {
@@ -2623,7 +2704,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   color: var(--tx);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
 }
 
 .visually-hidden {
@@ -2652,13 +2733,13 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   color: var(--tx);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   font-size: 13px;
 }
 
 .chip--armed {
   border-color: var(--accent);
-  background: color-mix(in oklch, var(--bg-raise), var(--accent) 14%);
+  background: color-mix(in oklch, var(--bg-panel), var(--accent) 14%);
 }
 
 .values__bar {
@@ -2730,6 +2811,11 @@ select {
 .values__absent {
   color: var(--tx-dim);
   font-size: 13px;
+}
+
+/* Absence reads "· absent", the same glyph the matrix uses. */
+.values__absent::before {
+  content: '· ';
 }
 
 .values__countdown {
@@ -2812,7 +2898,7 @@ select {
   margin: 0;
   padding: 8px 12px 8px 28px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-control);
+  border-radius: var(--radius-container);
   background: var(--bg);
   max-height: 30vh;
   overflow: auto;
@@ -2853,7 +2939,7 @@ select {
  *
  * Nothing here carries state by colour: an expiry is a sentence, a journey
  * step names its own state in words, and the policy strip is a paragraph. The
- * palette only emphasises what the text already says — which is also what
+ * palette only emphasises what the text already says, which is also what
  * keeps the surface readable under forced-colors.
  */
 
@@ -2934,7 +3020,7 @@ select {
 
 /* The binding form's in-flight latch: a bare <fieldset> used only for its
    native disabled propagation, stripped of every default it draws. The
-   min-inline-size reset matters — fieldset's UA min-content default breaks
+   min-inline-size reset matters, fieldset's UA min-content default breaks
    narrow dialogs. */
 .machine__lock {
   border: 0;
@@ -3010,10 +3096,21 @@ select {
   gap: 8px;
 }
 
+.machine__row-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.machine__hint {
+  color: var(--tx-dim);
+  font-size: 12.5px;
+}
+
 .btn[aria-pressed='true'] {
   border-color: var(--accent);
   color: var(--tx);
-  background: color-mix(in oklch, var(--bg-raise), var(--accent) 14%);
+  background: color-mix(in oklch, var(--bg-panel), var(--accent) 14%);
 }
 
 .bindrow {
@@ -3175,12 +3272,22 @@ select {
   gap: 12px;
 }
 
+/* Hairline rows, not cards: the list's rule separates them, nothing fills them. */
+.remotes,
+.connections {
+  gap: 0;
+}
+
 .remote,
 .connection {
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-container);
-  background: var(--bg);
+  padding: 16px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.remote:first-child,
+.connection:first-child {
+  border-top: 0;
 }
 
 .remote__head,
@@ -3242,10 +3349,8 @@ select {
 
 .remote__update {
   margin: 12px 0;
-  padding: 12px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-container);
-  background: color-mix(in oklch, var(--bg), var(--accent) 6%);
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
 }
 
 .remote__update p {
@@ -3307,7 +3412,7 @@ select {
  * than instead of it: the matrix stays addressable behind the drawer, which is
  * what makes "rev N · history" feel like opening a drawer rather than leaving
  * the surface. Below the chrome's own 800px breakpoint the two panes become one
- * — list, then detail, with a back affordance — because a split 440px drawer is
+ * list, then detail, with a back affordance, because a split 440px drawer is
  * neither pane.
  */
 .history {
@@ -3350,7 +3455,7 @@ select {
 .history__current {
   padding: 2px 9px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-badge);
   color: var(--tx-dim);
   font-size: 11px;
 }
@@ -3435,7 +3540,7 @@ select {
 
 .history__row[aria-current='true'] {
   border-color: var(--accent);
-  background: color-mix(in oklch, var(--bg-raise), var(--accent) 12%);
+  background: color-mix(in oklch, var(--bg-hover), var(--accent) 12%);
 }
 
 .history__age {
@@ -3453,8 +3558,8 @@ select {
 }
 
 .history__tag--collected {
-  border-color: var(--danger);
-  color: var(--danger);
+  border-color: var(--line);
+  color: var(--tx-faint);
 }
 
 .history__detail {
@@ -3535,7 +3640,8 @@ select {
 .history__kind,
 .history__presence,
 .history__expiry,
-.history__warn {
+.history__warn,
+.history__drift {
   padding: 2px 7px;
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
@@ -3559,6 +3665,12 @@ select {
   color: var(--danger);
 }
 
+/* Schema drift is a pending change, not a violation: slate, never red. */
+.history__drift {
+  color: var(--changed);
+  background: var(--changed-soft);
+}
+
 .history__actions {
   display: flex;
   gap: 8px;
@@ -3580,7 +3692,7 @@ select {
 .history__chips .count {
   padding: 3px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-badge);
   color: var(--tx);
   font-size: 11.5px;
 }
@@ -3800,7 +3912,7 @@ select {
 
 .btn--danger {
   border-color: var(--danger);
-  background: color-mix(in oklch, var(--bg-raise), var(--danger) 16%);
+  background: var(--danger-soft);
   color: var(--danger);
   font-weight: 500;
 }
@@ -3858,7 +3970,7 @@ select {
 }
 
 /* The sticky jump index: the pattern for every sectioned surface since
-   app-chrome iteration 9. Plain anchors — the browser already scrolls to a
+   app-chrome iteration 9. Plain anchors, the browser already scrolls to a
    fragment and moves focus there. */
 .jump {
   position: sticky;
@@ -3899,7 +4011,7 @@ select {
   gap: 12px;
   max-width: none;
   /* A jump-index anchor lands the panel at the scroller's top, where the
-     pinned index sits — so offset the landing clear of it. Sized to the index
+     pinned index sits, so offset the landing clear of it. Sized to the index
      wrapped at the page's fixed 72ch measure (~113px; taller once it wraps on
      a phone, raised in the mobile block). */
   scroll-margin-top: 124px;
@@ -3922,7 +4034,7 @@ select {
 
 /* The prototype's danger card is a two-part signal: a border MUTED toward the
    hairline, and a heading in full danger. Shouting with the border instead and
-   leaving the heading the same colour as every other panel title inverts it —
+   leaving the heading the same colour as every other panel title inverts it , 
    the loudest thing on the surface becomes the part that carries no words. */
 .panel--danger {
   border-color: color-mix(in oklch, var(--danger) 45%, var(--line));
@@ -4095,7 +4207,7 @@ select {
   width: 56px;
   height: 56px;
   border-radius: var(--radius-container);
-  color: oklch(0.12 0.02 225);
+  color: var(--tx-on-accent);
   font-size: 19px;
   font-weight: 700;
 }
@@ -4123,7 +4235,7 @@ select {
   padding: 0;
   border: 2px solid transparent;
   border-radius: var(--radius-control);
-  color: oklch(0.12 0.02 225);
+  color: var(--tx-on-accent);
 }
 
 .identity-hue[aria-pressed='true'] {
@@ -4246,7 +4358,7 @@ select {
 }
 
 /* The number is the thing being over-ruled, so the number is what carries the
-   warning boundary — the prototype puts it here, not on the row. */
+   warning boundary, the prototype puts it here, not on the row. */
 .settings-input--capped {
   border-color: var(--danger);
 }
@@ -4589,7 +4701,7 @@ select {
 }
 
 .capability__revoke:hover {
-  background: color-mix(in oklch, var(--bg-raise), var(--danger) 10%);
+  background: color-mix(in oklch, var(--bg-hover), var(--danger) 10%);
   color: var(--danger);
 }
 
@@ -4637,7 +4749,7 @@ select {
   background: var(--bg);
   list-style: none;
   /* No inner scroller: `.ceremony` is a scrolling flex column, and a second
-     scroll container inside one shrinks its siblings into each other — which
+     scroll container inside one shrinks its siblings into each other, which
      on a phone put the mode fieldset on top of the checklist and made the
      rows unclickable while still passing every visibility check. */
   flex: none;
@@ -4662,7 +4774,7 @@ select {
   min-height: 32px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
   cursor: pointer;
   list-style: none;
@@ -4797,15 +4909,17 @@ select {
 
 /* The setup QR: a fixed white tile so it scans against the dark surface, held
    to its real colours even under forced-colors (an OS repaint would make it
-   unreadable — the secret text below is the accessible fallback either way). */
+   unreadable, the secret text below is the accessible fallback either way). */
 .totp-qr {
+  /* Deliberately paper-white, not a theme token: QR contrast under forced-colors. */
+  --qr-paper: #ffffff;
   display: block;
   width: 176px;
   height: 176px;
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: #ffffff;
+  background: var(--qr-paper);
   forced-color-adjust: none;
 }
 
@@ -4853,6 +4967,15 @@ select {
   .explain__toggle,
   .btn--quiet {
     min-width: var(--touch);
+    min-height: var(--touch);
+  }
+
+  /* The retention line's link to the owning settings panel is inline prose on
+     a desktop; on a phone it is the only control in that block and has to
+     clear the 44px floor on its own. */
+  .history__settings-pointer {
+    display: inline-flex;
+    align-items: center;
     min-height: var(--touch);
   }
 }
@@ -4935,7 +5058,7 @@ select {
  *
  * LAST in the file, and that is load-bearing. A media query adds no
  * specificity, so `@media (max-width: 700px) { .settings-input { … } }` loses
- * to a plain `.settings-input { min-height: 36px }` declared further down —
+ * to a plain `.settings-input { min-height: 36px }` declared further down , 
  * which is exactly how these controls stayed at their desktop density on a
  * phone while looking like they had been fixed.
  *
@@ -4966,7 +5089,7 @@ select {
     margin-bottom: -12px;
   }
 
-  /* A settings row's title and detail are often links — to the organisation
+  /* A settings row's title and detail are often links, to the organisation
      whose policy the row describes, to the project's own settings. They read as
      text and are sized as text, which on a phone leaves a 20px tap target in
      the middle of a 44px row. Growing the LINK rather than the row keeps the
@@ -4976,6 +5099,18 @@ select {
     display: inline-flex;
     align-items: center;
     min-height: var(--touch);
+  }
+
+  .sidebar__switcher,
+  .settings-row__title--link,
+  .settings-row__detail a,
+  .identity-hue {
+    min-height: var(--touch);
+  }
+
+  .identity-hue {
+    width: var(--touch);
+    height: var(--touch);
   }
 }
 
@@ -5119,7 +5254,7 @@ select {
   padding: 10px 12px;
   overflow-x: auto;
   border-radius: var(--radius-control);
-  background: color-mix(in oklch, var(--bg-raise), var(--tx) 8%);
+  background: var(--bg-panel);
   font-family: var(--font-mono);
   font-size: 12px;
   white-space: pre-wrap;
@@ -5324,24 +5459,34 @@ select {
 .audit__list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* A hairline row, not a button: the list's rule separates events, and only the
+   hovered or selected row takes a fill. */
 .audit__row {
   justify-content: flex-start;
   width: 100%;
   gap: 8px;
   flex-wrap: wrap;
   padding: 0 10px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
   text-align: left;
+}
+
+.audit__row:hover {
+  background: var(--bg-hover);
 }
 
 .audit__row[aria-pressed='true'] {
   border-color: var(--accent);
-  background: color-mix(in oklch, var(--bg-raise), var(--accent) 12%);
+  background: var(--bg-hover);
 }
 
 .audit__row-op {
@@ -5565,7 +5710,7 @@ select {
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
 }
 
@@ -5655,7 +5800,7 @@ select {
   text-align: left;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
 }
 
@@ -5690,7 +5835,7 @@ select {
   display: inline-block;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--tx-dim);
 }
 
@@ -5764,7 +5909,7 @@ select {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   font-size: 13px;
   overflow-x: auto;
 }
@@ -5787,7 +5932,7 @@ select {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
-  background: var(--bg-raise);
+  background: var(--bg-panel);
   color: var(--tx);
   font: inherit;
 }
@@ -5825,9 +5970,238 @@ select {
 .definitions-bundle__body input[type="file"] { width: 100%; min-width: 0; max-width: 100%; }
 .definitions-bundle__delete { display: flex; align-items: center; gap: .75rem; min-height: 44px; }
 
+/* The link glyph rides inline after the key; the sentence it stands for is a
+   visually-hidden span in the markup. */
 .matrix__linked-keys {
-  display: block;
-  font-size: 0.75rem;
+  display: inline;
+  margin-left: 6px;
+  color: var(--tx-faint);
+  font-size: 11px;
   font-weight: 400;
-  white-space: normal;
+  white-space: nowrap;
+}
+
+.matrix__group-count {
+  color: var(--tx-dim);
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.matrix__env-protected {
+  margin-left: 6px;
+}
+
+/* --- UI audit 2026-09-05: class names introduced by the parity fixes ------ */
+
+/* A degraded matrix column names its state in words (DESIGN.md: unknown is a
+   word, never a dash). */
+/* One line, always: the name shrinks with an ellipsis and the glyph and the
+   required label keep their width, so a long key never adds a second line. */
+.matrix__key-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.matrix__key-cell > .matrix__key {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* On a phone the floor is the touch size, or a short key like PORT becomes a
+   32px target. Same specificity as the shrink rule above, later in source. */
+@media (pointer: coarse) {
+  .matrix__key-cell > .matrix__key {
+    min-width: var(--touch);
+  }
+}
+
+.matrix__key-cell > .matrix__linked-keys,
+.matrix__key-cell > .matrix__required {
+  flex: none;
+  margin-left: 0;
+}
+
+.matrix-cell__absent {
+  color: var(--tx-faint);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* Secret entry is a textarea so pasted newlines survive; masking comes from
+   text-security, with an explicit "show while typing" opt-out beside it. */
+.matrix-editor__value--masked {
+  -webkit-text-security: disc;
+}
+
+.matrix-editor__show-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--tx-dim);
+  font-size: 12px;
+}
+
+.matrix__publish-group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.matrix__publish-group-name {
+  margin: 8px 0 4px;
+  color: var(--tx-faint);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.scan-warn__locator {
+  font-size: 12px;
+  color: var(--tx-dim);
+}
+
+.ceremony__window {
+  margin: 8px 0 0;
+  color: var(--tx-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* Sidebar group pill: the glyph is what makes "problems" readable without the
+   red. */
+.matrix__count .count__glyph {
+  margin-right: 3px;
+  font-weight: 700;
+}
+
+.identity-controls--readonly {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.definitions-bundle__provenance {
+  margin: 8px 0 0;
+  color: var(--tx-dim);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.definitions-bundle__provenance .mono {
+  color: var(--tx);
+}
+
+.history__impact-group {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history__impact-heading {
+  margin: 10px 0 4px;
+  color: var(--tx-dim);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.history__impact-heading:first-child {
+  margin-top: 0;
+}
+
+.machine__scope {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.journey__action {
+  margin-top: 6px;
+}
+
+.badge[data-state='duplicate-identity'] {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.audit__empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.audit__outcome > [aria-hidden] {
+  margin-right: 2px;
+}
+
+.adapters__failures {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.key-detail__alternatives {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.key-detail__add-alternative {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.scim-mapping__caps li.capability {
+  padding: 2px 0;
+}
+
+.login__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 16px 0 0;
+  font-size: 13px;
+}
+
+.login__links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--touch);
+  color: var(--tx-dim);
+}
+
+.login__links a:hover,
+.login__links a:focus-visible {
+  color: var(--accent);
+}
+
+/* Between the phone drawer and the full desktop header the crumbs and the
+   identity fight for one row: drop the label, keep the name. */
+@media (max-width: 960px) {
+  .header__identity-label {
+    display: none;
+  }
+
+  .header__identity .mono,
+  .header__identity a {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

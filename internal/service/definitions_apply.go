@@ -19,7 +19,7 @@ import (
 
 // gitModeRefusal is normative in docs/spec/ui-spec.md § Git-mode. Server
 // SafeDetail and the web banner intentionally copy those bytes exactly.
-const gitModeRefusal = "Definitions for this project are managed in Git — changes arrive through `definitions plan` / `definitions apply`."
+const gitModeRefusal = "Definitions for this project are managed in Git: changes arrive through `definitions plan` / `definitions apply`."
 
 // requireDBManagedDefinitions is the git-mode write guard. Every
 // `definitions-edit` write path calls it inside its transaction, AFTER

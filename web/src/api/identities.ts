@@ -28,7 +28,7 @@ import { useTransport } from './transport.tsx';
  *
  *  - **A credential value exists in exactly one response.** `MachineCredential`
  *    has no value member and no route returns one after the mint, so the only
- *    place plaintext can enter the SPA is `useMintCredential`'s result — which
+ *    place plaintext can enter the SPA is `useMintCredential`'s result, which
  *    is why the mint dialog is the only component that ever holds one.
  *  - **The post-state reach is what the mint's formula ranges over**, not what
  *    the mint adds. A mint adds no grants, so the post-state IS the current
@@ -41,7 +41,7 @@ export type ServiceAccount = z.infer<typeof zServiceAccountList>['items'][number
 export type MachineCredential = z.infer<typeof zMachineCredentialList>['items'][number];
 export type Grant = z.infer<typeof zGrantList>['items'][number];
 /**
- * ClaimPin is the READ shape — the parsed one, whose `number_value` is a bigint
+ * ClaimPin is the READ shape, the parsed one, whose `number_value` is a bigint
  * because an int64 repository id does not survive a float. The REQUEST shape is
  * the generated `FederatedClaimPin`, which carries a plain number: they are two
  * different types on purpose and neither is re-declared here.
@@ -60,7 +60,7 @@ export function useServiceAccounts(
   p: ProjectRef,
 ): UseQueryResult<z.infer<typeof zServiceAccountList>> {
   // Threaded so the history drawer's pin flow lists the REMOTE's workload
-  // principals inside a workspace (#71) — a pin binds a revision to a service
+  // principals inside a workspace (#71), a pin binds a revision to a service
   // account, and it is the remote's accounts the pin lives among.
   const transport = useTransport();
   return useQuery({
@@ -93,7 +93,7 @@ export function useProjectGrants(p: ProjectRef): UseQueryResult<z.infer<typeof z
  *
  * Deliberately `listKeys`, not `listValues`: a value listing is authorized for
  * the HUMAN reading it, so it carries config plaintext this surface never
- * renders — and a fetch is a copy, cached by the query client where any
+ * renders, and a fetch is a copy, cached by the query client where any
  * same-page script can read it. The catalogue endpoint answers the only
  * question the warning asks (what exists, of which classification) without
  * ever holding a value of any kind.
@@ -115,7 +115,7 @@ type CredentialsByAccount = {
  * useCredentials fetches every account's credential rows.
  *
  * All of them, not just the expanded row: the Federation tab is the same rows
- * filtered by kind, and the tab counts are the sizes of those sets — so a
+ * filtered by kind, and the tab counts are the sizes of those sets, so a
  * fetch-on-expand would leave the tabs unable to say how much they hold.
  */
 export function useCredentials(
@@ -158,7 +158,7 @@ const zMinted = mintMachineCredentialOp.response.pick({ value: true, clamped: tr
  *
  * TanStack keeps a mutation's result in a global cache until garbage
  * collection, so a mint run through it would leave the plaintext credential
- * reachable from the query client long after the dialog that showed it closed —
+ * reachable from the query client long after the dialog that showed it closed,
  * a second copy of a value whose whole contract is that there is one. A plain
  * async call leaves the value in exactly one place: the ephemeral
  * `MachineAccess` lifecycle that renders it once.
@@ -181,7 +181,7 @@ export async function mintCredential(
  * useRefreshAccount re-reads what a mint changed.
  *
  * It exists because the mint above is not a mutation and therefore has no
- * `onSuccess` — and because a mint whose response never arrived may still have
+ * `onSuccess`, and because a mint whose response never arrived may still have
  * COMMITTED, so the caller has to be able to refresh on the failure path too.
  */
 export function useRefreshAccount(p: ProjectRef): (serviceAccount: string) => void {
@@ -198,7 +198,7 @@ export function useRefreshAccount(p: ProjectRef): (serviceAccount: string) => vo
  * It exists for the create and delete failure paths: an issued mutation whose
  * response never arrived may still have COMMITTED, and a committed create or
  * delete must show in the inventory even when the dialog reports a failure. It
- * deliberately does not touch any credential listing — invalidating a deleted
+ * deliberately does not touch any credential listing, invalidating a deleted
  * account's rows would race the account refetch into a 404.
  */
 export function useRefreshServiceAccounts(p: ProjectRef): () => void {
@@ -249,7 +249,7 @@ export function useRevokeCredential(p: ProjectRef) {
 /**
  * useCreateServiceAccount seeds a project's machine inventory from the browser.
  *
- * The body is exactly `{ name, kind }` — the locked create contract has no
+ * The body is exactly `{ name, kind }`, the locked create contract has no
  * description, and `kind` (workload | automation) is immutable at creation, so
  * it is a form field, never an edit. It invalidates the account listing on
  * success; failure is handled at the call site, where a create that was issued
@@ -271,8 +271,8 @@ export function useCreateServiceAccount(p: ProjectRef) {
 
 /**
  * useDeleteServiceAccount deprovisions a machine principal. The server deletes
- * atomically — every credential revoked and every grant released in ONE
- * transaction (#15) — so this is a cascade, never a dependency refusal.
+ * atomically, every credential revoked and every grant released in ONE
+ * transaction (#15), so this is a cascade, never a dependency refusal.
  *
  * The deleted account's credential listing is REMOVED, not invalidated: a
  * refetch of a now-absent account 404s, which would flip the surface's
@@ -330,7 +330,7 @@ export function useCreateBinding(p: ProjectRef) {
       // change is a replacement mint naming `replaces`: the server revokes the
       // predecessor and inserts the successor in ONE transaction, so there is
       // never a gap with no binding nor an overlap with two. It is not a
-      // client-side revoke-then-create — that would be exactly the reviewed gap
+      // client-side revoke-then-create, that would be exactly the reviewed gap
       // the atomic replacement exists to prevent.
       replaces?: string;
     }) =>
@@ -382,21 +382,26 @@ export function useGrantEnvironment(p: ProjectRef) {
 
 export type EnvironmentRef = { readonly id: string; readonly name: string };
 
+/** One origin holding a grant row alive: `{kind}: {subject}` on the chip. */
+export type GrantOriginRef = { readonly kind: string; readonly subject: string };
+
 /** MachineEnvScope is what one service account reaches in one environment. */
 export type MachineEnvScope = {
   readonly id: string;
   readonly name: string;
-  /** `read` delivers configuration and secret PRESENCE — never plaintext. */
+  /** `read` delivers configuration and secret PRESENCE, never plaintext. */
   readonly read: boolean;
   /** `reveal` is the standing decryption capability, the ◆ in the prototype. */
   readonly reveal: boolean;
+  /** Every origin behind the grant rows that reach this environment, deduplicated. */
+  readonly origins: readonly GrantOriginRef[];
 };
 
 /**
  * scopeOf resolves a principal's grant rows into per-environment reach.
  *
  * A row with no `environment_id` is PROJECT-scoped and reaches every
- * environment beneath it — the ordinary downward inheritance. The listing this
+ * environment beneath it, the ordinary downward inheritance. The listing this
  * reads is already confined to one project, so there is no wider row to
  * mistake for a narrow one.
  */
@@ -406,23 +411,30 @@ export function scopeOf(
   environments: readonly EnvironmentRef[],
 ): MachineEnvScope[] {
   const mine = grants.filter((g) => g.principal_id === principalId);
-  const holds = (capability: string, environment: string) =>
-    mine.some(
+  const reaching = (capability: string, environment: string) =>
+    mine.filter(
       (g) =>
         g.capability === capability &&
         (g.scope.environment_id === undefined || g.scope.environment_id === environment),
     );
-  return environments.map((env) => ({
-    id: env.id,
-    name: env.name,
-    read: holds('read', env.id),
-    reveal: holds('reveal', env.id),
-  }));
+  return environments.map((env) => {
+    const rows = [...reaching('read', env.id), ...reaching('reveal', env.id)];
+    const origins = new Map(
+      rows.flatMap((g) => g.origins.map((origin) => [`${origin.kind}:${origin.subject}`, origin])),
+    );
+    return {
+      id: env.id,
+      name: env.name,
+      read: reaching('read', env.id).length > 0,
+      reveal: reaching('reveal', env.id).length > 0,
+      origins: [...origins.values()].map(({ kind, subject }) => ({ kind, subject })),
+    };
+  });
 }
 
 /**
- * postStateReach is the environments a credential of this account can decrypt
- * — the set the mint's disclosure conjunct ranges over.
+ * postStateReach is the environments a credential of this account can decrypt:
+ * the set the mint's disclosure conjunct ranges over.
  *
  * `read` is required as well as `reveal`, mirroring the server: no read means
  * no delivery at all, so neither disclosure capability reaches plaintext
@@ -443,7 +455,7 @@ export function postStateReach(scope: readonly MachineEnvScope[]): MachineEnvSco
  * post-state would prompt for authority the server never consumes.
  *
  * For a `read` grant the delta is empty unless the account already holds
- * `reveal` there — which is why it is vacuous today: the machine allowlist
+ * `reveal` there, which is why it is vacuous today: the machine allowlist
  * admits `read` and nothing else on a workload principal.
  */
 export function grantWideningReach(
@@ -461,12 +473,44 @@ export function grantWideningReach(
 }
 
 /**
+ * grantableFor lists the environments a grant of `capability` would still
+ * widen: `read` where the account has none, `reveal` where it reads but does
+ * not yet decrypt. Reveal is refused by the grant API until the project's
+ * machine-reveal opt-in is on, so it is empty until then.
+ */
+export function grantableFor(
+  scope: readonly MachineEnvScope[],
+  capability: 'read' | 'reveal',
+  machineReveal: boolean,
+): MachineEnvScope[] {
+  if (capability === 'read') {
+    return scope.filter((s) => !s.read);
+  }
+  return machineReveal ? scope.filter((s) => s.read && !s.reveal) : [];
+}
+
+/**
+ * grantSubmittable is the dialog's submit gate: the chosen environment must
+ * still be grantable for the chosen capability under the CURRENT opt-in. The
+ * opt-in can be withdrawn while the dialog is open, and a stale `reveal`
+ * choice must not stay one click from landing.
+ */
+export function grantSubmittable(
+  scope: readonly MachineEnvScope[],
+  environment: string,
+  capability: 'read' | 'reveal',
+  machineReveal: boolean,
+): boolean {
+  return grantableFor(scope, capability, machineReveal).some((s) => s.id === environment);
+}
+
+/**
  * parseClaimNumber turns a typed int64 pin into a number, or refuses.
  *
  * `Number()` is not usable here and the failures are not cosmetic: an empty
  * field becomes 0, which is a valid-looking repository id nobody owns; `1e3`
  * and `4242.7` are accepted; and anything past 2^53 silently rounds to a
- * NEIGHBOURING repository id — which would bind a production service account to
+ * NEIGHBOURING repository id, which would bind a production service account to
  * whatever repository happens to hold that number. Digits only, and inside the
  * range JSON can carry losslessly.
  */
@@ -485,10 +529,14 @@ export function isoDay(timestamp: string): string {
 
 type JourneyState = 'done' | 'next' | 'blocked';
 
+/** The act a `next` step offers on the rail itself. */
+export type JourneyAction = 'grant-read' | 'enable-opt-in' | 'grant-reveal';
+
 export type JourneyStep = {
   readonly title: string;
   readonly note: string;
   readonly state: JourneyState;
+  readonly action?: JourneyAction;
 };
 
 /**
@@ -518,16 +566,17 @@ export function setupJourney(
   return [
     {
       title: 'Service account minted',
-      note: 'kind: workload — immutable at creation',
+      note: 'kind: workload, immutable at creation',
       state: 'done',
     },
     {
       title:
         read.length === 0
           ? 'Grant read on an environment'
-          : `read granted — ${named}`,
+          : `read granted: ${named}`,
       note: 'delivers configuration and secret presence only',
       state: read.length === 0 ? 'next' : 'done',
+      ...(read.length === 0 ? { action: 'grant-read' } : {}),
     },
     {
       title:
@@ -545,39 +594,52 @@ export function setupJourney(
         ? 'workload and automation principals in this project may hold reveal; withdrawing the opt-in makes every such grant inert on the next fetch'
         : 'a deliberate per-project act (project-settings ∧ reveal, second factor): it admits a standing decryption capability onto machine principals',
       state: machineReveal ? 'done' : 'next',
+      ...(machineReveal ? {} : { action: 'enable-opt-in' }),
     },
     {
       title:
         revealed.length === 0
-          ? 'Grant reveal'
-          : `reveal granted — ${revealed.map((s) => s.name).join(', ')}`,
+          ? 'Grant reveal on the environments the workload needs'
+          : `reveal granted: ${revealed.map((s) => s.name).join(', ')}`,
       note: machineReveal
         ? 'secret plaintext is delivered on the next fetch; the widening ceremony names the environments it reaches'
         : 'refused by the grant API until the opt-in above is on',
       state: !machineReveal ? 'blocked' : revealed.length > 0 ? 'done' : 'next',
+      ...(machineReveal && revealed.length === 0 ? { action: 'grant-reveal' } : {}),
     },
   ];
 }
+
+export type ExpiryTier = 'danger' | 'warn' | 'none';
+
+export type ExpiryLabel = {
+  readonly text: string;
+  /** Colour only echoes the words: expired or within 7 days is danger, within 30 is warn. */
+  readonly tier: ExpiryTier;
+};
 
 /**
  * expiryLabel is the in-product-first expiry signal (#17): the product says so
  * before any email does, and it says it in words rather than in a colour.
  */
-export function expiryLabel(credential: MachineCredential, now: Date): string {
+export function expiryLabel(credential: MachineCredential, now: Date): ExpiryLabel {
   if (credential.revoked_at !== undefined) {
-    return 'revoked';
+    return { text: 'revoked', tier: 'none' };
   }
   if (credential.lifetime === 'indefinite') {
-    return 'no expiry';
+    return { text: 'no expiry', tier: 'none' };
   }
   if (credential.expires_at === undefined) {
-    return 'expiry unknown';
+    return { text: 'expiry unknown', tier: 'none' };
   }
   const days = Math.ceil((new Date(credential.expires_at).getTime() - now.getTime()) / 86_400_000);
   if (days <= 0) {
-    return 'expired';
+    return { text: 'expired', tier: 'danger' };
   }
-  return `expires in ${String(days)} ${days === 1 ? 'day' : 'days'}`;
+  return {
+    text: `expires in ${String(days)} ${days === 1 ? 'day' : 'days'}`,
+    tier: days <= 7 ? 'danger' : days <= 30 ? 'warn' : 'none',
+  };
 }
 
 /** lastUsedLabel keeps "never used" and "used at the epoch" different facts. */
@@ -614,7 +676,7 @@ export type FederationPreset = {
  * binding creation, so the form asks for them rather than letting the operator
  * discover them as a 400.
  *
- * Kubernetes pins the ServiceAccount UID through its JSON Pointer — a
+ * Kubernetes pins the ServiceAccount UID through its JSON Pointer, a
  * recreated ServiceAccount with the same name has a different UID, which is
  * precisely what the pin closes. The two CI platforms must pin `event_name`,
  * and GitHub Actions additionally pins the numeric repository ids, because a
@@ -670,7 +732,7 @@ export function presetFieldId(claim: string): string {
 /**
  * BINDING_LIFETIMES is the binding's own lifetime, which is #17's rule rather
  * than a convenience: a binding is a standing permission to present tokens and
- * expires on the same terms as a bearer credential — renewal is a mint, never
+ * expires on the same terms as a bearer credential, renewal is a mint, never
  * an edit, because bindings are immutable.
  *
  * `indefinite` is present and DISABLED with its reason, exactly as the frozen
@@ -689,7 +751,7 @@ export const BINDING_LIFETIMES: ReadonlyArray<{
   { id: '90d', label: '90 days', seconds: 90 * 24 * 60 * 60 },
   {
     id: 'indefinite',
-    label: 'Indefinite — requires the instance allow_indefinite opt-in',
+    label: 'Indefinite: requires the instance allow_indefinite opt-in',
     disabled: true,
   },
 ];
@@ -701,8 +763,8 @@ export const CI_EVENTS = ['push', 'workflow_dispatch', 'pull_request', 'pull_req
  * pullRequestRefusal names why a pull-request binding is refused.
  *
  * The protection comes from the PINNED EVENT, never from the subject's shape:
- * a `pull_request_target` token carries the ordinary ref-form subject — the
- * default branch's, the one a production binding names — so a binding that
+ * a `pull_request_target` token carries the ordinary ref-form subject, the
+ * default branch's, the one a production binding names, so a binding that
  * pinned only the subject would already be reachable from a pull request.
  * Returning the sentence rather than a boolean keeps what is shown and what is
  * refused as one thing.
@@ -724,7 +786,7 @@ export function pullRequestRefusal(eventName: string): string | null {
  *
  * It mirrors the server's `name == "" || len(name) > 64` (ErrServiceAccountName)
  * BYTE-FOR-BYTE: the name is sent untrimmed, so what is validated is what the
- * server stores, and the limit is 64 BYTES — Go's `len` on a UTF-8 string, not
+ * server stores, and the limit is 64 BYTES, Go's `len` on a UTF-8 string, not
  * 64 UTF-16 code units, so 22 three-byte characters already exceed it. Trimming
  * would silently change the contract: " prod " sent as "prod" could collide
  * with a different, byte-distinct account the server would have accepted.
@@ -741,7 +803,7 @@ export function serviceAccountNameRefusal(name: string): string | null {
 
 /**
  * createServiceAccountRefusalText names a create refusal in the create verb's
- * OWN vocabulary — every status, never delegating to `identityRefusalText`.
+ * OWN vocabulary, every status, never delegating to `identityRefusalText`.
  *
  * The shared mapper is wrong here in three places: its 409 is the MINT's
  * conflict ("the live-credential ceiling, or an identical binding") rather than
@@ -776,8 +838,8 @@ export function createServiceAccountRefusalText(error: unknown): string {
 /**
  * deleteServiceAccountRefusalText names a delete refusal in the delete verb's
  * own vocabulary. It deliberately says nothing about disclosure capabilities or
- * reauthentication — deprovisioning runs under the plain capability with no
- * disclosure gate — so the shared 403 sentence would directly contradict the
+ * reauthentication, deprovisioning runs under the plain capability with no
+ * disclosure gate, so the shared 403 sentence would directly contradict the
  * contract. A 404 is the concurrent-deletion case: already gone.
  */
 export function deleteServiceAccountRefusalText(error: unknown): string {
@@ -788,7 +850,7 @@ export function deleteServiceAccountRefusalText(error: unknown): string {
       case 403:
         return 'Deleting a service account needs manage-identities on this project.';
       case 404:
-        return 'That service account is no longer here — someone may have deleted it already.';
+        return 'That service account is no longer here; someone may have deleted it already.';
       case 429:
         return 'Too many requests right now. Wait a moment and try again.';
       default:
@@ -801,7 +863,7 @@ export function deleteServiceAccountRefusalText(error: unknown): string {
 /**
  * createServiceAccountFailureText adds the issued-but-unconfirmed honesty: a
  * create whose response was lost, or returned a 500 or an unparseable body, may
- * still have COMMITTED — and a blind retry then reads the duplicate-name 409 as
+ * still have COMMITTED, and a blind retry then reads the duplicate-name 409 as
  * a fresh failure. The refusals DECIDED before any commit (a malformed name,
  * authorization, a duplicate/limit, the budget) carry no such ambiguity, so
  * they stay the plain sentence.
@@ -811,7 +873,7 @@ export function createServiceAccountFailureText(error: unknown): string {
   if (error instanceof ApiError && [400, 401, 403, 404, 409, 429].includes(error.status)) {
     return base;
   }
-  return `${base} A service account may still have been created — check the inventory before retrying, since a retry can be refused as a duplicate name.`;
+  return `${base} A service account may still have been created: check the inventory before retrying, since a retry can be refused as a duplicate name.`;
 }
 
 /**
@@ -825,19 +887,19 @@ export function deleteServiceAccountFailureText(error: unknown): string {
   if (error instanceof ApiError && [401, 403, 404, 429].includes(error.status)) {
     return base;
   }
-  return `${base} The account may still have been deleted — check the inventory before retrying.`;
+  return `${base} The account may still have been deleted: check the inventory before retrying.`;
 }
 
 /**
  * identityRefusalText names what actually happened, in the vocabulary of the
  * act that failed. A machine-identity refusal is never "your access may have
- * changed" — the caller holds `manage-identities` or they never saw the page.
+ * changed", the caller holds `manage-identities` or they never saw the page.
  */
 export function identityRefusalText(error: unknown): string {
   if (error instanceof ApiError) {
     switch (error.status) {
       case 400:
-        return 'The server refused that as malformed. Check the issuer, subject, audience and the pinned claims — every one of them is matched byte-for-byte.';
+        return 'The server refused that as malformed. Check the issuer, subject, audience and the pinned claims; every one of them is matched byte-for-byte.';
       case 403:
         return 'The server refused this act. Minting or binding needs a disclosure capability over every environment the account reaches in the resulting state, plus a fresh reauthentication.';
       case 404:
@@ -861,7 +923,7 @@ export function identityRefusalText(error: unknown): string {
  *
  * It is a different sentence from `identityRefusalText` because the honest
  * answer is different: once the request left, a failure carries no information
- * about whether the server committed — a transport that dropped the response,
+ * about whether the server committed, a transport that dropped the response,
  * or a body this build could not parse, both leave a credential that may exist
  * and whose value is gone forever. Saying "the mint failed" there would be a
  * guess, and the wrong one leaves a live credential nobody is looking for.

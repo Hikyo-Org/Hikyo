@@ -60,18 +60,18 @@ function sameHandoffSummary(
  * This is the page the popup lands on, served by the instance being operated,
  * on that instance's own origin. Everything about the human's authentication
  * happens here and only here: this instance's password, its TOTP, its passkeys,
- * its OIDC — never the viewing instance's, which has no way to authenticate to
+ * its OIDC, never the viewing instance's, which has no way to authenticate to
  * this one and no code path that could.
  *
  * Two shapes land here, distinguished by the `purpose` the transaction was
  * opened under:
  *
- *  - **establishment** — a first workspace. The human is signed in (or signs in
+ *  - **establishment**, a first workspace. The human is signed in (or signs in
  *    here, in place) and approves; the redemption mints a workspace session.
- *  - **step-up** — an ELEVATION of a workspace already open. A disclosure over
+ *  - **step-up**, an ELEVATION of a workspace already open. A disclosure over
  *    there needs a fresh reauthentication over here first, so the human runs
- *    THIS instance's own #58 ceremony over the bound environment — which opens
- *    the reauth window the approval's server-side freshness gate then requires —
+ *    THIS instance's own #58 ceremony over the bound environment, which opens
+ *    the reauth window the approval's server-side freshness gate then requires , 
  *    and only then approves. The page reads purpose, environment and key set
  *    from the server-owned transaction by opaque state; the server validates
  *    the fresh window against that same bound environment.
@@ -82,7 +82,7 @@ function sameHandoffSummary(
  *     establishment arrives with no cookies for this instance, and redirecting
  *     to `/login` would drop the `state` this transaction is addressed by.
  *  2. **Approval is an ordinary same-origin, cookie-authenticated POST** with
- *     the synchronizer token — the shared client's rules, unchanged. Nothing
+ *     the synchronizer token, the shared client's rules, unchanged. Nothing
  *     the viewing origin sent is trusted here beyond the opaque state value,
  *     which the server resolves against its own transaction row.
  *  3. **The redirect target comes from the SERVER**, never from the URL. The
@@ -96,7 +96,7 @@ export function WorkspaceApprove() {
   const state = query.get('state') ?? '';
 
   // Purpose and any step-up scope come from the SERVER-BOUND transaction, read
-  // by state — never from the URL, which carries only opaque state. That keeps a
+  // by state, never from the URL, which carries only opaque state. That keeps a
   // large reveal-all off the URL-length ceiling and makes one source choose the
   // ceremony. Gated on authentication because the transaction read is audited
   // as the human who is about to approve it.
@@ -187,7 +187,7 @@ export function WorkspaceApprove() {
   }
 
   // No session on THIS instance: authenticate here, on this origin, with this
-  // instance's own ceremonies. The URL — and with it the state — survives.
+  // instance's own ceremonies. The URL, and with it the state, survives.
   if (auth.state.status === 'anonymous') {
     return <Login />;
   }
@@ -201,7 +201,7 @@ export function WorkspaceApprove() {
     return (
       <main className="login">
         <div className="login__card">
-          <h1 className="login__title">Authorization unavailable</h1>
+          <h1 className="login__title">Authorization could not be completed</h1>
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">
               !
@@ -362,7 +362,7 @@ function StepUpReauth({
       // Reauth is done; hand off to the approval and release our own busy flag
       // so `working` now reflects only the approve mutation. If that mutation
       // fails (an expired or already-consumed transaction), the buttons must
-      // come back — leaving busy latched here would strand the human with Cancel
+      // come back, leaving busy latched here would strand the human with Cancel
       // disabled and no way out but closing the window.
       setBusy(false);
       onReauthed();

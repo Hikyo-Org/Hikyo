@@ -124,19 +124,19 @@ describe('workspace consent summary', () => {
   it('never enables an expired summary', async () => {
     fetcher.mockResolvedValue(response({ ...fresh(), expires_at: '2020-01-01T00:00:00Z' }));
     const container = await render();
-    expect(container.textContent).toContain('Authorization unavailable');
+    expect(container.textContent).toContain('Authorization could not be completed');
     expect(container.querySelector('button')).toBeNull();
   });
   it('refuses a response for a different opaque state', async () => {
     fetcher.mockResolvedValue(response({ ...fresh(), state: 'other-state' }));
     const container = await render();
-    expect(container.textContent).toContain('Authorization unavailable');
+    expect(container.textContent).toContain('Authorization could not be completed');
     expect(container.querySelector('button')).toBeNull();
   });
   it('refuses a malformed summary', async () => {
     fetcher.mockResolvedValue(response({ purpose: 'establishment' }));
     const container = await render();
-    expect(container.textContent).toContain('Authorization unavailable');
+    expect(container.textContent).toContain('Authorization could not be completed');
     expect(container.querySelector('button')).toBeNull();
   });
   it('rechecks liveness and refuses a consumed summary without posting', async () => {
@@ -144,7 +144,7 @@ describe('workspace consent summary', () => {
     const container = await render();
     await act(async () => button(container, 'Authorize').click());
     await settle();
-    expect(container.textContent).toContain('Authorization unavailable');
+    expect(container.textContent).toContain('Authorization could not be completed');
     expect(methods()).toEqual(['GET', 'GET']);
   });
   it('refuses a changed origin without posting', async () => {
@@ -154,7 +154,7 @@ describe('workspace consent summary', () => {
     const container = await render();
     await act(async () => button(container, 'Authorize').click());
     await settle();
-    expect(container.textContent).toContain('Authorization unavailable');
+    expect(container.textContent).toContain('Authorization could not be completed');
     expect(methods()).toEqual(['GET', 'GET']);
   });
   it('renders every bound key and environment in a keyboard-scrollable scope', async () => {
@@ -198,7 +198,7 @@ describe('workspace consent summary', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_001);
     });
-    expect(container.textContent).toContain('Authorization unavailable');
+    expect(container.textContent).toContain('Authorization could not be completed');
     if (complete === undefined) throw new Error('missing ceremony completion');
     await act(async () => complete?.());
     await settle();

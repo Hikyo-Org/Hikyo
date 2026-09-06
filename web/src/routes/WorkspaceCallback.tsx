@@ -13,8 +13,8 @@ import { channelName } from '../api/workspace.ts';
  * It exists at all because the popup is opened with `noopener`: a hostile or
  * compromised remote must not be able to navigate the opener into a phishing
  * page, so `window.opener` is null and there is nothing to post a message
- * back through. A same-origin page plus a `BroadcastChannel` — which only this
- * origin's documents can open — is the return path that costs nothing.
+ * back through. A same-origin page plus a `BroadcastChannel`, which only this
+ * origin's documents can open, is the return path that costs nothing.
  *
  * What it deliberately does NOT do: redeem. The front channel carries code and
  * state only; the artifact is redeemed by the SHELL, with the PKCE verifier
@@ -23,6 +23,7 @@ import { channelName } from '../api/workspace.ts';
  */
 export function WorkspaceCallback() {
   const [failure, setFailure] = useState<string | null>(null);
+  const [stayedOpen, setStayedOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(globalThis.location.search);
@@ -37,9 +38,15 @@ export function WorkspaceCallback() {
     channel.close();
     // Closing is best-effort: a browser may refuse to close a window this
     // script did not open, and that is a cosmetic failure rather than a
-    // functional one — the shell already has what it needs.
+    // functional one, the shell already has what it needs.
     globalThis.close();
     setFailure(null);
+    // A refused close() leaves the window open with no error to read; the
+    // page checks after the close settles and says so instead of waiting.
+    const check = globalThis.setTimeout(() => {
+      if (!globalThis.closed) setStayedOpen(true);
+    }, 0);
+    return () => globalThis.clearTimeout(check);
   }, []);
 
   return (
@@ -48,7 +55,9 @@ export function WorkspaceCallback() {
         <h1 className="login__title">Returning to your workspace</h1>
         {failure === null ? (
           <p className="login__lede" role="status">
-            Handing the authorization back. You can close this window.
+            {stayedOpen
+              ? 'This window could not close itself. Close it to continue.'
+              : 'Handing the authorization back. This window closes itself.'}
           </p>
         ) : (
           <p className="alert" role="alert">

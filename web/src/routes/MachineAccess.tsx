@@ -20,6 +20,8 @@ import {
   deleteServiceAccountFailureText,
   expiryLabel,
   FEDERATION_PRESETS,
+  grantableFor,
+  grantSubmittable,
   grantWideningReach,
   identityRefusalText,
   isoDay,
@@ -48,6 +50,7 @@ import {
   useServiceAccounts,
   type ClaimPin,
   type FederationPreset,
+  type JourneyAction,
   type MachineCredential,
   type MachineEnvScope,
   type ProjectRef,
@@ -99,14 +102,14 @@ import { useModalDialog } from './useModalDialog.ts';
  * The structure is the prototype's, and each part of it is a rule rather than a
  * layout preference:
  *
- *  - **A tabbed inventory** — service accounts, federation, Kubernetes targets
- *    — with the per-project machine-reveal policy stated above the table.
+ *  - **A tabbed inventory** (service accounts, federation, Kubernetes targets)
+ *    with the per-project machine-reveal policy stated above the table.
  *  - **Write-only credential rows.** Prefix hint, kind, expiry in words,
  *    last used. Never the value: no route returns one after the mint, so there
  *    is nothing here that could render it.
  *  - **Row expansion leads with credentials and bindings (left), delivery
  *    targets and actions (right), and the five-step setup journey full-width
- *    below** — iteration 3's resolution, journey underneath rather than on top.
+ *    below**, iteration 3's resolution, journey underneath rather than on top.
  *  - **Display-once mint.** A step-up naming the post-state formula, then the
  *    value exactly once, with a stored-confirmation checkbox gating dismiss.
  *    Rotation is the same flow: the prior value is never returned.
@@ -144,7 +147,7 @@ type EnvOption = { readonly id: string; readonly name: string };
 
 /**
  * The frozen inputs of a lease mint. Like MintRequest it carries only the
- * addressed provider/environment and the labels the review panel shows — never a
+ * addressed provider/environment and the labels the review panel shows, never a
  * response field, so the disclosed password lives only in the lifecycle result.
  */
 type LeaseMintRequest = MintBoundaryFields & {
@@ -162,6 +165,36 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'providers', label: 'Providers' },
   { id: 'leases', label: 'Leases' },
 ];
+
+/**
+ * tabLabel spells a count the surface knows, says "unknown" for one it does
+ * not (a pending or failed listing is not zero), and carries no count at all
+ * for a tab that reports no status: the Kubernetes panel explains that absence
+ * of status is not health, so a "(0)" there would be the invented number.
+ */
+export function tabLabel(label: string, count: number | 'unknown' | null): string {
+  return count === null ? label : `${label} (${count === 'unknown' ? 'unknown' : String(count)})`;
+}
+
+/** nextTab is the APG roving order for a horizontal tablist: arrows wrap, Home/End jump. */
+export function nextTab<T>(tabs: readonly T[], current: T, key: string): T | null {
+  const index = tabs.indexOf(current);
+  if (index < 0 || tabs.length === 0) {
+    return null;
+  }
+  switch (key) {
+    case 'ArrowRight':
+      return tabs[(index + 1) % tabs.length] ?? null;
+    case 'ArrowLeft':
+      return tabs[(index - 1 + tabs.length) % tabs.length] ?? null;
+    case 'Home':
+      return tabs[0] ?? null;
+    case 'End':
+      return tabs[tabs.length - 1] ?? null;
+    default:
+      return null;
+  }
+}
 
 export function MachineAccess() {
   const params = useParams();
@@ -215,8 +248,8 @@ export function MachineAccess() {
   const leaseMint = useMintLifecycle<LeaseMintRequest, LeaseMinted>(mintBoundary);
 
   // A create, delete, binding or grant dialog carries a decision scoped to ONE
-  // project and session. A boundary crossing — a route change, or a session
-  // replacement — must close any open one, or a submit after the boundary would
+  // project and session. A boundary crossing, a route change, or a session
+  // replacement, must close any open one, or a submit after the boundary would
   // target the new project (its form still mounted, now reading the new prop) or
   // act under a replaced session. The mint has its own lifecycle clear above;
   // this covers the setDialog-based dialogs.
@@ -236,7 +269,7 @@ export function MachineAccess() {
   // Un-revoked, which is NOT the same as live: an expired credential is
   // revoked_at-less and authenticates nothing. The count an operator is told is
   // the server's own `live_credentials`, which applies the whole liveness
-  // predicate — epoch, revocation and expiry. This filter only decides which
+  // predicate, epoch, revocation and expiry. This filter only decides which
   // rows are worth showing.
   const showable = (rows: readonly MachineCredential[]) =>
     rows.filter((c) => c.revoked_at === undefined);
@@ -272,8 +305,8 @@ export function MachineAccess() {
   /**
    * inputsReady gates every act on the surface.
    *
-   * Each dialog's warning is an assertion about state — how many credentials a
-   * grant re-scopes, which environments a mint's formula ranges over — and a
+   * Each dialog's warning is an assertion about state, how many credentials a
+   * grant re-scopes, which environments a mint's formula ranges over, and a
    * query that failed answers those questions with a confident zero. Refusing
    * to act on a half-read surface is the only honest option: the alternative is
    * a warning that understates what the operator is about to do.
@@ -290,18 +323,18 @@ export function MachineAccess() {
    * canAdminister gates create and delete, and it is deliberately lighter than
    * inputsReady.
    *
-   * Create and delete are NARROWINGS — neither carries a warning that quantifies
+   * Create and delete are NARROWINGS, neither carries a warning that quantifies
    * reach, so neither needs the grant, environment or credential reads that
    * inputsReady waits on. Coupling them to that predicate would let an
    * unreadable membership surface (a `manage-identities` admin without
-   * `manage-members`) block seeding a fresh project — exactly the inert
+   * `manage-members`) block seeding a fresh project, exactly the inert
    * inventory this surface exists to remove. They need only a live session and a
    * known account listing.
    */
   const canAdminister = liveSessionId !== null && accountsQuery.isSuccess;
 
   // Provider administration needs only a live session and a readable provider
-  // listing — the same lighter gate as create/delete above, for the same reason.
+  // listing, the same lighter gate as create/delete above, for the same reason.
   const canAdministerProviders = liveSessionId !== null && providersQuery.isSuccess;
 
   // A lease can be minted only against a provider that is active AND holds a
@@ -317,15 +350,18 @@ export function MachineAccess() {
     mintableProviders.length > 0 &&
     environments.length > 0;
 
-  const tabCount: Record<Tab, string> = {
-    accounts: accountsQuery.isSuccess ? String(accounts.length) : '—',
+  const tabCount: Record<Tab, number | 'unknown' | null> = {
+    accounts: accountsQuery.isSuccess ? accounts.length : 'unknown',
     // Unknown is rendered as unknown: "Federation (0)" on a failed listing
     // reads as "there are none", which is the one thing it does not know.
-    federation: credentials.isPending || credentials.isError ? '—' : String(allBindings.length),
-    kubernetes: '0',
-    providers: providersQuery.isSuccess ? String(providers.length) : '—',
-    leases: leases.isPending || leases.isError ? '—' : String(leases.rows.length),
+    federation: credentials.isPending || credentials.isError ? 'unknown' : allBindings.length,
+    // No status is reported here, so no count: the panel says why.
+    kubernetes: null,
+    providers: providersQuery.isSuccess ? providers.length : 'unknown',
+    leases: leases.isPending || leases.isError ? 'unknown' : leases.rows.length,
   };
+  const unknownLeases = leases.rows.filter((row) => row.lease.state === 'unknown').length;
+  const tabRefs = useRef(new Map<Tab, HTMLButtonElement>());
 
   const doRevoke = (account: ServiceAccount, credential: MachineCredential) => {
     setRefusal(null);
@@ -334,7 +370,7 @@ export function MachineAccess() {
       {
         onSuccess: () =>
           setNotice(
-            'Revoked. It stops authenticating at the next request, never at expiry — grants and sibling credentials are untouched.',
+            'Revoked. It stops authenticating at the next request, never at expiry; grants and sibling credentials are untouched.',
           ),
         onError: (error) => setRefusal(identityRefusalText(error)),
       },
@@ -368,7 +404,7 @@ export function MachineAccess() {
           </span>
           <span>
             The grant rows could not be read, so no scope is shown below. Reading the membership
-            surface needs manage-members on this project — a separate authority from administering
+            surface needs manage-members on this project, a separate authority from administering
             identities.
           </span>
         </p>
@@ -380,7 +416,7 @@ export function MachineAccess() {
             !
           </span>
           <span>
-            The project&apos;s environments could not be read, so no scope is shown below — an empty
+            The project&apos;s environments could not be read, so no scope is shown below; an empty
             scope column here would say &ldquo;this account reaches nothing&rdquo;, which is not
             something this page knows.
           </span>
@@ -426,19 +462,41 @@ export function MachineAccess() {
         </p>
       ) : null}
 
-      <div className="tabs" role="tablist" aria-label="Machine access sections">
+      {/* APG tabs: one tab stop, arrows move and select, Home/End jump. */}
+      <div
+        className="tabs"
+        role="tablist"
+        aria-label="Machine access sections"
+        onKeyDown={(event) => {
+          const target = nextTab(TABS.map((entry) => entry.id), tab, event.key);
+          if (target === null) {
+            return;
+          }
+          event.preventDefault();
+          setTab(target);
+          tabRefs.current.get(target)?.focus();
+        }}
+      >
         {TABS.map((entry) => (
           <button
             key={entry.id}
+            ref={(node) => {
+              if (node === null) {
+                tabRefs.current.delete(entry.id);
+              } else {
+                tabRefs.current.set(entry.id, node);
+              }
+            }}
             type="button"
             role="tab"
             id={`machine-tab-${entry.id}`}
             className="tab"
             aria-selected={tab === entry.id}
             aria-controls="machine-panel"
+            tabIndex={tab === entry.id ? 0 : -1}
             onClick={() => setTab(entry.id)}
           >
-            {`${entry.label} (${tabCount[entry.id]})`}
+            {tabLabel(entry.label, tabCount[entry.id])}
           </button>
         ))}
       </div>
@@ -522,12 +580,12 @@ export function MachineAccess() {
             </table>
             {accounts.length === 0 && !accountsQuery.isPending && !accountsQuery.isError ? (
               <p role="status">
-                No service accounts on this project yet. Create one above — a browser operator seeds
+                No service accounts on this project yet. Create one above: a browser operator seeds
                 this inventory, no CLI required.
               </p>
             ) : null}
             <p className="machine__footnote">
-              The credential list is metadata only — prefix, kind, scope, expiry, last used. Values
+              The credential list is metadata only: prefix, kind, scope, expiry, last used. Values
               are write-only: displayed exactly once at mint, never retrievable, and rotation never
               returns the prior value.
             </p>
@@ -539,7 +597,7 @@ export function MachineAccess() {
             <h2>Federated bindings</h2>
             <p className="machine__lede">
               An external OIDC identity is bound to exactly one service account by a byte-exact
-              (issuer, subject) pair — no wildcards, no case folding, no just-in-time provisioning.
+              (issuer, subject) pair, no wildcards, no case folding, no just-in-time provisioning.
               An unbound identity is not a login. A binding expires on the same terms as a bearer
               credential and is immutable: renewal is a mint.
             </p>
@@ -610,7 +668,7 @@ export function MachineAccess() {
             <h2>Dynamic-secret providers</h2>
             <p className="machine__lede">
               Where Hikyo mints short-lived credentials. A provider is project-scoped, always
-              connects over <code>verify-full</code> TLS, and its admin credential is write-only —
+              connects over <code>verify-full</code> TLS, and its admin credential is write-only,
               set or replaced, never read back. Every minted lease role inherits the grant role.
             </p>
             <p className="machine__actions">
@@ -661,7 +719,7 @@ export function MachineAccess() {
                           provider.credential_set_at === null
                           ? 'set'
                           : `set ${isoDay(provider.credential_set_at)}`
-                        : 'none'}
+                        : 'credential absent'}
                     </td>
                     <td className="col-secondary">{provider.state}</td>
                     <td>
@@ -709,7 +767,7 @@ export function MachineAccess() {
                           </button>
                         </span>
                       ) : (
-                        '—'
+                        <span className="values__absent">none</span>
                       )}
                     </td>
                   </tr>
@@ -731,7 +789,7 @@ export function MachineAccess() {
           <>
             <h2>Dynamic-secret leases</h2>
             <p className="machine__lede">
-              Short-lived credentials Hikyo minted at a provider. Status and metadata only — the
+              Short-lived credentials Hikyo minted at a provider. Status and metadata only: the
               password is disclosed once, at mint, and never shown again. Renew, revoke and settle
               are queued: the worker carries them out and the row moves when it does.
             </p>
@@ -750,7 +808,7 @@ export function MachineAccess() {
               </button>
               {!canMintLease && providersQuery.isSuccess && mintableProviders.length === 0 ? (
                 <span className="machine__hint">
-                  Configure a provider with a credential first — a lease is minted against one.
+                  Configure a provider with a credential first: a lease is minted against one.
                 </span>
               ) : null}
             </p>
@@ -797,19 +855,14 @@ export function MachineAccess() {
                       </td>
                       <td>
                         {state === 'unknown' ? (
-                          <span className="alert" role="status">
-                            <span className="alert__glyph" aria-hidden="true">
-                              !
-                            </span>
-                            <span>unknown — awaiting reconcile</span>
-                          </span>
+                          <span className="badge badge--warn">unknown, awaiting reconcile</span>
                         ) : (
                           state
                         )}
                       </td>
                       <td className="col-secondary">
                         {row.lease.expires_at === undefined || row.lease.expires_at === null
-                          ? '—'
+                          ? <span className="values__absent">absent</span>
                           : isoDay(row.lease.expires_at)}
                       </td>
                       <td className="col-secondary">{row.lease.principal_class}</td>
@@ -841,7 +894,7 @@ export function MachineAccess() {
                             ) : null}
                           </span>
                         ) : (
-                          '—'
+                          <span className="values__absent">none</span>
                         )}
                       </td>
                     </tr>
@@ -849,6 +902,11 @@ export function MachineAccess() {
                 })}
               </tbody>
             </table>
+            {unknownLeases === 0 ? null : (
+              <p role="status" className="machine__hint">
+                {`${String(unknownLeases)} lease${unknownLeases === 1 ? '' : 's'} awaiting reconcile`}
+              </p>
+            )}
             {leases.isError ? (
               <p role="status">The leases could not be read for one or more environments.</p>
             ) : leases.rows.length === 0 && !leases.isPending ? (
@@ -891,7 +949,8 @@ export function MachineAccess() {
           project={project}
           account={dialog.account}
           scope={scopeFor(dialog.account)}
-          // The SERVER's count, which applies the whole liveness predicate —
+          machineReveal={machineReveal}
+          // The SERVER's count, which applies the whole liveness predicate,
           // revocation, the credential epoch and expiry. Counting un-revoked
           // rows here would tell an operator that a grant re-scopes credentials
           // that stopped authenticating weeks ago.
@@ -913,7 +972,7 @@ export function MachineAccess() {
           onCreated={(name, kind) => {
             setDialog(null);
             setNotice(
-              `Created ${name} (${kind}). It is ready to mint credentials and take federated bindings — its kind is immutable from here.`,
+              `Created ${name} (${kind}). It is ready to mint credentials and take federated bindings; its kind is immutable from here.`,
             );
           }}
         />
@@ -932,7 +991,7 @@ export function MachineAccess() {
               setExpanded(null);
             }
             setNotice(
-              `Deleted ${name}. Every credential it held is revoked and every grant released — atomically, and this cannot be undone.`,
+              `Deleted ${name}. Every credential it held is revoked and every grant released, atomically, and this cannot be undone.`,
             );
           }}
         />
@@ -945,7 +1004,7 @@ export function MachineAccess() {
           onCreated={(origin) => {
             setDialog(null);
             setNotice(
-              `Configured provider ${origin}. Hikyo reached it and authenticated — it can now mint leased credentials.`,
+              `Configured provider ${origin}. Hikyo reached it and authenticated; it can now mint leased credentials.`,
             );
           }}
         />
@@ -1094,6 +1153,7 @@ function PolicyStrip({ project }: { project: ProjectRef }) {
             : 'Every workload delivery is configuration and secret presence only; the grant API refuses both machine disclosure capabilities until this is on.'}
         </span>
         <button
+          id="machine-policy-toggle"
           type="button"
           className="btn machine__policy-toggle"
           onClick={() => setConfirming(!enabled)}
@@ -1253,8 +1313,15 @@ function ExpandableRow({
           ) : (
             <span className="machine__chips">
               {reading.map((s) => (
-                <span className="badge" key={s.id}>
-                  {s.reveal ? `${s.name} ◆` : s.name}
+                <span className="machine__scope" key={s.id}>
+                  <span className="badge">{s.reveal ? `${s.name} ◆` : s.name}</span>
+                  {/* Origin chips per scope, as Members renders them: the one
+                      thing that tells a break-glass grant from an ordinary one. */}
+                  {s.origins.map((origin) => (
+                    <span className="badge mono" key={`${origin.kind}:${origin.subject}`}>
+                      {origin.kind}: {origin.subject}
+                    </span>
+                  ))}
                 </span>
               ))}
             </span>
@@ -1311,7 +1378,7 @@ function ExpansionBody({
   ready: boolean;
   /**
    * Delete's lighter gate: a session and a known listing. It is separate from
-   * `ready` because deprovisioning is a narrowing that needs no scope read —
+   * `ready` because deprovisioning is a narrowing that needs no scope read,
    * requiring one would keep an operator from deleting a compromised account
    * when the membership surface is unreadable.
    */
@@ -1340,7 +1407,7 @@ function ExpansionBody({
                 <li className="cred" key={credential.id}>
                   <code className="mono">{`${credential.prefix_hint ?? 'unknown'}…`}</code>
                   <span className="badge">bearer</span>
-                  <span className="badge">{expiryLabel(credential, now)}</span>
+                  <ExpiryBadge credential={credential} now={now} />
                   <span className="cred__meta">{lastUsedLabel(credential)}</span>
                   <button
                     className="btn"
@@ -1422,7 +1489,7 @@ function ExpansionBody({
       <h2 className="machine__subhead">Setup journey</h2>
       {journey === null ? (
         <p className="machine__none">
-          Automation principal — it runs off-box, on a schedule or in CI, and never delivers to a
+          Automation principal: it runs off-box, on a schedule or in CI, and never delivers to a
           workload, so it has no setup journey. Its capability allowlist admits read, edit, publish
           and definitions-edit; never any manage- or instance capability.
         </p>
@@ -1440,12 +1507,62 @@ function ExpansionBody({
               <span className="journey__body">
                 <span className="journey__title">{step.title}</span>
                 <span className="journey__note">{step.note}</span>
+                {/* The step's act lives on the step: the same dialog or control
+                    the buttons above open, reached from where the gap is named. */}
+                {step.action === undefined ? null : (
+                  <JourneyActionButton action={step.action} ready={ready} onGrant={onGrant} />
+                )}
               </span>
             </li>
           ))}
         </ol>
       )}
     </>
+  );
+}
+
+function journeyActionLabel(action: JourneyAction): string {
+  switch (action) {
+    case 'grant-read':
+      return 'Grant read…';
+    case 'grant-reveal':
+      return 'Grant reveal…';
+    case 'enable-opt-in':
+      return 'Go to the opt-in…';
+  }
+}
+
+/**
+ * The opt-in control sits in the PolicyStrip at the top of this tab, which is
+ * the only tab the journey renders on, so focusing it is a scroll and a focus,
+ * not a navigation. A grant step opens the same grant dialog the actions do.
+ */
+function JourneyActionButton({
+  action,
+  ready,
+  onGrant,
+}: {
+  action: JourneyAction;
+  ready: boolean;
+  onGrant: () => void;
+}) {
+  return (
+    <button
+      className="btn journey__action"
+      type="button"
+      disabled={action !== 'enable-opt-in' && !ready}
+      onClick={() => {
+        if (action !== 'enable-opt-in') {
+          onGrant();
+          return;
+        }
+        const toggle = document.getElementById('machine-policy-toggle');
+        toggle?.scrollIntoView({ block: 'center' });
+        toggle?.focus();
+      }}
+    >
+      {journeyActionLabel(action)}
+    </button>
   );
 }
 
@@ -1475,9 +1592,9 @@ function BindingCard({
       <p className="bindrow__head">
         <code className="mono">{account.name}</code>
         <span className="badge">federated</span>
-        <span className="badge">{expiryLabel(credential, now)}</span>
+        <ExpiryBadge credential={credential} now={now} />
         <span className="cred__meta">
-          matched byte-for-byte — no wildcards, no case folding; renewal is a mint
+          matched byte-for-byte, no wildcards, no case folding; renewal is a mint
         </span>
       </p>
       {/* Every pair is wrapped: a `dl` takes either dt/dd children or `div`
@@ -1525,6 +1642,16 @@ function BindingCard({
   );
 }
 
+/** The expiry in words, with the tier echoed by colour beside them, never instead. */
+function ExpiryBadge({ credential, now }: { credential: MachineCredential; now: Date }) {
+  const expiry = expiryLabel(credential, now);
+  return (
+    <span className={`badge${expiry.tier === 'none' ? '' : ` badge--${expiry.tier}`}`}>
+      {expiry.text}
+    </span>
+  );
+}
+
 function claimText(pin: ClaimPin): string {
   if (pin.string_value !== undefined) {
     return pin.string_value;
@@ -1540,8 +1667,8 @@ function claimText(pin: ClaimPin): string {
 
 /**
  * presetForBinding recovers the platform of a binding being replaced. The
- * credential row carries no platform type — that lives on the issuer, not the
- * binding — so the platform is inferred from the claims it pinned: the preset
+ * credential row carries no platform type, that lives on the issuer, not the
+ * binding, so the platform is inferred from the claims it pinned: the preset
  * whose required claims the predecessor pins the most of. It is only ever used
  * to choose which fields the replace form renders; the claim VALUES are seeded
  * straight from the predecessor, so a misdetection would show a spare field,
@@ -1581,7 +1708,7 @@ export function seedClaims(
 }
 
 /**
- * carriedClaims are the predecessor's pins that no preset field renders — a
+ * carriedClaims are the predecessor's pins that no preset field renders, a
  * custom claim a CLI operator added beyond the platform's required set. A
  * replacement must carry EVERY one of them verbatim: dropping a pin the form
  * cannot show would silently weaken the successor's identity constraints, which
@@ -1601,7 +1728,7 @@ export function carriedClaims(
 /**
  * toRequestPin converts one READ-shape pin (whose `number_value` is a bigint)
  * to the REQUEST shape (a plain number). The int64→number narrowing is the
- * generated client's own boundary — the wire type is a number — so it is no
+ * generated client's own boundary, the wire type is a number, so it is no
  * lossier here than a first mint of the same claim, and a real repository id
  * sits far below the safe-integer ceiling.
  */
@@ -1640,7 +1767,7 @@ function requestPinText(pin: FederatedClaimPin): string {
  * ways to unmount this dialog: unload (reload, tab close, external navigation)
  * and the Back button, which pops the route out from under the component. The
  * first gets the platform's `beforeunload` confirmation; the second gets a
- * history sentinel — a duplicate entry pushed while the guard is active, so a
+ * history sentinel, a duplicate entry pushed while the guard is active, so a
  * Back press consumes the sentinel instead of the route, the URL never changes,
  * and the press is surfaced as a dismissal ATTEMPT routed through the same
  * gate as Escape. Deactivating consumes the sentinel again so Back is not a
@@ -1678,7 +1805,7 @@ export function useNavigationGuard(active: boolean, onAttempt: () => void) {
  *
  * The step-up names the POST-STATE formula rather than what the mint adds: a
  * mint adds no grants, so a replacement credential is not a smaller act than a
- * new one — it hands the same reach to a fresh value. When the account reaches
+ * new one, it hands the same reach to a fresh value. When the account reaches
  * no plaintext the disclosure conjunct is vacuous and the server asks for no
  * reauthentication, which the panel says in words rather than performing a
  * ceremony that authorises nothing.
@@ -1717,7 +1844,7 @@ export function MintDialog({
     const active = started.state.request;
     // `issued` is the difference between "nothing happened" and "something may
     // have". Once the request leaves, a failure says nothing about whether the
-    // server committed — and a mint that committed and whose response was lost
+    // server committed, and a mint that committed and whose response was lost
     // is a live credential whose value is gone forever.
     let issued = false;
     try {
@@ -1746,7 +1873,7 @@ export function MintDialog({
       refresh(active.accountId);
     } catch (error) {
       if (issued) {
-        // Re-read the rows so the operator can see — and revoke — whatever may
+        // Re-read the rows so the operator can see, and revoke, whatever may
         // have landed.
         refresh(active.accountId);
         move({ type: 'failed', requestId: active.id, error: mintFailureText(error) });
@@ -1758,7 +1885,7 @@ export function MintDialog({
 
   const dismiss = () => move({ type: 'dismiss' });
 
-  // Back, reload and tab close are dismissals too — an in-flight mint or an
+  // Back, reload and tab close are dismissals too, an in-flight mint or an
   // unstored value must not be lost to a navigation the buttons would refuse.
   useNavigationGuard(busy || (disclosed !== null && !disclosed.stored), dismiss);
 
@@ -1776,7 +1903,7 @@ export function MintDialog({
       {disclosed === null ? (
         <>
           <h2 className="ceremony__title" id="mint-title">
-            {`${request.rotating ? 'rotate' : 'mint'} credential · ${request.accountName}`}
+            {`${request.rotating ? 'Rotate' : 'Mint'} credential · ${request.accountName}`}
           </h2>
           <p className="ceremony__stepup">
             <span className="alert__glyph" aria-hidden="true">
@@ -1785,7 +1912,7 @@ export function MintDialog({
             <span>
               <strong>Confirm it&apos;s you.</strong> The value is delivered display-once, to you.
               The formula is manage-identities on this project and a disclosure capability over
-              every environment this account reaches in the resulting post-state — not only the ones
+              every environment this account reaches in the resulting post-state, not only the ones
               a mint adds, because a mint adds none.
             </span>
           </p>
@@ -1797,7 +1924,7 @@ export function MintDialog({
           {request.rotating ? (
             <p className="ceremony__lede">
               The prior value is never returned. The predecessor keeps authenticating until you
-              revoke it — rotation and revocation are separate, deliberate acts, so a mint that
+              revoke it; rotation and revocation are separate, deliberate acts, so a mint that
               lands and a revoke that does not leaves two live credentials rather than none.
             </p>
           ) : null}
@@ -1830,9 +1957,16 @@ export function MintDialog({
       ) : (
         <>
           <h2 className="ceremony__title" id="mint-title">
-            Credential minted — shown exactly once
+            Credential minted, shown exactly once
           </h2>
           <p className="mono machine__token">{disclosed.result.value}</p>
+          {/* The mint result is narrowed to `value` and `clamped` on purpose
+              (see zMinted); the instant is on the credential row a moment later. */}
+          <p className="cred__meta">
+            {disclosed.result.clamped
+              ? 'Expiry: the instance ceiling, shorter than the default.'
+              : 'Expiry: instance default.'}
+          </p>
           {disclosed.result.clamped ? (
             <p className="notice" role="status">
               <span className="alert__glyph" aria-hidden="true">
@@ -1840,7 +1974,7 @@ export function MintDialog({
               </span>
               <span>
                 The instance lifetime ceiling shortened this credential. It expires earlier than the
-                default asked for — said now rather than discovered when it dies.
+                default asked for, said now rather than discovered when it dies.
               </span>
             </p>
           ) : null}
@@ -1896,7 +2030,7 @@ export function MintDialog({
               <span className="alert__glyph" aria-hidden="true">
                 !
               </span>
-              <span>Confirm you have stored it — there is no second look at this value.</span>
+              <span>Confirm you have stored it: there is no second look at this value.</span>
             </p>
           ) : null}
           <div className="ceremony__actions">
@@ -1916,7 +2050,7 @@ export function MintDialog({
  * Two of its rules come straight off the server and are asked for HERE so an
  * operator meets them as a form rather than as a 400: the audience is mandatory
  * and may not be the issuer's default, and each platform's immutable
- * identifiers must be pinned. The third — the pull-request refusal — is the
+ * identifiers must be pinned. The third, the pull-request refusal, is the
  * load-bearing one: the protection comes from the pinned `event_name`, never
  * from the subject's shape, because a `pull_request_target` token carries the
  * ordinary ref-form subject a production binding names.
@@ -1938,8 +2072,8 @@ function BindingDialog({
    * are IMMUTABLE, so a replacement is a fresh mint naming `replaces`: the
    * server revokes the predecessor and inserts the successor in ONE
    * transaction, so there is never a gap with no binding nor an overlap with
-   * two. The form pre-seeds from it and locks the target account — the
-   * predecessor belongs to exactly one — and hides the platform picker, since
+   * two. The form pre-seeds from it and locks the target account, the
+   * predecessor belongs to exactly one, and hides the platform picker, since
    * the platform cannot move under a replacement.
    */
   replaces?: MachineCredential;
@@ -1947,8 +2081,8 @@ function BindingDialog({
    * The selected account's post-state reach. A binding is a mint (#62), so the
    * server demands the same disclosure formula the credential mint does: one
    * fresh window per environment the account can decrypt in the resulting
-   * state. Vacuous today for the same reason the mint's is — nothing a machine
-   * can hold reaches plaintext — but the leg exists so the form does not start
+   * state. Vacuous today for the same reason the mint's is, nothing a machine
+   * can hold reaches plaintext, but the leg exists so the form does not start
    * failing with a bare 403 the day the reveal opt-in lands.
    */
   reachFor: (accountId: string) => readonly MachineEnvScope[];
@@ -1963,7 +2097,7 @@ function BindingDialog({
   // pinned; a fresh binding starts on Kubernetes. The account is locked to the
   // row the replace was launched from, because a binding belongs to one.
   const seedPreset = replaces === undefined ? KUBERNETES_PRESET : presetForBinding(replaces);
-  // Predecessor pins no form field renders — carried verbatim so a replacement
+  // Predecessor pins no form field renders, carried verbatim so a replacement
   // never silently drops an identity constraint the form could not show.
   const carried = replaces === undefined ? [] : carriedClaims(seedPreset, replaces);
   const [account, setAccount] = useState(initial.id);
@@ -2002,8 +2136,8 @@ function BindingDialog({
    *
    * The numeric fields are the ones worth refusing over: an immutable
    * repository id is what stops a renamed-and-reused path inheriting this
-   * binding, and a field that quietly became 0 — or rounded to a neighbouring
-   * id past 2^53 — would bind this service account to somebody else's
+   * binding, and a field that quietly became 0, or rounded to a neighbouring
+   * id past 2^53, would bind this service account to somebody else's
    * repository while looking like it worked.
    */
   const pinsOrRefusal = (): FederatedClaimPin[] | string => {
@@ -2013,7 +2147,7 @@ function BindingDialog({
       if (field.kind === 'number') {
         const value = parseClaimNumber(raw);
         if (value === null) {
-          return `${field.label} (${field.claim}) must be a whole number the issuer actually mints — digits only, and inside the range this contract can carry exactly. Nothing was bound.`;
+          return `${field.label} (${field.claim}) must be a whole number the issuer actually mints: digits only, and inside the range this contract can carry exactly. Nothing was bound.`;
         }
         pins.push({ claim: field.claim, number_value: value });
         continue;
@@ -2072,7 +2206,7 @@ function BindingDialog({
     try {
       // A binding is a mint: one reauthentication per environment the account
       // decrypts in the post-state, in the same purpose the server consumes.
-      // Empty today — no machine reaches plaintext — so no ceremony runs.
+      // Empty today, no machine reaches plaintext, so no ceremony runs.
       for (const environment of reachFor(account)) {
         await runPasskeyCeremony({
           operation: 'mint',
@@ -2096,7 +2230,7 @@ function BindingDialog({
         : '';
       onCreated(
         replacing
-          ? `Replaced. The predecessor was revoked and the successor inserted in one transaction — no gap, no overlap. The new binding matches ${subject} byte-for-byte.${clampNote}`
+          ? `Replaced. The predecessor was revoked and the successor inserted in one transaction: no gap, no overlap. The new binding matches ${subject} byte-for-byte.${clampNote}`
           : `Bound. The binding matches ${subject} byte-for-byte and nothing else.${clampNote}`,
       );
     } catch (error) {
@@ -2112,7 +2246,7 @@ function BindingDialog({
   };
 
   // An in-flight binding is not dismissible: Escape, Back or unload here would
-  // hide a mutation that may commit — the operator stays until it resolves.
+  // hide a mutation that may commit, the operator stays until it resolves.
   useNavigationGuard(busy, () => {});
 
   return (
@@ -2127,12 +2261,12 @@ function BindingDialog({
       </h2>
       <p className="ceremony__lede">
         {replacing
-          ? 'Bindings are immutable, so this replaces the predecessor: the server revokes it and inserts this successor in one transaction — no gap with no binding, no overlap with two. The fields are seeded from the predecessor; change what the replacement should carry.'
+          ? 'Bindings are immutable, so this replaces the predecessor: the server revokes it and inserts this successor in one transaction, with no gap with no binding and no overlap with two. The fields are seeded from the predecessor; change what the replacement should carry.'
           : 'A byte-exact (issuer, subject) pair naming exactly one service account. The audience is mandatory and may not be the issuer’s default: a token minted for another consumer must not authenticate here.'}
       </p>
 
       {/* One native latch for the whole target: an issued request is for the
-          form as submitted, so nothing here may change until it resolves —
+          form as submitted, so nothing here may change until it resolves,
           otherwise the success or failure sentence describes one account while
           the operator is looking at another. */}
       <fieldset className="machine__lock" disabled={busy}>
@@ -2146,6 +2280,7 @@ function BindingDialog({
               aria-pressed={preset.id === entry.id}
               onClick={() => choose(entry)}
             >
+              {preset.id === entry.id ? <span aria-hidden="true">✓ </span> : null}
               {entry.label}
             </button>
           ))}
@@ -2157,7 +2292,7 @@ function BindingDialog({
         <select
           id="binding-account"
           value={account}
-          // A replacement belongs to exactly one account — the predecessor's —
+          // A replacement belongs to exactly one account, the predecessor's,
           // so the target is fixed and the selector is locked.
           disabled={replacing}
           onChange={(event) => {
@@ -2320,7 +2455,7 @@ function BindingDialog({
       ) : null}
 
       <p className="machine__footnote">
-        No wildcards, no namespace patterns, no case folding — canonicalisation merges distinct
+        No wildcards, no namespace patterns, no case folding; canonicalisation merges distinct
         external identities. Bindings are immutable and expire on the same terms as a bearer
         credential: renewal is a mint, never an edit.
       </p>
@@ -2359,6 +2494,7 @@ function GrantDialog({
   project,
   account,
   scope,
+  machineReveal,
   liveCredentials,
   onClose,
   onGranted,
@@ -2366,14 +2502,18 @@ function GrantDialog({
   project: ProjectRef;
   account: ServiceAccount;
   scope: readonly MachineEnvScope[];
+  /** The project's machine-reveal opt-in: reveal is grantable only while it is on. */
+  machineReveal: boolean;
   liveCredentials: number;
   onClose: () => void;
   onGranted: (environment: string, result: GrantResult) => void;
 }) {
   const dialog = useModalDialog();
-  const grantable = scope.filter((s) => !s.read);
+  const grantable =
+    grantableFor(scope, 'read', machineReveal).length > 0 ||
+    grantableFor(scope, 'reveal', machineReveal).length > 0;
   // The in-flight latch lives here because the <dialog>'s cancel event does,
-  // while the mutation lives in GrantBody — a ref, because the gate needs the
+  // while the mutation lives in GrantBody, a ref, because the gate needs the
   // truth at event time, not a render.
   const inFlight = useRef(false);
 
@@ -2391,16 +2531,18 @@ function GrantDialog({
         Grants attach to the service account, never to a credential.
       </p>
 
-      {grantable.length === 0 ? (
+      {!grantable ? (
         <p role="status">
-          This account already reads every environment in the project. There is nothing to widen.
+          {machineReveal
+            ? 'This account already reads and reveals every environment in the project. There is nothing to widen.'
+            : 'This account already reads every environment in the project. There is nothing to widen; reveal needs the machine-reveal opt-in first.'}
         </p>
       ) : (
         <GrantBody
           project={project}
           account={account}
           scope={scope}
-          grantable={grantable}
+          machineReveal={machineReveal}
           liveCredentials={liveCredentials}
           inFlight={inFlight}
           onClose={onClose}
@@ -2421,7 +2563,7 @@ function GrantBody({
   project,
   account,
   scope,
-  grantable,
+  machineReveal,
   liveCredentials,
   inFlight,
   onClose,
@@ -2430,19 +2572,36 @@ function GrantBody({
   project: ProjectRef;
   account: ServiceAccount;
   scope: readonly MachineEnvScope[];
-  grantable: readonly MachineEnvScope[];
+  machineReveal: boolean;
   liveCredentials: number;
-  /** GrantDialog's Escape gate — held while the mutation is in flight. */
+  /** GrantDialog's Escape gate, held while the mutation is in flight. */
   inFlight: MutableRefObject<boolean>;
   onClose: () => void;
   onGranted: (environment: string, result: GrantResult) => void;
 }) {
   const grant = useGrantEnvironment(project);
   const refreshGrants = useRefreshGrants(project);
-  const first = grantable[0];
-  const [environment, setEnvironment] = useState(first === undefined ? '' : first.id);
+  // Reveal is offered only while the project opt-in is on: the UI grants read
+  // by default, and the select widens to reveal under the same ceremony.
+  const [capability, setCapability] = useState<'read' | 'reveal'>(
+    grantableFor(scope, 'read', machineReveal).length > 0 ? 'read' : 'reveal',
+  );
+  const grantable = grantableFor(scope, capability, machineReveal);
+  const [environment, setEnvironment] = useState(grantable[0]?.id ?? '');
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The inputs can move under an open dialog (the opt-in withdrawn, the
+  // account's scope refreshed). Fold the selection back onto what is still
+  // grantable so no stale choice survives to the submit.
+  useEffect(() => {
+    if (capability === 'reveal' && !machineReveal) {
+      setCapability('read');
+      return;
+    }
+    if (environment !== '' && !grantable.some((s) => s.id === environment)) {
+      setEnvironment(grantable[0]?.id ?? '');
+    }
+  }, [capability, environment, grantable, machineReveal]);
 
   // An in-flight grant is not dismissible by Back or unload either: a widening
   // that commits behind a dismissed dialog is invisible at the moment it most
@@ -2451,26 +2610,36 @@ function GrantBody({
 
   /**
    * What a `read` grant actually delivers, read off the delivery surface rather
-   * than guessed: the whole key CATALOGUE — every key's name and its
-   * classification — and no value of any classification, config included. So
+   * than guessed: the whole key CATALOGUE, every key's name and its
+   * classification, and no value of any classification, config included. So
    * the newly reachable set is every key, not only the secrets. The catalogue
    * endpoint is used rather than the value listing on purpose: a value listing
    * is authorized for the HUMAN reading it and carries config plaintext this
    * dialog never renders, and a fetch is a cached copy (see useKeyCatalogue).
    */
   const values = useKeyCatalogue(project);
-  const reachable = values.data?.items ?? [];
+  // A read grant reaches the whole catalogue by name; a reveal grant adds
+  // standing decryption of the SECRETS only (read is already held, so config
+  // values are not new). Presence per environment is not in this read, so the
+  // sentence says "when set" rather than claiming plaintext for every row.
+  const catalogue = values.data?.items ?? [];
+  const reachable =
+    capability === 'reveal' ? catalogue.filter((key) => key.classification === 'secret') : catalogue;
   const chosen = grantable.find((s) => s.id === environment);
+  // The opt-in can be withdrawn while this dialog is open: the capability
+  // select disappears, but a stale reveal choice or a stale environment must
+  // not stay submittable.
+  const submittable = grantSubmittable(scope, environment, capability, machineReveal);
   // The mint formula's conjunct for a WIDENING is the delta, not the whole
-  // post-state — which is what the server computes in checkMachineWidening.
-  const widening = grantWideningReach(scope, environment, 'read');
+  // post-state, which is what the server computes in checkMachineWidening.
+  const widening = grantWideningReach(scope, environment, capability);
 
   const submit = async () => {
     setBusy(true);
     inFlight.current = true;
     setFailure(null);
     // Issued-vs-nothing-happened, the mint's line: once the request leaves, a
-    // failure does not mean the widening did not land — and a widening that
+    // failure does not mean the widening did not land, and a widening that
     // landed re-scoped every live credential the moment it did.
     let issued = false;
     try {
@@ -2488,7 +2657,7 @@ function GrantBody({
       const result = await grant.mutateAsync({
         environment,
         principal: account.principal_id,
-        capability: 'read',
+        capability,
       });
       onGranted(chosen?.name ?? environment, result);
     } catch (error) {
@@ -2504,15 +2673,36 @@ function GrantBody({
     }
   };
 
+  const chooseCapability = (next: 'read' | 'reveal') => {
+    setCapability(next);
+    setEnvironment(grantableFor(scope, next, machineReveal)[0]?.id ?? '');
+  };
+
   return (
     <>
+      {machineReveal ? (
+        <div className="field">
+          <label htmlFor="grant-capability">Capability</label>
+          <select
+            id="grant-capability"
+            value={capability}
+            onChange={(event) =>
+              chooseCapability(event.target.value === 'reveal' ? 'reveal' : 'read')
+            }
+          >
+            <option value="read">read (configuration and secret presence)</option>
+            <option value="reveal">reveal (standing secret plaintext)</option>
+          </select>
+        </div>
+      ) : null}
       <div className="field">
-        <label htmlFor="grant-environment">Environment (read)</label>
+        <label htmlFor="grant-environment">{`Environment (${capability})`}</label>
         <select
           id="grant-environment"
           value={environment}
           onChange={(event) => setEnvironment(event.target.value)}
         >
+          {grantable.length === 0 ? <option value="">Nothing left to widen</option> : null}
           {grantable.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
@@ -2526,7 +2716,11 @@ function GrantBody({
           !
         </span>
         <span>
-          {`This grant re-scopes every credential already in circulation. ${account.name} has ${String(liveCredentials)} live credential${liveCredentials === 1 ? '' : 's'}, and each one gains read — configuration and secret presence — on ${chosen?.name ?? 'that environment'} the moment this lands.`}
+          {`This grant re-scopes every credential already in circulation. ${account.name} has ${String(liveCredentials)} live credential${liveCredentials === 1 ? '' : 's'}, and each one gains ${
+            capability === 'read'
+              ? 'read (configuration and secret presence)'
+              : 'reveal (standing secret plaintext decryption)'
+          } on ${chosen?.name ?? 'that environment'} the moment this lands.`}
         </span>
       </p>
 
@@ -2537,7 +2731,7 @@ function GrantBody({
         <span>
           <strong>The formula.</strong> manage-identities on this project, manage-members over the
           environment, and a disclosure capability over every environment this grant NEWLY lets the
-          account decrypt — the delta, not the whole post-state, because that is what the grant
+          account decrypt, the delta, not the whole post-state, because that is what the grant
           adds.{' '}
           {widening.length === 0
             ? 'This grant newly decrypts nothing, so the disclosure conjunct is vacuous and no reauthentication is required.'
@@ -2552,8 +2746,12 @@ function GrantBody({
         <>
           <p className="ceremony__scope">
             {reachable.length === 0
-              ? 'This project declares no keys, so the grant reaches an empty catalogue today — and every key declared later.'
-              : 'Newly reachable: every key below, by name and classification. No value of any classification is delivered to a machine by this build.'}
+              ? capability === 'reveal' && catalogue.length > 0
+                ? 'This project declares no secrets today, so the grant decrypts nothing yet, and every secret declared later.'
+                : 'This project declares no keys, so the grant reaches an empty catalogue today, and every key declared later.'
+              : capability === 'read'
+                ? 'Newly reachable: every key below, by name and classification. A read grant delivers configuration values and secret presence; plaintext needs reveal.'
+                : 'Newly decryptable: every secret below, as standing authority over its value wherever it is set. Configuration keys are not listed: read already reaches them.'}
           </p>
           {reachable.length === 0 ? null : (
             <ul className="ceremony__keys" aria-label="Keys this grant makes reachable">
@@ -2572,7 +2770,7 @@ function GrantBody({
           </span>
           <span>
             {values.isError
-              ? 'The key catalogue could not be read, so what this grant makes reachable cannot be named — and a grant whose blast radius is unknown is not one to make from here.'
+              ? 'The key catalogue could not be read, so what this grant makes reachable cannot be named, and a grant whose blast radius is unknown is not one to make from here.'
               : 'Reading what this grant would make reachable…'}
           </span>
         </p>
@@ -2591,10 +2789,10 @@ function GrantBody({
         <button
           className="btn btn--primary"
           type="button"
-          disabled={busy || environment === '' || !values.isSuccess}
+          disabled={busy || !submittable || !values.isSuccess}
           onClick={() => void submit()}
         >
-          {busy ? 'Granting…' : 'Grant read'}
+          {busy ? 'Granting…' : `Grant ${capability}`}
         </button>
         <button className="btn" type="button" onClick={onClose} disabled={busy}>
           Cancel
@@ -2607,7 +2805,7 @@ function GrantBody({
 /**
  * CreateAccountDialog seeds a project's machine inventory from the browser.
  *
- * The body is exactly the locked create contract — `{ name, kind }`. There is
+ * The body is exactly the locked create contract, `{ name, kind }`. There is
  * no description field because the contract has none, and `kind` is a form field
  * rather than an edit because it is immutable at creation. The name is refused
  * HERE (empty or over 64) rather than as a 400, and the trimmed name is what is
@@ -2647,7 +2845,7 @@ function CreateAccountDialog({
     } catch (error) {
       // A create that returned a lost or unparseable response may still have
       // committed, and the inventory is the only place it would show. Refresh
-      // regardless — harmless on a clean refusal — and let the failure text draw
+      // regardless, harmless on a clean refusal, and let the failure text draw
       // the may-have-committed distinction.
       refresh();
       setFailure(createServiceAccountFailureText(error));
@@ -2708,8 +2906,8 @@ function CreateAccountDialog({
               setFailure(null);
             }}
           >
-            <option value="workload">workload — delivers to a running process</option>
-            <option value="automation">automation — runs off-box, on a schedule or in CI</option>
+            <option value="workload">workload: delivers to a running process</option>
+            <option value="automation">automation: runs off-box, on a schedule or in CI</option>
           </select>
         </div>
       </fieldset>
@@ -2746,8 +2944,8 @@ function CreateAccountDialog({
  *
  * The server delete is a CASCADE, not a dependency refusal: every credential is
  * revoked and every grant released in one transaction, then the principal is
- * removed. So the dialog states that truth — how many live credentials go, and
- * that the grants go with them — rather than warning of a refusal the contract
+ * removed. So the dialog states that truth, how many live credentials go, and
+ * that the grants go with them, rather than warning of a refusal the contract
  * does not raise. There is deliberately NO passkey here: deprovisioning runs
  * under the plain capability with no disclosure gate, because requiring a
  * ceremony to kill a compromised workload would be a self-inflicted delay.
@@ -2778,7 +2976,7 @@ function DeleteAccountDialog({
       onDeleted(account.name);
     } catch (error) {
       // A delete that committed removed the account and released its grants, so
-      // both surfaces are re-read on the failure path — never the credential
+      // both surfaces are re-read on the failure path, never the credential
       // listing, which would race the account refetch into a 404 and flip the
       // whole surface to error. The failure text says whether the delete may
       // still have landed.
@@ -2815,7 +3013,7 @@ function DeleteAccountDialog({
           !
         </span>
         <span>
-          {`This deletes ${account.name} and everything attached to it in one act: ${String(live)} live credential${live === 1 ? '' : 's'} revoked — each stops authenticating at once — and every environment grant released. It does not cascade to anything else, and it cannot be undone.`}
+          {`This deletes ${account.name} and everything attached to it in one act: ${String(live)} live credential${live === 1 ? '' : 's'} revoked, each stops authenticating at once, and every environment grant released. It does not cascade to anything else, and it cannot be undone.`}
         </span>
       </p>
       <p className="ceremony__lede">
@@ -2866,7 +3064,7 @@ function blankClaims(preset: FederationPreset): Record<string, string> {
  *
  * The server PROBES the origin with the admin credential before it stores
  * anything, so a create that succeeds is a provider Hikyo could reach and
- * authenticate against — the dialog says so rather than promising a store that
+ * authenticate against, the dialog says so rather than promising a store that
  * might be unreachable. There is no passkey here: configuring standing project
  * authority is `manage-identities`, not a per-environment disclosure.
  */
@@ -3131,7 +3329,7 @@ function SetCredentialDialog({
  * RevokeCredentialDialog clears a provider's admin credential.
  *
  * It states the fail-closed consequence the ticket requires: existing leases are
- * NOT torn down — their roles stay minted at the provider — but the worker can
+ * NOT torn down, their roles stay minted at the provider, but the worker can
  * no longer renew, revoke or expire them until a replacement credential is set.
  * A lease revocation that needs the credential will strand until then.
  */
@@ -3187,8 +3385,8 @@ function RevokeCredentialDialog({
         </span>
         <span>
           This clears the stored credential. Existing leases stay minted at the provider, but Hikyo
-          can no longer renew, revoke or expire them — a revocation that needs the credential will
-          strand — until you set a replacement. New mints are refused while there is no credential.
+          can no longer renew, revoke or expire them, a revocation that needs the credential will
+          strand, until you set a replacement. New mints are refused while there is no credential.
         </span>
       </p>
 
@@ -3223,7 +3421,7 @@ function RevokeCredentialDialog({
  *
  * The server refuses while the provider has live leases unless the cascade is
  * confirmed, in which case it queues every one of them for revocation. So the
- * dialog states that truth — how many live leases go — and requires the cascade
+ * dialog states that truth, how many live leases go, and requires the cascade
  * checkbox when there are any, rather than letting the operator meet the refusal
  * as a 409.
  */
@@ -3363,7 +3561,7 @@ function DeleteProviderDialog({
  * It reuses the mint lifecycle (request-addressed completion, stored-confirmation
  * gate, boundary masking) that the credential mint runs on. A human mint takes a
  * passkey reauthentication over the chosen environment, then the server discloses
- * the role name and its password EXACTLY once — a retry is a new lease, never the
+ * the role name and its password EXACTLY once, a retry is a new lease, never the
  * old secret.
  */
 function LeaseMintDialog({
@@ -3602,7 +3800,7 @@ function LeaseMintDialog({
       ) : (
         <>
           <h2 className="ceremony__title" id="lease-mint-title">
-            Lease minted — shown exactly once
+            Lease minted, shown exactly once
           </h2>
           <div className="field">
             <label htmlFor="lease-mint-username">Role name</label>
@@ -3678,7 +3876,7 @@ function LeaseMintDialog({
               <span className="alert__glyph" aria-hidden="true">
                 !
               </span>
-              <span>Confirm you have stored it — there is no second look at this password.</span>
+              <span>Confirm you have stored it: there is no second look at this password.</span>
             </p>
           ) : null}
           <div className="ceremony__actions">
@@ -3767,7 +3965,7 @@ function LeaseActionDialog({
     action.verb === 'renew'
       ? 'Queues a renewal: the worker extends the role at the provider, never past the lease’s maximum TTL. Renewal re-checks read over this environment.'
       : action.verb === 'revoke'
-        ? 'Queues a revocation: the worker drops the role at the provider. This is the fail-safe teardown — it succeeds even after the workload’s grants are gone.'
+        ? 'Queues a revocation: the worker drops the role at the provider. This is the fail-safe teardown: it succeeds even after the workload’s grants are gone.'
         : 'This lease is in an ambiguous state. Settling re-triggers reconcile: the worker re-probes the provider and settles the lease to its true state.';
 
   return (

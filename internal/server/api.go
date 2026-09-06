@@ -292,7 +292,11 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 			AbsoluteExpiresAt: id.AbsoluteExpiresAt,
 			Assurance:         assuranceOf(id.Assurance),
 		},
-		Principal: apigen.Principal{Id: string(id.Principal), Kind: apigen.Human},
+		Principal: apigen.Principal{
+			Id:          string(id.Principal),
+			Kind:        apigen.Human,
+			DisplayName: optional(id.DisplayName),
+		},
 		Capabilities: apigen.PrincipalCapabilities{
 			InstanceOperator: id.InstanceOperator,
 		},

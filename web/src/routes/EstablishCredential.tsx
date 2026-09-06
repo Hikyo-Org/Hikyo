@@ -14,8 +14,8 @@ import { surfaceById } from '../app/navigation.ts';
  * The public credential-establishment page (#568, registry surface
  * `establish-credential`).
  *
- * Where a display-once authority — from an invitation, a credential reset,
- * bootstrap or break-glass — becomes a password. Chromeless and sessionless
+ * Where a display-once authority, from an invitation, a credential reset,
+ * bootstrap or break-glass, becomes a password. Chromeless and sessionless
  * like login: the holder has no session yet, and a 204 here establishes none;
  * they sign in afterwards like anyone else.
  *

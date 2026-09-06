@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MachineCredential } from '../api/identities.ts';
-import { carriedClaims, presetForBinding, seedClaims } from './MachineAccess.tsx';
+import { carriedClaims, nextTab, presetForBinding, seedClaims, tabLabel } from './MachineAccess.tsx';
 
 /**
  * The replace form's seeding. A replacement inherits the predecessor's platform
  * and pinned claims; a wrong answer here would render the wrong fields or,
- * worse, silently drop a numeric pin — an int64 repository id that rounded
- * through a float would bind the wrong repository — so both are pinned here.
+ * worse, silently drop a numeric pin, an int64 repository id that rounded
+ * through a float would bind the wrong repository, so both are pinned here.
  */
 
 const binding = (claims: MachineCredential['required_claims']): MachineCredential => ({
@@ -94,5 +94,28 @@ describe('carriedClaims', () => {
       { claim: '/kubernetes.io/serviceaccount/uid', string_value: 'abc' },
     ]);
     expect(carriedClaims(presetForBinding(credential), credential)).toEqual([]);
+  });
+});
+
+describe('tabLabel', () => {
+  it('spells a known count, says unknown for a listing it lacks, and omits a count it cannot report', () => {
+    expect(tabLabel('Service accounts', 3)).toBe('Service accounts (3)');
+    expect(tabLabel('Leases', 'unknown')).toBe('Leases (unknown)');
+    expect(tabLabel('Kubernetes targets', null)).toBe('Kubernetes targets');
+  });
+});
+
+describe('nextTab', () => {
+  const tabs = ['a', 'b', 'c'];
+  it('roves with the arrows, wrapping, and jumps with Home and End', () => {
+    expect(nextTab(tabs, 'a', 'ArrowRight')).toBe('b');
+    expect(nextTab(tabs, 'c', 'ArrowRight')).toBe('a');
+    expect(nextTab(tabs, 'a', 'ArrowLeft')).toBe('c');
+    expect(nextTab(tabs, 'b', 'Home')).toBe('a');
+    expect(nextTab(tabs, 'b', 'End')).toBe('c');
+  });
+  it('ignores every other key', () => {
+    expect(nextTab(tabs, 'a', 'Enter')).toBeNull();
+    expect(nextTab(tabs, 'a', 'ArrowDown')).toBeNull();
   });
 });

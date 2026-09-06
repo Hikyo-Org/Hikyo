@@ -52,7 +52,7 @@ function button(container: HTMLElement, label: string): HTMLButtonElement | unde
 }
 
 describe('ScanBlockDialog', () => {
-  it('renders only the rule id and locator — never the surface, a value, or excerpt', async () => {
+  it('renders only the rule id and locator, never the surface, a value, or excerpt', async () => {
     const view = await render([withToken], vi.fn().mockResolvedValue(undefined));
     const text = view.container.textContent ?? '';
     expect(text).toContain('aws-access-key');
@@ -72,7 +72,7 @@ describe('ScanBlockDialog', () => {
     await view.unmount();
   });
 
-  it('offers no override when a finding has no token — a hard block', async () => {
+  it('offers no override when a finding has no token, a hard block', async () => {
     const onOverride = vi.fn<(tokens: readonly string[]) => Promise<void>>().mockResolvedValue(undefined);
     const view = await render([withToken, withoutToken], onOverride);
     expect(button(view.container, 'Acknowledge and continue')).toBeUndefined();
@@ -88,10 +88,10 @@ describe('ScanBlockDialog', () => {
 
   it("surfaces the server's named refusal verbatim when an override is rejected", async () => {
     // A content-bound token the field outran is rejected BY NAME (#183, ADR §4):
-    // stale / version-skew / surplus / expired — carried on the caller-safe
+    // stale / version-skew / surplus / expired, carried on the caller-safe
     // detail, never as matched text. The dialog must show that reason, not a
     // generic line, so the operator learns why the token no longer holds.
-    const named = 'token #1 (key.description/aws-access-key): stale — the field content changed since the token was minted';
+    const named = 'token #1 (key.description/aws-access-key): stale, the field content changed since the token was minted';
     const onOverride = vi
       .fn<(tokens: readonly string[]) => Promise<void>>()
       .mockRejectedValue(new ApiError(400, 'refused', named));
@@ -99,7 +99,7 @@ describe('ScanBlockDialog', () => {
     await act(async () => button(view.container, 'Acknowledge and continue')!.click());
     const alert = view.container.querySelector('[role="alert"]');
     expect(alert?.textContent ?? '').toContain(named);
-    // The value/excerpt still never appears — only the redacted reason.
+    // The value/excerpt still never appears, only the redacted reason.
     expect(view.container.textContent ?? '').not.toContain('AKIA');
     await view.unmount();
   });

@@ -16,6 +16,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import { useEnvironments } from '../api/settings.ts';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
+import { JumpIndex, Panel } from './Sections.tsx';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
 
 /** A stored UTC timestamp rendered in the operator's locale. */
@@ -29,7 +30,7 @@ function refusal(error: unknown): string {
     switch (error.status) {
       case 401:
       case 403:
-        return 'Re-authentication is required, or you may not perform this action. Sign in again and retry.';
+        return 'Re-authentication is required, or you may not perform this action. Present your second factor and retry.';
       case 404:
         return 'Not found, or you may not see it.';
       case 409:
@@ -178,22 +179,27 @@ export function ChangeApprovals() {
   };
 
   return (
-    <main className="change-approvals">
-      <header>
-        <h1>Change approvals</h1>
-        <p>
-          Policy-bound review and merge for changes in sensitive environments. Staging stays open;
-          publishing a covered environment submits a request for review instead.
-        </p>
-      </header>
+    <div className="page page--chrome change-approvals">
+      <h1>Change approvals</h1>
+      <p className="page__lede">
+        Policy-bound review and merge for changes in sensitive environments. Staging stays open;
+        publishing a covered environment submits a request for review instead.
+      </p>
 
-      <section aria-labelledby="ca-policies">
+      <JumpIndex
+        sections={[
+          { id: 'ca-policies', label: 'Policies' },
+          { id: 'ca-requests', label: 'Review queue' },
+        ]}
+      />
+
+      <Panel id="ca-policies" title="Policies">
         <div className="change-approvals__section-head">
-          <h2 id="ca-policies">Policies</h2>
           <button type="button" className="btn" onClick={() => openEditor(null)}>
             New policy
           </button>
         </div>
+        {policies.isLoading ? <p role="status">Loading policies…</p> : null}
         {policies.isError ? (
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">!</span>
@@ -337,10 +343,9 @@ export function ChangeApprovals() {
             </div>
           </form>
         ) : null}
-      </section>
+      </Panel>
 
-      <section aria-labelledby="ca-requests">
-        <h2 id="ca-requests">Review queue</h2>
+      <Panel id="ca-requests" title="Review queue">
         <label htmlFor="ca-review-env">Environment</label>
         <select
           id="ca-review-env"
@@ -369,6 +374,14 @@ export function ChangeApprovals() {
           </p>
         )}
 
+        {selectedEnv === '' ? (
+          <p role="status">Choose an environment to see its queue.</p>
+        ) : null}
+
+        {selectedEnv !== '' && requests.isPending ? (
+          <p role="status">Loading the review queue…</p>
+        ) : null}
+
         {selectedEnv !== '' && requests.isError ? (
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">!</span>
@@ -377,7 +390,10 @@ export function ChangeApprovals() {
         ) : null}
 
         {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length === 0 ? (
-          <p>No requests in this environment.</p>
+          <p role="status">
+            No requests in this environment. A policy on this environment creates one when a
+            protected change is staged.
+          </p>
         ) : null}
 
         {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length > 0 ? (
@@ -419,7 +435,7 @@ export function ChangeApprovals() {
             ))}
           </ul>
         ) : null}
-      </section>
+      </Panel>
       {approvalGuard.request === null ? null : (
         <Ceremony
           key={approvalGuard.requestKey}
@@ -428,7 +444,7 @@ export function ChangeApprovals() {
           onCancel={approvalGuard.onCancel}
         />
       )}
-    </main>
+    </div>
   );
 }
 

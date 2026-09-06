@@ -18,7 +18,7 @@ const always = () => true;
 describe('the closed flow registry', () => {
   it('is closed for this build', () => {
     // The gate itself. If this fails, a locked surface shipped without a
-    // Playwright flow — which is the thing the S3 criterion exists to stop.
+    // Playwright flow, which is the thing the S3 criterion exists to stop.
     expect(liveClosureViolations()).toEqual([]);
   });
 
@@ -57,7 +57,7 @@ describe('the closed flow registry', () => {
   });
 
   // The last escape hatch in the router: the routes are generated from
-  // SURFACES, but nothing stops someone typing a path back in — as a literal
+  // SURFACES, but nothing stops someone typing a path back in, as a literal
   // OR as an expression that came from somewhere else. The rule this enforces
   // is narrow on purpose: every `path=` is either the catch-all or reads
   // `.path` off a Surface record, so a route can only exist for a surface the
@@ -70,7 +70,7 @@ describe('the closed flow registry', () => {
     const expressions = [...code.matchAll(/path=(\{[^}]*\}|"[^"]*"|'[^']*'|`[^`]*`)/g)].map(
       (m) => m[1] ?? '',
     );
-    expect(expressions.length, 'no routes found — did App.tsx move?').toBeGreaterThan(0);
+    expect(expressions.length, 'no routes found, did App.tsx move?').toBeGreaterThan(0);
     const offenders = expressions.filter((e) => e !== '"*"' && !e.includes('.path'));
     expect(offenders).toEqual([]);
   });
@@ -82,7 +82,7 @@ describe('the closed flow registry', () => {
       flows: [...FLOWS, empty],
       specExists: always,
     });
-    expect(problems).toContain('flow "empty" covers no surface — it is not a flow, it is a file');
+    expect(problems).toContain('flow "empty" covers no surface, it is not a flow, it is a file');
   });
 });
 

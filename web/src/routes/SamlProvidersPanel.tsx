@@ -32,7 +32,7 @@ function metadataSourceOf(value: string): SamlMetadataSource {
  * is one obvious surface for each act: PUT creates, refresh-metadata replaces
  * trust material through the diff-and-confirm ceremony, PATCH changes policy or
  * disables without demanding unreadable metadata, and DELETE removes. The
- * metadata document is only ever an input — the read model never returns it, so
+ * metadata document is only ever an input, the read model never returns it, so
  * it can never be recovered from the browser.
  */
 export function SamlProvidersPanel() {
@@ -331,7 +331,7 @@ function MetadataDiff({ diff }: { diff: SamlMetadataDiff }) {
   return (
     <div className="policy-impact" role="alert">
       <p>
-        This metadata changes trust state. Nothing has been applied yet — confirm to
+        This metadata changes trust state. Nothing has been applied yet; confirm to
         commit exactly the changes below.
       </p>
       {anyChange ? (
@@ -501,7 +501,7 @@ function ProviderCreateForm({
   const [enabled, setEnabled] = useState(true);
   const [clientErrors, setClientErrors] = useState<readonly string[]>([]);
   // The pending diff carries the EXACT draft it was computed for. Confirming
-  // resends that snapshot, never the live form state — so an edit made while a
+  // resends that snapshot, never the live form state, so an edit made while a
   // preview is in flight can never be applied under an earlier diff's
   // confirmation (it forces a fresh preview instead).
   const [pending, setPending] = useState<{ diff: PendingDiff; draft: SamlProviderInputDraft } | null>(null);
@@ -598,8 +598,8 @@ function ProviderCreateForm({
       <div className="field">
         <label htmlFor={ids.source}>Metadata source</label>
         <select id={ids.source} value={metadataSource} onChange={(event) => { clearPending(); setMetadataSource(metadataSourceOf(event.target.value)); }}>
-          <option value="file">file — paste XML</option>
-          <option value="url">url — one-shot https fetch</option>
+          <option value="file">file: paste XML</option>
+          <option value="url">url: one-shot https fetch</option>
         </select>
       </div>
       {metadataSource === 'file' ? (

@@ -15,7 +15,7 @@ import {
 import { surfacesForFlow } from '../registry.ts';
 
 /**
- * Flow: members & grants (registry surface `members`) — mvp-boundary S3's
+ * Flow: members & grants (registry surface `members`), mvp-boundary S3's
  * "members (grant modal incl. blast warning + staging default)", against the
  * locked prototype #29 iteration 18.
  *
@@ -28,8 +28,8 @@ import { surfacesForFlow } from '../registry.ts';
  *  - the grant modal's scope select runs narrow to wide, preselects an
  *    environment confirmed unprotected, and puts the protected one last and
  *    never selected;
- *  - an organisation-scoped grant shows its blast radius ENUMERATED — every
- *    project and environment, plus the future ones — and "back, change scope"
+ *  - an organisation-scoped grant shows its blast radius ENUMERATED, every
+ *    project and environment, plus the future ones, and "back, change scope"
  *    keeps the composition, so the warning can be answered rather than only
  *    dismissed;
  *  - each checked capability lands as its own line, and revoking one is
@@ -109,7 +109,7 @@ test.describe('members and grants', () => {
   test('lists one line per capability with its origin chips', async ({ page }) => {
     const table = page.getByRole('table');
     // The fixture's workload holds `read` on development, granted through the
-    // API — so its origin is `manual`, not the break-glass kind the seeding
+    // API, so its origin is `manual`, not the break-glass kind the seeding
     // CLI writes at instance scope.
     await expect(table).toContainText('read');
     await expect(table).toContainText('payments · development');
@@ -307,7 +307,7 @@ test.describe('members and grants', () => {
     // The capabilities being handed over, named.
     await expect(blast).toContainText('read, edit');
     // Every project and every environment, enumerated rather than summarised
-    // — including the protected one, and including the ones that do not exist.
+    // including the protected one, and including the ones that do not exist.
     const list = blast.getByRole('list', { name: /organisation-scoped grant reaches/i });
     await expect(list).toContainText('payments');
     await expect(list).toContainText('development');
@@ -327,7 +327,7 @@ test.describe('members and grants', () => {
 
   test('marks unreadable environment protection and never preselects it', async ({ page }) => {
     // Every environment's protection becomes unreadable, so nothing is
-    // CONFIRMED unprotected and nothing may be preselected — the history
+    // CONFIRMED unprotected and nothing may be preselected, the history
     // project's staging included.
     const settingsPath = /\/api\/v1\/orgs\/[^/]+\/projects\/[^/]+\/environments\/[^/]+\/settings$/;
     await page.route(
@@ -418,7 +418,7 @@ test.describe('members and grants', () => {
   });
 
   // Member invitation (#568): the human-auth ADR's account-creation path,
-  // end to end — invite with a template, claim the display-once authority on
+  // end to end, invite with a template, claim the display-once authority on
   // the public establish page, sign in as the invitee, then reset the
   // invitee's credential from the row action and claim that one too.
   test('invites a member who establishes a credential and signs in, then resets it', async ({
@@ -738,7 +738,7 @@ test.describe('members and grants', () => {
  * Flow: SCIM provisioning administration (registry surface `scim`, #501).
  *
  * It rides this file because the merge gate loads `ci.yml` from the base branch
- * and a spec a PR adds to a group never runs on that PR — members.spec.ts is
+ * and a spec a PR adds to a group never runs on that PR, members.spec.ts is
  * already in group 1 and is the org-scoped `manage-members` sibling, so the
  * surface's pinned set runs from PR-checked-out content today (see
  * e2e/registry.ts). The session is the shared administrator's: `manage-members`
@@ -784,7 +784,7 @@ test.describe('scim provisioning', () => {
     await page.getByRole('button', { name: 'Create binding' }).click();
     await expect(page.getByText(new RegExp(`Bound ${SCIM_PROVIDER_SLUG}`))).toBeVisible();
 
-    // Administer it — the binding id lands in the query string as route data.
+    // Administer it, the binding id lands in the query string as route data.
     const card = page.locator('.scim-binding', { hasText: SCIM_PROVIDER_SLUG });
     await card.getByRole('button', { name: 'Administer' }).click();
     await expect(page.getByRole('heading', { name: 'Provisioning credentials' })).toBeVisible();
@@ -844,7 +844,7 @@ test.describe('scim provisioning', () => {
     expect(userResponse.status).toBe(201);
     const user = z.object({ id: z.string() }).parse(await userResponse.json());
 
-    // Put the user IN the group so the mapping below actually grants someone —
+    // Put the user IN the group so the mapping below actually grants someone , 
     // otherwise the "members affected" count is zero and the assertions pass
     // vacuously.
     const patchResponse = await wire('PATCH', `/Groups/${group.id}`, {
@@ -862,8 +862,8 @@ test.describe('scim provisioning', () => {
       page.locator('.scim-directory-user', { hasText: 'e2e-scim@idp.test' }),
     ).toBeVisible();
 
-    // Map the provisioned group to a template at organisation scope — the widest
-    // reach — so the server's consequence language is returned and rendered. The
+    // Map the provisioned group to a template at organisation scope, the widest
+    // reach, so the server's consequence language is returned and rendered. The
     // one member is granted immediately, so the applied count is nonzero.
     await page.getByLabel('Provisioned group').selectOption(group.id);
     await page.getByLabel('Template').selectOption('viewer');
@@ -874,7 +874,7 @@ test.describe('scim provisioning', () => {
     const mappingRow = page.locator('.scim-mapping', { hasText: 'E2E Engineers' });
     await expect(mappingRow).toBeVisible();
 
-    // Delete the mapping — it releases every origin it held. The row goes, and
+    // Delete the mapping, it releases every origin it held. The row goes, and
     // the release count is reported ABOVE the list so it outlives the row.
     await mappingRow.getByRole('button', { name: /Delete mapping/ }).click();
     await expect(page.locator('.scim-mapping', { hasText: 'E2E Engineers' })).toHaveCount(0);
@@ -974,7 +974,7 @@ test.describe('audit trail', () => {
 
     // A filter that cannot match anything is an explicit empty state, never a
     // silent blank. `operation` is a free string, so an unknown one is not a
-    // 400 — it simply matches nothing (contract: unknown type returns empty).
+    // 400, it simply matches nothing (contract: unknown type returns empty).
     await page.getByRole('textbox', { name: 'Operation', exact: true }).fill('nonexistent.operation.e2e');
     await page.getByRole('button', { name: 'Apply filter' }).click();
     await expect(page.locator('.audit__row')).toHaveCount(0);

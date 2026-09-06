@@ -39,7 +39,7 @@ import { useModalDialog } from './useModalDialog.ts';
 type Environment = EnvironmentList['items'][number];
 
 /**
- * The catalogue declaration detail (#491) — the routable, reload-safe surface a
+ * The catalogue declaration detail (#491), the routable, reload-safe surface a
  * key name opens onto, and the shared foundation later create/edit/lifecycle
  * tickets extend.
  *
@@ -47,7 +47,7 @@ type Environment = EnvironmentList['items'][number];
  * can leak a secret VALUE: the key record carries only declaration metadata (no
  * value field exists on it), and values live behind the reveal ceremony on the
  * Values surface. The one write is the metadata edit (folder, description,
- * deprecation) — the smallest complete journey, and the ingress a Surface-2
+ * deprecation), the smallest complete journey, and the ingress a Surface-2
  * scanning block attaches to: a refused edit renders the server's caller-safe
  * detail (rule id + locator, never the matched text), and any findings already
  * recorded on the key are shown the same redacted way.
@@ -70,8 +70,8 @@ export function KeyDeclarationDetail({
   environments: readonly Environment[];
   /**
    * This key's cross-environment occupancy, assembled by the matrix from the
-   * cells it already holds (#494). It is value-free by construction — only the
-   * ids of the environments a lifecycle action would disturb — and drives the
+   * cells it already holds (#494). It is value-free by construction, only the
+   * ids of the environments a lifecycle action would disturb, and drives the
    * delete/reclassify impact previews. `impactReady` is false while the matrix
    * rows are still loading, and the destructive actions stay disabled until it
    * is true so a preview never understates what an action affects (fail-closed).
@@ -94,7 +94,7 @@ export function KeyDeclarationDetail({
   const historyPath = withRemote(historyHref({ ...refData, keyId }), remote);
 
   useEffect(() => {
-    // Snapshot the opener at MOUNT and return focus to it on unmount — the
+    // Snapshot the opener at MOUNT and return focus to it on unmount, the
     // matrix stays behind this panel, and closing to it must return focus to
     // the key name that opened it. The matrix key list is the fallback when
     // that row has since re-rendered away.
@@ -121,7 +121,7 @@ export function KeyDeclarationDetail({
 
   // Editing is available ONLY once the source is confirmed `db` by a read that
   // is CURRENT. This fails closed on both the initial unresolved/errored state
-  // (no data) AND a failed refetch that left stale data behind — react-query
+  // (no data) AND a failed refetch that left stale data behind, react-query
   // keeps a prior success's data through a refetch error, so `isError` alone
   // stays false there; `isRefetchError` is what catches it. A stale `db` value
   // must not keep a live Save on a project whose source may since have become
@@ -137,7 +137,7 @@ export function KeyDeclarationDetail({
       className="key-detail"
       aria-label="Key declaration"
       onKeyDown={(event) => {
-        // Escape closes the panel back to the matrix — but NOT while a modal
+        // Escape closes the panel back to the matrix, but NOT while a modal
         // dialog owns the top layer. The Surface-2 scanning block (#183) is a
         // native <dialog>; its Escape is the dialog's own dismiss and must not
         // also collapse the surface behind it. The keydown still bubbles here,
@@ -188,7 +188,7 @@ export function KeyDeclarationDetail({
  * A load failure that stays recoverable: a deleted or renamed-away key (404) is
  * a stale link, not a dead end, so it names the state and offers the way back;
  * a refusal (403) quotes the server; anything else is reported with its status.
- * The 404 uses the ONE canonical missing-key sentence every key 404 shares — a
+ * The 404 uses the ONE canonical missing-key sentence every key 404 shares, a
  * surface that worded it differently would be a distinguishable existence signal.
  */
 function KeyLoadError({ error, matrixPath }: { error: Error; matrixPath: string }) {
@@ -264,11 +264,24 @@ function KeyDeclarationBody({
             record.deprecated
               ? record.deprecation_note === ''
                 ? 'deprecated'
-                : `deprecated — ${record.deprecation_note}`
+                : `deprecated: ${record.deprecation_note}`
               : 'active'
           }
         />
       </dl>
+      {record.deprecated && impactReady && impact.setEnvironmentIds.length > 0 ? (
+        <p className="notice" role="status">
+          <span className="alert__glyph" aria-hidden="true">
+            !
+          </span>
+          <span>
+            Deprecated with {String(impact.setEnvironmentIds.length)}{' '}
+            {impact.setEnvironmentIds.length === 1 ? 'live value' : 'live values'} across{' '}
+            {impact.setEnvironmentIds.map(environmentName).join(', ')}. Remove the values before
+            deleting the key.
+          </span>
+        </p>
+      ) : null}
 
       <section className="key-detail__section" aria-labelledby="key-detail-rules">
         <h3 id="key-detail-rules">Value rules</h3>
@@ -350,7 +363,7 @@ function KeyDeclarationBody({
           )}
         </section>
       ) : (
-        // Source not yet confirmed: fail closed — no edit action until we know
+        // Source not yet confirmed: fail closed, no edit action until we know
         // this is a database-managed project. Pending is quiet; a failed
         // settings read says so, because "why can't I edit" must be answerable.
         <section className="key-detail__section" aria-labelledby="key-detail-source">
@@ -390,7 +403,7 @@ function Fact({
   );
 }
 
-/** presenceText renders a presence rule symbolically — `all` covers future
+/** presenceText renders a presence rule symbolically, `all` covers future
  *  environments, so it is never expanded to today's id list. */
 function presenceText(
   presence: MatrixKey['presence']['required_in'],
@@ -462,7 +475,7 @@ function RuleLine({ rule }: { rule: NonNullable<MatrixKey['declaration']['rule']
 }
 
 /**
- * The metadata editor — the shared editor foundation's one live write. It edits
+ * The metadata editor, the shared editor foundation's one live write. It edits
  * only the organisational and documentation fields (folder, description,
  * deprecation); classification changes run their own reclassification ceremony,
  * and rules/presence/rename/delete are later tickets that extend this surface.
@@ -533,7 +546,7 @@ function MetadataEditor({
         // which shows ONLY the redacted rule id + locator and offers an audited
         // override. Any other refusal stays inline in its own words. A 404 is
         // canonicalized to the uniform missing-key sentence BEFORE findings are
-        // considered — a 404 that carried findings must never render details, or
+        // considered, a 404 that carried findings must never render details, or
         // it becomes the existence oracle the reveal gate closes.
         if (error instanceof ApiError && error.status !== 404 && error.findings.length > 0) {
           const findings = error.findings;
@@ -565,7 +578,7 @@ function MetadataEditor({
       {/* ui-spec § Declaration authoring: free-text declaration fields are
           exported to Git and are to be treated as public. */}
       <p className="key-detail__public-note">
-        Descriptions and other free-text fields are exported to Git and treated as public — never
+        Descriptions and other free-text fields are exported to Git and treated as public; never
         paste secret values here.
       </p>
 
@@ -623,7 +636,7 @@ function scanBlockFrom(
   resubmit: (tokens: readonly string[]) => Promise<void>,
 ): ScanBlockState | null {
   // A 404 is canonicalized to the uniform missing-key refusal by the caller and
-  // must NEVER open a findings dialog, even if one somehow rode a 404 — that
+  // must NEVER open a findings dialog, even if one somehow rode a 404, that
   // would leak existence through the reveal mask. Only a genuine scan refusal
   // (which carries findings on a non-404) becomes a block.
   if (!(error instanceof ApiError) || error.status === 404 || error.findings.length === 0) {
@@ -640,7 +653,7 @@ function scanBlockFrom(
 
 /**
  * RenameKey changes the key's name. Identity is the immutable id, so nothing
- * that references the key breaks — but the delivered payload's key set changes,
+ * that references the key breaks, but the delivered payload's key set changes,
  * an advertised schema change. The new name is exported to Git and treated as
  * public, so the same Surface-2 scanning block the metadata editor carries
  * attaches here: a refused rename renders the redacted finding and offers the
@@ -711,7 +724,7 @@ function RenameKey({
     >
       <h3>Rename key</h3>
       <p className="key-detail__public-note">
-        The name is part of the delivered payload and is exported to Git — treat it as public. The
+        The name is part of the delivered payload and is exported to Git; treat it as public. The
         key’s identity does not change, so nothing that references it breaks.
       </p>
       <label className="field">
@@ -746,15 +759,15 @@ function RenameKey({
 
 /**
  * ReclassifyKey runs the reclassification ceremony in the one direction that is
- * available — a `secret` key can only become `config`, a `config` key only
- * `secret` — and renders that direction's distinct consequences before
+ * available, a `secret` key can only become `config`, a `config` key only
+ * `secret`, and renders that direction's distinct consequences before
  * committing.
  *
  * Tightening (`config` → `secret`) re-secures every occurrence and drops the
  * key's config-scanning dismissals. Declassifying (`secret` → `config`) is a
  * disclosure: the value becomes readable under ordinary config read, so the
- * server requires a recent second factor. The UI cannot pre-check that — the
- * server is the source of truth — so it states the requirement, attempts the
+ * server requires a recent second factor. The UI cannot pre-check that, the
+ * server is the source of truth, so it states the requirement, attempts the
  * ceremony, and on refusal surfaces the reauth need (403) or the uniform
  * missing-key sentence (404, which also masks a missing reveal grant). On a
  * successful declassification the response's Surface-1 warnings for the
@@ -782,7 +795,7 @@ function ReclassifyKey({
   const [refusal, setRefusal] = useState<string | null>(null);
   // The success text is derived from the DIRECTION THAT RAN, captured here, not
   // from the live `declassify`: the mutation invalidates the key, the record
-  // refetches with the new classification, and `declassify` flips — which would
+  // refetches with the new classification, and `declassify` flips, which would
   // otherwise flip the persistent "Reclassified as …" message to the wrong verb.
   const [doneClassification, setDoneClassification] = useState<'secret' | 'config' | null>(null);
   const [warnings, setWarnings] = useState<readonly RefusalFinding[]>([]);
@@ -828,7 +841,9 @@ function ReclassifyKey({
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {doneClassification === null ? null : (
         <Done>
-          {doneClassification === 'config' ? 'Reclassified as config.' : 'Reclassified as secret.'}
+          {doneClassification === 'config'
+            ? 'Reclassified as config.'
+            : 'Reclassified as secret. Tightening cannot un-disclose earlier values. Rotate the value if it was ever shown.'}
         </Done>
       )}
 
@@ -836,7 +851,7 @@ function ReclassifyKey({
         <div className="key-detail__section" aria-label="Declassification scanning warnings">
           <p className="key-detail__public-note">
             Now readable as config, these occurrences look like they carry secret material. Review
-            them — nothing is blocked.
+            them; nothing is blocked.
           </p>
           <ul className="key-detail__findings">
             {warnings.map((finding, index) => (
@@ -869,7 +884,7 @@ function ReclassifyKey({
           confirmLabel={declassify ? 'Reclassify as config' : 'Reclassify as secret'}
           busy={reclassify.isPending}
           // If the impact preview goes unready while the dialog is open, keep the
-          // confirm disabled — the preview shows "Checking…" and must not be
+          // confirm disabled, the preview shows "Checking…" and must not be
           // actioned against a stale blast radius.
           confirmDisabled={!impactReady}
           danger={declassify}
@@ -880,7 +895,7 @@ function ReclassifyKey({
             <>
               <p>
                 The value becomes readable under ordinary config read in every environment that
-                holds it. This is a disclosure and cannot be undone by re-securing the key later —
+                holds it. This is a disclosure and cannot be undone by re-securing the key later;
                 anything already served as config has been served.
               </p>
               <p>
@@ -891,7 +906,7 @@ function ReclassifyKey({
           ) : (
             <p>
               Every occurrence is re-secured and handled as a secret, and the key’s existing
-              config-scanning dismissals are dropped — a value that looks secret will warn again.
+              config-scanning dismissals are dropped, so a value that looks secret will warn again.
             </p>
           )}
           <ImpactPreview
@@ -909,8 +924,8 @@ function ReclassifyKey({
  * DeleteKey removes the declaration, its explicit presence rows and its group
  * membership. It previews exactly which environments the deletion disturbs
  * (a delivered value, or an unpublished draft) and gates the act behind typing
- * the key's name — the same danger-zone confirm the project and org deletions
- * use — WITHOUT ever revealing a value. On success it returns to the matrix, so
+ * the key's name, the same danger-zone confirm the project and org deletions
+ * use, WITHOUT ever revealing a value. On success it returns to the matrix, so
  * no route is left pointing at the deleted key.
  */
 function DeleteKey({
@@ -980,8 +995,8 @@ function DeleteKey({
   );
 }
 
-/** ImpactPreview lists the environments a lifecycle action disturbs — a
- *  delivered value or an unpublished draft — by name, never by value. Until the
+/** ImpactPreview lists the environments a lifecycle action disturbs, a
+ *  delivered value or an unpublished draft, by name, never by value. Until the
  *  matrix rows load it says so, and the caller keeps the action disabled. */
 function ImpactPreview({
   impact,
@@ -1020,7 +1035,7 @@ function ImpactPreview({
 /**
  * ConfirmDialog is the native-`<dialog>` confirm the reclassification ceremony
  * opens. Native so the platform gives the focus trap, the inert backdrop and
- * Escape — and so the aside's Escape guard (which only collapses the panel when
+ * Escape, and so the aside's Escape guard (which only collapses the panel when
  * no dialog owns the top layer) generalises to it without a per-dialog change.
  */
 function ConfirmDialog({
@@ -1078,7 +1093,7 @@ function ConfirmDialog({
 }
 
 // ---------------------------------------------------------------------------
-// #493 editors — value rules, presence, and group membership. They extend the
+// #493 editors, value rules, presence, and group membership. They extend the
 // #491/#494 foundation, reusing its ScanBlockDialog and scanBlockFrom helper.
 // ---------------------------------------------------------------------------
 
@@ -1088,7 +1103,7 @@ type ReadRule = NonNullable<MatrixKey['declaration']['rule']>;
 
 /**
  * A JSON signature that tolerates bigint. The read model infers int64 bounds
- * (min/max) as bigint, and a plain JSON.stringify throws on those — so a bound
+ * (min/max) as bigint, and a plain JSON.stringify throws on those, so a bound
  * integer declaration would crash the panel. A tag keeps a bigint distinct from
  * the same-digit number so the signature never conflates them.
  */
@@ -1103,7 +1118,7 @@ class UnsafeBoundError extends Error {}
 
 /**
  * boundToNumber crosses the read model's bigint bound into the write model's
- * number EXACTLY or not at all — an int64 outside the safe-integer range would
+ * number EXACTLY or not at all, an int64 outside the safe-integer range would
  * round silently, so it fails loudly rather than writing a corrupted rule.
  */
 function boundToNumber(bound: bigint): number {
@@ -1131,7 +1146,7 @@ function ruleToWrite(rule: ReadRule): KeyRule {
   };
 }
 
-/** The existing declaration as a writable value — used when only presence changes. */
+/** The existing declaration as a writable value, used when only presence changes. */
 function declarationToWrite(declaration: MatrixKey['declaration']): KeyDeclaration {
   if (declaration.rule !== undefined) {
     return { rule: ruleToWrite(declaration.rule) };
@@ -1178,7 +1193,7 @@ function parseBound(label: string, raw: string): { value?: number; error?: strin
   if (!/^-?\d+$/.test(trimmed)) return { error: `${label} must be a whole number.` };
   const value = Number(trimmed);
   if (!Number.isSafeInteger(value)) {
-    return { error: `${label} is too large — keep it within ±9,007,199,254,740,991.` };
+    return { error: `${label} is too large. Keep it within ±9,007,199,254,740,991.` };
   }
   return { value };
 }
@@ -1301,9 +1316,10 @@ function Toggle({
 }
 
 /**
- * DeclarationEditor edits the value rules and presence — one endpoint, one save
- * (#493). `any_of` alternatives are shown read-only with a pointer to
- * `hikyo definitions`; a single rule is fully editable. The before/after impact
+ * DeclarationEditor edits the value rules and presence, one endpoint, one save
+ * (#493). A single rule is fully editable; an `any_of` declaration is edited as
+ * a list of alternatives, each with the same type-specific editor, bounded to
+ * the contract's 2..8. The before/after impact
  * names the environments a presence change adds or drops, and the server's
  * atomic refusal (surfaced verbatim) catches an invalid draft before commit.
  */
@@ -1325,6 +1341,10 @@ function DeclarationEditor({
   const [ruleDraft, setRuleDraft] = useState<RuleDraft>(() =>
     singleRule === undefined ? ruleDraftFrom({ type: 'string' }) : ruleDraftFrom(singleRule),
   );
+  const [alternatives, setAlternatives] = useState<readonly RuleDraft[]>(() =>
+    (record.declaration.any_of ?? []).map(ruleDraftFrom),
+  );
+  const [addKind, setAddKind] = useState<RuleType>('string');
   const [presence, setPresence] = useState<PresenceDraft>(() => presenceDraftFrom(record.presence));
   const [invalid, setInvalid] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -1336,7 +1356,7 @@ function DeclarationEditor({
   const [ruleDirty, setRuleDirty] = useState(false);
 
   // Re-seed only when the SERVER's declaration/presence actually change (a
-  // concurrent edit), keyed on a bigint-safe content signature — an unrelated
+  // concurrent edit), keyed on a bigint-safe content signature, an unrelated
   // sibling save (metadata, group, rename) refetches the record but leaves
   // these signatures untouched, so an in-progress edit here is preserved.
   const declSignature = stableSignature(record.declaration);
@@ -1347,13 +1367,14 @@ function DeclarationEditor({
         ? ruleDraftFrom({ type: 'string' })
         : ruleDraftFrom(record.declaration.rule),
     );
+    setAlternatives((record.declaration.any_of ?? []).map(ruleDraftFrom));
     setPresence(presenceDraftFrom(record.presence));
     setInvalid(null);
     setRuleDirty(false);
     // `done` is deliberately NOT reset here: the successful-save refetch changes
     // these signatures, and clearing it would wipe the "Saved." it just set.
     // `keyId` is a dep so navigating to ANOTHER key always re-seeds, even when
-    // the two keys' declaration/presence signatures happen to be identical —
+    // the two keys' declaration/presence signatures happen to be identical , 
     // otherwise a stale dirty draft could be written into the new key.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- content signatures stand in for the objects
   }, [keyId, declSignature, presSignature]);
@@ -1370,12 +1391,23 @@ function DeclarationEditor({
     setDone(false);
     let declaration: KeyDeclaration;
     try {
-      if (isAnyOf || !ruleDirty) {
-        // The rule was not touched (any_of, a rule-less declaration, or a
-        // presence-only edit): preserve the EXISTING declaration exactly rather
-        // than rebuild it from the seeded draft. This also keeps an int64 bound
-        // exact instead of re-parsing it, and never fabricates a rule.
+      if (!ruleDirty) {
+        // The rule was not touched (a rule-less declaration or a presence-only
+        // edit): preserve the EXISTING declaration exactly rather than rebuild
+        // it from the seeded draft. This also keeps an int64 bound exact instead
+        // of re-parsing it, and never fabricates a rule.
         declaration = declarationToWrite(record.declaration);
+      } else if (isAnyOf) {
+        const rules: KeyRule[] = [];
+        for (const [index, alternative] of alternatives.entries()) {
+          const result = buildRule(alternative);
+          if (result.error !== undefined || result.rule === undefined) {
+            setInvalid(`Alternative ${String(index + 1)}: ${result.error ?? 'the rule is incomplete.'}`);
+            return;
+          }
+          rules.push(result.rule);
+        }
+        declaration = { any_of: rules };
       } else {
         const result = buildRule(ruleDraft);
         if (result.error !== undefined || result.rule === undefined) {
@@ -1423,6 +1455,11 @@ function DeclarationEditor({
     setRuleDirty(true);
     setDone(false);
   };
+  const editAlternatives = (next: readonly RuleDraft[]): void => {
+    setAlternatives(next);
+    setRuleDirty(true);
+    setDone(false);
+  };
   const editPresence = (updater: (current: PresenceDraft) => PresenceDraft): void => {
     setPresence(updater);
     setDone(false);
@@ -1439,11 +1476,70 @@ function DeclarationEditor({
       <h3>Edit value rules &amp; presence</h3>
 
       {isAnyOf ? (
-        <p className="key-detail__rules-note">
-          This key declares alternatives (<span className="mono">any_of</span>). Edit the
-          alternatives with <span className="mono">hikyo definitions</span>; presence stays editable
-          here.
-        </p>
+        <div className="key-detail__alternatives">
+          <p className="key-detail__rules-note">
+            This key declares alternatives (<span className="mono">any_of</span>): a value is valid
+            if it matches any one of them. A declaration holds between {String(ANY_OF_MIN)} and{' '}
+            {String(ANY_OF_MAX)}.
+          </p>
+          {alternatives.map((alternative, index) => (
+            <RuleFields
+              key={index}
+              legend={`Alternative ${String(index + 1)}`}
+              draft={alternative}
+              disabled={update.isPending}
+              onChange={(next) => editAlternatives(alternatives.with(index, next))}
+              action={
+                <button
+                  type="button"
+                  className="btn btn--quiet"
+                  disabled={update.isPending || alternatives.length <= ANY_OF_MIN}
+                  onClick={() => editAlternatives(alternatives.filter((_, at) => at !== index))}
+                >
+                  Remove alternative
+                </button>
+              }
+            />
+          ))}
+          {alternatives.length <= ANY_OF_MIN ? (
+            <p className="field__hint">
+              Remove is off: a declaration keeps at least {String(ANY_OF_MIN)} alternatives.
+            </p>
+          ) : null}
+          <div className="key-detail__add-alternative">
+            <label className="field">
+              <span>Add alternative of type</span>
+              <select
+                className="mono"
+                value={addKind}
+                disabled={update.isPending || alternatives.length >= ANY_OF_MAX}
+                onChange={(event) => setAddKind(ruleType(event.currentTarget.value, addKind))}
+              >
+                {RULE_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="btn"
+              disabled={update.isPending || alternatives.length >= ANY_OF_MAX}
+              onClick={() => editAlternatives([...alternatives, ruleDraftFrom({ type: addKind })])}
+            >
+              Add alternative
+            </button>
+            {alternatives.length >= ANY_OF_MAX ? (
+              <p className="field__hint">
+                Add is off: a declaration holds at most {String(ANY_OF_MAX)} alternatives.
+              </p>
+            ) : null}
+          </div>
+          <p className="field__hint">
+            Valid if it matches any one of: {alternatives.map(draftSummary).join('; ')}.
+          </p>
+        </div>
       ) : (
         <RuleFields draft={ruleDraft} disabled={update.isPending} onChange={editRule} />
       )}
@@ -1500,7 +1596,7 @@ function DeclarationEditor({
         <p className="key-detail__presence-impact-note">
           The save is atomic: if a value already set in a newly-forbidden environment, or a required
           environment left unset, would become invalid, the server refuses the whole change and
-          names it — nothing commits until it is valid.
+          names it; nothing commits until it is valid.
         </p>
       </div>
 
@@ -1525,26 +1621,56 @@ function DeclarationEditor({
   );
 }
 
+/** The contract's bounds on `any_of` (zKeyDeclaration: min 2, max 8). */
+const ANY_OF_MIN = 2;
+const ANY_OF_MAX = 8;
+
+/** ruleType narrows a select's value to the closed type set without a cast. */
+function ruleType(value: string, fallback: RuleType): RuleType {
+  return RULE_TYPES.find((type) => type === value) ?? fallback;
+}
+
+/** draftSummary is one alternative as a hint: its type and the constraints set. */
+function draftSummary(draft: RuleDraft): string {
+  const parts: string[] = [];
+  if (draft.minLength.trim() !== '') parts.push(`min length ${draft.minLength.trim()}`);
+  if (draft.maxLength.trim() !== '') parts.push(`max length ${draft.maxLength.trim()}`);
+  if (draft.pattern.trim() !== '') parts.push(`pattern ${draft.pattern.trim()}`);
+  if (draft.allowEmpty) parts.push('empty allowed');
+  if (draft.min.trim() !== '') parts.push(`min ${draft.min.trim()}`);
+  if (draft.max.trim() !== '') parts.push(`max ${draft.max.trim()}`);
+  if (draft.members.trim() !== '') parts.push(`one of ${draft.members.split('\n').map((m) => m.trim()).filter((m) => m !== '').join(', ')}`);
+  if (draft.schemes.trim() !== '') parts.push(`schemes ${draft.schemes.trim()}`);
+  if (draft.jsonSchema.trim() !== '') parts.push('JSON Schema');
+  return parts.length === 0 ? draft.type : `${draft.type} (${parts.join(', ')})`;
+}
+
 function RuleFields({
   draft,
   disabled,
   onChange,
+  legend = 'Value rule',
+  action,
 }: {
   draft: RuleDraft;
   disabled: boolean;
   onChange: (next: RuleDraft) => void;
+  legend?: string;
+  /** A per-alternative control (Remove), rendered inside the fieldset. */
+  action?: ReactNode;
 }) {
   const set = <K extends keyof RuleDraft>(field: K, value: RuleDraft[K]): void =>
     onChange({ ...draft, [field]: value });
   return (
     <fieldset className="key-detail__rule-editor" disabled={disabled}>
-      <legend>Value rule</legend>
+      <legend>{legend}</legend>
+      {action}
       <label className="field">
         <span>Type</span>
         <select
           className="mono"
           value={draft.type}
-          onChange={(event) => set('type', event.currentTarget.value as RuleType)}
+          onChange={(event) => set('type', ruleType(event.currentTarget.value, draft.type))}
         >
           {RULE_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -1697,7 +1823,7 @@ function PresenceControl({
 
 /**
  * GroupEditor sets or clears a key's group membership (#493). Membership is
- * coupling — a schema change — but not a scanning ingress, so a refusal stays
+ * coupling, a schema change, but not a scanning ingress, so a refusal stays
  * inline. Changing the selection commits immediately.
  */
 function GroupEditor({

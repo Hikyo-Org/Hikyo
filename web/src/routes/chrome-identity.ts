@@ -90,7 +90,7 @@ export function chromeIdentityStyle(identity: ChromeIdentity): CSSProperties {
  * treatment above.
  *
  * The rail's job is to say which project you are in. That is a selection state,
- * and selection is the stylesheet's to draw — `.project-avatar[aria-current]`
+ * and selection is the stylesheet's to draw, `.project-avatar[aria-current]`
  * fills with the accent, `.rail .avatar[aria-current]` outlines. An inline
  * style would win against both, so the ACTIVE tile is given no inline colour at
  * all; returning `{}` is the point, not an omission. An inactive tile carries

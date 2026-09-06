@@ -16,13 +16,13 @@ import { readRunLog, unexecutedClaims } from './registry.ts';
  *
  * CI RELIES ON THAT SKIP. The `web` job splits the flows across matrix legs and
  * runs each leg with a positional spec list (see .github/workflows/ci.yml), so
- * each leg is a partial run and skips here — the `web-closure` aggregator job
+ * each leg is a partial run and skips here, the `web-closure` aggregator job
  * then merges every leg's run log and runs this same closure over the whole set
  * (e2e/check-closure.ts). A local unfiltered `pnpm run e2e` still closes here.
  *
  * `--shard` is REFUSED rather than skipped. It would split the flows the same
  * way, but WITHOUT the positional-filter marker, so the log would be partial
- * while the run still looked complete — a wall of "claims more than it runs"
+ * while the run still looked complete, a wall of "claims more than it runs"
  * lines that say nothing about the real cause. The CI split uses positional
  * specs precisely so the skip is honest; `--shard` is not, so it says so.
  */
@@ -40,7 +40,7 @@ export default function globalTeardown(config: FullConfig): void {
 
   // `config.grep` is NOT where a CLI `--grep` lands: Playwright leaves the
   // resolved config's `grep` at `/.*/` and applies the CLI filter separately, so
-  // reading it alone made this check fire on every filtered run — after the
+  // reading it alone made this check fire on every filtered run, after the
   // tests passed, with a wall of lines about flows nobody asked to run. That is
   // exactly the "check people work around instead of with" the note above warns
   // against. The CLI is read from `process.argv` (global teardown runs in

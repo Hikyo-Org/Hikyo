@@ -21,8 +21,8 @@ export type InstanceUpdateJob = z.infer<typeof zInstanceUpdateJob>;
 /**
  * The three lifecycle outcomes a consumer renders differently: still working,
  * clean success, or a terminal failure that needs operator attention.
- * `rolled-back` and `rollback-failed` are both failures — the instance did not
- * reach the requested version — so they collapse into `failed` and carry the
+ * `rolled-back` and `rollback-failed` are both failures, the instance did not
+ * reach the requested version, so they collapse into `failed` and carry the
  * diagnostic `failure_code` through. Centralizing the six-state → three-outcome
  * mapping here keeps the enum from drifting out of the contract in the view.
  */
@@ -47,7 +47,7 @@ export function updateJobOutcome(job: InstanceUpdateJob): UpdateJobOutcome {
 
 /**
  * Whether to show the "job status could not be read" alert. A refetch error can
- * land while the last successful read — a terminal `failed` job — is still
+ * land while the last successful read, a terminal `failed` job, is still
  * cached; in that case the failure alert already tells the operator the job is
  * broken, so the read-error alert is suppressed to avoid a double-up. It shows
  * only when there is a live read error and no terminal-failure outcome to
@@ -71,8 +71,8 @@ const updateJobPollMs = 2_000;
  * useServerVersion reads the running build's version from the contract meta
  * endpoint (`server_version`, `dev` for an unreleased build). It is the same
  * fact every caller of `/api/v1/meta` already trusts, narrowed to the one
- * field the chrome shows. The version is fixed for the life of a process — an
- * applied update reloads the SPA — so it never goes stale in-session.
+ * field the chrome shows. The version is fixed for the life of a process, an
+ * applied update reloads the SPA, so it never goes stale in-session.
  */
 export function useServerVersion(): UseQueryResult<string> {
   return useQuery({

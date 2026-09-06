@@ -5,7 +5,7 @@
  * registry closes over (e2e/registry.ts): every surface named here must be
  * covered by a Playwright flow, and the closure check fails the build when
  * one is not. Adding a route without adding it here would defeat that, so the
- * router is built FROM this list — there is no second place to declare a
+ * router is built FROM this list, there is no second place to declare a
  * route.
  *
  * `section` is null for surfaces that are not navigation destinations (the
@@ -93,7 +93,7 @@ export const SURFACES = defineSurfaceRegistry([
   },
   // Credential establishment (#568): where an invitee, or the target of a
   // credential reset, turns a display-once authority into a password. Public
-  // and chromeless like login — the holder has no session yet — and reached
+  // and chromeless like login, the holder has no session yet, and reached
   // from the login page and the invitation hand-off, never from the sidebar.
   {
     id: 'establish-credential',
@@ -131,7 +131,7 @@ export const SURFACES = defineSurfaceRegistry([
   // chrome state: a members page and a settings page each administer ONE
   // organisation, and a path that did not name it would make a deep link, a
   // reload and a shared URL depend on which circle the rail happened to have
-  // active. They still appear in the sidebar — the rail's active organisation
+  // active. They still appear in the sidebar, the rail's active organisation
   // is what fills the parameter, and the entry is absent while there is no
   // organisation to fill it with, which is the honest rendering of the
   // zero-organisation state rather than a link that resolves to nothing.
@@ -154,7 +154,7 @@ export const SURFACES = defineSurfaceRegistry([
   // SCIM provisioning administration (#501, #73). Org-scoped for the same
   // reason members is: `manage-members@org` addresses ONE organisation, so the
   // org is route data and the rail's active circle fills it. The binding under
-  // administration is a `?binding=` query parameter — an id, never a secret —
+  // administration is a `?binding=` query parameter, an id, never a secret , 
   // so a reload and a shared link resolve the same binding, exactly as the
   // matrix's per-key filter does.
   {
@@ -168,7 +168,7 @@ export const SURFACES = defineSurfaceRegistry([
   // Audit trail (#502). Org-scoped like members and scim: an org proof reads
   // the WHOLE org trail (project and environment events included), so the org
   // is route data filled by the rail's active circle, and the within-org
-  // filters — principal, operation, outcome, resource — are query controls, not
+  // filters, principal, operation, outcome, resource, are query controls, not
   // separate surfaces. It sits in the Organisation section because that is the
   // scope its capability (`audit-read@org`) addresses.
   {
@@ -210,7 +210,7 @@ export const SURFACES = defineSurfaceRegistry([
   // The environment matrix addresses one whole project. Project-scoped: the
   // sidebar's project context block fills `:org` and `:project` from the
   // route, exactly as the organisation block fills `:org`. This reverses the
-  // earlier "no static entry could know which project" reasoning — the entry
+  // earlier "no static entry could know which project" reasoning, the entry
   // is no longer static (#567).
   {
     id: 'matrix',
@@ -221,8 +221,8 @@ export const SURFACES = defineSurfaceRegistry([
     chrome: 'shell',
   },
   // The revision-history drawer (#59). It is the matrix WITH its history drawer
-  // open — the locked prototype's list+detail panes render over the matrix, not
-  // instead of it — so the path nests under the matrix and the element is the
+  // open, the locked prototype's list+detail panes render over the matrix, not
+  // instead of it, so the path nests under the matrix and the element is the
   // same component. `section: null` for the matrix's own reason: it addresses
   // one project, and the environment and the per-key filter are query
   // parameters, because per-key history is a filter and not a second surface.
@@ -241,7 +241,7 @@ export const SURFACES = defineSurfaceRegistry([
   // matrix's own reason: it addresses one key of one project, reached by
   // clicking the key name and by deep link, never a static sidebar entry that
   // could not know which key to mean. The key is addressed by its immutable
-  // id, never its mutable name — a rename must not break a bookmarked link.
+  // id, never its mutable name, a rename must not break a bookmarked link.
   {
     id: 'key-detail',
     path: '/orgs/:org/projects/:project/matrix/keys/:key',
@@ -301,7 +301,7 @@ export const SURFACES = defineSurfaceRegistry([
   },
   // Project settings addresses ONE project, exactly like the matrix, and is
   // project-scoped for the same reason (#567): the context block fills the
-  // parameters from the route. Table order is sidebar order — matrix, machine
+  // parameters from the route. Table order is sidebar order, matrix, machine
   // access, deployment adapters, project settings.
   // Project audit (#572). The org trail (`audit`) is the whole organisation
   // behind `audit-read@org`; this is the project's own slice behind
@@ -341,7 +341,7 @@ export const SURFACES = defineSurfaceRegistry([
   // channel, and both are reached by a redirect, never by choosing them.
   //
   // `workspace-approve` is served by the SERVING instance and is where the
-  // popup lands — the human authenticates there with that instance's own
+  // popup lands, the human authenticates there with that instance's own
   // ceremonies, on that instance's own origin, which is the whole architecture
   // in one route. `workspace-callback` is served by the VIEWING instance and
   // is the same-origin return path that exists because the popup is opened

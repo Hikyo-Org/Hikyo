@@ -22,16 +22,19 @@ import {
   type PrimitiveType,
 } from './import-state.ts';
 import { MAX_FILE_BYTES, parseSource, type FileConnector } from './import-sources.ts';
+import { Alert } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 type WizardEnvironment = { readonly id: string; readonly name: string };
 
-/** The primitives the wizard declares a new key as — `enum` is out (see
+/** The primitives the wizard declares a new key as, `enum` is out (see
  * import-state `PrimitiveType`), so it is the same union `CreateKeyType` minus
  * `enum`, and every one is a legal `CreateKeyType` for the declare call. */
 const TYPE_CHOICES: readonly PrimitiveType[] = ['string', 'integer', 'boolean', 'url', 'json'];
 
 type Step = 'pick' | 'source' | 'classify' | 'review' | 'result';
+/** The browser journey's steps in order; a CLI journey stops at its guidance. */
+const STEPS: readonly Step[] = ['pick', 'source', 'classify', 'review', 'result'];
 
 /**
  * The import journeys the picker offers (#496). File-mode Kubernetes, Infisical,
@@ -62,9 +65,9 @@ const JOURNEYS: readonly JourneyOption[] = [
   { id: 'k8s', label: 'Kubernetes Secret manifest', hint: 'YAML/JSON export', journey: { kind: 'file', connector: 'k8s' } },
   { id: 'infisical', label: 'Infisical export', hint: 'infisical export --format=json', journey: { kind: 'file', connector: 'infisical' } },
   { id: 'vault', label: 'Vault / OpenBao capture', hint: 'JSON Lines capture', journey: { kind: 'file', connector: 'vault' } },
-  { id: 'sops', label: 'SOPS file', hint: 'Decrypts with your keyring — CLI', journey: { kind: 'cli', source: 'sops' } },
-  { id: 'k8s-live', label: 'Kubernetes (live)', hint: 'kubeconfig — CLI', journey: { kind: 'cli', source: 'k8s-live' } },
-  { id: 'vault-live', label: 'Vault / OpenBao (live)', hint: 'client conventions — CLI', journey: { kind: 'cli', source: 'vault-live' } },
+  { id: 'sops', label: 'SOPS file', hint: 'Decrypts with your keyring (CLI)', journey: { kind: 'cli', source: 'sops' } },
+  { id: 'k8s-live', label: 'Kubernetes (live)', hint: 'kubeconfig (CLI)', journey: { kind: 'cli', source: 'k8s-live' } },
+  { id: 'vault-live', label: 'Vault / OpenBao (live)', hint: 'client conventions (CLI)', journey: { kind: 'cli', source: 'vault-live' } },
 ];
 
 /** A source-agnostic entry the shared classify/review/apply flow works on: the
@@ -95,8 +98,8 @@ const CLI_GUIDANCE: Record<CliSource, { readonly title: string; readonly body: s
   sops: {
     title: 'Import a SOPS file with the CLI',
     body:
-      'SOPS import decrypts with your ambient keyring (age, GPG, KMS). Decryption keys cannot be handled in the ' +
-      'browser, so run it on a machine with your keyring:',
+      'SOPS import works from the CLI, where your ambient keyring (age, GPG, KMS) decrypts the file. ' +
+      'The browser cannot hold decryption keys, so run it on a machine with your keyring:',
     command: 'hikyo import --from sops --file <file> --project <project> --environment <environment>',
   },
   'k8s-live': {
@@ -146,7 +149,7 @@ export function ImportWizard({
   // that resolves after a later selection is dropped, so the committed contents
   // always come from the latest selection. `parseVersion` bumps only when a
   // parse is COMMITTED: `beginReview` pins it and, if a newer file commits
-  // during phase 1a, refuses to advance — otherwise a review begun against a
+  // during phase 1a, refuses to advance, otherwise a review begun against a
   // valid file could stride past the all-or-nothing gate into a newer, invalid
   // one. A single selection-start counter cannot do both: a Review clicked
   // between a selection and its commit would pin that pending selection's number.
@@ -257,7 +260,7 @@ export function ImportWizard({
     setError(null);
     // Pin the committed parse this review began against. If a newer file
     // commits while phase 1a is in flight, this stale run must not advance to
-    // classify — otherwise it would carry the old file's entries past the
+    // classify, otherwise it would carry the old file's entries past the
     // all-or-nothing gate the new (possibly invalid) file has not cleared.
     const version = parseVersion.current;
     try {
@@ -337,7 +340,7 @@ export function ImportWizard({
       const plan = planEnvironment(importableEntries, index, chosen);
       // Only keys that will actually be written are sent: a `set` key without an
       // overwrite is skipped BY OMISSION, exactly as the CLI's values file omits
-      // it — its plaintext never leaves the browser. Report those from the plan,
+      // it, its plaintext never leaves the browser. Report those from the plan,
       // since the server never sees them.
       const written = new Set(plan.imported.filter((name) => !failedDeclarations.has(name)));
       const toSend = importableEntries.filter((entry) => written.has(entry.key));
@@ -369,7 +372,7 @@ export function ImportWizard({
         const result = await importValues.mutateAsync({
           environment: environment.id,
           entries: toSend.map((entry) => ({ key: entry.key, value: entry.value })),
-          // Overwrite consent lists only keys this run carries — naming an
+          // Overwrite consent lists only keys this run carries, naming an
           // uncarried key is refused, so it is built from `toSend`.
           overwrite: toSend.map((entry) => entry.key).filter((name) => chosen.has(name)),
           precondition: {
@@ -450,7 +453,12 @@ export function ImportWizard({
       <form method="dialog" onSubmit={(event) => event.preventDefault()}>
         <div className="matrix-editor__head">
           <div>
-            <p className="matrix-editor__eyebrow">Import</p>
+            <p className="matrix-editor__eyebrow">
+              Import
+              {journey?.kind === 'cli'
+                ? ''
+                : ` · Step ${String(STEPS.indexOf(step) + 1)} of ${String(STEPS.length)}`}
+            </p>
             <h2>{heading}</h2>
             <p>Reviewed on this device; values are sent only when you start the import.</p>
           </div>
@@ -632,7 +640,7 @@ export function ImportWizard({
               <p className="alert" role="alert">
                 <span className="alert__glyph" aria-hidden="true">!</span>
                 <span>
-                  Fix these lines at the source and choose the file again — the import is
+                  Fix these lines at the source and choose the file again. The import is
                   all-or-nothing, so nothing is sent while any line is invalid.
                 </span>
               </p>
@@ -785,13 +793,17 @@ export function ImportWizard({
     return (
       <>
         {gitManaged && newKeys.length > 0 ? (
-          <p className="notice" role="status">
-            <span aria-hidden="true">ℹ</span>
-            <span>
-              {GIT_DEFINITIONS_NOTICE} {`${String(newKeys.length)} new key${newKeys.length === 1 ? '' : 's'} ` +
-                `(${newKeys.join(', ')}) cannot be declared here and will be skipped; already-declared keys still import.`}
-            </span>
-          </p>
+          <>
+            <Alert>{GIT_DEFINITIONS_NOTICE}</Alert>
+            <p className="notice" role="status">
+              <span aria-hidden="true">ℹ</span>
+              <span>
+                {`${String(newKeys.length)} new key${newKeys.length === 1 ? '' : 's'} ` +
+                  `(${newKeys.join(', ')}) cannot be declared here and will be skipped; already-declared keys still import. ` +
+                  'Declare the missing keys with definitions plan / definitions apply, then import again.'}
+              </span>
+            </p>
+          </>
         ) : null}
 
         {renames.length === 0 ? null : (
@@ -807,7 +819,7 @@ export function ImportWizard({
 
         {newKeys.length === 0 ? (
           <p className="import-wizard__summary" role="status">
-            Every key is already declared — no classification needed.
+            Every key is already declared, so no classification is needed.
           </p>
         ) : (
           <fieldset disabled={gitManaged}>
@@ -999,7 +1011,7 @@ export function ImportWizard({
                       : `, skipped ${String(outcome.skipped.length)} (${outcome.skipped.join(', ')})`) +
                     (outcome.findingRules.length === 0
                       ? ''
-                      : ` — secret-scanning warnings: ${outcome.findingRules.join(', ')}`)}
+                      : `; secret-scanning warnings: ${outcome.findingRules.join(', ')}`)}
                 </span>
               ) : (
                 <span className="import-wizard__error"> {outcome.error}</span>

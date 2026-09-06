@@ -121,7 +121,7 @@ describe('useMatrixProject query ownership', () => {
 describe('useDeleteKey invalidation', () => {
   it('refreshes the list without re-fetching the deleted single key', async () => {
     // matrixKeyKey is matrixKeysKey plus a suffix, so a non-exact list
-    // invalidation would re-fetch the still-mounted single-key query — a
+    // invalidation would re-fetch the still-mounted single-key query, a
     // guaranteed 404 that would reject onSuccess and strand the navigate. The
     // hook invalidates the list `exact`, so the single key is never re-read here.
     const requests: { method: string; path: string }[] = [];

@@ -57,7 +57,8 @@ export function requiredInEnvironment(rule: MatrixPresence, environmentId: strin
 
 export function computeMatrixProblems(input: {
   readonly keys: readonly MatrixStateKey[];
-  readonly environmentIds: readonly string[];
+  /** Ids drive the cell lookup; names are what a problem message says. */
+  readonly environments: readonly { readonly id: string; readonly name: string }[];
   readonly values: readonly MatrixStateValue[];
   readonly validationErrors: readonly MatrixValidationError[];
 }): readonly MatrixProblem[] {
@@ -72,7 +73,7 @@ export function computeMatrixProblems(input: {
   const problems: MatrixProblem[] = [];
 
   for (const key of input.keys) {
-    for (const environmentId of input.environmentIds) {
+    for (const { id: environmentId, name: environmentName } of input.environments) {
       const cellID = `${key.id}/${environmentId}`;
       const cell = cells.get(cellID);
       const effectivelySet =
@@ -88,7 +89,7 @@ export function computeMatrixProblems(input: {
           groupId: key.groupId,
           environmentId,
           kind: 'required-absent',
-          message: `${key.name} is required in ${environmentId} but is absent.`,
+          message: `${key.name} is required in ${environmentName} but is absent.`,
         });
       }
       const validation = validationByCell.get(cellID);
@@ -351,4 +352,49 @@ export function validateMatrixDraft(
       return null;
     }
   }
+}
+
+/** What a rule accepts, as a noun phrase for a "one of these" message. */
+export function describeMatrixRule(rule: MatrixDraftRule): string {
+  switch (rule.type) {
+    case 'boolean':
+      return 'a boolean (true or false)';
+    case 'integer': {
+      const bounds = [
+        rule.min === undefined ? null : `at least ${String(rule.min)}`,
+        rule.max === undefined ? null : `at most ${String(rule.max)}`,
+      ].filter((bound) => bound !== null);
+      return bounds.length === 0 ? 'an integer' : `an integer ${bounds.join(' and ')}`;
+    }
+    case 'enum':
+      return `one of ${(rule.members ?? []).join(', ')}`;
+    case 'url':
+      return rule.schemes === undefined || rule.schemes.length === 0
+        ? 'a URL'
+        : `a ${rule.schemes.join(' or ')} URL`;
+    case 'json':
+      return 'JSON';
+    case 'string':
+      return rule.pattern === undefined ? 'text' : `text matching ${rule.pattern}`;
+  }
+}
+
+/**
+ * Advisory validation over a whole declaration: one rule, or an `any_of` union
+ * where the value passes if ANY alternative accepts it. A notice from one
+ * alternative is a pass with a caveat. When every alternative refuses, the one
+ * message says what each would have accepted instead of echoing the first.
+ */
+export function validateMatrixDeclaration(
+  rules: readonly MatrixDraftRule[],
+  value: string,
+): MatrixDraftValidation | null {
+  const results = rules.map((rule) => validateMatrixDraft(rule, value));
+  if (results.some((result) => result === null)) return null;
+  const notice = results.find((result) => result?.level === 'notice');
+  if (notice !== undefined) return notice;
+  if (rules.length > 1) {
+    return validation('error', `Enter ${rules.map(describeMatrixRule).join(', or ')}.`);
+  }
+  return results[0] ?? validation('notice', 'Full declaration validation runs when publishing.');
 }

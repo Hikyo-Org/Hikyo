@@ -7,7 +7,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { authenticatedIdentity } from '../testkit/identity.ts';
 import { AuthProvider } from '../app/AuthProvider.tsx';
 import { created, renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
-import { EnvironmentLifecycleActions, ProjectSettings } from './ProjectSettings.tsx';
+import {
+  CompactProjectRetention,
+  EnvironmentLifecycleActions,
+  ProjectSettings,
+} from './ProjectSettings.tsx';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -123,8 +127,16 @@ describe('definitions policy', () => {
     try {
       await settleTask();
       const source = labelledSelect(view.container, 'Definitions source');
+      const detail = () =>
+        source.closest('.settings-row')?.querySelector('.settings-row__detail')?.textContent;
 
       expect(source.value).toBe('db');
+      expect(detail()).toBe('definitions edited in the UI; switch to git for a review gate');
+      // The Description field was a disabled placeholder for an API that does
+      // not exist; a dead control is removed, not explained.
+      expect(
+        [...view.container.querySelectorAll('label')].some((l) => l.textContent === 'Description'),
+      ).toBe(false);
 
       await act(async () => {
         selectOption(source, 'git');
@@ -142,6 +154,9 @@ describe('definitions policy', () => {
       expect(write.method).toBe('PUT');
       expect(await write.json()).toEqual({ definitions_source: 'git' });
       expect(source.value).toBe('git');
+      expect(detail()).toBe(
+        'definitions are read-only in the UI; change them via the reviewed Git bundle. Values unaffected.',
+      );
     } finally {
       await view.unmount();
     }
@@ -685,5 +700,54 @@ describe('EnvironmentLifecycleActions', () => {
 
     await act(async () => release(new Response(null, { status: 200 })));
     await settleTask();
+  });
+});
+
+describe('CompactProjectRetention', () => {
+  it('refuses a custom value above the organisation cap before any request', async () => {
+    const fetchMock = vi.fn((...args: Parameters<typeof fetch>) => {
+      const input = args[0];
+      const request = input instanceof Request ? input : new Request(input);
+      const path = new URL(request.url, 'http://localhost').pathname;
+      if (request.method === 'GET' && path === '/api/v1/auth/whoami') {
+        return Promise.resolve(new Response(JSON.stringify(authenticatedIdentity), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      return Promise.reject(new Error(`no request expected: ${request.method} ${path}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const onError = vi.fn();
+    const { container, unmount } = await renderForm(
+      <AuthProvider>
+        <CompactProjectRetention
+          org="org_1"
+          project="project_1"
+          policy={{ inherited: false, mode: 'keep-if-either', max_age_seconds: null, last_revisions: 5 }}
+          orgPolicy={{ mode: 'keep-if-either', max_age_seconds: null, last_revisions: 10 }}
+          onDone={vi.fn()}
+          onError={onError}
+        />
+      </AuthProvider>,
+    );
+    await settleTask();
+    const input = container.querySelector('input[type="number"]');
+    if (!(input instanceof HTMLInputElement)) throw new Error('no revisions input');
+
+    await act(async () => typeInto(input, '25'));
+    await act(async () => input.dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
+    await settleTask();
+
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        (input instanceof Request ? input.url : String(input)).includes('/retention'),
+      ),
+    ).toBe(false);
+    expect(onError).not.toHaveBeenCalled();
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'Refused: cannot exceed the organisation retention (10). A project may never keep more history than the organisation allows.',
+    );
+    expect(input.value).toBe('5');
+    await unmount();
   });
 });

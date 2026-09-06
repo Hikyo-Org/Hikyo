@@ -62,7 +62,7 @@ import {
 type MatrixKey = MatrixKeyList['items'][number];
 type Environment = EnvironmentList['items'][number];
 
-/** A catalogue query that failed with a 403 — the caller may not read the whole
+/** A catalogue query that failed with a 403, the caller may not read the whole
  *  project, so the grid renders a permission page rather than "reload" (#451). */
 function isForbidden(query: { readonly isError: boolean; readonly error: unknown }): boolean {
   return query.isError && query.error instanceof ApiError && query.error.status === 403;
@@ -127,7 +127,7 @@ export function Matrix({
   const createKey = useCreateKey(ref);
   // Git-managed projects declare keys only through `definitions apply`; the SPA
   // keeps every value action but explains why declaration is unavailable (#492
-  // AC4). A failed/absent settings read never fabricates 'git' — declaration
+  // AC4). A failed/absent settings read never fabricates 'git', declaration
   // stays available and any real refusal surfaces at the write.
   const definitionsSettings = useDefinitionsSettings(ref.org, ref.project);
   const gitManaged = definitionsSettings.data?.definitions_source === 'git';
@@ -138,7 +138,7 @@ export function Matrix({
   // denied. The catalogue loaded, so the grid renders; these columns show a
   // header banner and non-interactive cells instead of blanking the whole grid.
   // Declared here (above the problems memo) because they must be excluded from
-  // every derivation that reads per-cell values — an absent value in a column we
+  // every derivation that reads per-cell values, an absent value in a column we
   // cannot read is not "unset", so it must not fabricate a required-value problem.
   const degradedByEnvironment = useMemo<ReadonlyMap<string, 'forbidden' | 'error'>>(() => {
     const degraded = new Map<string, 'forbidden' | 'error'>();
@@ -153,7 +153,7 @@ export function Matrix({
   }, [environmentRows]);
   // The environments whose per-cell state can be trusted. A degraded column's
   // reads failed or were denied, so it must be excluded from every derivation
-  // that reads a value/signal/settings cell — problem detection, publish
+  // that reads a value/signal/settings cell, problem detection, publish
   // selection, and the history drawer's "current state" all fabricate a wrong
   // answer (a false "absent", a lost protected marker) if they consume it (#451).
   const readableEnvironments = useMemo(
@@ -172,7 +172,7 @@ export function Matrix({
   const [createError, setCreateError] = useState<string | null>(null);
   // #495: the browser dotenv import wizard, opened from the matrix toolbar. Value
   // import is not git-gated (only declaration is), so it stays available on a
-  // git-managed project — the wizard itself skips new keys there.
+  // git-managed project, the wizard itself skips new keys there.
   const [importOpen, setImportOpen] = useState(false);
   // #493: the folder & key-group lifecycle dialog.
   const [manageOpen, setManageOpen] = useState(false);
@@ -215,6 +215,7 @@ export function Matrix({
   const [matrixHead, setMatrixHead] = useState<HTMLTableSectionElement | null>(null);
   const historyOpener = useRef<HTMLAnchorElement>(null);
   const keyDetailOpener = useRef<HTMLAnchorElement>(null);
+  const draftsButton = useRef<HTMLButtonElement>(null);
 
   /**
    * The group rows stick UNDER the column header, so they need its height.
@@ -257,7 +258,7 @@ export function Matrix({
   }, []);
 
   // The legend and environment-picker are native <details> popovers. Native
-  // <details> only close by re-clicking their summary — so, like the prototype's
+  // <details> only close by re-clicking their summary, so, like the prototype's
   // popovers, close them on an outside pointer-down or Escape. Opening one this
   // way also closes the other (its summary click lands outside the first).
   useEffect(() => {
@@ -292,7 +293,7 @@ export function Matrix({
   }, [ref.org, ref.project, environmentSignature]);
 
   // #451: the row editor opens from a cell, and a degraded cell is not
-  // interactive — but a column can degrade WHILE its editor is open (a refetch
+  // interactive, but a column can degrade WHILE its editor is open (a refetch
   // turns the read into a 403/error). Close it rather than leave a writable
   // editor addressed to a column whose reads no longer succeed.
   useEffect(() => {
@@ -337,7 +338,7 @@ export function Matrix({
 
   // The open key's cross-environment lifecycle impact (#494), assembled here
   // from cells the matrix already holds and handed to the detail surface as
-  // value-free id lists — a config value cell can carry material the detail
+  // value-free id lists, a config value cell can carry material the detail
   // must never receive, so only the booleans (set / pending) cross. It stays
   // "not ready" until the environment list and every row's values+signals have
   // loaded, so the delete/reclassify previews never understate what an action
@@ -369,12 +370,12 @@ export function Matrix({
   // #451: a degraded column has no trustworthy value data, so it is excluded from
   // problem detection entirely. Including it would read every key as unset and
   // fabricate a "required value missing" problem for a column we simply cannot
-  // read — inflating the sidebar counts, group badges and the problems filter.
+  // read, inflating the sidebar counts, group badges and the problems filter.
   const problems = useMemo(
     () =>
       computeMatrixProblems({
         keys: stateKeys,
-        environmentIds: readableEnvironments.map((environment) => environment.id),
+        environments: readableEnvironments,
         values: readableEnvironments.flatMap((environment) =>
           keys.map((key) => ({
             keyId: key.id,
@@ -469,7 +470,7 @@ export function Matrix({
   const pendingByEnvironment = useMemo(() => {
     const pending = new Map<string, readonly MatrixPendingEntry[]>();
     for (const row of environmentRows) {
-      // #451: a degraded column is not publishable — even if its signals read
+      // #451: a degraded column is not publishable, even if its signals read
       // succeeded, another family (values/settings) failed, so its protected
       // marker and ceremony cannot be trusted. Offer no drafts to publish.
       if (degradedByEnvironment.has(row.environmentId)) {
@@ -479,6 +480,8 @@ export function Matrix({
       const rows: MatrixPendingEntry[] = [];
       for (const signal of row.signals.data?.cells ?? []) {
         if (signal.pending !== undefined) {
+          const groupId = keys.find((key) => key.id === signal.key_id)?.group_id ?? '';
+          const group = groupId === '' ? undefined : keyGroups.find((candidate) => candidate.id === groupId);
           rows.push({
             versionId: signal.pending.versionId,
             keyId: signal.key_id,
@@ -486,13 +489,14 @@ export function Matrix({
             classification: signal.classification,
             operation: signal.pending.operation,
             configPreview: pendingConfigPreview(signal, draftsByVersion),
+            ...(group === undefined ? {} : { group: { id: group.id, name: group.name } }),
           });
         }
       }
       pending.set(row.environmentId, rows);
     }
     return pending;
-  }, [degradedByEnvironment, draftsByVersion, environmentRows]);
+  }, [degradedByEnvironment, draftsByVersion, environmentRows, keyGroups, keys]);
   const pendingCount = [...pendingByEnvironment.values()].reduce(
     (total, entries) => total + entries.length,
     0,
@@ -508,7 +512,7 @@ export function Matrix({
     return revisions;
   }, [environmentRows]);
   // #451: a degraded column is never offered for publish (see pendingByEnvironment),
-  // so it must not appear here either — a settings-unreadable column must not be
+  // so it must not appear here either, a settings-unreadable column must not be
   // presented as "not protected", which would drop its confirmation ceremony.
   const protectedEnvironmentIds = environmentRows.flatMap((row) =>
     !degradedByEnvironment.has(row.environmentId) && row.settings.data?.protected === true
@@ -528,7 +532,7 @@ export function Matrix({
   const pendingByOthersByEnvironment = useMemo<ReadonlyMap<string, number>>(() => {
     const counts = new Map<string, number>();
     for (const row of environmentRows) {
-      // #451: a degraded column's signal counts are not trustworthy — omit it.
+      // #451: a degraded column's signal counts are not trustworthy, omit it.
       if (degradedByEnvironment.has(row.environmentId)) {
         continue;
       }
@@ -545,7 +549,7 @@ export function Matrix({
   const cellsByEnvironment = useMemo<ReadonlyMap<string, readonly HistoryCurrentCell[]>>(() => {
     const cells = new Map<string, readonly HistoryCurrentCell[]>();
     // #451: a degraded column has no readable values, so it is omitted rather
-    // than reported as all-absent — a fabricated "absent" would understate the
+    // than reported as all-absent, a fabricated "absent" would understate the
     // secret-replacement comparison a restore needs.
     for (const environment of readableEnvironments) {
       cells.set(
@@ -579,7 +583,7 @@ export function Matrix({
     matrix.groups.isPending ||
     environmentRows.some((row) => row.readiness === 'pending');
   // The whole-grid gate is the project CATALOGUE only (environments/keys/groups).
-  // A single environment column failing no longer blanks the grid — that column
+  // A single environment column failing no longer blanks the grid, that column
   // degrades in place (#451), so its 'error'/'forbidden' readiness is handled per
   // column below, not here.
   const catalogueForbidden =
@@ -614,7 +618,7 @@ export function Matrix({
     ]);
 
   const publishSelected = (selectedEnvironmentIds: readonly string[]) => {
-    // #451: defence in depth — a degraded environment is already excluded from
+    // #451: defence in depth, a degraded environment is already excluded from
     // pendingByEnvironment, so it cannot reach here with drafts, but reject it
     // explicitly rather than address a publish at a column we cannot read.
     const degradedSelection = selectedEnvironmentIds.find((id) => degradedByEnvironment.has(id));
@@ -684,7 +688,7 @@ export function Matrix({
   /**
    * declareKey runs the two-phase create journey (#492): the declaration, then
    * its optional opening values. It is reused verbatim by the Surface-2 override
-   * (#183) — a blocked declaration retries through the SAME path with the
+   * (#183), a blocked declaration retries through the SAME path with the
    * findings' acknowledgement tokens, so the override cannot drift from the
    * first attempt.
    */
@@ -700,7 +704,7 @@ export function Matrix({
       return;
     }
     setCreateError(null);
-    // Phase 1 — declaration. A failure keeps the modal open with its fields
+    // Phase 1, declaration. A failure keeps the modal open with its fields
     // intact (rethrow), because nothing was created yet.
     let created: Awaited<ReturnType<typeof createKey.mutateAsync>>;
     try {
@@ -718,13 +722,13 @@ export function Matrix({
       // Surface-2 scanner block (#183): route to the block dialog, which shows
       // ONLY the redacted findings and offers an audited override. The value the
       // operator typed is never passed there. The modal closes so the two
-      // dialogs never stack — a blocked declaration is a review moment.
+      // dialogs never stack, a blocked declaration is a review moment.
       if (error instanceof ApiError && error.findings.length > 0) {
         const findings = error.findings;
         // A declaration block is a phase-1 failure: nothing was created, so the
         // create modal STAYS OPEN behind the block dialog. Closing the block
         // without overriding returns the operator to their intact form to edit
-        // the flagged material — never a rebuild from scratch.
+        // the flagged material, never a rebuild from scratch.
         setCreateError(null);
         setScanBlock({
           title: 'Declaration blocked by secret scanning',
@@ -744,7 +748,7 @@ export function Matrix({
       );
       throw error;
     }
-    // Phase 2 — opening values. The key now exists, so both dialogs close; a
+    // Phase 2, opening values. The key now exists, so both dialogs close; a
     // value that fails to stage is reported against the declared key rather than
     // implying the declaration itself failed.
     setCreate(null);
@@ -773,7 +777,7 @@ export function Matrix({
           // Surface-1 warn (#74) is a CONFIG-only affordance: it holds the
           // value's canonical bytes for the keep-as-config re-stage. A secret
           // never enters that path, so if a secret write ever returns findings
-          // we fail closed — the plaintext is not retained or shown, and the
+          // we fail closed, the plaintext is not retained or shown, and the
           // finding is left to the server's own secret handling.
           if (payload.classification === 'config') {
             for (const finding of result.findings ?? []) {
@@ -782,8 +786,8 @@ export function Matrix({
           }
         } catch (error) {
           // Surface-2 block (#183): findings ride the refusal. Route them to the
-          // block dialog — which shows only the redacted findings, never the
-          // value — rather than the vague "could not be staged" line.
+          // block dialog, which shows only the redacted findings, never the
+          // value, rather than the vague "could not be staged" line.
           if (error instanceof ApiError && error.findings.length > 0) {
             blocked.push({ environmentId, environmentName, findings: error.findings });
           } else {
@@ -799,11 +803,11 @@ export function Matrix({
     const failedNote =
       failedEnvironments.length === 0
         ? ''
-        : ` Its opening value could not be staged in ${failedEnvironments.join(', ')} — set it from the cell.`;
+        : ` Its opening value could not be staged in ${failedEnvironments.join(', ')}: set it from the cell.`;
     const blockedNote =
       blocked.length === 0
         ? ''
-        : ` Its opening value was blocked by secret scanning in ${blocked.map((entry) => entry.environmentName).join(', ')} — review below.`;
+        : ` Its opening value was blocked by secret scanning in ${blocked.map((entry) => entry.environmentName).join(', ')}: review below.`;
     setNotice(`Declared ${payload.name}${staged}.${failedNote}${blockedNote}`);
     // A Surface-2 block takes the dialog; a Surface-1 warn (which needs a
     // succeeded save) only shows when nothing was blocked, so the two modals
@@ -881,8 +885,8 @@ export function Matrix({
     >
       {/* env-matrix 31 trims the head to the essentials: the legend is a `?`
           icon and drafts surface as a pill only once there is something to
-          publish. The level-1 heading stays — every surface carries one (see
-          shell.spec) — but its restated key/env count is gone; the matrix says
+          publish. The level-1 heading stays, every surface carries one (see
+          shell.spec), but its restated key/env count is gone; the matrix says
           that itself. */}
       <div className="matrix__head">
         <h1 id="matrix-title">Environment matrix</h1>
@@ -892,11 +896,14 @@ export function Matrix({
           <button
             type="button"
             className="matrix__drafts"
+            ref={draftsButton}
             aria-expanded={publishOpen}
-            aria-controls="matrix-publish"
+            // Only while the controlled section exists: a dangling id reference
+            // is an accessibility error, not a promise.
+            aria-controls={publishOpen ? 'matrix-publish' : undefined}
             onClick={() => setPublishOpen((open) => !open)}
           >
-            {`Δ ${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · publish…`}
+            {`Δ ${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · Publish drafts`}
           </button>
         )}
         {/* #495: import a .env file. Value import is not git-gated, so the entry
@@ -917,7 +924,7 @@ export function Matrix({
           Folders &amp; linked keys
         </button>
         {/* env-matrix 31 / #492: the header's primary declare action. Git-managed
-            projects disable it and say why — value actions still work. */}
+            projects disable it and say why, value actions still work. */}
         {environments.length > 0 && !gitManaged ? (
           <button
             type="button"
@@ -972,6 +979,10 @@ export function Matrix({
               : null
           }
           onPublish={publishSelected}
+          onClose={() => {
+            setPublishOpen(false);
+            draftsButton.current?.focus();
+          }}
         />
       ) : null}
 
@@ -979,9 +990,9 @@ export function Matrix({
         <div className="matrix__surface">
           {filter === 'problems' ? (
             <div className="matrix__filter" role="status">
-              <span>{`⚠ filter active: problems — showing ${String(filteredKeyIDs.size)} of ${String(keys.length)} keys`}</span>
+              <span>{`⚠ filter active: problems, showing ${String(filteredKeyIDs.size)} of ${String(keys.length)} keys`}</span>
               <button type="button" className="btn" onClick={() => setFilter('all')}>
-                ✕ show all keys
+                ✕ Show all keys
               </button>
             </div>
           ) : null}
@@ -1007,7 +1018,7 @@ export function Matrix({
             <div className="matrix__empty" role="status">
               <h2>No keys yet</h2>
               <p>
-                Declare a key once, give each environment its own explicit value — the matrix shows
+                Declare a key once, give each environment its own explicit value: the matrix shows
                 the whole configuration surface at a glance.
               </p>
               {gitManaged ? (
@@ -1032,7 +1043,7 @@ export function Matrix({
               <p>
                 {gitManaged
                   ? 'Keys are declared in Git. Scaffold from an existing file, then apply:'
-                  : 'Or import every key from an existing file through the CLI, then apply:'}
+                  : 'Or use Import above to bring in a .env file from this browser. The CLI is the alternative:'}
               </p>
               <pre className="matrix__cli">
                 <code>{'hikyo definitions scaffold --from .env\nhikyo definitions apply'}</code>
@@ -1096,14 +1107,16 @@ export function Matrix({
                         <th scope="col" key={environment.id}>
                           <span>{environment.name}</span>
                           {/* DESIGN.md: the protected state is named in text, in
-                              the header — a column you cannot reveal from should
+                              the header, a column you cannot reveal from should
                               say so before you try, not after the refusal. */}
                           {protectedEnvironmentIds.includes(environment.id) ? (
-                            <span className="matrix__protected">PROTECTED</span>
+                            <span className="matrix__env-protected">
+                              <span className="matrix__protected">PROTECTED</span>
+                            </span>
                           ) : null}
                           {/* #451: this column's reads failed or were denied. Name
-                              which — a denial and a load failure need different
-                              words — instead of blanking the whole grid. */}
+                              which, a denial and a load failure need different
+                              words, instead of blanking the whole grid. */}
                           {degraded === undefined ? null : (
                             <span className="matrix__degraded" role="status">
                               {degraded === 'forbidden'
@@ -1151,7 +1164,7 @@ export function Matrix({
                           data-index={virtualRow.index}
                           ref={rowVirtualizer.measureElement}
                         >
-                          <th colSpan={visibleEnvironments.length + 1}>
+                          <th colSpan={visibleEnvironments.length + 1} scope="colgroup">
                             <div className="matrix__group-row-inner">
                               <button
                                 type="button"
@@ -1171,7 +1184,7 @@ export function Matrix({
                                   ▾
                                 </span>
                                 <span>{group.name}</span>
-                                <span>{String(group.keys.length)}</span>
+                                <span className="matrix__group-count">{String(group.keys.length)}</span>
                                 {count === 0 ? null : (
                                   <span className="matrix__problem-count count">
                                     {`! ${String(count)} problem${count === 1 ? '' : 's'}`}
@@ -1185,7 +1198,7 @@ export function Matrix({
                               </button>
                               {/* env-matrix 31: declare a key straight into this
                                   group. Hidden while collapsed to match the
-                                  prototype — you open a group, then add to it. */}
+                                  prototype, you open a group, then add to it. */}
                               {collapsed || gitManaged ? null : (
                                 <button
                                   type="button"
@@ -1196,7 +1209,7 @@ export function Matrix({
                                     setCreate({ folder: group.keys[0]?.folder_path || null });
                                   }}
                                 >
-                                  + key
+                                  + Key
                                 </button>
                               )}
                             </div>
@@ -1205,6 +1218,10 @@ export function Matrix({
                       );
                     }
                     const { key } = row;
+                    const linkedGroupName =
+                      key.group_id === ''
+                        ? null
+                        : keyGroups.find((group) => group.id === key.group_id)?.name ?? key.group_id;
                     return (
                       <tr
                         className={`matrix__key-row${row.alt ? ' matrix__key-row--alt' : ''}`}
@@ -1213,6 +1230,7 @@ export function Matrix({
                         ref={rowVirtualizer.measureElement}
                       >
                         <th scope="row" title={key.name}>
+                          <span className="matrix__key-cell">
                           {/* The key NAME opens its declaration detail (#491):
                               the routable, reload-safe catalogue surface that
                               inspects every declaration field and hosts the
@@ -1221,7 +1239,7 @@ export function Matrix({
                               Any CELL still opens the row editor. */}
                           <Link
                             className="matrix__key mono"
-                            aria-label={`Declaration of ${key.name}`}
+                            aria-label={`Declaration of ${key.name}${key.classification === 'secret' ? ', secret' : ''}`}
                             to={keyDetailLink(key.id)}
                             onClick={(event: MouseEvent<HTMLAnchorElement>) => {
                               keyDetailOpener.current = event.currentTarget;
@@ -1230,27 +1248,33 @@ export function Matrix({
                             {key.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
                             {key.name}
                           </Link>
-                          {key.group_id === '' ? null : (
+                          {linkedGroupName === null ? null : (
                             <span
                               className="matrix__linked-keys"
-                              title="Pending changes publish together. All linked keys must be set together in each environment."
+                              title={`Linked keys: ${linkedGroupName}. Pending changes publish together; all linked keys must be set together in each environment.`}
                             >
-                              <span aria-hidden="true">🔗 </span>
-                              Linked keys: {keyGroups.find((group) => group.id === key.group_id)?.name ?? key.group_id}
+                              <span aria-hidden="true">🔗</span>
+                              <span className="visually-hidden">{`Linked keys: ${linkedGroupName}`}</span>
                             </span>
                           )}
                           <span className="matrix__required">{requiredLabel(key, environments)}</span>
+                          </span>
                         </th>
                         {visibleEnvironments.map((environment) => {
                           const id = cellID(key.id, environment.id);
-                          // #451: a degraded column has no trustworthy cell data —
+                          // #451: a degraded column has no trustworthy cell data , 
                           // render a non-interactive placeholder, not an editable
                           // cell that would open the row editor on a column the
                           // caller cannot read.
                           if (degradedByEnvironment.has(environment.id)) {
                             return (
                               <td key={environment.id} className="matrix__cell--degraded">
-                                <span aria-hidden="true">—</span>
+                                <span
+                                  className="matrix-cell__absent"
+                                  aria-label={`${environment.name} unreadable: ${degradedByEnvironment.get(environment.id) === 'forbidden' ? 'no access' : 'values could not be loaded'}`}
+                                >
+                                  · unreadable
+                                </span>
                               </td>
                             );
                           }
@@ -1317,7 +1341,7 @@ export function Matrix({
           }}
           onApply={async (changes) => {
             setMutationError(null);
-            // #451: preflight — never apply a change to a column that degraded
+            // #451: preflight, never apply a change to a column that degraded
             // after it was queued. Reject the whole batch before any mutation so
             // a since-denied environment is never written blind.
             const degradedChange = changes.find((change) =>
@@ -1414,6 +1438,7 @@ export function Matrix({
           protectedEnvironmentIds={protectedEnvironmentIds}
           initialFolder={create.folder}
           existingKeyNames={keys.map((key) => key.name)}
+          gitManaged={gitManaged}
           busy={createKey.isPending || stage.isPending}
           mutationError={createError}
           onClose={() => {
@@ -1427,7 +1452,7 @@ export function Matrix({
       {!importOpen ? null : (
         <ImportWizard
           matrixRef={ref}
-          // #451: a degraded column cannot be an import target — its reads are
+          // #451: a degraded column cannot be an import target, its reads are
           // denied or failed, so it never appears in the selectable set.
           environments={environments
             .filter((environment) => !degradedByEnvironment.has(environment.id))
@@ -1487,7 +1512,7 @@ export function Matrix({
       {historyOpen ? (
         <HistoryDrawer
           refData={ref}
-          // #451: a degraded column is not selectable for history — its current
+          // #451: a degraded column is not selectable for history, its current
           // state is unreadable, so it never enters the drawer's environment set.
           environments={readableEnvironments}
           keys={keys}
@@ -1579,6 +1604,7 @@ function MatrixCell({
         onClick={onOpen}
       >
         <span className="matrix-cell__value">{state}</span>
+        {draftSense === null ? null : <span className="visually-hidden">draft</span>}
         {changedRevision === undefined ? null : (
           <span
             className="matrix-cell__delta"
@@ -1592,7 +1618,7 @@ function MatrixCell({
           <span
             className="matrix-cell__draft-dot"
             aria-hidden="true"
-            title={`unpublished draft — ${draftSense}`}
+            title={`unpublished draft, ${draftSense}`}
           />
         )}
         {otherDraft ? (
@@ -1618,7 +1644,7 @@ function MatrixCell({
  * The matrix is dense on purpose, and density is bought with abbreviation: `·`,
  * `••••••••`, `Δ` and `✕` are all shorter than the sentences they replace. That
  * trade is only honest if the expansion is one gesture away on the surface
- * itself — a reader who has to leave to find out what a glyph means has been
+ * itself, a reader who has to leave to find out what a glyph means has been
  * handed a puzzle, not a table.
  *
  * A `<details>`, like the environment chooser beside it: the platform already
@@ -1637,13 +1663,13 @@ function MatrixLegend() {
       <div className="matrix__legend-body">
         <dl>
           <dt className="mono">value</dt>
-          <dd>set in that environment — nothing inherits</dd>
+          <dd>set in that environment: nothing inherits</dd>
           <dt className="mono">••••••••</dt>
           <dd>a secret is set; 🔒 marks the key. Open the cell to reveal it, if permitted</dd>
           <dt className="mono">· absent</dt>
           <dd>not set here, so nothing is delivered</dd>
           <dt className="mono">! required · absent</dt>
-          <dd>required in this environment and absent — publish is blocked</dd>
+          <dd>required in this environment and absent: publish is blocked</dd>
           <dt className="mono">✕ value</dt>
           <dd>the value is set but fails its declaration</dd>
           <dt className="mono">Δ</dt>
@@ -1723,7 +1749,7 @@ function requiredLabel(key: MatrixKey, environments: readonly Environment[]): st
   const required = environments.filter((environment) =>
     requiredInEnvironment(matrixPresence(key), environment.id),
   );
-  // env-matrix 31 keeps the required marker terse and inline beside the key —
+  // env-matrix 31 keeps the required marker terse and inline beside the key , 
   // `req` when it is required everywhere, `req · <envs>` when only in some.
   if (required.length === 0) return '';
   if (required.length === environments.length) return 'req';

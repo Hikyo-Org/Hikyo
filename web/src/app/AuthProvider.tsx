@@ -36,7 +36,7 @@ export type WhoAmI = z.infer<typeof zWhoAmI>;
 
 /**
  * The source identity of a session transition. `whoami` carries `capabilities`;
- * a login or step-up RESULT does not — that response predates knowing the
+ * a login or step-up RESULT does not, that response predates knowing the
  * caller's grants. `acceptSession` binds the epoch from it immediately and then
  * hydrates the real capabilities from a `whoami`, so the operator chrome a fresh
  * operator session is entitled to appears within one round trip rather than
@@ -117,7 +117,7 @@ async function readIdentity(): Promise<WhoAmI | null> {
  * Whether a held identity is provably dead regardless of the server. Only the
  * ABSOLUTE deadline qualifies: it can never be extended, so once it passes the
  * session is over even if we cannot reach the server to be told so. The idle
- * deadline is deliberately excluded — a successful revalidation refreshes it, so
+ * deadline is deliberately excluded, a successful revalidation refreshes it, so
  * a locally-passed idle window during an outage does not PROVE expiry and must
  * not wall a session the server might still honour.
  */
@@ -318,7 +318,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             degraded: problem,
           });
         } else {
-          // No usable session in hand — either genuinely session-less (initial
+          // No usable session in hand, either genuinely session-less (initial
           // check, or a failing refresh while anonymous) or holding an identity
           // whose ABSOLUTE deadline has passed, which is dead regardless of the
           // server. The blocking reload wall is the correct answer; a definitively
@@ -382,7 +382,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Unlike the other checks this one deliberately does NOT claim `requestRef`:
   // that guard cancels in-flight work, and a refocus arriving during a
   // post-mutation `refreshSession` must not cancel its settle/publish. It guards
-  // its own late settle instead — against the identity it read, and only if no
+  // its own late settle instead, against the identity it read, and only if no
   // authoritative check has replaced that identity meanwhile.
   const revalidateOnFocus = useCallback(async () => {
     const baseline = snapshotRef.current;
@@ -406,7 +406,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       // A focus-time network blip must not blank the app or drop the session;
       // the expiry timer and the next user action remain the authoritative
-      // checks. (A whoami 401 is not a blip — it is an authoritative end of
+      // checks. (A whoami 401 is not a blip, it is an authoritative end of
       // session, so readIdentity returns null and we settle to anonymous below.)
       lastFocusCheckRef.current = 0;
       return;
@@ -595,7 +595,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // the degraded backoff retries a still-valid session, and the failure wall
     // waits for a manual reload. Without this guard the expiry timer, seeing an
     // already-past deadline, would reschedule a blocking revalidate every second
-    // through an outage — a request storm that also races the degraded backoff.
+    // through an outage, a request storm that also races the degraded backoff.
     if (snapshot.failure !== null || snapshot.degraded !== null) {
       return;
     }

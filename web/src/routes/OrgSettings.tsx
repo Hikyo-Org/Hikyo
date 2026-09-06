@@ -88,7 +88,7 @@ export function OrgSettings() {
       {orgQuery.isError ? (
         <Alert>
           This organisation could not be read. It may not exist, or it may not be yours to
-          administer — the two answers are deliberately the same.
+          administer. The two answers are deliberately the same.
         </Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
@@ -170,35 +170,18 @@ export function OrgSettings() {
       </Panel>
 
       <Panel id="org-danger" title="Danger zone" danger>
-        {prototypeMode ? (
-          <div className="settings-row">
-            <div className="settings-row__copy">
-              <span className="settings-row__title">Rename slug</span>
-              <span className="settings-row__detail">Changing the slug changes every URL under it.</span>
-            </div>
-            <span className="settings-row__spacer" />
-            <input
-              className="settings-input settings-input--compact mono"
-              aria-label="Organisation slug"
-              defaultValue={org}
-            />
-            <button type="button" className="btn" onClick={() => feedback.ok('Slug renamed (demo).')}>
-              rename
-            </button>
-          </div>
-        ) : null}
         <TypedNameConfirm
           key={current === undefined ? `pending-${org}` : current.id}
           label="Delete this organisation"
           expect={current === undefined ? null : current.name}
           action="Delete organisation"
           busy={remove.isPending}
-          hint={prototypeMode
-            ? <>Deletes every project, environment and value in it. Grants and audit history follow the retention policy.</>
-            : <>
-                Deletion never cascades into projects or their contents. Authority scoped inside an
-                otherwise empty organisation is removed with it, and affected sessions are revoked.
-              </>}
+          hint={
+            <>
+              Deletion never cascades into projects or their contents. Authority scoped inside an
+              otherwise empty organisation is removed with it, and affected sessions are revoked.
+            </>
+          }
           onConfirm={() =>
             remove.mutate(
               { org },
@@ -269,7 +252,7 @@ function ProjectRetentionList({
                     : policy.inherited
                       ? `inherits → ${String(revisions ?? cap ?? 'unlimited')}`
                       : capped
-                        ? `custom ${String(revisions)} — capped to ${String(cap)} by org ⚠`
+                        ? `custom ${String(revisions)}, capped to ${String(cap)} by org ⚠`
                         : `custom ${String(revisions ?? 'unlimited')}`}
                 </Link>
               </div>
@@ -278,14 +261,14 @@ function ProjectRetentionList({
         </div>
       ) : null}
       <p className="settings-note">
-        Lowering the default never rewrites a project&apos;s own value — it caps it. Older values past
+        Lowering the default never rewrites a project&apos;s own value; it caps it. Older values past
         a window are collected; history itself is permanent. Changes are audited.
       </p>
     </div>
   );
 }
 
-function CompactOrgRetention({
+export function CompactOrgRetention({
   policy,
   busy,
   onSave,
@@ -296,12 +279,14 @@ function CompactOrgRetention({
 }) {
   const inputId = useId();
   const [count, setCount] = useState(String(policy.last_revisions ?? 6));
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   useEffect(() => {
     setCount(String(policy.last_revisions ?? 6));
   }, [policy.last_revisions]);
 
   return (
+    <>
     <div className="settings-row">
       <div className="settings-row__copy">
         <span className="settings-row__title">Default revision retention</span>
@@ -323,11 +308,20 @@ function CompactOrgRetention({
         onChange={(event) => setCount(event.currentTarget.value)}
         onBlur={() => {
           const revisions = Number(count);
-          if (!Number.isInteger(revisions) || revisions < 1) return;
+          // A refused value is said and reset, never swallowed: a field that
+          // silently keeps "0" looks saved.
+          if (!Number.isInteger(revisions) || revisions < 1) {
+            setRefusal('Refused: keep at least 1 revision.');
+            setCount(String(policy.last_revisions ?? 6));
+            return;
+          }
+          setRefusal(null);
           onSave({ ...policy, last_revisions: revisions });
         }}
       />
       <span>revisions</span>
     </div>
+    {refusal === null ? null : <Alert>{refusal}</Alert>}
+    </>
   );
 }

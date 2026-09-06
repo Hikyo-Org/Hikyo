@@ -17,14 +17,14 @@ import { surfacesForFlow } from '../registry.ts';
 const COLOR_SCHEMES: readonly ['dark', 'light'] = ['dark', 'light'];
 
 /**
- * Flow: machine access (registry surface `machine-access`) — mvp-boundary S3's
+ * Flow: machine access (registry surface `machine-access`), mvp-boundary S3's
  * "all three tabs + row expansion + display-once mint", against the locked
  * prototype #31 iteration 3.
  *
  * What this flow proves, in the ADRs' own terms:
  *
- *  - the inventory is a TABBED one — service accounts, federation, Kubernetes
- *    targets — and each tab renders the state this build actually holds;
+ *  - the inventory is a TABBED one, service accounts, federation, Kubernetes
+ *    targets, and each tab renders the state this build actually holds;
  *  - a credential row is METADATA ONLY: prefix hint, kind, expiry in words,
  *    last used, and never a value;
  *  - expanding a service account shows credentials and federated bindings on
@@ -54,7 +54,7 @@ function accountRow(page: Page, name: string) {
  *
  * The instance caps concurrent live credentials per service account at five,
  * and this file mints three times per Playwright project across two viewport
- * projects — so without revoking, the sixth mint is refused by the cap and the
+ * projects, so without revoking, the sixth mint is refused by the cap and the
  * failure reads as a broken mint rather than as a test that littered. Revoking
  * is also the second half of the rotation the ADR describes: mint, distribute,
  * then revoke.
@@ -89,7 +89,7 @@ test.describe('machine access', () => {
     await expect(tabs).toHaveCount(5);
     await expect(tabs.nth(0)).toHaveText(/Service accounts \(3\)/);
     await expect(tabs.nth(1)).toHaveText(/Federation \(1\)/);
-    await expect(tabs.nth(2)).toHaveText(/Kubernetes targets \(0\)/);
+    await expect(tabs.nth(2)).toHaveText(/^Kubernetes targets$/);
     await expect(tabs.nth(3)).toHaveText(/Providers \(0\)/);
     await expect(tabs.nth(4)).toHaveText(/Leases \(0\)/);
 
@@ -167,7 +167,7 @@ test.describe('machine access', () => {
       dialog.getByRole('alert').filter({ hasText: 'are all required' }),
     ).toBeVisible();
 
-    // The admin credential is a write-only password field — never rendered back.
+    // The admin credential is a write-only password field, never rendered back.
     await expect(dialog.getByLabel('Admin credential (write-only)')).toHaveAttribute(
       'type',
       'password',
@@ -194,7 +194,7 @@ test.describe('machine access', () => {
     // API refuses until it is on, in words rather than a dead control.
     const steps = expansion.locator('.journey__step');
     await expect(steps).toHaveCount(5);
-    await expect(steps.nth(1)).toContainText(`read granted — development`);
+    await expect(steps.nth(1)).toContainText(`read granted: development`);
     await expect(steps.nth(3)).toContainText('Enable the project machine-reveal opt-in');
     await expect(steps.nth(3)).toContainText('next');
     await expect(steps.nth(4)).toContainText('refused by the grant API until the opt-in above is on');
@@ -233,9 +233,9 @@ test.describe('machine access', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole('heading', { level: 2 })).toHaveText(
-      `mint credential · ${seed.machine.mintable}`,
+      `Mint credential · ${seed.machine.mintable}`,
     );
-    // The step-up names the POST-STATE formula, not what the mint adds — and
+    // The step-up names the POST-STATE formula, not what the mint adds, and
     // says honestly that this account reaches no plaintext, so nothing is
     // reauthenticated for a disclosure that cannot happen.
     await expect(dialog).toContainText('resulting post-state');
@@ -316,7 +316,7 @@ test.describe('machine access', () => {
   test('escape while the mint is in flight does not unmount the value', async () => {
     // The window this closes: Escape reaches a native <dialog> even when Cancel
     // is disabled, so a dismissal mid-flight would unmount the component the
-    // server is about to hand a credential to — losing a value nothing can
+    // server is about to hand a credential to, losing a value nothing can
     // return while leaving a live credential behind.
     //
     // The mint is delayed rather than stubbed: the request, the commit and the
@@ -420,7 +420,7 @@ test.describe('machine access', () => {
 
     // A binding expires on the same terms as a bearer credential, and the
     // indefinite option is present-and-disabled with its reason rather than
-    // absent — the instance opt-in that admits it is off by default.
+    // absent, the instance opt-in that admits it is off by default.
     const lifetime = dialog.getByLabel('Binding lifetime');
     await expect(lifetime).toHaveValue('default');
     await expect(lifetime.getByRole('option', { name: /Indefinite/ })).toBeDisabled();
@@ -503,20 +503,20 @@ test.describe('machine access', () => {
     await expect(dialog).toContainText('1 live credential');
 
     // The formula, and the honest statement that its disclosure conjunct is
-    // vacuous here — the same sentence the mint makes, for the same reason.
+    // vacuous here, the same sentence the mint makes, for the same reason.
     await expect(dialog).toContainText('the delta, not the whole post-state');
     await expect(dialog).toContainText('newly decrypts nothing');
 
     // What a `read` grant actually delivers: the whole key catalogue by name,
-    // classification and presence — config keys included, unset keys included
-    // — and no value of any classification.
+    // classification and presence, config keys included, unset keys included
+    // and no value of any classification.
     const keys = dialog.getByRole('list', { name: 'Keys this grant makes reachable' });
     for (const key of [...seed.secrets, seed.config]) {
       await expect(keys).toContainText(key);
     }
     await expect(keys).toContainText('config');
     await expect(keys).toContainText('secret');
-    await expect(dialog).toContainText('No value of any classification is delivered');
+    await expect(dialog).toContainText('A read grant delivers configuration values and secret presence');
 
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();
@@ -534,7 +534,7 @@ test.describe('machine access', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
 
-    // Bind on the mintable account — it has no grants, so the replacement's
+    // Bind on the mintable account, it has no grants, so the replacement's
     // post-state reach is empty and no reauthentication ceremony runs. The
     // Kubernetes preset fills the configured issuer and the required UID pin.
     await dialog.getByLabel('Service account').selectOption({ label: account });
@@ -594,7 +594,7 @@ test.describe('machine access', () => {
     await expect(replace).toBeHidden();
     await expect(page.locator('.notice').filter({ hasText: 'Replaced' })).toBeVisible();
 
-    // Exactly one live binding carries the subject now — the predecessor was
+    // Exactly one live binding carries the subject now, the predecessor was
     // revoked, so it is gone from the list. Revoke the successor to leave the
     // seed inventory as it was.
     const successor = page.locator('.bindrow', { hasText: subject });
@@ -649,7 +649,7 @@ test.describe('machine access', () => {
     });
   }
 
-  test('a browser operator creates an account, mints, revokes, and deletes it — no CLI', async () => {
+  test('a browser operator creates an account, mints, revokes, and deletes it, no CLI', async () => {
     // The whole point of #464: a fresh project must no longer present an inert
     // inventory that only a CLI/API seed can fill. The name is unique per run so
     // a retry (or the second viewport project) never collides with a live
@@ -664,7 +664,7 @@ test.describe('machine access', () => {
       'Create service account',
     );
     await createDialog.getByLabel('Name').fill(name);
-    // Kind defaults to workload — a fresh workload's empty reach is what makes
+    // Kind defaults to workload, a fresh workload's empty reach is what makes
     // the mint below take the no-ceremony branch.
     await createDialog.getByRole('button', { name: 'Create service account' }).click();
     await expect(createDialog).toBeHidden();
@@ -672,7 +672,7 @@ test.describe('machine access', () => {
       page.getByRole('status').filter({ hasText: `Created ${name} (workload)` }),
     ).toBeVisible();
 
-    // It is immediately in the inventory and usable — no reload, no CLI.
+    // It is immediately in the inventory and usable, no reload, no CLI.
     const row = accountRow(page, name);
     await expect(row).toBeVisible();
     await row.click();
@@ -698,8 +698,8 @@ test.describe('machine access', () => {
       page.getByRole('status').filter({ hasText: 'stops authenticating at the next request' }),
     ).toBeVisible();
 
-    // DELETE, behind a typed-name confirmation. The dialog states the cascade —
-    // the credentials revoked and the grants released — never a refusal, because
+    // DELETE, behind a typed-name confirmation. The dialog states the cascade , 
+    // the credentials revoked and the grants released, never a refusal, because
     // the server delete is atomic and does not refuse on dependency.
     await expansion.getByRole('button', { name: `Delete ${name}` }).click();
     const deleteDialog = page.getByRole('dialog');
@@ -717,12 +717,12 @@ test.describe('machine access', () => {
     await expect(deleteDialog).toBeHidden();
     await expect(page.getByRole('status').filter({ hasText: `Deleted ${name}` })).toBeVisible();
 
-    // And it is gone from the inventory — the surface returns to what it was.
+    // And it is gone from the inventory, the surface returns to what it was.
     await expect(accountRow(page, name)).toHaveCount(0);
   });
 
   test('a duplicate name is refused actionably, without a stale account', async () => {
-    // The create 409 is a name already in use among live siblings — a distinct
+    // The create 409 is a name already in use among live siblings, a distinct
     // sentence from the mint's ceiling 409, and it must leave the operator able
     // to pick another name rather than staring at a dead form.
     await page.getByRole('button', { name: 'Create service account', exact: true }).first().click();
@@ -1188,7 +1188,7 @@ test.describe('project audit', () => {
  * defaults on an otherwise empty database. Every Hikyo-side prerequisite the operator
  * needs (`kubernetes-operator.mdx` § The five-step journey) is done from the
  * SPA, and the delivery wire is then exercised the way the operator's
- * controller does it — a bearer fetch of the environment projection — so the
+ * controller does it, a bearer fetch of the environment projection, so the
  * proof is the delivered projection, not a screen that says "configured".
  *
  * The journey, in order: organisation, project, environments, declared config

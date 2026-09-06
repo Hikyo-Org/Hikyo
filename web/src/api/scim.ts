@@ -101,7 +101,7 @@ export function useCreateScimBinding(org: string) {
       }),
     // Refresh on SETTLE: a create whose response was lost may still have
     // committed, and a concurrent-create 409 means a row now exists this list
-    // does not show — both leave the inventory stale on the failure path too.
+    // does not show, both leave the inventory stale on the failure path too.
     onSettled: () => queries.invalidateQueries({ queryKey: scimBindingsKey(org) }),
   });
 }
@@ -172,7 +172,7 @@ export function useCreateScimMapping(org: string, binding: string) {
 /**
  * useUpdateScimMapping retargets an existing row's template. The row keeps its
  * id, so widening creates the newly covered origins and narrowing releases the
- * rest in one transaction — the result reports both.
+ * rest in one transaction, the result reports both.
  */
 export function useUpdateScimMapping(org: string, binding: string) {
   const queries = useQueryClient();
@@ -232,7 +232,7 @@ export type MintScimCredentialInput = {
  * useMintScimCredential returns the display-once token WITHOUT a TanStack
  * mutation on purpose: a mutation caches its `data`, and this token exists in
  * the mint response and nowhere else, ever. So it flows straight back to the
- * caller and touches no query or mutation cache — the same discipline the
+ * caller and touches no query or mutation cache, the same discipline the
  * connection-credential mint follows (#498).
  */
 export function useMintScimCredential(org: string, binding: string) {
@@ -275,7 +275,7 @@ export function useMintScimCredential(org: string, binding: string) {
 
 /**
  * useRevokeScimCredential marks the credential dead; it bites at the next wire
- * request. A double revoke is a 409 — refreshing on SETTLE flips the row to
+ * request. A double revoke is a 409, refreshing on SETTLE flips the row to
  * revoked in exactly that case rather than leaving one that reads live and
  * cannot be revoked again.
  */
@@ -356,13 +356,13 @@ export function scimMutationFailureText(error: unknown): string {
       case 409:
         return (
           error.detail ??
-          'Refused: this conflicts with the current state — reload to see what changed, then retry.'
+          'Refused: this conflicts with the current state. Reload to see what changed, then retry.'
         );
       default:
-        return `The server failed (${error.status}); whether the change applied is unknown — reload to check.`;
+        return `The server failed (${error.status}); whether the change applied is unknown: reload to check.`;
     }
   }
-  return 'The SCIM surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown — reload to check.';
+  return 'The SCIM surface could not be reached, or it answered something this client does not understand. Whether the change applied is unknown: reload to check.';
 }
 
 /**
@@ -386,12 +386,12 @@ export function scimMintFailureText(error: unknown): string {
         return error.detail ?? 'Refused: reload to see the binding’s current credentials, then retry.';
       default:
         // A 5xx may have committed the mint before the response was lost, so
-        // this must NOT claim nothing was issued — that would strand a live,
+        // this must NOT claim nothing was issued, that would strand a live,
         // unrevoked credential. Say the outcome is unknown and point at the
         // list, where a stray credential shows up revocable.
-        return `The mint failed (${error.status}); whether a credential was issued is unknown. Reload the list — if a new credential appears, revoke it.`;
+        return `The mint failed (${error.status}); whether a credential was issued is unknown. Reload the list: if a new credential appears, revoke it.`;
     }
   }
   // Same honesty for a lost/garbled response: the request may have committed.
-  return 'The mint could not be completed: the server could not be reached, or it answered something this client does not understand. Whether a credential was issued is unknown — reload the list, and revoke any credential you did not intend.';
+  return 'The mint could not be completed: the server could not be reached, or it answered something this client does not understand. Whether a credential was issued is unknown: reload the list, and revoke any credential you did not intend.';
 }

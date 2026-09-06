@@ -40,7 +40,7 @@ import {
 } from './chrome-identity.ts';
 import { isLinkActive, sidebarModel, type SidebarBlock, type SidebarLink } from './sidebar-model.ts';
 import { StepUpBanner } from './StepUpBanner.tsx';
-import { OpsDiagnosticBanners } from './OpsDiagnosticBanners.tsx';
+import { ChromeDiagnostic, OpsDiagnosticBanners } from './OpsDiagnosticBanners.tsx';
 
 type ProjectSidebarGroup = {
   readonly id: string;
@@ -81,8 +81,8 @@ function formatGiB(bytes: number): string {
  * treatment e from iteration 18).
  *
  * Skeleton means: the structure and the navigation are real, the content
- * wells are placeholders. The deep surfaces — environment matrix, reveal and
- * editing, version history, machine access — are their own tickets and arrive
+ * wells are placeholders. The deep surfaces, environment matrix, reveal and
+ * editing, version history, machine access, are their own tickets and arrive
  * as routes into the well, not as changes to this file.
  *
  * Three things here are load-bearing rather than decorative and must survive
@@ -144,7 +144,7 @@ export function Shell({ session }: { session: WhoAmI }) {
    *
    * The route wins for a reason worth keeping: an org-scoped surface is
    * addressed by its path, so a deep link, a reload and a shared URL all land
-   * on the same organisation — and a breadcrumb that named the rail's last
+   * on the same organisation, and a breadcrumb that named the rail's last
    * choice while the page below administered a different organisation would be
    * a lie in the one place a human checks for it.
    */
@@ -180,11 +180,12 @@ export function Shell({ session }: { session: WhoAmI }) {
         : fallbackProject.id;
   const activeProjectName =
     projectItems.find((project) => project.id === activeProjectId)?.name ?? activeProjectId;
-  const accountName = session.principal.display_name ?? session.principal.id;
-  // Roles are templates, not stored identities. Production therefore uses the
-  // honest membership label; prototype mode owns its illustrative admin copy.
+  const accountName = principalName(session);
+  // Roles are templates, not stored identities, and whoami does not report one:
+  // production shows no role line rather than a made-up one. Prototype mode
+  // owns its illustrative admin copy.
   const isPrototype = import.meta.env.MODE === 'prototype';
-  const activeOrgRole = isPrototype ? 'org admin' : 'Organisation member';
+  const activeOrgRole = isPrototype ? 'org admin' : null;
   const visibleRetentionHealth = retentionHealth.data?.health;
   const showInstanceAdministration = isInstanceOperator;
   const pruneWarning = retentionBanner(visibleRetentionHealth, retentionHealth.isError);
@@ -207,7 +208,7 @@ export function Shell({ session }: { session: WhoAmI }) {
    * to move the address too, or the rail would mark one organisation while the
    * page kept administering another. A deeper org-scoped route (a project's
    * settings, the matrix) carries parameters the new organisation has no
-   * values for, so switching lands on its project list — the surface a human
+   * values for, so switching lands on its project list, the surface a human
    * arriving in an organisation actually wants.
    */
   const chooseOrg = (org: string) => {
@@ -289,17 +290,17 @@ export function Shell({ session }: { session: WhoAmI }) {
     return () => mobile.removeEventListener('change', releaseDrawerOnDesktop);
   }, [navOpen]);
 
-  const crumbs = useMemo(() => {
-    const result = ['hikyo'];
-    if (here?.surface.section === 'instance') {
-      result.push('Instance', chromeCrumbLabel(here.surface));
-      return result;
-    }
-    if (activeOrgId !== '') result.push(activeOrgName);
-    if (routeProjectId !== '') result.push(activeProjectName);
-    if (routeProjectId === '') result.push(chromeCrumbLabel(here?.surface));
-    return result;
-  }, [activeOrgId, activeOrgName, activeProjectName, here?.surface, routeProjectId]);
+  const crumbs = useMemo(
+    () =>
+      breadcrumbs({
+        surface: here?.surface,
+        activeOrgId,
+        activeOrgName,
+        routeProjectId,
+        activeProjectName,
+      }),
+    [activeOrgId, activeOrgName, activeProjectName, here?.surface, routeProjectId],
+  );
   const onSidebarNavigate = navOpen ? dismissNavigation : () => setNavOpen(false);
   const model = sidebarModel({
     surface: here?.surface,
@@ -439,7 +440,7 @@ export function Shell({ session }: { session: WhoAmI }) {
           // not an error: a principal whose grants name no organisation has
           // nowhere to navigate yet, and saying so is the whole of it. An
           // instance operator is in exactly this state until someone grants
-          // them membership — their enumeration surface is elsewhere and
+          // them membership, their enumeration surface is elsewhere and
           // behind its own second factor.
           <p className="sidebar__empty" role="status">
             No organisations yet. An instance administrator creates one under Instance
@@ -577,60 +578,42 @@ export function Shell({ session }: { session: WhoAmI }) {
           <ThemeToggle />
         </header>
         {pruneWarning?.kind === 'error' ? (
-          <p className="retention-warning" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>Retention health could not be checked. Reload to try again.</span>
-          </p>
+          <ChromeDiagnostic severity="error">
+            Retention health could not be checked. Reload to try again.
+          </ChromeDiagnostic>
         ) : null}
         {updateStatus.isError || remoteUpdateFailures.length > 0 ? (
-          <p className="retention-warning" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              Update checks failed for{' '}
-              {updateStatus.isError ? 'this instance' : `${remoteUpdateFailures.length} remote instance${remoteUpdateFailures.length === 1 ? '' : 's'}`}
-              {updateStatus.isError && remoteUpdateFailures.length > 0
-                ? ` and ${remoteUpdateFailures.length} remote instance${remoteUpdateFailures.length === 1 ? '' : 's'}`
-                : ''}
-              . Reload to retry.
-            </span>
-          </p>
+          <ChromeDiagnostic severity="error">
+            Update checks failed for{' '}
+            {updateStatus.isError ? 'this instance' : `${remoteUpdateFailures.length} remote instance${remoteUpdateFailures.length === 1 ? '' : 's'}`}
+            {updateStatus.isError && remoteUpdateFailures.length > 0
+              ? ` and ${remoteUpdateFailures.length} remote instance${remoteUpdateFailures.length === 1 ? '' : 's'}`
+              : ''}
+            . Reload to retry.
+          </ChromeDiagnostic>
         ) : null}
         {pruneWarning?.kind === 'stale' ? (
-          <p className="retention-warning" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              {pruneWarning.lastPruneSuccess === null ? (
-                <>Payload pruning has never succeeded — retention bounds are not being enforced.</>
-              ) : (
-                <>
-                  Payload pruning has not succeeded since{' '}
-                  <time dateTime={pruneWarning.lastPruneSuccess}>
-                    {new Date(pruneWarning.lastPruneSuccess).toLocaleString()}
-                  </time>{' '}
-                  — retention bounds are not being enforced.
-                </>
-              )}
-            </span>
-          </p>
+          <ChromeDiagnostic severity="warn">
+            {pruneWarning.lastPruneSuccess === null ? (
+              <>Payload pruning has never succeeded. Retention bounds are not being enforced.</>
+            ) : (
+              <>
+                Payload pruning has not succeeded since{' '}
+                <time dateTime={pruneWarning.lastPruneSuccess}>
+                  {new Date(pruneWarning.lastPruneSuccess).toLocaleString()}
+                </time>
+                . Retention bounds are not being enforced.
+              </>
+            )}
+          </ChromeDiagnostic>
         ) : null}
         <OpsDiagnosticBanners health={isInstanceOperator ? visibleRetentionHealth : undefined} />
         {storageWarning !== null ? (
-          <p className="retention-warning" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              A project has reached {formatGiB(storageWarning.peakProjectBytes)} of stored payload —
-              new publishes are refused at 4 GiB. Lower the project&apos;s retention window or
-              release pinned revisions to reclaim space.
-            </span>
-          </p>
+          <ChromeDiagnostic severity="warn">
+            A project has reached {formatGiB(storageWarning.peakProjectBytes)} of stored payload.
+            New publishes are refused at 4 GiB. Lower the project&apos;s retention window or
+            release pinned revisions to reclaim space.
+          </ChromeDiagnostic>
         ) : null}
         {/* This is the app's scroll container. `tabIndex=0` both gives the skip
             link a focus target and lets keyboard users operate the region when
@@ -728,7 +711,7 @@ function InstanceContext({
   );
 }
 
-function ProjectContext({
+export function ProjectContext({
   org,
   orgName,
   projectName,
@@ -740,7 +723,7 @@ function ProjectContext({
   org: string;
   orgName: string;
   projectName: string;
-  orgRole: string;
+  orgRole: string | null;
   links: readonly SidebarLink[];
   state: ProjectSidebarState | null;
   onNavigate: () => void;
@@ -759,7 +742,7 @@ function ProjectContext({
         </span>
         <span>
           <strong>{orgName}</strong>
-          <small>{orgRole}</small>
+          {orgRole === null ? null : <small>{orgRole}</small>}
         </span>
       </div>
       <h2 id="context-sidebar-title">
@@ -783,14 +766,17 @@ function ProjectContext({
                     onNavigate();
                   }}
                 >
-                  {/* The trailing slash is what says "folder", not "key" — the
+                  {/* The trailing slash is what says "folder", not "key", the
                       matrix's own jump index carried it before this list moved
                       into the sidebar, and the flow reads groups by it. */}
                   <span className="mono">{`${group.name}/`}</span>
                   {group.problemCount === 0 ? (
                     <span className="context-sidebar__group-count">{String(group.keyCount)}</span>
                   ) : (
-                    <span className="matrix__count count">{String(group.problemCount)}</span>
+                    <span className="matrix__count count">
+                      <span className="count__glyph" aria-hidden="true">!</span>
+                      {String(group.problemCount)}
+                    </span>
                   )}
                 </button>
               ))}
@@ -823,7 +809,7 @@ function ProjectContext({
 /**
  * The running build's version, pinned to the foot of the sidebar. It reads the
  * contract's own `server_version` (`dev` for an unreleased build) and renders
- * nothing until it resolves — a footer that flashed a placeholder would be
+ * nothing until it resolves, a footer that flashed a placeholder would be
  * noisier than one that simply arrives.
  */
 function SidebarVersion({ version }: { version: string | undefined }) {
@@ -851,7 +837,7 @@ export function AccountEntry({
   const menuItemRef = useRef<HTMLAnchorElement>(null);
   const logout = useLogout();
   const location = useLocation();
-  const name = session.principal.display_name ?? session.principal.id;
+  const name = principalName(session);
 
   useEffect(() => setOpen(false), [location.pathname]);
 
@@ -1019,7 +1005,7 @@ export function ProfileUpdateBadge({ version }: { version: string }) {
  * chrome is a two-state switch, which is what the polymorphing icon expresses.
  *
  * The icon shows the theme actually painted, so while the choice is `system` it
- * tracks the OS preference live — otherwise a mid-session OS flip would leave a
+ * tracks the OS preference live, otherwise a mid-session OS flip would leave a
  * sun over a dark page.
  */
 function ThemeToggle() {
@@ -1044,7 +1030,7 @@ function ThemeToggle() {
       type="button"
       className="btn btn--icon"
       onClick={() => setChoice(next)}
-      // The label states the ACTION, and the icon the current theme by shape —
+      // The label states the ACTION, and the icon the current theme by shape , 
       // so the state survives forced-colors, where the fills are repainted.
       aria-label={`Switch to ${next} theme`}
     >
@@ -1055,7 +1041,7 @@ function ThemeToggle() {
 
 /**
  * ThemeIcon is the polymorphing sun↔moon (author: Marc Went). The morph, the
- * ray draw-in and the moon shimmer are CSS in app.css — the CSP forbids inline
+ * ray draw-in and the moon shimmer are CSS in app.css, the CSP forbids inline
  * `<style>`, so nothing renders one here. The sun path is baked as an attribute
  * so a browser without the CSS `d` property still shows a static sun rather
  * than nothing; the CSS overrides it where supported.
@@ -1094,7 +1080,7 @@ function ThemeIcon({ dark }: { dark: boolean }) {
 }
 
 /**
- * matchedSurface resolves the current path against the CLOSED surface list —
+ * matchedSurface resolves the current path against the CLOSED surface list , 
  * the same table the router is generated from, so the breadcrumb and the
  * organisation the chrome believes it is in can never drift from the route
  * that is actually rendered.
@@ -1111,18 +1097,36 @@ function matchedSurface(
   return undefined;
 }
 
-/** The compact surface names fixed by the app-chrome breadcrumb treatment. */
-function chromeCrumbLabel(surface: Surface | undefined): string {
-  switch (surface?.id) {
-    case 'members':
-    case 'instance-members':
-      return 'members';
-    case 'org-settings':
-    case 'instance-admin':
-      return 'settings';
-    case 'settings':
-      return 'account';
-    default:
-      return surface?.label ?? 'Not found';
+/**
+ * breadcrumbs is the header trail as data: root, then the scope names the
+ * route carries, then the surface's own label from the navigation table so
+ * every trail ends in the same casing the sidebar uses.
+ */
+export function breadcrumbs(input: {
+  readonly surface: Surface | undefined;
+  readonly activeOrgId: string;
+  readonly activeOrgName: string;
+  readonly routeProjectId: string;
+  readonly activeProjectName: string;
+}): string[] {
+  const { surface, activeOrgId, activeOrgName, routeProjectId, activeProjectName } = input;
+  const label = surface?.label ?? 'Not found';
+  if (surface?.section === 'instance') {
+    return ['hikyo', 'Instance', label];
   }
+  const result = ['hikyo'];
+  if (activeOrgId !== '') result.push(activeOrgName);
+  if (routeProjectId !== '') result.push(activeProjectName);
+  result.push(label);
+  return result;
+}
+
+/**
+ * The name the chrome calls the signed-in principal. whoami carries no
+ * username, so the only fallback is the id; an empty display name counts as
+ * absent rather than rendering a blank link.
+ */
+function principalName(session: WhoAmI): string {
+  const display = session.principal.display_name?.trim() ?? '';
+  return display === '' ? session.principal.id : display;
 }

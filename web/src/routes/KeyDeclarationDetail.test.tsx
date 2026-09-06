@@ -10,6 +10,7 @@ import { KEY_GONE_REFUSAL, type MatrixKey } from '../api/matrix.ts';
 
 const mocks = vi.hoisted(() => ({
   key: vi.fn(),
+  updateDeclaration: vi.fn(),
   definitions: vi.fn(),
   mutate: vi.fn(),
   rename: vi.fn(),
@@ -36,13 +37,13 @@ vi.mock('../api/definitions.ts', async (importActual) => {
 });
 
 // The #493 editors (rules/presence, group) call catalogue hooks; stub them so
-// this suite exercises the foundation without live fetches (the pure helpers —
-// presenceImpact, catalogueRefusalText — stay real).
+// this suite exercises the foundation without live fetches (the pure helpers , 
+// presenceImpact, catalogueRefusalText, stay real).
 vi.mock('../api/catalogue.ts', async (importActual) => {
   const actual = await importActual<typeof import('../api/catalogue.ts')>();
   return {
     ...actual,
-    useUpdateKeyDeclaration: () => ({ mutate: vi.fn(), isPending: false }),
+    useUpdateKeyDeclaration: () => ({ mutate: mocks.updateDeclaration, isPending: false }),
     useSetKeyGroup: () => ({ mutate: vi.fn(), isPending: false }),
     useKeyGroups: () => ({
       data: { items: [], count: 0 },
@@ -127,6 +128,7 @@ function textOf(container: HTMLElement): string {
 
 beforeEach(() => {
   mocks.key.mockReset();
+  mocks.updateDeclaration.mockReset();
   mocks.definitions.mockReset();
   mocks.mutate.mockReset();
   mocks.rename.mockReset();
@@ -280,7 +282,7 @@ describe('KeyDeclarationDetail', () => {
     if (save === undefined) throw new Error('save button missing');
     await act(async () => save.click());
 
-    // Only the touched field travels — the untouched description is not written
+    // Only the touched field travels, the untouched description is not written
     // back, so a concurrent edit to it is not clobbered.
     expect(mocks.mutate).toHaveBeenCalledWith({ folderPath: 'database' }, expect.anything());
     expect(textOf(view.container)).toContain('Saved.');
@@ -321,7 +323,7 @@ describe('KeyDeclarationDetail', () => {
   it('fails closed when a refetch errored over stale db data', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
     // react-query keeps the prior success's data through a refetch error, so
-    // `isError` stays false while `isRefetchError` is true — the editor must
+    // `isError` stays false while `isRefetchError` is true, the editor must
     // still not appear on a source we can no longer trust as current.
     mocks.definitions.mockReturnValue({
       data: { definitions_source: 'db' },
@@ -596,7 +598,7 @@ describe('KeyDeclarationDetail', () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
     dbMode();
     // A 404 that even CARRIES a caller-safe detail must still render the uniform
-    // missing-key sentence — a detailed or otherwise distinguishable 404 would be
+    // missing-key sentence, a detailed or otherwise distinguishable 404 would be
     // the existence/reveal oracle the gate exists to close.
     mocks.reclassify.mockImplementation(
       (_input: unknown, cb: { onError: (error: Error) => void }) =>
@@ -730,3 +732,59 @@ function setTextarea(textarea: HTMLTextAreaElement, value: string): void {
   setter.call(textarea, value);
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
 }
+
+describe('KeyDeclarationDetail alternatives and advisories', () => {
+  const anyOf: MatrixKey = {
+    ...record,
+    declaration: { any_of: [{ type: 'url', schemes: ['postgres'] }, { type: 'string', min_length: 1 }] },
+  };
+
+  it('edits any_of alternatives in place: add by kind, remove down to the minimum, save the list', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: anyOf });
+    dbMode();
+    const view = await render();
+    const legends = () => [...view.container.querySelectorAll('.key-detail__rule-editor legend')].map((l) => l.textContent);
+    expect(legends()).toEqual(['Alternative 1', 'Alternative 2']);
+    expect(textOf(view.container)).not.toContain('hikyo definitions');
+    expect(textOf(view.container)).toContain('Valid if it matches any one of: url (schemes postgres); string (min length 1).');
+
+    const removes = [...view.container.querySelectorAll('button')].filter((b) => b.textContent === 'Remove alternative');
+    expect(removes.every((b) => b.disabled)).toBe(true);
+    expect(textOf(view.container)).toContain('Remove is off: a declaration keeps at least 2 alternatives.');
+
+    const kind = [...view.container.querySelectorAll('select')].find((s) => s.value === 'string' && s.closest('.key-detail__add-alternative') !== null);
+    if (kind === undefined) throw new Error('add-alternative kind select missing');
+    const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
+    await act(async () => {
+      setter?.call(kind, 'integer');
+      kind.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => buttonBy(view.container, 'Add alternative').click());
+    expect(legends()).toEqual(['Alternative 1', 'Alternative 2', 'Alternative 3']);
+    expect(textOf(view.container)).toContain('string (min length 1); integer.');
+
+    await act(async () => buttonBy(view.container, 'Save value rules').click());
+    expect(mocks.updateDeclaration).toHaveBeenCalledTimes(1);
+    expect(mocks.updateDeclaration.mock.calls[0]?.[0]).toMatchObject({
+      declaration: {
+        any_of: [{ type: 'url', schemes: ['postgres'] }, { type: 'string', min_length: 1 }, { type: 'integer' }],
+      },
+    });
+    await view.unmount();
+  });
+
+  it('names the live values a deprecated key still holds', async () => {
+    mocks.key.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: { ...record, deprecated: true, deprecation_note: 'use DB_DSN' },
+    });
+    dbMode();
+    const view = await render({ setEnvironmentIds: ['env_a', 'env_b'], pendingEnvironmentIds: [] });
+    expect(textOf(view.container)).toContain('deprecated: use DB_DSN');
+    expect(textOf(view.container)).toContain(
+      'Deprecated with 2 live values across development, production. Remove the values before deleting the key.',
+    );
+    await view.unmount();
+  });
+});

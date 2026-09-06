@@ -11,14 +11,14 @@ import { recordPinnedRun } from '../registry.ts';
  * so, and the comment says which:
  *
  *   1. axe-core serious/critical = 0.
- *   2. Every error and status state is carried by TEXT and ARIA — asserted
+ *   2. Every error and status state is carried by TEXT and ARIA, asserted
  *      with colour stripped, because "never colour-only" is only proven when
  *      the colour is gone.
  *   3. Every interactive element a flow touches has a VISIBLE focus
  *      indicator.
  *   4. Text contrast >= 4.5:1, computed from the rendered pixels.
  *   5. Touch targets >= 44px on the mobile viewport.
- *   6. Computed styles match DESIGN.md's token table — radius roles, the
+ *   6. Computed styles match DESIGN.md's token table, radius roles, the
  *      reserved pill, the two typefaces.
  */
 
@@ -93,8 +93,8 @@ async function expectVisibleFocusIndicator(page: Page, target: Locator): Promise
   // a missing ring on a surface that has one.
   await page.keyboard.press('Tab');
   // Focus, MEASURE, and assert the ring together under one retry. A background
-  // query settling — the org's per-project retention policies arrive one at a
-  // time — re-renders the row under the cursor, and React can hand focus back
+  // query settling, the org's per-project retention policies arrive one at a
+  // time, re-renders the row under the cursor, and React can hand focus back
   // to the document (so `:focus-visible` stops matching and the ring vanishes)
   // in the window between the focus call and the measurement. Retrying only the
   // focus and then measuring outside the retry leaves that window open, so a
@@ -124,7 +124,7 @@ async function expectVisibleFocusIndicator(page: Page, target: Locator): Promise
       return rings;
     });
     // The ring is painted OUTSIDE the element, over whatever its ancestors
-    // paint — so that, not the element's own fill, is what it must stand out
+    // paint, so that, not the element's own fill, is what it must stand out
     // against.
     const behind = await paintedBackground(target, false);
     const behindSample = await sampleColour(page, behind);
@@ -187,7 +187,7 @@ async function expectVisibleFocusIndicator(page: Page, target: Locator): Promise
  * expectEveryFocusIndicator runs the focus assertion over a flow's controls.
  *
  * The failure names the control. Without that the report is "one of the 40
- * things on this page has no focus ring", which is a search, not a finding —
+ * things on this page has no focus ring", which is a search, not a finding , 
  * and the elements come from a discovered set, so there is no line number to
  * work back from either.
  */
@@ -371,7 +371,7 @@ const TOUCH_TARGET_PX = 44;
 
 /**
  * expectTouchTargets enforces the 44px floor where DESIGN.md actually sets it
- * — a coarse pointer. Desktop density is deliberately tighter (36px rows), so
+ * a coarse pointer. Desktop density is deliberately tighter (36px rows), so
  * applying the touch floor there would not be stricter, it would be wrong: it
  * would force the phone's spacing onto a mouse-driven grid the design says
  * should be dense.
@@ -412,7 +412,7 @@ type ColourProp = 'color' | 'backgroundColor' | 'borderTopColor' | 'borderLeftCo
  * palette is OKLCH, `getComputedStyle` hands back whatever the author wrote,
  * and `oklch(0.19 0.012 220)` and a `color-mix` that resolves to the same
  * pixel are the same colour to a human. Comparing the PIXELS also catches the
- * failure that matters — a component that hard-coded a hex which happens to
+ * failure that matters, a component that hard-coded a hex which happens to
  * look close.
  */
 async function expectColourToken(
@@ -482,7 +482,7 @@ async function tokenValue(page: Page, name: string): Promise<string> {
  * identity circles, count badges and matrix cell states.
  *
  * The expectation is read from the token at runtime rather than hard-coded, so
- * the assertion tracks DESIGN.md through one edit instead of two — and a
+ * the assertion tracks DESIGN.md through one edit instead of two, and a
  * component that hard-codes `border-radius: 8px` fails whatever the token says.
  */
 async function expectRadiusRole(
@@ -520,14 +520,23 @@ async function expectFontRole(page: Page, target: Locator, role: FontRole): Prom
  * a pill to carry is now plain monospaced text. The class it was allowed under
  * exists nowhere, so keeping the allowance would license a shape nothing in the
  * design language asks for any more.
+ *
+ * Status dots (the workspace banner dot, the adapter health glyph, the update
+ * badge on the rail avatar) are the third allowed shape since the 2026-09-05
+ * audit: DESIGN.md names them, and they are recognised by size rather than by
+ * class because a dot is a dot at 12px or under, whatever it is called.
  */
 async function expectNoStrayPills(page: Page): Promise<void> {
   const stray = await page.evaluate(() => {
     const allowed = ['avatar', 'count'];
+    const dotMax = 12;
     const offenders: string[] = [];
     for (const el of document.querySelectorAll<HTMLElement>('body *')) {
       const box = el.getBoundingClientRect();
       if (box.width === 0 || box.height === 0) {
+        continue;
+      }
+      if (box.width <= dotMax && box.height <= dotMax) {
         continue;
       }
       const radius = Number.parseFloat(getComputedStyle(el).borderTopLeftRadius);
@@ -549,9 +558,9 @@ async function expectNoStrayPills(page: Page): Promise<void> {
  * The S3 criterion says "every interactive element the flow touches". A
  * hand-written list satisfies the letter and drifts the moment someone adds a
  * button: the list is edited by the person who remembers, and nobody
- * remembers. Discovering the elements instead makes coverage STRUCTURAL — a
+ * remembers. Discovering the elements instead makes coverage STRUCTURAL, a
  * new control is asserted the day it renders, whether or not the flow author
- * thought about it — and it is a superset of "touched", so it can only be
+ * thought about it, and it is a superset of "touched", so it can only be
  * stricter.
  */
 // Keep negative assertions (for deliberately read-only surfaces) on the same
@@ -606,7 +615,7 @@ async function interactiveElements(page: Page): Promise<Locator[]> {
 export type PinnedSurface = {
   /** The registry flow this execution belongs to. */
   readonly flow: string;
-  /** The registry surface being asserted — recorded, then checked at teardown. */
+  /** The registry surface being asserted, recorded, then checked at teardown. */
   readonly surface: string;
   /** Which theme this pass ran under, for the teardown report. */
   readonly theme: string;
@@ -632,7 +641,7 @@ export type PinnedSurface = {
  * DESIGN.md token conformance the flow declares.
  *
  * The execution is RECORDED before the assertions run, so a surface the flow
- * claimed and then failed on is still counted as executed — teardown is asking
+ * claimed and then failed on is still counted as executed, teardown is asking
  * "did anything check this?", and the answer is yes even when the answer to
  * "did it pass?" is no. A surface nobody ever reached records nothing and
  * teardown says so.

@@ -7,7 +7,7 @@ import { cryptoFailureText, type SettingsOperation } from '../api/settings.ts';
  * (#503). The server walks the ciphertext in bounded chunks, returning how many
  * rows a run moved; the drain re-invokes until a run moves nothing, which is the
  * only honest "complete" signal (there is no status endpoint). It is safe to
- * re-run after a refresh, disconnect or crash — the server resumes from its own
+ * re-run after a refresh, disconnect or crash, the server resumes from its own
  * cursor.
  *
  * Lifecycle correctness the loop must hold:

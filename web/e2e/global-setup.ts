@@ -7,8 +7,8 @@ import { liveClosureViolations, resetRunLog } from './registry.ts';
  * after it has finished passing every flow it does have.
  *
  * ONE instance per invocation, and therefore one instance shared by every
- * project a single invocation runs. That matters: flows mutate the instance —
- * `instance-admin` creates an organisation — so a run covering both viewport
+ * project a single invocation runs. That matters: flows mutate the instance , 
+ * `instance-admin` creates an organisation, so a run covering both viewport
  * projects at once has the first project's writes visible to the second, and
  * an assertion about how many organisations exist fails for a reason that is
  * not the code. `pnpm run e2e` therefore invokes each project separately, the

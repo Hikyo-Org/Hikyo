@@ -86,7 +86,17 @@ export function CLIReauth() {
     return <CLIReauthMessage title="Nothing to authorize" text="This page has no CLI transaction. Return to the terminal and start again." />;
   }
   if (auth.state.status === 'checking' || auth.state.status === 'transitioning') {
-    return <p className="login" role="status">Loading…</p>;
+    // The same card shell as the loaded state, so the page does not jump.
+    return (
+      <main className="login">
+        <div className="login__card">
+          <h1 className="login__title">Authorize CLI</h1>
+          <p className="login__lede" role="status">
+            Loading…
+          </p>
+        </div>
+      </main>
+    );
   }
   if (auth.state.status === 'anonymous') {
     return <Login />;
@@ -154,7 +164,7 @@ export function CLIReauth() {
               {transaction.data.environments.map((environment) => (
                 <li key={environment.environment_id}>
                   <span className="mono">{environment.environment_id}</span>{' '}
-                  — {environment.requires_webauthn ? 'passkey required' : 'TOTP required'}
+                  ({environment.requires_webauthn ? 'passkey required' : 'TOTP required'})
                 </li>
               ))}
             </ul>

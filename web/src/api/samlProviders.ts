@@ -18,7 +18,7 @@ import { ApiError, ok, parsed } from './client.ts';
 /**
  * The SAML administrative surface (#500): provider inventory and lifecycle plus
  * SP signing-key rotation and retirement, riding the locked instance-config API
- * exactly as it is. No route is added — these are panels on `instance-admin`,
+ * exactly as it is. No route is added, these are panels on `instance-admin`,
  * so there is no second place a provider is administered.
  *
  * The write-only rule the contract already enforces is preserved here: metadata
@@ -165,7 +165,7 @@ export function useCompromiseRetireSamlSpKey() {
 /**
  * Client-side validation, because the server returns only a coarse code for
  * everything but a 400 detail: naming the wrong field to the operator has to
- * happen here. Deliberately no stricter than the contract — the slug pattern is
+ * happen here. Deliberately no stricter than the contract, the slug pattern is
  * the exact `ProviderSlugPath` one, trailing hyphen and all.
  */
 export function samlProviderInputErrors(draft: {
@@ -210,7 +210,7 @@ export type SamlAction =
 /** Map each refusal to a sentence, keyed to the action that hit it. */
 export function samlFailureText(error: unknown, action: SamlAction): string {
   if (!(error instanceof ApiError)) {
-    return 'The server failed; whether the change applied is unknown — reload to check.';
+    return 'The server failed; whether the change applied is unknown: reload to check.';
   }
   switch (error.status) {
     case 400:
@@ -232,7 +232,7 @@ export function samlFailureText(error: unknown, action: SamlAction): string {
     case 429:
       return 'Too many attempts right now. Wait a moment and try again.';
     default:
-      return 'The server failed; whether the change applied is unknown — reload to check.';
+      return 'The server failed; whether the change applied is unknown: reload to check.';
   }
 }
 

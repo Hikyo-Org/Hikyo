@@ -5,7 +5,7 @@ import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
  * unmount, optionally putting focus on the dialog's first decision.
  *
  * The platform gives a real focus trap, an inert document behind it, Escape and
- * the top layer — every part of which a hand-rolled `role="dialog"` has to
+ * the top layer, every part of which a hand-rolled `role="dialog"` has to
  * reimplement, and the focus trap is the part everyone gets wrong. The close on
  * unmount is what makes focus RESTORATION real: the platform returns focus to
  * the element that was focused before `showModal()` only when the dialog is

@@ -3,7 +3,7 @@
  * (src/styles/tokens.css), so this module only handles the EXPLICIT choice:
  * absent one, `prefers-color-scheme` decides and nothing here runs.
  *
- * That split is why the CSP can forbid inline script — there is no
+ * That split is why the CSP can forbid inline script, there is no
  * first-paint theme guard to inline.
  *
  * The choice is ONE piece of state, shared: the header's binary toggle and the

@@ -14,11 +14,18 @@ import {
   requiredInEnvironment,
   toggleVisibleEnvironment,
   validateMatrixDraft,
+  validateMatrixDeclaration,
+  describeMatrixRule,
+  type MatrixDraftRule,
   type MatrixStateKey,
   type MatrixStateValue,
 } from './matrix-state.ts';
 
-const environments: readonly string[] = ['env_dev', 'env_prod'];
+const environments: readonly { readonly id: string; readonly name: string }[] = [
+  { id: 'env_dev', name: 'development' },
+  { id: 'env_prod', name: 'production' },
+];
+const environmentIds = environments.map((environment) => environment.id);
 
 const keys: readonly MatrixStateKey[] = [
   {
@@ -70,7 +77,7 @@ describe('computeMatrixProblems', () => {
   it('reports required absent cells and server validation errors without inventing drift', () => {
     const problems = computeMatrixProblems({
       keys,
-      environmentIds: environments,
+      environments,
       values,
       validationErrors: [
         {
@@ -88,7 +95,7 @@ describe('computeMatrixProblems', () => {
         groupId: 'group_app',
         environmentId: 'env_prod',
         kind: 'required-absent',
-        message: 'REQUIRED_KEY is required in env_prod but is absent.',
+        message: 'REQUIRED_KEY is required in production but is absent.',
       },
       {
         keyId: 'key_optional',
@@ -104,7 +111,7 @@ describe('computeMatrixProblems', () => {
   it('counts problem cells per group and filters keys while retaining declaration order', () => {
     const problems = computeMatrixProblems({
       keys,
-      environmentIds: environments,
+      environments,
       values,
       validationErrors: [],
     });
@@ -120,14 +127,14 @@ describe('computeMatrixProblems', () => {
 
 describe('toggleVisibleEnvironment', () => {
   it('never hides the final visible environment', () => {
-    expect(toggleVisibleEnvironment(['env_dev'], 'env_dev', environments)).toEqual(['env_dev']);
+    expect(toggleVisibleEnvironment(['env_dev'], 'env_dev', environmentIds)).toEqual(['env_dev']);
   });
 
   it('can hide and restore an environment in project order', () => {
-    expect(toggleVisibleEnvironment([...environments], 'env_prod', environments)).toEqual([
+    expect(toggleVisibleEnvironment(environmentIds, 'env_prod', environmentIds)).toEqual([
       'env_dev',
     ]);
-    expect(toggleVisibleEnvironment(['env_dev'], 'env_prod', environments)).toEqual([
+    expect(toggleVisibleEnvironment(['env_dev'], 'env_prod', environmentIds)).toEqual([
       'env_dev',
       'env_prod',
     ]);
@@ -138,7 +145,7 @@ describe('publish and copy guards', () => {
   it('blocks only unsafe environments while clean environments remain selectable', () => {
     const problems = computeMatrixProblems({
       keys,
-      environmentIds: environments,
+      environments,
       values,
       validationErrors: [],
     });
@@ -207,5 +214,25 @@ describe('row editor state', () => {
       message: 'Pattern uses server-side RE2 syntax and is checked when publishing.',
     });
     expect(validateMatrixDraft({ type: 'string', min_length: 2 }, 'ok')).toBeNull();
+  });
+});
+
+describe('validateMatrixDeclaration', () => {
+  it('passes when any alternative accepts and lists every alternative when none does', () => {
+    const rules: readonly MatrixDraftRule[] = [{ type: 'boolean' }, { type: 'string', pattern: '^[a-z]+$' }];
+    expect(validateMatrixDeclaration(rules, 'true')).toBeNull();
+    expect(validateMatrixDeclaration(rules, '')).toEqual({
+      level: 'error',
+      message: 'Enter a boolean (true or false), or text matching ^[a-z]+$.',
+    });
+    expect(validateMatrixDeclaration([{ type: 'boolean' }], 'nope')?.message).toBe('Enter true or false.');
+    expect(validateMatrixDeclaration([], 'x')?.level).toBe('notice');
+  });
+
+  it('describes each rule type', () => {
+    expect(describeMatrixRule({ type: 'integer', min: 1n, max: 9n })).toBe('an integer at least 1 and at most 9');
+    expect(describeMatrixRule({ type: 'enum', members: ['a', 'b'] })).toBe('one of a, b');
+    expect(describeMatrixRule({ type: 'url', schemes: ['https'] })).toBe('a https URL');
+    expect(describeMatrixRule({ type: 'json' })).toBe('JSON');
   });
 });

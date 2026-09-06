@@ -10,8 +10,8 @@ import { surfacesForFlow } from '../registry.ts';
  * Flow: secret-scanning Surface-1 warn dialog on the matrix editing surface
  * (#74, SS2/SS4 [UI]; secret-scanning ADR §§2,4).
  *
- * A config-classified value carrying a credential-shaped string SAVES — the
- * warn never blocks — and the redacted finding rides back into a dialog naming
+ * A config-classified value carrying a credential-shaped string SAVES, the
+ * warn never blocks, and the redacted finding rides back into a dialog naming
  * the rule and the key, never the matched text. The two named resolutions are
  * exercised: keep-as-config (a sticky dismissal the identical value no longer
  * trips, while a distinct offending value still does) and reclassify-as-secret
@@ -19,7 +19,7 @@ import { surfacesForFlow } from '../registry.ts';
  * asserted where it is easiest to violate: the planted canary reaches neither
  * the dialog DOM nor the browser console.
  *
- * The canaries are AWS's own documented EXAMPLE access-key ids — syntactically
+ * The canaries are AWS's own documented EXAMPLE access-key ids, syntactically
  * valid, matched by the `aws-access-token` rule, and non-live by construction.
  */
 
@@ -157,7 +157,7 @@ test.describe('secret scanning warn dialog', () => {
           density: [[chooser, '--touch']],
         });
         // Sidebar treatment e draws the hairline on each ROW, so the row is
-        // where the rule has to be — a border on the list around them would
+        // where the rule has to be, a border on the list around them would
         // satisfy a container assertion while the active row could not own its
         // own segment of the line.
         expect(await groupRow.evaluate((element) => getComputedStyle(element).borderLeftWidth)).toBe('1px');
@@ -174,7 +174,7 @@ test.describe('secret scanning warn dialog', () => {
  * and treated as public, so a credential-shaped value in it is REFUSED before
  * any state persists. The block dialog states that consequence, renders only the
  * redacted finding (rule id + locator, never the matched text), and offers one
- * content-bound acknowledgement per finding through a single audited override —
+ * content-bound acknowledgement per finding through a single audited override , 
  * no blanket ignore-all. The planted canary reaches neither the dialog DOM nor
  * the browser console. The named stale/skew/surplus refusals are proven at the
  * unit layer (ScanBlockDialog, KeyDeclarationDetail) and server-side in Go; the
@@ -204,7 +204,7 @@ test.describe('secret scanning block dialog', () => {
       { name: keyName, classification: 'config', description: '', declaration: { rule: { type: 'string' } } },
     );
     try {
-      // The declaration detail is routable and reload-safe — address it directly.
+      // The declaration detail is routable and reload-safe, address it directly.
       await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix/keys/${created.id}`);
       const panel = page.locator('.key-detail');
       await expect(panel.getByRole('heading', { name: keyName, level: 2 })).toBeVisible();

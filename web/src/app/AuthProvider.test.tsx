@@ -535,7 +535,7 @@ describe('AuthProvider', () => {
     const buttons = container.querySelectorAll('button');
     await act(async () => buttons[2]?.click());
     // The login result carries no capabilities, so the session binds with the
-    // fail-closed default and then a whoami hydrates the authoritative value —
+    // fail-closed default and then a whoami hydrates the authoritative value , 
     // without a second login.
     await act(async () => mutationResult.resolve(loginIdentity('01', '11')));
     await settle();
@@ -624,7 +624,7 @@ describe('AuthProvider', () => {
       expect(text(container, 'failure')).toBe('');
 
       // No manual revalidation: only the backoff timer fires. Advancing past its
-      // first interval must recover the session on its own — deleting the retry
+      // first interval must recover the session on its own, deleting the retry
       // effect leaves `degraded` set here forever.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(1_100);
@@ -659,7 +659,7 @@ describe('AuthProvider', () => {
 
     // The held identity is past its unextendable absolute deadline, so a failed
     // background revalidation must NOT keep it painting as a degraded-but-valid
-    // session — it is dead regardless of the server, and the wall is correct.
+    // session, it is dead regardless of the server, and the wall is correct.
     const buttons = container.querySelectorAll('button');
     await act(async () => buttons[0]?.click());
     await settle();

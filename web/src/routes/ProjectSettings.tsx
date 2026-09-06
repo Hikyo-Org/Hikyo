@@ -111,7 +111,7 @@ export function ProjectSettings() {
 
       {projectQuery.isError ? (
         <Alert>
-          This project could not be read. It may not exist, or it may not be yours to reach — the
+          This project could not be read. It may not exist, or it may not be yours to reach. The
           two answers are deliberately the same.
         </Alert>
       ) : null}
@@ -128,34 +128,23 @@ export function ProjectSettings() {
 
       <Panel id="project-metadata" title="Metadata" tight>
         <div className="settings-grid">
-        <div className="field">
-          <label htmlFor={nameId}>Name</label>
-          <input
-            id={nameId}
-            value={name}
-            disabled={current === undefined}
-            onChange={(event) => setName(event.target.value)}
-            onBlur={() => {
-              if (current === undefined || name === '' || name === current.name) return;
-              rename.mutate(
-                { project, name },
-                {
-                  onSuccess: (result) => feedback.ok(`Renamed to ${result.name}.`),
-                  onError: (error) => report('rename-project', error),
-                },
-              );
-            }}
-          />
-        </div>
           <div className="field">
-            <label htmlFor={`${nameId}-description`}>Description</label>
+            <label htmlFor={nameId}>Name</label>
             <input
-              id={`${nameId}-description`}
-              value={prototypeMode ? 'Demo project for the spec prototypes' : ''}
-              placeholder={prototypeMode ? undefined : 'Description is not available in the API'}
-              disabled={!prototypeMode}
-              readOnly
-              aria-readonly="true"
+              id={nameId}
+              value={name}
+              disabled={current === undefined}
+              onChange={(event) => setName(event.target.value)}
+              onBlur={() => {
+                if (current === undefined || name === '' || name === current.name) return;
+                rename.mutate(
+                  { project, name },
+                  {
+                    onSuccess: (result) => feedback.ok(`Renamed to ${result.name}.`),
+                    onError: (error) => report('rename-project', error),
+                  },
+                );
+              }}
             />
           </div>
         </div>
@@ -163,7 +152,7 @@ export function ProjectSettings() {
 
       <Panel id="project-environments" title="Environments">
         <p className="settings-note">
-          An environment is a named column of the matrix — every key gets its own explicit value in
+          An environment is a named column of the matrix: every key gets its own explicit value in
           each one. A project starts with none; add the first here before declaring keys.
         </p>
         {/* The environments-read failure is surfaced once, by the Policy panel
@@ -297,35 +286,18 @@ export function ProjectSettings() {
       )}
 
       <Panel id="project-danger" title="Danger zone" danger>
-        {prototypeMode ? (
-          <div className="settings-row">
-            <div className="settings-row__copy">
-              <span className="settings-row__title">Rename slug</span>
-              <span className="settings-row__detail">Changing the slug changes every URL under it.</span>
-            </div>
-            <span className="settings-row__spacer" />
-            <input
-              className="settings-input settings-input--compact mono"
-              aria-label="Project slug"
-              defaultValue={project}
-            />
-            <button type="button" className="btn" onClick={() => feedback.ok('Slug renamed (demo).')}>
-              rename
-            </button>
-          </div>
-        ) : null}
         <TypedNameConfirm
           key={current === undefined ? `pending-${project}` : current.id}
           label="Delete this project"
           expect={current === undefined ? null : current.name}
           action="Delete project"
           busy={remove.isPending}
-          hint={prototypeMode
-            ? <>Deletes every environment and value in it. Grants and audit history follow the retention policy.</>
-            : <>
-                Deletion never cascades: a project that still holds any environment is refused.
-                Delete its environments first, deliberately and one at a time.
-              </>}
+          hint={
+            <>
+              Deletion never cascades: a project that still holds any environment is refused.
+              Delete its environments first, deliberately and one at a time.
+            </>
+          }
           onConfirm={() =>
             remove.mutate(
               { project },
@@ -343,8 +315,8 @@ export function ProjectSettings() {
 /**
  * ProjectCryptoMaintenance exposes the project-scoped half of the remotely
  * operable cryptographic jobs (#503): rotate this project's DEK, then walk its
- * ciphertext onto the new version. The two are paired — a DEK rotation is
- * incomplete until the re-encryption runs — and both are the same
+ * ciphertext onto the new version. The two are paired, a DEK rotation is
+ * incomplete until the re-encryption runs, and both are the same
  * grant-evaluated network operations the CLI verbs call.
  */
 function ProjectCryptoMaintenance({
@@ -457,7 +429,9 @@ function DefinitionsPolicy({
       <div className="settings-row__copy">
         <span className="settings-row__title">Definitions source</span>
         <span className="settings-row__detail">
-          definitions edited in the UI; switch to git for a review gate
+          {settings.definitions_source === 'git'
+            ? 'definitions are read-only in the UI; change them via the reviewed Git bundle. Values unaffected.'
+            : 'definitions edited in the UI; switch to git for a review gate'}
         </span>
       </div>
       <span className="settings-row__spacer" />
@@ -923,7 +897,7 @@ function EnvironmentPolicy({
   );
 }
 
-function CompactProjectRetention({
+export function CompactProjectRetention({
   org,
   project,
   policy,
@@ -942,8 +916,9 @@ function CompactProjectRetention({
   const [customRevisions, setCustomRevisions] = useState(
     String(policy.last_revisions ?? orgPolicy.last_revisions ?? 6),
   );
+  const [refusal, setRefusal] = useState<string | null>(null);
   const effective = policy.last_revisions ?? orgPolicy.last_revisions ?? 6;
-  // Lowering the org default never rewrites a project's own number — it caps
+  // Lowering the org default never rewrites a project's own number, it caps
   // what that number can deliver. The org list already names this state; a
   // project reading "custom 20" while it actually keeps 10 disagrees with its
   // own organisation about the same fact.
@@ -958,6 +933,16 @@ function CompactProjectRetention({
     && own > cap;
 
   const apply = (inherited: boolean, revisions: number) => {
+    // Refused here, before the request: the server would refuse it too, but a
+    // field that quietly keeps a number above the cap looks saved.
+    if (!inherited && cap !== null && cap !== undefined && revisions > cap) {
+      setRefusal(
+        `Refused: cannot exceed the organisation retention (${String(cap)}). A project may never keep more history than the organisation allows.`,
+      );
+      setCustomRevisions(String(own ?? cap));
+      return;
+    }
+    setRefusal(null);
     save.mutate(
       {
         inherited,
@@ -979,10 +964,10 @@ function CompactProjectRetention({
           <span className="settings-row__title">Revision retention</span>
           <span className={`settings-row__detail${capped ? ' text-danger' : ''}`}>
             {policy.inherited
-              ? `inherits the org default — values kept for the last ${String(effective)} revisions per environment; follows org changes`
+              ? `inherits the org default: values kept for the last ${String(effective)} revisions per environment; follows org changes`
               : capped
-                ? `custom ${String(own)}, capped to ${String(cap)} by the org — a project may never keep more than the org allows`
-                : `custom ${String(effective)} — values kept for the last ${String(effective)} revisions per environment; detached from later org changes`}
+                ? `custom ${String(own)}, capped to ${String(cap)} by the org: a project may never keep more than the org allows`
+                : `custom ${String(effective)}: values kept for the last ${String(effective)} revisions per environment; detached from later org changes`}
           </span>
         </div>
         <span className="settings-row__spacer" />
@@ -1013,6 +998,7 @@ function CompactProjectRetention({
           />
         )}
       </div>
+      {refusal === null ? null : <Alert>{refusal}</Alert>}
       <p className="settings-note">
         Older revisions lose their values as collection runs (pinned ones always stay); who-changed-what
         history is permanent. A custom value may not exceed the org default. Changes are audited.

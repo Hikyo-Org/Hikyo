@@ -41,14 +41,14 @@ import { fromBase64URL, toBase64URL } from './values.ts';
  *     the acting one is reissued in place. For a browser artifact the reissue
  *     arrives on the `__Host-hikyo` cookie and never in the body (#56), so the
  *     client's whole job afterwards is to discard its cached answers and
- *     re-read `whoami` — which is what `invalidateQueries` does here.
+ *     re-read `whoami`, which is what `invalidateQueries` does here.
  *  2. **A new credential never authorizes its own enrolment.** The proof each
  *     mutation carries is the PRE-EXISTING one: the password, or a confirmed
  *     TOTP code where one stands. The forms ask for that, and the copy says
  *     why.
  *  3. **Enrolment state is readable.** Passkeys and linked identities have
  *     listings, and a TOTP factor now reports its own state (confirmed, and
- *     whether an enrolment is mid-flight) through `getTotpStatus` — a pure read
+ *     whether an enrolment is mid-flight) through `getTotpStatus`, a pure read
  *     on the caller's own account. A second enrolment is still refused by the
  *     server with a named 400, so the panel states the fact AND leaves the
  *     server as the authority on whether a start is allowed.
@@ -143,7 +143,7 @@ export function useEnrolTotpStart() {
     mutationFn: (input: { password: string }) =>
       parsed(enrolTotpStartOp, { body: { password: input.password } }),
     // A start stages a pending row but reissues no session, so it does not go
-    // through the blanket invalidation — refresh only the factor state, which
+    // through the blanket invalidation, refresh only the factor state, which
     // now reads as pending beside the freshly shown QR.
     onSuccess: () => {
       void queries.invalidateQueries({ queryKey: totpStatusKey });
@@ -236,8 +236,8 @@ export function useLinkIdentity() {
  * useEnrolPasskey runs the whole registration ceremony: the proof, the
  * browser's `navigator.credentials.create`, and the attestation back.
  *
- * The options blob is opaque by contract — the server generates it and the
- * browser consumes it verbatim — so it is NARROWED here rather than parsed
+ * The options blob is opaque by contract, the server generates it and the
+ * browser consumes it verbatim, so it is NARROWED here rather than parsed
  * into a type: every field the browser API needs is a buffer by the time it
  * sees it, and a schema would describe the wire shape and then leave every
  * conversion still to do. Same argument, same shape as the reveal ceremony's
@@ -523,7 +523,7 @@ export function passkeyCreationOptions(blob: unknown): PublicKeyCredentialCreati
  *
  * 401 is the only credential refusal, and on THIS surface it has a second
  * meaning worth separating from "your session ended": the account-security
- * proof — the password, or a code — was wrong. Both are 401 and the sentence
+ * proof, the password, or a code, was wrong. Both are 401 and the sentence
  * covers both without pretending to know which; nothing here is presented as
  * "wrong password" unless the server actually refused a credential.
  */
@@ -543,7 +543,7 @@ export function accountFailureText(error: unknown): string {
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';
       default:
-        return `The account surface answered an error (${error.status}); whether the change applied is unknown — reload to check.`;
+        return `The account surface answered an error (${error.status}); whether the change applied is unknown: reload to check.`;
     }
   }
   if (error instanceof Error && error.name === 'NotAllowedError') {

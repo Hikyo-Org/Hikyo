@@ -3,7 +3,7 @@
  * `revision-history/6`).
  *
  * Kept free of React and API clients for the same reason `matrix-state.ts` is:
- * these are the drawer's domain decisions — what a pin mutation actually does,
+ * these are the drawer's domain decisions, what a pin mutation actually does,
  * which revisions a collected payload takes off the table, and what the impact
  * preview summarises to. Retention consequences are server vocabulary: the
  * list carries a confirmation preview and the release response carries the
@@ -56,7 +56,7 @@ export type RevisionActionGate = {
  * still admits, and says why when it does not.
  *
  * A collected payload closes both, naming the policy the store stamped at
- * collection — that string is what the server's own refusal reports forever, so
+ * collection, that string is what the server's own refusal reports forever, so
  * the UI repeats it rather than paraphrasing. The current revision closes only
  * restore: restoring it compares a state against itself and stages nothing,
  * which the service answers with an empty change set rather than an error, and
@@ -71,7 +71,7 @@ export function revisionActionGate(
       restore: false,
       pin: false,
       reason:
-        `r${String(revision.revision)}'s payload was collected by retention policy ${revision.collectedPolicy} — ` +
+        `r${String(revision.revision)}'s payload was collected by retention policy ${revision.collectedPolicy}: ` +
         'restore and pin are refused; the lineage stays.',
     };
   }
@@ -79,7 +79,7 @@ export function revisionActionGate(
     return {
       restore: false,
       pin: true,
-      reason: `r${String(revision.revision)} is already the current revision — a restore would stage nothing.`,
+      reason: `r${String(revision.revision)} is already the current revision, so a restore would stage nothing.`,
     };
   }
   return { restore: true, pin: true, reason: null };
@@ -88,8 +88,8 @@ export function revisionActionGate(
 /**
  * revisionsForKeyFilter is the per-key history projection.
  *
- * Per-key history is a FILTER over the same lineage, never a second surface —
- * the locked prototype's first decision — so it is a projection here and a
+ * Per-key history is a FILTER over the same lineage, never a second surface,
+ * the locked prototype's first decision, so it is a projection here and a
  * query parameter in the route, not a different fetch.
  *
  * The query carries the immutable key ID. Names can change and can be reused
@@ -162,7 +162,7 @@ export type PinActionPlan = {
 /**
  * pinAction names what pinning THIS revision does to THIS workload.
  *
- * A pin is a workload binding — at most one per (workload, environment) — so
+ * A pin is a workload binding, at most one per (workload, environment), so
  * the same gesture is three different acts depending on where that workload
  * already points, and the sheet has to say which one before it is taken.
  *
@@ -224,7 +224,7 @@ export function pinExpiry(expiresAt: string, now: Date): PinExpiry {
     return {
       days: Math.floor(remaining / DAY_MS),
       tier: 'expired',
-      text: 'expired — still delivering until its payload is collected',
+      text: 'expired: still delivering until its payload is collected',
     };
   }
   const days = Math.ceil(remaining / DAY_MS);
@@ -282,6 +282,34 @@ export type HistoryImpactChange = {
   readonly after?: string;
 };
 
+/** One environment's slice of a restore's impact preview, named for its heading. */
+export type HistoryImpactEnvironment = {
+  readonly environmentId: string;
+  readonly name: string;
+  readonly baseRevision: bigint;
+  readonly protected: boolean;
+  readonly changes: readonly HistoryImpactChange[];
+};
+
+/** The per-environment heading above an impact group: "{env} · r{a} → r{b}". */
+export function impactHeading(environment: HistoryImpactEnvironment): string {
+  return `${environment.name} · r${String(environment.baseRevision)} → r${String(environment.baseRevision + 1n)}`;
+}
+
+/** The publish button names EVERY environment the preview covers, never only the first. */
+export function restorePublishLabel(
+  revision: bigint,
+  environments: readonly HistoryImpactEnvironment[],
+): string {
+  if (environments.length === 0) {
+    throw new Error('restore result has no preview environment');
+  }
+  const targets = environments
+    .map((environment) => `${environment.name} r${String(environment.baseRevision + 1n)}`)
+    .join(', ');
+  return `Publish this restore (r${String(revision)} → ${targets})`;
+}
+
 export type RestoreSummary = {
   readonly set: number;
   readonly clear: number;
@@ -295,8 +323,8 @@ export type RestoreSummary = {
  *
  * **Divergence from the locked prototype, named.** Iteration 2 gives the line a
  * third chip, "n schema-blocked", because the prototype validated the restore
- * at staging. The shipped model validates at PUBLISH — restore stages ordinary
- * drafts and publish is the only authority (#52) — so a successful preview has
+ * at staging. The shipped model validates at PUBLISH, restore stages ordinary
+ * drafts and publish is the only authority (#52), so a successful preview has
  * no blocked rows to count. The schema refusal is still loud and still names
  * the keys; it arrives on the publish leg, where the server decides it.
  */
@@ -313,7 +341,7 @@ export function restorePreviewSummary(
     chips.push(`${String(clear)} clear`);
   }
   if (chips.length === 0) {
-    chips.push('already matches — nothing to stage');
+    chips.push('already matches, nothing to stage');
   }
   return { set, clear, total: changes.length, chips };
 }
@@ -339,7 +367,7 @@ export type CeremonyKey = { readonly id: string; readonly name: string };
  * over exactly this set, so the modal has to list exactly it or a
  * single-decision window is spent against a binding that does not match. Both
  * sides count and they are independent (#52): the HISTORICAL secret is read to
- * stage it, and the CURRENT secret is read only to compare two set values — a
+ * stage it, and the CURRENT secret is read only to compare two set values, a
  * restore-to-absent opens no current plaintext and must not demand it.
  *
  * ponytail: written-time STICKY bits are invisible to the browser; everything
@@ -399,7 +427,7 @@ export type RetentionLine = {
  * The locked prototype moved editing to the settings surfaces at iteration 6:
  * the retention knob is `project-settings` / org-policy authority, and this
  * surface reports the policy rather than owning it. So there is no stepper here
- * and no write path — only the effective window, whether it is inherited, and a
+ * and no write path, only the effective window, whether it is inherited, and a
  * pointer at where it is changed (#60's surface).
  */
 export function retentionLine(policy: HistoryRetention & {
@@ -407,11 +435,11 @@ export function retentionLine(policy: HistoryRetention & {
 }): RetentionLine {
   const badge = policy.inherited ? 'inherits org' : 'custom';
   const badgeTitle = policy.inherited
-    ? 'this project has no retention of its own — it follows the org default and moves when the org value moves'
-    : 'this project overrode the org default — org changes no longer touch it';
+    ? 'this project has no retention of its own: it follows the org default and moves when the org value moves'
+    : 'this project overrode the org default: org changes no longer touch it';
   if (policy.mode === 'unlimited' || policy.maxAgeSeconds === null || policy.lastRevisions === null) {
     return {
-      window: 'values kept: unlimited — no payload is ever collected',
+      window: 'values kept: unlimited, no payload is ever collected',
       badge,
       badgeTitle,
     };
@@ -431,7 +459,7 @@ export function retentionLine(policy: HistoryRetention & {
  * human at all.
  *
  * The checkbox is offered ONLY after the server has actually refused for a
- * current-schema failure — never up front. An override that is always on screen
+ * current-schema failure, never up front. An override that is always on screen
  * is an override people tick to make an error go away; one that appears with
  * the refusal it answers is a decision, and #52 records it as such (and only
  * when it is actually consumed).
@@ -443,7 +471,7 @@ export function pinSchemaOverrideOffered(detail: string | undefined): boolean {
   // ponytail: replace this prose match with a structured schema-refusal code in
   // the Error contract once the API exposes one. Until then this is a POSITIVE
   // match on the three refusals `validateResolved` (internal/service/publish.go)
-  // can raise — a value rule, a presence rule, a key-group rule — which is the
+  // can raise, a value rule, a presence rule, a key-group rule, which is the
   // whole set `override_schema` exists to override. Anything else is refused for
   // a reason an override cannot fix, and the checkbox stays away.
   return (
@@ -619,7 +647,7 @@ export function pinComparedToLatest(input: {
     if (historical.value === latest.value) {
       unchangedConfigKeys += 1;
     } else {
-      lines.push(`${key.name} stays at ${historical.value} — latest: ${latest.value}`);
+      lines.push(`${key.name} stays at ${historical.value}, latest: ${latest.value}`);
     }
   }
 

@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   applyBundle,
   bundleRefusalText,
@@ -12,7 +12,7 @@ import {
   type DefinitionsPlan,
 } from '../api/definitions-bundle.ts';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
-import { type DefinitionsSettings } from '../api/definitions.ts';
+import { GIT_DEFINITIONS_NOTICE, type DefinitionsSettings } from '../api/definitions.ts';
 import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import { Alert, ConsequencesDialog, Done } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
@@ -220,14 +220,12 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
       <div className="definitions-bundle__body">
         {git ? (
           <Alert>
-            Git-managed project: checking and planning are available. Apply from the repository with
-            definitions plan / definitions apply. Browser apply is refused.
+            {monoCommands(GIT_DEFINITIONS_NOTICE)} Checking and planning stay available here;
+            browser apply is refused.
           </Alert>
         ) : null}
-        {git && settings.last_apply?.ref ? (
-          <p>
-            Last repository ref: <span className="mono">{settings.last_apply.ref}</span>
-          </p>
+        {git && settings.last_apply !== undefined ? (
+          <LastApplyProvenance lastApply={settings.last_apply} />
         ) : null}
         {failure === null ? null : <Alert>{failure}</Alert>}
         {done === null ? null : <Done>{done}</Done>}
@@ -377,6 +375,49 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
         />
       )}
     </dialog>
+  );
+}
+
+/**
+ * monoCommands renders the spec's notice sentence with its backtick-quoted
+ * command names in `.mono`, so the text stays the normative one verbatim and
+ * the commands still read as commands.
+ */
+export function monoCommands(text: string): ReactNode[] {
+  return text.split('`').map((part, index) =>
+    index % 2 === 1 ? <span className="mono" key={index}>{part}</span> : part,
+  );
+}
+
+/**
+ * The last-applied provenance labels. They are whatever the applying CLI
+ * said about itself; Hikyo never verifies them against a repository, and the
+ * note says so beside them rather than leaving a commit hash to look like proof.
+ */
+export function LastApplyProvenance({
+  lastApply,
+}: {
+  lastApply: NonNullable<DefinitionsSettings['last_apply']>;
+}) {
+  const labels = [
+    ['Commit', lastApply.commit],
+    ['Ref', lastApply.ref],
+    ['Actor', lastApply.actor],
+  ].filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== '');
+  return (
+    <p className="definitions-bundle__provenance">
+      Last applied{' '}
+      <time dateTime={lastApply.applied_at}>{new Date(lastApply.applied_at).toLocaleString()}</time>
+      {labels.map(([label, value]) => (
+        <span key={label}>
+          {' · '}
+          {label} <span className="mono">{value}</span>
+        </span>
+      ))}
+      {labels.length === 0 ? null : (
+        <span className="settings-row__detail"> (display only, not verified)</span>
+      )}
+    </p>
   );
 }
 

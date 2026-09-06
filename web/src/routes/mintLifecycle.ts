@@ -35,8 +35,8 @@ export type MintResult = {
  * Closed display-once mint state machine, generic over the request it addresses
  * and the disclosed result it carries. The machine-credential mint (`MintRequest`
  * / `MintResult`) is the default instantiation; the dynamic-lease mint supplies
- * its own request and result. The security-critical parts — request-addressed
- * completion, the stored-confirmation gate, boundary masking — are identical for
+ * its own request and result. The security-critical parts, request-addressed
+ * completion, the stored-confirmation gate, boundary masking, are identical for
  * both, so they live here once.
  */
 export type MintLifecycle<Req extends MintBoundaryFields = MintRequest, Res = MintResult> =
@@ -164,8 +164,8 @@ export type IsMintSubmitting = (requestId: number) => boolean;
 /**
  * useMintLifecycle wires one display-once mint: the render state, a synchronous
  * ref that async completions read (so a late response sees the current state,
- * never a stale closure), and the three boundary clears — navigation, session
- * replacement, unmount — that keep a disclosed value from surviving into a
+ * never a stale closure), and the three boundary clears, navigation, session
+ * replacement, unmount, that keep a disclosed value from surviving into a
  * context that no longer owns it. Both the machine-credential mint and the
  * dynamic-lease mint run on one of these.
  */

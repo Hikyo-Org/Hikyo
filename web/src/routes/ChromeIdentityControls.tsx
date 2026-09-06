@@ -40,23 +40,43 @@ export function ChromeIdentityControls({
     if (prototypeMode) writeChromeIdentity(kind, identityId, next);
   };
 
+  const preview = (
+    <span
+      className={`identity-controls__preview${kind === 'org' ? ' identity-controls__preview--org avatar' : ''}`}
+      style={chromeIdentityStyle(identity)}
+      aria-label={`${kind === 'org' ? 'Organisation' : 'Project'} identity preview: ${mark}`}
+    >
+      {mark}
+    </span>
+  );
+
+  // There is no API to store an identity choice against, so outside prototype
+  // mode the identity is read-only: the preview and nothing that pretends to
+  // change it. Prototype mode keeps its browser-local version.
+  if (!prototypeMode) {
+    return (
+      <>
+        <div className="identity-controls identity-controls--readonly">
+          {preview}
+          <p className="settings-row__detail">
+            Monogram <span className="mono">{mark}</span>, hue {String(identity.hue)}°
+          </p>
+        </div>
+        {children}
+      </>
+    );
+  }
+
   return (
     <>
       <div className="identity-controls">
-        <span
-          className={`identity-controls__preview${kind === 'org' ? ' identity-controls__preview--org avatar' : ''}`}
-          style={chromeIdentityStyle(identity)}
-          aria-label={`${kind === 'org' ? 'Organisation' : 'Project'} identity preview: ${mark}`}
-        >
-          {mark}
-        </span>
+        {preview}
         <div className="identity-controls__choices">
           <div className="identity-hues" aria-label="Preset hues">
             {HUES.map((choice) => (
               <button
                 key={choice}
                 type="button"
-                disabled={!prototypeMode}
                 className="identity-hue"
                 style={{ background: `oklch(0.62 0.11 ${String(choice)})` }}
                 aria-label={`Hue ${String(choice)}`}
@@ -71,7 +91,6 @@ export function ChromeIdentityControls({
               id={rangeId}
               className="identity-hue-range"
               type="range"
-              disabled={!prototypeMode}
               min="0"
               max="359"
               value={identity.hue}
@@ -84,7 +103,6 @@ export function ChromeIdentityControls({
             <div className="identity-glyphs" aria-label="Project glyph">
               <button
                 type="button"
-                disabled={!prototypeMode}
                 className="identity-glyph"
                 aria-label="Use monogram"
                 aria-pressed={identity.glyph === null}
@@ -96,8 +114,7 @@ export function ChromeIdentityControls({
                 <button
                   key={choice}
                   type="button"
-                  disabled={!prototypeMode}
-                  className="identity-glyph"
+                    className="identity-glyph"
                   aria-label={`Use ${choice} glyph`}
                   aria-pressed={identity.glyph === choice}
                   onClick={() => updateIdentity({ ...identity, glyph: choice })}
@@ -122,7 +139,6 @@ export function ChromeIdentityControls({
           id={uploadId}
           className="visually-hidden"
           type="file"
-          disabled={!prototypeMode}
           accept="image/*"
           onChange={(event) => {
             const file = event.currentTarget.files?.[0];
@@ -136,13 +152,7 @@ export function ChromeIdentityControls({
             reader.readAsDataURL(file);
           }}
         />
-        {/* aria-disabled alone leaves a control that looks and focuses like a
-            live button; the class is what tells a sighted reader it is not. */}
-        <label
-          className={prototypeMode ? 'btn' : 'btn btn--disabled'}
-          aria-disabled={!prototypeMode}
-          htmlFor={uploadId}
-        >
+        <label className="btn" htmlFor={uploadId}>
           {identity.image === null ? 'upload…' : 'replace…'}
         </label>
         {identity.image === null ? null : (
@@ -160,15 +170,6 @@ export function ChromeIdentityControls({
           ? 'Monogram + hue is the default; glyph and image are opt-in (image wins). The custom-hue slider keeps every choice on the brand formula: same lightness and chroma, hue free.'
           : 'The org avatar stays a circle: identity circles are one of the two shapes the 999px pill is reserved for.'}
       </p>
-      {/* Every control above is inert outside prototype mode, because there is
-          no API to store the choice against yet. A disabled control that never
-          says why reads as a bug; saying so is the honest state. */}
-      {prototypeMode ? null : (
-        <p className="settings-note" role="status">
-          Choosing an icon is not available yet — the appearance above is the
-          default, and there is nowhere to save a change to it.
-        </p>
-      )}
     </>
   );
 }

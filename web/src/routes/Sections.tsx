@@ -36,7 +36,7 @@ export function JumpIndex({ sections }: { sections: readonly SectionRef[] }) {
  * Panel is one section: a card with an h2 that the jump index points at.
  *
  * `tabIndex={-1}` so the fragment jump moves FOCUS to the section and not only
- * the viewport — without it a keyboard user's next Tab continues from wherever
+ * the viewport, without it a keyboard user's next Tab continues from wherever
  * they were, which on a long settings page is the wrong end of the document.
  */
 export function Panel({
@@ -55,7 +55,7 @@ export function Panel({
   /**
    * A panel that poses an open question rather than presenting a decision.
    * It is drawn with a dashed boundary and no fill so it never reads as one of
-   * the settled cards beside it — the distinction is the point of the card.
+   * the settled cards beside it, the distinction is the point of the card.
    */
   question?: boolean;
   children: ReactNode;
@@ -174,8 +174,8 @@ export function TypedNameConfirm({
  * the dialog (never on an always-rendered surface, which trips the forced-colors
  * contrast contract), and shows the busy state and any refusal inline.
  *
- * Reauthentication is bound at the session level — a 403 surfaces the step-up
- * banner — so the dialog itself carries only consequence and confirmation.
+ * Reauthentication is bound at the session level, a 403 surfaces the step-up
+ * banner, so the dialog itself carries only consequence and confirmation.
  */
 export function ConsequencesDialog({
   titleId,
