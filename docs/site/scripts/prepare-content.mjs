@@ -7,6 +7,13 @@ const siteRoot = resolve(scriptDirectory, '..');
 const repositoryRoot = resolve(siteRoot, '../..');
 const docsRoot = resolve(siteRoot, 'src/content/docs');
 
+// Keep the first-use upgrade entrypoint identical to the reviewed source.
+await mkdir(resolve(siteRoot, 'public'), { recursive: true });
+await writeFile(
+  resolve(siteRoot, 'public/upgrade-nightly.sh'),
+  await readFile(resolve(repositoryRoot, 'install/upgrade-nightly.sh')),
+);
+
 const pages = [
   { source: 'SECURITY.md', target: 'security.md', title: 'Security policy' },
   { source: 'SUPPORT.md', target: 'support.md', title: 'Support policy' },

@@ -75,6 +75,21 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
+			refs, err := bundle.ReferencedReleases(releaseidentity.SQLite)
+			if err != nil || len(refs) != 1 || refs[0] != node.Identity() {
+				t.Fatalf("legacy bridge target reference missing: %+v %v", refs, err)
+			}
+			// A bridge can identify a source schema even when no loaded target
+			// declaration repeats its legacy genesis. Keep that candidate usable
+			// for inspection, without inventing a signed legacy release identity.
+			bridgeOnly := Bundle{snapshot: bundle.snapshot, bridges: bundle.bridges}
+			candidates := bridgeOnly.Sources(releaseidentity.SQLite)
+			if len(candidates) != 1 || candidates[0].Identity != source.Identity || candidates[0].SchemaSHA256 != source.SchemaSHA256 {
+				t.Fatalf("bridge source inspection missing: %+v", candidates)
+			}
+			if candidates := bridgeOnly.Sources(releaseidentity.Postgres); len(candidates) != 0 {
+				t.Fatal("bridge source leaked across engines")
+			}
 			plan, err := bundle.Plan(source, node.Identity())
 			if err != nil || !plan.Valid() || !plan.RequiresOperatorAttestation() {
 				t.Fatal("recovery-authorized nightly route refused or lost operator proof", err)

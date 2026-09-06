@@ -4,11 +4,14 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"slices"
 	"syscall"
@@ -311,7 +314,13 @@ func runOperator(ctx context.Context, name string, args []string,
 		log.Warn(w)
 	}
 	terminalSession, terminalError := disclose.OpenTerminalSession()
-	err = run(ctx, cfg, log, args, os.Stderr, terminalSession, terminalError)
+	var output io.Writer = os.Stderr
+	if name == "backup" && len(args) > 0 && args[0] == "upgrade-export" {
+		// Public artifact locators (including --json) are command results.
+		// Diagnostics retain stderr so the coordinator can parse stdout alone.
+		output = os.Stdout
+	}
+	err = run(ctx, cfg, log, args, output, terminalSession, terminalError)
 	_ = terminalSession.Close()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "hikyo %s: %v\n", name, err)
@@ -347,8 +356,34 @@ func runMigrate(ctx context.Context, args []string) int {
 
 func runUpgradeOperator(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "operator" {
-		fmt.Fprintln(os.Stderr, "usage: hikyo upgrade operator rotate --statement FILE --signature FILE --new-public-key FILE")
-		return 2
+		terminal, terminalErr := disclose.OpenTerminalSession()
+		defer terminal.Close()
+		readPassword := func(prompt string) (string, error) {
+			if terminalErr != nil {
+				return "", terminalErr
+			}
+			return terminal.ReadPassword(prompt)
+		}
+		err := app.RunAutomaticUpgrade(ctx, args, os.Stdout, readPassword)
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		var handoff *app.AutomaticHandoff
+		if errors.As(err, &handoff) {
+			if err := terminal.Close(); err != nil {
+				fmt.Fprintln(os.Stderr, "hikyo upgrade:", err)
+				return 1
+			}
+			command := exec.CommandContext(ctx, handoff.Executable, handoff.Arguments...)
+			command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+			command.Env = []string{"PATH=/usr/bin:/bin", "LANG=C.UTF-8"}
+			err = command.Run()
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "hikyo upgrade:", err)
+			return 1
+		}
+		return 0
 	}
 	cfg, warnings, err := config.Load("upgrade", nil, os.Getenv, os.Environ())
 	if err != nil {
@@ -370,6 +405,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `hikyo — one binary, several roles
 
 server commands:
+  sudo hikyo upgrade [--target VERSION] [--config FILE]
   hikyo server [--dev] [--listen ADDR] [--auto-migrate=BOOL]
   hikyo migrate [--dev]
 

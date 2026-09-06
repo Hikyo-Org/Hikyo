@@ -1,6 +1,7 @@
 .astro/
 dist/
 node_modules/
+public/upgrade-nightly.sh
 src/content/docs/security.md
 src/content/docs/support.md
 src/content/docs/governance.md

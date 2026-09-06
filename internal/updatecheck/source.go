@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/netpolicy"
+	"github.com/Masterminds/semver/v3"
 )
 
 const (
@@ -158,6 +159,35 @@ func (s *GitHubSource) Releases(ctx context.Context) ([]Release, error) {
 		})
 	}
 	return releases, nil
+}
+
+// ReleaseByVersion resolves an exact authenticated graph reference even after
+// that release has left the first discovery page. The returned record is still
+// discovery only; the caller must verify its signed identity and full inventory.
+func (s *GitHubSource) ReleaseByVersion(ctx context.Context, version string) (Release, error) {
+	if s == nil || s.client == nil {
+		return Release{}, errors.New("updatecheck: HTTP client is required")
+	}
+	if _, err := semver.StrictNewVersion(version); err != nil {
+		return Release{}, errors.New("updatecheck: exact release version is invalid")
+	}
+	tag := "v" + version
+	var record githubRelease
+	if _, err := s.getJSON(ctx, "https://api.github.com/repos/Hikyo-Org/Hikyo/releases/tags/"+url.PathEscape(tag), &record, false); err != nil {
+		return Release{}, err
+	}
+	if record.Draft || record.TagName != tag {
+		return Release{}, errors.New("updatecheck: exact release response differs from requested published tag")
+	}
+	published, err := time.Parse(time.RFC3339, record.PublishedAt)
+	if err != nil {
+		return Release{}, errors.New("updatecheck: exact release has invalid publication time")
+	}
+	assets, err := releaseAssets(tag, record.Assets)
+	if err != nil {
+		return Release{}, err
+	}
+	return Release{Version: version, URL: githubReleasePageBase + url.PathEscape(tag), Prerelease: record.Prerelease, Immutable: record.Immutable, PublishedAt: published, Assets: assets}, nil
 }
 
 func releaseAssets(tag string, records []githubAsset) ([]Asset, error) {

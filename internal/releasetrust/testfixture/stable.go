@@ -23,10 +23,13 @@ import (
 // and demonstrate that the real verifier refuses it.
 type Fixture struct {
 	// SignNightly reuses the same test-local OIDC policy for subsequent releases.
-	SignNightly    func([]byte, string, uint64) releasetrust.NightlyMaterial
-	Pinned         releasetrust.PinnedTrust
-	Metadata       releasetrust.Metadata
-	Catalog        releasetrust.Catalog
+	SignNightly func([]byte, string, uint64) releasetrust.NightlyMaterial
+	Pinned      releasetrust.PinnedTrust
+	Metadata    releasetrust.Metadata
+	Catalog     releasetrust.Catalog
+	// NightlyPolicy is the currently published nightly policy served from the
+	// trust tree; nil for stable-only fixtures.
+	NightlyPolicy  []byte
 	PrimaryPublic  []byte
 	RecoverySigner signature.Signer
 	PrimarySigner  signature.Signer
@@ -113,7 +116,7 @@ func (f *Fixture) Material(t testing.TB) releasetrust.SnapshotMaterial {
 	catalog := f.Catalog
 	catalog.StableMetadataSHA256 = releaseidentity.Hash(metadata)
 	rawCatalog := JSON(t, catalog)
-	return releasetrust.SnapshotMaterial{Metadata: metadata, MetadataSignature: Sign(t, f.RecoverySigner, metadata), Catalog: rawCatalog, CatalogSignature: Sign(t, f.RecoverySigner, rawCatalog), PrimaryKeys: map[string][]byte{"test-primary": bytes.Clone(f.PrimaryPublic)}}
+	return releasetrust.SnapshotMaterial{Metadata: metadata, MetadataSignature: Sign(t, f.RecoverySigner, metadata), Catalog: rawCatalog, CatalogSignature: Sign(t, f.RecoverySigner, rawCatalog), PrimaryKeys: map[string][]byte{"test-primary": bytes.Clone(f.PrimaryPublic)}, NightlyPolicy: bytes.Clone(f.NightlyPolicy)}
 }
 
 func (f *Fixture) Snapshot(t testing.TB) releasetrust.Snapshot {

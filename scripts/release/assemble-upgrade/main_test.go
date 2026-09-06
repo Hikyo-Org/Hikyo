@@ -216,16 +216,6 @@ func TestConcurrentAssemblyNeverReplacesAnOutput(t *testing.T) {
 	if _, err := upgradebundle.Load(context.Background(), f.opts.output, f.trust.Pinned, releaseidentity.SnapshotFloor{}); err != nil {
 		t.Fatal(err)
 	}
-	// An empty existing directory must not be overwritten either, even when it
-	// appears between the initial absence check and the final atomic rename.
-	stage, output := t.TempDir(), t.TempDir()
-	put(t, filepath.Join(stage, "sentinel"), []byte("preserve"))
-	if err := publishDirectory(stage, output); err == nil {
-		t.Fatal("replaced existing directory")
-	}
-	if _, err := os.Stat(filepath.Join(stage, "sentinel")); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestCanceledAssemblyDoesNotPublish(t *testing.T) {

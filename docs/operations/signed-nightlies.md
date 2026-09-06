@@ -85,6 +85,29 @@ operator evidence, upgrades with the candidate binary, and checks readiness,
 secret readability and restart. The first signed release has no authenticated
 predecessor, so only its fresh-install route is automatically exercised.
 
+## Revoke one published nightly
+
+Every nightly bundles the policy it was built under, and a GitHub release is
+immutable, so a revocation cannot be written into the release itself. Online
+verifiers (`hikyo upgrade`, `hikyo update`, the first-use bootstrap and the
+release preflight) therefore also fetch the currently published
+`release/trust/nightly/policy.json` and refuse any manifest it lists in
+`revoked_manifests`, even when the release's own bundled policy is clean.
+
+To revoke a nightly, add its `release-manifest.json` SHA-256 to
+`revoked_manifests` in the reviewed policy, regenerate the catalog with the next
+sequence while keeping the earlier policy digest listed, and recovery-sign the
+catalog. Keeping the earlier digest lets other nightlies from that policy period
+keep verifying; dropping it refuses all of them at once. Publish the policy and
+catalog together. Note the limit of keeping the earlier digest: the verifier
+accepts any catalog-listed policy as current, so a party able to substitute the
+published trust files could serve the earlier clean policy and re-enable the
+revoked nightly. That holds the revocation against accidental selection, not
+against an adversary; when it must hold adversarially, drop the earlier digest
+and accept refusing that policy period. The offline server boot gate keeps using the bundled policy;
+a revoked release that is already installed remains inspectable and is never
+selected again as an upgrade target.
+
 ## Bridge existing unsigned installations once
 
 A pre-ledger database remains `legacy/v1`, identified by its inspected schema
@@ -121,9 +144,15 @@ Never reuse a signature after reformatting or changing the statement.
 
 ## Download and install
 
+For the supported Linux systemd/SQLite deployment, `sudo hikyo upgrade` performs
+download, bundle assembly, local encrypted operator custody, backup restoration
+to scratch, migration and verified restart. Its first-use bootstrap also covers
+older binaries without the command. See the [one-command upgrade instructions](https://hikyo.app/docs/upgrades/).
+The remaining steps describe manual preparation for other deployment types.
+
 In clients carrying the new trust stamp, `hikyo update check` verifies and stages
-the complete signed nightly in the CLI state directory. It preserves the
-installed executable and reports the staging path. Unsigned assets, rollback,
+the complete signed nightly and assembles its runtime bundle in the CLI state
+directory. It preserves the installed executable and reports both paths. Unsigned assets, rollback,
 equivocation or missing trust refuse. Older clients cannot safely bootstrap this
 trust through their old binary-only self-update flow; perform the first
 installation with independently authenticated public trust and downloads.

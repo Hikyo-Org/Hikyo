@@ -223,3 +223,23 @@ func nodeKey(source releaseidentity.Source) string {
 	i := source.Release
 	return fmt.Sprintf("%s:%d:%s:%s:%s:%s", i.Profile, i.Sequence, i.Version, i.Commit, i.CompatibilitySHA256, i.ManifestSHA256)
 }
+
+// ReferencedReleases returns exact signed source references for evidence
+// discovery. The referenced envelopes must still be authenticated independently.
+func (n VerifiedNode) ReferencedReleases(engine releaseidentity.Engine) []releaseidentity.Identity {
+	result := []releaseidentity.Identity{}
+	if !n.Valid() {
+		return result
+	}
+	for _, declaration := range n.state.declaration.Engines {
+		if declaration.Migrations.Engine != engine {
+			continue
+		}
+		for _, edge := range declaration.Sources {
+			if edge.Source.IsRelease() {
+				result = append(result, edge.Source.Release)
+			}
+		}
+	}
+	return result
+}

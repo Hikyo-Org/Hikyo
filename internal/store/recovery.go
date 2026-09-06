@@ -30,6 +30,19 @@ func OpenRecovery(ctx context.Context, cfg Config, authority upgrade.RecoveryAdm
 }
 func (r *RecoveryDB) Close() error   { return r.db.Close() }
 func (r *RecoveryDB) Engine() Engine { return r.db.engine }
+
+// CheckScratch authorizes automatic drill behavior only on a currently guarded
+// authenticated scratch restore, never on the operator's live data recovery.
+func (r *RecoveryDB) CheckScratch(ctx context.Context) error {
+	if r == nil {
+		return upgrade.ErrConflict
+	}
+	if err := r.authority.CheckScratch(); err != nil {
+		return err
+	}
+	return r.authority.Check(ctx, upgradeConfig(r.config))
+}
+
 func (r *RecoveryDB) BeginSQLite(ctx context.Context, readonly bool) (*RecoverySQLiteTransaction, error) {
 	if r == nil || r.Engine() != EngineSQLite {
 		return nil, upgrade.ErrConflict

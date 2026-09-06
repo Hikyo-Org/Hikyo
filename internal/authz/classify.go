@@ -1008,6 +1008,16 @@ var caches = map[string]Cache{
 		KeyConstructor: "singleton: github.com/Hikyo-Org/hikyo releases",
 		ProofGatedAt:   "not proof-gated: public release metadata; endpoint authorization precedes access",
 	},
+	"selfupdate.nightly-downloads": {
+		// On-disk directories under the operator CLI state directory, one per
+		// verified nightly, named by the signed release manifest digest
+		// (nightly-<sha256>) and, for assembled bundles, by the route digest
+		// plus the recovery-signed snapshot digest. Reuse never trusts the
+		// disk: every cached asset is rechecked against the immutable GitHub
+		// release inventory and the current signed trust before use.
+		KeyConstructor: "internal/selfupdate: release manifest SHA-256; bundle route digest + trust snapshot digest",
+		ProofGatedAt:   "not proof-gated: public signed release assets held by the operator process; no tenant material",
+	},
 }
 
 // Caches returns the cache registry for the invariant test.

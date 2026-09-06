@@ -96,8 +96,13 @@ func installerFixtureForVersion(t *testing.T, version string, prerelease bool, c
 		if !ok {
 			t.Fatalf("unexpected download %s", request.URL)
 		}
+		// A nil body models a published tree that lacks the document.
+		code := http.StatusOK
+		if body == nil {
+			code = http.StatusNotFound
+		}
 		return &http.Response{
-			StatusCode: http.StatusOK,
+			StatusCode: code,
 			Body:       io.NopCloser(bytes.NewReader(body)),
 			Header:     make(http.Header),
 		}, nil
