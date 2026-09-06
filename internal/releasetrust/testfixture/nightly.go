@@ -178,6 +178,10 @@ func NightlyWithPayloads(t testing.TB, compatibility []byte, wrongCommit bool, p
 		}
 		tlogEntry.KindVersion = &protorekor.KindVersion{Kind: body.Kind, Version: body.APIVersion}
 		tlogEntry.LogId.KeyId = rekorIDBytes
+		// Rekor v1 signs the global (virtual) index in its SET, while the
+		// inclusion proof below uses the index within the current shard.
+		// Model a nonempty previous shard so tests cannot conflate the two.
+		tlogEntry.LogIndex = 121904262
 		payload := JSON(t, tlog.RekorPayload{LogID: string(rekorID), IntegratedTime: integrated.Unix(), LogIndex: tlogEntry.LogIndex, Body: base64.StdEncoding.EncodeToString(tlogEntry.CanonicalizedBody)})
 		canonical, err := jsoncanonicalizer.Transform(payload)
 		if err != nil {

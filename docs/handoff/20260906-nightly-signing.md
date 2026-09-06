@@ -71,3 +71,28 @@ recovery authorization; ordinary nightlies under the same policy do not. Private
 project keys stay off Actions. Runtime installation still follows the manual
 backup/drill and full-stop writer procedure. Review/merge, bootstrap activation
 and deployment are separate from local validation.
+
+## First production signing and shard-index repair
+
+PR #687 merged as `bd4b5b3e0b16c36d4e063001c455f97fb64bfda8`; all 45 PR
+checks and all 39 main CI jobs passed. The first signed nightly run
+[34049690497](https://github.com/Hikyo-Org/Hikyo/actions/runs/34049690497)
+built all packages and signed through GitHub OIDC, then correctly stopped before
+publication when the runtime verifier rejected an invalid index comparison.
+
+Rekor v1 signs a global index in the SET but uses a shard-local index for its
+Merkle proof. The actual entry has global index `2742136979` and proof index
+`2620232717`, with the pinned log key and checkpoint origin. The equality check
+was removed; the maintained verifier still authenticates both indexes against
+the same entry body, along with the signature and checkpoint. See
+[Sigstore's sharding documentation](https://docs.sigstore.dev/logging/sharding/).
+
+The test fixture now signs unequal global/local indexes. It reproduced the
+production refusal before the fix, then passed, including independent tampering
+of either index. Relevant trust, bundle, self-update, nightly and assembler
+packages passed, as did the focused race test. Review returned CLEAN. A local
+probe recovered the actual public Rekor entry and verified its exact OIDC
+identity/commit, SCT, SET, checkpoint, inclusion proof and signature over manifest
+SHA-256 `830c059cf9275ec8d14cf344ec0d5a161e21709aab861133f51abc1262060cbb`.
+The corrected verifier still requires a new green merge and successful nightly
+run before publication is established.
