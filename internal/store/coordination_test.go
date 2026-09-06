@@ -356,3 +356,49 @@ func mcpBucketDeadline(t *testing.T, db *store.DB, principal string) time.Time {
 	}
 	return deadline
 }
+
+// A deferred constraint rejects COMMIT after INSERT RETURNING produced a
+// provisional fence. That fence is useful only for exact reconciliation; the
+// failed transaction never grants leadership and cannot steal a successor.
+func TestCoordinationClaimCommitFailurePreservesProvisionalFence(t *testing.T) {
+	db := postgresTestDB(t)
+	ctx := t.Context()
+	_, err := db.PG().Exec(ctx, `CREATE FUNCTION reject_provisional_claim() RETURNS trigger LANGUAGE plpgsql AS $$
+ BEGIN
+  IF NEW.owner = 'rolled-back-owner' THEN RAISE EXCEPTION 'injected lease commit failure'; END IF;
+  RETURN NEW;
+ END $$;
+ CREATE CONSTRAINT TRIGGER reject_provisional_claim AFTER INSERT OR UPDATE ON singleton_leases
+ DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION reject_provisional_claim()`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	coord := db.Coordination()
+	now, err := coord.Now(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fence, held, err := coord.ClaimLease(ctx, "provisional", "rolled-back-owner", now, now.Add(time.Minute))
+	if err == nil || held || fence < 1 {
+		t.Fatalf("commit failure: fence=%d held=%v err=%v", fence, held, err)
+	}
+	successor, held, err := coord.ClaimLease(ctx, "provisional", "successor", now, now.Add(time.Minute))
+	if err != nil || !held {
+		t.Fatalf("successor claim: fence=%d held=%v err=%v", successor, held, err)
+	}
+	// Rollback can legitimately reuse the numerical token; ownership remains
+	// part of both predicates, so the old attempt still has no authority.
+	if successor != fence {
+		t.Fatalf("rolled-back acquisition unexpectedly consumed fence: got%d want%d", successor, fence)
+	}
+	if renewed, err := coord.RenewLease(ctx, "provisional", "rolled-back-owner", fence, now, now.Add(time.Minute)); err != nil || renewed {
+		t.Fatalf("provisional renewal stole successor: held=%v err=%v", renewed, err)
+	}
+	if err := coord.ReleaseLease(ctx, "provisional", "rolled-back-owner", fence); err != nil {
+		t.Fatal(err)
+	}
+	owner, _, live, err := coord.LeaseHolder(ctx, "provisional", now)
+	if err != nil || !live || owner != "successor" {
+		t.Fatalf("provisional release changed successor: owner=%q live=%v err=%v", owner, live, err)
+	}
+}

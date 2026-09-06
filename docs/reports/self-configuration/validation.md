@@ -98,6 +98,34 @@ hotspot was identified. These diagnostics do not replace Linux CI or physical
 Pi evidence. The floor workload, limits and derating factors are unchanged;
 PR #686 records the integrated head's acceptance result.
 
+### CI reliability and performance corrections
+
+The integrated run passed every browser shard and the unchanged browser closure
+checker. It exposed an approval scheduler claim-response race: an INSERT could
+return a fence before COMMIT reported an error. The store now preserves that
+provisional token while returning `held=false` and the error. The scheduler
+runs no jobs until exact fenced renewal confirms ownership, and shutdown only
+releases that exact token. Deterministic lost-response, PostgreSQL deferred
+commit-failure, stale-successor and canceled-claim tests pass. Takeover passed
+ten times on both engines and three times under the race detector. No heartbeat,
+lease lifetime or takeover timeout increased. If no fence was ever returned,
+the safe fallback remains lease expiry.
+
+A second floor result exceeded the unchanged limit (31,972 ms after derating).
+Further profiling identified repeated full project-storage sums for each
+schema fan-out environment. Transaction-local accounting now loads the total
+once and adds each successfully inserted snapshot ciphertext's actual bytes.
+Every environment still checks the same high-water limit. The state is created
+inside each attempt; rollback/retry discards it. SQLite/PostgreSQL regressions
+prove limit refusal rolls back the whole transaction and a fresh attempt works.
+
+Three alternating native macOS ARM64 before/after runs reduced median publish
+time from 2,588.76 ms to 2,194.91 ms (15.21%). Each exported and verified all
+100,000 cells. [Recorded measurements](validation/schema-fanout-comparison.json).
+The final full app, service, store and lint suites pass with both databases;
+Go vet passes. Focused race, delivery authorization and static invariant checks
+pass. These local diagnostics do not replace the unchanged Linux ARM CI floor gate.
+
 ### Current report and delivery
 
 Final implementation report: HTTP 200, 265742 bytes, SHA-256

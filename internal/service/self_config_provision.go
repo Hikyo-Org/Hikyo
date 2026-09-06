@@ -339,7 +339,7 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 			}
 		}
 	}
-	pub, err := materialize(ctx, r, publishProof, sealer, s.Keyring, scope, caller.Principal, now, nil, MaxProjectStorageBytes, index)
+	pub, err := materialize(ctx, r, publishProof, sealer, s.Keyring, scope, caller.Principal, now, nil, MaxProjectStorageBytes, index, nil)
 	if err != nil {
 		return store.SelfConfigBinding{}, err
 	}

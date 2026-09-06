@@ -34,6 +34,8 @@ type LeaseManager interface {
 	// here so every node shares one clock, removing per-node skew as a
 	// split-brain vector.
 	Now(ctx context.Context) (time.Time, error)
+	// A nonzero fence returned alongside an error is provisional: it may
+	// only be confirmed by RenewLease or cleaned up by exact ReleaseLease.
 	ClaimLease(ctx context.Context, name, owner string, now, expires time.Time) (fence int64, held bool, err error)
 	RenewLease(ctx context.Context, name, owner string, fence int64, now, expires time.Time) (held bool, err error)
 	ReleaseLease(ctx context.Context, name, owner string, fence int64) error
@@ -169,6 +171,9 @@ func (s *Scheduler) runHA(ctx context.Context) {
 	defer ticker.Stop()
 
 	var fence int64
+	// A claim can commit while its response times out. Until a fenced renewal
+	// confirms that provisional token, no term has started and no jobs may run.
+	var unconfirmedClaim bool
 	// expiresAt is the deadline of the last SUCCESSFULLY acquired or renewed
 	// lease. A leader that reaches this instant without a fresh renewal has
 	// lost coordination (datastore loss, partition, a blocked query) and must
@@ -202,6 +207,18 @@ func (s *Scheduler) runHA(ctx context.Context) {
 		default:
 			return true
 		}
+	}
+
+	startTerm := func(expires time.Time) {
+		unconfirmedClaim = false
+		expiresAt = expires
+		s.leader.Store(true)
+		s.logger().Info("scheduler acquired leadership", "node", s.NodeID, "fence", fence)
+		termCtx, cancel := context.WithCancel(store.WithSingletonLease(ctx, schedulerLeaseName, s.NodeID, fence))
+		termCancel = cancel
+		termDone = make(chan struct{})
+		done := termDone
+		go func() { defer close(done); s.runLoop(termCtx) }()
 	}
 
 	for {
@@ -267,28 +284,47 @@ func (s *Scheduler) runHA(ctx context.Context) {
 					expiresAt = expires
 				}
 			}
+			// Shutdown owns release and draining. Never start another acquisition
+			// after a canceled clock read or renewal returned to this heartbeat.
+			if ctx.Err() != nil {
+				continue
+			}
 			// Do not claim while the previous term is still draining: a new
 			// runLoop must never overlap the cancelled one.
 			if !s.leader.Load() && !termDraining() {
-				claimCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
-				gotFence, held, err := s.Lease.ClaimLease(claimCtx, schedulerLeaseName, s.NodeID, now, expires)
-				cancel()
-				switch {
-				case err != nil:
-					s.logger().Error("scheduler lease claim failed", "node", s.NodeID, "err", err)
-				case held:
-					fence = gotFence
-					expiresAt = expires
-					s.leader.Store(true)
-					s.logger().Info("scheduler acquired leadership", "node", s.NodeID, "fence", fence)
-					termCtx, cancel := context.WithCancel(store.WithSingletonLease(ctx, schedulerLeaseName, s.NodeID, fence))
-					termCancel = cancel
-					termDone = make(chan struct{})
-					done := termDone
-					go func() { defer close(done); s.runLoop(termCtx) }()
+				if unconfirmedClaim {
+					renewCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
+					held, err := s.Lease.RenewLease(renewCtx, schedulerLeaseName, s.NodeID, fence, now, expires)
+					cancel()
+					switch {
+					case err != nil:
+						s.logger().Error("scheduler provisional claim confirmation failed", "node", s.NodeID, "err", err)
+					case !held:
+						// The transaction rolled back, expired, or a different owner/fence
+						// took over. The provisional token confers no authority over it.
+						unconfirmedClaim = false
+						fence = 0
+					case ctx.Err() == nil:
+						startTerm(expires)
+					}
+				}
+				if !s.leader.Load() && !unconfirmedClaim && ctx.Err() == nil {
+					claimCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
+					gotFence, held, err := s.Lease.ClaimLease(claimCtx, schedulerLeaseName, s.NodeID, now, expires)
+					cancel()
+					if gotFence != 0 && (held || err != nil) {
+						fence = gotFence
+						unconfirmedClaim = true
+					}
+					switch {
+					case err != nil:
+						s.logger().Error("scheduler lease claim failed", "node", s.NodeID, "err", err)
+					case held && ctx.Err() == nil:
+						startTerm(expires)
+					}
 				}
 			}
-			if s.OnTick != nil {
+			if s.OnTick != nil && ctx.Err() == nil {
 				tickCtx, cancel := context.WithTimeout(ctx, s.heartbeat())
 				s.OnTick(tickCtx)
 				cancel()

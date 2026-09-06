@@ -1,0 +1,62 @@
+[
+  {
+    "cells": 100000,
+    "elapsed_ms": 2608.271959,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true,
+    "version": "before",
+    "run": 2
+  },
+  {
+    "cells": 100000,
+    "elapsed_ms": 2198.387834,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true,
+    "version": "after",
+    "run": 2
+  },
+  {
+    "cells": 100000,
+    "elapsed_ms": 2588.757833,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true,
+    "version": "before",
+    "run": 3
+  },
+  {
+    "cells": 100000,
+    "elapsed_ms": 2194.914,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true,
+    "version": "after",
+    "run": 3
+  },
+  {
+    "cells": 100000,
+    "elapsed_ms": 2586.812375,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true,
+    "version": "before",
+    "run": 4
+  },
+  {
+    "cells": 100000,
+    "elapsed_ms": 2186.962625,
+    "environments": 10,
+    "keys": 10000,
+    "operation": "Keys.UpdateDeclaration schema fan-out",
+    "readback_verified": true,
+    "version": "after",
+    "run": 4
+  }
+]

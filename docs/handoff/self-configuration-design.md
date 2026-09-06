@@ -12,6 +12,18 @@ SDK checks and fresh desktop local/independent-owner browser journeys pass.
 The pinned Go formatter fixes the initial CI format failure. Exact-head CI is
 recorded on PR #686.
 
+## CI follow-up corrections
+
+Browser closure now executes all four required configuration assertion runs.
+Approval scheduler claims retain a provisional fence on commit error and require
+exact renewal before any job can run; deterministic both-engine and race tests
+cover lost responses, rollback, successors and shutdown. Schema fan-out avoids
+repeated project-storage sums using attempt-local exact accounting; every
+environment retains the existing high-water check. Three alternating local
+100,000-cell benchmarks improved median time by 15.21%. CI floor limits and
+lease/takeover timings remain unchanged. See the report validation record for
+measurements and exact failure history.
+
 ## User intent and authority
 
 Hikyo should provision an organization/project during setup that manages its own environment variables and secrets. Changing email settings should be possible through the existing interface, followed by applying changes without restarting the container.

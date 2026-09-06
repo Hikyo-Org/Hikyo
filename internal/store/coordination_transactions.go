@@ -53,7 +53,11 @@ func (c *Coordination) ClaimLease(ctx context.Context, name, owner string, now, 
 		return e
 	})
 	if err != nil {
-		return 0, false, err
+		// INSERT RETURNING may have produced a fence before COMMIT failed or
+		// its response was lost. Retain it for exact renewal/release only; an
+		// error never establishes that the lease is held. A zero fence still
+		// requires waiting for any ambiguous committed claim to expire.
+		return fence, false, err
 	}
 	return fence, held, nil
 }

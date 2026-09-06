@@ -502,7 +502,7 @@ func (s *Revisions) PublishPlanned(ctx context.Context, actor Actor, scope domai
 				applies[i].value = string(plain)
 			}
 			published, err := materialize(ctx, r, ep, sealer, s.Keyring, envScope,
-				caller.Principal, now, applies, s.storageLimit(), groupIndex)
+				caller.Principal, now, applies, s.storageLimit(), groupIndex, nil)
 			if err != nil {
 				return err
 			}
@@ -793,6 +793,12 @@ func recordPublish(ctx context.Context, r store.Repos, p authz.Proof, principal 
 func republish(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
 	sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
 	now time.Time, trigger string, groups *groupIndexPhase) (PublishedEnvironment, error) {
+	return republishWithStorage(ctx, r, az, caller, sealer, kr, scope, now, trigger, groups, nil)
+}
+
+func republishWithStorage(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, caller authz.Identity,
+	sealer *crypto.ProjectSealer, kr *crypto.Keyring, scope domain.Scope,
+	now time.Time, trigger string, groups *groupIndexPhase, storage *schemaPublishStorage) (PublishedEnvironment, error) {
 	p, err := az.Authorize(ctx, caller, authz.OpValuePublish, scope)
 	if err != nil {
 		return PublishedEnvironment{}, err
@@ -820,7 +826,7 @@ func republish(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, calle
 	// republish covers the non-draft payload-advancing paths (declare-into-env,
 	// import, copy, clone, env creation, schema fan-out); each enforces the
 	// production high-water — only the direct publish path is conformance-tunable.
-	published, err := materialize(ctx, r, p, sealer, kr, scope, caller.Principal, now, nil, MaxProjectStorageBytes, groupIndex)
+	published, err := materialize(ctx, r, p, sealer, kr, scope, caller.Principal, now, nil, MaxProjectStorageBytes, groupIndex, storage)
 	if err != nil {
 		return PublishedEnvironment{}, err
 	}
@@ -870,9 +876,12 @@ func fanOutSchemaPublish(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	}
 	out := make([]PublishedEnvironment, 0, len(environments))
 	groupPhase := &groupIndexPhase{}
+	// This phase changes only snapshot payloads. Account within this attempt,
+	// after the schema mutation, and discard the total on rollback or retry.
+	storage := &schemaPublishStorage{limit: MaxProjectStorageBytes}
 	for _, env := range environments {
 		envScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(env.ID)}
-		published, err := republish(ctx, r, az, caller, sealer, kr, envScope, now, trigger, groupPhase)
+		published, err := republishWithStorage(ctx, r, az, caller, sealer, kr, envScope, now, trigger, groupPhase, storage)
 		if err != nil {
 			return nil, err
 		}
@@ -1073,7 +1082,10 @@ func currentRevision(ctx context.Context, r store.Repos, p authz.Proof) (int64, 
 // and is that legal".
 func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.ProjectSealer,
 	kr *crypto.Keyring, scope domain.Scope, publisher domain.PrincipalID, now time.Time,
-	applies []pendingApply, storageLimit int64, groups *groupIndex) (PublishedEnvironment, error) {
+	applies []pendingApply, storageLimit int64, groups *groupIndex, storage *schemaPublishStorage) (PublishedEnvironment, error) {
+	if storage != nil && len(applies) != 0 {
+		return PublishedEnvironment{}, errors.New("service: schema storage accounting cannot apply value changes")
+	}
 	keys := groups.catalogueKeys()
 	schemaRevision, err := r.Catalogue().SchemaRevision(ctx, p)
 	if err != nil {
@@ -1141,7 +1153,11 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 	// project over the water cannot grow further. The read is project-scoped, so
 	// it sees a multi-environment publish's earlier envs already committed in this
 	// transaction.
-	if err := checkProjectStorage(ctx, r, p, storageLimit); err != nil {
+	if storage == nil {
+		if err := checkProjectStorage(ctx, r, p, storageLimit); err != nil {
+			return PublishedEnvironment{}, err
+		}
+	} else if err := storage.check(ctx, r, p, scope); err != nil {
 		return PublishedEnvironment{}, err
 	}
 
@@ -1233,6 +1249,9 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 		}); err != nil {
 			return PublishedEnvironment{}, err
 		}
+		if storage != nil {
+			storage.total += int64(len(sealed))
+		}
 		if (cell.key.Classification == string(schema.Secret) || cell.materialSecret) && !secretOccurrences[cell.entryID] {
 			if err := r.Snapshots().RecordSecretValueOccurrence(ctx, p, cell.entryID); err != nil {
 				return PublishedEnvironment{}, err
@@ -1281,6 +1300,36 @@ const MaxProjectStorageBytes = 4 << 30 // 4 GiB
 // well before the hard refusal at MaxProjectStorageBytes.
 const ProjectStorageWarnBytes = 1 << 30 // 1 GiB
 
+// schemaPublishStorage belongs to one transaction's schema fan-out, where
+// live value cells cannot change between environments. Only successfully
+// inserted snapshot ciphertext contributes additional payload bytes. Keeping
+// this exact total avoids rescanning all project history for each environment.
+type schemaPublishStorage struct {
+	limit, total int64
+	loaded       bool
+	org          domain.OrgID
+	project      domain.ProjectID
+}
+
+func (s *schemaPublishStorage) check(ctx context.Context, r store.Repos, p authz.Proof, scope domain.Scope) error {
+	if s.loaded && (s.org != scope.Org || s.project != scope.Project) {
+		return errors.New("service: schema storage accounting belongs to another project")
+	}
+	if !s.loaded {
+		values, err := r.Values().PayloadBytesForProject(ctx, p)
+		if err != nil {
+			return err
+		}
+		snapshots, err := r.Snapshots().PayloadBytesForProject(ctx, p)
+		if err != nil {
+			return err
+		}
+		s.total = values + snapshots
+		s.org, s.project, s.loaded = scope.Org, scope.Project, true
+	}
+	return checkStorageTotal(s.total, s.limit)
+}
+
 // checkProjectStorage refuses a publish into a project already at the storage
 // high-water. It sums the two payload-bearing tables (live value cells and
 // published snapshot entries) under the publish proof's project chain and, at or
@@ -1296,7 +1345,11 @@ func checkProjectStorage(ctx context.Context, r store.Repos, p authz.Proof, limi
 	if err != nil {
 		return err
 	}
-	if total := values + snapshots; total >= limit {
+	return checkStorageTotal(values+snapshots, limit)
+}
+
+func checkStorageTotal(total, limit int64) error {
+	if total >= limit {
 		return fmt.Errorf("%w: project holds %d bytes of stored payload, at the %d-byte storage high-water; lower the project's retention window or release pinned revisions to reclaim space",
 			domain.ErrLimitExceeded, total, limit)
 	}
