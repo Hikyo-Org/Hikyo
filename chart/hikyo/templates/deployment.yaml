@@ -27,6 +27,10 @@ spec:
         {{- if .Values.rollout.initialDatabaseSource }}
         hikyo.dev/configuration-database-source: {{ .Values.rollout.initialDatabaseSource | quote }}
         {{- end }}
+        {{- if .Values.rollout.initialUpgradeSource }}
+        hikyo.dev/configuration-upgrade-source: {{ .Values.rollout.initialUpgradeSource | quote }}
+        hikyo.dev/configuration-upgrade-proof: ""
+        {{- end }}
         {{- if .Values.rollout.initialRootSource }}
         hikyo.dev/configuration-root-source: {{ .Values.rollout.initialRootSource | quote }}
         {{- end }}
@@ -143,6 +147,13 @@ spec:
             - --tls-key-file=/run/hikyo-tls/tls.key
             {{- end }}
           env:
+            {{- if and .Values.rollout.enabled .Values.rollout.enrolled .Values.rollout.upgradeSources }}
+            {{- $initial := index .Values.rollout.upgradeSources .Values.rollout.initialUpgradeSource }}
+            {{- range $key, $value := (include "hikyo.rollout.upgradeEnvironment" $initial | fromJson) }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+            {{- else }}
             - name: HIKYO_UPGRADE_BUNDLE
               value: /run/hikyo-upgrade/bundle
             - name: HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY
@@ -162,6 +173,7 @@ spec:
             {{- if .Values.upgrade.legacyWritersStopped }}
             - name: HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED
               value: "true"
+            {{- end }}
             {{- end }}
             - name: HIKYO_DB
               valueFrom:
@@ -226,6 +238,13 @@ spec:
               readOnly: true
             - name: upgrade-state
               mountPath: /var/lib/hikyo-upgrade
+            {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+            {{- range $alias := .Values.rollout.upgradeStateAliases }}
+            - name: upgrade-state
+              mountPath: {{ printf "/var/lib/hikyo-upgrade/aliases/%s" $alias }}
+              subPath: operator-custody
+            {{- end }}
+            {{- end }}
             - name: root-key
               mountPath: /run/hikyo-root-key
               readOnly: true
@@ -332,6 +351,12 @@ spec:
               - path: database-alias
                 fieldRef:
                   fieldPath: metadata.annotations['hikyo.dev/configuration-database-source']
+              - path: upgrade-proof
+                fieldRef:
+                  fieldPath: metadata.annotations['hikyo.dev/configuration-upgrade-proof']
+              - path: upgrade-alias
+                fieldRef:
+                  fieldPath: metadata.annotations['hikyo.dev/configuration-upgrade-source']
               - path: root-alias
                 fieldRef:
                   fieldPath: metadata.annotations['hikyo.dev/configuration-root-source']

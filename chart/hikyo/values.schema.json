@@ -275,6 +275,136 @@
         },
         "initialRootSource": {
           "type": "string"
+        },
+        "initialUpgradeSource": {
+          "type": "string",
+          "pattern": "^([a-z0-9]([a-z0-9-]{0,29}[a-z0-9])?)?$"
+        },
+        "upgradeSources": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,29}[a-z0-9])?$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "bundle_directory",
+              "state_directory",
+              "evidence_directory",
+              "ciphertext_path",
+              "operator_public_key_file",
+              "target_manifest_sha256",
+              "legacy_writers_stopped"
+            ],
+            "properties": {
+              "bundle_directory": {
+                "type": "string",
+                "pattern": "^/run/hikyo-upgrade/[^/\u0000-\u001f\u007f]+(/[^/\u0000-\u001f\u007f]+)*$",
+                "not": {
+                  "pattern": "/\\.{1,2}(/|$)"
+                }
+              },
+              "state_directory": {
+                "type": "string",
+                "pattern": "^/var/lib/hikyo-upgrade/[^/\u0000-\u001f\u007f]+(/[^/\u0000-\u001f\u007f]+)*$",
+                "not": {
+                  "pattern": "/\\.{1,2}(/|$)"
+                }
+              },
+              "evidence_directory": {
+                "anyOf": [
+                  {
+                    "const": ""
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^/run/hikyo-upgrade/[^/\u0000-\u001f\u007f]+(/[^/\u0000-\u001f\u007f]+)*$",
+                    "not": {
+                      "pattern": "/\\.{1,2}(/|$)"
+                    }
+                  }
+                ]
+              },
+              "ciphertext_path": {
+                "anyOf": [
+                  {
+                    "const": ""
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^/run/hikyo-upgrade/[^/\u0000-\u001f\u007f]+(/[^/\u0000-\u001f\u007f]+)*$",
+                    "not": {
+                      "pattern": "/\\.{1,2}(/|$)"
+                    }
+                  }
+                ]
+              },
+              "operator_public_key_file": {
+                "type": "string",
+                "pattern": "^/run/hikyo-upgrade/[^/\u0000-\u001f\u007f]+(/[^/\u0000-\u001f\u007f]+)*$",
+                "not": {
+                  "pattern": "/\\.{1,2}(/|$)"
+                }
+              },
+              "target_manifest_sha256": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{64})?$"
+              },
+              "legacy_writers_stopped": {
+                "type": "boolean"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "evidence_directory": {
+                      "const": ""
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "ciphertext_path": {
+                      "const": ""
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "ciphertext_path": {
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "legacy_writers_stopped": {
+                      "const": true
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "evidence_directory": {
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "upgradeStateAliases": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z0-9]([a-z0-9-]{0,29}[a-z0-9])?$"
+          }
         }
       }
     }

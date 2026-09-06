@@ -57,9 +57,12 @@ type Config struct {
 	// ManagedInputs are unvalidated one-time seed inputs. The owning service
 	// consults them only after the database confirms no managed binding exists.
 	// In particular, stale file paths must never be read after adoption.
-	ManagedInputs           map[string]string
-	ManagedNodeInputs       map[string]string
-	Upgrade                 UpgradeConfiguration
+	ManagedInputs     map[string]string
+	ManagedNodeInputs map[string]string
+	Upgrade           UpgradeConfiguration
+	// Applied upgrade selection is external bootstrap metadata, never user paths.
+	UpgradeSource           string
+	UpgradeMaterialDigest   string
 	Dev                     bool
 	Listen                  string
 	OperationalListen       string

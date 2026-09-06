@@ -28,7 +28,7 @@ spec:
     - name: before
       expression: oldObject.spec.template.spec.containers.filter(c, c.name == 'server')[0]
     - name: managed
-      expression: "['HIKYO_ADMISSION_BUDGET_MIB','HIKYO_PG_POOL_MAX','HIKYO_LISTEN','HIKYO_OPERATIONAL_LISTEN','HIKYO_HA','HIKYO_BACKUP_DIR','HIKYO_ADAPTER_EGRESS_POLICY_FILE','HIKYO_DYNAMIC_EGRESS_POLICY_FILE','HIKYO_OIDC_EGRESS_POLICY_FILE','HIKYO_TLS_CERT_FILE','HIKYO_TLS_KEY_FILE','HIKYO_DB']"
+      expression: "['HIKYO_ADMISSION_BUDGET_MIB','HIKYO_PG_POOL_MAX','HIKYO_LISTEN','HIKYO_OPERATIONAL_LISTEN','HIKYO_HA','HIKYO_BACKUP_DIR','HIKYO_ADAPTER_EGRESS_POLICY_FILE','HIKYO_DYNAMIC_EGRESS_POLICY_FILE','HIKYO_OIDC_EGRESS_POLICY_FILE','HIKYO_TLS_CERT_FILE','HIKYO_TLS_KEY_FILE','HIKYO_DB'{{ if .Values.rollout.upgradeSources }},'HIKYO_UPGRADE_BUNDLE','HIKYO_UPGRADE_STATE_DIR','HIKYO_UPGRADE_EVIDENCE','HIKYO_UPGRADE_BACKUP','HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY','HIKYO_UPGRADE_TARGET_MANIFEST','HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED'{{ end }}]"
     - name: sourcePairs
       expression: >-
         [{{ printf "%s:HIKYO_DB" .Values.database.existingSecret | quote }}{{ range $alias, $source := .Values.rollout.databaseSources }},{{ printf "%s:%s" $source.name $source.key | quote }}{{ end }}]
@@ -36,8 +36,33 @@ spec:
       expression: >-
         [{{ printf "%s:%s" .Values.rootKey.existingSecret .Values.rootKey.key | quote }}{{ range $alias, $source := .Values.rollout.rootSources }},{{ printf "%s:%s" $source.name $source.key | quote }}{{ end }}]
     - name: templateKeys
-      expression: "['hikyo.dev/configuration-rollout','hikyo.dev/configuration-database-source','hikyo.dev/configuration-root-source']"
+      expression: "['hikyo.dev/configuration-rollout','hikyo.dev/configuration-database-source','hikyo.dev/configuration-root-source'{{ if .Values.rollout.upgradeSources }},'hikyo.dev/configuration-upgrade-source','hikyo.dev/configuration-upgrade-proof'{{ end }}]"
+    {{- if .Values.rollout.upgradeSources }}
+    - name: upgradeKeys
+      expression: "['HIKYO_UPGRADE_BUNDLE','HIKYO_UPGRADE_STATE_DIR','HIKYO_UPGRADE_EVIDENCE','HIKYO_UPGRADE_BACKUP','HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY','HIKYO_UPGRADE_TARGET_MANIFEST','HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED']"
+    - name: upgradeTuples
+      expression: >-
+        {{- $tuples := dict }}
+        {{- range $alias, $source := .Values.rollout.upgradeSources }}
+        {{- $_ := set $tuples $alias (include "hikyo.rollout.upgradeEnvironment" $source | fromJson) }}
+        {{- end }}
+        {{ $tuples | toJson }}
+    - name: upgradeAlias
+      expression: "object.spec.template.metadata.?annotations.orValue({})[?'hikyo.dev/configuration-upgrade-source'].orValue('')"
+    {{- end }}
   validations:
+    {{- if .Values.rollout.upgradeSources }}
+    - expression: >-
+        object.spec.template.metadata.?annotations.orValue({})[?'hikyo.dev/configuration-upgrade-proof'].orValue('').matches('^[0-9a-f]{64}$') ||
+        (variables.upgradeAlias == {{ .Values.rollout.initialUpgradeSource | quote }} && object.spec.template.metadata.?annotations.orValue({})[?'hikyo.dev/configuration-upgrade-proof'].orValue('') == '')
+      message: Upgrade proof must be an exact lowercase SHA-256; only the enrolled initial source may have an empty proof.
+    - expression: >-
+        variables.upgradeAlias in variables.upgradeTuples &&
+        variables.server.env.filter(e, e.name in variables.upgradeKeys).size() == 7 &&
+        variables.server.env.filter(e, e.name in variables.upgradeKeys).all(e,
+          !has(e.valueFrom) && e.?value.orValue('') == variables.upgradeTuples[variables.upgradeAlias][e.name])
+      message: Upgrade settings must exactly match one enrolled source alias and its complete literal tuple.
+    {{- end }}
     - expression: object.metadata.namespace == {{ .Release.Namespace | quote }} && object.metadata.name == {{ include "hikyo.fullname" . | quote }} && string(object.metadata.uid) == {{ .Values.rollout.deploymentUID | quote }}
       message: Executor may only mutate its enrolled Deployment UID.
     - expression: has(params.spec.holderIdentity) && has(params.spec.leaseTransitions) && object.metadata.annotations['hikyo.dev/rollout-custody'] == params.spec.holderIdentity + ':' + string(params.spec.leaseTransitions)
@@ -137,7 +162,10 @@ spec:
     - expression: >-
         variables.server.env.filter(e, e.name in variables.managed).all(e,
           (e.name == 'HIKYO_DB' && has(e.valueFrom.secretKeyRef) && e.valueFrom.secretKeyRef.name + ':' + e.valueFrom.secretKeyRef.key in variables.sourcePairs) ||
-          (e.name != 'HIKYO_DB' && has(e.valueFrom.secretKeyRef) && e.valueFrom.secretKeyRef.name == {{ printf "%s-config" $name | quote }} && e.valueFrom.secretKeyRef.key == e.name) ||
+          (e.name != 'HIKYO_DB'{{ if .Values.rollout.upgradeSources }} && !(e.name in variables.upgradeKeys){{ end }} && has(e.valueFrom.secretKeyRef) && e.valueFrom.secretKeyRef.name == {{ printf "%s-config" $name | quote }} && e.valueFrom.secretKeyRef.key == e.name) ||
+          {{- if .Values.rollout.upgradeSources }}
+          (e.name in variables.upgradeKeys && !has(e.valueFrom)) ||
+          {{- end }}
           (has(e.value) && ((e.name in ['HIKYO_ADMISSION_BUDGET_MIB','HIKYO_PG_POOL_MAX'] && e.value.matches('^[1-9][0-9]{0,9}$')) ||
           (e.name in ['HIKYO_LISTEN','HIKYO_OPERATIONAL_LISTEN'] && e.value.matches('^[0-9a-fA-F.\\[\\]:]+:[0-9]{1,5}$')) ||
           (e.name == 'HIKYO_HA' && e.value in ['true','false'])

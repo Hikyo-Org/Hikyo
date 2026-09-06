@@ -296,6 +296,11 @@ func Boot(ctx context.Context, cfg *config.Config, log *slog.Logger) (*Server, e
 }
 
 func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources bootResources) (*Server, error) {
+	var selectionErr error
+	cfg, selectionErr = resolveSelectedUpgrade(ctx, cfg, deploymentSelectionDirectory)
+	if selectionErr != nil {
+		return nil, fmt.Errorf("boot: upgrade selection: %w", selectionErr)
+	}
 	if cfg.UpdaterSocket != "" {
 		return nil, fmt.Errorf("boot: HIKYO_UPDATER_SOCKET: %w", updater.ErrRemoteApplyDisabled)
 	}

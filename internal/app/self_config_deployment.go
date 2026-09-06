@@ -27,6 +27,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
+	"github.com/Hikyo-Org/hikyo/internal/upgradegate"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -49,9 +50,12 @@ type bootstrapDeployment struct {
 	sourcesDirectory, selectionDirectory string
 	mu                                   sync.Mutex
 	proofs                               map[string]deploymentSourceProof
+	upgradeCustody                       os.FileInfo
+	upgradeMaterial                      string
 }
 
 type deploymentSourceProof struct {
+	upgrade  *upgradegate.ConfigurationProof
 	database *store.VerifiedPostgresSource
 	root     [32]byte
 	epoch    uint32
@@ -122,7 +126,24 @@ func configureBootstrapDeployment(ctx context.Context, cfg *config.Config, db *s
 	}
 	provider.installed = selected
 	provider.identity.TemplateStamp = stamp
-	if len(enrollment.Target.DatabaseSources) > 0 && selected.DatabaseSource == "" || len(enrollment.Target.RootSources) > 0 && selected.RootSource == "" {
+	if len(enrollment.Target.UpgradeSources) > 0 {
+		if cfg.UpgradeSource != selected.UpgradeSource || configuredUpgradeSource(cfg) != enrollment.Target.UpgradeSources[selected.UpgradeSource] {
+			return nil, configrollout.ErrConflict
+		}
+		provider.upgradeCustody, err = upgradegate.InspectCustodyDirectory(cfg.Upgrade.StateDirectory)
+		if err != nil {
+			return nil, err
+		}
+		proof, checkErr := inspectUpgradeSource(ctx, cfg, provider.upgradeCustody, false)
+		if checkErr != nil {
+			return nil, checkErr
+		}
+		if cfg.UpgradeMaterialDigest != "" && cfg.UpgradeMaterialDigest != proof.MaterialDigest {
+			return nil, configrollout.ErrConflict
+		}
+		provider.upgradeMaterial = proof.MaterialDigest
+	}
+	if len(enrollment.Target.DatabaseSources) > 0 && selected.DatabaseSource == "" || len(enrollment.Target.RootSources) > 0 && selected.RootSource == "" || len(enrollment.Target.UpgradeSources) > 0 && selected.UpgradeSource == "" {
 		return nil, configrollout.ErrUnavailable
 	}
 	if err := db.CheckAdmission(ctx); err != nil {
@@ -204,7 +225,19 @@ func (d *bootstrapDeployment) PrepareCommand(ctx context.Context, intent configr
 		changes.Root = &configrollout.SourceProof{Alias: selected.RootSource, SourceDigest: configrollout.SourceDigest(source), ProofDigest: digest, RootEpoch: int64(epoch)}
 		d.rememberProof(digest, deploymentSourceProof{root: fingerprint, epoch: epoch, wrapper: wrapper, expires: time.Now().Add(5 * time.Minute)})
 	}
-	if changes.Database == nil && changes.Root == nil {
+	if selected.UpgradeSource != d.installed.UpgradeSource {
+		source, ok := d.enrollment.Target.UpgradeSources[selected.UpgradeSource]
+		if !ok {
+			return configrollout.SignedCommand{}, configrollout.ErrUnsupported
+		}
+		proof, err := inspectUpgradeSource(ctx, selectedUpgradeConfiguration(d.cfg, source), d.upgradeCustody, true)
+		if err != nil {
+			return configrollout.SignedCommand{}, err
+		}
+		changes.Upgrade = &configrollout.SourceProof{Alias: selected.UpgradeSource, SourceDigest: configrollout.UpgradeSourceDigest(source), ProofDigest: proof.MaterialDigest}
+		d.rememberProof(proof.MaterialDigest, deploymentSourceProof{upgrade: &proof, expires: time.Now().Add(5 * time.Minute)})
+	}
+	if changes.Database == nil && changes.Root == nil && changes.Upgrade == nil {
 		return configrollout.SignedCommand{}, configrollout.ErrInvalid
 	}
 	return d.sign(ctx, configrollout.Command{EnrollmentID: d.enrollment.ID, Sequence: sequence, Action: configrollout.ActionPrepare, Intent: intent, Bootstrap: changes})
@@ -347,6 +380,15 @@ func (d *bootstrapDeployment) verifySelections(ctx context.Context, expected con
 			return service.ErrDeploymentSourcesPending
 		}
 	}
+	if len(d.enrollment.Target.UpgradeSources) > 0 {
+		if expected.UpgradeSource == "" || expected.UpgradeSource != selected.UpgradeSource || configuredUpgradeSource(d.cfg) != d.enrollment.Target.UpgradeSources[expected.UpgradeSource] {
+			return service.ErrDeploymentSourcesPending
+		}
+		proof, err := inspectUpgradeSource(ctx, d.cfg, d.upgradeCustody, false)
+		if err != nil || proof.MaterialDigest != d.upgradeMaterial {
+			return service.ErrDeploymentSourcesPending
+		}
+	}
 	return nil
 }
 
@@ -398,7 +440,7 @@ func (d *bootstrapDeployment) validatePreparedSources(ctx context.Context, chang
 	if changes == nil {
 		return configrollout.ErrInvalid
 	}
-	for _, source := range []*configrollout.SourceProof{changes.Database, changes.Root} {
+	for _, source := range []*configrollout.SourceProof{changes.Database, changes.Root, changes.Upgrade} {
 		if source == nil {
 			continue
 		}
@@ -408,7 +450,16 @@ func (d *bootstrapDeployment) validatePreparedSources(ctx context.Context, chang
 		if !ok || !time.Now().Before(proof.expires) {
 			return service.ErrDeploymentPreparationExpired
 		}
-		if source == changes.Database {
+		if source == changes.Upgrade {
+			enrolled, ok := d.enrollment.Target.UpgradeSources[source.Alias]
+			if !ok || proof.upgrade == nil || source.SourceDigest != configrollout.UpgradeSourceDigest(enrolled) {
+				return configrollout.ErrInvalid
+			}
+			current, err := inspectUpgradeSource(ctx, selectedUpgradeConfiguration(d.cfg, enrolled), d.upgradeCustody, true)
+			if err != nil || current != *proof.upgrade || current.MaterialDigest != source.ProofDigest {
+				return service.ErrDeploymentPreparationExpired
+			}
+		} else if source == changes.Database {
 			dsn, err := d.databaseSource(source.Alias)
 			if err != nil || proof.database == nil {
 				return configrollout.ErrUnavailable
@@ -494,8 +545,18 @@ func (d *bootstrapDeployment) readSelection() (config.ManagedBootstrapSources, s
 			return config.ManagedBootstrapSources{}, "", configrollout.ErrUnavailable
 		}
 	}
-	selected := config.ManagedBootstrapSources{DatabaseSource: values["database-alias"], RootSource: values["root-alias"]}
-	if selected.DatabaseSource != "" || selected.RootSource != "" {
+	if len(d.enrollment.Target.UpgradeSources) > 0 {
+		raw, err := readDeploymentFile(filepath.Join(d.selectionDirectory, "upgrade-alias"), false)
+		if err != nil {
+			return config.ManagedBootstrapSources{}, "", configrollout.ErrUnavailable
+		}
+		values["upgrade-alias"] = strings.TrimSpace(string(raw))
+		if _, ok := d.enrollment.Target.UpgradeSources[values["upgrade-alias"]]; !ok {
+			return config.ManagedBootstrapSources{}, "", configrollout.ErrUnavailable
+		}
+	}
+	selected := config.ManagedBootstrapSources{UpgradeSource: values["upgrade-alias"], DatabaseSource: values["database-alias"], RootSource: values["root-alias"]}
+	if selected.DatabaseSource != "" || selected.RootSource != "" || selected.UpgradeSource != "" {
 		selected.Version = 1
 	}
 	if selected.DatabaseSource != "" {

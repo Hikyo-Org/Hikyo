@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -86,6 +87,14 @@ func (p *deploymentProbe) VerifyInstalled(_ context.Context, bundle *runtimeconf
 }
 
 func TestSelfConfigDeploymentCommitsBeforeSendingAndRequiresApplicationAck(t *testing.T) {
+	testSelfConfigDeploymentAuthorization(t, "database_source")
+}
+
+func TestSelfConfigUpgradeDeploymentRequiresExactMFAAndApplicationAck(t *testing.T) {
+	testSelfConfigDeploymentAuthorization(t, "upgrade_source")
+}
+
+func testSelfConfigDeploymentAuthorization(t *testing.T, sourceKey string) {
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, _ := installerFixture(t, engine)
@@ -104,7 +113,7 @@ func TestSelfConfigDeploymentCommitsBeforeSendingAndRequiresApplicationAck(t *te
 			deployment := &deploymentProbe{identity: DeploymentIdentity{EnrollmentID: "enrolled", OwnerInstanceID: owner, Incarnation: inc, DeploymentUID: "deployment-uid", TemplateStamp: "original-template"}, sent: make(map[uint64]bool)}
 			s.Deployment = deployment
 			scope := domain.Scope{Org: domain.OrgID(status.Binding.OrgID), Project: domain.ProjectID(status.Binding.ProjectID), Env: domain.EnvID(status.Binding.EnvironmentID)}
-			draft, err := (&Values{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}).Set(t.Context(), local, scope, config.ManagedBootstrapSourcesKey, `{"version":1,"database_source":"replacement"}`, nil)
+			draft, err := (&Values{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth}).Set(t.Context(), local, scope, config.ManagedBootstrapSourcesKey, fmt.Sprintf(`{"version":1,%q:"replacement"}`, sourceKey), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

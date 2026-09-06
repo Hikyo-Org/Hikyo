@@ -15,10 +15,10 @@ The chart refuses enrollment for those cases. This restriction does not change
 the separate HA runtime configuration Apply flow.
 
 :::note[Acceptance status]
-The concrete integration is uncommitted and undergoing acceptance. Chart and
-controller tests do not establish that a real cluster is enrolled or that
-replacement-pod and restoration checks passed. Host, GitOps and HA bootstrap
-providers are not implemented.
+The DB/root integration has real Kubernetes replacement, application
+acknowledgement, transport-expiry and Restore/repair evidence. Later topology
+and upgrade-profile changes require their own integrated acceptance.
+Host, GitOps and multi-member HA bootstrap providers are not implemented.
 :::
 
 ## Install and enroll
@@ -50,13 +50,63 @@ The server receives these fixed read-only files:
 | Deployment signer | `/run/hikyo/rollout/authority/authority.key` |
 | Database alias | `/run/hikyo/rollout/sources/database/<alias>/dsn` |
 | Root alias | `/run/hikyo/rollout/sources/root/<alias>/root-key` |
-| Applied selection | `/run/hikyo/rollout/selection/{stamp,database-alias,root-alias}` |
+| Applied selection | `/run/hikyo/rollout/selection/{stamp,database-alias,root-alias,upgrade-alias,upgrade-proof}` |
 
 The chart passes `--config-rollout-enrollment` and
 `--config-rollout-signing-key` with the paths above. Dedicated init containers
 validate and stage the signer and root files with owner-only permissions. The
 executor receives enrollment plus the public key and a projected API token;
 it does not mount any private signer, database source or root source.
+
+## Enroll upgrade profiles
+
+`rollout.upgradeSources` maps each alias to one complete startup profile.
+`rollout.initialUpgradeSource` must exactly match the seven current `upgrade`
+values, including empty optional values and `false`. Each descriptor contains
+all seven fields; omitted or null fields are refused.
+
+| Profile field | Server input |
+| --- | --- |
+| `bundle_directory` | `HIKYO_UPGRADE_BUNDLE` |
+| `state_directory` | `HIKYO_UPGRADE_STATE_DIR` |
+| `evidence_directory` | `HIKYO_UPGRADE_EVIDENCE` |
+| `ciphertext_path` | `HIKYO_UPGRADE_BACKUP` |
+| `operator_public_key_file` | `HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY` |
+| `target_manifest_sha256` | `HIKYO_UPGRADE_TARGET_MANIFEST` |
+| `legacy_writers_stopped` | `HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED` |
+
+Bundle, evidence, ciphertext and public-key paths must already exist under
+`/run/hikyo-upgrade`. Persistent state must be under `/var/lib/hikyo-upgrade`.
+Evidence directory and ciphertext path are either both empty or both set.
+An explicit target is a lowercase SHA-256 digest in the authenticated bundle.
+The legacy-writer assertion requires separate signed evidence.
+
+To select a different state path, preinstall `rollout.upgradeStateAliases`.
+Each listed profile alias receives an immutable mount at
+`/var/lib/hikyo-upgrade/aliases/<alias>`, backed by the existing state PVC's
+`operator-custody` subdirectory. The new path must name the same actual
+persistent directory. Copying custody into another directory does not qualify.
+Apply cannot change volumes, mounts, subpaths, the operator key or the image.
+
+After enrollment, edit `upgrade_source` in `HIKYO_BOOTSTRAP_SOURCES`, preserving
+its other selections, and publish. Prepare checks the actual installed state,
+release trust, bundle, operator custody and supplied evidence without creating
+locks, ciphertext copies, migration state or admission authority. Exact fresh
+admin MFA authorizes the resulting plan. The executor replaces all seven
+literal startup values together, including cleared optional values.
+
+Replacement resolves the external alias and approved artifact fingerprint
+before opening the encrypted managed project. The existing upgrade gate still
+owns build compatibility, migrations, current evidence authority and nonce
+consumption. The setting cannot manufacture drill evidence, perform operator
+rotation, move custody, or select a different executable. Ordinary process
+restarts and later valid image upgrades retain those existing checks.
+
+A restored initial profile may have no rollout fingerprint because its initial
+gate admission preceded managed configuration. That exception is pinned to the
+exact enrolled initial tuple. Other applied profiles require their authorized
+fingerprint. Restore still leaves business operations fenced until a separate,
+freshly authorized repair applies.
 
 ## Authorization and application proof
 
@@ -121,8 +171,8 @@ the already committed Submit/Restore/Observe command. Renewal changes only the
 transport sequence and timestamps, preserves the exact authorized plan and is
 persisted before delivery. It does not authorize an uncommitted preparation or
 a different target. Explicit restoration also handles a verified plan for which
-no deployment effect occurred. Local race checks and review pass; actual
-Kubernetes outage and recovery acceptance remains required.
+no deployment effect occurred. Real transport expiry and recovery pass. Executor process-death and takeover
+are separate cases and are not established by the held-response proof.
 
 Keep GitOps reconciliation from overwriting executor-owned control Secret data,
 Lease custody and the declared managed Deployment fields during a pending

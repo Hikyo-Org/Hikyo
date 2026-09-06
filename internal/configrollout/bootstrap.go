@@ -31,6 +31,7 @@ type SourceProof struct {
 type BootstrapChanges struct {
 	Database *SourceProof `json:"database,omitempty"`
 	Root     *SourceProof `json:"root,omitempty"`
+	Upgrade  *SourceProof `json:"upgrade,omitempty"`
 }
 
 type rootSourceDelta struct {
@@ -71,7 +72,7 @@ func (k *Kubernetes) validBootstrap(b *BootstrapChanges) bool {
 	if b == nil {
 		return true
 	}
-	if b.Database == nil && b.Root == nil {
+	if b.Database == nil && b.Root == nil && b.Upgrade == nil {
 		return false
 	}
 	for _, item := range []struct {
@@ -88,7 +89,7 @@ func (k *Kubernetes) validBootstrap(b *BootstrapChanges) bool {
 			return false
 		}
 	}
-	return true
+	return k.validUpgradeProof(b.Upgrade)
 }
 
 // PrepareBootstrap accepts only application-proven installed source aliases.
@@ -106,6 +107,10 @@ func (k *Kubernetes) PrepareBootstrap(ctx context.Context, intent Intent, change
 	if copy.Root != nil {
 		value := *copy.Root
 		copy.Root = &value
+	}
+	if copy.Upgrade != nil {
+		value := *copy.Upgrade
+		copy.Upgrade = &value
 	}
 	return k.prepare(ctx, intent, changes, &copy)
 }
@@ -171,7 +176,7 @@ func (k *Kubernetes) prepareBootstrapDelta(d *appsv1.Deployment, p *planData) er
 			return ErrUnsupported
 		}
 	}
-	return nil
+	return k.prepareUpgradeDelta(d, p)
 }
 
 func (k *Kubernetes) validBootstrapDelta(p planData) bool {
@@ -189,6 +194,10 @@ func (k *Kubernetes) validBootstrapDelta(p planData) bool {
 	if b.Root != nil {
 		aliases[rootAliasAnnotation] = b.Root.Alias
 	}
+	if b.Upgrade != nil {
+		aliases[upgradeAliasAnnotation] = b.Upgrade.Alias
+		aliases[upgradeProofAnnotation] = b.Upgrade.ProofDigest
+	}
 	if len(p.Delta.SourceAliases) != len(aliases) {
 		return false
 	}
@@ -201,7 +210,7 @@ func (k *Kubernetes) validBootstrapDelta(p planData) bool {
 	want := len(p.Changes)
 	if b.Database != nil {
 		want++
-		if len(p.Delta.Environment) != want {
+		if len(p.Delta.Environment) < want {
 			return false
 		}
 		e := p.Delta.Environment[want-1]
@@ -209,7 +218,7 @@ func (k *Kubernetes) validBootstrapDelta(p planData) bool {
 			return false
 		}
 	}
-	if len(p.Delta.Environment) != want {
+	if !k.validUpgradeDelta(p, want) {
 		return false
 	}
 	if b.Root == nil {
@@ -230,6 +239,7 @@ func (k *Kubernetes) validBootstrapDelta(p planData) bool {
 func cloneEnrollment(e Enrollment) Enrollment {
 	e.Target.DatabaseSources = maps.Clone(e.Target.DatabaseSources)
 	e.Target.RootSources = maps.Clone(e.Target.RootSources)
+	e.Target.UpgradeSources = maps.Clone(e.Target.UpgradeSources)
 	e.Target.Sources = maps.Clone(e.Target.Sources)
 	for key, aliases := range e.Target.Sources {
 		e.Target.Sources[key] = maps.Clone(aliases)

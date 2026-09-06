@@ -968,7 +968,7 @@
       ],
       "recommendation": "Implement controlled singleton HA toggles and explicit node-ID replacement with durable membership fencing.",
       "rationale": "A renamed replacement must prove which old member it replaces; an old process must lose serving and scheduler authority.",
-      "decision": "Accepted using the user’s standing approval of recommendations. Implementation remains pending. Preserve one-replica Recreate rollout limits, prove PostgreSQL/shared-root prerequisites, keep node projections explicit, and bind before/after identity to exact MFA and the durable rollout. One HA-enabled replica enables coordination but does not provide redundancy. Multi-replica membership replacement needs separate logical-member correspondence and remains outside this first provider slice.",
+      "decision": "Accepted using the user’s standing approval of recommendations. Implementation is in independent review. Review identified a source-Restore repair path that could omit HA coordination; the fix and an actual app-owner regression are required before integration. Preserve one-replica Recreate rollout limits, prove PostgreSQL/shared-root prerequisites, keep node projections explicit, and bind before/after identity to exact MFA and the durable rollout. One HA-enabled replica enables coordination but does not provide redundancy. Multi-replica membership replacement needs separate logical-member correspondence and remains outside this first provider slice.",
       "acceptance": "Prove both HA directions, identity collisions and stale restart/heartbeat/ack refusal, actual replacement identity, subsequent Apply, interrupted cutover, and Restore followed by separate repair.",
       "evidence": [
         "internal/app/ha.go",
@@ -998,7 +998,7 @@
       ],
       "recommendation": "Use an enrolled upgrade_source alias, a read-only preflight, and the existing authoritative startup gate.",
       "rationale": "The encrypted project is unavailable before database admission, so the applied selector must be resolved from external custody before that gate runs.",
-      "decision": "Accepted using the user’s standing approval of recommendations. Implementation remains pending. Bind enrolled descriptor and artifact digests to the plan, preserve the actual persistent custody object and current operator trust, and resolve all seven inputs before replacement admission. Configuration cannot manufacture signed evidence, rotate the operator key, move custody, select a new executable, or claim that legacy writers stopped.",
+      "decision": "Accepted using the user’s standing approval of recommendations. Implemented and integrated locally after final CLEAN review. Enrolled descriptor and immutable artifact digests bind the plan; mutable build and custody state are rechecked before submit. All seven inputs resolve before replacement admission. Pure preflight, parser refusals, future-build and custody-floor regressions, both-engine tests, races and vet pass. Real Kubernetes policy and same-directory mount proof pass. Integrated running-server Apply/Restore proof remains pending. Configuration cannot manufacture signed evidence, rotate the operator key, move custody, or select a new executable.",
       "acceptance": "Prove pure no-mutation preflight, coherent exact import, source drift refusal, unchanged custody/operator authority, evidence and target validation, actual replacement startup consumers, and Restore.",
       "evidence": [
         "internal/app/upgrade_gate.go",
@@ -1497,7 +1497,7 @@
       ]
     }
   ],
-  "revisionNote": "Validated baseline is saved in signed DCO commit 2a070efb. Its recorded Kubernetes binary/source manifest proves live reload, controlled DB/root rollout, exact acknowledgement, root-wrapper recovery, transport expiry renewal and Restore with separate repair. Development controls and next-root selection are integrated and pass combined review, all six affected package suites, full lint, vet and docs checks. Seven upgrade inputs and HA/node-identity transitions are being implemented in isolated worktrees. No expanded exact-head CI, merge or production rollout is claimed.",
+  "revisionNote": "Signed checkpoint 0cb6de70 is pushed to draft PR #686. It includes the validated runtime, development-control and next-root work. Exact-head CI exposed PostgreSQL fixture authentication, setup readiness and an ambiguous browser selector; repairs pass locally in signed commit 8f93fb50 without changing timeout limits or permission assertions. The seven-input upgrade-profile slice passed final review and is integrated locally. HA/node identity is in review. Expanded real-cluster proof and final exact-head CI remain required; no merge or production deployment is claimed.",
   "topology": {
     "heading": "One root view. One project per instance.",
     "summary": "Independent remotes own independent configuration. Only HA replicas of one logical instance share a project and applied revision.",
@@ -1529,7 +1529,7 @@
     "ownership": "The root is a unified UI group, not one physical organization spanning remote databases. Each independent instance stores its protected Hikyo organization and its own project locally. The browser manages a remote directly under that remote’s authority.",
     "boundary": "No root defaults, shared-secret assumption, automatic copying or cross-instance apply. Equal key names or revision numbers do not identify the same configuration."
   },
-  "deliveryStage": "LOCAL VALIDATED / WORK CONTINUES",
+  "deliveryStage": "INTEGRATING / CI REPAIRS",
   "deliveryEvidence": [
     [
       "Live owner and node configuration",
@@ -1549,11 +1549,15 @@
     ],
     [
       "Historical CI and current delivery",
-      "PR #686 at 3f5b2573537d113a66899699fd72ab3246540940 passed historical exact-head CI run 34034036243 for the earlier nine-key delivery. That result does not certify this expansion. Current expanded desktop/mobile browser and real-cluster proof are recorded separately. Expanded exact-head CI remains required."
+      "Draft PR #686 contains signed checkpoint 0cb6de70. Run 34046700568 passed all three isolation shards, lint, generated checks, documentation, DCO, supply-chain and Kubernetes tests. Core and one race shard failed because a test LOGIN role lacked a SCRAM password; the repaired fixture passes all PostgreSQL source-proof tests (10.253 s) and the affected race test (8.896 s) against a dedicated SCRAM database. A browser setup race now waits for managed-generation readiness; the full affected mobile shard passes 28 tests in 4.8 minutes. Two browser shards exposed a separate ambiguous owner-label locator, whose semantic locator repair passes dark/light checks on desktop and mobile. All three repairs are saved in signed commit 8f93fb50. Final exact-head CI remains required."
     ],
     [
       "Development and next-root integration",
       "The three existing development controls and enrolled candidate-root selector are integrated. Combined R1 review is CLEAN. Full affected packages passed: config 0.824 s, runtime configuration 0.355 s, service 129.291 s, store 40.932 s, app 113.051 s and upgrade gate 95.897 s. Full lint passed in 111.121 s; vet and docs check/build pass. Isolated race and negative-authority tests remain recorded in validation.md. These later changes are not covered by the earlier exact-source kind binary."
+    ],
+    [
+      "Upgrade custody profile integration",
+      "D34 final review is CLEAN. The locally integrated slice selects one enrolled seven-value profile, validates artifacts without mutation, preserves the same persistent custody directory, and repeats existing authoritative admission on replacement boot. Both-engine focused and affected-package tests, scoped races, vet and full lint (198.719 s) pass. Real Kubernetes admission rejects mixed tuples and mount/PVC mutation; an actual Pod proved alternate state paths reference the same directory. Full running-server Apply/Restore proof on the integrated source remains pending."
     ]
   ],
   "bootstrapRolloutDecision": {
@@ -1575,8 +1579,8 @@
   },
   "acceptanceGaps": [
     "Actual enrolled Kubernetes rollout/Restore/repair and transport-expiry recovery now pass. Executor process-death/takeover and additional platform coverage were not part of that real-cluster proof. Later feature slices require their own integrated validation; the recorded binary/source hashes identify the tested baseline.",
-    "HA bootstrap rollover and HA/node-identity transitions remain unimplemented. Host/systemd and GitOps providers are separate platform extensions; they are not additional environment-variable families.",
-    "Seven upgrade startup inputs and the two HA/node-identity inputs remain under implementation outside the current concrete Apply consumer. Development controls and next-root selection are now integrated with independent review and focused tests; full combined regression, lint and vet pass. Database source switching reconnects to the same PostgreSQL datastore; moving data is a separate migration capability.",
+    "Singleton HA and node-identity transitions are implemented in an isolated slice under review. Multi-replica bootstrap rollover, logical-member replacement, host/systemd and GitOps providers remain separate platform capabilities.",
+    "Seven upgrade startup inputs are now integrated locally after final review; their complete running-server rollout proof is pending. The two HA/node-identity inputs remain under review. Development controls and next-root selection have combined review, regression, lint and vet evidence. Database source switching reconnects to the same PostgreSQL datastore; moving data is a separate migration capability.",
     "Changing the RP hostname requires fresh TOTP and a current password credential on the same administrator. DNS/TLS reachability and successful authentication at the new origin are not proved.",
     "Complete the remaining variable lifecycles and their combined review, deployment evidence and exact-head CI. The baseline is committed and the next-root/development integration is locally validated; no merge or production deployment is claimed. All 369 baseline isolation cases passed across exact planned coverage, with the last shard subdivided locally after a cumulative process timeout."
   ],

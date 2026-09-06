@@ -155,6 +155,15 @@ rollout:
   # All source Secrets must be immutable. Alias -> {name: Secret name, key: key}.
   initialDatabaseSource: ""
   initialRootSource: ""
+  # Optional immutable upgrade-custody tuples using the existing public/state PVCs.
+  # Every descriptor declares all seven fields, including empty/false values.
+  # A nonempty map requires an initial alias matching the installed upgrade inputs.
+  initialUpgradeSource: ""
+  upgradeSources: {}
+  # Optional alternate mounts of the SAME operator-custody directory.
+  # Each listed source uses /var/lib/hikyo-upgrade/aliases/<alias>; mounts are
+  # installed before enrollment and cannot change through configuration Apply.
+  upgradeStateAliases: []
   databaseSources: {}
   rootSources: {}
   # Deployment-safe file aliases already mounted by the installation.

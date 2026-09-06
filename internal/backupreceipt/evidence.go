@@ -75,33 +75,46 @@ func VerifyLegacyEvidence(ctx context.Context, pin PinnedOperator, plan upgradec
 }
 
 func verifyBoundEvidence(ctx context.Context, pin PinnedOperator, plan upgradecompat.Plan, ciphertext *Ciphertext, material EvidenceMaterial, receipt Receipt, now time.Time) (VerifiedEvidence, error) {
-	if !pin.Valid() || !plan.Valid() || ciphertext == nil || now.IsZero() || len(material.Signature) == 0 || len(material.Signature) > MaxSignatureBytes {
-		return VerifiedEvidence{}, errors.New("upgrade evidence requires pinned authority, route and ciphertext")
+	if ciphertext == nil {
+		return VerifiedEvidence{}, errors.New("upgrade evidence requires pinned ciphertext")
 	}
-	s := receipt.Snapshot
-	if err := CheckReceiptPlan(receipt, plan); err != nil {
-		return VerifiedEvidence{}, err
-	}
-	if pin.InstanceID() != s.InstanceID {
-		return VerifiedEvidence{}, errors.New("backup snapshot differs from current installation pin")
-	}
-
-	a, err := ParseAttestation(material.Attestation)
+	statement, err := checkBoundEvidence(pin, plan, material, receipt, now)
 	if err != nil {
 		return VerifiedEvidence{}, err
-	}
-	bridges := plan.BridgeDigests()
-	slices.Sort(bridges)
-	if a.Authority != s.Authority || a.ReceiptSHA256 != releaseidentity.Hash(material.Receipt) || a.RouteSHA256 != plan.Digest() || !slices.Equal(a.BridgeSHA256, bridges) || a.TargetIdentity != plan.Target() || a.InstanceID != s.InstanceID || a.RestoreEpoch != s.RestoreEpoch || a.RecoveryIncarnation != s.RecoveryIncarnation || a.SourceGeneration != s.SourceGeneration || a.RouteGeneration != s.RouteGeneration || a.OperatorKeyID != pin.KeyID() || a.IssuedAt.Before(s.CreatedAt) || a.IssuedAt.After(now) || !now.Before(a.ExpiresAt) {
-		return VerifiedEvidence{}, errors.New("upgrade attestation binding or validity refused")
-	}
-	if err := releasetrust.VerifyOperatorSignature(pin.public, material.Signature, material.Attestation); err != nil {
-		return VerifiedEvidence{}, errors.New("upgrade attestation operator signature refused")
 	}
 	if err := ciphertext.Check(ctx, receipt); err != nil {
 		return VerifiedEvidence{}, err
 	}
-	return VerifiedEvidence{valid: true, receipt: receipt, statement: a, digest: evidenceDigest(material)}, nil
+	return VerifiedEvidence{valid: true, receipt: receipt, statement: statement, digest: evidenceDigest(material)}, nil
+}
+
+// checkBoundEvidence checks public signed material only. It grants no live
+// datastore authority and is shared by execution and read-only preflight.
+func checkBoundEvidence(pin PinnedOperator, plan upgradecompat.Plan, material EvidenceMaterial, receipt Receipt, now time.Time) (Attestation, error) {
+	if !pin.Valid() || !plan.Valid() || now.IsZero() || len(material.Signature) == 0 || len(material.Signature) > MaxSignatureBytes {
+		return Attestation{}, errors.New("upgrade evidence requires pinned authority and route")
+	}
+	s := receipt.Snapshot
+	if err := CheckReceiptPlan(receipt, plan); err != nil {
+		return Attestation{}, err
+	}
+	if pin.InstanceID() != s.InstanceID {
+		return Attestation{}, errors.New("backup snapshot differs from current installation pin")
+	}
+
+	a, err := ParseAttestation(material.Attestation)
+	if err != nil {
+		return Attestation{}, err
+	}
+	bridges := plan.BridgeDigests()
+	slices.Sort(bridges)
+	if a.Authority != s.Authority || a.ReceiptSHA256 != releaseidentity.Hash(material.Receipt) || a.RouteSHA256 != plan.Digest() || !slices.Equal(a.BridgeSHA256, bridges) || a.TargetIdentity != plan.Target() || a.InstanceID != s.InstanceID || a.RestoreEpoch != s.RestoreEpoch || a.RecoveryIncarnation != s.RecoveryIncarnation || a.SourceGeneration != s.SourceGeneration || a.RouteGeneration != s.RouteGeneration || a.OperatorKeyID != pin.KeyID() || a.IssuedAt.Before(s.CreatedAt) || a.IssuedAt.After(now) || !now.Before(a.ExpiresAt) {
+		return Attestation{}, errors.New("upgrade attestation binding or validity refused")
+	}
+	if err := releasetrust.VerifyOperatorSignature(pin.public, material.Signature, material.Attestation); err != nil {
+		return Attestation{}, errors.New("upgrade attestation operator signature refused")
+	}
+	return a, nil
 }
 
 // Length framing makes the digest unambiguous without re-encoding signed bytes.

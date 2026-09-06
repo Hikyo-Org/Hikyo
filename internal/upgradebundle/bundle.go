@@ -5,6 +5,7 @@ package upgradebundle
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -38,11 +39,16 @@ type Index struct {
 // Bundle holds immutable authenticated documents, not mutable downloaded
 // artifact paths. The executor must separately pin and verify each payload.
 type Bundle struct {
-	snapshot releasetrust.Snapshot
-	nodes    []upgradecompat.VerifiedNode
-	bridges  []releasetrust.VerifiedBridge
-	releases map[releaseidentity.Identity]releasetrust.VerifiedRelease
+	snapshot       releasetrust.Snapshot
+	materialDigest releaseidentity.Digest
+	nodes          []upgradecompat.VerifiedNode
+	bridges        []releasetrust.VerifiedBridge
+	releases       map[releaseidentity.Identity]releasetrust.VerifiedRelease
 }
+
+// MaterialDigest binds every loaded public document, including index and
+// signatures. Authenticated manifests independently bind loaded payload bytes.
+func (b Bundle) MaterialDigest() releaseidentity.Digest { return b.materialDigest }
 
 func (b Bundle) Valid() bool                     { return b.snapshot.Valid() }
 func (b Bundle) Snapshot() releasetrust.Snapshot { return b.snapshot }
@@ -97,7 +103,7 @@ func Load(ctx context.Context, directory string, pinned releasetrust.PinnedTrust
 		return Bundle{}, errors.New("open offline upgrade bundle")
 	}
 	defer root.Close()
-	reader := documentReader{ctx: ctx, root: root}
+	reader := documentReader{ctx: ctx, root: root, documents: map[string]releaseidentity.Digest{}}
 	raw, err := reader.read("index.json")
 	if err != nil {
 		return Bundle{}, err
@@ -179,6 +185,11 @@ func Load(ctx context.Context, directory string, pinned releasetrust.PinnedTrust
 		}
 		bundle.bridges = append(bundle.bridges, bridge)
 	}
+	encodedMaterial, err := json.Marshal(reader.documents)
+	if err != nil {
+		return Bundle{}, err
+	}
+	bundle.materialDigest = releaseidentity.Hash(encodedMaterial)
 	return bundle, nil
 }
 
@@ -187,6 +198,7 @@ type documentReader struct {
 	root         *os.Root
 	bytes        int
 	payloadBytes int64
+	documents    map[string]releaseidentity.Digest
 }
 
 func (r *documentReader) read(name string) ([]byte, error) {
@@ -212,6 +224,9 @@ func (r *documentReader) read(name string) ([]byte, error) {
 	}
 	if err := r.ctx.Err(); err != nil {
 		return nil, err
+	}
+	if r.documents != nil {
+		r.documents[name] = releaseidentity.Hash(raw)
 	}
 	return slices.Clone(raw), nil
 }

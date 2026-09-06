@@ -76,18 +76,20 @@ type Change struct {
 // precreated and dedicated to this executor. ResourceNames RBAC must limit its
 // client, and admission policy must restrict allowed Deployment field changes.
 type Target struct {
-	Namespace       string                         `json:"namespace"`
-	Deployment      string                         `json:"deployment"`
-	DeploymentUID   types.UID                      `json:"deployment_uid"`
-	Container       string                         `json:"container"`
-	ConfigSecret    string                         `json:"config_secret"`
-	RollbackSecret  string                         `json:"rollback_secret"`
-	RequestSecret   string                         `json:"request_secret"`
-	ReceiptSecret   string                         `json:"receipt_secret"`
-	Sources         map[Variable]map[string]string `json:"sources"`
-	DatabaseSources map[string]SecretSource        `json:"database_sources"`
-	RootSources     map[string]SecretSource        `json:"root_sources"`
-	StableNodeID    string                         `json:"stable_node_id"`
+	Namespace            string                          `json:"namespace"`
+	Deployment           string                          `json:"deployment"`
+	DeploymentUID        types.UID                       `json:"deployment_uid"`
+	Container            string                          `json:"container"`
+	ConfigSecret         string                          `json:"config_secret"`
+	RollbackSecret       string                          `json:"rollback_secret"`
+	RequestSecret        string                          `json:"request_secret"`
+	ReceiptSecret        string                          `json:"receipt_secret"`
+	Sources              map[Variable]map[string]string  `json:"sources"`
+	DatabaseSources      map[string]SecretSource         `json:"database_sources"`
+	RootSources          map[string]SecretSource         `json:"root_sources"`
+	UpgradeSources       map[string]UpgradeCustodySource `json:"upgrade_sources,omitempty"`
+	InitialUpgradeSource string                          `json:"initial_upgrade_source,omitempty"`
+	StableNodeID         string                          `json:"stable_node_id"`
 }
 
 // Intent is copied from the durably committed, exact-MFA SelfConfigJob.
@@ -258,11 +260,19 @@ func NewKubernetes(client kubernetes.Interface, target Target) (*Kubernetes, err
 		}
 	}
 	target.Sources = sources
-	if !validSecretSources(target.DatabaseSources) || !validSecretSources(target.RootSources) {
+	if !validSecretSources(target.DatabaseSources) || !validSecretSources(target.RootSources) || !validUpgradeSources(target.UpgradeSources) {
 		return nil, ErrInvalid
 	}
 	target.DatabaseSources = maps.Clone(target.DatabaseSources)
 	target.RootSources = maps.Clone(target.RootSources)
+	target.UpgradeSources = maps.Clone(target.UpgradeSources)
+	if len(target.UpgradeSources) > 0 {
+		if _, ok := target.UpgradeSources[target.InitialUpgradeSource]; !ok {
+			return nil, ErrInvalid
+		}
+	} else if target.InitialUpgradeSource != "" {
+		return nil, ErrInvalid
+	}
 	return &Kubernetes{client: client, target: target, targetDigest: digest(target)}, nil
 }
 
@@ -664,7 +674,7 @@ func applyDelta(d *appsv1.Deployment, name string, delta deploymentDelta, revers
 		d.Spec.Template.Annotations = setStamp(d.Spec.Template.Annotations, stamp)
 	}
 	for _, alias := range delta.SourceAliases {
-		if alias.Name != databaseAliasAnnotation && alias.Name != rootAliasAnnotation {
+		if alias.Name != databaseAliasAnnotation && alias.Name != rootAliasAnnotation && alias.Name != upgradeAliasAnnotation && alias.Name != upgradeProofAnnotation {
 			return ErrConflict
 		}
 		before, after := alias.Before, &alias.After
