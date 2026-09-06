@@ -1,0 +1,200 @@
+---
+title: Personal data and retention
+description: Inventory personal data, distinguish retention from erasure, and account for external copies.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/privacy.mdx
+---
+
+Use this inventory as a starting point for your installation's processing record.
+Record the owner, purpose, lawful basis, recipients, retention period and deletion
+mechanism for every applicable row. Add your own integrations and infrastructure.
+This is a source-based inventory, not a scan of your production data.
+
+## Data inventory
+
+| Data class | Examples and location | Lifecycle to account for |
+| --- | --- | --- |
+| Accounts and identity | Login handles, display names, federation subjects, SCIM users/groups and memberships in the database | Host-local restriction/release and identity erasure; upstream identity-provider reconciliation needs separate review |
+| Authentication and authorization | Password verifiers, factor credentials, sessions, credential authorities, grants and principal references | Expiry and revocation plus historical references; never return credential material in a rights export |
+| Audit metadata | Actor/credential references, source IP, user agent, object references and event payloads in tenant and instance trails | Bounded access/security policies and audited pruning; append-only does not mean anonymous |
+| Customer content | Values, names, descriptions and metadata supplied by users, including snapshots, drafts and history | Personal data can occur in config as well as secrets; revision GC does not impose an absolute age maximum |
+| Copies and recipients | Archives, replicas, restore targets, CLI output, audit exports, adapter destinations, identity providers and operator logs | Each recipient and copy needs an owner and lifecycle; deleting source data does not delete downstream copies |
+
+Opaque identifiers can still be personal data when they can be linked to a person.
+Avoid embedding names, email addresses or customer details in key names and other
+metadata unless needed. Secret-value encryption does not imply that every database
+column or operational log is encrypted by Hikyo; protect storage and access accordingly.
+
+## Identity workflows
+
+These are host-local instance-operator commands, with no HTTP route. Root-key
+custody authorizes inspection of the selected account across organizations; this
+is not a tenant-admin permission. Filter the response to the requesting
+controller's lawful scope before disclosure. Use the installation's
+normal datastore, root-key and verified build configuration. For example, set
+`HIKYO_DB` and `HIKYO_ROOT_KEY_FILE` in the operator environment; root-key options
+are not privacy-verb flags. Production admission still requires the installation's
+verified build/trust configuration. Exports and receipts
+require a new owner-only output file; existing files are not overwritten and
+personal data is not printed to stdout. If a mutation commits but file delivery
+fails, the command reports that explicitly: repeat the same action with a new
+valid output path to obtain the receipt before considering the workflow complete.
+
+| Action | Scope |
+| --- | --- |
+| `correct` | Correct local login handle and display name; preserve restriction state, revoke sessions, and leave federation subjects unchanged |
+| `export` | Account identity, linked identities, grants, session metadata and actor audit metadata; no passwords, tokens, secret values or audit payloads |
+| `restrict` | Block the existing principal's access and revoke sessions while retaining identity for review |
+| `release` | Lift a restriction; an erased account cannot be released |
+| `erase` | Remove direct account identity and authentication custody, revoke access and keep a pseudonymous tombstone for historical references |
+| `reapply` | Reapply an approved restriction/erasure receipt to the same instance and account after restoring a backup |
+
+A restricted identity is not an erased identity. A pseudonymous tombstone is not
+an assertion of anonymization. Erasure does not remove arbitrary audit payloads,
+customer values, project metadata or upstream identity-provider records.
+
+```bash
+hikyo admin privacy export --principal PRINCIPAL_ID --output-file /secure/subject-export.json
+```
+
+To correct local account labels, supply both the intended login handle and display
+name. This does not change an identity provider's subject or SCIM attributes:
+
+```bash
+hikyo admin privacy correct --principal PRINCIPAL_ID --username CORRECT_HANDLE --display-name 'Correct display name' --output-file /secure/correction-receipt.json --confirm
+```
+
+An erased account cannot be corrected. Keep the approved correction in your
+protected request register and repeat it after a restore if necessary; correction
+and release receipts are records, not replayable erasure instructions.
+
+Review the export before releasing it to the requester. Actor activity is limited
+to 10,000 rows per trail; larger exports fail rather than silently truncate. Records
+that name the person elsewhere, SCIM attributes and other people's data need a
+separate reviewed search. A complete rights response may need additional records.
+
+**Erasure permanently removes the named account's identity and credentials.**
+Review the target, dependent responsibilities and retention decision first. Each
+mutation requires explicit confirmation and a receipt file:
+
+```bash
+hikyo admin privacy restrict --principal PRINCIPAL_ID --output-file /secure/restrict-receipt.json --confirm
+hikyo admin privacy release --principal PRINCIPAL_ID --output-file /secure/release-receipt.json --confirm
+hikyo admin privacy erase --principal PRINCIPAL_ID --output-file /secure/erase-receipt.json --confirm
+```
+
+These are alternative actions, not a sequence to run blindly. Transfer the last
+membership-management responsibility before restriction or erasure; lockout
+protection can refuse the operation. Keep the latest approved action in a protected
+receipt register outside database backups. A release supersedes the older restriction
+receipt; do not replay stale restrictions after a restore. Upstream provisioning can
+create a new identity after erasure, so coordinate offboarding with the identity provider.
+
+## Audit retention
+
+Configure the server before starting the new version:
+
+```bash
+HIKYO_AUDIT_ACCESS_RETAIN_DAYS=90
+HIKYO_AUDIT_SECURITY_RETAIN_DAYS=365
+```
+
+Set these in the service's environment, not merely as unexported shell variables.
+Access retention defaults to 90 days and security retention to 365 days. Both accept
+whole days from 1 through 3650; security must be at least access retention. Invalid
+configuration refuses startup. These are product defaults, not legal requirements.
+
+**Upgrading activates deletion of audit history eligible under these defaults.**
+Choose justified periods and preserve independently required evidence before
+starting the upgraded server. The scheduler records policy adoption or change
+before pruning; each deletion transaction records the affected range and counts.
+Revision payload retention does not configure audit expiry.
+
+Correlated records are retained as a unit until every member has expired, so an
+individual event can survive beyond its own age boundary. The scheduler processes
+units in batches. Audit export fails if concurrent pruning compromises its captured
+view; retain the failure record and retry instead of accepting a partial export.
+Shared pruner health advances only after audit and payload work succeeds. Monitor
+[doctor findings](/docs/compliance-operations/#access-review-and-evidence) and collection failures.
+
+## Retention is not erasure
+
+Revision retention uses a keep-if-either rule: payloads survive while admitted by
+age OR the latest revision count. Active pins also block collection. A quiet
+environment's latest revisions may therefore remain beyond the configured age.
+Lineage metadata and audit events have separate lifecycles.
+
+Choose justified periods per data class. There is no universal GDPR retention
+period. Document why security evidence is still necessary and any applicable legal
+exception to erasure; do not delete every audit reference automatically or retain
+all identifiers forever merely because they are audit records.
+
+The control boundaries are listed under
+[self-hosted compliance](/docs/compliance/#controls-and-limits).
+
+## Erasing customer-supplied content
+
+Identity erasure cannot discover every person's data inside arbitrary values.
+Review those values and their metadata separately. Ordinary key deletion refuses
+live values; clearing a value and publishing does not erase historical snapshots.
+
+The supported coarse erasure boundary is an environment. After completing the
+normal lifecycle teardown of dependent grants, adapters and dynamic leases, an
+authorized operator can use:
+
+```bash
+hikyo env delete ENV_ID --org ORG_ID --project PROJECT_ID
+```
+
+**This permanently deletes the entire environment, including unrelated values,
+drafts, snapshots, pins and secret lineage.** Review the complete scope before
+running it. There is no selective historical-key erasure implied by this command.
+This operation requires project-level `definitions-edit` and a database-managed
+definitions mode. Git-managed definitions refuse it. Deletion removes logical
+database rows; it does not certify physical erasure of disk blocks, WAL, replicas
+or storage snapshots. Apply your storage and backup lifecycle as well.
+
+Dependent references can refuse deletion; resolve them through their supported
+lifecycle operations before retrying. Do not disable foreign-key checks.
+
+Other environments, tenants and shared accounts remain. The deletion audit record
+also remains subject to its own retention. Review key declarations, folder/project
+metadata, downstream copies and archives separately. Do not treat environment
+deletion as a complete subject-erasure certificate.
+
+## Backups and restoration
+
+The [backup runbook](/docs/backup-and-restore/#off-host-storage) explains the
+archive-directory boundary. External copies, database snapshots and failed restore
+drill targets need their own expiry and access controls.
+
+Before reopening a restored instance, verify the current approved receipt register
+and reapply each applicable restriction or identity erasure:
+
+```bash
+hikyo admin privacy reapply --receipt /secure/erase-receipt.json --output-file /secure/reapplied-receipt.json --confirm
+```
+
+Receipt replay runs on the Unix server host, where owner and mode checks are
+supported; Windows replay refuses. The receipt must be an owner-only regular file,
+at most 4096 bytes, and match the installation instance and account. Reapplication does not erase customer content or external copies; repeat
+those separately approved actions as well. Keep networking and provisioning isolated
+until reconciliation is complete. Test the procedure on a scratch restore and record
+cleanup. The command is operator-invoked, not an automatic restoration hook.
+
+## Website and integration boundary
+
+The public hikyo.app documentation site is separate from your self-hosted product.
+When configured, its PostHog analytics load after the visitor opts in; the site
+provides an Analytics settings control. Website analytics and hosting logs need
+the website operator's own processing assessment and notice. This paragraph is not
+a complete website privacy notice.
+
+Inventory your own reverse proxy logs, monitoring, identity providers, support
+uploads and delivery destinations. Product no-egress claims do not describe those
+operator-selected systems.
+
+## Sources
+
+See the [EDPB guide to individual rights](https://www.edpb.europa.eu/sme/be-compliant/respect-individuals-rights_en),
+[retention guidance](https://www.edpb.europa.eu/sme/find-practical-info/faq_en?page=1)
+and [GDPR](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng).

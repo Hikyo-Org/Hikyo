@@ -159,7 +159,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	for _, table := range []string{"upgrade_pending", "upgrade_nonces", "upgrade_control"} {
 		drillExec(t, db, "DROP TABLE "+table)
 	}
-	removePostLegacyDiagnosticsFixture(t, db)
+	removePostLegacyAdditionsFixture(t, db)
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -218,11 +218,13 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes candidate migration 45, while the sole
-// admitted legacy genesis ends at 44. Model that historical archive by removing
-// only this known, untouched metadata addition. The pinned catalog inspection
-// below still rejects every other shape change; no runtime downgrade is added.
-func removePostLegacyDiagnosticsFixture(t *testing.T, db *store.DB) {
+// The runtime-created fixture includes migrations 45 through 47, while the
+// sole admitted legacy genesis ends at 44. Model that historical archive by
+// removing only the enumerated, pristine additions. Any recorded diagnostics,
+// audit policy, or privacy restriction refuses removal. The subsequent pinned
+// catalog inspection still proves the exact legacy schema and migration digest;
+// this test-only surgery adds no runtime downgrade capability.
+func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	t.Helper()
 	engine := releaseidentity.Engine(db.Engine())
 	legacy, err := upgrade.PinnedLegacyManifest(engine)
@@ -233,8 +235,13 @@ func removePostLegacyDiagnosticsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+1 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) || current.Entries[len(legacy.Entries)].Version != 45 {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus diagnostics migration 45 only")
+	if len(current.Entries) != len(legacy.Entries)+3 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 47 only")
+	}
+	for i, version := range []uint64{45, 46, 47} {
+		if current.Entries[len(legacy.Entries)+i].Version != version {
+			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
+		}
 	}
 	const pristine = `SELECT COUNT(*) FROM ops_diagnostics WHERE singleton=1 AND escrow_verified_at IS NULL AND escrow_instance_id='' AND escrow_incarnation='' AND escrow_root_epoch=0 AND last_reencrypt_success IS NULL`
 	var untouched int
@@ -246,8 +253,32 @@ func removePostLegacyDiagnosticsFixture(t *testing.T, db *store.DB) {
 	if err != nil || untouched != 1 {
 		t.Fatal("legacy drill fixture cannot discard diagnostic evidence", err)
 	}
-	drillExec(t, db, "DROP TABLE ops_diagnostics")
-	drillExec(t, db, "DELETE FROM goose_db_version WHERE version_id=45")
+	for _, query := range []string{
+		"SELECT COUNT(*) FROM audit_retention_policy",
+		"SELECT COUNT(*) FROM principals WHERE privacy_state <> 'active'",
+	} {
+		var evidence int
+		if db.Engine() == store.EngineSQLite {
+			err = db.SQLiteRead().QueryRowContext(t.Context(), query).Scan(&evidence)
+		} else {
+			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
+		}
+		if err != nil || evidence != 0 {
+			t.Fatal("legacy drill fixture cannot discard audit policy or privacy evidence", err)
+		}
+	}
+	for _, query := range []string{
+		"ALTER TABLE principals DROP COLUMN privacy_state",
+		"DROP INDEX audit_tenant_retention_time",
+		"DROP INDEX audit_tenant_retention_unit",
+		"DROP INDEX audit_instance_retention_time",
+		"DROP INDEX audit_instance_retention_unit",
+		"DROP TABLE audit_retention_policy",
+		"DROP TABLE ops_diagnostics",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47)",
+	} {
+		drillExec(t, db, query)
+	}
 }
 
 func TestUpgradeDrillActualBothEngineRecoveryAndConfigOnlyEscrow(t *testing.T) {

@@ -32,6 +32,7 @@ WHERE org_id = ? AND project_id = ? AND id = ?;
 SELECT g.capability, g.org_id, g.project_id, g.env_id FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
 WHERE g.principal_id = ?
+  AND p.privacy_state = 'active'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1);
 
 -- The denial writer's actor-class lookup (#45, audit-model ADR amendment
@@ -55,17 +56,17 @@ SELECT credential_epoch FROM auth_instance_state WHERE id = 1;
 -- hikyo:authn-resolution
 -- name: GetAccountByUsername :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE username = ?;
+WHERE username = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
 
 -- hikyo:authn-resolution
 -- name: GetAccountByID :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE id = ?;
+WHERE accounts.id = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
 
 -- hikyo:authn-resolution
 -- name: GetAccountByPrincipal :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE principal_id = ?;
+WHERE principal_id = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active');
 
 -- hikyo:authn-resolution
 -- name: CountAccounts :one
@@ -79,7 +80,7 @@ FROM password_credentials WHERE account_id = ?;
 
 -- hikyo:authn-resolution
 -- name: GetPrincipalGeneration :one
-SELECT session_generation FROM principals WHERE id = ?;
+SELECT session_generation FROM principals WHERE id = ? AND privacy_state = 'active';
 
 -- hikyo:authn-resolution
 -- name: GetSessionByVerifier :one

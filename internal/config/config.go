@@ -139,11 +139,13 @@ type Config struct {
 	// and a range, and a value outside the range is a startup error rather
 	// than a clamp: a retention of 400 days silently becoming 180 is the
 	// kind of quiet correction the ops spec forbids.
-	BackupInterval    time.Duration // HIKYO_BACKUP_INTERVAL, default 24h, minimum 1h
-	BackupRPO         time.Duration // HIKYO_BACKUP_RPO, default 26h, at least the interval
-	BackupRetainCount int           // HIKYO_BACKUP_RETAIN_COUNT, default 7, minimum 1
-	BackupRetainDays  int           // HIKYO_BACKUP_RETAIN_DAYS, default 180, maximum 180
-	BackupRTOTarget   time.Duration // HIKYO_BACKUP_RTO_TARGET, default 30m; the drill's verdict line
+	BackupInterval          time.Duration // HIKYO_BACKUP_INTERVAL, default 24h, minimum 1h
+	BackupRPO               time.Duration // HIKYO_BACKUP_RPO, default 26h, at least the interval
+	AuditAccessRetainDays   int           // HIKYO_AUDIT_ACCESS_RETAIN_DAYS, 90 by default
+	AuditSecurityRetainDays int           // HIKYO_AUDIT_SECURITY_RETAIN_DAYS, 365 by default
+	BackupRetainCount       int           // HIKYO_BACKUP_RETAIN_COUNT, default 7, minimum 1
+	BackupRetainDays        int           // HIKYO_BACKUP_RETAIN_DAYS, default 180, maximum 180
+	BackupRTOTarget         time.Duration // HIKYO_BACKUP_RTO_TARGET, default 30m; the drill's verdict line
 
 	// DevAdmissionPerIPPerMinute raises the per-source-IP pre-auth allowance.
 	// Zero means the locked default.
@@ -197,6 +199,8 @@ type Config struct {
 
 // knownEnv is the closed set of HIKYO_* keys this build understands.
 var knownEnv = map[string]bool{
+	"HIKYO_AUDIT_ACCESS_RETAIN_DAYS":       true,
+	"HIKYO_AUDIT_SECURITY_RETAIN_DAYS":     true,
 	"HIKYO_DB":                             true,
 	"HIKYO_PG_POOL_MAX":                    true,
 	"HIKYO_LISTEN":                         true,
@@ -527,6 +531,9 @@ func Load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 	}
 
+	if err := loadAuditRetention(cfg, getenv); err != nil {
+		return nil, nil, err
+	}
 	if err := loadBackupPolicy(cfg, getenv); err != nil {
 		return nil, nil, err
 	}
@@ -1031,4 +1038,24 @@ func validatePostgresTLS(dsn string) error {
 		return nil
 	}
 	return fmt.Errorf("HIKYO_DB: remote postgres host %q requires sslmode=verify-full or verify-ca (no plaintext on a non-loopback boundary)", host)
+}
+
+// Audit retention is host configuration; no tenant can shorten its evidence window.
+func loadAuditRetention(cfg *Config, getenv func(string) string) error {
+	access, err := uintEnv(getenv, "HIKYO_AUDIT_ACCESS_RETAIN_DAYS", 90)
+	if err != nil {
+		return err
+	}
+	security, err := uintEnv(getenv, "HIKYO_AUDIT_SECURITY_RETAIN_DAYS", 365)
+	if err != nil {
+		return err
+	}
+	if access < 1 || access > 3650 {
+		return fmt.Errorf("HIKYO_AUDIT_ACCESS_RETAIN_DAYS: must be within 1..3650")
+	}
+	if security < access || security > 3650 {
+		return fmt.Errorf("HIKYO_AUDIT_SECURITY_RETAIN_DAYS: must be within access retention..3650")
+	}
+	cfg.AuditAccessRetainDays, cfg.AuditSecurityRetainDays = int(access), int(security)
+	return nil
 }

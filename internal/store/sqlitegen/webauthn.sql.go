@@ -129,7 +129,7 @@ func (q *Queries) DisableWebAuthnCredential(ctx context.Context, arg DisableWebA
 const getAccountByWebAuthnUserHandle = `-- name: GetAccountByWebAuthnUserHandle :one
 
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE webauthn_user_handle = ?
+WHERE webauthn_user_handle = ? AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
 `
 
 type GetAccountByWebAuthnUserHandleRow struct {

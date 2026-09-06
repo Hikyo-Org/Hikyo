@@ -3,12 +3,12 @@ import { z } from 'zod';
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, X509Certificate } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { createServer as createHttpsServer, type Server } from 'node:https';
 import { connect } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
@@ -98,11 +98,14 @@ export const OIDC_PROVIDER = { slug: 'e2e-oidc', displayName: 'E2E Identity Prov
  * `OIDC_PROVIDER`'s issuer would collide — and the admin session is linked
  * through that provider, so this flow must not touch it.
  */
-const PORT_OIDC2 = Number(process.env['HIKYO_E2E_PORT_OIDC2'] ?? 45795);
+const PORT_OIDC2 = Number(process.env['HIKYO_E2E_PORT_OIDC2'] ?? 0);
+const WEBUI_OIDC_STATE = fileURLToPath(new URL('../.auth/webui-oidc.json', import.meta.url));
 export const WEBUI_OIDC = {
   slug: 'e2e-webui-oidc',
   displayName: 'WebUI Identity Provider',
-  issuer: `http://127.0.0.1:${String(PORT_OIDC2)}`,
+  get issuer(): string {
+    return readWebuiOIDCIssuer();
+  },
 };
 
 /** The name the viewing instance knows the serving instance by. */
@@ -193,6 +196,7 @@ let instances: Instance[] = [];
 let tlsFront: Server | null = null;
 let oidcProcess: ChildProcess | null = null;
 let oidcProcess2: ChildProcess | null = null;
+let webuiOIDCIssuerFile: string | null = null;
 
 function run(command: string, args: string[], options: { cwd: string; env?: NodeJS.ProcessEnv }) {
   const result = spawnSync(command, args, {
@@ -303,13 +307,36 @@ async function startOIDCProvider(instance: Instance): Promise<string> {
  * at create time; no login is ever completed through it, so it registers no
  * redirect URI.
  */
-async function startWebuiIdP(instance: Instance): Promise<void> {
-  const { proc, issuer } = await spawnIdP(instance.dir, PORT_OIDC2, []);
-  if (issuer !== WEBUI_OIDC.issuer) {
+export async function startWebuiIdP(
+  instance: Pick<Instance, 'dir'>,
+  issuerFile = WEBUI_OIDC_STATE,
+  requestedPort = PORT_OIDC2,
+): Promise<void> {
+  const { proc, issuer } = await spawnIdP(instance.dir, requestedPort, []);
+  try {
+    // Global setup and browser workers are separate processes. Persist the
+    // validated bound issuer; never reconstruct an OS-assigned port in workers.
+    mkdirSync(dirname(issuerFile), { recursive: true });
+    writeFileSync(issuerFile, JSON.stringify({ issuer }), { mode: 0o600 });
+    chmodSync(issuerFile, 0o600);
+  } catch (error) {
     proc.kill('SIGKILL');
-    throw new Error(`webui IdP issuer = ${issuer}, want ${WEBUI_OIDC.issuer}`);
+    rmSync(issuerFile, { force: true });
+    throw error;
   }
   oidcProcess2 = proc;
+  webuiOIDCIssuerFile = issuerFile;
+}
+
+const zWebuiOIDCState = z.object({
+  issuer: z.string().refine((issuer) => idpIssuerMatchesRequestedPort(issuer, 0), {
+    message: 'expected a bound loopback OIDC issuer',
+  }),
+});
+
+/** Read setup's actual bound issuer in each worker, validating the file boundary. */
+export function readWebuiOIDCIssuer(issuerFile = WEBUI_OIDC_STATE): string {
+  return zWebuiOIDCState.parse(JSON.parse(readFileSync(issuerFile, 'utf8'))).issuer;
 }
 
 /** Link the fixture administrator through the provider's real front channel. */
@@ -1668,6 +1695,10 @@ export function stopInstance(): void {
   oidcProcess = null;
   oidcProcess2?.kill('SIGKILL');
   oidcProcess2 = null;
+  if (webuiOIDCIssuerFile !== null) {
+    rmSync(webuiOIDCIssuerFile, { force: true });
+    webuiOIDCIssuerFile = null;
+  }
   for (const instance of instances) {
     // SIGKILL, not SIGTERM: a server still inside boot may not have installed
     // its signal handler yet, and a survivor holds the port for the NEXT run —

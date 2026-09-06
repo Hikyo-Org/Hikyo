@@ -225,12 +225,14 @@ const (
 	// retention.health_read is the audited instance-level operational read.
 	// retention.payload_gc records each irreversible tenant payload collection;
 	// retention.prune_run records the scheduler sweep outcome.
-	EventRetentionHealthRead EventType = "retention.health_read"
-	EventRetentionPayloadGC  EventType = "retention.payload_gc"
-	EventRetentionPruneRun   EventType = "retention.prune_run"
-	EventUpdateStatusRead    EventType = "system.update_status_read"
-	EventUpdateRequested     EventType = "system.update_requested"
-	EventUpdateOutcome       EventType = "system.update_outcome"
+	EventAuditRetentionChanged EventType = "retention.audit_policy_changed"
+	EventAuditRetentionPruned  EventType = "retention.audit_pruned"
+	EventRetentionHealthRead   EventType = "retention.health_read"
+	EventRetentionPayloadGC    EventType = "retention.payload_gc"
+	EventRetentionPruneRun     EventType = "retention.prune_run"
+	EventUpdateStatusRead      EventType = "system.update_status_read"
+	EventUpdateRequested       EventType = "system.update_requested"
+	EventUpdateOutcome         EventType = "system.update_outcome"
 
 	// recovery.break_glass_grant records a grant issued under local host
 	// authority — the one authorization path not evaluated against a grant.
@@ -831,6 +833,12 @@ var pinMutationSchema = Schema{
 // the new type (completeness is CI invariant 2, wired to the
 // probe-classification registry).
 var registry = map[EventType]TypeSpec{
+	EventPrivacySubjectCorrected:  privacySubjectSpec,
+	EventPrivacySubjectReleased:   privacySubjectSpec,
+	EventPrivacySubjectExported:   privacySubjectSpec,
+	EventPrivacySubjectRestricted: privacySubjectSpec,
+	EventPrivacySubjectErased:     privacySubjectSpec,
+
 	EventGrantDenied: {
 		SchemaVersion: 1,
 		Retention:     RetentionAccess,
@@ -1841,6 +1849,29 @@ var registry = map[EventType]TypeSpec{
 			"snapshot_id":  {Kind: KindString, Required: true},
 			"policy":       {Kind: KindString, Required: true},
 			"collected_at": {Kind: KindString, Required: true},
+		},
+	},
+	EventAuditRetentionChanged: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"previous_access_days":   {Kind: KindInt, Required: true},
+			"previous_security_days": {Kind: KindInt, Required: true},
+			"access_days":            {Kind: KindInt, Required: true},
+			"security_days":          {Kind: KindInt, Required: true},
+		},
+	},
+	EventAuditRetentionPruned: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"trail":         {Kind: KindString, Required: true, Enum: []string{"tenant", "instance"}},
+			"category":      {Kind: KindString, Required: true},
+			"deleted":       {Kind: KindInt, Required: true, NonNegative: true},
+			"from_time":     {Kind: KindString, Required: true},
+			"through_time":  {Kind: KindString, Required: true},
+			"access_days":   {Kind: KindInt, Required: true},
+			"security_days": {Kind: KindInt, Required: true},
 		},
 	},
 	EventRetentionPruneRun: {

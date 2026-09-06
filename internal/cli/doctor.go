@@ -27,8 +27,10 @@ type doctorResult struct {
 
 func runDoctor(ctx context.Context, ios IO, args []string) error {
 	var format string
+	var evidence bool
 	st, flags, err := parseCommon("doctor", ios, args, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
+		fs.BoolVar(&evidence, "evidence", false, "include collection metadata and unassessed controls; requires -o json")
 	})
 	if err != nil {
 		return err
@@ -39,6 +41,9 @@ func runDoctor(ctx context.Context, ios IO, args []string) error {
 	f, err := ParseFormat(format)
 	if err != nil {
 		return err
+	}
+	if evidence && f != FormatJSON {
+		return failf(ExitUsage, "doctor --evidence requires -o json")
 	}
 	client, _, err := authenticatedClient(st, ios, flags)
 	if err != nil {
@@ -52,10 +57,19 @@ func runDoctor(ctx context.Context, ios IO, args []string) error {
 	if err := client.Do(ctx, http.MethodGet, api.PathPrefix+"/instance/saml-providers", nil, &providers); err != nil {
 		return err
 	}
-	result, rows := doctorResults(providers, health, time.Now().UTC())
-	if err := Render(ios.Stdout, f, Table{
+	collectedAt := time.Now().UTC()
+	result, rows := doctorResults(providers, health, collectedAt)
+	output := Table{
 		Columns: []string{"STATUS", "PROVIDER", "CHECK", "EFFECTIVE AT", "MESSAGE"}, Rows: rows, JSON: result,
-	}); err != nil {
+	}
+	if evidence {
+		meta, err := client.Meta(ctx)
+		if err != nil {
+			return err
+		}
+		output.JSON = newDoctorEvidence(result, meta, ios.Version, client.Entry.Origin, collectedAt)
+	}
+	if err := Render(ios.Stdout, f, output); err != nil {
 		return err
 	}
 	if result.Status == "error" {

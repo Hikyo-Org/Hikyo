@@ -365,6 +365,7 @@ func (q *Queries) ListGrantsWithOriginsForProject(ctx context.Context, arg ListG
 const listManageMembersHoldersAtInstance = `-- name: ListManageMembersHoldersAtInstance :many
 SELECT DISTINCT principal_id FROM grants
 WHERE capability = 'manage-members' AND org_id IS NULL
+AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
 ORDER BY principal_id
 `
 
@@ -394,6 +395,7 @@ SELECT DISTINCT principal_id FROM grants
 WHERE capability = 'manage-members'
   AND project_id IS NULL
   AND (org_id = $1 OR org_id IS NULL)
+AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
 ORDER BY principal_id
 `
 

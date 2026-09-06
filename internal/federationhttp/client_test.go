@@ -289,3 +289,67 @@ func TestBufferedResponseRefusesCancellationAtSuccessfulEOF(t *testing.T) {
 		})
 	}
 }
+
+// A close-delimited response reaches EOF only when the upstream connection
+// closes. Cancel synchronously before returning that EOF to the real HTTP body
+// reader, so cancellation is ordered before the completed body is published.
+type cancelOnEOFConn struct {
+	net.Conn
+	cancel context.CancelFunc
+}
+
+func (c *cancelOnEOFConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if errors.Is(err, io.EOF) {
+		c.cancel()
+	}
+	return n, err
+}
+
+func TestCancellationAtBodyEOFIsRefused(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, rw, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.Close()
+		_, err = rw.WriteString("HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n{}")
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		if err := rw.Flush(); err != nil {
+			t.Error(err)
+		}
+	}))
+	defer server.Close()
+	client, err := NewClient(Policy{Development: true}, 128)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := client.Transport.(*transport)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	rt.dialer = dialFunc(func(ctx context.Context, network, address string) (net.Conn, error) {
+		conn, err := new(net.Dialer).DialContext(ctx, network, address)
+		if err != nil {
+			return nil, err
+		}
+		return &cancelOnEOFConn{Conn: conn, cancel: cancel}, nil
+	})
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := rt.RoundTrip(request)
+	if response != nil {
+		response.Body.Close()
+	}
+	if ctx.Err() == nil {
+		t.Fatal("body EOF boundary did not cancel request")
+	}
+	if !errors.Is(err, ErrTransport) || response != nil {
+		t.Fatalf("canceled request with clean body EOF: response=%v err=%v, want nil response and ErrTransport", response, err)
+	}
+}

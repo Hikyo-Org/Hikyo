@@ -13,6 +13,10 @@ configuration and recovery procedures.
 
 For Kubernetes, use the [complete Helm installation example](/docs/kubernetes-operator/#install-the-operator).
 
+For data handling, control ownership and evidence, read
+[self-hosted compliance](/docs/compliance/), the [personal-data inventory](/docs/privacy/)
+and [operator procedures](/docs/compliance-operations/).
+
 ## Required decisions
 
 | Boundary | Configure | Rule |
@@ -84,6 +88,10 @@ Check both probes through the private listener:
 curl --fail http://127.0.0.1:8081/healthz
 curl --fail http://127.0.0.1:8081/readyz
 ```
+
+Readiness gives the complete datastore and optional HA check a two-second budget.
+An unavailable or stalled datastore returns HTTP 503; `/healthz` remains independent
+so a database outage removes traffic without triggering a process restart.
 
 The same private listener serves `/metrics` in Prometheus text format —
 RED-style request counters and latency per surface class, in-flight and

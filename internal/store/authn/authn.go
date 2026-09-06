@@ -34,8 +34,9 @@ import (
 // Resolver answers the two questions authorize() asks, inside the same
 // transaction the eventual store calls run in.
 type Resolver struct {
-	sq *sqlitegen.Queries
-	pg *pggen.Queries
+	historicalRecoveryBeforePrivacy bool
+	sq                              *sqlitegen.Queries
+	pg                              *pggen.Queries
 }
 
 // NewSQLite binds a Resolver to an open sqlite transaction (or, for
@@ -260,6 +261,9 @@ func (r *Resolver) resolveEnv(ctx context.Context, s domain.Scope) (domain.Scope
 // one, which is the contract. Current policy is read inside the operation's
 // own transaction; there is no authorization cache (permission-model ADR).
 func (r *Resolver) Grants(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
+	if r.historicalRecoveryBeforePrivacy {
+		return r.recoveryGrantsBeforePrivacy(ctx, p)
+	}
 	if r.sq != nil {
 		rows, err := r.sq.ListGrantsForPrincipal(ctx, string(p))
 		if err != nil {

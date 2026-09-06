@@ -429,7 +429,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	if cfg.Store.Engine == config.EngineSQLite {
 		diagnostics.Volume = func() (storagehealth.Capacity, error) { return storagehealth.Read(filepath.Dir(cfg.Store.Path)) }
 	}
-	retentionSvc := &service.Retention{DB: db, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
+	retentionSvc := &service.Retention{DB: db, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
 	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
 	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)

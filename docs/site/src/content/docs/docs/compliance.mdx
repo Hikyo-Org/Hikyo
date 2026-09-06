@@ -1,0 +1,84 @@
+---
+title: Self-hosted compliance
+description: SOC 2 and GDPR control responsibilities, evidence, and current limitations for self-hosted Hikyo.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/compliance.mdx
+---
+
+Hikyo provides security controls that operators can use in their own compliance
+program. Installing Hikyo does not establish GDPR compliance or a SOC 2 report.
+This guide covers self-hosted installations. It makes no claim of certification,
+attestation, or an independently assessed production deployment.
+
+Start with the [personal-data inventory](/docs/privacy/), then use the
+[operator procedures](/docs/compliance-operations/) to assign owners and collect evidence.
+
+## Responsibility boundary
+
+| Area | Hikyo product | Installation operator |
+| --- | --- | --- |
+| Access | Scoped authorization, MFA, federation and SCIM controls | Configure privileges, review access, secure administrators and remove access when people leave |
+| Protection | Encrypted value storage, key rotation, TLS boundaries and encrypted archives | Protect hosts, database metadata, keys, disks, network and archive destinations |
+| Evidence | Audit query/export, operational metrics and doctor findings | Preserve independent copies, investigate alerts and record reviews |
+| Privacy | Existing scoped reads and lifecycle operations | Determine purposes, lawful bases, notices, rights handling and justified retention; account for the gaps below |
+| Recovery | Backup scheduling, archive retention and restore drills | Maintain independent recovery material, off-host copies and exercised recovery procedures |
+
+An operator may be a controller, processor, or both for different processing.
+Determine roles from actual purposes and instructions. Distributing the software
+does not by itself make its publisher the processor of a customer's installation.
+Support access or hosted services would require a separate assessment.
+
+## Controls and limits
+
+Use the commands and configuration below with a version that includes these
+controls. The [implementation status](/implementation-status/) remains the
+capability-status authority; these docs track the main branch.
+
+| Control | Product behavior | Operator responsibility |
+| --- | --- | --- |
+| Identity lifecycle | Host-local subject export, correction, restriction, release, erasure and restore receipts | Review export coverage and legal grounds; inspect customer content and external recipients separately |
+| Audit expiry | Bounded access/security policies, audited adoption and transactional pruning | Choose justified periods before upgrade and retain necessary independent evidence |
+| Content lifecycle | Revision GC plus explicit whole-environment deletion | Age OR revision count is not an absolute privacy deadline; review scope before deleting content |
+| Independent audit evidence | Append-only application records and export; doctor evidence collection | Database operators can alter records; protect off-host copies and monitor collection |
+| Backup reconciliation | Identity action receipts can be reapplied after restore | Keep current receipts outside archives, apply them before reopening service and manage all external copies |
+
+Follow [identity workflows](/docs/privacy/#identity-workflows),
+[audit retention](/docs/privacy/#audit-retention) and
+[evidence collection](/docs/compliance-operations/#access-review-and-evidence).
+Neither an identity export nor its erasure receipt claims to cover arbitrary
+personal data inside values, audit payloads, project metadata or third-party systems.
+
+## SOC 2 scope and evidence
+
+SOC 2 examines a service organization's defined system. Type I addresses control
+design at a specified date; Type II also examines operating effectiveness over a
+specified period. The applicable criteria and evidence depend on the system and
+commitments agreed with the auditor. For a secrets service, consider Security and
+Confidentiality, with Availability where recovery commitments warrant it.
+
+Keep a control register with: criterion, owner, implementation, operating procedure,
+evidence location, review date and exceptions. Include organizational controls
+such as risk assessment, personnel access, supplier review, incident handling,
+change approval and vulnerability remediation. Product tests alone cannot prove
+that these controls operated throughout an audit period.
+
+See the [AICPA SOC 2 overview](https://www.aicpa-cima.com/topic/audit-assurance/audit-and-assurance-greater-than-soc-2/)
+and [Trust Services Criteria](https://assets.ctfassets.net/rb9cdnjh59cm/72xv4p67HVXKp6CjWmjkPk/1cdbfa19f6307e2720396b66a6194dc9/trust-services-criteria-updated-copyright.pdf).
+
+## GDPR scope
+
+Identify purposes and lawful bases, provide notices, and record retention and
+recipients. Determine requirements for processing records, processor agreements,
+international transfers, impact assessments and a data protection officer from
+your processing circumstances. EU hosting alone does not settle these questions.
+Encryption does not turn identifiable personal data into anonymous data.
+
+Use [GDPR Articles 5, 6, 13, 14, 28, 30, 32, 35, 37 and Chapter V](https://eur-lex.europa.eu/eli/reg/2016/679/oj/eng)
+as the legal source and have the responsible privacy adviser validate the decisions.
+
+## Future hosted service
+
+Before offering managed hosting, extend the same inventory and control register
+to infrastructure, support access, customer offboarding, subprocessors, contracts,
+service commitments and breach communications. Verify isolation and privacy
+operations across tenants. Obtain an assessment scoped to that service before
+making assurance claims; self-hosted documentation is not a hosted-service report.

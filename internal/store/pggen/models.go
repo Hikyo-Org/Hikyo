@@ -318,6 +318,12 @@ type AuditInstanceEvent struct {
 	CommitSeq         pgtype.Int8
 }
 
+type AuditRetentionPolicy struct {
+	Singleton    int32
+	AccessDays   int32
+	SecurityDays int32
+}
+
 type AuditTenantEvent struct {
 	Seq               int64
 	ID                string
@@ -762,6 +768,7 @@ type Principal struct {
 	SessionGeneration int64
 	Class             pgtype.Text
 	ReconciledEpoch   int64
+	PrivacyState      string
 }
 
 type Project struct {

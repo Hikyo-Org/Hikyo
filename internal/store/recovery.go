@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -123,3 +124,9 @@ func (t *RecoveryPostgresTransaction) Commit(ctx context.Context) error {
 	return t.tx.Commit(ctx)
 }
 func (t *RecoveryPostgresTransaction) Rollback(ctx context.Context) error { return t.tx.Rollback(ctx) }
+
+// SourceMigrationVersion is derived from the verified recovery plan, not from
+// request flags or a best-effort live schema probe.
+func (r *RecoveryDB) SourceMigrationVersion() (uint64, error) {
+	return r.authority.SourceMigrationVersion()
+}

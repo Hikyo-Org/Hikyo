@@ -186,7 +186,12 @@ func NewOperational(ready ReadyChecker, healthService OperationalRetentionHealth
 		_, _ = w.Write([]byte("ok"))
 	})
 	r.Get("/readyz", func(w http.ResponseWriter, req *http.Request) {
-		if ready == nil || ready.Ready(req.Context()) != nil {
+		// HTTP WriteTimeout closes the socket but does not cancel handler work.
+		// Bound the complete datastore/HA probe so an outage returns 503 before
+		// that deadline instead of waiting for pool acquisition or TCP retries.
+		ctx, cancel := context.WithTimeout(req.Context(), 2*time.Second)
+		defer cancel()
+		if ready == nil || ready.Ready(ctx) != nil || ctx.Err() != nil {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}

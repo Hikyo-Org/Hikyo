@@ -38,6 +38,9 @@ func AdminUsage(w io.Writer) {
                     [--output-file PATH | --dangerously-print]
   hikyo admin reset-credential --principal ID
                     [--output-file PATH | --dangerously-print]
+  hikyo admin privacy export|restrict|erase|release --principal ID --output-file PATH
+  hikyo admin privacy correct --principal ID --username USER --display-name NAME --output-file PATH --confirm
+  hikyo admin privacy reapply --receipt PATH --output-file PATH --confirm
   hikyo admin grant --principal ID --capability CAP
                     [--org ID [--project ID [--env ID]]]
 
@@ -84,6 +87,8 @@ func RunAdmin(ctx context.Context, cfg *config.Config, log *slog.Logger, args []
 		return runAdminCreate(ctx, cfg, log, args, stderr, terminalSession, terminalError)
 	case "reset-credential":
 		return runAdminReset(ctx, cfg, log, args, stderr, terminalSession, terminalError)
+	case "privacy":
+		return runAdminPrivacy(ctx, cfg, log, args[1:], stderr)
 	case "grant":
 		return runAdminGrant(ctx, cfg, log, args, stderr)
 	default:

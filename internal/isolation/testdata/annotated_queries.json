@@ -37,6 +37,12 @@
   },
   {
     "engine": "postgres",
+    "name": "AuditPrunedSince",
+    "annotation": "instance-scoped",
+    "hash": "793d3c22bdb6ec6a1897137a4dbe8f599c171acf8fc899e8482d189589aba201"
+  },
+  {
+    "engine": "postgres",
     "name": "BindSessionToSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "b5d86c12b60fdc2fdb44dd2e16bc2125228867912d25fa5903747154c73d6aad"
@@ -447,31 +453,37 @@
     "engine": "postgres",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
-    "hash": "f53bce6b6f22df5007369ba4429fb0a7256d27776cab7a7e798458b64e06c576"
+    "hash": "f22fcf605ccefe1e4ee90340a474bb91be732a17eb1e45d64b7cd6f994c08cf3"
   },
   {
     "engine": "postgres",
     "name": "GetAccountByPrincipal",
     "annotation": "authn-resolution",
-    "hash": "08cb9043fcb87e1c92987783e68f31b3125ee6a9417f473c8178cacb57389746"
+    "hash": "9be521499c33e8bad85787d2d402267c51b667e1b79cc3d507c5b701422fea15"
   },
   {
     "engine": "postgres",
     "name": "GetAccountByUsername",
     "annotation": "authn-resolution",
-    "hash": "8c7e0be06817fe23b5ab786f43ed0972fc9b0638e0f1037437c7e953fe592edf"
+    "hash": "5da6193dd667966bfa4ce128a6644e8536b42ba2d36814c24be2c928dd2cdbc4"
   },
   {
     "engine": "postgres",
     "name": "GetAccountByWebAuthnUserHandle",
     "annotation": "authn-resolution",
-    "hash": "11e088cb124c985290a84e85acca9b128d989580ee4a505c349f24f39149461f"
+    "hash": "2e9a312f799643110195280282dafa31a0b85e2113f820315a75845437e6d5ce"
   },
   {
     "engine": "postgres",
     "name": "GetActiveSAMLSPKey",
     "annotation": "authn-resolution",
     "hash": "6a41f8fc6cea1daad9205204f49249707cf46b0ed744db50fc2d071d58ac6f2a"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetAuditRetentionPolicy",
+    "annotation": "instance-scoped",
+    "hash": "f56e6244ad6f577b69b27525b482bde75dad2d4196216f9e5404a0fab0a4a349"
   },
   {
     "engine": "postgres",
@@ -585,7 +597,7 @@
     "engine": "postgres",
     "name": "GetPrincipalGeneration",
     "annotation": "authn-resolution",
-    "hash": "557d84f0b1879f77618f5eac719f6f2c2acb2b767d45fad152832e5b11896596"
+    "hash": "66824b199c5576e4b4fc7faba1459522fc4ae90ba8b62947c58fe544e7733afb"
   },
   {
     "engine": "postgres",
@@ -981,7 +993,7 @@
     "engine": "postgres",
     "name": "ListGrantsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "799fa2cf773075cb50e4e622475f1bce25c33cac599c6fd4779639e9b16460ba"
+    "hash": "c91703459f54308af0ba16ccc53fff975691badb06445e4608ba3f3815129164"
   },
   {
     "engine": "postgres",
@@ -1041,13 +1053,13 @@
     "engine": "postgres",
     "name": "ListManageMembersHoldersAtInstance",
     "annotation": "authn-resolution",
-    "hash": "ed641b91fe06b17ad7b9b04977b1e84c98e4d7d62469fb571ede8e7b667b000b"
+    "hash": "896568880a9d9bb5dfcde5610fd97d2bfa00d23064f9a581b386bf135efd0c60"
   },
   {
     "engine": "postgres",
     "name": "ListManageMembersHoldersForOrg",
     "annotation": "authn-resolution",
-    "hash": "858424944348acd7307ec457417f199a54495b09264bf01d55c8e780d572b31c"
+    "hash": "df33e2a60f15c64d56d94e1bf4daf46db23055cde2a8936f6c3e607af3c1490d"
   },
   {
     "engine": "postgres",
@@ -1231,6 +1243,138 @@
   },
   {
     "engine": "postgres",
+    "name": "PrivacyAccount",
+    "annotation": "authn-resolution",
+    "hash": "995e1ae6957179c47165ba67bf25fb99fc0a8a41c5452048d8521dbbfab4ad8f"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyAuditInstance",
+    "annotation": "authn-resolution",
+    "hash": "4b28cb51e19017d7da8a0d5e5f926188556a619157a87490af99e292e580e50d"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyAuditTenant",
+    "annotation": "authn-resolution",
+    "hash": "7c3dc3d4f78ef0a2a880f0ff3936f1985a882e42197372b224805d6bbdc478f8"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyCorrectAccount",
+    "annotation": "authn-resolution",
+    "hash": "4356d285d4bfe10ed1781e4d7954311f00683d3eac43cd4ec31130c81ef558c4"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseAccount",
+    "annotation": "authn-resolution",
+    "hash": "11c038985e1b512495b73bc31fa695a31c20b55c291f8ded75be7168b3aee892"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseAuthorities",
+    "annotation": "authn-resolution",
+    "hash": "25f01dbaa008b2c778754118a173dad17c3f370fc2368947be4d42c484b23581"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseCeremonies",
+    "annotation": "authn-resolution",
+    "hash": "3492ef0e2f53bfb6b87b2050a4202ca3d7e8e88faf488c3e7a8c46cbc2bba3ec"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseExternalIdentities",
+    "annotation": "authn-resolution",
+    "hash": "70bea0419055fe23901e0b6d722f827a26e984b08bc3879260b7d1f1291ff385"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseGrantOrigins",
+    "annotation": "authn-resolution",
+    "hash": "21028383d2d24720ae64e5eabbcad9260ae9db7b1f1c2d589ff90cd5ef770d25"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseGrants",
+    "annotation": "authn-resolution",
+    "hash": "eed72b2a62044155446c9364c5f9d9b36bb3970810a65832aff94a51f959eb4c"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseHandoffs",
+    "annotation": "authn-resolution",
+    "hash": "98a3091e6caadb4df813d4fa3421ea39012dabae9f2f3ac30c111d56229a0b0e"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseOIDCTransactions",
+    "annotation": "authn-resolution",
+    "hash": "2364adafd77401f2d7e4e12764be3d8c783172652a753609e227f7d3dcfd159e"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyErasePasswords",
+    "annotation": "authn-resolution",
+    "hash": "0a368ed3cb800554d13eed2a8e935e80d4220c30a5ff6c25660a186ba183d11b"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseRecoveryCodes",
+    "annotation": "authn-resolution",
+    "hash": "0b3ab0e7d3d6fc1434572878893d27c013a3e854481cfaa631be26d60c73f2f6"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseSAMLTransactions",
+    "annotation": "authn-resolution",
+    "hash": "088df52e28c5af84deb0a960c5b0ffda84cd90a5bac47cb2eb30906d413b99ed"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseSCIMMembers",
+    "annotation": "authn-resolution",
+    "hash": "b08e25f56b8dc53ccf8641942f45a12502bba48a2d04ea71744157dfc2883401"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseSCIMUsers",
+    "annotation": "authn-resolution",
+    "hash": "19a454d3b83733cceafb14e95a3a63d3b13b021c0240e51d3942f0d98d33c208"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseTOTP",
+    "annotation": "authn-resolution",
+    "hash": "c9c6d478ed0c564e5111bcb12e869bf5861f5ad3828243e020fa024d64bdecf9"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseTOTPChallenges",
+    "annotation": "authn-resolution",
+    "hash": "245ad9b0d025744f77e87b3c7d8d6849a40b81f5da5ce3a4ac11defa7320123c"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacyEraseWebAuthn",
+    "annotation": "authn-resolution",
+    "hash": "9972fd754eb4ba9231208c7bd20cd131339a13e0f3a3d8d6232617e2c0b9351e"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacySessions",
+    "annotation": "authn-resolution",
+    "hash": "f3fe4e4ac416f6fc4c8a9e95571c88391a81a8ed3e691a812b49348f9a7ecef6"
+  },
+  {
+    "engine": "postgres",
+    "name": "PrivacySetState",
+    "annotation": "authn-resolution",
+    "hash": "80cead853a610baf7c4160d901574e89c07fd5f9a69fb1f45d960231058754b3"
+  },
+  {
+    "engine": "postgres",
     "name": "ProjectMachineReveal",
     "annotation": "authn-resolution",
     "hash": "3e577763afe5aa3f27593372dcad2beacb3317148f5baf186c939c358b57f9a5"
@@ -1240,6 +1384,18 @@
     "name": "PruneExpiredPlans",
     "annotation": "instance-scoped",
     "hash": "d03e97ce1f6c10f01c2ae49633764972ddbdc2b2685f8ce84b92dd83d14ed011"
+  },
+  {
+    "engine": "postgres",
+    "name": "PruneInstanceAuditRetention",
+    "annotation": "instance-scoped",
+    "hash": "fda06448ca43aad9884524b2a9d30dea73ffebc474cdffac275639707c3b431d"
+  },
+  {
+    "engine": "postgres",
+    "name": "PruneTenantAuditRetention",
+    "annotation": "instance-scoped",
+    "hash": "375a9eeddf60d58e04f87a7075cd3d7841497104287d5fd9189886192e692e1a"
   },
   {
     "engine": "postgres",
@@ -1264,6 +1420,12 @@
     "name": "RecordRemoteFetchFailure",
     "annotation": "instance-scoped",
     "hash": "201e65b37b33b477600d302ef11bd313ff454839f390aa443e5e669fec2e0a7a"
+  },
+  {
+    "engine": "postgres",
+    "name": "RecoveryListGrantsBeforePrivacy",
+    "annotation": "authn-resolution",
+    "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
   },
   {
     "engine": "postgres",
@@ -1378,6 +1540,12 @@
     "name": "SelectExpiredApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "896064f8657efa87226742640506e246641372ce1425156e3f7ac1e2ad3d5d13"
+  },
+  {
+    "engine": "postgres",
+    "name": "SetAuditRetentionPolicy",
+    "annotation": "instance-scoped",
+    "hash": "c5cbeef2beb6a443debf5189bf7a37360efc9eb255154b04e5fe4ff46f9b2dd3"
   },
   {
     "engine": "postgres",
@@ -1576,6 +1744,12 @@
     "name": "ApproveWorkspaceHandoff",
     "annotation": "authn-resolution",
     "hash": "2d8c2e76fe2a51515e2b2a656638e6c41c81396ae4c4120f995095dd09c02b4f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "AuditPrunedSince",
+    "annotation": "instance-scoped",
+    "hash": "793d3c22bdb6ec6a1897137a4dbe8f599c171acf8fc899e8482d189589aba201"
   },
   {
     "engine": "sqlite",
@@ -1989,31 +2163,37 @@
     "engine": "sqlite",
     "name": "GetAccountByID",
     "annotation": "authn-resolution",
-    "hash": "3a8ac0bfba6d04e573b523a3bcba38919495c87cfac6b91ce40103cf38392d4e"
+    "hash": "a2dc8f82948bab44902e2554f555f5d15a179f7f5acac627f9469b7e18ec6f63"
   },
   {
     "engine": "sqlite",
     "name": "GetAccountByPrincipal",
     "annotation": "authn-resolution",
-    "hash": "9ae94b4977ac78ba048f9b1593b8bca01993051f44bd5eeacf3b6c0196d75493"
+    "hash": "1c338143ee084cd74aeddbb8e4798a45474730f83a2d4386152e4afcffc43ba7"
   },
   {
     "engine": "sqlite",
     "name": "GetAccountByUsername",
     "annotation": "authn-resolution",
-    "hash": "3cdfa65ba79b4b0fd62e6d9c5d9142233f3c7c1b912a03807099bb97df4e6740"
+    "hash": "f1435fe4f985ca554b07f76507236a35e1a40393fc6f82731e4ae0a0da3fe5e0"
   },
   {
     "engine": "sqlite",
     "name": "GetAccountByWebAuthnUserHandle",
     "annotation": "authn-resolution",
-    "hash": "d53db61a786ceadf23eb30f7754b1414fc86d0dee3e7797f3a8ac14ecd3cc7cc"
+    "hash": "48800f9f4373e93e1ad98b47c81608839aa91c59f85e3b8fbb146da124309174"
   },
   {
     "engine": "sqlite",
     "name": "GetActiveSAMLSPKey",
     "annotation": "authn-resolution",
     "hash": "6a41f8fc6cea1daad9205204f49249707cf46b0ed744db50fc2d071d58ac6f2a"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetAuditRetentionPolicy",
+    "annotation": "instance-scoped",
+    "hash": "f56e6244ad6f577b69b27525b482bde75dad2d4196216f9e5404a0fab0a4a349"
   },
   {
     "engine": "sqlite",
@@ -2127,7 +2307,7 @@
     "engine": "sqlite",
     "name": "GetPrincipalGeneration",
     "annotation": "authn-resolution",
-    "hash": "edaa983ec7dab3409e5169df8ced76e89a1011ddfdaa7b76935eed99561a6193"
+    "hash": "ee96f45f1b592ca0e2eb4a13772681000b58317f2e6e0a5da5e4fe525c89eb84"
   },
   {
     "engine": "sqlite",
@@ -2523,7 +2703,7 @@
     "engine": "sqlite",
     "name": "ListGrantsForPrincipal",
     "annotation": "authn-resolution",
-    "hash": "e3d624061226e306391bfac4b06bf21a123d2fa82af691d3dabadaf57824f7d8"
+    "hash": "cd384604164fdafe0ff2563899c0c6815c6d39a418f9dada2a847a185e6526ad"
   },
   {
     "engine": "sqlite",
@@ -2583,13 +2763,13 @@
     "engine": "sqlite",
     "name": "ListManageMembersHoldersAtInstance",
     "annotation": "authn-resolution",
-    "hash": "ed641b91fe06b17ad7b9b04977b1e84c98e4d7d62469fb571ede8e7b667b000b"
+    "hash": "896568880a9d9bb5dfcde5610fd97d2bfa00d23064f9a581b386bf135efd0c60"
   },
   {
     "engine": "sqlite",
     "name": "ListManageMembersHoldersForOrg",
     "annotation": "authn-resolution",
-    "hash": "1a43479248158d5a7b82af089452658e2045d62b411447af1e598ca78cd9a0e6"
+    "hash": "f0a572b183d0b4a79256c3eff500c9afeb6ac56790922683a9321d22a7355cfc"
   },
   {
     "engine": "sqlite",
@@ -2773,6 +2953,138 @@
   },
   {
     "engine": "sqlite",
+    "name": "PrivacyAccount",
+    "annotation": "authn-resolution",
+    "hash": "995e1ae6957179c47165ba67bf25fb99fc0a8a41c5452048d8521dbbfab4ad8f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyAuditInstance",
+    "annotation": "authn-resolution",
+    "hash": "4b28cb51e19017d7da8a0d5e5f926188556a619157a87490af99e292e580e50d"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyAuditTenant",
+    "annotation": "authn-resolution",
+    "hash": "7c3dc3d4f78ef0a2a880f0ff3936f1985a882e42197372b224805d6bbdc478f8"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyCorrectAccount",
+    "annotation": "authn-resolution",
+    "hash": "4356d285d4bfe10ed1781e4d7954311f00683d3eac43cd4ec31130c81ef558c4"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseAccount",
+    "annotation": "authn-resolution",
+    "hash": "11c038985e1b512495b73bc31fa695a31c20b55c291f8ded75be7168b3aee892"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseAuthorities",
+    "annotation": "authn-resolution",
+    "hash": "25f01dbaa008b2c778754118a173dad17c3f370fc2368947be4d42c484b23581"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseCeremonies",
+    "annotation": "authn-resolution",
+    "hash": "3492ef0e2f53bfb6b87b2050a4202ca3d7e8e88faf488c3e7a8c46cbc2bba3ec"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseExternalIdentities",
+    "annotation": "authn-resolution",
+    "hash": "70bea0419055fe23901e0b6d722f827a26e984b08bc3879260b7d1f1291ff385"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseGrantOrigins",
+    "annotation": "authn-resolution",
+    "hash": "21028383d2d24720ae64e5eabbcad9260ae9db7b1f1c2d589ff90cd5ef770d25"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseGrants",
+    "annotation": "authn-resolution",
+    "hash": "eed72b2a62044155446c9364c5f9d9b36bb3970810a65832aff94a51f959eb4c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseHandoffs",
+    "annotation": "authn-resolution",
+    "hash": "98a3091e6caadb4df813d4fa3421ea39012dabae9f2f3ac30c111d56229a0b0e"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseOIDCTransactions",
+    "annotation": "authn-resolution",
+    "hash": "2364adafd77401f2d7e4e12764be3d8c783172652a753609e227f7d3dcfd159e"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyErasePasswords",
+    "annotation": "authn-resolution",
+    "hash": "0a368ed3cb800554d13eed2a8e935e80d4220c30a5ff6c25660a186ba183d11b"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseRecoveryCodes",
+    "annotation": "authn-resolution",
+    "hash": "0b3ab0e7d3d6fc1434572878893d27c013a3e854481cfaa631be26d60c73f2f6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseSAMLTransactions",
+    "annotation": "authn-resolution",
+    "hash": "088df52e28c5af84deb0a960c5b0ffda84cd90a5bac47cb2eb30906d413b99ed"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseSCIMMembers",
+    "annotation": "authn-resolution",
+    "hash": "b08e25f56b8dc53ccf8641942f45a12502bba48a2d04ea71744157dfc2883401"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseSCIMUsers",
+    "annotation": "authn-resolution",
+    "hash": "19a454d3b83733cceafb14e95a3a63d3b13b021c0240e51d3942f0d98d33c208"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseTOTP",
+    "annotation": "authn-resolution",
+    "hash": "c9c6d478ed0c564e5111bcb12e869bf5861f5ad3828243e020fa024d64bdecf9"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseTOTPChallenges",
+    "annotation": "authn-resolution",
+    "hash": "245ad9b0d025744f77e87b3c7d8d6849a40b81f5da5ce3a4ac11defa7320123c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacyEraseWebAuthn",
+    "annotation": "authn-resolution",
+    "hash": "9972fd754eb4ba9231208c7bd20cd131339a13e0f3a3d8d6232617e2c0b9351e"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacySessions",
+    "annotation": "authn-resolution",
+    "hash": "f3fe4e4ac416f6fc4c8a9e95571c88391a81a8ed3e691a812b49348f9a7ecef6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PrivacySetState",
+    "annotation": "authn-resolution",
+    "hash": "80cead853a610baf7c4160d901574e89c07fd5f9a69fb1f45d960231058754b3"
+  },
+  {
+    "engine": "sqlite",
     "name": "ProjectMachineReveal",
     "annotation": "authn-resolution",
     "hash": "3b0c014ddf8ad75bd5a8cfb5182da9ee122a126a7c5c577ee20a72ed1e491d49"
@@ -2782,6 +3094,18 @@
     "name": "PruneExpiredPlans",
     "annotation": "instance-scoped",
     "hash": "d9f7dff8d31a93741ea12224ef872a48e4cd4d85c4211d37d03f191ab1d1e454"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PruneInstanceAuditRetention",
+    "annotation": "instance-scoped",
+    "hash": "494e205b046dbe850ea921ca5094b9ca273ba6d8b569c657ae4d2d97cc40629b"
+  },
+  {
+    "engine": "sqlite",
+    "name": "PruneTenantAuditRetention",
+    "annotation": "instance-scoped",
+    "hash": "83cbaf696b02d8d6290e5a7707449c45c1c6c4bdbb95cc75b77339806fe5489e"
   },
   {
     "engine": "sqlite",
@@ -2806,6 +3130,12 @@
     "name": "RecordRemoteFetchFailure",
     "annotation": "instance-scoped",
     "hash": "bbe2a990f915f7aabfd728a4b5b7f49b1d4eb92c14730fef146dcdca20cd0f9f"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecoveryListGrantsBeforePrivacy",
+    "annotation": "authn-resolution",
+    "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
   },
   {
     "engine": "sqlite",
@@ -2920,6 +3250,12 @@
     "name": "SelectExpiredApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "40062b1fa416bebf73b53261fcbc18accb98220557ddf471cd5a59ddb410b727"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SetAuditRetentionPolicy",
+    "annotation": "instance-scoped",
+    "hash": "c5cbeef2beb6a443debf5189bf7a37360efc9eb255154b04e5fe4ff46f9b2dd3"
   },
   {
     "engine": "sqlite",

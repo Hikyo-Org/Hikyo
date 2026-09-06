@@ -378,6 +378,12 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		// instance-wide adapter health counts under scheduler authority (#157):
 		// a reviewed widening, pinned beside the storage high-water.
 		authz.StoreAdaptersHealthCounts: true,
+		// Bounded audit expiry: the reviewed scheduler extension can adopt
+		// host policy and prune with a transactional audit receipt. No tenant
+		// or boot authority receives these operations.
+		authz.StoreRetentionAuditPolicy:    true,
+		authz.StoreRetentionSetAuditPolicy: true,
+		authz.StoreRetentionPruneAudit:     true,
 	}
 	wantEscrow := map[authz.StoreOp]bool{
 		authz.StoreKeysActiveMasterWrappers: true, authz.StoreKeysAllOpenableTier3: true,

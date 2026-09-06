@@ -350,6 +350,7 @@ func (s *Audits) export(
 	if err != nil {
 		return err
 	}
+	f.RetentionSnapshot = snapshotTime
 	if f.To.IsZero() || f.To.After(snapshotTime) {
 		f.To = snapshotTime
 	}

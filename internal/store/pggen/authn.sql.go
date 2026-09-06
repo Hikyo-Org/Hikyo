@@ -516,7 +516,7 @@ func (q *Queries) EnvironmentChainByID(ctx context.Context, id string) (Environm
 
 const getAccountByID = `-- name: GetAccountByID :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE id = $1
+WHERE accounts.id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
 `
 
 type GetAccountByIDRow struct {
@@ -543,7 +543,7 @@ func (q *Queries) GetAccountByID(ctx context.Context, id string) (GetAccountByID
 
 const getAccountByPrincipal = `-- name: GetAccountByPrincipal :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE principal_id = $1
+WHERE principal_id = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
 `
 
 type GetAccountByPrincipalRow struct {
@@ -570,7 +570,7 @@ func (q *Queries) GetAccountByPrincipal(ctx context.Context, principalID string)
 
 const getAccountByUsername = `-- name: GetAccountByUsername :one
 SELECT id, principal_id, username, display_name, created_at FROM accounts
-WHERE username = $1
+WHERE username = $1 AND principal_id IN (SELECT principals.id FROM principals WHERE principals.privacy_state = 'active')
 `
 
 type GetAccountByUsernameRow struct {
@@ -937,7 +937,7 @@ func (q *Queries) GetPendingTOTPForAccount(ctx context.Context, accountID string
 }
 
 const getPrincipalGeneration = `-- name: GetPrincipalGeneration :one
-SELECT session_generation FROM principals WHERE id = $1
+SELECT session_generation FROM principals WHERE id = $1 AND privacy_state = 'active'
 `
 
 // hikyo:authn-resolution
@@ -1735,6 +1735,7 @@ const listGrantsForPrincipal = `-- name: ListGrantsForPrincipal :many
 SELECT g.capability, g.org_id, g.project_id, g.env_id FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
 WHERE g.principal_id = $1
+  AND p.privacy_state = 'active'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
 `
 

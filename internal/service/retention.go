@@ -86,6 +86,7 @@ func peakProjectStorage(ctx context.Context, values store.ValueReader, snapshots
 
 // Retention owns tenant policy settings and the scheduler's payload sweep.
 type Retention struct {
+	AuditPolicy store.AuditRetentionPolicy
 	DB          *store.DB
 	Diagnostics *Diagnostics
 	Now         func() time.Time
@@ -330,6 +331,9 @@ type retentionSweepChunk struct {
 
 func (s *Retention) Sweep(ctx context.Context) (int64, error) {
 	startedAt := store.CanonTime(s.now())
+	if err := s.sweepAudit(ctx, startedAt); err != nil {
+		return 0, s.recordFailedPruneRun(ctx, startedAt, store.CanonTime(s.now()), 0, 0, err)
+	}
 	var total, totalCandidates int64
 	plansPruned := false
 	for {

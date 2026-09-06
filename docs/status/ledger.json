@@ -48,6 +48,18 @@
       ]
     },
     {
+      "id": "CAP-PRIVACY-OPERATIONS",
+      "kind": "capability",
+      "title": "Self-hosted privacy operations",
+      "status": "implemented",
+      "implemented": "Host-local subject export, correction, restriction, release, identity erasure and restore receipt replay; bounded audited audit retention; doctor evidence collection and operator privacy documentation",
+      "evidence": [
+        { "label": "Privacy guide", "path": "docs/site/src/content/docs/docs/privacy.mdx" },
+        { "label": "Compliance spec", "path": "docs/spec/self-hosted-compliance.md" },
+        { "label": "Delivery handoff", "path": "docs/handoff/self-hosted-compliance.md" }
+      ]
+    },
+    {
       "id": "CAP-MATRIX-DISCLOSURE",
       "kind": "capability",
       "title": "Matrix and disclosure UI",

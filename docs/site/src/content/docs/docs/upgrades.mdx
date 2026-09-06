@@ -170,3 +170,13 @@ Restoring invalidates all old authenticators. Include human recovery and machine
 credential redistribution in the rollback time estimate.
 
 See [backup and restore](/docs/backup-and-restore/) for the complete flow.
+
+## Privacy-control upgrade precautions
+
+Versions introducing bounded audit retention activate 90-day access and 365-day
+security defaults, including for existing records. Choose justified
+[retention configuration](/docs/privacy/#audit-retention) and preserve independently
+required evidence before starting the upgraded server. Keep current privacy action
+receipts separately from backups and use the
+[restore reconciliation procedure](/docs/privacy/#backups-and-restoration) before
+reopening a restored installation.

@@ -994,18 +994,39 @@ func (d *DB) ConnectionPoolLimits() ConnectionPoolLimits {
 func (d *DB) AuditExportSnapshotTime(ctx context.Context) (time.Time, error) {
 	switch d.engine {
 	case EnginePostgres:
+		// Hold the exclusive writer gate THROUGH cutoff capture. A pruning
+		// receipt stamped before this cutoff must already have committed. A
+		// later pruner cannot stamp its receipt until this transaction releases
+		// the gate, so page guards cannot miss a delayed pruning commit.
+		tx, err := d.BeginPostgres(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+		if err != nil {
+			return time.Time{}, err
+		}
+		defer tx.Rollback(ctx)
+		if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(1464159830, 85)"); err != nil {
+			return time.Time{}, err
+		}
 		var now time.Time
-		// clock_timestamp() (the true statement-execution instant), NOT now()
-		// deliberately: now()/transaction_timestamp() is frozen at BEGIN, which
-		// Coordination.Now() wants for stable lease comparisons but which here
-		// would place the cutoff before writers that started after this tx and
-		// let the export chase them. The two datastore clocks differ on purpose.
-		if err := d.pool.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&now); err != nil {
+		if err := tx.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&now); err != nil {
 			return time.Time{}, fmt.Errorf("store: postgres audit export snapshot time: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return time.Time{}, err
 		}
 		return CanonTime(now), nil
 	case EngineSQLite:
-		return CanonTime(time.Now()), nil
+		// SQLite audit timestamps are assigned under the single writer. Capture
+		// this cutoff under that same writer lock, before allowing another prune.
+		tx, err := d.BeginSQLite(ctx, false)
+		if err != nil {
+			return time.Time{}, err
+		}
+		defer tx.Rollback()
+		now := CanonTime(time.Now())
+		if err := tx.Commit(); err != nil {
+			return time.Time{}, err
+		}
+		return now, nil
 	default:
 		return time.Time{}, fmt.Errorf("store: audit export snapshot time: unknown engine %q", d.engine)
 	}

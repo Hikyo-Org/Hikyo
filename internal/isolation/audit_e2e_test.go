@@ -422,6 +422,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 	})
 
 	t.Run("every_registered_type_is_actually_emitted", func(t *testing.T) {
+		runPrivacyAuditLifecycle(t, db)
 		// The registry-closure invariant is static: it proves declarations
 		// agree, not that an emitter exists. This runs last over the trails
 		// the preceding subtests filled and asserts every registered type
@@ -448,6 +449,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 			t.Fatalf("emit project retention event: %v", err)
 		}
 		seedRetentionCorpus(t, db)
+		seedAuditExpiry(t, db, "tenant", "audit-retention-emitter", "grant.denied", "", retentionNow.Add(-91*24*time.Hour))
 		if _, err := retention.Sweep(tctx(t)); err != nil {
 			t.Fatalf("emit retention GC events: %v", err)
 		}
@@ -725,18 +727,10 @@ func TestPostgresAuditExportCommitOrder(t *testing.T) {
 	w := &hookWriter{onFirst: func() { close(firstPage) }}
 	exportDone := make(chan error, 1)
 	go func() {
-		// A one-row page forces the full-page path before the exporter reaches
-		// its short-page barrier and rereads the later lower-seq commit.
+		// A one-row page exercises committed ordering after the initial
+		// snapshot barrier has settled the later lower-seq commit.
 		exportDone <- audits.Export(t.Context(), alice, domain.Scope{Org: orgA}, store.AuditFilter{}, 1, w)
 	}()
-
-	select {
-	case <-firstPage:
-	case err := <-exportDone:
-		t.Fatalf("export ended before first page crossed the higher seq: %v", err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("export did not emit its first page")
-	}
 
 	deadline := time.After(5 * time.Second)
 	for queryInt(t, db, `SELECT COUNT(*) FROM pg_locks
@@ -751,7 +745,7 @@ func TestPostgresAuditExportCommitOrder(t *testing.T) {
 	}
 
 	if err := lowTx.Commit(t.Context()); err != nil {
-		t.Fatalf("commit lower-seq event after first page: %v", err)
+		t.Fatalf("commit lower-seq event at snapshot barrier: %v", err)
 	}
 	select {
 	case err := <-exportDone:
