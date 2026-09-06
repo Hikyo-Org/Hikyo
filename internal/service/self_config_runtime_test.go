@@ -141,11 +141,13 @@ func runSelfConfig(t *testing.T, s *SelfConfig) {
 }
 
 func TestSelfConfigPublishNeedsExplicitReauthenticatedApply(t *testing.T) {
+	t.Parallel()
 	s, local := selfConfigFixture(t)
 	testSelfConfigLifecycle(t, s, local)
 }
 
 func TestSelfConfigPostgresLifecycle(t *testing.T) {
+	t.Parallel()
 	s, local := selfConfigFixtureConfig(t, selfConfigPostgres(t), map[string]string{"HIKYO_UPDATE_CHANNEL": "nightly"})
 	testSelfConfigLifecycle(t, s, local)
 }
@@ -211,6 +213,7 @@ func testSelfConfigLifecycle(t *testing.T, s *SelfConfig, local Actor) {
 }
 
 func TestSelfConfigBootstrapLoadsItsPublishedConfiguration(t *testing.T) {
+	t.Parallel()
 	s, actor := selfConfigFixture(t)
 	if err := s.LoadRuntime(t.Context()); err != nil {
 		t.Fatal(err)
@@ -236,6 +239,7 @@ func TestSelfConfigBootstrapLoadsItsPublishedConfiguration(t *testing.T) {
 }
 
 func TestSelfConfigSuspensionKeepsRecoveryInterfaceAvailable(t *testing.T) {
+	t.Parallel()
 	s, actor := selfConfigFixture(t)
 	if err := s.LoadRuntime(t.Context()); err != nil {
 		t.Fatal(err)
@@ -285,6 +289,7 @@ func publishSelfConfigChannel(t *testing.T, s *SelfConfig, local Actor, channel 
 }
 
 func TestSelfConfigHARefusesStaleTrafficAndConvergesAfterActorRevocation(t *testing.T) {
+	t.Parallel()
 	s, local := selfConfigFixtureConfig(t, selfConfigPostgres(t), map[string]string{"HIKYO_UPDATE_CHANNEL": "nightly"})
 	second := &SelfConfig{DB: s.DB, Keyring: s.Keyring, Auth: s.Auth, NodeID: "replica-b"}
 	now := time.Now()
@@ -360,6 +365,7 @@ func TestSelfConfigHARefusesStaleTrafficAndConvergesAfterActorRevocation(t *test
 }
 
 func TestSelfConfigInvalidMailPublishRetainsActiveConfiguration(t *testing.T) {
+	t.Parallel()
 	s, local := selfConfigFixture(t)
 	if err := s.LoadRuntime(t.Context()); err != nil {
 		t.Fatal(err)
@@ -395,6 +401,7 @@ func TestSelfConfigInvalidMailPublishRetainsActiveConfiguration(t *testing.T) {
 }
 
 func TestSelfConfigRestoreRequiresConfirmationBoundIntoReauthentication(t *testing.T) {
+	t.Parallel()
 	s, local := selfConfigFixture(t)
 	err := tx.Write(t.Context(), s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		p, err := az.SelfConfigRuntimeAuthority(ctx, "")
@@ -443,6 +450,7 @@ func TestSelfConfigRestoreRequiresConfirmationBoundIntoReauthentication(t *testi
 }
 
 func TestSelfConfigApplyRetryReturnsOriginalJobAfterCollection(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "retry.db")}
@@ -547,6 +555,7 @@ func TestSelfConfigApplyRetryReturnsOriginalJobAfterCollection(t *testing.T) {
 }
 
 func TestSelfConfigExpiredApplyRetryDoesNotRestartPreparation(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "expired.db")}

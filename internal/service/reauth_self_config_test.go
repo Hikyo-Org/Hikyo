@@ -15,6 +15,7 @@ import (
 )
 
 func TestSelfConfigIntentCannotWiden(t *testing.T) {
+	t.Parallel()
 	target := SelfConfigReauthTarget{Action: "apply", OwnerInstanceID: "instance-a", Revision: 2, SchemaVersion: 1, ExpectedGeneration: 4}
 	intent, err := NewSelfConfigReauthIntent(target)
 	if err != nil {
@@ -53,6 +54,7 @@ func TestSelfConfigIntentCannotWiden(t *testing.T) {
 }
 
 func TestSelfConfigReauthRequiresFreshSupportedFactorAndSingleUse(t *testing.T) {
+	t.Parallel()
 	for _, test := range []struct {
 		name   string
 		factor string
@@ -67,6 +69,7 @@ func TestSelfConfigReauthRequiresFreshSupportedFactorAndSingleUse(t *testing.T) 
 		{"future_factor", "totp", -time.Minute, ErrReauthWindowExpired},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			s, local := selfConfigFixture(t)
 			actor, sessionID := selfConfigSession(t, s, local)
 			status, err := s.Status(t.Context(), actor)

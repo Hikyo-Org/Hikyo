@@ -10,6 +10,7 @@ import (
 )
 
 func TestSelfConfigNextRootSelectorNeedsExactApply(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, _ := installerFixture(t, engine)

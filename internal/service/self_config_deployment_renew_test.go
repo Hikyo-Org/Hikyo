@@ -117,6 +117,7 @@ func expireCommittedDelivery(t *testing.T, s *SelfConfig, jobID string) (store.S
 }
 
 func TestCommittedDeploymentRenewsUnseenSubmitAndRestoreWithoutNewMFA(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		for _, action := range []configrollout.Action{configrollout.ActionSubmit, configrollout.ActionRestore} {
 			t.Run(string(engine)+"/"+string(action), func(t *testing.T) {
@@ -157,6 +158,7 @@ func TestCommittedDeploymentRenewsUnseenSubmitAndRestoreWithoutNewMFA(t *testing
 }
 
 func TestDeploymentRenewalRejectsChangedDecisionAndStaleRow(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, _, _, base, _ := committedDeploymentFixture(t, engine, false)

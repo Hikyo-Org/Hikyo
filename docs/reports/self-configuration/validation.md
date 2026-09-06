@@ -20,6 +20,10 @@ Final public docs check passed with zero errors, warnings or hints; build produc
 
 Final full-run log: `/tmp/hikyo-rollout-final-expanded-proof.log`; candidate: `/tmp/hikyo-rollout-final-candidate-818e`. Earlier fixture failures below are chronological evidence, not the final result. They led to corrected API/session/key-file/transport handling. One overlapping historical fixture had readiness/liveness stalls and container restarts; its later unchanged-process assertion was correctly refused. The final fixture ran alone and had no restarts. No deadline or authorization rule was weakened.
 
+## Final CI service scheduling correction, 2026-09-06
+
+CI on `6f564fc3` passed all CodeQL, browser, isolation, Kubernetes, core and app race checks. The service race package hit its unchanged 1200-second cumulative deadline during fixture preparation. A reviewed test-only correction adds 35 parallel declarations across 11 files: 33 top-level tests and independently owned origin/reauth subcases. Assertions, database engines, fresh signed admission, unique roots and deadlines are unchanged. Identical five-group/53-case race runs improved from 171.237 to 100.961 seconds (41.04%). The full 212-test service package then passed in one uninterrupted race invocation in 617.700 seconds, with PostgreSQL configured, two Go scheduler threads, two parallel tests and no failures or skips. All 795 compiled application inputs still match the fresh Kubernetes proof. See [service scheduling evidence](validation/service-race-scheduling.json) and the PR for replacement-head CI.
+
 ## Historical expansion checkpoint, 2026-09-06
 
 **Signed checkpoint `0cb6de70` is pushed to draft PR #686. Later reviewed slices are integrating locally; final exact-head CI, merge and production rollout remain unclaimed.** The current catalogue contains 27 top-level keys: nine original, 16 owner settings, secret node overrides and external bootstrap aliases. Trusted proxy policy is exclusively node-local. The 65-input inventory is metadata and does not establish every activation consumer.

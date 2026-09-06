@@ -101,6 +101,7 @@ func committedDeploymentFixture(t *testing.T, engine store.Engine, reconcile boo
 }
 
 func TestSelfConfigDeploymentRestoreRequiresExactMFAAndJournalsBeforeSending(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, actor, session, probe, req := partialDeploymentFixture(t, engine)
@@ -233,6 +234,7 @@ func TestSelfConfigDeploymentRestoreRequiresExactMFAAndJournalsBeforeSending(t *
 }
 
 func TestSelfConfigRolloutRestoreIntentIsDistinct(t *testing.T) {
+	t.Parallel()
 	target := SelfConfigReauthTarget{Action: "apply", OwnerInstanceID: "instance", Revision: 2, ExpectedGeneration: 2, SchemaVersion: 1, PlanDigest: strings.Repeat("a", 64)}
 	apply, err := NewSelfConfigReauthIntent(target)
 	if err != nil {
@@ -279,6 +281,7 @@ func (p *restoredDeploymentProbe) Response(ctx context.Context, command configro
 	return configrollout.Response{Outcome: "complete", PlanDigest: command.Command.PlanDigest, Receipt: &configrollout.Receipt{Intent: command.Command.Intent, PlanDigest: command.Command.PlanDigest, DeploymentUID: types.UID(p.identity.DeploymentUID), Phase: configrollout.Restored}}, nil
 }
 func TestSelfConfigDeploymentRestoreAllowsRepairThenAnotherRollout(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, actor, session, probe, restore := partialDeploymentFixture(t, engine)

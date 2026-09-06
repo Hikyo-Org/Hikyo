@@ -53,6 +53,7 @@ func (p *rootDeploymentProbe) RootPreparation(context.Context, configrollout.Sig
 }
 
 func TestSelfConfigDeploymentRootPersistenceRequiresExactMFA(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		for _, epoch := range []int64{2, 0, 1, int64(math.MaxUint32) + 3} {
 			name := string(engine) + "/valid"
@@ -219,6 +220,7 @@ func finalizeSelfConfigTestRoot(ctx context.Context, s *SelfConfig, actor Actor)
 }
 
 func TestSelfConfigDeploymentConcurrentFinalizeInvalidatesPreparedRoot(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, _ := installerFixture(t, engine)
@@ -315,6 +317,7 @@ func (r selfConfigTestRootSource) Current(context.Context) ([]byte, error) {
 func (r selfConfigTestRootSource) Next(context.Context) ([]byte, error) { return bytes.Clone(r), nil }
 
 func TestSelfConfigRootFinalizationWaitsForRestoredRolloutRepair(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, actor, session, probe, restore := partialDeploymentFixture(t, engine)

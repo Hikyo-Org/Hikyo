@@ -163,6 +163,7 @@ func replacementTopologyService(t *testing.T, old *SelfConfig, p *topologyDeploy
 	return next
 }
 func TestSelfConfigSingletonTopologyFencesOldIdentityAcrossOrdinaryApply(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, actor, session, p := topologyServiceFixture(t, engine)
@@ -221,6 +222,7 @@ func TestSelfConfigSingletonTopologyFencesOldIdentityAcrossOrdinaryApply(t *test
 	}
 }
 func TestSelfConfigSingletonTopologyRestoreRequiresFreshRepair(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, actor, session, p := topologyServiceFixture(t, engine)
@@ -289,6 +291,7 @@ func TestSelfConfigSingletonTopologyRestoreRequiresFreshRepair(t *testing.T) {
 }
 
 func TestSelfConfigTopologySurvivesSourceRestoreAndOrdinaryRepair(t *testing.T) {
+	t.Parallel()
 	for _, initialHA := range []bool{false, true} {
 		for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 			t.Run(map[bool]string{false: "after-topology/", true: "initial-ha/"}[initialHA]+string(engine), func(t *testing.T) {

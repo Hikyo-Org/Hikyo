@@ -115,6 +115,7 @@ func repairMachine(t *testing.T, s *SelfConfig, local Actor, scope domain.Scope)
 }
 
 func TestSelfConfigRepairScopeRequiresMFAInstanceAdminAndExactHierarchy(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			s, local, _ := installerFixture(t, engine)

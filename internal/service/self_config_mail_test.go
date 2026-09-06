@@ -16,6 +16,7 @@ func mailTestSeed(sink *mailtest.Sink) map[string]string {
 }
 
 func TestSelfConfigTestMailRecordsOutcomeAfterActorRevocation(t *testing.T) {
+	t.Parallel()
 	owner := make(chan struct {
 		s     *SelfConfig
 		local Actor
@@ -59,6 +60,7 @@ func TestSelfConfigTestMailRecordsOutcomeAfterActorRevocation(t *testing.T) {
 }
 
 func TestSelfConfigTestMailChargesFivePerPrincipalPerHour(t *testing.T) {
+	t.Parallel()
 	sink := mailtest.New(t, "implicit")
 	s, local := selfConfigFixtureConfig(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "mail-budget.db")}, mailTestSeed(sink))
 	if err := s.LoadRuntime(t.Context()); err != nil {

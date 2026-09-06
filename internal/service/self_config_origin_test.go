@@ -15,6 +15,7 @@ import (
 )
 
 func TestSelfConfigOriginRecovery(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			for _, test := range []struct {
@@ -40,6 +41,7 @@ func TestSelfConfigOriginRecovery(t *testing.T) {
 				{name: "stale_worker_review", factor: "totp", password: true, totp: true, staleReview: true, want: domain.ErrConflict},
 			} {
 				t.Run(test.name, func(t *testing.T) {
+					t.Parallel()
 					cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "origin.db")}
 					if engine == store.EnginePostgres {
 						cfg = selfConfigPostgres(t)
@@ -156,6 +158,7 @@ func TestSelfConfigOriginRecovery(t *testing.T) {
 }
 
 func TestSelfConfigOriginReviewLoadsRetainedOriginWithoutActiveGraph(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "retained-origin.db")}
@@ -187,6 +190,7 @@ func TestSelfConfigOriginReviewLoadsRetainedOriginWithoutActiveGraph(t *testing.
 }
 
 func TestSelfConfigOriginReviewUsesStillActiveRPAfterInstallationFailure(t *testing.T) {
+	t.Parallel()
 	old, err := runtimeconfig.Prepare(map[string]string{"HIKYO_EXTERNAL_ORIGIN": "https://old.example"})
 	if err != nil {
 		t.Fatal(err)
@@ -209,6 +213,7 @@ func TestSelfConfigOriginReviewUsesStillActiveRPAfterInstallationFailure(t *test
 }
 
 func TestSelfConfigOriginReviewCannotCrossDecisionBoundary(t *testing.T) {
+	t.Parallel()
 	binding := store.SelfConfigBinding{OwnerInstanceID: "owner", Incarnation: "incarnation", Generation: 2, DesiredSnapshotID: "old"}
 	job := store.SelfConfigJob{SnapshotID: "candidate", Revision: 3}
 	for _, change := range []struct {
@@ -235,6 +240,7 @@ func TestSelfConfigOriginReviewCannotCrossDecisionBoundary(t *testing.T) {
 }
 
 func TestSelfConfigOriginApplyRefusesRetiringPasskeyHostname(t *testing.T) {
+	t.Parallel()
 	for _, engine := range []store.Engine{store.EngineSQLite, store.EnginePostgres} {
 		t.Run(string(engine), func(t *testing.T) {
 			cfg := store.Config{Engine: engine, Path: filepath.Join(t.TempDir(), "origin-apply.db")}

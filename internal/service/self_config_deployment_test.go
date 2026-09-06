@@ -87,10 +87,12 @@ func (p *deploymentProbe) VerifyInstalled(_ context.Context, bundle *runtimeconf
 }
 
 func TestSelfConfigDeploymentCommitsBeforeSendingAndRequiresApplicationAck(t *testing.T) {
+	t.Parallel()
 	testSelfConfigDeploymentAuthorization(t, "database_source")
 }
 
 func TestSelfConfigUpgradeDeploymentRequiresExactMFAAndApplicationAck(t *testing.T) {
+	t.Parallel()
 	testSelfConfigDeploymentAuthorization(t, "upgrade_source")
 }
 
