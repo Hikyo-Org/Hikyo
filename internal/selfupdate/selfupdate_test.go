@@ -93,11 +93,12 @@ func installerFixtureForVersion(t *testing.T, version string, prerelease bool, c
 	}
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body, ok := responses[request.URL.String()]
+		code := http.StatusOK
 		if !ok {
-			t.Fatalf("unexpected download %s", request.URL)
+			code = http.StatusNotFound
 		}
 		return &http.Response{
-			StatusCode: http.StatusOK,
+			StatusCode: code,
 			Body:       io.NopCloser(bytes.NewReader(body)),
 			Header:     make(http.Header),
 		}, nil

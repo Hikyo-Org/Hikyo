@@ -16,10 +16,11 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 	"github.com/Hikyo-Org/hikyo/internal/updatecheck"
+	"github.com/Hikyo-Org/hikyo/internal/upgradebundle"
 )
 
 func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T) {
-	for _, mutation := range []string{"none", "extra", "signature", "wrong workflow commit", "missing", "rollback", "trust rollback"} {
+	for _, mutation := range []string{"none", "extra", "signature", "wrong workflow commit", "missing", "rollback", "trust rollback", "bridge signature", "bridge missing"} {
 		t.Run(mutation, func(t *testing.T) {
 			const version = "1.1.0-nightly.1"
 			installer, status, target, responses := installerFixtureForVersion(t, version, true, "")
@@ -36,6 +37,18 @@ func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T
 			payloads := map[string][]byte{archiveName: responses[base+archiveName], "checksums.txt": responses[base+"checksums.txt"], "binary-provenance.json": []byte("{}"), "upgrade-compatibility.json": claim}
 			artifacts := []releasetrust.Artifact{{Name: archiveName, Kind: "binary", Platform: runtime.GOOS + "/" + runtime.GOARCH}, {Name: "checksums.txt", Kind: "checksum"}, {Name: "binary-provenance.json", Kind: "binary-provenance"}, {Name: "upgrade-compatibility.json", Kind: "upgrade-compatibility"}}
 			trust, material, _ := testfixture.NightlyWithPayloads(t, claim, mutation == "wrong workflow commit", payloads, artifacts)
+			identity := releaseidentity.Identity{Profile: declaration.Profile, Version: declaration.Version, Sequence: declaration.Sequence, Commit: declaration.Commit, CompatibilitySHA256: releaseidentity.Hash(claim), ManifestSHA256: releaseidentity.Hash(material.Manifest)}
+			engine := declaration.Engines[0]
+			bridge := trust.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: identity, TargetPolicySHA256: releaseidentity.Hash(material.Policy), SourceMigrations: engine.Migrations, TargetMigrations: engine.Migrations, SourceSchemaSHA256: engine.SchemaSHA256, TargetSchemaSHA256: engine.SchemaSHA256, Mode: "maintenance"})
+			bridgePath := "bridges/" + string(releaseidentity.Hash(bridge.Statement)) + "/"
+			responses[trustURL(bridgePath+"statement.json")] = bridge.Statement
+			responses[trustURL(bridgePath+"statement.sigstore.json")] = bridge.Signature
+			if mutation == "bridge signature" {
+				responses[trustURL(bridgePath+"statement.sigstore.json")] = []byte("{}")
+			}
+			if mutation == "bridge missing" {
+				delete(responses, trustURL(bridgePath+"statement.json"))
+			}
 			installer.config.TrustRootBase64 = base64.StdEncoding.EncodeToString(trust.Pinned.Root)
 			installer.config.RecoveryKeyBase64 = base64.StdEncoding.EncodeToString(trust.Pinned.RecoveryPublicKey)
 			snapshot := trust.Material(t)
@@ -87,9 +100,22 @@ func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T
 				if _, err := os.Stat(filepath.Join(staged.Directory, archiveName)); err != nil {
 					t.Fatal(err)
 				}
+				bundle, err := upgradebundle.Load(t.Context(), staged.BundleDirectory, trust.Pinned, releaseidentity.SnapshotFloor{})
+				if err != nil || !bundle.Valid() {
+					t.Fatalf("runtime bundle was not assembled: %v", err)
+				}
+				if len(bundle.Snapshot().BridgeDigests()) != 1 {
+					t.Fatal("runtime bundle omitted legacy bridge")
+				}
 				// Same-release download is idempotent and reauthenticates disk bytes.
 				if err := installer.Apply(t.Context(), status); !errors.As(err, &staged) {
 					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(staged.BundleDirectory, "catalog.json"), []byte("{}"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				if err := installer.Apply(t.Context(), status); err == nil || errors.As(err, &staged) {
+					t.Fatal("modified cached runtime bundle accepted")
 				}
 			} else if err == nil || errors.As(err, &staged) {
 				t.Fatalf("unsafe %s accepted: %v", mutation, err)
@@ -100,6 +126,14 @@ func TestSignedNightlyStagesVerifiedInventoryWithoutReplacingServer(t *testing.T
 			}
 			if paths, _ := filepath.Glob(filepath.Join(installer.config.StateDir, ".nightly-download-*")); len(paths) != 0 {
 				t.Fatal(fmt.Sprint("private staging leaked", paths))
+			}
+			if paths, _ := filepath.Glob(filepath.Join(installer.config.StateDir, ".nightly-bundle-inputs-*")); len(paths) != 0 {
+				t.Fatal("bundle inputs leaked", paths)
+			}
+			if strings.HasPrefix(mutation, "bridge ") {
+				if _, err := os.Stat(filepath.Join(installer.config.StateDir, "nightly-trust.json")); !errors.Is(err, os.ErrNotExist) {
+					t.Fatal("failed bundle assembly advanced trust floor", err)
+				}
 			}
 		})
 	}

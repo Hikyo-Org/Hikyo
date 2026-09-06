@@ -102,7 +102,7 @@ jobs:
           shellcheck_dir="$RUNNER_TEMP/shellcheck-$SHELLCHECK_VERSION"
           "$shellcheck_dir/shellcheck" \
             .githooks/* scripts/git/*.sh scripts/lib/*.sh scripts/ci/*.sh \
-            scripts/release/*.sh scripts/bench/*.sh scripts/compose-demo.sh install/install.sh.in
+            scripts/release/*.sh scripts/bench/*.sh scripts/compose-demo.sh install/install.sh.in install/upgrade-nightly*.sh
           echo "$shellcheck_dir" >>"$GITHUB_PATH"
       - name: Actionlint
         run: ./scripts/ci/run-go-tool.sh actionlint
@@ -239,6 +239,8 @@ jobs:
         run: ./scripts/release/release-channel_test.sh
       - name: Pinned installer fixture
         run: ./scripts/release/render-installer_test.sh
+      - name: First-use nightly bootstrap refusal boundaries
+        run: sh install/upgrade-nightly_test.sh
 
   # Build the release-shaped app once for browser legs plus ui-tagged/no-egress
   # checks. Go/API/client changes select these app checks without selecting the
@@ -954,6 +956,10 @@ jobs:
         run: |
           ./scripts/ci/test-core-packages_test.sh
           ./scripts/ci/test-core-packages.sh
+      - name: Root systemd upgrade adapter boundaries in isolated Linux
+        run: sh scripts/ci/test-host-upgrade.sh
+      - name: Real systemd upgrade service and reboot fence acceptance
+        run: sh scripts/ci/test-host-upgrade-systemd.sh
       - name: MCP 2026-07-28 upstream conformance
         run: ./scripts/ci/check-mcp-conformance.sh
       - name: Verify dynamic-secret target port discovery refusals

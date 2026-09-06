@@ -271,5 +271,22 @@ func (b Bundle) Sources(engine releaseidentity.Engine) []upgradecompat.Installed
 		}
 		candidates = append(candidates, upgradecompat.InstalledSource{Identity: releaseidentity.Source{Release: node.Identity()}, Migrations: manifest, SchemaSHA256: schema})
 	}
+	for _, bridge := range b.bridges {
+		statement := bridge.Statement()
+		if statement.SourceMigrations.Engine != engine {
+			continue
+		}
+		candidate := upgradecompat.InstalledSource{Identity: statement.SourceIdentity(), Migrations: statement.SourceMigrations, SchemaSHA256: statement.SourceSchemaSHA256}
+		duplicate := false
+		for _, existing := range candidates {
+			if existing.Identity == candidate.Identity && existing.SchemaSHA256 == candidate.SchemaSHA256 && slices.Equal(existing.Migrations.Entries, candidate.Migrations.Entries) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			candidates = append(candidates, candidate)
+		}
+	}
 	return candidates
 }
