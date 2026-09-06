@@ -261,3 +261,50 @@ func TestLinuxExistingConditionsCannotBypassFence(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLinuxPrunePublicKeepsOnlyReferencedEvidence(t *testing.T) {
+	h := rootTestHost(t)
+	public := h.config.PublicDirectory
+	mk := func(name string) string {
+		path := filepath.Join(public, name)
+		if err := os.MkdirAll(filepath.Join(path, "inner"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	keptBundle, keptEvidence, keptBackup := mk("bundle-current"), mk("evidence-current"), mk("backup-current")
+	for _, stale := range []string{"bundle-old", "evidence-old", "backup-old"} {
+		mk(stale)
+	}
+	// A runtime-owned symlink inside a stale backup must never be followed.
+	secret := filepath.Join(h.config.StateDirectory, "secret")
+	if err := os.WriteFile(secret, []byte("untouched"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(h.config.StateDirectory, filepath.Join(public, "backup-old", "escape")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.PublishPublicEvidence("operator.pub", []byte("public key")); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.PrunePublic(RuntimeEvidence{BundleDirectory: keptBundle, EvidenceDirectory: keptEvidence, CiphertextPath: filepath.Join(keptBackup, "backup.age")}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(public)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{}
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	if strings.Join(names, ",") != "backup-current,bundle-current,evidence-current,operator.pub" {
+		t.Fatalf("unexpected public directory after prune: %v", names)
+	}
+	if raw, err := os.ReadFile(secret); err != nil || string(raw) != "untouched" {
+		t.Fatal("prune followed a symlink out of the public directory", err)
+	}
+	if err := h.PrunePublic(RuntimeEvidence{BundleDirectory: filepath.Join(h.config.StateDirectory, "bundle-x")}); err == nil {
+		t.Fatal("accepted retained evidence outside the public directory")
+	}
+}

@@ -126,6 +126,12 @@ func (h *automaticTestHost) Complete(context.Context) error {
 	h.completed = true
 	return h.event("complete")
 }
+func (h *automaticTestHost) PrunePublic(hostupgrade.RuntimeEvidence) error {
+	if !h.completed {
+		h.t.Fatal("pruned public evidence before completion")
+	}
+	return h.event("prune")
+}
 
 func automaticState(plan upgradecompat.Plan, journal *automaticJournal, index int, phase upgrade.Phase) upgrade.State {
 	step := plan.Steps()[index]
@@ -169,7 +175,7 @@ func TestAutomaticRouteMaintainsFenceAcrossHopsAndPersistsExactIntent(t *testing
 	if err := applyAutomaticRoute(t.Context(), host, host.db, route, staged, journal, host.path, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	want := "migrate-0,install-0,configure-upgrade,start-0,fence,migrate-1,install-1,configure-upgrade,start-1,configure-restart,complete"
+	want := "migrate-0,install-0,configure-upgrade,start-0,fence,migrate-1,install-1,configure-upgrade,start-1,configure-restart,complete,prune"
 	if strings.Join(host.events, ",") != want || journal.Phase != "complete" || !host.running {
 		t.Fatalf("incorrect coordinated route: %v %+v", host.events, journal)
 	}
@@ -183,7 +189,7 @@ func TestAutomaticFinalHealthyResumeRestartsBeforeCompletion(t *testing.T) {
 	if err := applyAutomaticRoute(t.Context(), host, host.db, route, staged, journal, host.path, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(host.events, ",") != "install-1,configure-restart,start-1,configure-restart,complete" || !host.running {
+	if strings.Join(host.events, ",") != "install-1,configure-restart,start-1,configure-restart,complete,prune" || !host.running {
 		t.Fatalf("final resume did not restart: %v", host.events)
 	}
 }

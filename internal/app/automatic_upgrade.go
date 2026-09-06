@@ -99,8 +99,15 @@ func RunAutomaticUpgrade(ctx context.Context, args []string, out io.Writer, read
 	}
 	defer func() {
 		if unlockErr := lock.Unlock(); unlockErr != nil {
-			// A handoff is control flow: never wrap it around a failed unlock.
-			err = fmt.Errorf("release operator upgrade lock: %w", unlockErr)
+			unlockErr = fmt.Errorf("release operator upgrade lock: %w", unlockErr)
+			// A handoff is control flow: the entrypoint must not execute it
+			// after a failed unlock. Any other outcome stays visible.
+			var handoff *AutomaticHandoff
+			if errors.As(err, &handoff) {
+				err = unlockErr
+			} else {
+				err = errors.Join(err, unlockErr)
+			}
 		}
 	}()
 	journalPath := filepath.Join(c.StateDirectory, "operation.json")

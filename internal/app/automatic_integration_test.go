@@ -364,6 +364,12 @@ func (h *automaticProcessHost) ConfigureRuntime(_ context.Context, e hostupgrade
 	return nil
 }
 func (h *automaticProcessHost) Complete(context.Context) error { h.fenced = false; return nil }
+func (h *automaticProcessHost) PrunePublic(hostupgrade.RuntimeEvidence) error {
+	if h.fenced {
+		return errors.New("pruned public evidence while still fenced")
+	}
+	return nil
+}
 func (h *automaticProcessHost) StartCandidate(ctx context.Context, digest string, final bool, timeout time.Duration) error {
 	if !h.fenced || h.command != nil {
 		return errors.New("candidate requires a stopped fenced service")
