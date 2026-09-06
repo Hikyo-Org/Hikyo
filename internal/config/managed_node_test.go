@@ -322,7 +322,7 @@ func TestManagedDevelopmentNodeControlsRequireDevelopmentContext(t *testing.T) {
 	for key, value := range keys {
 		values[key] = value
 	}
-	got, err := ApplyManagedNodeValues(base, values)
+	got, err := parseManagedNodeValues(base, values)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -389,6 +389,29 @@ func TestManagedDevelopmentControlsRejectMalformedAndOutOfRangeValues(t *testing
 		values[input.key] = input.value
 		if err := ValidateManagedNodeValues(values); err == nil {
 			t.Fatalf("invalid %s accepted", input.key)
+		}
+	}
+}
+
+func TestManagedNodeAcceptsEphemeralListenersInProduction(t *testing.T) {
+	// Packaged production binaries and operators may bind port 0 and read the
+	// chosen address from the ready log. Rejecting it broke every real-binary
+	// upgrade test; the parser must accept it in every trust context.
+	base := &Config{Store: Datastore{Engine: EnginePostgres}}
+	values := managedNodeTestValues()
+	values["HIKYO_LISTEN"], values["HIKYO_OPERATIONAL_LISTEN"] = "localhost:0", "127.0.0.1:0"
+	effective, err := parseManagedNodeValues(base, values)
+	if err != nil {
+		t.Fatalf("production node rejected ephemeral listeners: %v", err)
+	}
+	if effective.Listen != "localhost:0" || effective.OperationalListen != "127.0.0.1:0" {
+		t.Fatal("ephemeral listeners were not retained")
+	}
+	for _, bad := range []string{"localhost", "127.0.0.1:-1", "127.0.0.1:65536", "127.0.0.1:http"} {
+		values := managedNodeTestValues()
+		values["HIKYO_LISTEN"] = bad
+		if _, err := parseManagedNodeValues(base, values); err == nil {
+			t.Fatalf("accepted invalid listener %q", bad)
 		}
 	}
 }
