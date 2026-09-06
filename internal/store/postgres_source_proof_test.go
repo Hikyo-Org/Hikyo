@@ -230,13 +230,20 @@ func TestPostgresSourceProofRequiresRuntimePrivileges(t *testing.T) {
 	ctx := t.Context()
 	role := fmt.Sprintf("hikyo_source_role_%d", time.Now().UnixNano())
 	quotedRole := pgx.Identifier{role}.Sanitize()
+	var passwordBytes [32]byte
+	if _, err := rand.Read(passwordBytes[:]); err != nil {
+		t.Fatal(err)
+	}
+	password := fmt.Sprintf("%x", passwordBytes)
 	exec := func(sql string) {
 		t.Helper()
 		if _, err := db.PG().Exec(ctx, sql); err != nil {
 			t.Fatal(err)
 		}
 	}
-	exec("CREATE ROLE " + quotedRole + " LOGIN")
+	// A private random hex credential works with both local trust fixtures and
+	// CI's SCRAM authentication without widening this role's database grants.
+	exec("CREATE ROLE " + quotedRole + " LOGIN PASSWORD '" + password + "'")
 	t.Cleanup(func() {
 		_, _ = db.PG().Exec(context.Background(), "DROP OWNED BY "+quotedRole)
 		_, _ = db.PG().Exec(context.Background(), "DROP ROLE "+quotedRole)
@@ -250,7 +257,7 @@ func TestPostgresSourceProofRequiresRuntimePrivileges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate.User = url.User(role)
+	candidate.User = url.UserPassword(role, password)
 	raw := candidate.String()
 	conn, err := pgx.Connect(ctx, raw)
 	if err != nil {

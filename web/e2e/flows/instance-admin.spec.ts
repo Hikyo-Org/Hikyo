@@ -1075,6 +1075,7 @@ test.describe('instance administration', () => {
         await page.goto('/instance/config');
         const heading = page.getByRole('heading', { name: 'Hikyo configuration', level: 1 });
         const owner = page.locator('#configuration-owner');
+        const ownerIdentifier = owner.locator('p').filter({ hasText: /^Owner\s/ }).locator('code');
         const apply = page.getByRole('button', { name: 'Apply selected revision', exact: true });
         const revision = page.getByLabel('Published revision to apply or test');
         const edit = page.getByRole('link', { name: 'Edit configuration project', exact: true });
@@ -1086,7 +1087,7 @@ test.describe('instance administration', () => {
           theme: scheme,
           text: [heading, page.locator('.page__lede'), owner.locator('.settings-row__detail')],
           radii: [[owner, 'container'], [apply, 'control'], [revision, 'control']],
-          fonts: [[heading, 'ui'], [owner.locator('code'), 'mono']],
+          fonts: [[heading, 'ui'], [ownerIdentifier, 'mono']],
           colours: [
             [heading, 'color', '--tx'],
             [owner, 'backgroundColor', '--bg-panel'],
