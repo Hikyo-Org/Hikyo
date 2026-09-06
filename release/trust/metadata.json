@@ -1,0 +1,30 @@
+{
+  "schema": "hikyo.dev/trust-metadata/v1",
+  "sequence": 1,
+  "highest_release": null,
+  "highest_release_sequence": null,
+  "recovery": {
+    "id": "recovery-1",
+    "sha256": "1eb7ad2092668b73621c21a1eeb801ed6391bc794df1909abce8e1d45e03a229"
+  },
+  "event": {
+    "type": "bootstrap",
+    "signed_by": "recovery-1"
+  },
+  "primary_keys": [
+    {
+      "id": "primary-1",
+      "public_key": "primary-1.pub",
+      "sha256": "a91737eeacfb9a756a8c2705e4c43187512762a59bc094a6883bef31436c55e5",
+      "valid_from_release_sequence": 1,
+      "valid_through_release_sequence": null,
+      "revoked": false
+    }
+  ],
+  "releases": [],
+  "pending_release": {
+    "version": "1.0.0",
+    "sequence": 1,
+    "manifest_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

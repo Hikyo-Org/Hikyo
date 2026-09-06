@@ -77,7 +77,9 @@ func (s *Session) accept(ctx context.Context, previous *State, next *State) erro
 	if err := a.Validate(); err != nil {
 		return err
 	}
-	if a.Floor.HighestReleaseSequence < int64(next.Pending.Target.Sequence) {
+	// The recovery metadata counter covers stable releases. Nightly sequence
+	// authority comes from the independently verified keyless manifest/policy.
+	if next.Pending.Target.Profile == releaseidentity.StableV1 && a.Floor.HighestReleaseSequence < int64(next.Pending.Target.Sequence) {
 		return ErrConflict
 	}
 	if previous != nil {

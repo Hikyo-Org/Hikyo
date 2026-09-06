@@ -189,7 +189,7 @@ func validateArtifacts(artifacts []Artifact) error {
 			return errors.New("unsupported exact artifact platform")
 		}
 		switch artifact.Kind {
-		case "binary", "binary-provenance", "release-candidate", "upgrade-compatibility", "sbom", "checksum", "installer":
+		case "binary", "binary-provenance", "release-candidate", "upgrade-compatibility", "sbom", "checksum", "installer", "nightly-policy", "sigstore-trusted-root", "release-notes":
 		case "package":
 			if !slices.Contains([]string{"apk", "archlinux", "deb", "rpm"}, artifact.Format) || !slices.Contains([]string{"amd64", "arm64"}, artifact.Arch) || (artifact.Platform != "" && artifact.Platform != "linux/"+artifact.Arch) {
 				return errors.New("invalid package identity")

@@ -130,6 +130,8 @@ own inventory. All actual inventory readers are hashed before a nightly release
 is returned. Extra, missing, duplicate, unknown or substituted assets refuse.
 Verified staging bytes must remain immutable until execution. Current unsigned
 nightlies remain unsupported; no fallback constructs a stable identity.
+The [signed-nightly runbook](signed-nightlies.md) covers automated publication,
+offline public trust authorization and complete-payload bundle assembly.
 
 ## Planner and recovery edges
 
@@ -153,6 +155,14 @@ requires maintenance. The returned bridge digest and
 `RequiresOperatorAttestation` obligation do not supply the second proof: the
 instance attestation, backup evidence, current operator pin and atomic one-use
 nonce consumption remain required at admission.
+
+`hikyo.dev/legacy-nightly-bridge/v1` is the explicit first-hop form for an unsigned
+pre-ledger installation. It names `source_genesis: "legacy/v1"`, exact source
+schema/migrations, and an independently authenticated nightly target and policy.
+It carries no invented `source` release or `source_policy_sha256`. Only recovery
+signatures and the current catalog authorize it. An ordinary nightly legacy
+edge is an inspection candidate and cannot create an executable route. Fresh
+installs and existing stable-profile rules are unchanged.
 
 Plans expose defensive copies. Their digest binds the exact route, schemas,
 migrations, inventory, policies and bridge statements. Unrelated later metadata

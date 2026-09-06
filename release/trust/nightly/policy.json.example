@@ -1,0 +1,16 @@
+{
+  "schema": "hikyo.dev/nightly-policy/v1",
+  "trusted_root_sha256": "REPLACE_WITH_SHA256_OF_REVIEWED_TRUSTED_ROOT_JSON",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "repository_uri": "https://github.com/Hikyo-Org/Hikyo",
+  "repository_id": "1316165429",
+  "repository_owner_uri": "https://github.com/Hikyo-Org",
+  "repository_owner_id": "316726515",
+  "workflow_path": ".github/workflows/nightly.yml",
+  "protected_ref": "refs/heads/main",
+  "runner_environment": "github-hosted",
+  "require_sct": true,
+  "rekor_log_id": "REPLACE_WITH_REKOR_V1_LOG_KEY_ID",
+  "checkpoint_origin": "REPLACE_WITH_EXACT_SIGNED_REKOR_V1_CHECKPOINT_ORIGIN",
+  "revoked_manifests": []
+}

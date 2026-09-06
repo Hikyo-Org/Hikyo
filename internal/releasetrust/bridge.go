@@ -9,15 +9,22 @@ import (
 
 type BridgeStatement struct {
 	Schema             string                            `json:"schema"`
-	Source             releaseidentity.Identity          `json:"source"`
+	Source             releaseidentity.Identity          `json:"source,omitzero"`
+	SourceGenesis      string                            `json:"source_genesis,omitempty"`
 	Target             releaseidentity.Identity          `json:"target"`
-	SourcePolicySHA256 releaseidentity.Digest            `json:"source_policy_sha256"`
+	SourcePolicySHA256 releaseidentity.Digest            `json:"source_policy_sha256,omitempty"`
 	TargetPolicySHA256 releaseidentity.Digest            `json:"target_policy_sha256"`
 	SourceMigrations   releaseidentity.MigrationManifest `json:"source_migrations"`
 	TargetMigrations   releaseidentity.MigrationManifest `json:"target_migrations"`
 	SourceSchemaSHA256 releaseidentity.Digest            `json:"source_schema_sha256"`
 	TargetSchemaSHA256 releaseidentity.Digest            `json:"target_schema_sha256"`
 	Mode               string                            `json:"mode"`
+}
+
+// SourceIdentity preserves the inspected legacy genesis without inventing a
+// signed release identity or policy for a pre-ledger database.
+func (s BridgeStatement) SourceIdentity() releaseidentity.Source {
+	return releaseidentity.Source{Genesis: s.SourceGenesis, Release: s.Source}
 }
 
 type BridgeMaterial struct{ Statement, Signature []byte }
@@ -69,8 +76,20 @@ func VerifyBridge(snapshot Snapshot, material BridgeMaterial) (VerifiedBridge, e
 	if err := decodeDocument(material.Statement, &statement); err != nil {
 		return VerifiedBridge{}, err
 	}
-	if statement.Schema != "hikyo.dev/recovery-bridge/v1" || statement.Mode != "maintenance" || statement.Source.Validate() != nil || statement.Target.Validate() != nil || statement.Target.Sequence <= statement.Source.Sequence || statement.SourcePolicySHA256.Validate() != nil || statement.TargetPolicySHA256.Validate() != nil {
+	if statement.Mode != "maintenance" || statement.Target.Validate() != nil || statement.TargetPolicySHA256.Validate() != nil {
 		return VerifiedBridge{}, errors.New("invalid recovery bridge identity or mode")
+	}
+	switch statement.Schema {
+	case "hikyo.dev/recovery-bridge/v1":
+		if statement.SourceGenesis != "" || statement.Source.Validate() != nil || statement.Target.Sequence <= statement.Source.Sequence || statement.SourcePolicySHA256.Validate() != nil {
+			return VerifiedBridge{}, errors.New("invalid recovery bridge source")
+		}
+	case "hikyo.dev/legacy-nightly-bridge/v1":
+		if statement.SourceGenesis != releaseidentity.LegacyGenesisV1 || statement.Source != (releaseidentity.Identity{}) || statement.SourcePolicySHA256 != "" || statement.Target.Profile != releaseidentity.NightlyV1 || len(statement.SourceMigrations.Entries) == 0 {
+			return VerifiedBridge{}, errors.New("invalid legacy nightly bridge source or target")
+		}
+	default:
+		return VerifiedBridge{}, errors.New("unknown recovery bridge schema")
 	}
 	if statement.SourceMigrations.Validate() != nil || statement.TargetMigrations.Validate() != nil || statement.SourceMigrations.Engine != statement.TargetMigrations.Engine || statement.SourceSchemaSHA256.Validate() != nil || statement.TargetSchemaSHA256.Validate() != nil {
 		return VerifiedBridge{}, errors.New("invalid recovery bridge migration binding")

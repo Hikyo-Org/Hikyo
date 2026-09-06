@@ -25,7 +25,7 @@ grep -F 'multiple nightly tags exist for workflow run' "$repo_root/scripts/relea
 grep -F 'repos/$REPOSITORY/releases/tags/$tag' "$workflow" >/dev/null || fail 'successful reruns attempt to recreate an existing release'
 grep -F 'workflow run %s already published as %s' "$workflow" >/dev/null || fail 'successful reruns are not skipped'
 run_tag_line=$(grep -nF './scripts/release/nightly-run-tag.sh "$RUN_NUMBER"' "$workflow" | cut -d: -f1)
-latest_tag_line=$(grep -nF './scripts/release/latest-nightly-tag.sh' "$workflow" | cut -d: -f1)
+latest_tag_line=$(grep -nF './scripts/release/latest-nightly-tag.sh' "$workflow" | head -n1 | cut -d: -f1)
 [ "$run_tag_line" -lt "$latest_tag_line" ] || fail 'latest-release deduplication bypasses run-tag mismatch validation'
 if grep -F 'target_commitish' "$workflow" >/dev/null; then
 	fail 'nightly deduplication trusts mutable release metadata'
@@ -85,6 +85,22 @@ jq -e '.conditions.ref_name.exclude == ["refs/tags/v*-nightly.*"]' \
 if grep -E 'sign-bundle|bind-manifest|ceremony\.sh|COSIGN_PASSWORD|\.key\.age' "$workflow" >/dev/null; then
 	fail 'nightly workflow reaches offline signing ceremony material'
 fi
+
+grep -F 'id-token: write' "$workflow" >/dev/null || fail 'nightly lacks GitHub OIDC signing permission'
+grep -F 'test "$commit" = "$GITHUB_SHA"' "$workflow" >/dev/null || fail 'checkout can differ from OIDC source identity'
+grep -F 'go run ./scripts/release/nightly preflight' "$workflow" >/dev/null || fail 'nightly bootstrap is optional'
+if grep -F 'if [ -f release/trust/root.json ]' "$workflow" >/dev/null; then fail 'missing production stamp can be published'; fi
+grep -F 'HIKYO_COMPATIBILITY_BASE64: ${{ steps.compatibility.outputs.base64 }}' "$workflow" >/dev/null || fail 'nightly compatibility is not embedded'
+grep -F 'cosign sign-blob --yes --use-signing-config=false --new-bundle-format=true' "$workflow" >/dev/null || fail 'complete keyless bundle signing missing'
+grep -F 'go run ./scripts/release/nightly verify --directory nightly-payloads' "$workflow" >/dev/null || fail 'runtime verifier is not used before publishing'
+grep -F 'nightly-payloads/*' "$workflow" >/dev/null || fail 'publication inventory differs from signed directory'
+smoke_line=$(grep -nF './scripts/release/smoke-release-startup.sh image-root/amd64/hikyo' "$workflow" | cut -d: -f1)
+publish_line=$(grep -nF 'gh release create "$TAG"' "$workflow" | cut -d: -f1)
+[ -n "$smoke_line" ] && [ "$smoke_line" -lt "$publish_line" ] || fail 'production startup does not gate publication'
+upgrade_line=$(grep -nF "go test ./internal/upgradegate -run '^TestPackagedNightlyReleaseUpgrade$'" "$workflow" | cut -d: -f1)
+[ -n "$upgrade_line" ] && [ "$upgrade_line" -lt "$publish_line" ] || fail 'populated previous-release upgrade does not gate publication'
+grep -F 'export HIKYO_NIGHTLY_PREVIOUS_BINARY=' "$workflow" >/dev/null || fail 'upgrade gate does not execute the previous release archive'
+"$repo_root/scripts/release/create-nightly-manifest_test.sh"
 
 "$repo_root/scripts/release/next-nightly-version_test.sh"
 "$repo_root/scripts/release/latest-stable-version_test.sh"

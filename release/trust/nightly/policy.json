@@ -1,0 +1,16 @@
+{
+  "checkpoint_origin": "rekor.sigstore.dev - 1193050959916656506",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "protected_ref": "refs/heads/main",
+  "rekor_log_id": "c0d23d6ad406973f9559f3ba2d1ca01f84147d8ffc5b8445c224f98b9591801d",
+  "repository_id": "1316165429",
+  "repository_owner_id": "316726515",
+  "repository_owner_uri": "https://github.com/Hikyo-Org",
+  "repository_uri": "https://github.com/Hikyo-Org/Hikyo",
+  "require_sct": true,
+  "revoked_manifests": [],
+  "runner_environment": "github-hosted",
+  "schema": "hikyo.dev/nightly-policy/v1",
+  "trusted_root_sha256": "6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66",
+  "workflow_path": ".github/workflows/nightly.yml"
+}

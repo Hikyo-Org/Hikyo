@@ -18,7 +18,24 @@ env:
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    services:
+      release-schema:
+        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        env:
+          POSTGRES_USER: hikyo
+          POSTGRES_PASSWORD: release-schema-fixture
+          POSTGRES_DB: hikyo_release_schema
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hikyo -d hikyo_release_schema"
+          --health-interval 5s --health-timeout 5s --health-retries 12
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,7 +44,11 @@ jobs:
           persist-credentials: false
       - name: Pin checked-out main commit
         id: source
-        run: printf 'commit=%s\n' "$(git rev-parse HEAD)" >>"$GITHUB_OUTPUT"
+        run: |
+          commit=$(git rev-parse HEAD)
+          # OIDC certifies the triggering workflow SHA, not a later main checkout.
+          test "$commit" = "$GITHUB_SHA"
+          printf 'commit=%s\n' "$commit" >>"$GITHUB_OUTPUT"
       - name: Require exact-head green main CI
         env:
           GH_TOKEN: ${{ github.token }}
@@ -127,6 +148,44 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Require recovery-authorized nightly trust before building
+        if: steps.identity.outputs.skip != 'true'
+        run: go run ./scripts/release/nightly preflight
+      - name: Resolve and authenticate previous signed nightly
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          previous_tag=$(gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq '
+            map(map(select(any(.assets[]; .name == "release-manifest.sigstore.json"))))
+          ' | ./scripts/release/latest-nightly-tag.sh)
+          if [ -n "$previous_tag" ]; then
+            gh release download "$previous_tag" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/previous-nightly"
+            go run ./scripts/release/nightly sources --directory "$RUNNER_TEMP/previous-nightly" --out "$RUNNER_TEMP/nightly-sources.json"
+          else
+            go run ./scripts/release/nightly sources --out "$RUNNER_TEMP/nightly-sources.json"
+          fi
+      - name: Generate nightly compatibility from both migrated engines
+        id: compatibility
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.identity.outputs.version }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+          HIKYO_RELEASE_SCHEMA_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
+        run: |
+          candidate="$RUNNER_TEMP/nightly-candidate.json"
+          jq -n --arg version "$VERSION" --arg commit "$COMMIT" --argjson sequence "$GITHUB_RUN_NUMBER" \
+            '{version:$version,commit:$commit,sequence:$sequence,key_id:"",public_key:""}' >"$candidate"
+          declaration="$RUNNER_TEMP/upgrade-compatibility.json"
+          go run ./scripts/release/compatibility --profile nightly/v1 --candidate "$candidate" \
+            --sources "$RUNNER_TEMP/nightly-sources.json" --out "$declaration"
+          {
+            printf 'sha256=%s\n' "$(sha256sum "$declaration" | awk '{print $1}')"
+            printf 'base64='
+            base64 <"$declaration" | tr -d '\n'
+            printf '\n'
+          } >>"$GITHUB_OUTPUT"
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         if: steps.identity.outputs.skip != 'true'
         with:
@@ -137,20 +196,19 @@ jobs:
       - name: Build tested embedded WebUI
         if: steps.identity.outputs.skip != 'true'
         run: ./scripts/ci/build-spa.sh
-      - name: Encode stable updater trust material when bootstrapped
+      - name: Embed mandatory production trust material
         id: update-trust
         if: steps.identity.outputs.skip != 'true'
         run: |
-          if [ -f release/trust/root.json ]; then
-            recovery=$(jq -r '.recovery.public_key' release/trust/root.json)
-            {
-              printf 'root='
-              base64 <release/trust/root.json | tr -d '\n'
-              printf '\nrecovery='
-              base64 <"release/trust/$recovery" | tr -d '\n'
-              printf '\n'
-            } >>"$GITHUB_OUTPUT"
-          fi
+          test -s release/trust/root.json
+          recovery=$(jq -r '.recovery.public_key' release/trust/root.json)
+          {
+            printf 'root='
+            base64 <release/trust/root.json | tr -d '\n'
+            printf '\nrecovery='
+            base64 <"release/trust/$recovery" | tr -d '\n'
+            printf '\n'
+          } >>"$GITHUB_OUTPUT"
       - name: Build six nightly archives and eight native packages
         if: steps.identity.outputs.skip != 'true'
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
@@ -160,6 +218,8 @@ jobs:
           HIKYO_UPDATE_CHANNEL: nightly
           HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}
           HIKYO_UPDATE_RECOVERY_KEY: ${{ steps.update-trust.outputs.recovery }}
+          HIKYO_COMPATIBILITY_BASE64: ${{ steps.compatibility.outputs.base64 }}
+          HIKYO_COMPATIBILITY_SHA256: ${{ steps.compatibility.outputs.sha256 }}
         with:
           distribution: goreleaser
           version: v2.17.1
@@ -176,21 +236,77 @@ jobs:
           ./scripts/release/prepare-image-root.sh \
             dist image-root "$COMMIT" .goreleaser.yaml
           ./scripts/release/snapshot-manifest_test.sh
-      - name: Mark nightly as unsigned prerelease output
+      - name: Stage the complete nightly payload inventory
         if: steps.identity.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.identity.outputs.version }}
           COMMIT: ${{ steps.source.outputs.commit }}
         run: |
+          mkdir nightly-payloads
+          cp dist/hikyo_*_Darwin_*.tar.gz dist/hikyo_*_Linux_*.tar.gz dist/hikyo_*_Windows_*.zip \
+            dist/hikyo_*.deb dist/hikyo-*.rpm dist/hikyo_*.apk dist/hikyo-*.pkg.tar.zst \
+            dist/checksums.txt dist/binary-provenance.json nightly-payloads/
+          cp "$RUNNER_TEMP/upgrade-compatibility.json" nightly-payloads/
+          cp release/trust/nightly/policy.json nightly-payloads/nightly-policy.json
+          cp release/trust/nightly/trusted-root.json nightly-payloads/sigstore-trusted-root.json
           printf '%s\n' \
-            'UNSIGNED NIGHTLY BUILD — NOT AN OFFICIAL HIKYO RELEASE' \
-            "Version: $VERSION" \
-            "Source commit: $COMMIT" \
-            'Built automatically from an exact main commit with successful CI.' \
+            'AUTOMATED SIGNED NIGHTLY - nightly/v1 trust profile' \
+            "Version: $VERSION" "Source commit: $COMMIT" \
             'Includes six archives and eight native Linux packages.' \
-            'Use the stable channel for recovery-signed production releases.' \
-            >dist/NIGHTLY-BUILD.txt
-          cp dist/NIGHTLY-BUILD.txt "$RUNNER_TEMP/nightly-notes.md"
+            'Server installation requires the authenticated offline bundle and upgrade evidence.' \
+            >nightly-payloads/NIGHTLY-BUILD.txt
+          cp nightly-payloads/NIGHTLY-BUILD.txt "$RUNNER_TEMP/nightly-notes.md"
+          ./scripts/release/create-nightly-manifest.sh "$VERSION" "$COMMIT" "$GITHUB_RUN_NUMBER" nightly-payloads
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        if: steps.identity.outputs.skip != 'true'
+        with:
+          cosign-release: v3.1.3
+      - name: Sign complete nightly manifest with GitHub OIDC
+        if: steps.identity.outputs.skip != 'true'
+        run: |
+          cosign sign-blob --yes --use-signing-config=false --new-bundle-format=true \
+            --rekor-url=https://rekor.sigstore.dev \
+            --trusted-root=release/trust/nightly/trusted-root.json \
+            --bundle=nightly-payloads/release-manifest.sigstore.json \
+            nightly-payloads/release-manifest.json
+      - name: Verify exact signed inventory and assemble runtime evidence
+        if: steps.identity.outputs.skip != 'true'
+        run: |
+          go run ./scripts/release/nightly verify --directory nightly-payloads
+          if [ -d "$RUNNER_TEMP/previous-nightly" ]; then
+            ./scripts/release/assemble-nightly.sh release/trust "$RUNNER_TEMP/nightly-bundle" \
+              "$RUNNER_TEMP/previous-nightly" nightly-payloads
+          else
+            ./scripts/release/assemble-nightly.sh release/trust "$RUNNER_TEMP/nightly-bundle" nightly-payloads
+          fi
+      - name: Require packaged production startup and restart on both engines
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          PGPASSWORD: release-schema-fixture
+          HIKYO_SMOKE_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_nightly_smoke?sslmode=disable
+        run: |
+          psql -h 127.0.0.1 -U hikyo -d postgres -c 'CREATE DATABASE hikyo_nightly_smoke'
+          ./scripts/release/smoke-release-startup.sh image-root/amd64/hikyo "$RUNNER_TEMP/nightly-bundle"
+      - name: Require populated previous nightly upgrade on both engines
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:release-schema-fixture@127.0.0.1:5432/hikyo_release_schema?sslmode=disable
+        run: |
+          if [ -d "$RUNNER_TEMP/previous-nightly" ]; then
+            previous_version=$(jq -r '.version' "$RUNNER_TEMP/previous-nightly/release-manifest.json")
+            mkdir "$RUNNER_TEMP/previous-binary"
+            tar -xzf "$RUNNER_TEMP/previous-nightly/hikyo_${previous_version}_Linux_x86_64.tar.gz" \
+              -C "$RUNNER_TEMP/previous-binary" hikyo
+            export HIKYO_NIGHTLY_PREVIOUS_BINARY="$RUNNER_TEMP/previous-binary/hikyo"
+            export HIKYO_NIGHTLY_TARGET_BINARY="$GITHUB_WORKSPACE/image-root/amd64/hikyo"
+            export HIKYO_NIGHTLY_TRUST="$GITHUB_WORKSPACE/release/trust"
+            export HIKYO_NIGHTLY_BUNDLE="$RUNNER_TEMP/nightly-bundle"
+            export HIKYO_NIGHTLY_PREVIOUS_COMPATIBILITY="$RUNNER_TEMP/previous-nightly/upgrade-compatibility.json"
+            export HIKYO_NIGHTLY_TARGET_COMPATIBILITY="$GITHUB_WORKSPACE/nightly-payloads/upgrade-compatibility.json"
+            go test ./internal/upgradegate -run '^TestPackagedNightlyReleaseUpgrade$' -count=1 -v
+          else
+            printf 'First signed nightly: no authenticated predecessor exists; fresh boot gates passed.\n'
+          fi
       - name: Mint scoped nightly release app token
         id: release_app
         if: steps.identity.outputs.skip != 'true'
@@ -218,16 +334,7 @@ jobs:
           TAG: ${{ steps.identity.outputs.tag }}
         run: |
           gh release create "$TAG" \
-            dist/hikyo_*_Darwin_*.tar.gz \
-            dist/hikyo_*_Linux_*.tar.gz \
-            dist/hikyo_*_Windows_*.zip \
-            dist/hikyo_*.deb \
-            dist/hikyo-*.rpm \
-            dist/hikyo_*.apk \
-            dist/hikyo-*.pkg.tar.zst \
-            dist/checksums.txt \
-            dist/binary-provenance.json \
-            dist/NIGHTLY-BUILD.txt \
+            nightly-payloads/* \
             --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "$TAG" \

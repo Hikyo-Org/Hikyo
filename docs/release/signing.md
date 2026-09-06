@@ -199,14 +199,17 @@ GitHub App named `Hikyo Nightly Release`, installed only on this repository,
 owns nightly tag and prerelease publication. It has only repository
 `Contents: read and write`, no webhook, and no event subscriptions.
 Each nightly publishes the six platform archives and all eight native Linux
-packages produced by the same verified GoReleaser snapshot. They remain
-explicitly unsigned development artifacts, not pinned-root releases.
+packages produced by the same verified GoReleaser snapshot. GitHub OIDC and
+Cosign sign their closed inventory under the separately recovery-authorized
+`nightly/v1` policy. Follow [signed nightly bootstrap and legacy bridges](../operations/signed-nightlies.md)
+before enabling publication. Missing public trust fails the nightly run.
 
 The workflow stores the app client ID in the
 `NIGHTLY_RELEASE_APP_CLIENT_ID` repository variable and its private key in the
 `NIGHTLY_RELEASE_APP_PRIVATE_KEY` Actions secret. Each run mints a short-lived,
 current-repository-only token and requests only `contents: write`. The built-in
-workflow token remains read-only. `configure-repository.sh` applies the
+workflow token retains read-only repository permissions and adds `id-token: write`
+for keyless signing. `configure-repository.sh` applies the
 dedicated app as the sole bypass actor for creation of `v*-nightly.*`; stable
 tag creation remains admin-only and every `v*` tag remains immutable.
 

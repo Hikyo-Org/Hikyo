@@ -121,8 +121,10 @@ including a concurrently created directory. Inputs remain untouched. A reported
 post-publication durability error identifies the retained output for inspection;
 do not assume that invocation completed successfully.
 
-This assembler supports `stable/v1` proofs. It does not assemble nightly release
-payloads, verify executable archive contents, sign operator evidence, or apply an
+For `nightly/v1`, pass `--nightly PATH` with the complete signed download,
+including every payload. See [signed nightlies](signed-nightlies.md) for trust
+bootstrap, bundle assembly and the recovery-signed legacy bridge. The assembler
+does not inspect executable archive contents, sign operator evidence, or apply an
 upgrade. Continue to verify each executable/image before use. Provision the
 completed public bundle with read access for the runtime UID and mount it
 read-only alongside the separately pinned `operator.pub` and any required

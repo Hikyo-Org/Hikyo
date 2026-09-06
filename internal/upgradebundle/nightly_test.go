@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust/testfixture"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 )
@@ -58,9 +59,25 @@ func TestNightlyOfflineBundleAuthenticatesActualClosedPayloadDirectory(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
+			if _, err := bundle.Plan(source, node.Identity()); err == nil {
+				t.Fatal("legacy route admitted without recovery bridge")
+			}
+			bridge := fixture.AddBridge(t, releasetrust.BridgeStatement{Schema: "hikyo.dev/legacy-nightly-bridge/v1", SourceGenesis: releaseidentity.LegacyGenesisV1, Target: node.Identity(), TargetPolicySHA256: releaseidentity.Hash(nightly.Policy), SourceMigrations: manifest, TargetMigrations: manifest, SourceSchemaSHA256: schema, TargetSchemaSHA256: schema, Mode: "maintenance"})
+			bridgeDigest := releaseidentity.Hash(bridge.Statement)
+			index.Bridges = []releaseidentity.Digest{bridgeDigest}
+			fixture.Catalog.Sequence++
+			material = fixture.Material(t)
+			for name, raw := range map[string][]byte{"index.json": testfixture.JSON(t, index), "catalog.json": material.Catalog, "catalog.sigstore.json": material.CatalogSignature,
+				"bridges/" + string(bridgeDigest) + "/statement.json": bridge.Statement, "bridges/" + string(bridgeDigest) + "/statement.sigstore.json": bridge.Signature} {
+				writeFixture(t, directory, name, raw)
+			}
+			bundle, err = Load(t.Context(), directory, fixture.Pinned, bundle.Snapshot().Floor())
+			if err != nil {
+				t.Fatal(err)
+			}
 			plan, err := bundle.Plan(source, node.Identity())
-			if err != nil || !plan.Valid() {
-				t.Fatal("real nightly route refused", err)
+			if err != nil || !plan.Valid() || !plan.RequiresOperatorAttestation() {
+				t.Fatal("recovery-authorized nightly route refused or lost operator proof", err)
 			}
 			if _, err := bundle.MatchBuild(append(append([]byte{}, compatibility...), '\n')); err == nil {
 				t.Fatal("different embedded declaration bytes accepted")
