@@ -15,6 +15,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/operation"
 )
 
 // adapterPushOutcomePayload is the audit payload for adapter.push_outcome events.
@@ -74,6 +75,30 @@ func adapterJobScope(job adapter.Job) domain.Scope {
 
 func NewAdapterRuntime(db *DB, authorize AdapterAuthorizer) *AdapterRuntime {
 	return &AdapterRuntime{db: db, authorize: authorize}
+}
+
+// CheckProviderSwitch is a host-runtime safety predicate, not a tenant data
+// read or an authority to mutate adapters. Any retained configuration or
+// configure fence refuses a real/development-provider switch. Target, outbox,
+// ledger, route and effect rows reference these configurations, so even an
+// idle or historical configuration is unsafe to redirect. The application
+// must call this after draining its requests/workers and must reject HA.
+func (r *AdapterRuntime) CheckProviderSwitch(ctx context.Context) error {
+	if operation.IsNetwork(ctx) {
+		return errors.New("provider-switch safety checks require host runtime authority")
+	}
+	found, err := dbReadResult(ctx, r.db, func(db adapterDB) (int, error) {
+		var found int
+		err := db.QueryRow(ctx, "SELECT CASE WHEN EXISTS (SELECT 1 FROM adapters) OR EXISTS (SELECT 1 FROM adapter_configure_fences) THEN 1 ELSE 0 END").Scan(&found)
+		return found, err
+	})
+	if err != nil {
+		return err
+	}
+	if found != 0 {
+		return errors.New("development provider changes require no retained adapter configuration or pending configuration work")
+	}
+	return nil
 }
 
 // LoadExecution reads only the immutable inputs named by a leased job. The

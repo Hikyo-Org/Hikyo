@@ -137,3 +137,32 @@ func TestNodeOverridesHaveSecretCatalogueClassificationAndMatchingSizeLimit(t *t
 		}
 	}
 }
+
+func TestDevelopmentNodeControlsRequireActualDevelopmentDeployment(t *testing.T) {
+	for _, key := range []string{"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", "HIKYO_DEV_SERVICE_BUDGETS_DISABLED", "HIKYO_DEV_ADAPTER_FAKE_PROVIDER"} {
+		t.Run(key, func(t *testing.T) {
+			node := nodeProjection()
+			value := "true"
+			if key == "HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE" {
+				value = "500"
+			}
+			node[key] = value
+			raw, err := runtimeconfig.EncodeNodeOverrides(map[string]map[string]string{"node-a": node})
+			if err != nil {
+				t.Fatal(err)
+			}
+			values := map[string]string{config.ManagedNodeOverridesKey: raw}
+			base := &config.Config{Store: config.Datastore{Engine: config.EngineSQLite, Path: "not-opened.db"}}
+			if _, err := runtimeconfig.PrepareForNode(values, base, "node-a"); err == nil {
+				t.Fatal("production context admitted development override")
+			}
+			base.Dev = true
+			if _, err := runtimeconfig.PrepareForNode(values, base, "node-a"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := runtimeconfig.Prepare(map[string]string{key: value}); err == nil {
+				t.Fatal("development node setting escaped into owner scope")
+			}
+		})
+	}
+}

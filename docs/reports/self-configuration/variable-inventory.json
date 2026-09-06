@@ -140,25 +140,28 @@
     "key": "HIKYO_DEV_ADAPTER_FAKE_PROVIDER",
     "audience": "server",
     "scope": "node",
-    "activation": "deployment",
+    "activation": "app-reload",
     "secret": false,
-    "import": "external"
+    "import": "value",
+    "developmentOnly": true
   },
   {
     "key": "HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE",
     "audience": "server",
     "scope": "node",
-    "activation": "deployment",
+    "activation": "app-reload",
     "secret": false,
-    "import": "external"
+    "import": "value",
+    "developmentOnly": true
   },
   {
     "key": "HIKYO_DEV_SERVICE_BUDGETS_DISABLED",
     "audience": "server",
     "scope": "node",
-    "activation": "deployment",
+    "activation": "app-reload",
     "secret": false,
-    "import": "external"
+    "import": "value",
+    "developmentOnly": true
   },
   {
     "key": "HIKYO_DIRECTORY_PROXY",
@@ -312,7 +315,7 @@
     "key": "HIKYO_NEW_ROOT_KEY_FILE",
     "audience": "server",
     "scope": "node",
-    "activation": "bootstrap",
+    "activation": "app-reload",
     "secret": false,
     "import": "external",
     "referencedContentSecret": true

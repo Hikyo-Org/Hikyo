@@ -127,7 +127,7 @@ func TestManagedNodeValidationRejectsUnsafeContentAndUnknownInputs(t *testing.T)
 		"database":                {"HIKYO_DB": "postgres://do-not-disclose"},
 		"node identity":           {"HIKYO_NODE_ID": "other-node"},
 		"HA mode":                 {"HIKYO_HA": "true"},
-		"dev override":            {"HIKYO_DEV_SERVICE_BUDGETS_DISABLED": "true"},
+		"malformed dev override":  {"HIKYO_DEV_SERVICE_BUDGETS_DISABLED": "sometimes"},
 		"unpaired TLS":            {"HIKYO_TLS_CERT_PEM": cert},
 		"mismatched TLS":          {"HIKYO_TLS_CERT_PEM": cert, "HIKYO_TLS_KEY_PEM": otherKey},
 		"private key in chain":    {"HIKYO_TLS_CERT_PEM": cert + key, "HIKYO_TLS_KEY_PEM": key},
@@ -287,6 +287,108 @@ func TestManagedNodeTLSImportRequiresPrivateKeyPermissions(t *testing.T) {
 		_, err := cfg.SeedNodeValues()
 		if allowed := mode == 0400 || mode == 0600; allowed != (err == nil) {
 			t.Fatalf("TLS seed key mode %04o: %v", mode, err)
+		}
+	}
+}
+
+func TestManagedDevelopmentNodeControlsRequireDevelopmentContext(t *testing.T) {
+	keys := map[string]string{
+		"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE": "500",
+		"HIKYO_DEV_SERVICE_BUDGETS_DISABLED":    "true",
+		"HIKYO_DEV_ADAPTER_FAKE_PROVIDER":       "true",
+	}
+	for key, value := range keys {
+		t.Run(key, func(t *testing.T) {
+			values := map[string]string{"HIKYO_LISTEN": "127.0.0.1:8080", "HIKYO_OPERATIONAL_LISTEN": "127.0.0.1:8081", "HIKYO_ADMISSION_BUDGET_MIB": "272", key: value}
+			if err := ValidateManagedNodeValues(values); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyManagedNodeValues(&Config{}, values); err == nil {
+				t.Fatal("production accepted a development-only node setting")
+			}
+			for _, disabled := range []string{"false", "0"} {
+				values[key] = disabled
+				if _, err := ApplyManagedNodeValues(&Config{}, values); err == nil {
+					t.Fatal("production accepted a present development setting with a disabled value")
+				}
+			}
+		})
+	}
+	base, _, err := Load("server", []string{"--dev"}, func(string) string { return "" }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{"HIKYO_LISTEN": "127.0.0.1:8080", "HIKYO_OPERATIONAL_LISTEN": "127.0.0.1:8081", "HIKYO_ADMISSION_BUDGET_MIB": "272"}
+	for key, value := range keys {
+		values[key] = value
+	}
+	got, err := ApplyManagedNodeValues(base, values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DevAdmissionPerIPPerMinute != 500 || !got.DevServiceBudgetsDisabled || !got.DevAdapterFakeProvider {
+		t.Fatal("development node controls were not applied")
+	}
+	for key := range keys {
+		delete(values, key)
+	}
+	got, err = ApplyManagedNodeValues(got, values)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DevAdmissionPerIPPerMinute != 0 || got.DevServiceBudgetsDisabled || got.DevAdapterFakeProvider {
+		t.Fatal("removed controls inherited stale startup values")
+	}
+}
+
+func TestManagedDevelopmentSeedImportsEffectiveControlsAndRefusesProduction(t *testing.T) {
+	inputs := map[string]string{"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE": "500", "HIKYO_DEV_SERVICE_BUDGETS_DISABLED": "true", "HIKYO_DEV_ADAPTER_FAKE_PROVIDER": "true"}
+	for _, development := range []bool{false, true} {
+		args := []string{}
+		if development {
+			args = append(args, "--dev")
+		}
+		getenv := func(key string) string {
+			if key == "HIKYO_DB" {
+				return "sqlite:unused.db"
+			}
+			return inputs[key]
+		}
+		cfg, _, err := LoadBootstrap("server", args, getenv, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seed, err := cfg.SeedNodeValues()
+		if !development {
+			if err == nil {
+				t.Fatal("production imported development controls")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		for key, want := range inputs {
+			if seed[key] != want {
+				t.Fatalf("seed %s = %q, want %q", key, seed[key], want)
+			}
+		}
+	}
+}
+
+func TestManagedDevelopmentControlsRejectMalformedAndOutOfRangeValues(t *testing.T) {
+	for _, input := range []struct{ key, value string }{
+		{"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", "0"},
+		{"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", "-1"},
+		{"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", "2147483648"},
+		{"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", "1.5"},
+		{"HIKYO_DEV_SERVICE_BUDGETS_DISABLED", "sometimes"},
+		{"HIKYO_DEV_ADAPTER_FAKE_PROVIDER", "maybe"},
+	} {
+		values := managedNodeTestValues()
+		values[input.key] = input.value
+		if err := ValidateManagedNodeValues(values); err == nil {
+			t.Fatalf("invalid %s accepted", input.key)
 		}
 	}
 }

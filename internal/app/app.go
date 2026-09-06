@@ -354,7 +354,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 
 	srv := &Server{db: db, keyring: kr, log: log, selfConfig: selfConfig}
 	owner := &ownerRuntime{server: srv, base: bootstrap, resources: resources,
-		selfConfig: selfConfig, budget: serviceBudget(cfg), advisory: service.NewAdvisory(),
+		selfConfig: selfConfig, budget: serviceBudget(cfg), advisory: service.NewAdvisory(), fakeProvider: newDevFakeProvider(),
 		values: ownerValues, nodeValues: nodeValues, seedNodeValues: nodeValues,
 		endpointErrors: make(chan error, 4)}
 	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM)
@@ -429,10 +429,9 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 // off switch exists for the browser flow harness; budget behavior itself is
 // covered by service-level conformance and unit tests.
 func serviceBudget(cfg *config.Config) *service.Budget {
-	if cfg.Dev && cfg.DevServiceBudgetsDisabled {
-		return nil
-	}
-	return service.NewBudget()
+	budget := service.NewBudget()
+	budget.SetDevelopmentDisabled(cfg.Dev && cfg.DevServiceBudgetsDisabled)
+	return budget
 }
 
 // AuthComponents resolves the two authentication settings and, in doing so,

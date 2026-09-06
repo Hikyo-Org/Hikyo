@@ -460,19 +460,7 @@ func (d *bootstrapDeployment) databaseSource(alias string) (string, error) {
 }
 
 func (d *bootstrapDeployment) rootSource(alias string) ([]byte, error) {
-	if _, ok := d.enrollment.Target.RootSources[alias]; !ok || !config.ValidManagedNodeID(alias) {
-		return nil, configrollout.ErrUnsupported
-	}
-	raw, err := readDeploymentFile(filepath.Join(d.sourcesDirectory, "root", alias, "root-key"), true)
-	if err != nil {
-		return nil, configrollout.ErrUnavailable
-	}
-	defer crypto.Zero(raw)
-	root, err := crypto.ReadRootKey("", string(raw))
-	if err != nil {
-		return nil, configrollout.ErrUnavailable
-	}
-	return root, nil
+	return (enrolledRootSources{enrollment: d.enrollment, directory: d.sourcesDirectory}).rootSource(alias)
 }
 
 func (d *bootstrapDeployment) currentRoot() ([]byte, error) {

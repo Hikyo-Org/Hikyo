@@ -18,15 +18,16 @@ import (
 // ownerRuntime lives outside every replaceable graph. In particular, its
 // installer never stops or joins the configuration worker calling it.
 type ownerRuntime struct {
-	server     *Server
-	base       *config.Config
-	resources  bootResources
-	selfConfig *service.SelfConfig
-	budget     *service.Budget
-	advisory   *service.Advisory
-	haCoord    *store.Coordination
-	haTick     func(context.Context)
-	haStatus   *haStatus
+	server       *Server
+	base         *config.Config
+	resources    bootResources
+	selfConfig   *service.SelfConfig
+	budget       *service.Budget
+	fakeProvider *devFakeProvider
+	advisory     *service.Advisory
+	haCoord      *store.Coordination
+	haTick       func(context.Context)
+	haStatus     *haStatus
 
 	changeMu                            sync.Mutex
 	mu                                  sync.Mutex
@@ -138,6 +139,11 @@ func (o *ownerRuntime) Prepare(ctx context.Context, bundle *runtimeconfig.Bundle
 	cfg, err := config.ApplyManagedOwnerAndNodeValues(o.base, values, node)
 	if err != nil {
 		return nil, err
+	}
+	if cfg.DevAdapterFakeProvider != previous.graph.cfg.DevAdapterFakeProvider {
+		if err := o.checkDevelopmentProviderSwitch(ctx, cfg); err != nil {
+			return nil, err
+		}
 	}
 	graph, err := o.prepareGeneration(ctx, cfg)
 	if err != nil {
@@ -276,6 +282,12 @@ func (p *preparedOwnerActivation) Activate(ctx context.Context) error {
 		o.resume(old.graph)
 		return err
 	}
+	if p.graph.cfg.DevAdapterFakeProvider != old.graph.cfg.DevAdapterFakeProvider {
+		if err := o.checkDevelopmentProviderSwitch(ctx, p.graph.cfg); err != nil {
+			o.resume(old.graph)
+			return err
+		}
+	}
 	if err := p.graph.limiter.InheritCounters(old.graph.limiter); err != nil {
 		o.resume(old.graph)
 		return err
@@ -286,6 +298,9 @@ func (p *preparedOwnerActivation) Activate(ctx context.Context) error {
 			return err
 		}
 	}
+	// All old requests/workers are drained and every fallible check completed.
+	// Update the stable budget used by both services and the coordinator.
+	o.budget.SetDevelopmentDisabled(p.graph.cfg.Dev && p.graph.cfg.DevServiceBudgetsDisabled)
 	next := newRunningGeneration(p.graph)
 	o.mu.Lock()
 	p.endpoints.activate(o)
@@ -327,4 +342,18 @@ func (g *generationHAStatus) HASnapshot() server.HAStats {
 	stats := g.status.HASnapshot()
 	stats.IsLeader = g.scheduler.IsLeader()
 	return stats
+}
+
+// A real/fake provider switch is admitted only for a pristine adapter domain.
+// Even idle configurations can enqueue work later with their existing remote
+// identities and credentials. Checking again after the drain catches writes
+// that raced preparation; HA nodes cannot make this node-local switch.
+func (o *ownerRuntime) checkDevelopmentProviderSwitch(ctx context.Context, cfg *config.Config) error {
+	if !cfg.Dev || cfg.HA {
+		return errors.New("development provider changes require a standalone development node")
+	}
+	if o.fakeProvider.hasState() {
+		return errors.New("development provider changes require an empty simulated provider")
+	}
+	return store.NewAdapterRuntime(o.server.db, nil).CheckProviderSwitch(ctx)
 }

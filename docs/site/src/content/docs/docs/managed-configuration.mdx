@@ -93,6 +93,20 @@ Live Apply prepares resources, drains old requests and workers, installs the
 new service graph and acknowledges actual installation. Changing a listener
 inside Hikyo does not configure an external reverse proxy, firewall, Service or
 Ingress. Make the new address reachable through the existing deployment.
+On nodes already started with `--dev`, the node entry may also contain
+`HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE`,
+`HIKYO_DEV_SERVICE_BUDGETS_DISABLED` and `HIKYO_DEV_ADAPTER_FAKE_PROVIDER`.
+They reload live after the same administrator authentication. Production nodes
+refuse these fields, even when their value is `false`; changing configuration
+cannot turn a production node into a development node. Removing an override
+restores its default while preserving existing admission and budget counters.
+
+Real/fake adapter provider changes require a standalone development node with
+no retained adapter configuration, pending configuration work or simulated
+provider contents. Prepare and activation both check this condition. Ordinary
+reloads preserve the simulated provider state; changing providers never redirects
+an existing adapter's work to a different provider.
+
 A missing HA node remains unready and permits configuration repair only until
 its explicit entry is published and applied.
 
@@ -212,3 +226,9 @@ Recovery preserves the outbound fence after a backup restore. Reconcile access
 and confirm the restored credentials through the normal Apply ceremony before
 resuming outbound use. These commands have no network endpoint and require
 access to the server host and its existing root-key custody.
+
+### Candidate root source
+
+A node override can select `HIKYO_NEW_ROOT_SOURCE`, the alias of an already enrolled root source. Apply reloads the candidate used by the separate root-rotation operation. Selection does not change the primary root or create or retire wrappers. Clearing the alias disables the candidate and does not restore an old environment file path.
+
+For initial import, `HIKYO_NEW_ROOT_KEY_FILE` must exactly name the enrolled mounted candidate. An unavailable, malformed or unenrolled candidate refuses preparation and startup. Install enrollment before selecting it, or leave the candidate unset during initial setup.

@@ -38,6 +38,19 @@ func newDevFakeProvider() *devFakeProvider {
 	return &devFakeProvider{stores: make(map[string]*devFakeStore)}
 }
 
+// hasState keeps a mode switch from abandoning simulated remote ownership.
+// The provider belongs to the application owner, not a replaceable graph.
+func (p *devFakeProvider) hasState() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, store := range p.stores {
+		if len(store.secrets) != 0 || len(store.variables) != 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *devFakeProvider) store(origin string, destination adapter.Destination) *devFakeStore {
 	p.mu.Lock()
 	defer p.mu.Unlock()

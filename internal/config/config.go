@@ -121,6 +121,9 @@ type Config struct {
 	// rotation is configured, and prepare refuses rather than reading the wire —
 	// no root key material ever crosses the API.
 	NewRootKeyFile string
+	// NewRootSource is the managed node alias for explicit root preparation.
+	// It never contains a file path or root key.
+	NewRootSource string
 
 	// Auth tuning. The Argon2id parameters may be raised for stronger
 	// hardware and never lowered: boot verifies them against the floor the
@@ -444,46 +447,8 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 		cfg.AdmissionBudgetMiB = int(budget)
 
-		// The dev-only override. Fail-closed twice over: a non-dev process
-		// refuses to start when it is set at all, and a malformed or
-		// non-positive value is an error rather than a silent fallback to the
-		// default — a typo in a security ceiling must not mean "use the
-		// default", which is the same rule every other tunable here follows.
-		if raw := strings.TrimSpace(getenv("HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE")); raw != "" {
-			if !cfg.Dev {
-				return nil, nil, fmt.Errorf(
-					"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE is a development-mode override and this is not a development server: " +
-						"remove it, or pass --dev if this is an evaluation instance")
-			}
-			perIP, err := strconv.Atoi(raw)
-			if err != nil || perIP < 1 {
-				return nil, nil, fmt.Errorf("HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE: %q is not a positive integer", raw)
-			}
-			cfg.DevAdmissionPerIPPerMinute = perIP
-		}
-		if raw := strings.TrimSpace(getenv("HIKYO_DEV_SERVICE_BUDGETS_DISABLED")); raw != "" {
-			if !cfg.Dev {
-				return nil, nil, fmt.Errorf(
-					"HIKYO_DEV_SERVICE_BUDGETS_DISABLED is a development-mode override and this is not a development server: " +
-						"remove it, or pass --dev if this is an evaluation instance")
-			}
-			disabled, err := strconv.ParseBool(raw)
-			if err != nil {
-				return nil, nil, fmt.Errorf("HIKYO_DEV_SERVICE_BUDGETS_DISABLED: %q is not a boolean", raw)
-			}
-			cfg.DevServiceBudgetsDisabled = disabled
-		}
-		if raw := strings.TrimSpace(getenv("HIKYO_DEV_ADAPTER_FAKE_PROVIDER")); raw != "" {
-			if !cfg.Dev {
-				return nil, nil, fmt.Errorf(
-					"HIKYO_DEV_ADAPTER_FAKE_PROVIDER is a development-mode override and this is not a development server: " +
-						"remove it, or pass --dev if this is an evaluation instance")
-			}
-			fake, err := strconv.ParseBool(raw)
-			if err != nil {
-				return nil, nil, fmt.Errorf("HIKYO_DEV_ADAPTER_FAKE_PROVIDER: %q is not a boolean", raw)
-			}
-			cfg.DevAdapterFakeProvider = fake
+		if err := parseDevelopmentOverrides(cfg, getenv); err != nil {
+			return nil, nil, err
 		}
 	}
 	if subcommand == "server" {

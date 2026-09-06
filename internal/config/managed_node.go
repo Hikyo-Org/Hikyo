@@ -18,12 +18,15 @@ import (
 	"unicode/utf8"
 )
 
+const ManagedNewRootSourceKey = "HIKYO_NEW_ROOT_SOURCE"
+
 const ManagedNodeOverridesKey = "HIKYO_NODE_OVERRIDES"
 const MaxManagedNodeValueBytes = 65536
 
 var managedNodeKeys = []string{
 	"HIKYO_LISTEN", "HIKYO_OPERATIONAL_LISTEN", "HIKYO_PG_POOL_MAX", "HIKYO_ADMISSION_BUDGET_MIB", "HIKYO_BACKUP_DIR", "HIKYO_TRUSTED_PROXY_CIDRS",
-	"HIKYO_TLS_CERT_PEM", "HIKYO_TLS_KEY_PEM", "HIKYO_ADAPTER_EGRESS_POLICY_JSON", "HIKYO_OIDC_EGRESS_POLICY_JSON", "HIKYO_DYNAMIC_EGRESS_POLICY_JSON",
+	ManagedNewRootSourceKey, "HIKYO_TLS_CERT_PEM", "HIKYO_TLS_KEY_PEM", "HIKYO_ADAPTER_EGRESS_POLICY_JSON", "HIKYO_OIDC_EGRESS_POLICY_JSON", "HIKYO_DYNAMIC_EGRESS_POLICY_JSON",
+	"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", "HIKYO_DEV_SERVICE_BUDGETS_DISABLED", "HIKYO_DEV_ADAPTER_FAKE_PROVIDER",
 }
 
 var managedNodeFiles = []struct{ source, target string }{
@@ -34,11 +37,12 @@ var managedNodeFiles = []struct{ source, target string }{
 }
 
 // ManagedNodeKeys returns the closed ordinary-node setting allowlist. Bootstrap
-// roots, databases, deployment identity and development switches are excluded.
+// primary roots, databases and deployment identity are excluded. Development switches
+// require the actual node to already run in development mode.
 func ManagedNodeKeys() []string { return slices.Clone(managedNodeKeys) }
 
 func managedNodeInputKeys() []string {
-	keys := slices.Clone(managedNodeKeys[:6])
+	keys := append(slices.Clone(managedNodeKeys[:6]), managedDevelopmentKeys...)
 	for _, source := range managedNodeFiles {
 		keys = append(keys, source.source)
 	}
@@ -69,7 +73,16 @@ func (c *Config) SeedNodeValues() (map[string]string, error) {
 	if c.BackupDir != "" {
 		values["HIKYO_BACKUP_DIR"] = c.BackupDir
 	}
-	for _, key := range managedNodeKeys[:6] {
+	if c.Dev {
+		values["HIKYO_DEV_SERVICE_BUDGETS_DISABLED"] = strconv.FormatBool(c.DevServiceBudgetsDisabled)
+		values["HIKYO_DEV_ADAPTER_FAKE_PROVIDER"] = strconv.FormatBool(c.DevAdapterFakeProvider)
+		if c.DevAdmissionPerIPPerMinute != 0 {
+			values["HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE"] = strconv.Itoa(c.DevAdmissionPerIPPerMinute)
+		}
+	} else if c.DevAdmissionPerIPPerMinute != 0 || c.DevServiceBudgetsDisabled || c.DevAdapterFakeProvider {
+		return nil, errors.New("production configuration contains development-only controls")
+	}
+	for _, key := range append(slices.Clone(managedNodeKeys[:6]), managedDevelopmentKeys...) {
 		if value, present := c.ManagedNodeInputs[key]; present {
 			values[key] = value
 		}
@@ -176,6 +189,20 @@ func parseManagedNodeValues(base *Config, values map[string]string) (*Config, er
 		}
 	}
 	node := *base
+	// A complete managed projection never revives the startup candidate path.
+	node.NewRootKeyFile = ""
+	node.NewRootSource = values[ManagedNewRootSourceKey]
+	if node.NewRootSource != "" && !ValidManagedNodeID(node.NewRootSource) {
+		return nil, errors.New("HIKYO_NEW_ROOT_SOURCE: expected an enrolled source alias")
+	}
+	for _, key := range managedDevelopmentKeys {
+		if _, present := values[key]; present && !base.Dev {
+			return nil, fmt.Errorf("%s: requires an already-development node", key)
+		}
+	}
+	if err := parseDevelopmentOverrides(&node, func(key string) string { return values[key] }); err != nil {
+		return nil, err
+	}
 	node.ManagedInputs, node.ManagedNodeInputs = maps.Clone(base.ManagedInputs), maps.Clone(base.ManagedNodeInputs)
 	node.Listen, node.OperationalListen = values["HIKYO_LISTEN"], values["HIKYO_OPERATIONAL_LISTEN"]
 	for _, key := range []string{"HIKYO_LISTEN", "HIKYO_OPERATIONAL_LISTEN"} {

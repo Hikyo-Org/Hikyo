@@ -908,7 +908,7 @@
       ],
       "recommendation": "Manage the three controls as development-only node settings; keep the --dev startup flag immutable.",
       "rationale": "The environment controls are requested settings. The deployment trust domain is a separate startup choice, and provider changes must not redirect existing effects.",
-      "decision": "Accepted using the user’s standing approval of recommendations. Implementation is in an isolated checkout and is not yet part of the validated main worktree. Production nodes must reject these controls. Limiter and budget counters must survive changes. Provider mode changes must refuse retained adapter/configuration state and recheck after runtime drain. Isolated implementation passed focused consumer, production-refusal and counter-preservation tests, race checks, lint, vet and independent R1 review. A PostgreSQL activation recheck and main integration remain.",
+      "decision": "Accepted using the user’s standing approval of recommendations. The integrated implementation manages all three controls only for an existing development deployment. Production rejects their presence. Limiter and budget counters survive changes; simulated provider state survives reload. Unsafe real/fake provider changes refuse before installation and are rechecked after runtime drain. Focused tests, race checks, lint, vet and independent R1 review pass. The PostgreSQL activation recheck passed in 5.484 s. Combined integration review is CLEAN; full integrated affected-package regression, lint and vet pass.",
       "acceptance": "Prove actual consumer replacement, production refusal, preserved counters and refusal of unsafe real/fake provider transitions before integration.",
       "evidence": [
         "internal/config/managed_node.go",
@@ -938,7 +938,7 @@
       ],
       "recommendation": "Use HIKYO_NEW_ROOT_SOURCE inside node overrides; retain a separate authorized root-rotation operation.",
       "rationale": "All enrolled root aliases are already mounted. Choosing a candidate needs no pod replacement, and selecting a key must not silently rotate it.",
-      "decision": "Accepted using the user’s standing approval of recommendations. Implementation is in an isolated checkout and is not yet part of the validated main worktree. Exact-MFA Apply selects or clears an enrolled candidate. Current root custody remains the actual boot source; clearing must not restore a stale environment path. Initial import may map only an explicitly enrolled source. Isolated implementation passed focused runtime and rotation tests, race checks, vet and parent R3 review. Candidate health validates initial, saved and missing-node sources before admitting startup. Main integration remains.",
+      "decision": "Accepted using the user’s standing approval of recommendations. The integrated implementation selects or clears an enrolled candidate through exact-MFA Apply. Primary root remains the actual boot source and rotation stays separately authorized. Clearing cannot restore a stale environment file path. Initial import accepts only an enrolled alias. Initial, saved and missing-node candidate health validates source availability before startup admission. Focused runtime/rotation tests, race checks, vet and R3 review pass. Combined integration review is CLEAN; full integrated affected-package regression, lint and vet pass.",
       "acceptance": "Prove alias validation, missing/malformed-source refusal, publish-versus-Apply behavior, unchanged primary root and wrappers, explicit later rotation, clearing/restart semantics and concurrent-operation serialization.",
       "evidence": [
         "internal/app/app.go",
@@ -1497,7 +1497,7 @@
       ]
     }
   ],
-  "revisionNote": "The current worktree contains 27 top-level configuration keys: nine original, 16 shared owner settings, secret per-node overrides and external bootstrap aliases. Ordinary consumers reload live. An enrolled Kubernetes singleton fixture now proves controlled DB/root rollout, exact acknowledgement, root-wrapper recovery, real transport expiry renewal and Restore with separate repair. Development and next-root slices are reviewed and locally tested but await integration. Seven upgrade inputs and HA/node-identity transitions remain unfinished. Expansion changes are uncommitted and have no exact-head CI or production rollout evidence.",
+  "revisionNote": "Validated baseline is saved in signed DCO commit 2a070efb. Its recorded Kubernetes binary/source manifest proves live reload, controlled DB/root rollout, exact acknowledgement, root-wrapper recovery, transport expiry renewal and Restore with separate repair. Development controls and next-root selection are integrated and pass combined review, all six affected package suites, full lint, vet and docs checks. Seven upgrade inputs and HA/node-identity transitions are being implemented in isolated worktrees. No expanded exact-head CI, merge or production rollout is claimed.",
   "topology": {
     "heading": "One root view. One project per instance.",
     "summary": "Independent remotes own independent configuration. Only HA replicas of one logical instance share a project and applied revision.",
@@ -1529,7 +1529,7 @@
     "ownership": "The root is a unified UI group, not one physical organization spanning remote databases. Each independent instance stores its protected Hikyo organization and its own project locally. The browser manages a remote directly under that remote’s authority.",
     "boundary": "No root defaults, shared-secret assumption, automatic copying or cross-instance apply. Equal key names or revision numbers do not identify the same configuration."
   },
-  "deliveryStage": "LOCAL / UNCOMMITTED",
+  "deliveryStage": "LOCAL VALIDATED / WORK CONTINUES",
   "deliveryEvidence": [
     [
       "Live owner and node configuration",
@@ -1550,6 +1550,10 @@
     [
       "Historical CI and current delivery",
       "PR #686 at 3f5b2573537d113a66899699fd72ab3246540940 passed historical exact-head CI run 34034036243 for the earlier nine-key delivery. That result does not certify this expansion. Current expanded desktop/mobile browser and real-cluster proof are recorded separately. Expanded exact-head CI remains required."
+    ],
+    [
+      "Development and next-root integration",
+      "The three existing development controls and enrolled candidate-root selector are integrated. Combined R1 review is CLEAN. Full affected packages passed: config 0.824 s, runtime configuration 0.355 s, service 129.291 s, store 40.932 s, app 113.051 s and upgrade gate 95.897 s. Full lint passed in 111.121 s; vet and docs check/build pass. Isolated race and negative-authority tests remain recorded in validation.md. These later changes are not covered by the earlier exact-source kind binary."
     ]
   ],
   "bootstrapRolloutDecision": {
@@ -1572,9 +1576,9 @@
   "acceptanceGaps": [
     "Actual enrolled Kubernetes rollout/Restore/repair and transport-expiry recovery now pass. Executor process-death/takeover and additional platform coverage were not part of that real-cluster proof. Later feature slices require their own integrated validation; the recorded binary/source hashes identify the tested baseline.",
     "HA bootstrap rollover and HA/node-identity transitions remain unimplemented. Host/systemd and GitOps providers are separate platform extensions; they are not additional environment-variable families.",
-    "Seven upgrade startup inputs and the two HA/node-identity inputs remain outside the concrete Apply consumer. Development controls and the next-root candidate selector have reviewed, locally tested implementations in isolated worktrees, pending integration. Database source switching proves the same PostgreSQL datastore; moving data to another datastore is a separate migration capability.",
+    "Seven upgrade startup inputs and the two HA/node-identity inputs remain under implementation outside the current concrete Apply consumer. Development controls and next-root selection are now integrated with independent review and focused tests; full combined regression, lint and vet pass. Database source switching reconnects to the same PostgreSQL datastore; moving data is a separate migration capability.",
     "Changing the RP hostname requires fresh TOTP and a current password credential on the same administrator. DNS/TLS reachability and successful authentication at the new origin are not proved.",
-    "Finish integration of the reviewed development and next-root slices, remaining variable lifecycles, combined review and exact-head CI. Current expansion is uncommitted; no merge or production deployment is claimed. All 369 isolation cases now pass across the exact planned coverage, with the last shard subdivided locally after a cumulative process timeout."
+    "Complete the remaining variable lifecycles and their combined review, deployment evidence and exact-head CI. The baseline is committed and the next-root/development integration is locally validated; no merge or production deployment is claimed. All 369 baseline isolation cases passed across exact planned coverage, with the last shard subdivided locally after a cumulative process timeout."
   ],
   "expandedCatalogue": [
     [
@@ -1677,7 +1681,7 @@
       "HIKYO_NODE_OVERRIDES",
       "Secret",
       "Exact node projection",
-      "Version1 JSON, at most 64KiB. Eleven permitted fields cover node listeners, admission capacity, pool size, backup directory, proxy overrides, TLS PEM and three egress JSON documents. No other node fallback."
+      "Version1 JSON, at most 64KiB. Fifteen permitted fields cover listeners, admission capacity, pool size, backup directory, proxy policy, TLS PEM, three egress documents, an enrolled next-root candidate alias and three development-only controls. Development controls refuse production; candidate selection does not rotate the primary root."
     ],
     [
       "HIKYO_BOOTSTRAP_SOURCES",

@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
+	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
@@ -17,8 +19,38 @@ import (
 // gate can mark a migrated candidate healthy. No runtime DB, listener, worker,
 // secret-provider call or new key hierarchy is available here.
 func checkCandidateConfiguration(ctx context.Context, cfg *config.Config, projection *upgrade.CandidateConfiguration, values map[string]string) error {
+	return checkCandidateConfigurationFromSources(ctx, cfg, projection, values, deploymentSourcesDirectory)
+}
+
+func checkCandidateConfigurationFromSources(ctx context.Context, cfg *config.Config, projection *upgrade.CandidateConfiguration, values map[string]string, sourcesDirectory string) error {
 	var bundle *runtimeconfig.Bundle
 	var err error
+	// Both initial seed and missing-node recovery use the same lazy, captured
+	// node projection. An existing configured node must never inspect stale
+	// startup candidate files, even while another node is being added.
+	var nodeOnce sync.Once
+	var seedNode map[string]string
+	var seedErr error
+	readSeedNode := func() (map[string]string, error) {
+		nodeOnce.Do(func() {
+			var sources nextRootSources
+			if cfg.NewRootKeyFile != "" {
+				sources, seedErr = loadEnrolledRootSources(cfg, sourcesDirectory)
+				if seedErr != nil {
+					return
+				}
+			}
+			seedNode, seedErr = seedNodeWithNextRoot(cfg, sources)
+		})
+		return seedNode, seedErr
+	}
+	readSeed := func() (map[string]string, error) {
+		node, err := readSeedNode()
+		if err != nil {
+			return nil, err
+		}
+		return cfg.ManagedSeedForNode(node)
+	}
 	if projection != nil {
 		if projection.SchemaVersion != runtimeconfig.SchemaVersion {
 			return errors.New("candidate configuration schema is incompatible")
@@ -50,11 +82,23 @@ func checkCandidateConfiguration(ctx context.Context, cfg *config.Config, projec
 		}
 		bundle, err = runtimeconfig.Prepare(values)
 	} else {
-		var seed map[string]string
-		seed, err = cfg.ManagedSeed()
-		if err == nil {
-			bundle, err = runtimeconfig.Prepare(seed)
+		node, seedErr := readSeedNode()
+		if seedErr != nil {
+			return seedErr
 		}
+		seed, seedErr := readSeed()
+		if seedErr != nil {
+			return seedErr
+		}
+		nodeID := cfg.NodeID
+		if nodeID == "" {
+			nodeID = "local"
+		}
+		seed[config.ManagedNodeOverridesKey], seedErr = runtimeconfig.EncodeNodeOverrides(map[string]map[string]string{nodeID: node})
+		if seedErr != nil {
+			return seedErr
+		}
+		bundle, err = runtimeconfig.Prepare(seed)
 	}
 	if err != nil {
 		return err
@@ -63,7 +107,7 @@ func checkCandidateConfiguration(ctx context.Context, cfg *config.Config, projec
 	if nodeID == "" {
 		nodeID = "local"
 	}
-	coordinator := &service.SelfConfig{NodeID: nodeID, SeedNode: cfg.SeedNodeValues, Seed: cfg.ManagedSeed}
+	coordinator := &service.SelfConfig{NodeID: nodeID, SeedNode: readSeedNode, Seed: readSeed}
 	cfg, _, _, _, err = bootNodeConfiguration(cfg, coordinator, bundle)
 	if err != nil {
 		return err
@@ -71,6 +115,17 @@ func checkCandidateConfiguration(ctx context.Context, cfg *config.Config, projec
 
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if cfg.NewRootSource != "" {
+		sources, err := loadEnrolledRootSources(cfg, sourcesDirectory)
+		if err != nil {
+			return err
+		}
+		root, err := sources.rootSource(cfg.NewRootSource)
+		crypto.Zero(root)
+		if err != nil {
+			return errors.New("HIKYO_NEW_ROOT_SOURCE: candidate root source is unavailable or invalid")
+		}
 	}
 	if _, _, err := AuthComponents(cfg); err != nil {
 		return fmt.Errorf("authentication configuration: %w", err)

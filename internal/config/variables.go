@@ -64,6 +64,7 @@ type VariableDescriptor struct {
 	Import                  VariableImport     `json:"import"`
 	FileContentKey          string             `json:"fileContentKey,omitempty"`
 	ReferencedContentSecret bool               `json:"referencedContentSecret,omitempty"`
+	DevelopmentOnly         bool               `json:"developmentOnly,omitempty"`
 }
 
 // VariableInventory returns an independent, key-sorted copy of the complete
@@ -91,9 +92,9 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_COMPOSE_DOCKER", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_CONTEXT", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_DB", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: true, Import: VariableExternal},
-	{Key: "HIKYO_DEV_ADAPTER_FAKE_PROVIDER", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
-	{Key: "HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
-	{Key: "HIKYO_DEV_SERVICE_BUDGETS_DISABLED", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_DEV_ADAPTER_FAKE_PROVIDER", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue, DevelopmentOnly: true},
+	{Key: "HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue, DevelopmentOnly: true},
+	{Key: "HIKYO_DEV_SERVICE_BUDGETS_DISABLED", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue, DevelopmentOnly: true},
 	{Key: "HIKYO_DIRECTORY_PROXY", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: true, Import: VariableValue},
 	{Key: "HIKYO_DYNAMIC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_DYNAMIC_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_ENV", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
@@ -112,7 +113,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_MAIL_USER", Audience: VariableServer, Scope: VariableOwner, Activation: VariableComponent, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_MCP_ALLOWED_ORIGINS", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_MCP_ENABLED", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
-	{Key: "HIKYO_NEW_ROOT_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal, ReferencedContentSecret: true},
+	{Key: "HIKYO_NEW_ROOT_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal, ReferencedContentSecret: true},
 	{Key: "HIKYO_NODE_ID", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_OIDC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_OIDC_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_OPERATIONAL_LISTEN", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},

@@ -111,7 +111,6 @@ func TestVariableInventoryIncludesServerUpgradeAndRotationInputs(t *testing.T) {
 		"HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY":    true,
 		"HIKYO_UPGRADE_STATE_DIR":              true,
 		"HIKYO_UPGRADE_TARGET_MANIFEST":        true,
-		"HIKYO_NEW_ROOT_KEY_FILE":              true,
 	}
 	for _, descriptor := range VariableInventory() {
 		if bootInputs[descriptor.Key] {
@@ -119,6 +118,9 @@ func TestVariableInventoryIncludesServerUpgradeAndRotationInputs(t *testing.T) {
 				t.Errorf("%s excluded a server bootstrap/rotation input: %+v", descriptor.Key, descriptor)
 			}
 			delete(bootInputs, descriptor.Key)
+		}
+		if descriptor.Key == "HIKYO_NEW_ROOT_KEY_FILE" && (descriptor.Audience != VariableServer || descriptor.Activation != VariableAppReload || descriptor.Import != VariableExternal) {
+			t.Errorf("candidate root selector lost its managed alias lifecycle: %+v", descriptor)
 		}
 		if descriptor.Key == "HIKYO_UPGRADE_OPERATOR_INSTANCE" && (descriptor.Audience != VariableCommand || descriptor.Activation != VariableNone) {
 			t.Errorf("backup command-only operator instance pin misclassified: %+v", descriptor)
@@ -157,4 +159,23 @@ func TestVariableInventoryKeepsIngressTrustNodeScoped(t *testing.T) {
 		}
 	}
 	t.Fatal("ingress policy absent from inventory")
+}
+
+func TestDevelopmentInventoryRequiresExistingDevelopmentContext(t *testing.T) {
+	seen := 0
+	for _, descriptor := range VariableInventory() {
+		if !descriptor.DevelopmentOnly {
+			continue
+		}
+		seen++
+		if descriptor.Audience != VariableServer || descriptor.Scope != VariableNode || descriptor.Activation != VariableAppReload || descriptor.Import != VariableValue {
+			t.Fatalf("development control has wrong lifecycle: %+v", descriptor)
+		}
+		if !slices.Contains(managedDevelopmentKeys, descriptor.Key) {
+			t.Fatal("unreviewed development-only key", descriptor.Key)
+		}
+	}
+	if seen != 3 {
+		t.Fatalf("development-only controls = %d, want3", seen)
+	}
 }

@@ -12,7 +12,7 @@ import (
 )
 
 func TestCandidateConfigurationFailureKeepsRestoreRequired(t *testing.T) {
-	for _, failure := range []string{"authentication", "tls", "proxy"} {
+	for _, failure := range []string{"authentication", "tls", "proxy", "next-root"} {
 		t.Run(failure, func(t *testing.T) {
 			cfg := devConfig(t)
 			if err := RunMigrate(t.Context(), cfg, testLogger()); err != nil {
@@ -24,6 +24,8 @@ func TestCandidateConfigurationFailureKeepsRestoreRequired(t *testing.T) {
 			case "tls":
 				cfg.TLSCertFile = filepath.Join(t.TempDir(), "missing.crt")
 				cfg.TLSKeyFile = filepath.Join(t.TempDir(), "missing.key")
+			case "next-root":
+				cfg.NewRootKeyFile = filepath.Join(t.TempDir(), "missing-next-root")
 			case "proxy":
 				cfg.TrustedProxyCIDRs = []string{"invalid CIDR"}
 			}

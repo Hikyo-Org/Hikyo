@@ -20,14 +20,18 @@ func newSelfConfig(cfg *config.Config, db *store.DB, kr *crypto.Keyring, auth *s
 	if nodeID == "" {
 		nodeID = "local"
 	}
+	coordinator := &service.SelfConfig{DB: db, Keyring: kr, Auth: auth, NodeID: nodeID}
 	var once sync.Once
 	var node map[string]string
 	var seedErr error
 	readNode := func() (map[string]string, error) {
-		once.Do(func() { node, seedErr = cfg.SeedNodeValues() })
+		once.Do(func() {
+			sources, _ := coordinator.Deployment.(nextRootSources)
+			node, seedErr = seedNodeWithNextRoot(cfg, sources)
+		})
 		return maps.Clone(node), seedErr
 	}
-	coordinator := &service.SelfConfig{DB: db, Keyring: kr, Auth: auth, NodeID: nodeID, SeedNode: readNode}
+	coordinator.SeedNode = readNode
 	coordinator.Seed = func() (map[string]string, error) {
 		values, err := readNode()
 		if err != nil {

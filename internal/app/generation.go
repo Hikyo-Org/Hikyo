@@ -49,6 +49,10 @@ type applicationGeneration struct {
 // binding listeners or registering HA membership. Every fallible constructor
 // completes before the active generation can be retired.
 func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Config) (*applicationGeneration, error) {
+	rotationSource, err := owner.rotationRootSource(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
 	certificate, err := newManagedCertificate(cfg.TLSCertPEM, cfg.TLSKeyPEM)
 	if err != nil {
 		return nil, fmt.Errorf("managed TLS certificate: %w", err)
@@ -56,7 +60,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	db, kr, log, resources := owner.server.db, owner.server.keyring, owner.server.log, owner.resources
 	sc := storeConfig(cfg)
 	// The secret-scanning ruleset compiles once at boot; a Load error refuses to
-	// serve (#74, ADR §7 fail-fast — a binary that ships a half-compiled ruleset
+	// serve (#74, ADR §7 fail-fast; a binary that ships a half-compiled ruleset
 	// is a scanner that silently is not one).
 	ruleset, err := scanning.Load()
 	if err != nil {
@@ -72,7 +76,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	advisory := owner.advisory
 	// The expensive-path budget (ops-spec § 179 / § 20 / § 151): one per server,
 	// in-memory like admission, wired into every surface that owns a named
-	// expensive category — export, publish, adapter sync, machine fetch, and
+	// expensive category; export, publish, adapter sync, machine fetch, and
 	// schema revision.
 	budget := owner.budget
 	federationPolicy := federationhttp.Policy{AllowedCIDRs: cfg.OIDCEgressPolicy, Development: cfg.Dev}
@@ -111,7 +115,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// Explicit configuration is the ONLY way egress traverses a forward
 		// proxy. config.Load has already refused a non-https or hostless value,
 		// so a parse failure here would be an internal inconsistency rather
-		// than operator input — it still fails the boot loudly rather than
+		// than operator input; it still fails the boot loudly rather than
 		// silently reverting to direct egress, because "the proxy I configured
 		// is being bypassed" is exactly the surprise this control exists to
 		// prevent.
@@ -153,8 +157,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	if cfg.Dev && cfg.DevAdapterFakeProvider {
 		// The browser flow suite's stand-in provider (#157): config.Load has
 		// already refused this switch on anything but a --dev server.
-		fake := newDevFakeProvider()
-		moduleFactory = fake.factory
+		moduleFactory = owner.fakeProvider.factory
 		log.Warn("deployment adapters use the in-process development fake provider; no provider is contacted")
 	}
 	adapterWorker := &adapter.Worker{
@@ -209,7 +212,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// mean a subscriber saw half the events.
 		Values:    valuesSvc,
 		Revisions: revisionsSvc,
-		Rotation:  &service.Rotation{DB: db, Keyring: kr, RootKey: rootKeySource{cfg: cfg, log: log}, Budget: budget},
+		Rotation:  &service.Rotation{DB: db, Keyring: kr, RootKey: rotationSource, Budget: budget},
 		Reencrypt: reencryptSvc,
 		Pins:      &service.Pins{DB: db, Keyring: kr, Auth: authSvc},
 		Reveal:    &service.Reveal{DB: db, Auth: authSvc},
@@ -231,7 +234,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			DB: db, Keyring: kr, Federation: federation, Budget: budget,
 		},
 		// The settings knob calls LowerEffectiveWindow, which is the Auth
-		// service's library — one Auth, so the window the knob writes and the
+		// service's library; one Auth, so the window the knob writes and the
 		// window the reveal guard reads cannot come from two configurations.
 		Discovery:       &service.Discovery{DB: db},
 		Settings:        &service.ProjectSettings{DB: db, Auth: authSvc},
@@ -337,7 +340,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			// Read-only operator nudge (#75/#187, scheduler option A): warn when a
 			// scope still carries a retiring DEK version so an operator runs
 			// `reencrypt`. It writes nothing and holds no write grant on any
-			// ciphertext table — reencrypt itself stays an operator act.
+			// ciphertext table; reencrypt itself stays an operator act.
 			Name: "reencrypt_retiring_sweep",
 			Run: func(ctx context.Context) error {
 				scopes, err := reencryptSvc.SweepRetiring(ctx)

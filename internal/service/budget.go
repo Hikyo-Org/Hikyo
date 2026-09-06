@@ -84,6 +84,10 @@ type Budget struct {
 	now func() time.Time
 
 	mu sync.Mutex
+	// Development enforcement is changed only by the application owner at an
+	// activated generation boundary. Keep counters and outstanding releases on
+	// this shared object so old captures cannot become stale or race a pointer.
+	developmentDisabled bool
 	// rate holds sliding-window buckets, keyed by category+dimension+value. Each
 	// bucket carries the window of the rule that records into it, so eviction can
 	// use the bucket's OWN window — a 1-minute machine-fetch bucket is reclaimed a
@@ -103,6 +107,28 @@ type rateBucket struct {
 // NewBudget constructs an enabled budget on the real clock.
 func NewBudget() *Budget {
 	return &Budget{now: time.Now, rate: map[string]rateBucket{}, inflight: map[string]int{}}
+}
+
+// SetDevelopmentDisabled changes enforcement without resetting rate history or
+// outstanding slots. The application owner must validate the immutable
+// development context; callers cannot obtain this object through an API.
+func (b *Budget) SetDevelopmentDisabled(disabled bool) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.developmentDisabled = disabled
+}
+
+// Enabled reports the current enforcement policy. A nil budget is disabled.
+func (b *Budget) Enabled() bool {
+	if b == nil {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return !b.developmentDisabled
 }
 
 // Ops-spec § 179 / § 20 / § 151 values, exported so the conformance registry's
@@ -320,6 +346,9 @@ func (b *Budget) acquire(cat budgetCategory, keys budgetKeys) (func(), error) {
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.developmentDisabled {
+		return noopBudgetRelease, nil
+	}
 
 	// 1. Slide every rate window and confirm it has room — WITHOUT recording.
 	// kept is built in FRESH storage, never bucket.hits[:0]: an in-place

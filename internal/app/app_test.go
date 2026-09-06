@@ -320,15 +320,15 @@ func TestHTTPServerSlowClientLimitsConfigured(t *testing.T) {
 
 func TestServiceBudgetCanOnlyBeDisabledByExplicitDevConfig(t *testing.T) {
 	cfg := &config.Config{}
-	if serviceBudget(cfg) == nil {
+	if !serviceBudget(cfg).Enabled() {
 		t.Fatal("service budget disabled by default")
 	}
 	cfg.DevServiceBudgetsDisabled = true
-	if serviceBudget(cfg) == nil {
+	if !serviceBudget(cfg).Enabled() {
 		t.Fatal("production service budget disabled by a development-only setting")
 	}
 	cfg.Dev = true
-	if serviceBudget(cfg) != nil {
+	if serviceBudget(cfg).Enabled() {
 		t.Fatal("explicit development service-budget override was ignored")
 	}
 }
@@ -397,4 +397,26 @@ func TestExplicitMigrateThenBootWithoutAutoMigrate(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv.Close()
+}
+
+// This existing raw-driver fixture file owns isolated pending adapter state.
+func seedDevelopmentConfigureFence(t *testing.T, srv *Server) {
+	t.Helper()
+	statements := []string{
+		`INSERT INTO orgs(id,name,active,metadata,created_at) VALUES('org_dev_switch','Switch',TRUE,'{}','2026-09-01T00:00:00Z')`,
+		`INSERT INTO projects(id,org_id,name,created_at) VALUES('prj_dev_switch','org_dev_switch','Switch','2026-09-01T00:00:00Z')`,
+		`INSERT INTO environments(id,org_id,project_id,name,note,created_at,display_order) VALUES('env_dev_switch','org_dev_switch','prj_dev_switch','Dev','','2026-09-01T00:00:00Z',0)`,
+		`INSERT INTO adapter_configure_fences(target_id,org_id,project_id,environment_id,destination_kind,destination_owner,destination_name,destination_environment,generation,effect_id,lease_expires_at,state,created_at) VALUES('tgt_dev_switch','org_dev_switch','prj_dev_switch','env_dev_switch','environment','dev','repo','dev',1,'effect_dev_switch','2099-09-01T00:00:00Z','leased','2026-09-01T00:00:00Z')`,
+	}
+	for _, statement := range statements {
+		var err error
+		if srv.db.SQLiteWrite() != nil {
+			_, err = srv.db.SQLiteWrite().ExecContext(t.Context(), statement)
+		} else {
+			_, err = srv.db.PG().Exec(t.Context(), statement)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
