@@ -13,7 +13,70 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/webauthntest"
 )
+
+func TestSelfConfigPasskeyRequiresUserVerification(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		administrator := bootstrapWebAuthnAdmin(t, db)
+		auth := administrator.auth
+		clock := time.Now().UTC()
+		auth.Now = func() time.Time { return clock }
+		dev := webauthntest.New(waRPID, waOrigin)
+		token := enrolPasskeyAndStepUp(t, auth, t.Context(), administrator.token, waPassword, dev)
+		// The login is older than the allowed decision age. A new ceremony must
+		// still work: freshness belongs to its evidence, not the login timestamp.
+		clock = clock.Add(10 * time.Minute)
+		var owner string
+		if err := tx.Read(t.Context(), db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+			var err error
+			owner, err = az.InstanceIdentity(ctx)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		target := service.SelfConfigReauthTarget{Action: "apply", OwnerInstanceID: owner, Revision: 3, SchemaVersion: 1, ExpectedGeneration: 2}
+		intent, err := service.NewSelfConfigReauthIntent(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var opened service.ReauthResult
+		for _, verified := range []bool{false, true} {
+			options, err := auth.ReauthPasskeyStart(t.Context(), token, intent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			dev.SetUserVerified(verified)
+			assertion, err := dev.Assert(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opened, err = auth.ReauthPasskeyFinish(t.Context(), token, assertion)
+			if !verified {
+				if !errors.Is(err, domain.ErrUnauthenticated) {
+					t.Fatalf("passkey without user verification = %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		}
+		consume := func() error {
+			return tx.Write(t.Context(), db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+				caller, err := az.Authenticate(ctx, opened.SessionToken, clock)
+				if err != nil {
+					return err
+				}
+				return auth.ConsumeSelfConfigReauth(ctx, az, caller, intent, clock)
+			})
+		}
+		if err := consume(); err != nil {
+			t.Fatal(err)
+		}
+		if err := consume(); !errors.Is(err, service.ErrReauthWindowSpent) {
+			t.Fatalf("passkey decision replay = %v", err)
+		}
+	})
+}
 
 func TestSelfConfigReauthExactDecision(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {

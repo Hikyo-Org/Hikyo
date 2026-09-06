@@ -100,7 +100,7 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 			}
 		}
 		must(write(func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-			orgs, err := az.OrgsForPrincipal(ctx, "usr_tenant")
+			orgs, err := az.OrgsForPrincipal(ctx, authz.Identity{Principal: "usr_tenant", Class: domain.ClassHuman})
 			if err != nil {
 				return err
 			}
@@ -141,6 +141,88 @@ func runSelfConfigStore(t *testing.T, db *store.DB) {
 		if !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("machine read = %v", err)
 		}
+	})
+
+	t.Run("protected_operations_require_instance_admin_mfa", func(t *testing.T) {
+		for _, op := range []authz.Operation{authz.OpValueRead, authz.OpValueStage, authz.OpValuePublish, authz.OpSelfConfigApply, authz.OpSelfConfigTest} {
+			for _, factors := range [][]string{{"password"}, {"recovery-code"}, {"password", "totp"}, {"webauthn"}} {
+				caller := admin
+				caller.SessionID = "ses_profile_assurance"
+				caller.Assurance.Factors = factors
+				want := len(factors) > 1 || factors[0] == "webauthn"
+				err := write(func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+					holds, err := az.CallerHolds(ctx, caller, op, scope)
+					if err != nil || holds != want {
+						t.Fatalf("capability projection %s %v = %v, %v", op, factors, holds, err)
+					}
+					instanceHolds, err := az.HoldsInstanceCapability(ctx, caller, authz.OpSelfConfigStatus)
+					if err != nil || instanceHolds != want {
+						t.Fatalf("instance capability projection %v = %v, %v", factors, instanceHolds, err)
+					}
+					orgs, err := az.OrgsForPrincipal(ctx, caller)
+					if err != nil {
+						return err
+					}
+					listed := false
+					for _, org := range orgs {
+						listed = listed || org.ID == scope.Org
+					}
+					if listed != want {
+						t.Fatalf("navigation projection %v includes protected org = %v", factors, listed)
+					}
+					_, err = az.Authorize(ctx, caller, op, scope)
+					return err
+				})
+				if !want {
+					if !errors.Is(err, domain.ErrUnauthorized) {
+						t.Fatalf("single factor %v %s = %v", factors, op, err)
+					}
+				} else if err != nil {
+					t.Fatalf("MFA %v %s = %v", factors, op, err)
+				}
+			}
+			for _, who := range []string{"tenant", "instance"} {
+				caller := authz.Identity{Principal: domain.PrincipalID("usr_" + who), Class: domain.ClassHuman, SessionID: "ses_wrong_admin", Assurance: authz.Assurance{Factors: []string{"webauthn"}}}
+				err := write(func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+					holds, err := az.CallerHolds(ctx, caller, op, scope)
+					if err != nil || holds {
+						t.Fatalf("%s with MFA capability projection %s = %v, %v", who, op, holds, err)
+					}
+					_, err = az.Authorize(ctx, caller, op, scope)
+					return err
+				})
+				if !errors.Is(err, domain.ErrNotFound) {
+					t.Fatalf("%s with MFA %s = %v", who, op, err)
+				}
+			}
+			for _, kind := range []domain.PrincipalClass{domain.ClassInstanceConn, domain.ClassWorkload, domain.ClassAutomation} {
+				caller := admin
+				caller.Class = kind
+				err := write(func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+					holds, err := az.CallerHolds(ctx, caller, op, scope)
+					if err != nil || holds {
+						t.Fatalf("machine %s capability projection %s = %v, %v", kind, op, holds, err)
+					}
+					instanceHolds, err := az.HoldsInstanceCapability(ctx, caller, authz.OpSelfConfigStatus)
+					if err != nil || instanceHolds {
+						t.Fatalf("machine %s instance capability projection = %v, %v", kind, instanceHolds, err)
+					}
+					_, err = az.Authorize(ctx, caller, op, scope)
+					return err
+				})
+				if !errors.Is(err, domain.ErrNotFound) {
+					t.Fatalf("machine %s %s = %v", kind, op, err)
+				}
+			}
+		}
+		// The stronger profile must not impose MFA on ordinary tenant reads.
+		caller := admin
+		caller.SessionID = "ses_ordinary_password"
+		caller.Assurance.Factors = []string{"password"}
+		must(write(func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+			_, err := az.Authorize(ctx, caller, authz.OpValueRead, domain.Scope{Org: "org_other", Project: "prj_other", Env: "env_other"})
+			return err
+		}))
 	})
 
 	t.Run("mail_test_cannot_mint_authority_for_other_project", func(t *testing.T) {

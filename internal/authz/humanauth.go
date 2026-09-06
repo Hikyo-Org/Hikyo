@@ -574,9 +574,10 @@ type OrgIdentity = authn.OrgIdentity
 // they name. It authorizes nothing and needs no proof: the result set is
 // defined by the caller's own grant rows, so it can disclose nothing they do
 // not already hold. See the resolver for why an instance-scoped principal
-// correctly gets an empty set.
-func (a *TxAuthorizer) OrgsForPrincipal(ctx context.Context, p domain.PrincipalID) ([]OrgIdentity, error) {
-	return a.r.OrgsForPrincipal(ctx, p)
+// correctly gets an empty set. Protected instance configuration additionally
+// requires the caller's current MFA assurance before its org enters navigation.
+func (a *TxAuthorizer) OrgsForPrincipal(ctx context.Context, caller Identity) ([]OrgIdentity, error) {
+	return a.r.OrgsForPrincipal(ctx, caller.Principal, selfConfigSessionEligible(caller))
 }
 
 // GrantsForResetTarget reads the credential-reset target's full grant set for

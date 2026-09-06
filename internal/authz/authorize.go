@@ -184,7 +184,9 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrNotFound
 	}
-	if a.assuranceInadequate(caller, op) {
+	// The protected profile adds instance-config to ordinary tenant formulas.
+	// Its MFA requirement must follow that grant on reads and edits too.
+	if a.assuranceInadequate(caller, op) || protected && caller.SessionID != "" && !AdequateAssurance(caller.Assurance) {
 		// The grant is held; only the session's assurance is short. Revealing
 		// the object's existence is fine — they can reach it — so this is a
 		// grant-class refusal (ErrUnauthorized), not the nonexistent mask.
@@ -270,7 +272,7 @@ func (a *TxAuthorizer) authorizeInstance(ctx context.Context, caller Identity, o
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, domain.Scope{}, domain.Scope{})
 		return nil, domain.ErrUnauthorized
 	}
-	return &proof{kind: kindInstance, op: op, tok: a.tok, selfConfigAdmin: evaluate(Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, domain.Scope{}, grants)}, nil
+	return &proof{kind: kindInstance, op: op, tok: a.tok, selfConfigAdmin: selfConfigSessionEligible(caller) && evaluate(Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}, domain.Scope{}, grants)}, nil
 }
 
 // SystemAuthority mints a SystemProof for one of the closed no-principal
@@ -423,12 +425,18 @@ func (a *TxAuthorizer) CallerHolds(ctx context.Context, caller Identity,
 	if caller.Principal == "" {
 		return false, errors.New("authz: empty principal")
 	}
-	holds, err := a.principalHoldsFormula(ctx, caller.Principal, op, scope)
+	_, chain, holds, err := a.principalFormulaEvaluation(ctx, caller.Principal, op, scope)
 	if err != nil {
 		return false, err
 	}
 	if !holds {
 		return false, nil
+	}
+	// Formula evaluation already checked the profile's grant conjunction.
+	// Read its marker from that same grant result without another query.
+	protected, err := a.r.IsSelfConfigScope(ctx, chain)
+	if err != nil || protected && !selfConfigSessionEligible(caller) {
+		return false, err
 	}
 	// The same assurance floor Authorize() applies after the grant check. A
 	// surface that offered `reveal` to a password-only session would be
@@ -457,6 +465,9 @@ func (a *TxAuthorizer) HoldsInstanceCapability(ctx context.Context, caller Ident
 	}
 	if spec.class != ClassInstance {
 		return false, fmt.Errorf("authz: operation %q is not instance-scoped", op)
+	}
+	if (op == OpSelfConfigStatus || op == OpSelfConfigAdopt || op == OpSelfConfigPreview) && !selfConfigSessionEligible(caller) {
+		return false, nil
 	}
 	grants, err := a.r.Grants(ctx, caller.Principal)
 	if err != nil {
@@ -498,12 +509,6 @@ func (a *TxAuthorizer) RecordedPrincipalHolds(ctx context.Context, caller Identi
 		}
 	}
 	return holds, nil
-}
-
-func (a *TxAuthorizer) principalHoldsFormula(ctx context.Context, principal domain.PrincipalID,
-	op Operation, scope domain.Scope) (bool, error) {
-	_, _, holds, err := a.principalFormulaEvaluation(ctx, principal, op, scope)
-	return holds, err
 }
 
 func (a *TxAuthorizer) principalFormulaEvaluation(ctx context.Context, principal domain.PrincipalID,

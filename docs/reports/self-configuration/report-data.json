@@ -2,12 +2,13 @@
   "title": "Hikyo manages Hikyo",
   "date": "2026-09-06",
   "baseline": "90b4ca6a5d22438e751cf9af83aa4fd077a6a61c",
-  "status": "Built and locally verified; delivered in PR #686",
+  "status": "D11 expanded by user; implementation revision in progress",
   "authority": {
     "explicit": [
       "Apply from Hikyo UI without restarting the container.",
       "Require instance-admin access for system configuration changes.",
-      "Independent remote instances use separate configuration projects; only HA replicas of the same logical instance share configuration."
+      "Independent remote instances use separate configuration projects; only HA replicas of the same logical instance share configuration.",
+      "D11: every Hikyo variable, with remote Apply; only the target instance administrator with passkey or TOTP authentication may apply it."
     ],
     "delegation": "I trust your instincts, assume I agree with the coming recommendations.",
     "scope": "Remaining decisions selected under user-delegated authority. These are design decisions, not individual user answers or shipped behavior."
@@ -248,7 +249,7 @@
       "id": "D09",
       "group": "Authority",
       "question": "Should applying settings require reauthentication or another reviewer?",
-      "approval": "delegated",
+      "approval": "explicit",
       "options": [
         [
           "Fresh reauthentication",
@@ -263,10 +264,10 @@
           "No additional assurance at activation."
         ]
       ],
-      "recommendation": "Fresh reauthentication, with no mandatory second person.",
+      "recommendation": "Target-instance administrator plus fresh passkey or TOTP for Apply.",
       "rationale": "This fits single-operator self-hosting while binding a sensitive instance change to a recent human ceremony.",
-      "decision": "Use Hikyo's existing reauthentication machinery for adoption, apply, rollback and test send. Bind the authorization to revision, schema version and expected generation. Continue honoring normal publish/approval policies where applicable. Refuse browserless machine initiation of instance apply in this first delivery; authenticated human CLI uses the same service and assurance rules.",
-      "acceptance": "Expired or revision-mismatched ceremonies cannot activate a newer edit; single-admin installations can complete the workflow.",
+      "decision": "The user explicitly requires instance-admin authority with passkey or TOTP authentication. Enforce the owning instance's instance-config capability and an MFA-authenticated human session for protected configuration operations. Adoption, Apply, rollback and test send additionally consume a fresh, single-use passkey or TOTP ceremony bound to the exact owner, revision, schema version and expected generation. Password-only authentication, recovery-code login and machine tokens cannot substitute. Browser and human CLI use the same owner-side enforcement. No mandatory second administrator is introduced.",
+      "acceptance": "Test authorized TOTP and user-verified passkey success, password-only and recovery-only denial, wrong-owner and scoped-admin denial, expired/replayed or revision-mismatched ceremony denial, and direct remote-owner enforcement.",
       "evidence": [
         "docs/adr/human-auth.md",
         "internal/service/settings.go",
@@ -307,25 +308,25 @@
       "id": "D11",
       "group": "Configuration",
       "question": "Which configuration belongs inside Hikyo?",
-      "approval": "delegated",
+      "approval": "explicit",
       "options": [
         [
-          "Explicit reloadable catalogue",
-          "Manage settings whose components can be replaced safely."
+          "Every Hikyo variable, with explicit activation rules",
+          "Complete server configuration coverage; classify ordinary activation, node-specific settings and bootstrap transitions."
         ],
         [
-          "Every process variable",
-          "Import the environment wholesale."
+          "Original nine-key catalogue",
+          "Complete email configuration and release notifications only. This earlier recommendation is superseded."
         ],
         [
-          "Only SMTP password",
-          "Leave the rest of the mail configuration outside."
+          "Import the ambient environment wholesale",
+          "Includes unrelated process variables and client credentials; not the meaning of server self-configuration."
         ]
       ],
-      "recommendation": "A closed catalogue, starting with the complete mail configuration and release-notification channel.",
-      "rationale": "A genuine first delivery needs the whole email use case. Infrastructure and trust settings cannot gain hot-reload semantics by accident.",
-      "decision": "The catalogue below is exhaustive for the first delivery. Mail address, TLS mode, user, password, From, EHLO and mail CIDR exceptions are managed together, plus a new managed PEM value for custom mail CAs and the existing update channel. Mail is off by default. Backup/audit policies, networking, authentication tuning and MCP exposure retain existing configuration paths. Do not market the feature as management of every HIKYO_* variable. This catalogue is versioned per owning instance. Remote instances can run different versions, supported key sets and values. Unsupported remote self-configuration is shown explicitly; the viewer’s schema and defaults are never imposed on it.",
-      "acceptance": "Every admitted key has a type, default/absence rule, secrecy classification, validator and reload owner; unknown or unsupported keys cannot be published in the system schema.",
+      "recommendation": "Every Hikyo variable, with remote Apply by a target-instance administrator using passkey or TOTP.",
+      "rationale": "The user explicitly expanded D11: managing only mail and release notifications does not meet the dogfooding requirement. Each supported server variable needs real activation behavior and recovery semantics, not just an editable entry.",
+      "decision": "Supersedes the original nine-key scope. Cover every supported Hikyo server variable, including networking, authentication, endpoint exposure, backup/audit policy and deployment/bootstrap settings. Keep independent remotes in separate projects with target-owner authorization. Shared HA settings and node-specific settings must be distinguished so replicas never receive duplicate node identities. Each variable must declare its effective source, secret classification, validator and activation mechanism. Remote Apply means configuration activation, not the retired binary updater. Client-only variables do not configure a server; retired controls remain explicitly refused. Database and root-key changes require dedicated bootstrap transitions with an independently available unlock source and recovery route. These transition requirements are part of the expanded work, not grounds to silently call the old nine-key implementation complete.",
+      "acceptance": "Inventory every recognized variable with no unexplained omissions. Prove each supported change takes effect on its target, survives restart, preserves independent remote values and reports actual HA convergence. Prove database/root-source recovery across failed cutover and process restart, viable authentication after origin changes, and node identity uniqueness. Password-only sessions, recovery codes, machine tokens, wrong-owner privileges and stale/replayed ceremonies cannot authorize Apply.",
       "evidence": [
         "internal/config/config.go",
         "docs/spec/social-signin.md",
@@ -879,7 +880,7 @@
         "HIKYO_ROOT_KEY_FILE",
         "HIKYO_NEW_ROOT_KEY_FILE"
       ],
-      "External bootstrap or dedicated key-rotation workflow. Never copy the root key into its own database."
+      "D11 now includes database and root-source transitions. Reconnecting, migrating data and rotating roots need separate protocols. The independent bootstrap source must survive replacement of the process or pod; a managed deployment integration must update it before old credentials or roots are retired. This integration is not implemented in PR #686."
     ],
     [
       "Listeners and browser trust",
@@ -891,7 +892,7 @@
         "HIKYO_EXTERNAL_ORIGIN",
         "HIKYO_TRUSTED_PROXY_CIDRS"
       ],
-      "Operator-owned deployment configuration. Certificate contents retain existing watch/SIGHUP reload; origin/RP identity is not casually mutable."
+      "D11 now includes listener, TLS, proxy and public-origin changes. Prepare replacement listeners and service dependencies; prove reachable target-origin authentication before cutover. Ports and mounted sources may also require deployment changes. The existing mail-only bundle cannot activate these values."
     ],
     [
       "HA and outbound policy files",
@@ -903,7 +904,7 @@
         "HIKYO_OIDC_EGRESS_POLICY_FILE",
         "HIKYO_DYNAMIC_EGRESS_POLICY_FILE"
       ],
-      "Node identity, process coordination and non-mail egress remain external. Do not generalize mail's reload permission to these policies."
+      "D11 now includes HA and outbound policy. Distinguish shared owner settings from per-node identity and local paths. Validate imported policy contents without allowing arbitrary remote file reads, replace consuming clients and workers, and acknowledge each node only after actual activation."
     ],
     [
       "Authentication and endpoint exposure",
@@ -916,7 +917,7 @@
         "HIKYO_MCP_ENABLED",
         "HIKYO_MCP_ALLOWED_ORIGINS"
       ],
-      "Keep existing startup/dedicated security mechanisms. This delivery does not rebuild authentication admission or remount protocol routes."
+      "D11 now includes authentication parameters and MCP exposure. Rebuild admission, relying-party/federation services and protocol routes under an application-generation transition. Preserve authentication floors, exact-origin validation and administrator recovery access."
     ],
     [
       "Backup and audit policy",
@@ -931,7 +932,7 @@
         "HIKYO_AUDIT_ACCESS_RETAIN_DAYS",
         "HIKYO_AUDIT_SECURITY_RETAIN_DAYS"
       ],
-      "Preserve existing host-local policy and retention guarantees. Shortening retention may irreversibly prune history; it is not a side effect of this generic apply action."
+      "D11 now includes backup and audit policy. Replace the scheduler and retention dependencies with explicit policy validation. Applying a policy and performing later destructive pruning are distinct effects; audit both through their existing operation paths."
     ],
     [
       "Upgrade and development controls",
@@ -949,7 +950,7 @@
         "HIKYO_DEV_SERVICE_BUDGETS_DISABLED",
         "HIKYO_DEV_ADAPTER_FAKE_PROVIDER"
       ],
-      "Existing command-specific controls. Retired remote apply remains refused. Development flags never become production toggles."
+      "Inventory command-specific upgrade inputs and development controls explicitly. Development-only values remain refused in production, and the retired binary updater stays disabled. Remote configuration Apply does not re-enable remote binary upgrade. Deployment-owned values need a deployment transition."
     ],
     [
       "Client-only configuration",
@@ -965,7 +966,7 @@
         "HIKYO_COMPOSE_DOCKER",
         "XDG_STATE_HOME"
       ],
-      "These configure clients, not the Hikyo server; never import client tokens into the system project."
+      "These configure clients rather than the Hikyo server. Inventory them for completeness, but never import client tokens or an unrelated ambient process environment into a server configuration project."
     ],
     [
       "Mail file inputs before adoption",
@@ -973,7 +974,7 @@
         "HIKYO_MAIL_PASSWORD_FILE",
         "HIKYO_MAIL_CA_FILE"
       ],
-      "Defined by #608. Import configured contents once into HIKYO_MAIL_PASSWORD and HIKYO_MAIL_CA_PEM. Managed mode rejects paths and stops rereading old files."
+      "Existing behavior: import configured mail file contents once into HIKYO_MAIL_PASSWORD and HIKYO_MAIL_CA_PEM. Applied managed values replace these aliases; no remote arbitrary-path reads."
     ]
   ],
   "milestones": [
@@ -1224,7 +1225,7 @@
       ]
     }
   ],
-  "revisionNote": "Implementation approved with LGTM, build it. Setup/adoption, managed project, exact-revision apply, HA fencing, restore confirmation, UI and CLI are implemented and locally verified. Independent reviews are clean. PR #686 carries delivery checks; merge and production deployment have not occurred.",
+  "revisionNote": "The user replaced the original nine-key D11 scope with every Hikyo variable and remote Apply, restricted to target-instance administrators using passkey or TOTP. Existing PR #686 and its green checks prove the earlier nine-key implementation only. The expanded catalogue, application lifecycle and bootstrap transition work are not yet implemented or verified. Merge and production deployment have not occurred.",
   "topology": {
     "heading": "One root view. One project per instance.",
     "summary": "Independent remotes own independent configuration. Only HA replicas of one logical instance share a project and applied revision.",
@@ -1256,7 +1257,7 @@
     "ownership": "The root is a unified UI group, not one physical organization spanning remote databases. Each independent instance stores its protected Hikyo organization and its own project locally. The browser manages a remote directly under that remote’s authority.",
     "boundary": "No root defaults, shared-secret assumption, automatic copying or cross-instance apply. Equal key names or revision numbers do not identify the same configuration."
   },
-  "deliveryStage": "BUILT / VERIFIED",
+  "deliveryStage": "SCOPE EXPANDED",
   "deliveryEvidence": [
     [
       "Web application",

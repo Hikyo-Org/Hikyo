@@ -1,9 +1,16 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
+	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
 func TestSelfConfigIntentCannotWiden(t *testing.T) {
@@ -41,5 +48,85 @@ func TestSelfConfigIntentCannotWiden(t *testing.T) {
 		if _, err := NewSelfConfigReauthIntent(bad); err == nil {
 			t.Fatalf("invalid target admitted: %+v", bad)
 		}
+	}
+}
+
+func TestSelfConfigReauthRequiresFreshSupportedFactorAndSingleUse(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		factor string
+		age    time.Duration
+		want   error
+	}{
+		{"totp", "totp", time.Minute, nil},
+		{"passkey", "webauthn", time.Minute, nil},
+		{"federated_mfa_is_not_local_factor", "oidc", time.Minute, ErrReauthUnitMismatch},
+		{"stale_totp", "totp", 5 * time.Minute, ErrReauthWindowExpired},
+		{"stale_passkey", "webauthn", 5 * time.Minute, ErrReauthWindowExpired},
+		{"future_factor", "totp", -time.Minute, ErrReauthWindowExpired},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, local := selfConfigFixture(t)
+			actor, sessionID := selfConfigSession(t, s, local)
+			status, err := s.Status(t.Context(), actor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target := SelfConfigReauthTarget{Action: "apply", OwnerInstanceID: status.OwnerInstanceID, Revision: 1, SchemaVersion: runtimeconfig.SchemaVersion, ExpectedGeneration: 1}
+			intent, err := NewSelfConfigReauthIntent(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			binding, err := intent.bindingFor("")
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().UTC().Truncate(time.Second)
+			err = tx.Write(t.Context(), s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+				epoch, err := az.CredentialEpoch(ctx)
+				if err != nil {
+					return err
+				}
+				return az.OpenReauthWindow(ctx, authz.NewReauthWindow{ID: "raw_factor", SessionID: sessionID, EnvironmentID: intent.environmentID, CeremonyID: "factor-ceremony", FactorClass: test.factor, SingleDecision: true, AuthenticatedAt: now.Add(-test.age), WindowExpiresAt: now.Add(time.Hour), HardExpiresAt: now.Add(time.Hour), CredentialEpoch: epoch, CreatedAt: now, BoundPurpose: string(binding.purpose), BoundOperation: string(binding.operation), BoundKeySet: binding.keySet})
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			consume := func(intent ReauthIntent) error {
+				return tx.Write(t.Context(), s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
+					caller, err := az.Authenticate(ctx, actor.bearer, now)
+					if err != nil {
+						return err
+					}
+					return s.Auth.ConsumeSelfConfigReauth(ctx, az, caller, intent, now)
+				})
+			}
+			wrongTarget := target
+			wrongTarget.OwnerInstanceID = "other-owner"
+			wrongOwner, err := NewSelfConfigReauthIntent(wrongTarget)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := consume(wrongOwner); !errors.Is(err, domain.ErrNotFound) {
+				t.Fatalf("foreign owner accepted: %v", err)
+			}
+			wrongTarget = target
+			wrongTarget.Revision++
+			wrongRevision, err := NewSelfConfigReauthIntent(wrongTarget)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := consume(wrongRevision); !errors.Is(err, ErrReauthUnitMismatch) {
+				t.Fatalf("foreign revision accepted: %v", err)
+			}
+			if err := consume(intent); !errors.Is(err, test.want) {
+				t.Fatalf("consume = %v, want %v", err, test.want)
+			}
+			if test.want == nil {
+				if err := consume(intent); !errors.Is(err, ErrReauthWindowSpent) {
+					t.Fatalf("factor replay accepted: %v", err)
+				}
+			}
+		})
 	}
 }

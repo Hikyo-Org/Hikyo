@@ -327,15 +327,17 @@ type OrgIdentity struct {
 //     downward, so expanding it here would silently reproduce the operator's
 //     org enumeration — which is MFA-mandatory — on a surface that is not.
 //
-// The result is ordered by name so the rail is stable between loads.
-func (r *Resolver) OrgsForPrincipal(ctx context.Context, p domain.PrincipalID) ([]OrgIdentity, error) {
+// The result is ordered by name so the rail is stable between loads. The
+// authorizer's includeSelfConfig flag can only narrow the protected org's
+// grant-based visibility; it never substitutes for its instance-config grant.
+func (r *Resolver) OrgsForPrincipal(ctx context.Context, p domain.PrincipalID, includeSelfConfig bool) ([]OrgIdentity, error) {
 	grants, err := r.Grants(ctx, p)
 	if err != nil {
 		return nil, err
 	}
 	instanceConfig := false
 	for _, g := range grants {
-		if g.Capability == domain.CapInstanceConfig && g.Scope == (domain.Scope{}) {
+		if includeSelfConfig && g.Capability == domain.CapInstanceConfig && g.Scope == (domain.Scope{}) {
 			instanceConfig = true
 		}
 	}

@@ -29,6 +29,11 @@ var selfConfigOperations = map[Operation]bool{
 	OpSelfConfigApply: true, OpSelfConfigTest: true, OpReencryptProject: true,
 }
 
+func selfConfigSessionEligible(caller Identity) bool {
+	return (caller.Class == "" || caller.Class == domain.ClassHuman) &&
+		(caller.SessionID == "" || AdequateAssurance(caller.Assurance))
+}
+
 func (a *TxAuthorizer) selfConfigProfile(ctx context.Context, caller Identity, op Operation, chain domain.Scope, grants []domain.Grant) (bool, bool, error) {
 	protected, err := a.r.IsSelfConfigScope(ctx, chain)
 	if err != nil || !protected {

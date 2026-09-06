@@ -1,6 +1,15 @@
 # PR #686: Hikyo self-configuration handoff
 
-Status: design approved and product implementation built. Independent standards and spec reviews are CLEAN. Full local isolation, race, core, web, SDK, docs and live browser checks pass. Delivered in [PR #686](https://github.com/Hikyo-Org/Hikyo/pull/686); check its exact-head CI before merge. No merge or production deployment has occurred. The sections below preserve the original design and its acceptance requirements; consult the report validation record for completed implementation evidence.
+Status: scope expanded by the user's D11 correction. The earlier nine-key implementation passed CI at `152373212c6d78a3bcae91e3300097ff0d893acf`. The user now requires every Hikyo variable with remote Apply, only by the target instance administrator using passkey or TOTP. Full-variable activation is not implemented. Do not merge the earlier implementation as if it satisfies this revision. No merge or production deployment has occurred.
+
+## D11 scope expansion
+
+The complete [implementation design](../spec/self-configuration-full-catalogue.md) records the application-generation and managed deployment integration requirements. All 65 recognized environment inputs have metadata in `internal/config/variables.go`; the report generator consumes `variable-inventory.json`. This inventory does not expand the runtime catalogue, which still has nine keys.
+
+The current changes close an MFA gap on ordinary protected-project operations, navigation and capability hints. Exact Apply/adoption/test evidence is restricted to fresh local TOTP or user-verifying passkeys, with the existing owner/revision binding and single-use consumption. Targeted both-engine, race, and independent review evidence belongs in the report validation record.
+
+The next implementation work is the full-catalogue design's application lifecycle and bootstrap integration. Required seams include node overlays, canonical content settings, graph prepare/activate/dispose, exact plan binding, deployment-provider authority and receipts, and recoverable root/datastore transitions. A provider stub or inventory alone does not complete D11. The user delegated design recommendations; do not ask them to reapprove this scope.
+
 
 ## Integration evidence
 

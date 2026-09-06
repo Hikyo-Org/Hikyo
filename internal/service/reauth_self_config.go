@@ -95,6 +95,19 @@ func authorizeSelfConfigCeremony(ctx context.Context, az *authz.TxAuthorizer, ca
 	return err
 }
 
+// Self-configuration accepts only fresh local TOTP or user-verifying passkey
+// evidence. Other reauth issuers and longer-lived disclosure windows cannot
+// acquire this authority by adopting its persisted purpose fields.
+func validateSelfConfigFactor(w authz.ReauthWindow, now time.Time) error {
+	if w.FactorClass != "totp" && w.FactorClass != "webauthn" {
+		return ErrReauthUnitMismatch
+	}
+	if w.AuthenticatedAt.After(now) || !now.Before(w.AuthenticatedAt.Add(5*time.Minute)) {
+		return ErrReauthWindowExpired
+	}
+	return nil
+}
+
 // ConsumeSelfConfigReauth spends only a fresh, exact single-decision window in
 // the action's final transaction. It cannot consume disclosure or sliding gates.
 func (s *Auth) ConsumeSelfConfigReauth(ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity, intent ReauthIntent, now time.Time) error {

@@ -1,6 +1,6 @@
 # Hikyo self-configuration decision report
 
-Design approved and implementation built on 2026-09-06. Local validation passes and both independent reviews are clean; see the report status and validation record for delivery evidence.
+D11 was expanded on 2026-09-06 to every Hikyo variable with remote Apply and target-instance administrator plus passkey/TOTP authorization. The earlier nine-key implementation passed CI in PR #686; that evidence does not prove expanded activation. See the report status and validation record.
 
 Open [index.html](./index.html) directly in a browser. It embeds its fonts, styles, scripts and decision data, so the report remains readable and interactive when copied elsewhere without a server. External source links require a network connection. There are no analytics, remote assets, API calls or live configuration actions.
 
@@ -14,17 +14,18 @@ Open <http://192.168.0.30:8769/> from a LAN device. This is a LAN preview, not a
 
 ## Contents
 
-- 27 questions with options, recommendation, decision, rationale, evidence and required proof. Three decisions were explicitly approved; 24 were selected under the user's delegated approval.
-- Nine managed keys and an exhaustive disposition of the current known environment keys. The report distinguishes first-delivery scope, bootstrap inputs and existing dedicated operations. A topology diagram shows one root management view, separate owner-local projects per independent instance and sharing only within HA.
+- 27 questions with options, recommendation, decision, rationale, evidence and required proof. Five decisions now have explicit user approval; 22 retain delegated approval.
+- Nine currently managed keys and all 65 recognized environment inputs, including required lifecycle and secret-content classification. The report distinguishes the implemented nine-key scope from the expanded application and bootstrap activation requirements. A topology diagram shows one root management view, separate owner-local projects per independent instance and sharing only within HA.
 - Five interactive activation scenarios, with current-phase status and per-node revisions, explicitly scoped to one logical instance rather than its independent remotes.
 - Five implementation milestones, their validation requirements and the owning ADR amendments.
 - Search, topic/authority filters, deep links, disclosure controls, dual themes, print/PDF preparation and downloadable HTML/JSON.
 
 ## Editing and regeneration
 
-`report-data.json` is the content source; `build.mjs` escapes it into static HTML. `report.css` and `report.js` provide the report presentation and local interactions. The generator uses only Node built-ins and a static JSON module import, with no dependency installation or network access.
+`report-data.json` is the decision content source; `variable-inventory.json` is generated metadata from the complete Go configuration inventory; `build.mjs` escapes it into static HTML. `report.css` and `report.js` provide the report presentation and local interactions. The generator uses only Node built-ins and a static JSON module import, with no dependency installation or network access.
 
 ```sh
+go run ./scripts/self-config-inventory > docs/reports/self-configuration/variable-inventory.json
 node docs/reports/self-configuration/build.mjs
 node --check docs/reports/self-configuration/build.mjs
 node --check docs/reports/self-configuration/report.js

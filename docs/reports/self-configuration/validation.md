@@ -1,5 +1,20 @@
 # Self-configuration implementation and report validation
 
+## D11 expansion and assurance revision, 2026-09-06
+
+The user replaced the earlier nine-key scope with every Hikyo variable, remote Apply, and target-instance administrator access using passkey or TOTP. D09/D11 now record explicit approval. The complete inventory covers 65 recognized inputs: 53 server, 10 client, one command-only and one retired. Inventory is metadata, not implemented activation. Application-generation replacement and managed deployment/bootstrap transitions remain unbuilt; the earlier green CI at `152373212c6d78a3bcae91e3300097ff0d893acf` does not prove them.
+
+Implemented in this revision: protected project reads/edits/publication, org navigation and capability hints enforce the instance-admin MFA conjunction. Exact Apply/adoption/test consumption accepts only TOTP or user-verifying passkey evidence authenticated within five minutes. Owner/revision binding, credential epoch and atomic single-use consumption remain enforced. Local host recovery remains a separate operation.
+
+Validation:
+
+- Full `internal/authz`, `internal/service`, `internal/store`, `internal/store/authn` and `internal/lint` checks passed with the disposable PostgreSQL DSN configured. Service 102.532 s; store 62.996 s; lint 61.325 s. Log: `/tmp/hikyo-selfconfig-d11-assurance-final.log`.
+- Targeted both-engine race checks passed: store 18.122 s, service 54.400 s. Log: `/tmp/hikyo-selfconfig-d11-assurance-race.log`. Vet passed.
+- Real TOTP, user-verifying passkey and human CLI handoff integration tests passed on SQLite and PostgreSQL. Passkey UV=false is refused; a fresh ceremony works after an older login; reuse is refused. Password/recovery-only sessions, wrong-owner/revision evidence, OIDC evidence, stale/future evidence and machine classes have refusal coverage. The existing database constraint refuses password/recovery factor provenance rows.
+- Independent R1 authorization review returned CLEAN. It checked helper/listing parity, query count, network/host boundaries and exact factor consumption. No new SQL query was added to the existing chain-plus-grants path.
+- Configuration inventory/generator tests and vet passed. Generated JSON is deterministic. Report JavaScript parses; desktop and 390px mobile show the revised D11, five explicit decisions and all 65 inventory rows without page overflow. LAN HTTP response matched the generated local HTML. A separate physical LAN device has not been checked.
+
+
 ## Current implementation evidence
 
 2026-09-06, branch `t3code/dogfood-hikyo-environment`. Product implementation is

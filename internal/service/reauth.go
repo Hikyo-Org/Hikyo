@@ -162,6 +162,9 @@ func (s *Auth) consumeReauthWindow(ctx context.Context, az *authz.TxAuthorizer, 
 		if binding.purpose != PurposeSelfConfig || binding.operation != windowBinding.operation || binding.keySet != windowBinding.keySet {
 			return ErrReauthUnitMismatch
 		}
+		if err := validateSelfConfigFactor(w, now); err != nil {
+			return err
+		}
 		claimed, err := az.ConsumeSingleDecisionWindow(ctx, w.ID, now)
 		if err != nil {
 			return err
