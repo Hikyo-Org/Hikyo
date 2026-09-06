@@ -99,7 +99,12 @@ To revoke a nightly, add its `release-manifest.json` SHA-256 to
 sequence while keeping the earlier policy digest listed, and recovery-sign the
 catalog. Keeping the earlier digest lets other nightlies from that policy period
 keep verifying; dropping it refuses all of them at once. Publish the policy and
-catalog together. The offline server boot gate keeps using the bundled policy;
+catalog together. Note the limit of keeping the earlier digest: the verifier
+accepts any catalog-listed policy as current, so a party able to substitute the
+published trust files could serve the earlier clean policy and re-enable the
+revoked nightly. That holds the revocation against accidental selection, not
+against an adversary; when it must hold adversarially, drop the earlier digest
+and accept refusing that policy period. The offline server boot gate keeps using the bundled policy;
 a revoked release that is already installed remains inspectable and is never
 selected again as an upgrade target.
 

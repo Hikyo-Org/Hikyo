@@ -93,8 +93,12 @@ func installerFixtureForVersion(t *testing.T, version string, prerelease bool, c
 	}
 	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		body, ok := responses[request.URL.String()]
-		code := http.StatusOK
 		if !ok {
+			t.Fatalf("unexpected download %s", request.URL)
+		}
+		// A nil body models a published tree that lacks the document.
+		code := http.StatusOK
+		if body == nil {
 			code = http.StatusNotFound
 		}
 		return &http.Response{
