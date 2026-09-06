@@ -1,0 +1,29 @@
+{
+  "commit": "c40833b958ae34030e41814c53eebaa3629610aa",
+  "scope": "Strict config leaf preserved; two-field topology wire value converted explicitly in app; package matching uses exact or slash-separated child paths.",
+  "red": {
+    "test": "TestForbiddenEdges",
+    "seconds": 3.202,
+    "forbidden_edges": 4
+  },
+  "green_seconds": {
+    "boundary": 14.264,
+    "config": 0.621,
+    "configrollout": 0.987,
+    "runtimeconfig": 0.434,
+    "focused_app_sqlite_postgres": 8.309,
+    "focused_service_sqlite_postgres": 14.598
+  },
+  "matcher_cases": 14,
+  "vet": "PASS",
+  "review": "R1/R2/R3 CLEAN; parent no findings",
+  "source_manifest": {
+    "internal/config/managed_bootstrap.go": "657cc0a2ed63859408e3ac5d555b6bfede47d21c6fd4375e5ce5a9798a1d0e2a",
+    "internal/app/self_config_deployment.go": "40fa467d0b2e73c49e44e49bc39bc7ea96d6c40d76b2e8aeb2f94bf386ecc88e",
+    "internal/app/self_config_topology_test.go": "2aa65d2f5060740fb034a8e6dc428f122697d80b47f7c9424a049b11f5e8db7c",
+    "internal/service/self_config_topology_test.go": "26792128d72dea97d658e0278c13af986483ade1b4cbb4ea28feb548c3cf41b8",
+    "internal/boundary/boundary_test.go": "b1ed9d423df7896af5889a2094876bfede62745a9bb76e1f35b70347957f70ae",
+    "internal/boundary/package_boundary_test.go": "7f0e56114b9e35612cfc0eae375d43ec12fa8eee5680bd0926bd053ce708a811"
+  },
+  "validation_boundary": "Two runtime inputs changed. Earlier candidate proof is historical; final candidate must rebuild and repeat full expanded proof."
+}

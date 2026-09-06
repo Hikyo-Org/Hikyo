@@ -1,0 +1,47 @@
+{
+  "http_origin": "http://192.168.0.30:8769/",
+  "request_origin": "report host; not a separate physical LAN device",
+  "resources": [
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 392047,
+      "sha256": "d4cdef186974fd4ed7e418ffca5fe822381317f75976d6a62263a062d785ca7a"
+    },
+    {
+      "path": "validation/controlled-rollout-expanded-kind.json",
+      "status": 200,
+      "bytes": 48886,
+      "sha256": "e2e4fecf6b75971f08f7bebd9fe9a9672b1fe6e3fd280c454c7bad6e85bb4ad5"
+    },
+    {
+      "path": "validation/controlled-rollout-expanded-source-manifest.json",
+      "status": 200,
+      "bytes": 87674,
+      "sha256": "e64b464a9b375afbae05f6a4ea342c91023a116bdeafc5a6f0b3ae2733f3f766"
+    },
+    {
+      "path": "server-variable-coverage.json",
+      "status": 200,
+      "bytes": 52057,
+      "sha256": "84570b46eff129a5637b4c5d583878a9d5e54201a9b10e9361cb55b7a2ea7c4f"
+    }
+  ],
+  "browser": {
+    "tab": "tab_b",
+    "decisions": 34,
+    "explicit_decisions": 5,
+    "server_rows": 53,
+    "broken_fragments": 0,
+    "remote_assets": 0,
+    "all_details_open_overflow": {
+      "320": false,
+      "1280": false
+    }
+  },
+  "docs": {
+    "check": "PASS: zero errors, warnings or hints",
+    "build": "PASS: 45 pages; PWA precache104 files"
+  },
+  "scope": "Static report/content verification. Runtime evidence is recorded separately."
+}

@@ -9,15 +9,16 @@ a replacement process. It is separate from the HikyoSecret operator and cannot
 read projects, root Secrets or database Secrets through the Kubernetes API.
 
 The supported bootstrap target is one server replica on Kubernetes 1.36, using
-the chart's `Recreate` Deployment and a stable `<fullname>-server` node identity.
-HA bootstrap rollouts and cross-database migration require separate protocols.
-The chart refuses enrollment for those cases. This restriction does not change
-the separate HA runtime configuration Apply flow.
+the chart's `Recreate` Deployment. The initial identity is `<fullname>-server`.
+Explicit `rollout.topologyNodeIDs` enrollment permits singleton HA mode and
+identity changes; include the initial identity and every allowed replacement.
+One HA-enabled replica uses coordination but does not add redundancy.
+Multi-replica bootstrap rollouts and cross-database migration require separate
+protocols. Ordinary HA runtime configuration Apply remains available.
 
-:::note[Acceptance status]
-The DB/root integration has real Kubernetes replacement, application
-acknowledgement, transport-expiry and Restore/repair evidence. Later topology
-and upgrade-profile changes require their own integrated acceptance.
+:::note[Deployment boundary]
+Database aliases must identify the same datastore. Upgrade profiles must retain
+the same operator custody directory and satisfy the existing signed upgrade gate.
 Host, GitOps and multi-member HA bootstrap providers are not implemented.
 :::
 

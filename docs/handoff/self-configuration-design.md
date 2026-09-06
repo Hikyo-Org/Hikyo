@@ -1,81 +1,59 @@
 # PR #686: Hikyo self-configuration handoff
 
-Current state, 2026-09-06: **signed expanded checkpoint `0cb6de70` pushed; CI fixture repairs and final feature integration in progress.** Historical nine-key CI passed at `152373212c6d78a3bcae91e3300097ff0d893acf`. Do not use that result as evidence for the expansion. No merge or production deployment has occurred.
+Implementation and local verification complete, 2026-09-06. All 53 server inputs have managed consumers. The full fresh Kubernetes proof passed at generation 19. Exact-head CI and review are tracked in draft PR https://github.com/Hikyo-Org/Hikyo/pull/686. User authorized autonomous implementation and controlled bootstrap rollouts. Do not reopen accepted decisions. No merge or production deployment is authorized or performed.
 
-## Current authority and scope
+## Authority and behavior
 
-The user requires every supported server variable, remote Apply only by the target instance admin with fresh passkey/TOTP, separate projects for independent remotes and shared owner settings only within HA. They delegated recommendations and explicitly approved controlled bootstrap pod rollouts. Continue work without reopening those decisions.
+Each independent instance owns its protected Hikyo organization/project/Production environment, secrets and applied generation. Only HA replicas share an owner. The root management view groups references without copying secrets or granting remote authority. Remote operations use the target instance's existing authenticated interface. Protected access requires instance admin and MFA; Apply/Restore consumes fresh revision/owner/generation/plan-bound passkey or TOTP proof.
 
-The current runtime catalogue has **27 top-level keys**: nine original, 16 added owner settings, secret `HIKYO_NODE_OVERRIDES` and alias-only `HIKYO_BOOTSTRAP_SOURCES`. The inventory classifies 65 recognized inputs; classification is not an activation implementation. Trusted proxy policy is exclusively node-local. See the [full scope and acceptance specification](../spec/self-configuration-full-catalogue.md).
+Setup imports the effective server environment and configured file contents once. The applied revision then owns configuration. The catalogue has 27 top-level keys: nine mail/channel values, 16 owner settings, secret `HIKYO_NODE_OVERRIDES` with 15 per-node fields, and `HIKYO_BOOTSTRAP_SOURCES`. The generated inventory contains 65 inputs: 53 server, ten client, one command-only and one retired. `server-variable-coverage.json` maps every server input to its actual consumer; the report build enforces exact inventory equality.
 
-Ordinary owner/node changes now prepare and replace the app graph, listeners, memory TLS, PostgreSQL pool, admission capacity and outbound/backup/auth captures without container restart. Stable DB/keyring/coordination and the coordinator remain supervisor-owned. Actual installation precedes acknowledgement. Stale REST/SCIM/MCP and worker admission are fenced; narrow admin repair remains available. Node seed files import once. An unknown HA node starts only fenced repair, without business acknowledgement.
+Ordinary changes replace the affected mail/application/network/TLS/auth/backup/egress consumers live while preserving counters and owner resources. Development controls require an existing development deployment. The candidate-root alias reloads live without rotating the primary root or retiring wrappers; clear it by removing the optional field, not setting an empty string.
 
-The concrete controlled bootstrap provider is **explicitly enrolled, singleton non-HA Recreate Kubernetes 1.36 only**. Host, GitOps and HA bootstrap providers remain unimplemented. Database source aliases reconnect to the same verified datastore; true data migration is not implemented. Root custody remains external and there is no automatic root finalization. Do not describe controller fakes or chart rendering as a deployed controller.
+Bootstrap support requires explicit enrollment of a singleton Recreate Kubernetes 1.36 Deployment. It switches same-PostgreSQL database aliases, externally held root keys, complete seven-input upgrade profiles, or separately authorized HA/node identity. An HA-enabled singleton provides coordination, not redundancy. Multi-replica bootstrap, host/systemd/GitOps providers, data migration, image installation and moving operator custody are separate capabilities.
 
-## Exact workflow and repair
+## Runtime invariants
 
-The UI prepares the exact selected revision first, waits for current participant readiness, displays Reload live or Controlled rollout, and binds the plan digest into fresh final MFA. The preparation lease is five minutes; a synchronous request waits at most 30 seconds and worker evidence must be no older than 30 seconds. A changed revision, owner, generation, incarnation or digest invalidates the old decision.
+Exact source and old/new topology correspondence are signed through the existing journal. Final MFA rechecks authority, source versions, membership and plan generation. Source changes and actual topology changes require separate plans. Ordinary Apply retains current identity and template fences. First source rollout on an already HA-enabled singleton signs unchanged correspondence.
 
-A partial controlled rollout exposes **Restore deployment inputs** with distinct exact `rollout-restore` MFA. It restores only deployment inputs after verified controller acknowledgement. Desired revision stays unchanged and business stays fenced. A fresh published repair with separate MFA is required to resume. Unresolved external handoffs cannot be silently superseded. The old root wrapper intentionally remains available for this recovery path.
+A partial deployment remains business-fenced. Restore has its own fresh exact MFA and restores external inputs without changing the desired revision. A separate fresh repair must restore runtime authority. Source Restore retains a fenced HA coordinator so ordinary repair recovers actual heartbeat and scheduler leases before another reboot. Actual topology repair requires a controlled replacement. Root finalization refuses while unresolved deployment recovery needs its wrapper; retirement is never automatic.
 
-RP hostname changes require exact TOTP plus the initiating admin's current password and confirmed TOTP credentials. Same-host port changes permit a passkey. This is recovery viability, not proof of target DNS, TLS or a successful new-origin login.
+Upgrade profiles bind all seven enrolled values and immutable public artifact digests. Pure Prepare performs no admission, migration, ciphertext copy or operator rotation. Mutable build/control/custody state is rechecked before Submit. Replacement resolves the selected profile before the existing authoritative signed gate, which retains evidence expiry/nonce and migration authority. Alternative state paths must reference the same actual persistent custody directory.
 
-## Evidence and next work
+## Signed checkpoints
 
-[Validation](../reports/self-configuration/validation.md) separates local expansion checks from historical nine-key evidence. Local evidence includes actual HTTP/MCP/listener/TLS/capacity/backup/pool consumers, both-engine origin and deployment restore tests, 934 web tests, typecheck/build and the full app suite after upgrade projection fixes. Expanded desktop and mobile passkey/TOTP channel-Apply journeys now pass against freshly compiled independent instances; the baseline controlled DB/root rollout, exact acknowledgement, real transport expiry and Restore/repair chain also pass on a recorded source/binary. Later slices require a fresh integrated proof.
+Branch: `t3code/dogfood-hikyo-environment`.
 
-Remaining acceptance: integrate reviewed singleton topology, prove the combined topology/upgrade-profile server rollout, finish CI fixture repairs, frozen combined checks and final exact-head CI. Target-origin DNS/TLS/login is a separate unproved operational scenario. Parent owns delivery and integration. Report changes must be rebuilt with `node docs/reports/self-configuration/build.mjs` and served at <http://192.168.0.30:8769/>.
+- `2a070efb575602f881d67f5ac49d35ce9703fa6c`: expanded baseline and historical kind evidence.
+- `0cb6de707439fcbc56e0c0844fbd505d1a05f60b`: development controls and next-root selector.
+- `8f93fb5016fce8b2fa01d00cc42f0d82a9c1293a`: SCRAM/readiness/browser fixture repairs.
+- `b974c39092e8f4f13182e9e9650349c5f894deae`: seven-input upgrade profiles; `08129e051dfb05976af6aac220040309d6c60819`: singleton topology and chart admission fix.
+- `2450a34a999b11525a2d4edd5d09b9a98f534da4`: isolated service fixture scheduling; `c40833b958ae34030e41814c53eebaa3629610aa`: strict config leaf preserved with local wire type and explicit app conversion; `29e76d3cecc08ee3f3b4a062c414fb2b34e389ae`: owned HTTP fixture cleanup.
 
-The report contains D01 through D34 with alternatives, recommendations, decisions and evidence. Five original decisions have explicit user approval; later recommendations are delegated. The separate bootstrap-rollout approval is explicit. No further design interview is required.
+The final evidence/docs commit follows these checkpoints. Check Git for its exact head; do not assume a runtime build's embedded commit names later test/docs-only commits. Archived D31/D32/D33/D34 patches are already integrated. Do not reapply them. No schema migration or development manifest 137 was introduced.
 
-## Historical nine-key integration evidence
+## Final proof and verification
 
-The following evidence predates the expansion and is preserved for traceability.
+`docs/reports/self-configuration/validation/controlled-rollout-expanded-kind.json` and `controlled-rollout-expanded-source-manifest.json` record the uninterrupted final run on signed runtime `c40833b9`. Candidate directory: `/tmp/hikyo-rollout-final-candidate-818e`.
 
-## Integration evidence
+- All 795 native/Linux compiled/embed inputs remain byte-identical. Manifest SHA-256: `e64b464a9b375afbae05f6a4ea342c91023a116bdeafc5a6f0b3ae2733f3f766`.
+- Linux candidate and final running ELF: `eafed43e5162715e1e435a27cc5f3dfa1e0ecc92705fb86374eb61810675f281`.
+- Native operator: `e783b14102e7b87f7d95bdaea6f508ebd1647e4aac5244946cde5cedf2a0c9bf`. Both executables carry the same seven verified signed linker strings.
+- Fresh-start/completion harness: `8bdce7cc0aa8c47ad05d41fa860f3eca63e18fa1871b0413497fa2eb73aeeb8d`; every chart input also matches. Evidence JSON SHA-256: `e2e4fecf6b75971f08f7bebd9fe9a9672b1fe6e3fd280c454c7bad6e85bb4ad5`.
+- Final generation 19 completed. Command expiry renewed sequence 6 to 7 with MFA count 6 unchanged. Real encrypted drill recovered wrappers/secret and reconciled/minted/revoked a credential. All seven upgrade inputs changed, same custody device/inode `65025:3200808`. Independent session A received 403 before its positive window expired after session B applied policy zero.
 
-Merged current main `72f5a71f` while preserving its account-profile and adapter
-findings work. The unreleased managed-configuration migration is now 50; the
-historical recovery cutoff and legacy archive fixture match. Full core checks,
-focused both-engine authorization/audit/formula checks, Go vet, all 919 web tests,
-SDK checks and fresh desktop local/independent-owner browser journeys pass.
-The pinned Go formatter fixes the initial CI format failure. Exact-head CI is
-recorded on PR #686.
+Ordinary reload, DB/root replacement, root guard, Restore/fresh repair/later Apply, next-root select/clear and HA identity/source-repair checks all passed in that fresh run. Native scratch transport used eight opaque `verify-full` connections and left zero children. Both exported JSON files passed a recursive 3224-string check against private values and secret markers. No private custody is published. The signed fixture uses temporary test release authority, not production release authority. It does not prove a new release/schema upgrade, data migration, executor process takeover or multi-replica failover.
 
-## CI follow-up corrections
+All eleven combined backend package suites passed with PostgreSQL configured. Current web typecheck, 934 tests and build passed. Focused races, isolation, authority invariants, SQLC regeneration, live chart admission and vet passed. Source and final harness reviews are CLEAN. Detailed commands, timings and source boundaries are in `docs/reports/self-configuration/validation.md`.
 
-Browser closure now executes all four required configuration assertion runs.
-Approval scheduler claims retain a provisional fence on commit error and require
-exact renewal before any job can run; deterministic both-engine and race tests
-cover lost responses, rollback, successors and shutdown. Schema fan-out avoids
-repeated project-storage sums using attempt-local exact accounting; every
-environment retains the existing high-water check. Three alternating local
-100,000-cell benchmarks improved median time by 15.21%. CI floor limits and
-lease/takeover timings remain unchanged. See the report validation record for
-measurements and exact failure history.
+CI `34051414948` on `2450a34a` passed browser/closure/isolation checks and full service race in 1192.522 seconds under the unchanged 1200-second limit. Its boundary and HTTP cleanup failures are fixed in c40833b9 and 29e76d3c. The exact HTTP teardown error reproduced locally; final three-fixture race count5 passed 63.398 seconds with original server deadlines and assertions. Public metadata: `validation/config-leaf-boundary.json`, `ha-http-cleanup.json`, and `service-race-scheduling.json`. Read current PR checks for final-head CI; earlier run status is historical.
 
+## Resources and delivery discipline
 
-## Historical integration corrections
+The report must stay available at http://192.168.0.30:8769/. Report sources and final static HTML live in `docs/reports/self-configuration`; public operator docs are linked from the docs navigation. The report is standalone and embeds fonts/styles/scripts. A host-origin LAN HTTP check does not imply a separate-device network test.
 
-Host administrator creation must consume the running server’s fresh sealed owner/node seed, rather than evaluating the CLI process environment or changing a live listener to its default. Missing or stale evidence must refuse before principal creation and explain that the server must be started before retrying. Local regression proof now passes: service race 35.027 s, app 16.236 s, including both-engine maximum-size/MFA authority checks. Both R1 corrections now preserve discovery mode and read a fresh clock after the membership lock; both-engine regressions passed in 5.308 s and R2 review is clean for those fixes. Durable exact-authorized Submit/Restore/Observe renewal and no-effect restoration passed R2 review, race checks (module 4.877 s, service 111.817 s, app 17.108 s) and full lint (78.122 s). Renewal changes transport sequence/timestamps only and cannot grant an uncommitted preparation authority. Real Kubernetes outage/recovery proof remains open.
+Final owned kind context `kind-hikyo-rollout-818e`, namespace `hikyo-rollout-a06347c9`: server/PostgreSQL/executor replicas verified zero after proof, owned registry on port 56509 stopped. All three container restart counts were zero before cleanup. Private custody `/var/folders/vd/czrqg5h95pz6gyrt813t33_w0000gn/T/hikyo-rollout-kind-frn57thm` and log `/tmp/hikyo-rollout-final-expanded-proof.log` are retained. Historical fixtures are stopped; their interrupted/resumed evidence is not the final proof. Do not expose private logs, passwords, TOTP seeds, operator keys or root escrow.
 
-Root-finalization guard is implemented and R3 review is CLEAN. Binding-before-hierarchy serialization preserves both wrappers while the current generation/incarnation has an unresolved rollout, including superseded repair states. Both-engine regressions passed in 15.885 s and existing rotation invariants in 2.166 s. The actual Kubernetes fixture also refused finalization with conflict while the replacement awaited executor acknowledgement and retained epochs 1 and 2. The full fixture recovery chain remains pending.
+Unrelated local fixtures `hikyo-self-config-818e` on 56488 and `hikyo-self-config-scram-818e` on 56489 were preserved. The SCRAM DSN is in private `/tmp/hikyo-self-config-scram-818e.json`; never print it. Keep report servers running. Always check explicit context and ownership before touching retained resources.
 
-## Current integration and remaining work
-
-Development controls and next-root selection are integrated atop signed baseline `2a070efb`. Full affected package checks, lint, vet, docs and combined R1 review pass; see validation.md. Original patches remain in `/tmp/hikyo-dev-controls-slice.patch` and `/tmp/hikyo-next-root-slice.patch` as archived slice inputs; do not apply them again.
-
-D33 HA/node-identity implementation runs in `/tmp/hikyo-topology-818e`; D34 enrolled upgrade-custody implementation runs in `/tmp/hikyo-upgrade-custody-818e`. Each new worktree has the copied integrated baseline staged without a commit. Agents must not stage or commit. Only each unstaged delta plus new files is its feature slice. Parent owns integration, review, generated metadata and exact-head delivery. The topology agent owns any migration/SQLC change; development manifest 137 is reserved only if schema changes prove necessary. The upgrade agent and chart agent share the upgrade worktree with separate file ownership.
-
-D33 uses exact singleton topology intent, old/new membership correspondence and stale-process fencing while retaining Recreate one-replica limits. D34 resolves a coherent seven-value enrolled profile before startup admission and performs read-only preparation without minting upgrade authority. Existing gate, operator/custody proof and signed evidence remain authoritative. D34 is integrated locally after R3 CLEAN review; full actual-server proof remains pending. D33 is under R1 review: a source-Restore path could omit HA coordination on subsequent ordinary repair, and requires an actual owner regression before integration.
-
-Latest complete isolation coverage: all 369 planned cases pass with SQLite/PostgreSQL configured. Shards 0 and 1 passed in 321.622 s and 457.832 s. Shard 2 reached the unchanged ten-minute process limit without an individual assertion failure; its exact 134-case set passed in three local groups (229.973 s, 123.820 s, 176.508 s). Logs: `/tmp/hikyo-selfconfig-isolation-shard-{0,1,2}.log` and `/tmp/hikyo-selfconfig-isolation-shard-2-part-{0,1,2}.jsonl`. No timeout or test coverage changed. These final results supersede the earlier pending isolation status above.
-
-
-## Latest checkpoint CI and feature integration
-
-Exact-head run 34046700568 completed failed at `0cb6de707439fcbc56e0c0844fbd505d1a05f60b`; all failures derive from three diagnosed test fixtures, with aggregate gates failing downstream. All three isolation shards passed unchanged. Store/core and race shard 2 hit the same missing SCRAM role password; the repair passes all source-proof tests and the affected race case on a dedicated SCRAM PostgreSQL fixture. Browser mobile4 setup raced the managed-generation worker after host admin creation; wait on `/readyz` fixes it and all 28 shard tests pass. Desktop/mobile3 design-token checks used an ambiguous owner `code` selector; the Owner paragraph is now selected specifically, with identical font assertions. Desktop and mobile dark/light pairs pass. All three fixture fixes are saved in signed DCO commit `8f93fb50`. Full web typecheck and 934 tests pass. Main parent owns the store fixture; browser agent owns the two e2e files until proof completes.
-
-D34 exact integrated patch `/tmp/hikyo-upgrade-custody-slice.patch`, SHA-256 `7d244e291500e1b25c339c365e6108e9eab22148be1775a5ec1fc0078f53e76d`, 118134 bytes. Do not apply it again. All focused/affected tests, both-engine races, vet and full lint (198.719 s) pass in its isolated worktree. Final review is CLEAN. Main parent added public upgrade-profile documentation. Real kind chart policy and same-directory alternate-mount checks pass; the rollout agent plans a fresh signed production-mode server proof using genuine upgrade-export/drill artifacts with private operator keys kept outside server mounts.
-
-Main report rebuilt and LAN verified: 350047 bytes, SHA-256 `fbf9026a4ebce7b4782b6d2308370a14888fb295d69798ab03ef8daf91d9fce0`. T3 browser shows all 34 decisions, no broken fragments and no page overflow at 320 or 1280 pixels. No merge or production deployment is authorized or performed. Continue independently through integration and validation.
+Every commit requires DCO and configured crypto signing. Verify the entire PR range before push and GitHub Verified afterward. Keep PR draft. User has not authorized merge or production deployment.

@@ -197,6 +197,7 @@
     "import": "value"
   },
   {
+    "managedField": "HIKYO_BOOTSTRAP_SOURCES.topology.ha",
     "key": "HIKYO_HA",
     "audience": "server",
     "scope": "owner",
@@ -321,6 +322,7 @@
     "referencedContentSecret": true
   },
   {
+    "managedField": "HIKYO_BOOTSTRAP_SOURCES.topology.node_id",
     "key": "HIKYO_NODE_ID",
     "audience": "server",
     "scope": "node",

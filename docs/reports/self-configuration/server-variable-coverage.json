@@ -1,0 +1,896 @@
+{
+  "baseline": "c40833b958ae34030e41814c53eebaa3629610aa",
+  "audit": "Integrated source lifecycle audit: signed commit 08129e05 includes reviewed D33 and D34 slices; combined R1 CLEAN. Runtime validation remains separately recorded.",
+  "inventory_count": 65,
+  "server_count": 53,
+  "family_counts": {
+    "node": 11,
+    "owner": 16,
+    "bootstrap": 3,
+    "development": 3,
+    "topology": 2,
+    "mail": 9,
+    "next-root": 1,
+    "channel": 1,
+    "upgrade-custody": 7
+  },
+  "verdict": "All 53 server inputs map to implemented managed consumers in signed commit 08129e05. Combined source review and full affected package checks pass. Expanded real-cluster proof is running. This mapping does not claim support for every platform or value combination.",
+  "shared_authority": "Normal encrypted project declarations; node document secret-classified. Target instance admin plus fresh exact published revision/plan passkey or TOTP Apply. Remote HTTPS uses same server authorization; no generic file reads or deployment writer.",
+  "limits": [
+    "Mapping is code evidence, not a claim that every value combination or every variable has a full real-container/browser proof.",
+    "Bootstrap provider remains enrolled singleton Kubernetes with immutable operator-installed image/mount/source authority. Existing ordinary HA live Apply is distinct from multi-replica bootstrap orchestration.",
+    "Content imports intentionally replace startup file pointers with managed content. Root and upgrade custody remain external alias choices.",
+    "External source provisioning, actual data migration, host/systemd/GitOps providers, universal Kubernetes support, DNS/ingress/storage automation and binary installation are separate capabilities."
+  ],
+  "rows": [
+    {
+      "input": "HIKYO_ADAPTER_EGRESS_POLICY_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Explicit initial file contents imported once; future managed edits replace content, not arbitrary file references. TLS private key is sealed secret node data.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_ADAPTER_EGRESS_POLICY_JSON",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> newAdapterModuleFactory"
+      ],
+      "config_field": "AdapterEgressPolicy",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_ADMISSION_BUDGET_MIB",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_ADMISSION_BUDGET_MIB",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/app.go:AuthComponents -> admission.New; runtimeconfig/node.go rejects insufficient Argon2 capacity"
+      ],
+      "config_field": "AdmissionBudgetMiB",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_ARGON2_MEMORY_KIB",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_ARGON2_MEMORY_KIB",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/app.go:AuthComponents -> crypto.PasswordParams; app/generation.go:prepareGeneration -> Auth.KDF"
+      ],
+      "config_field": "Argon2MemoryKiB",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_ARGON2_PARALLELISM",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_ARGON2_PARALLELISM",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/app.go:AuthComponents -> crypto.PasswordParams; app/generation.go:prepareGeneration -> Auth.KDF"
+      ],
+      "config_field": "Argon2Parallelism",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_ARGON2_TIME",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_ARGON2_TIME",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/app.go:AuthComponents -> crypto.PasswordParams; app/generation.go:prepareGeneration -> Auth.KDF"
+      ],
+      "config_field": "Argon2Time",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_AUDIT_ACCESS_RETAIN_DAYS",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_AUDIT_ACCESS_RETAIN_DAYS",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> Retention.AuditPolicy.AccessDays -> scheduled payload_gc"
+      ],
+      "config_field": "AuditAccessRetainDays",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_AUDIT_SECURITY_RETAIN_DAYS",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_AUDIT_SECURITY_RETAIN_DAYS",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> Retention.AuditPolicy.SecurityDays -> scheduled payload_gc"
+      ],
+      "config_field": "AuditSecurityRetainDays",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_BACKUP_DIR",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Existing process filesystem permissions apply; changing destination does not migrate prior archives or provision storage.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_BACKUP_DIR",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/backup_jobs.go:backupJobs -> Backup.Export/Prune installed destination"
+      ],
+      "config_field": "BackupDir",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_BACKUP_INTERVAL",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Backup policy dependencies and public age recipients are validated; RPO/RTO are objectives, not guarantees.",
+      "managed_key": "HIKYO_BACKUP_INTERVAL",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/backup_jobs.go:backupPolicy/backupJobs -> Backup.Due"
+      ],
+      "config_field": "BackupInterval",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_BACKUP_RECIPIENTS",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Backup policy dependencies and public age recipients are validated; RPO/RTO are objectives, not guarantees.",
+      "managed_key": "HIKYO_BACKUP_RECIPIENTS",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> Backup.Options.Recipients -> scheduled encrypted export"
+      ],
+      "config_field": "BackupRecipients",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_BACKUP_RETAIN_COUNT",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Backup policy dependencies and public age recipients are validated; RPO/RTO are objectives, not guarantees.",
+      "managed_key": "HIKYO_BACKUP_RETAIN_COUNT",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/backup_jobs.go:backupPolicy/backupJobs -> Backup.Prune"
+      ],
+      "config_field": "BackupRetainCount",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_BACKUP_RETAIN_DAYS",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Backup policy dependencies and public age recipients are validated; RPO/RTO are objectives, not guarantees.",
+      "managed_key": "HIKYO_BACKUP_RETAIN_DAYS",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/backup_jobs.go:backupPolicy/backupJobs -> Backup.Prune"
+      ],
+      "config_field": "BackupRetainDays",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_BACKUP_RPO",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Backup policy dependencies and public age recipients are validated; RPO/RTO are objectives, not guarantees.",
+      "managed_key": "HIKYO_BACKUP_RPO",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/backup_jobs.go:backupPolicy -> Retention/operational health policy"
+      ],
+      "config_field": "BackupRPO",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_BACKUP_RTO_TARGET",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Backup policy dependencies and public age recipients are validated; RPO/RTO are objectives, not guarantees.",
+      "managed_key": "HIKYO_BACKUP_RTO_TARGET",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/backup_jobs.go:backupPolicy -> Retention/operational recovery health policy"
+      ],
+      "config_field": "BackupRTOTarget",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_DB",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Installed singleton Kubernetes provider and pre-enrolled sources only. Candidate must prove same admitted datastore identity; credentials/locator change is supported, data/engine migration is separate.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.database_source",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/config/managed_bootstrap.go:ParseManagedBootstrapSources",
+        "internal/app/self_config_deployment.go:PrepareCommand/validatePreparedSources/readSelection",
+        "internal/configrollout/kubernetes.go:Prepare/Submit/Restore",
+        "internal/app/app.go:boot"
+      ],
+      "config_field": "Store",
+      "family": "bootstrap"
+    },
+    {
+      "input": "HIKYO_DEV_ADAPTER_FAKE_PROVIDER",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Only already-development node; production presence refused. Provider switching requires no retained adapter configuration/effects and preserves fake state across ordinary reloads.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_DEV_ADAPTER_FAKE_PROVIDER",
+      "activation": "live node graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:parseManagedNodeValues",
+        "internal/config/managed_dev.go:parseDevelopmentOverrides",
+        "internal/app/generation.go:prepareGeneration -> module factory; app/owner_runtime.go:checkDevelopmentProviderSwitch before prepare and after worker drain"
+      ],
+      "config_field": "DevAdapterFakeProvider",
+      "family": "development"
+    },
+    {
+      "input": "HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Only already-development node; production presence refused. Provider switching requires no retained adapter configuration/effects and preserves fake state across ordinary reloads.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE",
+      "activation": "live node graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:parseManagedNodeValues",
+        "internal/config/managed_dev.go:parseDevelopmentOverrides",
+        "internal/app/app.go:AuthComponents -> limiter PerIPPerMinute; app/owner_runtime.go:Activate -> InheritCounters"
+      ],
+      "config_field": "DevAdmissionPerIPPerMinute",
+      "family": "development"
+    },
+    {
+      "input": "HIKYO_DEV_SERVICE_BUDGETS_DISABLED",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Only already-development node; production presence refused. Provider switching requires no retained adapter configuration/effects and preserves fake state across ordinary reloads.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_DEV_SERVICE_BUDGETS_DISABLED",
+      "activation": "live node graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:parseManagedNodeValues",
+        "internal/config/managed_dev.go:parseDevelopmentOverrides",
+        "internal/app/owner_runtime.go:Activate -> stable Budget.SetDevelopmentDisabled after drain; preserves budget counters/limits"
+      ],
+      "config_field": "DevServiceBudgetsDisabled",
+      "family": "development"
+    },
+    {
+      "input": "HIKYO_DIRECTORY_PROXY",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_DIRECTORY_PROXY",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> remotefetch proxy transport"
+      ],
+      "config_field": "DirectoryProxy",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_DYNAMIC_EGRESS_POLICY_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Explicit initial file contents imported once; future managed edits replace content, not arbitrary file references. TLS private key is sealed secret node data.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_DYNAMIC_EGRESS_POLICY_JSON",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> newDynamicFactory"
+      ],
+      "config_field": "DynamicEgressPolicy",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_EXTERNAL_ORIGIN",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Changes app origin, not DNS/ingress/firewall.",
+      "managed_key": "HIKYO_EXTERNAL_ORIGIN",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> Auth/SAML/WebAuthn RP/MCP/HTTP HSTS origin"
+      ],
+      "config_field": "ExternalOrigin",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_HA",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner topology with exact old/new node correspondence",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Enrolled singleton only; HA requires actual PostgreSQL/shared root. Exact-MFA membership remap, immutable startup identity/template fencing, lease invalidation and explicit node overlays. Initial HA source-only rollout correspondence gap remains under repair; do not claim completion yet. Multi-replica orchestration is separate.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.topology.ha",
+      "activation": "controlled singleton topology replacement",
+      "consumer_paths": [
+        "pending /tmp/hikyo-topology-818e/internal/config/managed_bootstrap.go",
+        "pending internal/configrollout/topology.go:prepareTopologyDelta",
+        "pending internal/store/repos_self_config_topology.go:commitTopologyParticipant",
+        "pending internal/app/ha.go:configureHA",
+        "pending internal/service/self_config_runtime.go:Capture/ReconcileRuntime"
+      ],
+      "config_field": "HA",
+      "family": "topology"
+    },
+    {
+      "input": "HIKYO_LISTEN",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Reserves candidate sockets and drains old connections; remote reachability/DNS/firewall are external.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_LISTEN",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/runtime_listener.go:prepareEndpoints/newEndpoint/activate -> public TCP listener"
+      ],
+      "config_field": "Listen",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_MAIL_ADDR",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_ADDR",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.Addr",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MAIL_ALLOWED_CIDRS",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_ALLOWED_CIDRS",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.AllowedCIDRs",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MAIL_CA_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_CA_PEM",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.CAPEM",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MAIL_EHLO",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_EHLO",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.EHLO",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MAIL_FROM",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_FROM",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.From",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MAIL_PASSWORD",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_PASSWORD",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.Password",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MAIL_PASSWORD_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_PASSWORD",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.Password",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MAIL_TLS",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_TLS",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.TLS",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MAIL_USER",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner (file source imported from setup node)",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. SMTP connection/TLS/sender policy validates as one configuration. File sources import once; clear complete mail configuration to disable.",
+      "managed_key": "HIKYO_MAIL_USER",
+      "activation": "live immutable mail bundle replacement",
+      "consumer_paths": [
+        "internal/config/managed.go:ManagedSeedForNode",
+        "internal/runtimeconfig/config.go:Prepare -> mail.New -> Bundle.Send",
+        "internal/service/self_config_mail.go:TestMail"
+      ],
+      "config_field": "mail.Config.User",
+      "family": "mail"
+    },
+    {
+      "input": "HIKYO_MCP_ALLOWED_ORIGINS",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_MCP_ALLOWED_ORIGINS",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> MCP AllowedOrigins"
+      ],
+      "config_field": "MCPAllowedOrigins",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_MCP_ENABLED",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_MCP_ENABLED",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> conditional MCP route registration"
+      ],
+      "config_field": "MCPEnabled",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_NEW_ROOT_KEY_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Exact already-enrolled mounted root alias only. Current remains boot root; clearing disables candidate and never revives stale NewRootKeyFile. Selecting candidate does not perform rotation. Nonempty legacy path without exact enrollment receives concrete setup refusal/remedy.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_NEW_ROOT_SOURCE",
+      "activation": "live node graph replacement",
+      "consumer_paths": [
+        "internal/app/next_root_source.go:seedNodeWithNextRoot/rotationRootSource/selectedRootKeySource.Next",
+        "internal/app/generation.go:prepareGeneration -> Rotation.RootKey",
+        "internal/service/rotation.go:rootRotatePrepare"
+      ],
+      "config_field": "NewRootSource",
+      "family": "next-root"
+    },
+    {
+      "input": "HIKYO_NODE_ID",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "owner topology with exact old/new node correspondence",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Enrolled singleton only; HA requires actual PostgreSQL/shared root. Exact-MFA membership remap, immutable startup identity/template fencing, lease invalidation and explicit node overlays. Initial HA source-only rollout correspondence gap remains under repair; do not claim completion yet. Multi-replica orchestration is separate.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.topology.node_id",
+      "activation": "controlled singleton topology replacement",
+      "consumer_paths": [
+        "pending /tmp/hikyo-topology-818e/internal/config/managed_bootstrap.go",
+        "pending internal/configrollout/topology.go:prepareTopologyDelta",
+        "pending internal/store/repos_self_config_topology.go:commitTopologyParticipant",
+        "pending internal/app/ha.go:configureHA",
+        "pending internal/service/self_config_runtime.go:Capture/ReconcileRuntime"
+      ],
+      "config_field": "NODE_ID",
+      "family": "topology"
+    },
+    {
+      "input": "HIKYO_OIDC_EGRESS_POLICY_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Explicit initial file contents imported once; future managed edits replace content, not arbitrary file references. TLS private key is sealed secret node data.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_OIDC_EGRESS_POLICY_JSON",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> Auth.FederationPolicy"
+      ],
+      "config_field": "OIDCEgressPolicy",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_OPERATIONAL_LISTEN",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Reserves candidate sockets and drains old connections; remote reachability/DNS/firewall are external.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_OPERATIONAL_LISTEN",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/runtime_listener.go:prepareEndpoints/newEndpoint/activate -> operational TCP listener"
+      ],
+      "config_field": "OperationalListen",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_PG_POOL_MAX",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. PostgreSQL only; pool changes preserve actual DB identity.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_PG_POOL_MAX",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/owner_runtime.go:Prepare/Activate -> DB.PreparePostgresPool/PreparedPostgresPool.Activate"
+      ],
+      "config_field": "Store.PostgresPoolMax",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_REAUTH_WINDOW_SECONDS",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_REAUTH_WINDOW_SECONDS",
+      "activation": "live application graph replacement",
+      "consumer_paths": [
+        "internal/config/managed_owner.go:ApplyManagedOwnerValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> Auth.ReauthWindow"
+      ],
+      "config_field": "ReauthWindow",
+      "family": "owner"
+    },
+    {
+      "input": "HIKYO_ROOT_KEY",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Installed singleton Kubernetes provider and pre-enrolled sources only. Root bytes remain external; managed project contains alias only. Existing wrapper proof or detached dual-wrap commits under exact Apply; old wrapper finalization fenced until app acknowledgement.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.root_source",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/config/managed_bootstrap.go:ParseManagedBootstrapSources",
+        "internal/app/self_config_deployment.go:PrepareCommand/validatePreparedSources/readSelection",
+        "internal/configrollout/kubernetes.go:Prepare/Submit/Restore",
+        "internal/app/app.go:boot"
+      ],
+      "config_field": "RootKeyFile/RootKeyFromEnv",
+      "family": "bootstrap"
+    },
+    {
+      "input": "HIKYO_ROOT_KEY_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Installed singleton Kubernetes provider and pre-enrolled sources only. Root bytes remain external; managed project contains alias only. Existing wrapper proof or detached dual-wrap commits under exact Apply; old wrapper finalization fenced until app acknowledgement.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.root_source",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/config/managed_bootstrap.go:ParseManagedBootstrapSources",
+        "internal/app/self_config_deployment.go:PrepareCommand/validatePreparedSources/readSelection",
+        "internal/configrollout/kubernetes.go:Prepare/Submit/Restore",
+        "internal/app/app.go:boot"
+      ],
+      "config_field": "RootKeyFile/RootKeyFromEnv",
+      "family": "bootstrap"
+    },
+    {
+      "input": "HIKYO_TLS_CERT_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Explicit initial file contents imported once; future managed edits replace content, not arbitrary file references. TLS private key is sealed secret node data.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_TLS_CERT_PEM",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> newManagedCertificate; app/runtime_listener.go:replaceTransport/activate"
+      ],
+      "config_field": "TLSCertPEM",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_TLS_KEY_FILE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Explicit initial file contents imported once; future managed edits replace content, not arbitrary file references. TLS private key is sealed secret node data.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_TLS_KEY_PEM",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> newManagedCertificate; app/runtime_listener.go:replaceTransport/activate"
+      ],
+      "config_field": "TLSKeyPEM",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_TRUSTED_PROXY_CIDRS",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "node",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection.",
+      "managed_key": "HIKYO_NODE_OVERRIDES.nodes[<node-id>].HIKYO_TRUSTED_PROXY_CIDRS",
+      "activation": "live node graph/listener/pool replacement",
+      "consumer_paths": [
+        "internal/config/managed_node.go:SeedNodeValues/ApplyManagedOwnerAndNodeValues",
+        "internal/app/owner_runtime.go:Prepare/Activate",
+        "internal/app/generation.go:prepareGeneration -> parseCIDRs -> HTTP middleware trusted proxies"
+      ],
+      "config_field": "TrustedProxyCIDRs",
+      "family": "node"
+    },
+    {
+      "input": "HIKYO_UPDATE_CHANNEL",
+      "inventory_scope": "owner",
+      "status": "Implemented; package checks passed",
+      "scope": "owner",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. Notification channel only; does not install or replace the binary.",
+      "managed_key": "HIKYO_UPDATE_CHANNEL",
+      "activation": "live immutable bundle replacement",
+      "consumer_paths": [
+        "internal/runtimeconfig/config.go:Prepare/Bundle.UpdateChannel",
+        "internal/service/updates.go:SelfConfig.Capture -> channel"
+      ],
+      "config_field": "Bundle.updateChannel",
+      "family": "channel"
+    },
+    {
+      "input": "HIKYO_UPGRADE_BACKUP",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. One complete seven-field enrolled tuple, no null/partial members. Pure prepare validation, durable material proof and advisory state recheck; actual gate retains build/operator/source/evidence authority. Does not manufacture evidence, install a build, rotate operator trust or migrate custody.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.upgrade_source -> enrollment.upgrade_sources[alias].ciphertext_path",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/app/upgrade_custody_source.go:configuredUpgradeSource/resolveSelectedUpgrade/inspectUpgradeSource",
+        "internal/upgradegate/preflight.go:CheckStartupConfiguration",
+        "internal/configrollout/upgrade.go:UpgradeCustodySource.Environment/prepareUpgradeDelta",
+        "internal/app/upgrade_gate.go:upgradeRequest/databaseGate",
+        "internal/upgradegate/gate.go:Run"
+      ],
+      "config_field": "Upgrade.ciphertext_path",
+      "family": "upgrade-custody"
+    },
+    {
+      "input": "HIKYO_UPGRADE_BUNDLE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. One complete seven-field enrolled tuple, no null/partial members. Pure prepare validation, durable material proof and advisory state recheck; actual gate retains build/operator/source/evidence authority. Does not manufacture evidence, install a build, rotate operator trust or migrate custody.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.upgrade_source -> enrollment.upgrade_sources[alias].bundle_directory",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/app/upgrade_custody_source.go:configuredUpgradeSource/resolveSelectedUpgrade/inspectUpgradeSource",
+        "internal/upgradegate/preflight.go:CheckStartupConfiguration",
+        "internal/configrollout/upgrade.go:UpgradeCustodySource.Environment/prepareUpgradeDelta",
+        "internal/app/upgrade_gate.go:upgradeRequest/databaseGate",
+        "internal/upgradegate/gate.go:Run"
+      ],
+      "config_field": "Upgrade.bundle_directory",
+      "family": "upgrade-custody"
+    },
+    {
+      "input": "HIKYO_UPGRADE_EVIDENCE",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. One complete seven-field enrolled tuple, no null/partial members. Pure prepare validation, durable material proof and advisory state recheck; actual gate retains build/operator/source/evidence authority. Does not manufacture evidence, install a build, rotate operator trust or migrate custody.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.upgrade_source -> enrollment.upgrade_sources[alias].evidence_directory",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/app/upgrade_custody_source.go:configuredUpgradeSource/resolveSelectedUpgrade/inspectUpgradeSource",
+        "internal/upgradegate/preflight.go:CheckStartupConfiguration",
+        "internal/configrollout/upgrade.go:UpgradeCustodySource.Environment/prepareUpgradeDelta",
+        "internal/app/upgrade_gate.go:upgradeRequest/databaseGate",
+        "internal/upgradegate/gate.go:Run"
+      ],
+      "config_field": "Upgrade.evidence_directory",
+      "family": "upgrade-custody"
+    },
+    {
+      "input": "HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. One complete seven-field enrolled tuple, no null/partial members. Pure prepare validation, durable material proof and advisory state recheck; actual gate retains build/operator/source/evidence authority. Does not manufacture evidence, install a build, rotate operator trust or migrate custody. Operator assertion does not substitute for authenticated export/drill evidence.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.upgrade_source -> enrollment.upgrade_sources[alias].legacy_writers_stopped",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/app/upgrade_custody_source.go:configuredUpgradeSource/resolveSelectedUpgrade/inspectUpgradeSource",
+        "internal/upgradegate/preflight.go:CheckStartupConfiguration",
+        "internal/configrollout/upgrade.go:UpgradeCustodySource.Environment/prepareUpgradeDelta",
+        "internal/app/upgrade_gate.go:upgradeRequest/databaseGate",
+        "internal/upgradegate/gate.go:Run"
+      ],
+      "config_field": "Upgrade.legacy_writers_stopped",
+      "family": "upgrade-custody"
+    },
+    {
+      "input": "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. One complete seven-field enrolled tuple, no null/partial members. Pure prepare validation, durable material proof and advisory state recheck; actual gate retains build/operator/source/evidence authority. Does not manufacture evidence, install a build, rotate operator trust or migrate custody.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.upgrade_source -> enrollment.upgrade_sources[alias].operator_public_key_file",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/app/upgrade_custody_source.go:configuredUpgradeSource/resolveSelectedUpgrade/inspectUpgradeSource",
+        "internal/upgradegate/preflight.go:CheckStartupConfiguration",
+        "internal/configrollout/upgrade.go:UpgradeCustodySource.Environment/prepareUpgradeDelta",
+        "internal/app/upgrade_gate.go:upgradeRequest/databaseGate",
+        "internal/upgradegate/gate.go:Run"
+      ],
+      "config_field": "Upgrade.operator_public_key_file",
+      "family": "upgrade-custody"
+    },
+    {
+      "input": "HIKYO_UPGRADE_STATE_DIR",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. One complete seven-field enrolled tuple, no null/partial members. Pure prepare validation, durable material proof and advisory state recheck; actual gate retains build/operator/source/evidence authority. Does not manufacture evidence, install a build, rotate operator trust or migrate custody. Actual alternate state path supported through immutable second mount of same PVC/subPath; os.SameFile required, no copy/new-state adoption.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.upgrade_source -> enrollment.upgrade_sources[alias].state_directory",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/app/upgrade_custody_source.go:configuredUpgradeSource/resolveSelectedUpgrade/inspectUpgradeSource",
+        "internal/upgradegate/preflight.go:CheckStartupConfiguration",
+        "internal/configrollout/upgrade.go:UpgradeCustodySource.Environment/prepareUpgradeDelta",
+        "internal/app/upgrade_gate.go:upgradeRequest/databaseGate",
+        "internal/upgradegate/gate.go:Run"
+      ],
+      "config_field": "Upgrade.state_directory",
+      "family": "upgrade-custody"
+    },
+    {
+      "input": "HIKYO_UPGRADE_TARGET_MANIFEST",
+      "inventory_scope": "node",
+      "status": "Implemented; package checks passed",
+      "scope": "logical-owner selection of enrolled node custody",
+      "boundary": "Actual target instance administrator and fresh exact-plan passkey/TOTP Apply; complete published projection. One complete seven-field enrolled tuple, no null/partial members. Pure prepare validation, durable material proof and advisory state recheck; actual gate retains build/operator/source/evidence authority. Does not manufacture evidence, install a build, rotate operator trust or migrate custody.",
+      "managed_key": "HIKYO_BOOTSTRAP_SOURCES.upgrade_source -> enrollment.upgrade_sources[alias].target_manifest_sha256",
+      "activation": "controlled bootstrap replacement",
+      "consumer_paths": [
+        "internal/app/upgrade_custody_source.go:configuredUpgradeSource/resolveSelectedUpgrade/inspectUpgradeSource",
+        "internal/upgradegate/preflight.go:CheckStartupConfiguration",
+        "internal/configrollout/upgrade.go:UpgradeCustodySource.Environment/prepareUpgradeDelta",
+        "internal/app/upgrade_gate.go:upgradeRequest/databaseGate",
+        "internal/upgradegate/gate.go:Run"
+      ],
+      "config_field": "Upgrade.target_manifest_sha256",
+      "family": "upgrade-custody"
+    }
+  ],
+  "topology_patch_sha256": "2b6ec9c6ba98dbf9bd83b550762d5c319d4bb9312c2b7f2815cfc77d3a0b25b4"
+}

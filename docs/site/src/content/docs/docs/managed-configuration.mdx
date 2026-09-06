@@ -8,11 +8,11 @@ Hikyo owns a protected configuration project on each logical instance. Open
 **Instance settings → Manage Hikyo configuration** to find the project, the
 running revision and the state of every admitted node.
 
-:::note[Current expansion status]
-The expanded 27-key catalogue described here is implemented in the current
-worktree and undergoing acceptance. It is uncommitted and has no exact-head CI
-or production rollout evidence. Earlier nine-key validation does not establish
-expanded deployment support.
+:::note[Apply scope]
+Ordinary owner and node settings reload live. Startup settings require explicit
+deployment enrollment. The Kubernetes provider supports a singleton Recreate
+Deployment; it does not move data, install a new image or change operator custody.
+See [Configuration rollouts on Kubernetes](/docs/configuration-rollouts/).
 :::
 
 ## Set up or adopt
@@ -28,7 +28,7 @@ Sign in again when requested so the session reflects those grants. Instance
 administration alone does not grant secret reveal or history disclosure.
 
 Once adopted, the applied revision owns the supported settings. Stale startup
-variables and imported file paths cannot override it. Owner and node settings use the catalogue below. Database and root sources remain in external custody; an enrolled deployment provider can apply selected source aliases through a controlled rollout. HA identity and other unsupported startup transitions remain externally managed. See [Configuration](/docs/configuration/).
+variables and imported file paths cannot override it. Owner and node settings use the catalogue below. Database and root sources remain in external custody; an enrolled deployment provider can apply selected source aliases through a controlled rollout. Enrolled singleton HA mode and node identity use the topology workflow below. Multi-member transitions and other unsupported startup transitions remain externally managed. See [Configuration](/docs/configuration/).
 
 ## Change mail settings without restarting
 
@@ -118,17 +118,18 @@ not prove target DNS, TLS or that you have successfully logged in there.
 
 ## Controlled bootstrap rollout
 
-`HIKYO_BOOTSTRAP_SOURCES` selects enrolled external `database_source` and
-`root_source` aliases in a version-1 document. Never put raw root keys, database
+`HIKYO_BOOTSTRAP_SOURCES` selects enrolled external `database_source`,
+`root_source` and `upgrade_source` aliases in a version-1 document. Explicit
+singleton topology enrollment also exposes HA mode and node identity. Never put raw root keys, database
 credentials or arbitrary filesystem paths in these cells. The application
 needs independently available database/root custody before it can decrypt its
 own project.
 
 The concrete provider currently targets an explicitly enrolled, singleton,
-non-HA **Recreate** Deployment on **Kubernetes 1.36**. The deployment must grant
+**Recreate** Deployment on **Kubernetes 1.36**. The deployment must grant
 the constrained controller and admission integration authority over its declared
-resources. Enrollment is an operator installation task. Host, GitOps and HA
-bootstrap providers are not implemented. Unsupported transitions are refused;
+resources. Enrollment is an operator installation task. Host, GitOps and
+multi-replica HA bootstrap providers are not implemented. Unsupported transitions are refused;
 a prepared plan is not evidence that a provider is installed.
 
 Database aliases must reconnect to the same verified datastore; this is not a
@@ -231,4 +232,36 @@ access to the server host and its existing root-key custody.
 
 A node override can select `HIKYO_NEW_ROOT_SOURCE`, the alias of an already enrolled root source. Apply reloads the candidate used by the separate root-rotation operation. Selection does not change the primary root or create or retire wrappers. Clearing the alias disables the candidate and does not restore an old environment file path.
 
+To clear it, remove the optional `HIKYO_NEW_ROOT_SOURCE` field from that node's
+override entry, then publish and apply. An empty string is not a valid alias.
+
 For initial import, `HIKYO_NEW_ROOT_KEY_FILE` must exactly name the enrolled mounted candidate. An unavailable, malformed or unenrolled candidate refuses preparation and startup. Install enrollment before selecting it, or leave the candidate unset during initial setup.
+
+## Enrolled singleton HA mode and node identity
+
+An enrolled Kubernetes Recreate Deployment can opt into topology changes with
+`rollout.topologyNodeIDs`. Include its current `<fullname>-server` identity and
+the explicitly permitted replacement identities. The Deployment remains at one
+replica. HA mode on that singleton enables coordination; it does not add redundancy.
+Ordinary multi-replica HA deployments retain their separate membership setup.
+
+The protected `HIKYO_BOOTSTRAP_SOURCES` value then includes the actual startup
+mode and identity, alongside any installed source aliases:
+
+```json
+{"version":1,"topology":{"ha":true,"node_id":"replacement-server"}}
+```
+
+Changing `topology.ha` or `topology.node_id` requires the existing administrator
+passkey/TOTP Apply confirmation and a controlled replacement. HA requires the
+same PostgreSQL datastore and explicit shared root-key authority. For an identity
+change, publish one complete `HIKYO_NODE_OVERRIDES` entry under the replacement
+identity; no other node's values are inherited. Database, root and upgrade source changes
+must be applied separately from an actual topology change.
+
+The committed plan retains the old/new identity correspondence and installed
+template stamp. Old processes cannot refresh heartbeats, claim or renew scheduler
+work, or serve a newly assigned generation. Ordinary configuration applies retain
+this fence. Restore only restores external inputs; business and scheduler work
+remain fenced until a separately reviewed repair is applied. A topology repair
+uses a fresh controlled replacement even when it returns to the original identity.

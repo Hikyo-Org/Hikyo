@@ -83,6 +83,117 @@ HA bootstrap, true database migration, or every managed setting. Database aliase
 both refer to the same real PostgreSQL store; root aliases contain different
 random keys. The harness never automatically finalizes the root key.
 
+## Expanded singleton topology and upgrade custody proof
+
+Use `--expanded` for the complete baseline chain plus singleton HA/NodeID and
+all seven upgrade inputs. This requires `age`, `age-keygen`, maintained `cosign`
+(validated with 3.1.3), a matching native operator CLI and a source manifest
+captured before either build. The Linux server and native CLI must embed the
+same signed linker input. Compile the native CLI with `CGO_ENABLED=0`, the same
+`-tags ui -trimpath -ldflags` arguments and a separate output path.
+Retain Go symbols in both binaries. Since `-trimpath` omits linker flags from
+build metadata, the harness uses the Go standard-library ELF/Mach-O readers to
+read each exact linked string symbol and compare all seven assignments with the
+fixture's adjacent `ldflags` file. It records that input's hash and checks both
+executable hashes again after the actual proof.
+
+Capture the union of native and Linux compiled source/embed inputs before
+building. The manifest is a JSON object mapping repository-relative paths to
+lowercase SHA-256 digests. Include `GoFiles`, `CgoFiles`, `CFiles`, `CXXFiles`,
+`HFiles`, `SFiles`, `SysoFiles` and `EmbedFiles` from
+`go list -deps -json -tags ui ./cmd/hikyo` for both targets with
+`CGO_ENABLED=0`, plus `go.mod`, `go.sum` and `Dockerfile.release`. Exclude files
+outside this repository. Keep source and embedded UI assets frozen through the
+build and run. The harness checks every supplied entry before and after the
+proof, and verifies the actual running server ELF against the Linux candidate.
+
+```sh
+python3 scripts/ci/check-config-rollout-kind.py \
+  --context kind-config-rollout-test \
+  --binary "$fixture/hikyo" --public-dir "$fixture/public" \
+  --expanded --operator-binary "$fixture/hikyo-native" \
+  --source-manifest "$fixture/source-manifest.json" \
+  --cosign cosign --database-port 15438 \
+  --port 18188 --registry-port 56501
+```
+
+The expanded fixture additionally proves:
+
+1. Fresh exact MFA applies then clears the enrolled next-root selector live.
+   Clearing omits the optional selector from the complete node document; an
+   empty string is not a valid managed node setting.
+   The actual node acknowledges each revision while its process, current root
+   mount and full active wrapper inventory stay exact. Selection alone does not
+   perform or authorize root preparation/finalization.
+2. Fresh exact MFA authorizes `ha=true` with a new enrolled node identity and
+   later returns to the original singleton identity with `ha=false`. Both
+   replace the Pod and receive the exact application acknowledgement.
+3. While HA is enabled, source-only Restore keeps the desired target fenced.
+   Fresh ordinary repair resumes the same process. The harness requires a new
+   real HA heartbeat and a live scheduler lease before permitting the later
+   bootstrap replacement, so a reboot cannot hide broken coordination recovery.
+4. A separately generated operator public key is installed before first boot.
+   Supported `backup upgrade-export` exports the actual populated source;
+   supported `backup upgrade-drill` restores an independently empty PostgreSQL
+   database, proves existing hierarchy/secret readability, reconciles the real
+   administrator and mints/revokes a credential before cosign signs the result.
+5. All seven explicit upgrade inputs switch to an enrolled alternate tuple.
+   A held reply leads to Restore of the initial tuple, a separately authorized
+   ordinary repair and a later successful seven-input Apply. The actual server
+   validates the signed artifact proof and acknowledges the exact rollout.
+   Image, volumes and mounts remain exact; both state paths in the replacement
+   resolve to the same device/inode through preinstalled PVC subPath mounts.
+
+Only a byte-identical snapshot of existing public operator custody is copied
+into a private host directory for standalone drill pin verification. A pending
+operator rotation refuses the drill, and both live and copied custody must
+remain unchanged afterward. This snapshot is never selected by the server or
+treated as a replacement state directory. Private age, root escrow and signing
+keys remain outside server mounts. Public archive, receipt and attestation bytes
+come directly from the supported CLI operations.
+The identity custody file contains one encoded X25519 identity as the Hikyo CLI
+expects; the original commented `age-keygen` output is retained privately, and
+both forms must derive the same public recipient.
+
+The scratch database connection retains end-to-end `verify-full` TLS. A bounded
+loopback relay gives each TCP connection its own automatically allocated
+`kubectl port-forward` tunnel to the exact owned PostgreSQL Pod. This isolates
+local kind runtimes that terminate a whole tunnel when one PostgreSQL stream
+closes. It neither retries nor replays traffic and does not terminate TLS.
+The relay permits eight concurrent connections, 64 total connections and a
+180-second connection lifetime, and cleans up every child after the drill.
+
+The fixture temporarily applies a 60-second disclosure window through the
+normal exact-MFA configuration flow, then restores the original zero window.
+Its final negative check keeps a live disclosure window in one human session
+and performs the policy change from a separately authenticated session. The
+original session must retain its unexpired window yet receive a disclosure
+refusal under the newly restored zero-window policy, without a process change.
+
+This remains a singleton topology proof. It does not demonstrate multiple HA
+replicas, node failure/takeover, a real database move, or a release/schema upgrade.
+The alternate bundle contains the same authenticated candidate; the test proves
+changing custody inputs and processing actual recovery evidence for that build.
+Use `--topology-probe` or `--upgrade-probe` with an expanded retained fixture
+only to investigate an interrupted run. A fresh full `--expanded` run is the
+acceptance command. The upgrade probe requires fresh artifact destinations and
+an empty scratch database; it deliberately refuses silently reusing a drill.
+`--expanded-probes` can resume immediately after the complete baseline chain,
+only when its exact generation, desired/latest revision and running process
+still match the retained checkpoint and no added probe has completed. Expanded
+resumes require an explicit matching chart-input record. Secret node documents
+use the supported reveal endpoint and its real disclosure TOTP ceremony; a
+redacted ordinary read is never treated as plaintext or replaced with a bypass.
+The production default disclosure window is zero. Before the added probes the
+fixture records that TOTP is unavailable for disclosure, then applies a
+60-second window through separately authorized managed configuration and checks
+the same process now offers TOTP. After the probes it separately authorizes
+restoring zero, checks the same process, and confirms an ordinary secret read
+is still redacted. Immediately before returning to zero it performs a successful
+TOTP-authorized disclosure, then requires the same reveal endpoint to refuse
+with HTTP 403 before that positive window's original expiry. The fixture refuses silently repeating this setup during
+resume. Product defaults and protected-environment caps remain in force.
+
 ## Evidence and retained custody
 
 The command prints a private `0700` work directory and the owned namespace.

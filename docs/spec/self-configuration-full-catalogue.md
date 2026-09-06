@@ -1,6 +1,6 @@
 # Complete Hikyo configuration and remote Apply
 
-Status, 2026-09-06: **validated baseline is committed at `2a070efb`; integrated development and next-root additions pass full affected-package regression, lint, vet and combined review. Full variable acceptance and exact-head CI remain open.** The current catalogue has 27 top-level keys: nine original mail/channel values, 16 owner settings, one secret node-overlay document and one bootstrap-alias document. This is not a claim that every server transition or deployment provider is finished.
+Status, 2026-09-06: **all 53 server input lifecycles are implemented. The full fresh Kubernetes proof passes on signed runtime source `c40833b9`, ending at generation 19 with exact binary/source/chart evidence. Combined package, race, isolation, generated SQL, web and admission checks are recorded in the validation report. Exact-head CI is tracked in draft PR #686.** The catalogue has 27 top-level keys: nine original mail/channel values, 16 owner settings, one secret node-overlay document and one bootstrap document. Supported deployment boundaries remain explicit below.
 
 ## Authority and delivery boundary
 
@@ -16,15 +16,15 @@ Each logical instance owns its protected organization, project, environment, sch
 
 | Family | Scope and current implementation | Remaining boundary |
 | --- | --- | --- |
-| Nine mail/channel values | Owner; immutable mail component and notification channel replacement | Historical CI applies only to this slice; explicit test-email remains separate from Apply |
+| Nine mail/channel values | Owner; immutable mail component and update-channel replacement | Historical CI applies only to this slice; explicit test-email remains separate from Apply |
 | Argon2 memory/time/parallelism, reauthentication window | Owner; replace auth/admission graph with production floors and each node's actual capacity | Node budget stays node-local; preserve rate/backoff counters across replacement |
 | External origin, directory proxy, MCP enabled/origins | Owner; replace HTTP/auth/federation/MCP/outbound captures | RP hostname change needs exact TOTP plus current password and confirmed TOTP on the initiating admin; target DNS/TLS/login reachability is not proved |
 | Backup interval/recipients/retention/RPO/RTO, audit retention | Owner; replace scheduler and retention configuration | Existing irreversible pruning consequences remain; no fabricated rollback of deleted data |
 | Listeners, PostgreSQL pool limit, admission budget, backup directory, trusted proxy CIDRs | Node; explicit overlay and live consumers | External Service/Ingress/firewall/mount changes are not managed by a successful local socket or directory check |
 | TLS certificate/key PEM, adapter/OIDC/dynamic egress JSON | Node; encrypted content import and live TLS/client replacement | Import private key files only with mode 0400/0600; never reread stale imported paths after adoption |
-| Database locator and root-key source | Alias-only `HIKYO_BOOTSTRAP_SOURCES`; controlled external deployment protocol | Concrete provider supports an enrolled singleton non-HA Recreate Kubernetes 1.36 deployment only; same-database reconnect and root dual-wrap, not data migration |
-| HA mode and stable node identity | Deployment topology/membership inputs | Remote topology/identity transitions remain unimplemented; ordinary owner/node reload supports existing HA membership |
-| Upgrade bundle/state/evidence/backup/operator key/target manifest/legacy-writer gate | Server startup and signed-upgrade inputs | Existing upgrade gate remains authoritative; remotely changing these controls is not implemented and cannot manufacture signed evidence |
+| Database locator and root-key source | Alias-only `HIKYO_BOOTSTRAP_SOURCES`; controlled external deployment protocol | Concrete provider supports an enrolled singleton Recreate Kubernetes 1.36 deployment only; same-database reconnect and root dual-wrap, not data migration |
+| HA mode and stable node identity | Typed topology in `HIKYO_BOOTSTRAP_SOURCES`; controlled deployment replacement | Enrolled one-replica Recreate Kubernetes workloads can change HA mode and select an enrolled replacement identity; multi-member transitions remain a separate gap |
+| Upgrade bundle/state/evidence/backup/operator key/target manifest/legacy-writer gate | Enrolled `upgrade_source` selects the complete seven-value tuple through controlled rollout | Pure preparation preserves the same custody object; existing startup gate, operator authority and signed evidence remain authoritative |
 | Development admission/budget/fake-provider controls | Node; live activation only within an already-development deployment | Production refuses the fields, including false values. Provider mode changes require a standalone node with no retained adapter configuration, pending configure work or simulated provider contents. `--dev` stays externally fixed. |
 | Client context/token/state/trust inputs; command-only operator-instance selector | Not server settings | Explicitly classified; never imported as server project secrets |
 | Retired updater socket | Retired | Refused; configuration Apply does not revive the binary updater |
@@ -35,7 +35,7 @@ The 16 added owner keys are Argon2's three settings; two audit-retention setting
 
 The node document also accepts `HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE`, `HIKYO_DEV_SERVICE_BUDGETS_DISABLED` and `HIKYO_DEV_ADAPTER_FAKE_PROVIDER` only on an already-development node. Removing a value restores its documented default, not an old process value. Admission keeps rate/backoff history; the shared service budget changes enforcement under its lock while retaining counters and outstanding releases. Ordinary generation reloads retain the in-memory fake provider's simulated remote state. Switching between real and fake providers is refused if any adapter configuration, configuration fence or simulated remote contents remain, and is rechecked after requests/workers drain. HA nodes cannot independently switch provider modes.
 
-`HIKYO_BOOTSTRAP_SOURCES` is strict version-1 JSON with optional `database_source` and `root_source` aliases. Aliases refer to enrolled external custody, never raw DSNs or root keys in project cells. The database/root needed to unlock configuration cannot be discovered solely from that encrypted configuration.
+`HIKYO_BOOTSTRAP_SOURCES` is strict version-1 JSON with optional `database_source`, `root_source` and `upgrade_source` aliases, plus an enrolled singleton `topology` containing explicit HA mode and node identity. Aliases refer to enrolled external custody, never raw DSNs or root keys in project cells. The database/root needed to unlock configuration cannot be discovered solely from that encrypted configuration.
 
 ## Application generation replacement
 
@@ -51,12 +51,12 @@ An RP hostname transition requires the same initiating admin's live confirmed TO
 
 A durable external writer is required for immutable/read-only Kubernetes mounts and environment to survive pod replacement. No in-process generation swap or hidden second root can replace that authority. `internal/configrollout` provides a signed, constrained mailbox protocol; app enrollment and installed-source checks live in `internal/app/self_config_deployment.go`. Service coordination lives in `internal/service/self_config_deployment.go` and durable store rollout rows/sequences.
 
-The concrete provider requires explicit enrollment of one non-HA, stable-node, singleton **Recreate** Deployment on Kubernetes 1.36. Fixed resource identities, source versions, signer custody, narrow RBAC and admission enforcement constrain the controller. It is not a shell executor or general cluster administrator. The application does not infer enrollment from a URL or project alias. Real cluster installation, admission refusal and pod replacement evidence remain required.
+The concrete provider requires explicit enrollment of one stable-node singleton **Recreate** Deployment on Kubernetes 1.36. Fixed resource identities, source versions, signer custody, narrow RBAC and admission enforcement constrain the controller. It is not a shell executor or general cluster administrator. The application does not infer enrollment from a URL or project alias. Real cluster installation, admission refusal and pod replacement evidence remain required.
 
 | Target | Current responsibility and limit |
 | --- | --- |
-| Enrolled Kubernetes singleton | Stage only declared source references, compare admitted workload/source identities, execute signed command, observe exact replacement template/source and return a verified receipt; actual cluster proof remains open |
-| HA bootstrap rollout | Not implemented; provider and candidate preparation refuse this topology |
+| Enrolled Kubernetes singleton | Stage only declared source references, compare admitted workload/source identities, execute signed command, observe exact replacement template/source and return a verified receipt; baseline DB/root cluster proof passes; the expanded topology/upgrade proof is running |
+| Multi-replica HA bootstrap rollout | Not implemented; the provider retains one replica. Explicitly enrolled singleton HA mode is supported. |
 | Host/service manager | No implemented durable-write/custody/recovery provider |
 | GitOps-managed workload | No implemented canonical-source provider; a live patch that reconciliation can overwrite is not durable support |
 
@@ -84,11 +84,11 @@ Backup restoration invalidates incarnation-bound plans and requires existing acc
 
 1. Freeze implementation and pass full affected both-engine, race, isolation, API/SDK/web/docs and independent review gates on that revision; then obtain exact-head CI. Expanded desktop and mobile passkey/TOTP channel-Apply journeys pass; actual controlled-rollout acceptance remains unfinished.
 2. Exercise an actually enrolled Kubernetes 1.36 singleton: negative admission/RBAC tests, source CAS, lost reply/restart, replacement boot/stamp, root dual-wrap, same-DB challenge, explicit Restore and separately authorized repair. Controller probes alone do not prove deployment.
-3. Complete the seven upgrade startup inputs and HA/node-identity lifecycles before claiming the complete-server-variable objective. Host/GitOps executors and true datastore migration are separate platform/data operations. The first topology provider remains enrolled singleton Recreate; it does not promise scale-out.
+3. The integrated seven upgrade startup inputs and HA/node-identity lifecycles pass the full fresh running-server proof. Host/GitOps executors and true datastore migration are separate platform/data operations. The first topology provider remains enrolled singleton Recreate; it does not promise scale-out.
 4. Establish target-origin DNS/TLS/admin authentication and external network/mount reachability semantics. Local parser/socket proof does not establish them.
 5. Define and verify true datastore migration and explicit root-finalization recovery obligations wherever those capabilities are promised. The current same-datastore alias protocol and retained wrapper are narrower.
 
-## Integration correction evidence
+## Historical integration correction evidence
 
 Host administrator creation must consume the running server’s fresh sealed owner/node seed, rather than evaluating the CLI process environment or changing a live listener to its default. Missing or stale evidence must refuse before principal creation and explain that the server must be started before retrying. Local regression proof now passes: service race 35.027 s, app 16.236 s, including both-engine maximum-size/MFA authority checks. Both R1 corrections now preserve discovery mode and read a fresh clock after the membership lock; both-engine regressions passed in 5.308 s and R2 review is clean for those fixes. Durable exact-authorized Submit/Restore/Observe renewal and no-effect restoration passed R2 review, race checks (module 4.877 s, service 111.817 s, app 17.108 s) and full lint (78.122 s). Renewal changes transport sequence/timestamps only and cannot grant an uncommitted preparation authority. Real Kubernetes outage/recovery proof remains open.
 
@@ -105,3 +105,41 @@ Additional affected package checks passed: command 1.291 s, admission 0.427 s, a
 `HIKYO_NEW_ROOT_SOURCE` is a node-overlay alias for an already enrolled root source. It replaces the server candidate selected by `HIKYO_NEW_ROOT_KEY_FILE`, without changing the actual primary boot source or creating/retiring wrappers. Exact-MFA Apply selects or clears the candidate; the existing authorized root-rotation operation remains separate. Initial import requires an exact enrolled mounted path. Clearing never revives a stale environment path. Initial, saved and missing-node candidate health validates the source before startup admission. Focused tests, race checks, vet, R3 source review and combined integration review pass.
 
 The baseline actual Kubernetes chain passed: ordinary reload preserves the process; DB/root replacement gets exact acknowledgement; held executor responses force real signed-command expiry and renewal without changing the authorized plan; Restore keeps desired state fenced until a separately authorized repair; a later rollout succeeds. Metadata and the exact source manifest are committed under `docs/reports/self-configuration/validation/`. This supersedes the earlier pending cluster-proof status. All 369 isolation cases also pass; the final 134-case shard was split locally after a cumulative ten-minute timeout without changing coverage or timeouts.
+
+### Singleton topology implementation
+
+The existing signed rollout journal retains before/after HA mode and node identity
+through Submit, Observe and Restore. Exact-MFA commit replaces the one prepared
+participant with its designated installation participant and invalidates the prior
+scheduler lease. No additional membership epoch or migration is introduced.
+An initially enrolled HA deployment establishes the same durable correspondence on its first source rollout. That signed before/after mapping is unchanged, adds no HA or NodeID mutation, and preserves ordinary fresh repair after source Restore.
+
+Runtime admission retains the latest committed topology across ordinary applies,
+then independently checks the latest installed template stamp across source
+rollouts. A process restored to a prior source may resume only after separately
+authorized repair; a retired process with a reused identity and obsolete stamp
+cannot acknowledge or serve that assignment. Heartbeat and lease operations use
+the immutable process identity/stamp and the same membership lock as cutover.
+
+Custody names an explicit bounded identity set. Replica count, Recreate strategy,
+workload UID, namespace, image, RBAC and source custody remain fixed. Existing
+ordinary multi-replica HA does not opt into this protocol automatically. Actual
+Kubernetes admission and replacement proof remains a release-validation gate.
+
+
+## Upgrade and topology integration
+
+The integrated parser and serializer preserve all five bootstrap fields. Actual
+HA/node changes remain exclusive of database, root and upgrade source changes.
+An unchanged installed correspondence may accompany the first source rollout,
+including an upgrade-profile change, to establish durable membership fencing.
+The controller emits only the seven upgrade input deltas in that case and deep
+copies the proof before returning the prepared plan. Both singleton modes and
+Restore are covered by combined controller tests.
+
+An independent source audit maps every server input to its managed key and
+actual consumer in `docs/reports/self-configuration/server-variable-coverage.json`.
+The report build requires the mapped set to match the generated server inventory
+exactly, without duplicates. This source coverage is distinct from runtime
+acceptance and does not add unsupported platforms, data migration, operator
+rotation, image selection or multi-replica bootstrap orchestration.

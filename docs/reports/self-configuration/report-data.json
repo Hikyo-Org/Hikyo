@@ -2,7 +2,7 @@
   "title": "Hikyo manages Hikyo",
   "date": "2026-09-06",
   "baseline": "90b4ca6a5d22438e751cf9af83aa4fd077a6a61c",
-  "status": "Expanded implementation built locally; acceptance and delivery remain open",
+  "status": "All 53 server inputs implemented; local verification complete",
   "authority": {
     "explicit": [
       "Apply from Hikyo UI without restarting the container.",
@@ -326,7 +326,7 @@
       ],
       "recommendation": "Every Hikyo variable, with remote Apply by a target-instance administrator using passkey or TOTP.",
       "rationale": "The user explicitly expanded D11: managing only mail and release notifications does not meet the dogfooding requirement. Each supported server variable needs real activation behavior and recovery semantics, not just an editable entry.",
-      "decision": "Supersedes the original nine-key scope. Cover every supported Hikyo server variable, including networking, authentication, endpoint exposure, backup/audit policy and deployment/bootstrap settings. Keep independent remotes in separate projects with target-owner authorization. Shared HA settings and node-specific settings must be distinguished so replicas never receive duplicate node identities. Each variable must declare its effective source, secret classification, validator and activation mechanism. Remote Apply means configuration activation, not the retired binary updater. Client-only variables do not configure a server; retired controls remain explicitly refused. Database and root-key changes require dedicated bootstrap transitions with an independently available unlock source and recovery route. These transition requirements are part of the expanded work, not grounds to silently call the old nine-key implementation complete. Current implementation has 27 top-level keys, including secret HIKYO_NODE_OVERRIDES and alias-only HIKYO_BOOTSTRAP_SOURCES. Ordinary owner/node consumers reload live. The concrete bootstrap provider is limited to an enrolled singleton non-HA Recreate Kubernetes 1.36 deployment; upgrade and HA/node-identity transition families remain acceptance gaps. Other deployment providers are separately scoped platform extensions.",
+      "decision": "Supersedes the original nine-key scope. Cover every supported Hikyo server variable, including networking, authentication, endpoint exposure, backup/audit policy and deployment/bootstrap settings. Keep independent remotes in separate projects with target-owner authorization. Shared HA settings and node-specific settings must be distinguished so replicas never receive duplicate node identities. Each variable must declare its effective source, secret classification, validator and activation mechanism. Remote Apply means configuration activation, not the retired binary updater. Client-only variables do not configure a server; retired controls remain explicitly refused. Database and root-key changes require dedicated bootstrap transitions with an independently available unlock source and recovery route. These transition requirements are part of the expanded work, not grounds to silently call the old nine-key implementation complete. Current implementation has 27 top-level keys, including secret HIKYO_NODE_OVERRIDES and alias-only HIKYO_BOOTSTRAP_SOURCES. Ordinary owner/node consumers reload live. The concrete bootstrap provider supports an enrolled singleton Recreate Kubernetes 1.36 deployment. D33 adds explicitly enrolled HA/node identity changes; D34 adds the complete seven-input upgrade profile. An HA-enabled singleton provides coordination without redundancy. Other deployment providers are separately scoped platform extensions.",
       "acceptance": "Inventory every recognized variable with no unexplained omissions. Prove each supported change takes effect on its target, survives restart, preserves independent remote values and reports actual HA convergence. Prove database/root-source recovery across failed cutover and process restart, viable authentication after origin changes, and node identity uniqueness. Password-only sessions, recovery codes, machine tokens, wrong-owner privileges and stale/replayed ceremonies cannot authorize Apply.",
       "evidence": [
         "internal/config/config.go",
@@ -968,7 +968,7 @@
       ],
       "recommendation": "Implement controlled singleton HA toggles and explicit node-ID replacement with durable membership fencing.",
       "rationale": "A renamed replacement must prove which old member it replaces; an old process must lose serving and scheduler authority.",
-      "decision": "Accepted using the user’s standing approval of recommendations. Implementation is in independent review. Review identified a source-Restore repair path that could omit HA coordination; the fix and an actual app-owner regression are required before integration. Preserve one-replica Recreate rollout limits, prove PostgreSQL/shared-root prerequisites, keep node projections explicit, and bind before/after identity to exact MFA and the durable rollout. One HA-enabled replica enables coordination but does not provide redundancy. Multi-replica membership replacement needs separate logical-member correspondence and remains outside this first provider slice.",
+      "decision": "Accepted using the user’s standing approval of recommendations. Implemented and integrated after R3 CLEAN review. Exact signed correspondence binds HA mode, node identity and installed template through Apply and Restore, including the first source rollout on an initially HA-enabled singleton. Actual app-owner repair and race tests prove scheduler/shared coordination recovery while stale identities remain fenced. Combined upgrade/topology review and integration tests pass; expanded real-Kubernetes proof is running. Recreate remains one replica; enabling HA coordination does not add redundancy or automatic scale-out.",
       "acceptance": "Prove both HA directions, identity collisions and stale restart/heartbeat/ack refusal, actual replacement identity, subsequent Apply, interrupted cutover, and Restore followed by separate repair.",
       "evidence": [
         "internal/app/ha.go",
@@ -998,7 +998,7 @@
       ],
       "recommendation": "Use an enrolled upgrade_source alias, a read-only preflight, and the existing authoritative startup gate.",
       "rationale": "The encrypted project is unavailable before database admission, so the applied selector must be resolved from external custody before that gate runs.",
-      "decision": "Accepted using the user’s standing approval of recommendations. Implemented and integrated locally after final CLEAN review. Enrolled descriptor and immutable artifact digests bind the plan; mutable build and custody state are rechecked before submit. All seven inputs resolve before replacement admission. Pure preflight, parser refusals, future-build and custody-floor regressions, both-engine tests, races and vet pass. Real Kubernetes policy and same-directory mount proof pass. Integrated running-server Apply/Restore proof remains pending. Configuration cannot manufacture signed evidence, rotate the operator key, move custody, or select a new executable.",
+      "decision": "Accepted using the user’s standing approval of recommendations. Implemented after final CLEAN review. Enrolled descriptor and immutable artifact digests bind the plan; mutable build and custody state are rechecked before submit. All seven inputs resolve before replacement admission. Pure preflight, parser refusals, future-build and custody-floor regressions, both-engine tests, races and vet pass. Real Kubernetes policy and same-directory mount proof pass. The fresh running-server proof passed with actual encrypted export, signed scratch drill, seven-input Apply, Restore, fresh repair and later Apply. The selected custody paths resolved to the same persistent directory. Configuration cannot manufacture signed evidence, rotate the operator key, move custody, or select a new executable.",
       "acceptance": "Prove pure no-mutation preflight, coherent exact import, source drift refusal, unchanged custody/operator authority, evidence and target validation, actual replacement startup consumers, and Restore.",
       "evidence": [
         "internal/app/upgrade_gate.go",
@@ -1116,7 +1116,7 @@
         "HIKYO_OIDC_EGRESS_POLICY_FILE",
         "HIKYO_DYNAMIC_EGRESS_POLICY_FILE"
       ],
-      "HA ordinary configuration shares owner settings with exact per-node overlays. Egress file contents import once and replace consumers live. HA enablement and node identity transitions are not implemented by the ordinary Apply consumer; the bootstrap provider explicitly rejects HA."
+      "HA ordinary configuration shares owner settings with exact per-node overlays. Egress file contents import once and replace consumers live. Controlled singleton HA toggles and enrolled node replacement are integrated, with initial-HA source fencing and actual owner Restore repair tests. Multi-member topology remains outside this provider slice."
     ],
     [
       "Authentication and endpoint exposure",
@@ -1162,7 +1162,7 @@
         "HIKYO_DEV_SERVICE_BUDGETS_DISABLED",
         "HIKYO_DEV_ADAPTER_FAKE_PROVIDER"
       ],
-      "Inventory command-specific upgrade inputs and development controls explicitly. Development-only values remain refused in production, and the retired binary updater stays disabled. Remote configuration Apply does not re-enable remote binary upgrade. Deployment-owned values need a deployment transition."
+      "Seven server upgrade inputs select one enrolled profile and repeat the existing authoritative startup gate. The operator-instance input remains command-only; the retired binary updater stays disabled. All three development controls reload only on an existing development deployment, with production presence refused and counters retained. Configuration does not select images, rotate operator authority or change the --dev trust domain."
     ],
     [
       "Client-only configuration",
@@ -1497,7 +1497,7 @@
       ]
     }
   ],
-  "revisionNote": "Signed checkpoint 0cb6de70 is pushed to draft PR #686. It includes the validated runtime, development-control and next-root work. Exact-head CI exposed PostgreSQL fixture authentication, setup readiness and an ambiguous browser selector; repairs pass locally in signed commit 8f93fb50 without changing timeout limits or permission assertions. The seven-input upgrade-profile slice passed final review and is integrated locally. HA/node identity is in review. Expanded real-cluster proof and final exact-head CI remain required; no merge or production deployment is claimed.",
+  "revisionNote": "The full fresh Kubernetes proof passed on signed runtime source c40833b9: live reload, database/root replacement, real command expiry, Restore and fresh repair, candidate-root selection, singleton HA/node transitions, all seven upgrade inputs and two-session disclosure-policy narrowing. Both binaries, all 795 compiled inputs and the chart are hash-bound to the evidence. Exact-head CI and review are tracked in draft PR #686. No merge or production deployment is claimed.",
   "topology": {
     "heading": "One root view. One project per instance.",
     "summary": "Independent remotes own independent configuration. Only HA replicas of one logical instance share a project and applied revision.",
@@ -1529,35 +1529,35 @@
     "ownership": "The root is a unified UI group, not one physical organization spanning remote databases. Each independent instance stores its protected Hikyo organization and its own project locally. The browser manages a remote directly under that remote’s authority.",
     "boundary": "No root defaults, shared-secret assumption, automatic copying or cross-instance apply. Equal key names or revision numbers do not identify the same configuration."
   },
-  "deliveryStage": "INTEGRATING / CI REPAIRS",
+  "deliveryStage": "IMPLEMENTED / REVIEW",
   "deliveryEvidence": [
     [
-      "Live owner and node configuration",
-      "Actual consumer tests cover HTTP/MCP policy, authentication/admission capacity, backup destination, listener movement/drain, TLS changes, per-node egress and same-datastore PostgreSQL pool replacement. Latest serial package checks passed: config 0.695 s, runtime configuration 0.360 s, crypto 0.383 s, store 37.031 s, service 114.142 s, app 90.759 s, server 63.187 s, configuration rollout 0.890 s and lint 35.491 s. Command/admission/authorization/store-upgrade/upgrade-gate checks and affected-package vet also pass. All 369 planned isolation cases passed on the configured SQLite/PostgreSQL fixtures. Shards 0 and 1 took 321.622 s and 457.832 s. Shard 2 hit the unchanged ten-minute process limit without an individual assertion failure; rerunning its exact 134-case set in three local groups passed in 229.973 s, 123.820 s and 176.508 s. No timeout or test coverage changed. Sealed seed authority/freshness fixes passed both-engine regressions and R2 review. Audit/pin corrections passed complete TestAuditCore and invariants 06/11/13 plus independent R1 review. See validation.md for logs and earlier race evidence."
+      "All server configuration consumers",
+      "All 53 server inputs map to managed consumers; the generator enforces exact inventory coverage. Eleven combined backend package suites passed with SQLite/PostgreSQL coverage, including service, app, store and upgrade admission. Focused races, authority invariants, generated SQL and vet passed. The config leaf correction passed full boundary/config/configrollout/runtimeconfig suites, both-engine topology tests and independent review."
     ],
     [
-      "Prepared review and exact MFA",
-      "UI prepares first, then authorizes the exact owner/revision/generation/schema and any plan digest. Five-minute review TTL; each request waits at most 30 seconds; participant attestations must be younger than 30 seconds. Whole web suite: 934 tests pass, typecheck and production build pass. Generated SDK tests: 20 passed. Desktop real-browser flows pass against freshly compiled Go instances: local passkey Apply 7.6 s and independent-owner TOTP Apply 6.4 s, total run 3.2 minutes. These flows edit the update channel through the expanded catalogue; they do not prove a Kubernetes rollout or every new setting. Mobile equivalents also pass: local passkey 8.2 s and independent-owner TOTP 7.4 s, total 3.2 minutes."
+      "Administrator MFA and actual interface",
+      "Web typecheck, all 934 tests and production build passed. Desktop and mobile real-server journeys exercised local passkey Apply and independent-owner TOTP Apply through the expanded catalogue. Applying one owner preserved the other owner. These browser journeys change the update channel; the separate Kubernetes harness proves bootstrap effects."
     ],
     [
-      "Deployment restore and separate repair",
-      "Both-engine service tests prove distinct rollout-restore MFA, wrong-plan/action refusal, cancellation, journal CAS, idempotent retry and immediate business fencing. Restore → fresh repair → another rollout passes. Focused restore race passed in 20.691 s; service/server/authz/audit vet passes. Durable command renewal and no-effect restoration passed R2 review and race checks: module 4.877 s, service 111.817 s, app 17.108 s. Full lint passed in 78.122 s. Root finalization now locks the configuration binding before the key hierarchy, preserving both wrappers while the current generation/incarnation has an unresolved applying, partial, applied or superseded deployment. Restore and repair preparation retain the guard until the replacement generation is committed; finalization racing Apply invalidates its stale dual-wrap proof. SQLite/PostgreSQL rollout regressions passed in 15.885 s and existing key-rotation invariants passed in 2.166 s; R3 review is CLEAN. Logs: /tmp/hikyo-root-guard-r3-focused.log and /tmp/hikyo-root-guard-r3-store.log. Formatting and diff checks passed. No automatic root finalization is performed."
+      "Fresh complete Kubernetes proof",
+      "A new fixture completed every stage without resume and reached generation 19. Ordinary Apply preserved the process. Database/root replacement, exact acknowledgement, unresolved root-finalization refusal, real five-minute transport expiry and separately authorized Restore/repair/later Apply passed. Renewed command sequence 6 to 7 retained MFA count 6."
     ],
     [
-      "Controlled bootstrap integration",
-      "Actual Kubernetes 1.36.1 fixture passed with binary ff5ed33f9fe084e1df154668edaad2bb35f98858bb7a6400af8058f636f949d8 and 781 recorded source inputs. Real password/TOTP setup, ordinary channel reload with unchanged Pod/container/PID/start ticks, DB/root replacement with exact application acknowledgement, root-finalization refusal preserving both epochs, real five-minute transport expiry renewal with unchanged plan/MFA count, and Restore followed by distinct fresh-TOTP repair and a later rollout all passed. The held-reply probe proves transport expiry recovery, not executor process death or takeover. Source aliases retain external custody; the provider remains enrolled singleton Recreate Kubernetes only. Evidence: validation/controlled-rollout-kind.json and validation/controlled-rollout-source-manifest.json."
+      "Candidate root and singleton HA",
+      "Candidate-root selection and omission-based clearing preserved the process, current root and active wrappers. Enrolled HA-on/replacement identity and HA-off/original identity both replaced and acknowledged the exact plan. While HA was enabled, source Restore followed by fresh ordinary repair restored heartbeat and scheduler authority in the same process before a later rollout."
     ],
     [
-      "Historical CI and current delivery",
-      "Draft PR #686 contains signed checkpoint 0cb6de70. Run 34046700568 passed all three isolation shards, lint, generated checks, documentation, DCO, supply-chain and Kubernetes tests. Core and one race shard failed because a test LOGIN role lacked a SCRAM password; the repaired fixture passes all PostgreSQL source-proof tests (10.253 s) and the affected race test (8.896 s) against a dedicated SCRAM database. A browser setup race now waits for managed-generation readiness; the full affected mobile shard passes 28 tests in 4.8 minutes. Two browser shards exposed a separate ambiguous owner-label locator, whose semantic locator repair passes dark/light checks on desktop and mobile. All three repairs are saved in signed commit 8f93fb50. Final exact-head CI remains required."
+      "Upgrade custody and narrowed disclosure",
+      "Real encrypted export and a signed scratch drill recovered wrappers and an existing secret, then reconciled/minted/revoked a credential. All seven upgrade inputs changed through Apply/Restore/fresh repair/later Apply, with identical custody device/inode and unchanged image/mount authority. A separate admin session applied disclosure policy zero; the original session received 403 before its positive window expired."
     ],
     [
-      "Development and next-root integration",
-      "The three existing development controls and enrolled candidate-root selector are integrated. Combined R1 review is CLEAN. Full affected packages passed: config 0.824 s, runtime configuration 0.355 s, service 129.291 s, store 40.932 s, app 113.051 s and upgrade gate 95.897 s. Full lint passed in 111.121 s; vet and docs check/build pass. Isolated race and negative-authority tests remain recorded in validation.md. These later changes are not covered by the earlier exact-source kind binary."
+      "Exact runtime provenance",
+      "Runtime source c40833b958ae34030e41814c53eebaa3629610aa; 795 compiled/embed inputs unchanged through both builds and the full proof. Linux and native binaries share all seven signed linker inputs. Final running ELF matches the candidate. The fresh-start and completion harness hash and every chart input match. Evidence was scanned for secret markers and exact private fixture values before publication."
     ],
     [
-      "Upgrade custody profile integration",
-      "D34 final review is CLEAN. The locally integrated slice selects one enrolled seven-value profile, validates artifacts without mutation, preserves the same persistent custody directory, and repeats existing authoritative admission on replacement boot. Both-engine focused and affected-package tests, scoped races, vet and full lint (198.719 s) pass. Real Kubernetes admission rejects mixed tuples and mount/PVC mutation; an actual Pod proved alternate state paths reference the same directory. Full running-server Apply/Restore proof on the integrated source remains pending."
+      "CI and review",
+      "Draft PR #686 records checks for each exact commit. Prior combined head 2450a34a passed all browser/closure/isolation checks and full service race in 1192.522 seconds under the unchanged 1200-second bound. Its two failures were fixed in signed c40833b9 (strict config boundary) and 29e76d3c (owned HTTP fixture cleanup). The cleanup failure reproduced locally; the final three-fixture race set passed five times with unchanged server deadlines. Source and harness reviews are CLEAN. See the PR for final-head CI."
     ]
   ],
   "bootstrapRolloutDecision": {
@@ -1578,11 +1578,11 @@
     "approved": true
   },
   "acceptanceGaps": [
-    "Actual enrolled Kubernetes rollout/Restore/repair and transport-expiry recovery now pass. Executor process-death/takeover and additional platform coverage were not part of that real-cluster proof. Later feature slices require their own integrated validation; the recorded binary/source hashes identify the tested baseline.",
-    "Singleton HA and node-identity transitions are implemented in an isolated slice under review. Multi-replica bootstrap rollover, logical-member replacement, host/systemd and GitOps providers remain separate platform capabilities.",
-    "Seven upgrade startup inputs are now integrated locally after final review; their complete running-server rollout proof is pending. The two HA/node-identity inputs remain under review. Development controls and next-root selection have combined review, regression, lint and vet evidence. Database source switching reconnects to the same PostgreSQL datastore; moving data is a separate migration capability.",
-    "Changing the RP hostname requires fresh TOTP and a current password credential on the same administrator. DNS/TLS reachability and successful authentication at the new origin are not proved.",
-    "Complete the remaining variable lifecycles and their combined review, deployment evidence and exact-head CI. The baseline is committed and the next-root/development integration is locally validated; no merge or production deployment is claimed. All 369 baseline isolation cases passed across exact planned coverage, with the last shard subdivided locally after a cumulative process timeout."
+    "The bootstrap provider requires explicit enrollment and a singleton Recreate Deployment on Kubernetes 1.36. Ordinary HA configuration remains available; multi-replica bootstrap transitions and host/systemd/GitOps providers are separate capabilities.",
+    "Database aliases reconnect to the same PostgreSQL datastore. Upgrade profiles retain the same operator custody directory and pass the existing signed gate; this configuration feature does not move data, rotate operator authority or install a new executable.",
+    "The fresh fixture proves real command expiry and renewal. Executor process death/takeover, multi-replica failover and a release/schema upgrade were not part of this run.",
+    "Changing an RP hostname requires fresh TOTP and a current password credential on the same administrator. External DNS/TLS/routing and authentication at a separately hosted new origin were not verified.",
+    "Local and cluster validation are complete. Exact-head CI is recorded in draft PR #686. Merge and production deployment are separate actions."
   ],
   "expandedCatalogue": [
     [
@@ -1691,7 +1691,7 @@
       "HIKYO_BOOTSTRAP_SOURCES",
       "Configuration",
       "Controlled bootstrap rollout",
-      "Version1 source aliases only. Database locators and raw root keys remain in external custody. Requires explicit provider enrollment; not supported on HA."
+      "Version1 enrolled database/root/upgrade selectors and explicit singleton topology. Locators, raw root keys and upgrade custody remain external. Source changes and actual topology changes require separate controlled plans; an unchanged installed identity is bound automatically. Requires explicit provider enrollment."
     ]
   ]
 }
