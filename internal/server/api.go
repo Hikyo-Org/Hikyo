@@ -136,6 +136,7 @@ type DefinitionsService interface {
 
 // API implements the generated strict server.
 type API struct {
+	Discovery       *service.Discovery
 	Auth            AuthService
 	SAMLAuth        SAMLAuthService
 	Orgs            OrgService
@@ -248,7 +249,16 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	// This instance serves the local floor only. The loopback handoff and
 	// device-code transports arrive with #54 and will advertise themselves
 	// here — which is exactly why the client asks rather than assumes.
+	var identity *string
+	if a.Discovery != nil {
+		value, err := a.Discovery.InstanceIdentity(ctx)
+		if err != nil {
+			return nil, err
+		}
+		identity = &value
+	}
 	return apigen.GetMeta200JSONResponse{
+		InstanceIdentity:     identity,
 		ServerVersion:        a.Version,
 		ApiRevision:          api.Revision,
 		ProtocolCapabilities: []apigen.ProtocolCapability{"local-password"},

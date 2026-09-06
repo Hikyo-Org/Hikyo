@@ -130,24 +130,26 @@ Test infrastructure
   pins both to the generated Zod schemas so the mock cannot drift again.
 - `expectNoStrayPills` allows status dots up to 12px, matching DESIGN.md.
 
-## Left for the API (not buildable from the client)
+## API follow-up in #680
 
-Tracked in #680.
+[#680 implementation and verification](../../handoff/680-ui-api-gaps.md) closes
+publisher names, mint expiry, GHES origin and environment-create consent,
+adapter findings, secret-safe per-key revision comparison, owner-only draft
+validity, persisted instance identity, per-capability SCIM origins, and
+project policy/deletion capability signals.
 
-| Gap | What the client needs |
+The remaining rows have separate owners:
+
+| Gap | Follow-up |
 | --- | --- |
-| History "Published by" shows a shortened principal id | `RevisionSummary.published_by` as a name, or a principal lookup |
-| Mint display-once panel cannot show the credential's expiry | `expires_at` on the mint response at top level (the value pick deliberately excludes nested fields) |
-| GitHub adapter GHES base URL, environment auto-create consent naming `Administration:write` | fields on `AdapterTargetInput` |
-| `possible_capture` / `owned_missing` finding classes in sync status | the journal's `Finding` surfaced on `AdapterTarget` |
-| Secret-safe revision diff (rev to rev, per-key ceremony) | a diff endpoint; the drawer names the deferral |
-| Kubernetes CR condition vocabulary | an endpoint surfacing HikyoSecret conditions |
-| Owner-only invalid-draft marker | draft owner on the advisory verdict |
-| Shared-secret-default advisory | a declared default on `KeyDeclaration` |
-| Self-connection refused at add by instance identity | instance identity on `/api/v1/meta` (browser can only compare origins today) |
-| SCIM origin chip per capability | per-capability origins on `ScimMapping` (today the row's own group is the origin) |
-| ProjectSettings hiding Policy and Danger zone for non-managers | a read signal (whoami only carries `instance_operator`) |
-| Social sign-in family (#587) | post-1.0 in its owning scope; nothing built here |
+| Kubernetes CR conditions | [#683](https://github.com/Hikyo-Org/Hikyo/issues/683): design controller-to-server reporting before adding a live-status UI |
+| Social sign-in family | #615, explicitly excluded from #680 |
+
+The shared-secret-default row from #680 was based on superseded inheritance
+semantics. [The flat-model ADR's normative ripple register](../../adr/flat-model.md#ripple-register-normative)
+explicitly removes every defaulting mechanism and retains the prohibition on a
+schema `default`. No default field or advisory is added; the stale UI-spec
+requirement is corrected.
 
 ## Verification
 
@@ -186,5 +188,5 @@ Tracked in #680.
 Branch `t3code/align-web-ui-prototypes`, five signed commits on top of `3700a0ef`. Nothing is pushed. To pick
 this up: `pnpm --dir web install`, `node --run typecheck && node --run test` in `web/`, and
 `pnpm --dir web e2e` for the flow suite (boots two instances from source, needs Go). The prototype
-mock (`pnpm --dir web prototype`) now serves clean chrome without a 501 banner. The API gaps table
-above is the follow-up list, tracked in #680; each row names the field the client needs.
+mock (`pnpm --dir web prototype`) now serves clean chrome without a 501 banner. The API follow-up section above records #680 delivery and the separately owned
+Kubernetes and social sign-in work.

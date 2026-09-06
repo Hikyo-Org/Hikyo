@@ -36,12 +36,15 @@ function remoteList(items: readonly (typeof peer)[]): Response {
   });
 }
 
-async function renderAddRemote(items: readonly (typeof peer)[]) {
+async function renderAddRemote(items: readonly (typeof peer)[], refusal?: string) {
   const fetchMock = vi.fn((request: RequestInfo | URL) => {
     const method = request instanceof Request ? request.method : 'GET';
     if (method === 'GET') {
+      const url = request instanceof Request ? request.url : String(request);
+      if (new URL(url).pathname === '/api/v1/meta') return Promise.resolve(Response.json({ instance_identity: 'local-instance' }));
       return Promise.resolve(remoteList(items));
     }
+    if (refusal !== undefined) return Promise.resolve(Response.json({ error: { code: 'conflict', message: 'Conflict', detail: refusal } }, { status: 409 }));
     return Promise.resolve(
       new Response(JSON.stringify({ ...peer, url: 'https://new.example' }), {
         status: 201,
@@ -119,6 +122,19 @@ describe('UpdateJobStatus', () => {
 });
 
 describe('AddRemote', () => {
+  it('names the identity refusal when another URL resolves to this instance', async () => {
+    const { container } = await renderAddRemote([], 'self_connected');
+    expect(container.textContent).toContain('local-instance');
+    await act(async () => {
+      typeInto(input(container, 'remote-name'), 'alias');
+      typeInto(input(container, 'remote-url'), 'https://alias.example');
+      typeInto(input(container, 'remote-pin'), 'pin');
+      typeInto(input(container, 'remote-credential'), 'credential');
+    });
+    await submit(container);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain('That is this instance. A remote must be another instance.');
+  });
+
   it('blocks an existing origin before starting the mutation', async () => {
     const { container, fetchMock } = await renderAddRemote([peer]);
     const url = input(container, 'remote-url');
@@ -127,7 +143,7 @@ describe('AddRemote', () => {
     await act(async () => typeInto(url, '  https://peer.example  '));
     await submit(container);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.filter(([request]) => request instanceof Request && request.method === 'POST')).toHaveLength(0);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
       'This origin is already added as production.',
     );
@@ -146,7 +162,7 @@ describe('AddRemote', () => {
       await act(async () => typeInto(input(container, 'remote-url'), rawURL));
       await submit(container);
 
-      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock.mock.calls.filter(([request]) => request instanceof Request && request.method === 'POST')).toHaveLength(0);
       expect(container.querySelector('[role="alert"]')?.textContent).toContain(
         'Enter a bare HTTPS origin',
       );
@@ -159,7 +175,7 @@ describe('AddRemote', () => {
     await act(async () => typeInto(input(container, 'remote-url'), 'https://self.example'));
     await submit(container);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls.filter(([request]) => request instanceof Request && request.method === 'POST')).toHaveLength(0);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
       'That is this instance. A remote must be another instance.',
     );

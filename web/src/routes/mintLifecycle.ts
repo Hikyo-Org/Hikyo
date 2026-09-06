@@ -27,6 +27,7 @@ export type MintRequest = MintBoundaryFields & {
 };
 
 export type MintResult = {
+  readonly expires_at?: string | null;
   readonly value: string;
   readonly clamped: boolean;
 };

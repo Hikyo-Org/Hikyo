@@ -27,7 +27,9 @@ published Hikyo state.
   write permissions for the chosen repository or organization. Creating a
   missing environment additionally requires Administration (write): either
   pre-create it in GitHub and keep the delivery token narrow, or grant that
-  permission for Hikyo-managed creation.
+  permission and explicitly select environment creation in the web form, or pass
+  `--create-environment` to `hikyo adapter create` / `hikyo adapter target add`.
+  Without consent, Hikyo never creates a missing environment.
 - `manage-adapters` for inspection and lifecycle operations. Creating,
   widening, adopting, changing a prefix, replacing a credential, and manually
   syncing also require reveal authority and adapter reauthentication for every

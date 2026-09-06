@@ -2201,3 +2201,7 @@ func TestUnconfirmedProtectedDestinationIs409NotFault(t *testing.T) {
 		t.Fatalf("plain conflict carried detail %q, want none — uniform response", *d)
 	}
 }
+
+func (stubRevisions) Diff(context.Context, service.Actor, domain.Scope, int64, int64, string) (service.RevisionDiff, error) {
+	return service.RevisionDiff{}, domain.ErrNotFound
+}

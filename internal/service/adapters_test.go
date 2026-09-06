@@ -192,6 +192,9 @@ type fakeEnvironmentConfigureModule struct{}
 
 func (fakeEnvironmentConfigureModule) ValidateConfig(adapter.Config) error { return nil }
 func (fakeEnvironmentConfigureModule) TestConnection(ctx context.Context, request adapter.ConnectionRequest) (adapter.Connection, error) {
+	if !request.AllowEnvironmentCreate {
+		return adapter.Connection{}, errors.New("environment creation requires explicit consent")
+	}
 	if request.BeforeEnvironmentCreate == nil || request.AfterEnvironmentCreate == nil {
 		return adapter.Connection{}, errors.New("missing environment configure callbacks")
 	}
@@ -389,9 +392,24 @@ func TestEnvironmentCreatePersistsGenerationFenceAndCorrelatedAudit(t *testing.T
 		}
 		return fakeEnvironmentConfigureModule{}, nil, nil
 	})}
-	view, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, CreateAdapterRequest{
+
+	_, refused := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, CreateAdapterRequest{
 		Provider: "github-actions", Origin: "https://api.github.com", Credential: []byte("github_pat_fine"),
 		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "environment", DestinationOwner: "acme", DestinationName: "app", DestinationEnvironment: "production", KeyIDs: []string{"key_env_create"}},
+	})
+	if refused == nil {
+		t.Fatal("missing environment was created without consent")
+	}
+	var fences int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapter_configure_fences`).Scan(&fences); err != nil {
+		t.Fatal(err)
+	}
+	if fences != 0 {
+		t.Fatalf("configure effect created without consent: %d", fences)
+	}
+	view, err := svc.Create(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, CreateAdapterRequest{
+		Provider: "github-actions", Origin: "https://api.github.com", Credential: []byte("github_pat_fine"),
+		Target: AdapterTargetInput{AllowEnvironmentCreate: true, EnvironmentID: "env_one", DestinationKind: "environment", DestinationOwner: "acme", DestinationName: "app", DestinationEnvironment: "production", KeyIDs: []string{"key_env_create"}},
 	})
 	if err != nil {
 		t.Fatal(err)

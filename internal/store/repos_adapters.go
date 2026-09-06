@@ -108,7 +108,12 @@ func (r adapterQueries) Target(ctx context.Context, p authz.Proof, targetID stri
 	query := r.db.SQLPerEngine(
 		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=? AND t.org_id=? AND t.project_id=?`,
 		`SELECT `+adapterTargetColumns+adapterTargetFrom+` WHERE t.id=$1 AND t.org_id=$2 AND t.project_id=$3`)
-	return scanAdapterTarget(r.db.QueryRow(ctx, query, targetID, chain.Org, chain.Project))
+	target, err := scanAdapterTarget(r.db.QueryRow(ctx, query, targetID, chain.Org, chain.Project))
+	if err != nil {
+		return AdapterTarget{}, err
+	}
+	target.Findings, err = r.targetFindings(ctx, chain, target)
+	return target, err
 }
 
 func (r adapterQueries) ListAdaptersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptFieldRow, error) {

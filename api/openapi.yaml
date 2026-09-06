@@ -8395,6 +8395,81 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    post:
+      operationId: diffRevisions
+      tags: [revisions]
+      summary: Compare two revisions with secret write-presence only.
+      description: |
+        Both revisions must retain their payload. A secret on either side makes
+        the entire row secret. Secret status uses write-presence only. Explicit
+        per-key reveal checks current reveal or reveal-history for each side,
+        runs one key-bound ceremony, and audits each disclosed revision.
+      x-hikyo-class: tenant
+      x-hikyo-operation: value.export
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RevisionDiffRequest"}
+      responses:
+        "200":
+          description: The requested comparison, without change tokens or digests.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RevisionDiff"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    post:
+      operationId: revealRevisionDiff
+      tags: [revisions]
+      summary: Reveal one key across two revisions.
+      description: |
+        Both revisions must retain their payload. A secret on either side makes
+        the entire row secret. Secret status uses write-presence only. Explicit
+        per-key reveal checks current reveal or reveal-history for each side,
+        runs one key-bound ceremony, and audits each disclosed revision.
+      x-hikyo-class: tenant
+      x-hikyo-operation: value.export-reveal
+      x-hikyo-formula: [read@environment, reveal@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/RevealRevisionDiffRequest"}
+      responses:
+        "200":
+          description: The requested comparison, without change tokens or digests.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RevisionDiff"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -10570,6 +10645,10 @@ components:
       additionalProperties: false
       required: [environment_id, destination_kind, destination_owner, destination_name, destination_environment, visibility, selected_repository_ids, name_prefix, key_ids]
       properties:
+        allow_environment_create:
+          type: boolean
+          default: false
+          description: Explicit consent to create missing GitHub environments using Administration:write.
         environment_id: {$ref: "#/components/schemas/ID"}
         destination_kind: {$ref: "#/components/schemas/AdapterDestinationKind"}
         destination_owner: {type: string, minLength: 1, maxLength: 255}
@@ -10732,6 +10811,9 @@ components:
       additionalProperties: false
       required: [id, adapter_id, environment_id, destination_kind, destination_owner, destination_name, destination_environment, destination_id, repository_id, visibility, selected_repository_ids, name_prefix, generation, state, sync_status, converged_revision, last_attempted_revision, last_attempted_at, last_error_class, retry_at, paused_at, drift_attention, failure_names, warnings, keys, conflicts]
       properties:
+        findings:
+          type: array
+          items: {$ref: "#/components/schemas/AdapterFinding"}
         id: {$ref: "#/components/schemas/ID"}
         adapter_id: {$ref: "#/components/schemas/ID"}
         environment_id: {$ref: "#/components/schemas/ID"}
@@ -11222,6 +11304,10 @@ components:
       additionalProperties: false
       required: [server_version, api_revision, protocol_capabilities]
       properties:
+        instance_identity:
+          type: string
+          minLength: 1
+          description: Stable server-generated instance identity, independent of URL aliases.
         server_version:
           type: string
           description: The build's version string; `dev` for unreleased builds.
@@ -11935,6 +12021,12 @@ components:
       type: object
       required: [id, org_id, name, created_at]
       properties:
+        can_manage_policy:
+          type: boolean
+          description: Whether the caller can manage policy for this project.
+        can_delete:
+          type: boolean
+          description: Whether the caller can delete this project.
         id:
           $ref: "#/components/schemas/ID"
         org_id:
@@ -12056,6 +12148,13 @@ components:
       required: [version_id, key_id, name, classification, operation, staged_from_revision, created_at, revealed]
       additionalProperties: false
       properties:
+        advisory:
+          type: object
+          additionalProperties: false
+          required: [owner_id, valid]
+          properties:
+            owner_id: {$ref: "#/components/schemas/ID"}
+            valid: {type: boolean}
         version_id:
           $ref: "#/components/schemas/ID"
         key_id:
@@ -12474,6 +12573,44 @@ components:
         change:
           type: string
           enum: [added, edited, removed]
+    RevisionDiffRequest:
+      type: object
+      additionalProperties: false
+      required: [left_revision, right_revision]
+      properties:
+        left_revision: {type: integer, format: int64, minimum: 1}
+        right_revision: {type: integer, format: int64, minimum: 1}
+    RevealRevisionDiffRequest:
+      type: object
+      additionalProperties: false
+      required: [left_revision, right_revision, key_id]
+      properties:
+        left_revision: {type: integer, format: int64, minimum: 1}
+        right_revision: {type: integer, format: int64, minimum: 1}
+        key_id: {$ref: "#/components/schemas/ID"}
+    RevisionDiff:
+      type: object
+      additionalProperties: false
+      required: [left_revision, right_revision, items]
+      properties:
+        left_revision: {type: integer, format: int64}
+        right_revision: {type: integer, format: int64}
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/RevisionDiffRow"}
+    RevisionDiffRow:
+      type: object
+      additionalProperties: false
+      required: [key_id, name, classification, status, revealed]
+      properties:
+        key_id: {$ref: "#/components/schemas/ID"}
+        name: {type: string}
+        classification: {$ref: "#/components/schemas/KeyClassification"}
+        status: {type: string, enum: [added, removed, edited, not_edited, changed, unchanged]}
+        revealed: {type: boolean}
+        before: {type: string}
+        after: {type: string}
+
     RevisionList:
       type: object
       required: [items, count]
@@ -12498,6 +12635,9 @@ components:
           format: int64
         published_by:
           $ref: "#/components/schemas/ID"
+        published_by_name:
+          type: string
+          description: Current display name of the publisher, absent if the principal no longer exists.
         published_at:
           type: string
           format: date-time
@@ -12531,6 +12671,9 @@ components:
           format: int64
         published_by:
           $ref: "#/components/schemas/ID"
+        published_by_name:
+          type: string
+          description: Current display name of the publisher, absent if the principal no longer exists.
         published_at:
           type: string
           format: date-time
@@ -13644,7 +13787,7 @@ components:
     MintCredentialResult:
       type: object
       additionalProperties: false
-      required: [value, credential, clamped]
+      required: [value, credential, clamped, expires_at]
       properties:
         value:
           type: string
@@ -13653,6 +13796,10 @@ components:
             No other route in this contract returns it.
         credential:
           $ref: "#/components/schemas/MachineCredential"
+        expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: Effective expiry; null means explicitly indefinite.
         clamped:
           type: boolean
           description: |
@@ -15887,6 +16034,9 @@ components:
       additionalProperties: false
       required: [id, binding_id, group_id, template, inert, created_at, capabilities]
       properties:
+        capability_origins:
+          type: array
+          items: {$ref: "#/components/schemas/ScimCapabilityOrigin"}
         id:
           $ref: "#/components/schemas/ID"
         binding_id:
@@ -16661,6 +16811,25 @@ components:
             than the limit). While false, more pages remain even if `items` is
             empty for a sparse filter.
 
+
+    AdapterFinding:
+      type: object
+      additionalProperties: false
+      required: [surface, effective_name, finding]
+      properties:
+        surface: {type: string, enum: [secret, variable]}
+        effective_name: {type: string}
+        finding: {type: string, enum: [possible_capture, owned_missing, crash_window]}
+    ScimCapabilityOrigin:
+      type: object
+      additionalProperties: false
+      required: [capability, kind, binding_id, mapping_id, group_id]
+      properties:
+        capability: {type: string}
+        kind: {type: string, enum: [scim]}
+        binding_id: {$ref: "#/components/schemas/ID"}
+        mapping_id: {$ref: "#/components/schemas/ID"}
+        group_id: {$ref: "#/components/schemas/ID"}
 
 security:
   - hikyoSession: []

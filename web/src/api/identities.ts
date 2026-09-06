@@ -150,7 +150,7 @@ export function useCredentials(
  * operator has to be told the ceiling shortened what they asked for rather than
  * discover it when the credential dies early.
  */
-const zMinted = mintMachineCredentialOp.response.pick({ value: true, clamped: true });
+const zMinted = mintMachineCredentialOp.response.pick({ value: true, clamped: true, expires_at: true });
 
 /**
  * mintCredential is the display-once mint, and it is deliberately NOT a
@@ -173,7 +173,7 @@ export async function mintCredential(
       path: { org: p.org, project: p.project, serviceAccount },
       body: {},
     },
-    { value: true, clamped: true },
+    { value: true, clamped: true, expires_at: true },
   );
 }
 

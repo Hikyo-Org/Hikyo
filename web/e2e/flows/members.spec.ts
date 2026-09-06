@@ -482,6 +482,14 @@ test.describe('members and grants', () => {
       await expect(invitee.getByRole('heading', { name: 'Credential established' })).toBeVisible();
       await signIn(firstPassword);
 
+      // A real viewer can read project metadata without being offered manager
+      // policy mutations or typed-name deletion. The signal comes from the API.
+      await invitee.goto(`/orgs/${seed.org}/projects/${seed.project}/settings`);
+      await expect(invitee.getByRole('heading', { name: /^Project settings/ })).toBeVisible();
+      await expect(invitee.locator('#project-metadata')).toBeVisible();
+      await expect(invitee.locator('#project-policy')).toHaveCount(0);
+      await expect(invitee.locator('#project-danger')).toHaveCount(0);
+
       // Single use: the same authority is refused uniformly the second time.
       await invitee.context().clearCookies();
       await establish(authority, secondPassword);
@@ -873,6 +881,12 @@ test.describe('scim provisioning', () => {
     await expect(page.locator('.scim-warnings')).toBeVisible();
     const mappingRow = page.locator('.scim-mapping', { hasText: 'E2E Engineers' });
     await expect(mappingRow).toBeVisible();
+    const capabilityLines = mappingRow.locator('.capability');
+    expect(await capabilityLines.count()).toBeGreaterThan(0);
+    for (const line of await capabilityLines.all()) {
+      await expect(line.locator('.badge')).toHaveText('scim: E2E Engineers');
+      await expect(line.locator('.badge')).toHaveAttribute('title', new RegExp(`Binding ${bindingId}, mapping `));
+    }
 
     // Delete the mapping, it releases every origin it held. The row goes, and
     // the release count is reported ABOVE the list so it outlives the row.

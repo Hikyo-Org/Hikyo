@@ -189,3 +189,7 @@ func (historyRevisionService) RotateTokenKey(context.Context, service.Actor) (se
 func (historyRevisionService) RotateScanningKey(context.Context, service.Actor) (service.ScanningKeyRotation, error) {
 	return service.ScanningKeyRotation{}, domain.ErrNotFound
 }
+
+func (historyRevisionService) Diff(context.Context, service.Actor, domain.Scope, int64, int64, string) (service.RevisionDiff, error) {
+	return service.RevisionDiff{}, domain.ErrNotFound
+}

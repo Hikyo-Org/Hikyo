@@ -94,6 +94,9 @@ test.describe('environment matrix', () => {
       await page.getByRole('dialog').getByRole('button', { name: 'Clear production to absent' }).click();
       await page.getByRole('dialog').getByRole('button', { name: 'Save 1 draft' }).click();
       await expect(page.locator('.notice')).toContainText(`1 draft updated for ${seed.matrixRequired}`);
+      await expect(page.getByRole('button', {
+        name: new RegExp(`${seed.matrixRequired} in production:.*your draft is invalid`),
+      })).toBeVisible();
 
       await page.getByRole('button', { name: /unpublished edit/ }).click();
       const publishSheet = page.getByRole('region', { name: 'Publish drafts' });

@@ -33,7 +33,7 @@ var ErrRemoteCap = fmt.Errorf("%w: the configured remote cap is reached", domain
 // ErrSelfConnected is `remote add` pointed at this instance. It is refused at
 // the AUTHENTICATED FETCH, by instance identity — never guessed from the URL,
 // which a DNS change can make wrong in either direction.
-var ErrSelfConnected = fmt.Errorf("%w: that URL is this instance — a remote cannot be its own remote", domain.ErrConflict)
+var ErrSelfConnected = &detailErr{err: fmt.Errorf("%w: that URL is this instance", domain.ErrConflict), detail: "self_connected"}
 
 // ErrRemoteUnverified is `remote add` whose verifying fetch did not return a
 // usable listing. The entry is NOT committed: an entry that has never

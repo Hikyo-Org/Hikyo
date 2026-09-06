@@ -3,6 +3,7 @@ import { useMemo, useRef, useState, type FormEvent } from 'react';
 import { generatePath, Link } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
+import { useInstanceIdentity } from '../api/discovery.ts';
 import { ApiError } from '../api/client.ts';
 import { isoDay } from '../api/identities.ts';
 import { useProjects } from '../api/settings.ts';
@@ -479,6 +480,7 @@ function Absent() {
 }
 
 export function AddRemote() {
+  const identity = useInstanceIdentity();
   const add = useAddRemote();
   const remotes = useRemotes();
   const [name, setName] = useState('');
@@ -533,6 +535,7 @@ export function AddRemote() {
         connection. It replaces the certificate authority as the trust root, which is what makes a
         self-signed instance on your own network safe to point at.
       </p>
+      {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. The server refuses this identity even through another URL.</p>}
       <form className="form" onSubmit={onSubmit} noValidate>
         {validationFailure !== null || add.isError ? (
           <p className="alert" role="alert">
@@ -1342,6 +1345,7 @@ function addFailureText(error: unknown): string {
       case 400:
         return 'That entry was refused: the URL must be a bare https origin and the fingerprint must be the base64 SHA-256 of the public key.';
       case 409:
+        if (error.detail === "self_connected") return "That is this instance. A remote must be another instance.";
         return 'The server could not verify this remote. Check that it is reachable, its credential and fingerprint are current, and it is not this instance or an instance already listed under another URL.';
       case 429:
         return 'Too many attempts right now. Wait a moment and try again.';

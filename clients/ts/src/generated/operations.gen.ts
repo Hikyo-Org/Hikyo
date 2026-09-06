@@ -114,6 +114,7 @@ import {
   deleteScimBinding,
   deleteScimMapping,
   deleteServiceAccount,
+  diffRevisions,
   diffValues,
   enrolPasskeyFinish,
   enrolPasskeyStart,
@@ -245,6 +246,7 @@ import {
   resumeAdapterMove,
   resumeAdapterTarget,
   retireSamlSpKey,
+  revealRevisionDiff,
   revealValue,
   revealValueDiff,
   revealValues,
@@ -380,6 +382,7 @@ import type {
   DeleteScimBindingData,
   DeleteScimMappingData,
   DeleteServiceAccountData,
+  DiffRevisionsData,
   DiffValuesData,
   EnrolPasskeyFinishData,
   EnrolPasskeyStartData,
@@ -511,6 +514,7 @@ import type {
   ResumeAdapterMoveData,
   ResumeAdapterTargetData,
   RetireSamlSpKeyData,
+  RevealRevisionDiffData,
   RevealValueData,
   RevealValueDiffData,
   RevealValuesData,
@@ -634,6 +638,7 @@ import {
   zDeleteAdapterResponse,
   zDeleteDynamicProviderResponse,
   zDeleteScimMappingResponse,
+  zDiffRevisionsResponse,
   zDiffValuesResponse,
   zEnrolPasskeyFinishResponse,
   zEnrolPasskeyStartResponse,
@@ -761,6 +766,7 @@ import {
   zResetCredentialResponse,
   zResumeAdapterMoveResponse,
   zResumeAdapterTargetResponse,
+  zRevealRevisionDiffResponse,
   zRevealValueDiffResponse,
   zRevealValueResponse,
   zRevealValuesResponse,
@@ -870,6 +876,7 @@ export const declareValuesOp: BodyOperation<DeclareValuesData, typeof zDeclareVa
 export const deleteAdapterOp: BodyOperation<DeleteAdapterData, typeof zDeleteAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteAdapter, [200], zDeleteAdapterResponse);
 export const deleteDynamicProviderOp: BodyOperation<DeleteDynamicProviderData, typeof zDeleteDynamicProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteDynamicProvider, [200], zDeleteDynamicProviderResponse);
 export const deleteScimMappingOp: BodyOperation<DeleteScimMappingData, typeof zDeleteScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteScimMapping, [200], zDeleteScimMappingResponse);
+export const diffRevisionsOp: BodyOperation<DiffRevisionsData, typeof zDiffRevisionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(diffRevisions, [200], zDiffRevisionsResponse);
 export const diffValuesOp: BodyOperation<DiffValuesData, typeof zDiffValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(diffValues, [200], zDiffValuesResponse);
 export const enrolPasskeyFinishOp: BodyOperation<EnrolPasskeyFinishData, typeof zEnrolPasskeyFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolPasskeyFinish, [200], zEnrolPasskeyFinishResponse);
 export const enrolPasskeyStartOp: BodyOperation<EnrolPasskeyStartData, typeof zEnrolPasskeyStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolPasskeyStart, [200], zEnrolPasskeyStartResponse);
@@ -997,6 +1004,7 @@ export const requestInstanceUpdateOp: BodyOperation<RequestInstanceUpdateData, t
 export const resetCredentialOp: BodyOperation<ResetCredentialData, typeof zResetCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resetCredential, [200], zResetCredentialResponse);
 export const resumeAdapterMoveOp: BodyOperation<ResumeAdapterMoveData, typeof zResumeAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterMove, [202], zResumeAdapterMoveResponse);
 export const resumeAdapterTargetOp: BodyOperation<ResumeAdapterTargetData, typeof zResumeAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(resumeAdapterTarget, [202], zResumeAdapterTargetResponse);
+export const revealRevisionDiffOp: BodyOperation<RevealRevisionDiffData, typeof zRevealRevisionDiffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealRevisionDiff, [200], zRevealRevisionDiffResponse);
 export const revealValueOp: BodyOperation<RevealValueData, typeof zRevealValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValue, [200], zRevealValueResponse);
 export const revealValueDiffOp: BodyOperation<RevealValueDiffData, typeof zRevealValueDiffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValueDiff, [200], zRevealValueDiffResponse);
 export const revealValuesOp: BodyOperation<RevealValuesData, typeof zRevealValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValues, [200], zRevealValuesResponse);

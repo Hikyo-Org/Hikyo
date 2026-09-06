@@ -80,6 +80,7 @@ type AdapterEffect struct {
 	Outcome        sql.NullString
 	CreatedAt      string
 	FinishedAt     sql.NullString
+	Finding        string
 }
 
 type AdapterLedger struct {
