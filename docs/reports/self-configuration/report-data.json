@@ -2,7 +2,7 @@
   "title": "Hikyo manages Hikyo",
   "date": "2026-09-06",
   "baseline": "90b4ca6a5d22438e751cf9af83aa4fd077a6a61c",
-  "status": "Built and locally verified; ready for pull-request CI",
+  "status": "Built and locally verified; delivered in PR #686",
   "authority": {
     "explicit": [
       "Apply from Hikyo UI without restarting the container.",
@@ -1010,7 +1010,7 @@
       "scope": "Verify all acceptance cases together, including two-node HA, failed SMTP, revocation, stale direct traffic, retained snapshots, restore fencing and backup/key rotation. Review final changes; deliver a signed, DCO-signed PR when implementation is requested.",
       "proof": "Relevant checks and both-engine lifecycle suites pass; exact-head CI, adversarial review as required by authorship, and preview evidence precede merge. Production deployment requires its own actual delivery evidence. A two-remote-plus-HA scenario must prove distinct variables, schemas and revision identities; no cross-instance effects, secret proxying or viewer-outage dependency.",
       "depends": "Milestones 1–4",
-      "status": "Locally verified; PR delivery"
+      "status": "Locally verified; PR #686"
     }
   ],
   "scenarios": [
@@ -1224,7 +1224,7 @@
       ]
     }
   ],
-  "revisionNote": "Implementation approved with LGTM, build it. Setup/adoption, managed project, exact-revision apply, HA fencing, restore confirmation, UI and CLI are implemented and locally verified. Independent reviews are clean. Merge and production deployment have not occurred.",
+  "revisionNote": "Implementation approved with LGTM, build it. Setup/adoption, managed project, exact-revision apply, HA fencing, restore confirmation, UI and CLI are implemented and locally verified. Independent reviews are clean. PR #686 carries delivery checks; merge and production deployment have not occurred.",
   "topology": {
     "heading": "One root view. One project per instance.",
     "summary": "Independent remotes own independent configuration. Only HA replicas of one logical instance share a project and applied revision.",

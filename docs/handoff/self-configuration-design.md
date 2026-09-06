@@ -1,6 +1,6 @@
-# Hikyo self-configuration design handoff
+# PR #686: Hikyo self-configuration handoff
 
-Status: design approved and product implementation built. Independent standards and spec reviews are CLEAN. Full local isolation, race, core, web, SDK, docs and live browser checks pass. Signed PR delivery is the next step. No merge or production deployment has occurred. The sections below preserve the original design and its acceptance requirements; consult the report validation record for completed implementation evidence.
+Status: design approved and product implementation built. Independent standards and spec reviews are CLEAN. Full local isolation, race, core, web, SDK, docs and live browser checks pass. Delivered in [PR #686](https://github.com/Hikyo-Org/Hikyo/pull/686); check its exact-head CI before merge. No merge or production deployment has occurred. The sections below preserve the original design and its acceptance requirements; consult the report validation record for completed implementation evidence.
 
 ## User intent and authority
 

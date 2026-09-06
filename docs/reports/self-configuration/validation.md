@@ -65,8 +65,8 @@ the separate behavior evidence above.
 
 ### Current report and delivery
 
-Final implementation report: HTTP 200, 265629 bytes, SHA-256
-`eac2d38381f8296adcfb6c0c63599f4871f9a347a8d5c68c8d8781be887ffe7b`. Rebuilding produces identical bytes; LAN response matches.
+Final implementation report: HTTP 200, 265672 bytes, SHA-256
+`193e6d4c95567b33053a5aca2f2eaf86b25b1991b0c271930cccce1601d611ad`. Rebuilding produces identical bytes; LAN response matches.
 
 All 64 current `knownEnv` keys are classified, alongside managed-only CA PEM and
 the client XDG setting. The report loads on LAN at <http://192.168.0.30:8769/>;
@@ -78,8 +78,9 @@ Product proof: [desktop configuration](validation/managed-configuration-desktop.
 and [mobile node state](validation/managed-configuration-nodes-mobile.png).
 Existing storage/escrow banners describe the disposable test host.
 
-Local implementation verification is complete. Signed commit, pull-request
-publication and exact-head CI are the remaining delivery steps. Production deployment is
+Local implementation verification is complete. Signed/DCO implementation commit
+`d3c61bd7acd274f83051e48e26e72195c1f7156c` is GitHub Verified and delivered in
+[PR #686](https://github.com/Hikyo-Org/Hikyo/pull/686). Current exact-head CI is recorded on that PR. Production deployment is
 a separate operation.
 
 ## Original design-report verification, before implementation
