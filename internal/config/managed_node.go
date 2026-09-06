@@ -208,7 +208,7 @@ func parseManagedNodeValues(base *Config, values map[string]string) (*Config, er
 	for _, key := range []string{"HIKYO_LISTEN", "HIKYO_OPERATIONAL_LISTEN"} {
 		_, port, err := net.SplitHostPort(values[key])
 		number, portErr := strconv.Atoi(port)
-		if err != nil || portErr != nil || number < 0 || number > 65535 || (!base.Dev && number == 0) {
+		if err != nil || portErr != nil || number < 0 || number > 65535 {
 			return nil, fmt.Errorf("%s: invalid TCP listen address", key)
 		}
 	}
