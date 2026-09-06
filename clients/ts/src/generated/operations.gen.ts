@@ -140,6 +140,7 @@ import {
   getKeyGroup,
   getMachineReveal,
   getMeta,
+  getMyProfile,
   getOidcProvider,
   getOrg,
   getOrgRetention,
@@ -321,6 +322,7 @@ import {
   updateFederationIssuer,
   updateKeyDeclaration,
   updateKeyMetadata,
+  updateMyProfile,
   updateScimMapping,
   voteApprovalRequest,
   watchProjectEvents,
@@ -408,6 +410,7 @@ import type {
   GetKeyGroupData,
   GetMachineRevealData,
   GetMetaData,
+  GetMyProfileData,
   GetOidcProviderData,
   GetOrgData,
   GetOrgRetentionData,
@@ -589,6 +592,7 @@ import type {
   UpdateFederationIssuerData,
   UpdateKeyDeclarationData,
   UpdateKeyMetadataData,
+  UpdateMyProfileData,
   UpdateScimMappingData,
   VoteApprovalRequestData,
   WatchProjectEventsData,
@@ -663,6 +667,7 @@ import {
   zGetKeyResponse,
   zGetMachineRevealResponse,
   zGetMetaResponse,
+  zGetMyProfileResponse,
   zGetOidcProviderResponse,
   zGetOrgResponse,
   zGetOrgRetentionResponse,
@@ -827,6 +832,7 @@ import {
   zUpdateFederationIssuerResponse,
   zUpdateKeyDeclarationResponse,
   zUpdateKeyMetadataResponse,
+  zUpdateMyProfileResponse,
   zUpdateScimMappingResponse,
   zVoteApprovalRequestResponse,
   zWatchProjectEventsResponse,
@@ -901,6 +907,7 @@ export const getKeyOp: BodyOperation<GetKeyData, typeof zGetKeyResponse> = /* @_
 export const getKeyGroupOp: BodyOperation<GetKeyGroupData, typeof zGetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKeyGroup, [200], zGetKeyGroupResponse);
 export const getMachineRevealOp: BodyOperation<GetMachineRevealData, typeof zGetMachineRevealResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMachineReveal, [200], zGetMachineRevealResponse);
 export const getMetaOp: BodyOperation<GetMetaData, typeof zGetMetaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMeta, [200], zGetMetaResponse);
+export const getMyProfileOp: BodyOperation<GetMyProfileData, typeof zGetMyProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMyProfile, [200], zGetMyProfileResponse);
 export const getOidcProviderOp: BodyOperation<GetOidcProviderData, typeof zGetOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOidcProvider, [200], zGetOidcProviderResponse);
 export const getOrgOp: BodyOperation<GetOrgData, typeof zGetOrgResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrg, [200], zGetOrgResponse);
 export const getOrgRetentionOp: BodyOperation<GetOrgRetentionData, typeof zGetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRetention, [200], zGetOrgRetentionResponse);
@@ -1065,6 +1072,7 @@ export const updateApprovalPolicyOp: BodyOperation<UpdateApprovalPolicyData, typ
 export const updateFederationIssuerOp: BodyOperation<UpdateFederationIssuerData, typeof zUpdateFederationIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateFederationIssuer, [200], zUpdateFederationIssuerResponse);
 export const updateKeyDeclarationOp: BodyOperation<UpdateKeyDeclarationData, typeof zUpdateKeyDeclarationResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateKeyDeclaration, [200], zUpdateKeyDeclarationResponse);
 export const updateKeyMetadataOp: BodyOperation<UpdateKeyMetadataData, typeof zUpdateKeyMetadataResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateKeyMetadata, [200], zUpdateKeyMetadataResponse);
+export const updateMyProfileOp: BodyOperation<UpdateMyProfileData, typeof zUpdateMyProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateMyProfile, [200], zUpdateMyProfileResponse);
 export const updateScimMappingOp: BodyOperation<UpdateScimMappingData, typeof zUpdateScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateScimMapping, [200], zUpdateScimMappingResponse);
 export const voteApprovalRequestOp: BodyOperation<VoteApprovalRequestData, typeof zVoteApprovalRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(voteApprovalRequest, [200], zVoteApprovalRequestResponse);
 export const whoamiOp: BodyOperation<WhoamiData, typeof zWhoamiResponse> = /* @__PURE__ */ new GeneratedBodyOperation(whoami, [200], zWhoamiResponse);

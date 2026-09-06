@@ -100,6 +100,15 @@ func runFactorLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, u
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
+	// Profile metadata changes use existing account proof and emit their own
+	// value-free audit event before the factor lifecycle replaces credentials.
+	profile, err := auth.MyProfile(ctx, login.SessionToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.UpdateMyProfile(ctx, login.SessionToken, profile, password); err != nil {
+		t.Fatal(err)
+	}
 	// Recovery: regenerate a batch (password proof), then consume one code.
 	codes, _, err := auth.GenerateRecoveryCodes(ctx, login.SessionToken, password)
 	if err != nil {

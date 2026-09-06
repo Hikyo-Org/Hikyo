@@ -2,7 +2,7 @@
 
 -- hikyo:authn-resolution
 -- name: PrivacyAccount :one
-SELECT a.id, a.principal_id, a.username, a.display_name, a.created_at, p.privacy_state FROM accounts AS a JOIN principals AS p ON p.id = a.principal_id WHERE a.principal_id = sqlc.arg(principal_id);
+SELECT a.id, a.principal_id, a.username, a.display_name, a.email, a.created_at, p.privacy_state FROM accounts AS a JOIN principals AS p ON p.id = a.principal_id WHERE a.principal_id = sqlc.arg(principal_id);
 
 -- hikyo:authn-resolution
 -- name: PrivacySetState :exec
@@ -10,7 +10,7 @@ UPDATE principals SET privacy_state = sqlc.arg(privacy_state), session_generatio
 
 -- hikyo:authn-resolution
 -- name: PrivacyEraseAccount :exec
-UPDATE accounts SET username = sqlc.arg(username), display_name = '', webauthn_user_handle = NULL WHERE id = sqlc.arg(account_id);
+UPDATE accounts SET username = sqlc.arg(username), display_name = '', email = '', webauthn_user_handle = NULL WHERE id = sqlc.arg(account_id);
 
 -- hikyo:authn-resolution
 -- name: PrivacySessions :many

@@ -1688,8 +1688,7 @@ function toHistoryPin(pin: RevisionPinItem): HistoryPin {
 
 /**
  * A prefixed UUIDv7 is unreadable at a glance; the whole one lives in `title`.
- * `published_by` is an id only: a display name needs the revision API to carry
- * it, so nothing here looks one up.
+ * Used only when the authorized revision response has no current publisher name.
  */
 export function shortPrincipal(id: string): string {
   return id.length <= 12 ? id : `${id.slice(0, 12)}…`;

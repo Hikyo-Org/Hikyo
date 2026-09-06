@@ -85,6 +85,7 @@ type ApprovalPolicyInput struct {
 
 // ApprovalPolicyView is a policy as the admin surface reads it.
 type ApprovalPolicyView struct {
+	PrincipalNames    map[string]string
 	ID                string
 	EnvironmentID     string
 	MinApprovals      int
@@ -100,13 +101,15 @@ type ApprovalPolicyView struct {
 
 // ApprovalVoteView is one recorded vote.
 type ApprovalVoteView struct {
-	PrincipalID string
-	Decision    string
-	CreatedAt   time.Time
+	PrincipalName string
+	PrincipalID   string
+	Decision      string
+	CreatedAt     time.Time
 }
 
 // ApprovalRequestView is a request as the review surface reads it.
 type ApprovalRequestView struct {
+	RequesterName    string
 	ID               string
 	EnvironmentID    string
 	PolicyID         string
@@ -292,6 +295,23 @@ func (s *Approvals) ListPolicies(ctx context.Context, actor Actor, scope domain.
 			view, err := policyViewWithMembers(ctx, r, p, policy)
 			if err != nil {
 				return err
+			}
+			names := newPrincipalNames(az)
+			view.PrincipalNames = make(map[string]string)
+			ids := slices.Clone(view.Bypassers)
+			for _, approver := range view.Approvers {
+				if approver.Kind == "principal" {
+					ids = append(ids, approver.SubjectID)
+				}
+			}
+			for _, id := range ids {
+				name, err := names.get(ctx, domain.PrincipalID(id))
+				if err != nil {
+					return err
+				}
+				if name != "" {
+					view.PrincipalNames[id] = name
+				}
 			}
 			out = append(out, view)
 		}
@@ -879,8 +899,17 @@ func requestViewWithVotes(ctx context.Context, r store.Repos, az *authz.TxAuthor
 		return ApprovalRequestView{}, err
 	}
 	view := requestView(req)
+	names := newPrincipalNames(az)
+	view.RequesterName, err = names.get(ctx, domain.PrincipalID(req.RequesterPrincipalID))
+	if err != nil {
+		return ApprovalRequestView{}, err
+	}
 	for _, v := range votes {
-		view.Votes = append(view.Votes, ApprovalVoteView{PrincipalID: v.PrincipalID, Decision: string(v.Decision), CreatedAt: v.CreatedAt})
+		name, err := names.get(ctx, domain.PrincipalID(v.PrincipalID))
+		if err != nil {
+			return ApprovalRequestView{}, err
+		}
+		view.Votes = append(view.Votes, ApprovalVoteView{PrincipalID: v.PrincipalID, PrincipalName: name, Decision: string(v.Decision), CreatedAt: v.CreatedAt})
 	}
 	// Report the same live quorum merge enforces. A recorded vote stops counting
 	// when its principal loses approver membership or publish authority.

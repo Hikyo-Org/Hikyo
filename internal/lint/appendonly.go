@@ -142,6 +142,7 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// exception set's boot/bootstrap member, never reachable over the network.
 	"CreatePrincipal":           true,
 	"CorrectPrivacyAccount":     true,
+	"UpdateAccountProfile":      true,
 	"RestrictPrivacyPrincipal":  true,
 	"ErasePrivacyAccount":       true,
 	"CreateAccount":             true,

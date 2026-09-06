@@ -117,7 +117,7 @@ describe('Projects', () => {
     await settleTask();
 
     expect(container.querySelector('[role="status"]')?.textContent).toMatch(
-      /^Ask an instance administrator to grant you access to an organisation\./,
+      /^Ask an instance administrator to invite you to an organisation\./,
     );
     expect(container.querySelector('form')).toBeNull();
     await unmount();

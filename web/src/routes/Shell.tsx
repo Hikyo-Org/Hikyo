@@ -1122,11 +1122,9 @@ export function breadcrumbs(input: {
 }
 
 /**
- * The name the chrome calls the signed-in principal. whoami carries no
- * username, so the only fallback is the id; an empty display name counts as
- * absent rather than rendering a blank link.
+ * Keep the account entry readable even before a profile name is set.
  */
 function principalName(session: WhoAmI): string {
   const display = session.principal.display_name?.trim() ?? '';
-  return display === '' ? session.principal.id : display;
+  return display === '' ? 'Your account' : display;
 }

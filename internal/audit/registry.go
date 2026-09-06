@@ -81,6 +81,7 @@ const (
 	EventAuthFactorRemoved  EventType = "auth.factor_removed"
 	// auth.recovery_codes_generated records a display-once batch replacing the
 	// previous one.
+	EventAuthProfileUpdated         EventType = "auth.profile_updated"
 	EventAuthRecoveryCodesGenerated EventType = "auth.recovery_codes_generated"
 	// auth.recovery_code_consumed records the pre-auth break-in-glass path,
 	// including its failures (the ADR requires the failures, uniform response
@@ -833,6 +834,11 @@ var pinMutationSchema = Schema{
 // the new type (completeness is CI invariant 2, wired to the
 // probe-classification registry).
 var registry = map[EventType]TypeSpec{
+	EventAuthProfileUpdated: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true},
+		Schema: Schema{"account_id": {Kind: KindString, Required: true}},
+	},
 	EventPrivacySubjectCorrected:  privacySubjectSpec,
 	EventPrivacySubjectReleased:   privacySubjectSpec,
 	EventPrivacySubjectExported:   privacySubjectSpec,

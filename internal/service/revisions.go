@@ -126,12 +126,13 @@ func (s *Revisions) History(ctx context.Context, actor Actor, scope domain.Scope
 		if err != nil {
 			return err
 		}
+		names := newPrincipalNames(az)
 		for _, snapshot := range snapshots {
-			changes, err := r.Snapshots().Changes(ctx, p, snapshot.Revision)
+			name, err := names.get(ctx, domain.PrincipalID(snapshot.PublishedBy))
 			if err != nil {
 				return err
 			}
-			name, err := revisionPublisherName(ctx, az, snapshot.PublishedBy)
+			changes, err := r.Snapshots().Changes(ctx, p, snapshot.Revision)
 			if err != nil {
 				return err
 			}
@@ -685,21 +686,7 @@ func (s *Revisions) RotateScanningKey(ctx context.Context, actor Actor) (Scannin
 // Names resolve only after the revision's tenant authorization. Removed
 // principals remain identifiable by lineage id without inventing a name.
 func revisionPublisherName(ctx context.Context, az *authz.TxAuthorizer, principal string) (string, error) {
-	account, err := az.AccountByPrincipal(ctx, domain.PrincipalID(principal))
-	if err == nil {
-		return account.DisplayName, nil
-	}
-	if !errors.Is(err, domain.ErrNotFound) {
-		return "", err
-	}
-	machine, err := az.ServiceAccountByPrincipal(ctx, domain.PrincipalID(principal))
-	if err == nil {
-		return machine.Name, nil
-	}
-	if errors.Is(err, domain.ErrNotFound) {
-		return "", nil
-	}
-	return "", err
+	return newPrincipalNames(az).get(ctx, domain.PrincipalID(principal))
 }
 
 // pendingDraftView is the owner-filtered projection shared by full and bounded

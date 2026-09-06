@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import { browserApi } from '../fixtures/api.ts';
 import {
+  ADMIN,
   BASE_URL,
   nextTotpCode,
   readSeed,
@@ -174,7 +175,8 @@ test.describe('members and grants', () => {
     // even though production holds no narrower `read` line of its own.
     await page.getByLabel('On', { exact: true }).selectOption(`env:${seed.project}:${seed.prod}`);
     await expect(answer).toContainText('1 grant line');
-    await expect(answer).toContainText(seed.principal);
+    await expect(answer).toContainText(ADMIN.displayName);
+    await expect(answer).not.toContainText(seed.principal);
   });
 
   test('does not answer Nobody before the grant listing succeeds', async ({ page }) => {
@@ -244,12 +246,13 @@ test.describe('members and grants', () => {
     await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
-  test('resets a cancelled composition when a fresh grant dialog opens', async ({ page }) => {
-    const principal = await automationPrincipal(page);
+  test('selects a disclosed member by name and resets a cancelled composition', async ({ page }) => {
+    const principal = seed.principal;
     const newGrant = page.getByRole('button', { name: 'New grant' });
     await newGrant.click();
     let dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Principal').fill(principal);
+    await dialog.getByLabel('Principal').selectOption({ label: ADMIN.displayName });
+    await expect(dialog.getByLabel('Principal')).toHaveValue(principal);
     await dialog.getByRole('checkbox', { name: 'read', exact: true }).check();
     await dialog.getByLabel('Scope').selectOption(`env:${seed.project}:${seed.prod}`);
     await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -294,6 +297,7 @@ test.describe('members and grants', () => {
     const principal = await automationPrincipal(page);
     await page.getByRole('button', { name: 'New grant' }).click();
     const dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
     await dialog.getByLabel('Principal').fill(principal);
     await dialog.getByRole('checkbox', { name: 'read', exact: true }).check();
     await dialog.getByRole('checkbox', { name: 'edit', exact: true }).check();
@@ -360,6 +364,7 @@ test.describe('members and grants', () => {
     try {
       await page.getByRole('button', { name: 'New grant' }).click();
       const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
       await dialog.getByLabel('Principal').fill(principal);
       await dialog.getByRole('checkbox', { name: 'read', exact: true }).check();
       // `pin` is an environment atom, but the automation principal's normative
@@ -373,7 +378,8 @@ test.describe('members and grants', () => {
       await expect(partial).toContainText('2 of 3');
       await expect(partial).toContainText('pin was refused');
       await expect(partial).toContainText('live and listed below');
-      const row = page.getByRole('row').filter({ hasText: principal });
+      const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
+      await expect(row.locator('.member-name')).toHaveText(seed.machine.automation);
       await expect(row).toContainText('read');
       await expect(row).toContainText('edit');
       expect(attempted).toEqual(['read', 'edit', 'pin']);
@@ -387,6 +393,7 @@ test.describe('members and grants', () => {
     try {
       await page.getByRole('button', { name: 'New grant' }).click();
       const dialog = page.getByRole('dialog');
+      await dialog.getByRole('button', { name: 'Enter an ID for another principal' }).click();
       await dialog.getByLabel('Principal').fill(principal);
       await dialog.getByRole('checkbox', { name: 'read', exact: true }).check();
       await dialog.getByRole('checkbox', { name: 'edit', exact: true }).check();
@@ -401,17 +408,18 @@ test.describe('members and grants', () => {
       await expect(feedback).toContainText('independently revocable');
 
       // Two independent rows, not a bundle.
-      const row = page.getByRole('row').filter({ hasText: principal });
+      const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
+      await expect(row.locator('.member-name')).toHaveText(seed.machine.automation);
       await expect(row).toContainText('read');
       await expect(row).toContainText('edit');
 
       await page
-        .getByRole('button', { name: `Revoke edit on payments · development for ${principal}` })
+        .getByRole('button', { name: `Revoke edit on payments · development for ${seed.machine.automation}` })
         .click();
       const revoked = page.locator('.notice').filter({ hasText: 'Revoked edit' });
       await expectStatusIsTextAndAria(page, revoked);
-      await expect(page.getByRole('row').filter({ hasText: principal })).not.toContainText('edit');
-      await expect(page.getByRole('row').filter({ hasText: principal })).toContainText('read');
+      await expect(page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) })).not.toContainText('edit');
+      await expect(page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) })).toContainText('read');
     } finally {
       await revokeAll(page, principal, ['read', 'edit']);
     }
@@ -430,7 +438,7 @@ test.describe('members and grants', () => {
     const firstPassword = 'a first password long enough';
     const secondPassword = 'a second password long enough';
 
-    await page.getByRole('button', { name: 'Invite' }).click();
+    await page.getByRole('button', { name: 'Invite', exact: true }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { level: 2 })).toContainText('Invite a member to');
     await dialog.getByLabel('Username').fill(username);
@@ -455,7 +463,8 @@ test.describe('members and grants', () => {
     await expectStatusIsTextAndAria(page, invited);
     // The refetched listing carries the invitee's ONE viewer line, granted by
     // the inviter, at organisation scope.
-    const row = page.getByRole('row').filter({ hasText: principal });
+    const row = page.getByRole('row').filter({ has: page.locator(`.member-name[title="${principal}"]`) });
+    await expect(row.locator('.member-name')).toHaveText(username);
     await expect(row).toContainText('read');
     await expect(row).toContainText(`manual: ${seed.principal}`);
 
@@ -498,7 +507,7 @@ test.describe('members and grants', () => {
 
       // Reset from the row action: display-once again, and the invitee's first
       // password is dead once the new one is established.
-      await page.getByRole('button', { name: `Reset credential for ${principal}` }).click();
+      await page.getByRole('button', { name: `Reset credential for ${username}` }).click();
       const reset = page.getByRole('dialog');
       await expect(reset.getByRole('heading', { level: 2 })).toContainText('Credential reset for');
       const resetAuthority = (await reset.getByTestId('issued-authority').textContent()) ?? '';
@@ -644,7 +653,7 @@ test.describe('members and grants', () => {
     test(`meets the pinned assertion set on the invite dialog (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
       try {
-        const opener = page.getByRole('button', { name: 'Invite' });
+        const opener = page.getByRole('button', { name: 'Invite', exact: true });
         await opener.click();
         const dialog = page.getByRole('dialog');
         await expect(dialog).toBeVisible();
@@ -707,6 +716,7 @@ test.describe('members and grants', () => {
           density: [[composition.getByRole('button', { name: 'Cancel' }), '--touch']],
         });
 
+        await composition.getByRole('button', { name: 'Enter an ID for another principal' }).click();
         await composition.getByLabel('Principal').fill(principal);
         await composition.getByRole('checkbox', { name: 'read', exact: true }).check();
         await composition

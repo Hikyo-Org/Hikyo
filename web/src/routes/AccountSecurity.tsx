@@ -1,4 +1,5 @@
 import qrcode from 'qrcode-generator';
+import { AccountProfile } from './AccountProfile.tsx';
 import { useEffect, useId, useMemo, useState } from 'react';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
@@ -36,7 +37,7 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  * kill switch is one panel of the account, not a page of its own, which is
  * where a human looks for it.
  *
- * Every mutation on this page is an account-security mutation, and they share
+ * Factor, recovery and identity mutations are account-security mutations and share
  * one rule the prototype drew as a blue "confirm it's you" step-up: the proof
  * is the PRE-EXISTING credential, the password, or a confirmed code, never
  * the credential being added or removed. One dialog asks for it, so the rule
@@ -44,9 +45,6 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  *
  * Deliberately absent, each for a stated reason:
  *
- *  - **Editing the profile.** There is no operation that writes a display name
- *    or an email anywhere in the contract; the fields are shown as what they
- *    are, read-only facts about the signed-in principal.
  *  - **Passkey-only sign-in.** The prototype's toggle has no backing state or
  *    operation; the passwordless floor is enforced server-side at removal
  *    time, and a switch that only pretended to set a policy is worse than
@@ -179,12 +177,6 @@ export function AccountSecurity() {
     }
   };
 
-  const principal = auth.identity?.principal;
-  const profileDisplayName = prototypeMode
-    ? 'Alex'
-    : principal?.display_name ?? '';
-  const deliveryEmail = prototypeMode ? 'alex@example.com' : '';
-
   return (
     <div className="page page--chrome">
       <h1>Account &amp; security</h1>
@@ -207,44 +199,7 @@ export function AccountSecurity() {
       {done !== null ? <Done>{done}</Done> : null}
       {failure !== null ? <Alert>{failure}</Alert> : null}
 
-      <Panel id="account-profile" title="Profile" tight>
-        <div className="settings-grid">
-          <div className="field field--readonly">
-            <label htmlFor="account-display-name">
-              Display name
-              <span className="field__readonly-tag">
-                <span aria-hidden="true">🔒 </span>read-only
-              </span>
-            </label>
-            <input
-              id="account-display-name"
-              value={profileDisplayName}
-              readOnly
-              aria-readonly="true"
-            />
-          </div>
-          <div className="field field--readonly">
-            <label htmlFor="account-delivery-email">
-              Email (delivery only)
-              <span className="field__readonly-tag">
-                <span aria-hidden="true">🔒 </span>read-only
-              </span>
-            </label>
-            <input
-              id="account-delivery-email"
-              value={deliveryEmail}
-              readOnly
-              aria-readonly="true"
-            />
-          </div>
-        </div>
-        <p className="settings-note">
-          Neither field is editable here: nothing in the API contract writes a display name or a
-          delivery email, so both are shown as read-only facts about the signed-in principal. Email
-          is where invitations and expiry warnings land; it is never an identity and never links
-          accounts (#16).
-        </p>
-      </Panel>
+      <AccountProfile />
 
       <Panel id="account-factors" title="Sign-in factors">
         {passkeys.isPending ? <p role="status">Loading passkeys…</p> : null}

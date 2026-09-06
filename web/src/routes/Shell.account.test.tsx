@@ -137,15 +137,15 @@ describe('account menu', () => {
     await unmount();
   });
 
-  it('falls back to the principal id when the display name is absent or blank', async () => {
+  it('uses a readable account label when the display name is absent or blank', async () => {
     const blank: WhoAmI = { ...session, principal: { ...session.principal, display_name: '' } };
     const { container, trigger, unmount } = await renderAccountEntry(blank);
     expect(trigger.getAttribute('aria-label')).toBe(
-      'Account: prn_123e4567-e89b-12d3-a456-426614174000',
+      'Account: Your account',
     );
     await act(async () => trigger.click());
     expect(container.querySelector('.menu__label .mono')?.textContent).toBe(
-      'prn_123e4567-e89b-12d3-a456-426614174000',
+      'Your account',
     );
     await unmount();
   });

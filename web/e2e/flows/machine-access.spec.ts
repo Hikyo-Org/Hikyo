@@ -1530,7 +1530,8 @@ test.describe('browser-only lifecycle', () => {
       await page.goto(`/orgs/${org.id}/members`);
       await page.getByRole('button', { name: 'New grant' }).click();
       const reveal = page.getByRole('dialog');
-      await reveal.getByLabel('Principal').fill(account.principal_id);
+      await reveal.getByLabel('Principal').selectOption({ label: accountName });
+      await expect(reveal.getByLabel('Principal')).toHaveValue(account.principal_id);
       await reveal.getByRole('checkbox', { name: 'reveal', exact: true }).check();
       await reveal.getByLabel('Scope').selectOption(`env:${project.id}:${dev}`);
       await reveal.getByRole('button', { name: 'Grant', exact: true }).click();

@@ -151,6 +151,19 @@ describe('Members at instance scope', () => {
     await view.unmount();
   });
 
+  it('renders member names and selects grants using the underlying principal ID', async () => {
+    mocks.instanceGrants.data = { items: [{ ...instanceGrant, principal_name: 'Dana Jacobs' }], count: 1 };
+    const view = await renderInstanceMembers();
+    try {
+      expect(view.container.querySelector('.member-name')?.textContent).toBe('Dana Jacobs');
+      const open = [...view.container.querySelectorAll('button')].find((b) => b.textContent === 'New grant');
+      if (open === undefined) throw new Error('no New grant button');
+      await act(async () => open.click());
+      const option = [...view.container.querySelectorAll('option')].find((o) => o.textContent === 'Dana Jacobs');
+      expect(option?.value).toBe('prn_1');
+    } finally { await view.unmount(); }
+  });
+
   it('renders a second-factor refusal as its own state', async () => {
     mocks.instanceGrants = {
       data: undefined,

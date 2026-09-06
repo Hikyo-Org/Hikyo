@@ -1173,12 +1173,13 @@ func (s *Grants) applyTemplate(
 // Membership is one capability line on the membership surface: a principal,
 // a capability, the scope it was granted at, and the origins holding it.
 type Membership struct {
-	GrantID    string
-	Principal  domain.PrincipalID
-	Capability domain.Capability
-	Scope      domain.Scope
-	Origins    []authz.Origin
-	CreatedAt  time.Time
+	PrincipalName string
+	GrantID       string
+	Principal     domain.PrincipalID
+	Capability    domain.Capability
+	Scope         domain.Scope
+	Origins       []authz.Origin
+	CreatedAt     time.Time
 }
 
 // List returns the membership surface for the addressed scope: every grant
@@ -1220,9 +1221,15 @@ func (s *Grants) List(ctx context.Context, actor Actor, scope domain.Scope) ([]M
 		if err != nil {
 			return err
 		}
+		names := newPrincipalNames(az)
 		for _, line := range lines {
+			name, err := names.get(ctx, line.Principal)
+			if err != nil {
+				return err
+			}
 			out = append(out, Membership{
-				GrantID: line.ID, Principal: line.Principal,
+				PrincipalName: name,
+				GrantID:       line.ID, Principal: line.Principal,
 				Capability: line.Grant.Capability, Scope: line.Grant.Scope,
 				Origins: line.Origins, CreatedAt: line.CreatedAt,
 			})

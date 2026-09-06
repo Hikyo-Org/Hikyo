@@ -35,6 +35,7 @@ vi.mock('../api/history.ts', async (importActual) => {
           revision,
           schema_revision: 1n,
           published_by: 'usr_admin',
+          published_by_name: 'Alex Lee',
           published_at: '2026-08-01T00:00:00Z',
           changed_keys: [],
           payload_present: true,
@@ -303,11 +304,11 @@ describe('HistoryDrawer head', () => {
     expect(container.querySelector('.history__pin .history__warn')).toBeNull();
   });
 
-  it('shortens a raw principal id to twelve characters and keeps the whole one in title', async () => {
+  it('prefers the publisher name and retains the full principal ID in title', async () => {
     expect(shortPrincipal('usr_0192b4c1-7a2e-7f3b-9c11-3f2a1b')).toBe('usr_0192b4c1…');
     expect(shortPrincipal('usr_admin')).toBe('usr_admin');
     const { container } = await renderForm(drawer());
-    expect(container.querySelector('dd > span.mono[title="usr_admin"]')?.textContent).toBe('usr_admin');
+    expect(container.querySelector('dd > span.mono[title="usr_admin"]')?.textContent).toBe('Alex Lee');
   });
 });
 

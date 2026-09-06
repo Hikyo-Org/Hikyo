@@ -12,7 +12,7 @@ import (
 
 const privacyAccount = `-- name: PrivacyAccount :one
 
-SELECT a.id, a.principal_id, a.username, a.display_name, a.created_at, p.privacy_state FROM accounts AS a JOIN principals AS p ON p.id = a.principal_id WHERE a.principal_id = ?1
+SELECT a.id, a.principal_id, a.username, a.display_name, a.email, a.created_at, p.privacy_state FROM accounts AS a JOIN principals AS p ON p.id = a.principal_id WHERE a.principal_id = ?1
 `
 
 type PrivacyAccountRow struct {
@@ -20,6 +20,7 @@ type PrivacyAccountRow struct {
 	PrincipalID  string
 	Username     string
 	DisplayName  string
+	Email        string
 	CreatedAt    string
 	PrivacyState string
 }
@@ -34,6 +35,7 @@ func (q *Queries) PrivacyAccount(ctx context.Context, principalID string) (Priva
 		&i.PrincipalID,
 		&i.Username,
 		&i.DisplayName,
+		&i.Email,
 		&i.CreatedAt,
 		&i.PrivacyState,
 	)
@@ -145,7 +147,7 @@ func (q *Queries) PrivacyCorrectAccount(ctx context.Context, arg PrivacyCorrectA
 }
 
 const privacyEraseAccount = `-- name: PrivacyEraseAccount :exec
-UPDATE accounts SET username = ?1, display_name = '', webauthn_user_handle = NULL WHERE id = ?2
+UPDATE accounts SET username = ?1, display_name = '', email = '', webauthn_user_handle = NULL WHERE id = ?2
 `
 
 type PrivacyEraseAccountParams struct {

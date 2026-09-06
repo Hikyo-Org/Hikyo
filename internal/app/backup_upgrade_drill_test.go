@@ -218,11 +218,11 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 48, while the
+// The runtime-created fixture includes migrations 45 through 49, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
-// audit policy, privacy restriction, or adapter finding refuses removal. The
-// subsequent pinned catalog inspection still proves the exact legacy schema
+// audit policy, privacy restriction, adapter finding, or contact email refuses
+// removal. The subsequent pinned catalog inspection proves the exact legacy schema
 // and migration digest;
 // this test-only surgery adds no runtime downgrade capability.
 func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
@@ -236,10 +236,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+4 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 48 only")
+	if len(current.Entries) != len(legacy.Entries)+5 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 49 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48} {
+	for i, version := range []uint64{45, 46, 47, 48, 49} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -258,6 +258,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM audit_retention_policy",
 		"SELECT COUNT(*) FROM principals WHERE privacy_state <> 'active'",
 		"SELECT COUNT(*) FROM adapter_effects WHERE finding <> ''",
+		"SELECT COUNT(*) FROM accounts WHERE email <> ''",
 	} {
 		var evidence int
 		if db.Engine() == store.EngineSQLite {
@@ -266,10 +267,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard audit policy, privacy, or adapter finding evidence", err)
+			t.Fatal("legacy drill fixture cannot discard audit policy, privacy, adapter finding, or contact email evidence", err)
 		}
 	}
 	for _, query := range []string{
+		"ALTER TABLE accounts DROP COLUMN email",
 		"ALTER TABLE adapter_effects DROP COLUMN finding",
 		"ALTER TABLE principals DROP COLUMN privacy_state",
 		"DROP INDEX audit_tenant_retention_time",
@@ -278,7 +280,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"DROP INDEX audit_instance_retention_unit",
 		"DROP TABLE audit_retention_policy",
 		"DROP TABLE ops_diagnostics",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49)",
 	} {
 		drillExec(t, db, query)
 	}

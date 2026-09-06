@@ -54,6 +54,10 @@ func policyInput(body apigen.ApprovalPolicyInput) service.ApprovalPolicyInput {
 }
 
 func wireApprovalPolicy(p service.ApprovalPolicyView) apigen.ApprovalPolicy {
+	var principalNames *map[string]string
+	if len(p.PrincipalNames) > 0 {
+		principalNames = &p.PrincipalNames
+	}
 	approvers := make([]apigen.ApprovalApprover, 0, len(p.Approvers))
 	for _, a := range p.Approvers {
 		approver := apigen.ApprovalApprover{Kind: apigen.ApprovalApproverKind(a.Kind), SubjectId: a.SubjectID}
@@ -68,7 +72,7 @@ func wireApprovalPolicy(p service.ApprovalPolicyView) apigen.ApprovalPolicy {
 	return apigen.ApprovalPolicy{
 		Id: p.ID, EnvironmentId: p.EnvironmentID, MinApprovals: int32(p.MinApprovals),
 		AllowSelfApproval: p.AllowSelfApproval, RequestTtlSeconds: int32(p.RequestTTLSeconds),
-		Enabled: p.Enabled, Version: p.Version, Approvers: approvers, Bypassers: bypassers,
+		Enabled: p.Enabled, Version: p.Version, PrincipalNames: principalNames, Approvers: approvers, Bypassers: bypassers,
 		CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 	}
 }
@@ -77,12 +81,12 @@ func wireApprovalRequest(r service.ApprovalRequestView) apigen.ApprovalRequest {
 	votes := make([]apigen.ApprovalVote, 0, len(r.Votes))
 	for _, v := range r.Votes {
 		votes = append(votes, apigen.ApprovalVote{
-			PrincipalId: v.PrincipalID, Decision: apigen.ApprovalVoteDecision(v.Decision), CreatedAt: v.CreatedAt,
+			PrincipalId: v.PrincipalID, PrincipalName: optStr(v.PrincipalName), Decision: apigen.ApprovalVoteDecision(v.Decision), CreatedAt: v.CreatedAt,
 		})
 	}
 	out := apigen.ApprovalRequest{
 		Id: r.ID, EnvironmentId: r.EnvironmentID, PolicyId: r.PolicyID, PolicyVersion: r.PolicyVersion,
-		Requester: r.Requester, ChangeCount: int32(r.ChangeCount), BaseRevision: r.BaseRevision,
+		Requester: r.Requester, RequesterName: optStr(r.RequesterName), ChangeCount: int32(r.ChangeCount), BaseRevision: r.BaseRevision,
 		Purpose: r.Purpose, State: apigen.ApprovalRequestState(r.State),
 		InvalidatedCause: apigen.ApprovalRequestInvalidatedCause(r.InvalidatedCause),
 		MinApprovals:     int32(r.MinApprovals), Approvals: int32(r.Approvals), Votes: votes,

@@ -75,3 +75,18 @@ it('renders rows as audit__row buttons with an aria-hidden outcome glyph', async
     await unmount();
   }
 });
+
+
+it('shows the actor name in the row while retaining its ID in event details', async () => {
+  const named = { ...event, actor_id: 'prn_dana', actor_name: 'Dana Jacobs' };
+  const { container, release, unmount } = await renderAudit([named]);
+  try {
+    await act(async () => release());
+    await settleTask();
+    const row = container.querySelector<HTMLButtonElement>('button.audit__row');
+    expect(row?.querySelector('.audit__row-actor')?.textContent).toBe('Dana Jacobs');
+    expect(row?.textContent).not.toContain('prn_dana');
+    await act(async () => row?.click());
+    expect(container.querySelector('#audit-detail')?.textContent).toContain('Principal IDprn_dana');
+  } finally { await unmount(); }
+});

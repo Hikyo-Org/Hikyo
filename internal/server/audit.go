@@ -106,6 +106,7 @@ func wireAuditPage(page service.AuditPage) (apigen.AuditPage, error) {
 		if err != nil {
 			return apigen.AuditPage{}, err
 		}
+		wire.ActorName = optStr(page.ActorNames[e.Actor.ID])
 		items = append(items, wire)
 	}
 	return apigen.AuditPage{

@@ -15,6 +15,7 @@ type Account struct {
 	DisplayName        string
 	CreatedAt          string
 	WebauthnUserHandle []byte
+	Email              string
 }
 
 type Adapter struct {

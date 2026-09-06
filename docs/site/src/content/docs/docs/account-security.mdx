@@ -7,6 +7,23 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 Account-security commands read passwords, TOTP codes, and authorities from the
 controlling terminal. They do not accept those secrets as flags.
 
+## Edit your profile in the web app
+
+Open **Account & security**, then **Profile**. Set your display name, username,
+and optional email address, then select **Save profile**. A username change
+also asks for an authenticator code if enrolled, otherwise your current password.
+
+Use the new username for future password sign-ins. Existing permissions and
+sessions stay attached to the same account. Your display name identifies you
+in the interface; names are labels and do not grant access.
+
+Email is contact metadata. It is not a verified identity, sign-in method,
+account-linking key, or password-recovery channel. Clear the field to remove it.
+For provisioned accounts, change the username and display name through the
+identity provider; the web app keeps the display name read-only and hides the
+internal username. Accounts that sign in only through a provider can still edit
+their contact email without a local password.
+
 ## Enrol TOTP
 
 Start enrolment while logged in:

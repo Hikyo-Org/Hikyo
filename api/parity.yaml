@@ -64,6 +64,8 @@ operations:
   localLogin:                  {webui: login}
   logout:                      {webui: overview}
   whoami:                      {webui: overview}
+  getMyProfile:                {webui: settings}
+  updateMyProfile:             {webui: settings}
   enrolTotpStart:              {webui: settings}
   enrolTotpConfirm:            {webui: settings}
   stepUpTotp:                  {webui: overview}

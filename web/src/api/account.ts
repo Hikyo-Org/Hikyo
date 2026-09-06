@@ -6,6 +6,8 @@ import {
   enrolTotpConfirmOp,
   enrolTotpStartOp,
   getTotpStatusOp,
+  getMyProfileOp,
+  updateMyProfileOp,
   linkIdentityOp,
   listIdentitiesOp,
   listPasskeysOp,
@@ -64,6 +66,22 @@ const passkeysKey = ['passkeys'] as const;
 const identitiesKey = ['identities'] as const;
 const authMethodsKey = ['auth-methods'] as const;
 const totpStatusKey = ['totp-status'] as const;
+const profileKey = ['my-profile'] as const;
+
+export function useMyProfile() {
+  return useQuery({ queryKey: profileKey, queryFn: () => parsed(getMyProfileOp, {}) });
+}
+
+export function useUpdateMyProfile() {
+  const queries = useQueryClient();
+  const after = useAfterAccountMutation();
+  return useSensitiveMutation({
+    mutationFn: (input: { username: string; display_name: string; email: string; proof?: string }) =>
+      parsed(updateMyProfileOp, { body: input }),
+    onSuccess: (profile) => { queries.setQueryData(profileKey, profile); },
+    onSettled: after,
+  });
+}
 
 export function usePasskeys(): UseQueryResult<PasskeyList> {
   return useQuery({
