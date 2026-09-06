@@ -14,11 +14,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"io"
 	"sync"
 	"time"
 
-	"filippo.io/age"
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"github.com/Hikyo-Org/hikyo/internal/definitions"
@@ -31,7 +29,6 @@ const (
 	vaultFormat   = "hikyo.operator-custody/v1"
 	maxCiphertext = 16 << 10
 	maxPlaintext  = 8 << 10
-	workFactor    = 18 // Maintained age default; cap hostile decrypt requests here too.
 )
 
 // Vault holds unlocked material in memory until Close. Callers own and must
@@ -77,7 +74,7 @@ func create(directory string, passphrase, rootKey []byte, instance string, owner
 		return nil, err
 	}
 	defer dir.Close()
-	identity, err := age.GenerateX25519Identity()
+	identity, _, err := backup.GenerateIdentity()
 	if err != nil {
 		return nil, errors.New("generate operator backup identity")
 	}
@@ -90,7 +87,7 @@ func create(directory string, passphrase, rootKey []byte, instance string, owner
 	if err != nil {
 		return nil, errors.New("encode operator signing key")
 	}
-	r := record{Format: vaultFormat, Instance: instance, Identity: []byte(identity.String()), PrivateKey: der, RootKey: bytes.Clone(rootKey)}
+	r := record{Format: vaultFormat, Instance: instance, Identity: []byte(identity), PrivateKey: der, RootKey: bytes.Clone(rootKey)}
 	defer r.clear()
 	vault, err := decodeRecord(r, instance)
 	if err != nil {
@@ -107,13 +104,10 @@ func create(directory string, passphrase, rootKey []byte, instance string, owner
 		return nil, errors.New("encode operator custody")
 	}
 	defer clear(plain)
-	recipient, err := age.NewScryptRecipient(string(passphrase))
-	if err != nil {
-		return nil, errors.New("invalid operator passphrase")
-	}
-	recipient.SetWorkFactor(workFactor)
+	// The passphrase container is the same age scrypt profile the backup
+	// package uses for exports; age's default work factor applies.
 	var ciphertext bytes.Buffer
-	w, err := age.Encrypt(&ciphertext, recipient)
+	w, err := backup.Encrypt(&ciphertext, backup.Options{Passphrase: string(passphrase)})
 	if err != nil {
 		return nil, errors.New("encrypt operator custody")
 	}
@@ -149,20 +143,12 @@ func open(directory string, passphrase []byte, instance string, owner int) (*Vau
 	if err != nil {
 		return nil, err
 	}
-	identity, err := age.NewScryptIdentity(string(passphrase))
-	if err != nil {
-		return nil, errors.New("invalid operator passphrase")
-	}
-	identity.SetMaxWorkFactor(workFactor)
-	reader, err := age.Decrypt(bytes.NewReader(ciphertext), identity)
-	if err != nil {
+	var plaintext boundedBuffer
+	defer clear(plaintext.buf)
+	if err := backup.ExtractTo(&plaintext, bytes.NewReader(ciphertext), backup.Unlock{Passphrase: string(passphrase)}); err != nil {
 		return nil, errors.New("operator custody unlock failed")
 	}
-	plain, err := io.ReadAll(io.LimitReader(reader, maxPlaintext+1))
-	defer clear(plain)
-	if err != nil || len(plain) > maxPlaintext {
-		return nil, errors.New("operator custody unlock failed")
-	}
+	plain := plaintext.buf
 	var r record
 	defer r.clear()
 	if definitions.DecodeStrict(plain, &r) != nil {
@@ -175,7 +161,7 @@ func decodeRecord(r record, instance string) (*Vault, error) {
 	if r.Format != vaultFormat || r.Instance != instance || len(r.RootKey) != 32 || len(r.Identity) > 256 || len(r.PrivateKey) > 1024 {
 		return nil, errors.New("operator custody does not match installation")
 	}
-	identity, err := age.ParseX25519Identity(string(r.Identity))
+	recipient, err := backup.RecipientOf(string(r.Identity))
 	if err != nil {
 		return nil, errors.New("invalid operator backup identity")
 	}
@@ -198,7 +184,7 @@ func decodeRecord(r record, instance string) (*Vault, error) {
 		key.D.SetInt64(0)
 		return nil, errors.New("invalid operator installation pin")
 	}
-	return &Vault{key: key, identity: bytes.Clone(r.Identity), root: bytes.Clone(r.RootKey), public: public, recipient: identity.Recipient().String(), pin: pin}, nil
+	return &Vault{key: key, identity: bytes.Clone(r.Identity), root: bytes.Clone(r.RootKey), public: public, recipient: recipient, pin: pin}, nil
 }
 
 // PublicKey returns a copy of the public attestation key, safe for the runtime.
@@ -257,4 +243,16 @@ func (v *Vault) Close() {
 		v.key.D.SetInt64(0)
 		v.key = nil
 	}
+}
+
+// boundedBuffer refuses plaintext beyond the custody record bound so a
+// hostile container cannot make unlock allocate without limit.
+type boundedBuffer struct{ buf []byte }
+
+func (b *boundedBuffer) Write(p []byte) (int, error) {
+	if len(b.buf)+len(p) > maxPlaintext {
+		return 0, errors.New("operator custody exceeds size bound")
+	}
+	b.buf = append(b.buf, p...)
+	return len(p), nil
 }

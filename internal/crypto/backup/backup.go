@@ -144,6 +144,17 @@ func GenerateIdentity() (identity, recipient string, err error) {
 	return id.String(), id.Recipient().String(), nil
 }
 
+// RecipientOf returns the public recipient of a stored age X25519 identity,
+// so custody code can validate an escrowed identity and publish its recipient
+// without touching age directly.
+func RecipientOf(identity string) (string, error) {
+	id, err := age.ParseX25519Identity(strings.TrimSpace(identity))
+	if err != nil {
+		return "", errors.New("backup: backup identity is not a valid age X25519 identity")
+	}
+	return id.Recipient().String(), nil
+}
+
 // Encrypt opens the container. The caller writes the archive and MUST Close
 // the returned writer: age's final chunk — the thing that distinguishes a
 // complete archive from a prefix — is written by Close and by nothing else.

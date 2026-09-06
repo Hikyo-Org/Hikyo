@@ -7,13 +7,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"filippo.io/age"
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
@@ -64,8 +64,8 @@ func TestEncryptedCustodyRoundTripAndClose(t *testing.T) {
 	if !bytes.Equal(got.RootKey(), v.RootKey()) || !bytes.Equal(got.PublicKey(), v.PublicKey()) || got.Recipient() != v.Recipient() || got.Pin().KeyID() != v.Pin().KeyID() {
 		t.Fatal("reopened custody identity changed")
 	}
-	backupIdentity, err := age.ParseX25519Identity(got.BackupUnlock().Identity)
-	if err != nil || backupIdentity.Recipient().String() != got.Recipient() {
+	recipient, err := backup.RecipientOf(got.BackupUnlock().Identity)
+	if err != nil || recipient != got.Recipient() {
 		t.Fatal("backup unlock differs from recipient")
 	}
 	rootCopy, pubCopy := got.RootKey(), got.PublicKey()
