@@ -55,7 +55,7 @@ describe('MintDialog', () => {
   it('renders display-once plaintext without entering its QueryCache or MutationCache', async () => {
     const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) =>
       Promise.resolve(
-        new Response(JSON.stringify({ value: SENTINEL, clamped: false }), {
+        new Response(JSON.stringify({ value: SENTINEL, clamped: false, expires_at: null }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -90,7 +90,7 @@ describe('MintDialog', () => {
   ])('keeps the display-once value guarded when %s', async (_case, clipboard) => {
     const fetchMock = vi.fn((..._args: Parameters<typeof fetch>) =>
       Promise.resolve(
-        new Response(JSON.stringify({ value: SENTINEL, clamped: false }), {
+        new Response(JSON.stringify({ value: SENTINEL, clamped: false, expires_at: null }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
@@ -111,9 +111,8 @@ describe('MintDialog', () => {
     await act(async () => mintButton.click());
     await settle();
 
-    // The mint result is narrowed to value and clamped, so the panel states the
-    // instance default rather than an instant it does not hold.
-    expect(container.textContent).toContain('Expiry: instance default.');
+    // Explicit null is an indefinite lifetime, not missing expiry metadata.
+    expect(container.textContent).toContain('Expiry: indefinite.');
 
     const copyButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent === 'Copy to clipboard',

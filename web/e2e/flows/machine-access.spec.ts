@@ -686,6 +686,11 @@ test.describe('machine access', () => {
     await expect(mintDialog).toContainText('reaches no plaintext');
     await mintDialog.getByRole('button', { name: 'Mint credential' }).click();
     await expect(mintDialog.locator('.machine__token')).toHaveText(/^hik_1_wl_/);
+    const expiry = mintDialog.locator('time');
+    await expect(expiry).toBeVisible();
+    const expiresAt = await expiry.getAttribute('datetime');
+    expect(expiresAt).not.toBeNull();
+    expect(Date.parse(expiresAt ?? '')).toBeGreaterThan(Date.now());
     await mintDialog.getByRole('checkbox').check();
     await mintDialog.getByRole('button', { name: 'Done' }).click();
     await expect(mintDialog).toBeHidden();
@@ -899,6 +904,92 @@ test.describe('deployment adapters', () => {
     await expect(page.locator('.adapters__done')).toContainText(`E2E_${ADAPTER_KEY}`);
     await expect(panel.locator('.adapters__target')).toHaveCount(0);
   });
+
+  test('keeps the GHES API base URL and requires explicit environment-create consent', async () => {
+    const origin = 'https://ghes-e2e.example/api/v3';
+    await page.getByRole('button', { name: 'Add adapter' }).click();
+    const form = page.getByRole('region', { name: 'New adapter' });
+    await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('github-actions');
+    await form.getByLabel('GitHub API base URL').fill(origin);
+    await form.getByLabel('Credential').fill('e2e-github-provider-token');
+    await form.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(seed.prod);
+    await form.getByLabel('Destination').selectOption('environment');
+    await form.getByRole('textbox', { name: 'Owner', exact: true }).fill('acme');
+    await form.getByRole('textbox', { name: 'Repository', exact: true }).fill('app');
+    await form.getByRole('textbox', { name: 'GitHub environment', exact: true }).fill('production');
+    const consent = form.getByRole('checkbox', { name: /Create the GitHub environment if missing/ });
+    await expect(consent).not.toBeChecked();
+    await expect(form).toContainText('Administration:write');
+    await consent.check();
+    await form.getByRole('checkbox', { name: ADAPTER_KEY, exact: true }).check();
+    await form.getByRole('button', { name: 'Save' }).click();
+    await authoriseAdapterCeremony(page);
+    await expect(page.locator('.adapters__done')).toContainText('Adapter created');
+    const panel = page.getByRole('region', { name: `Adapter ${origin}` });
+    await expect(panel).toBeVisible();
+    await page.reload();
+    await expect(panel).toBeVisible();
+    await expect(panel).not.toContainText('e2e-github-provider-token');
+    await panel.getByRole('button', { name: 'Delete adapter' }).click();
+    const remove = page.getByRole('dialog', { name: /Delete adapter/ });
+    await remove.getByRole('radio', { name: /Retain/ }).check();
+    await remove.getByRole('button', { name: 'Delete adapter' }).click();
+    await expect(panel).toHaveCount(0);
+  });
+
+  for (const finding of ['possible_capture', 'owned_missing']) {
+    test(`surfaces the real journal ${finding} finding after provider conflict`, async () => {
+      const origin = `https://${finding.replace('_', '-')}-e2e.example`;
+      const key = finding === 'possible_capture' ? ADAPTER_KEY : seed.config;
+      const prefix = finding === 'possible_capture' ? 'CAPTURE_' : 'MISSING_';
+      await page.getByRole('button', { name: 'Add adapter' }).click();
+      const form = page.getByRole('region', { name: 'New adapter' });
+      await form.getByRole('combobox', { name: 'Provider', exact: true }).selectOption('github-actions');
+      await form.getByLabel('GitHub API base URL').fill(origin);
+      await form.getByLabel('Credential').fill(`e2e-${finding.replace('_', '-')}`);
+      await form.getByRole('combobox', { name: 'Environment', exact: true }).selectOption(seed.prod);
+      await form.getByRole('textbox', { name: 'Owner', exact: true }).fill('acme');
+      await form.getByRole('textbox', { name: 'Repository', exact: true }).fill(finding);
+      await form.getByLabel('Name prefix').fill(prefix);
+      await form.getByRole('checkbox', { name: key, exact: true }).check();
+      await form.getByRole('button', { name: 'Save' }).click();
+      await authoriseAdapterCeremony(page);
+      const panel = page.getByRole('region', { name: `Adapter ${origin}` });
+      await expect(panel).toBeVisible();
+      try {
+        await panel.locator('.adapters__target').first().click();
+        const detail = page.getByRole('complementary', { name: 'Target detail' });
+        await detail.getByRole('button', { name: 'Resync' }).click();
+        await authoriseAdapterCeremony(page);
+        if (finding === 'owned_missing') {
+          // First convergence acquires ownership. Only the next provider
+          // update simulates a lost owned variable and conflicting recreation.
+          await expect(detail.locator('.adapters__health')).toHaveText(/Healthy/, { timeout: 20_000 });
+          await detail.getByRole('button', { name: 'Resync' }).click();
+          await authoriseAdapterCeremony(page);
+        }
+        const findings = detail.getByRole('list', { name: 'Sync findings' });
+        await expect(findings).toContainText(finding, { timeout: 20_000 });
+        await expect(findings).toContainText(`${prefix}${key}`);
+        await expect(findings).toContainText(finding === 'possible_capture'
+          ? 'Explicit adoption is required.'
+          : 'Ownership is retained for recreation.');
+        // Reload reads the durable completed effect through the API again.
+        await page.reload();
+        await panel.locator('.adapters__target').first().click();
+        await expect(page.getByRole('list', { name: 'Sync findings' })).toContainText(finding);
+      } finally {
+        // Retain is the explicit safe cleanup for conflicted ownership. Each
+        // case owns a unique adapter, so later count assertions stay isolated.
+        await page.goto(ADAPTERS_PATH);
+        await panel.getByRole('button', { name: 'Delete adapter' }).click();
+        const remove = page.getByRole('dialog', { name: /Delete adapter/ });
+        await remove.getByRole('radio', { name: /Retain/ }).check();
+        await remove.getByRole('button', { name: 'Delete adapter' }).click();
+        await expect(panel).toHaveCount(0);
+      }
+    });
+  }
 
   for (const scheme of COLOR_SCHEMES) {
     for (const surface of surfacesForFlow('adapters')) {

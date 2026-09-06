@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -51,7 +52,9 @@ func (p *devFakeProvider) store(origin string, destination adapter.Destination) 
 
 // factory yields one module per lease. The credential is accepted when it is
 // non-empty and not the literal "revoked", which lets a flow exercise the
-// auth-refusal path deterministically.
+// auth-refusal path deterministically. The e2e-possible-capture and
+// e2e-owned-missing credentials simulate provider races through the real
+// journal protocol below; they carry no authority outside this --dev fake.
 func (p *devFakeProvider) factory(_ adapter.Provider, config adapter.Config, credential string) (*adapter.ModuleLease, error) {
 	if credential == "" {
 		return nil, adapter.ErrProviderAuth
@@ -111,10 +114,12 @@ func (m *devFakeModule) Plan(ctx context.Context, request adapter.PlanRequest) (
 		return adapter.Plan{}, err
 	}
 	store := m.provider.store(m.origin, request.Target.Destination)
+	m.provider.mu.Lock()
 	names := make([]string, 0, len(store.secrets))
 	for name := range store.secrets {
 		names = append(names, name)
 	}
+	m.provider.mu.Unlock()
 	desired := adapter.DesiredRows(request.Target.NamePrefix, request.Manifest, true)
 	return adapter.Plan{Changes: adapter.PlanChanges(desired, ledger, adapter.NameSet(names))}, nil
 }
@@ -178,6 +183,34 @@ func (m *devFakeModule) Sync(ctx context.Context, request adapter.SyncRequest, j
 		if err := journal.Prepare(ctx, effect, state); err != nil {
 			return result, err
 		}
+		// A missing owned variable followed by a conflicting recreation mirrors
+		// GitHub's PATCH 404 then POST 409 path: ownership stays, the missing
+		// bit stays, and each attempted provider write has its own outcome.
+		if m.credential == "e2e-owned-missing" && row.KeyID != "" && row.Surface == adapter.Variable && claimed && (state == adapter.Owned || state == adapter.Dispatched) {
+			if !record.Missing {
+				m.provider.mu.Lock()
+				delete(store.variables, strings.ToUpper(row.EffectiveName))
+				m.provider.mu.Unlock()
+				if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: adapter.Owned, Missing: true, ProviderStatus: http.StatusNotFound, Finding: "owned_missing"}); err != nil {
+					return result, err
+				}
+				effect.Disposition = adapter.Create
+				if err := journal.Gate(ctx, effect); err != nil {
+					return result, err
+				}
+				if err := journal.Prepare(ctx, effect, adapter.Owned); err != nil {
+					return result, err
+				}
+			}
+			m.provider.mu.Lock()
+			store.variables[strings.ToUpper(row.EffectiveName)] = "external-recreation"
+			m.provider.mu.Unlock()
+			if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeFailure, State: adapter.Owned, Missing: true, Conflict: true, ProviderStatus: http.StatusConflict, Finding: "owned_missing"}); err != nil {
+				return result, err
+			}
+			result.Conflicts = append(result.Conflicts, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Conflict})
+			return result, fmt.Errorf("%w: owned_missing variable %s", adapter.ErrConflict, row.EffectiveName)
+		}
 		m.provider.mu.Lock()
 		if row.Surface == adapter.Variable {
 			store.variables[strings.ToUpper(row.EffectiveName)] = row.Value
@@ -185,6 +218,15 @@ func (m *devFakeModule) Sync(ctx context.Context, request adapter.SyncRequest, j
 			store.secrets[strings.ToUpper(row.EffectiveName)] = row.Value
 		}
 		m.provider.mu.Unlock()
+		// A first secret PUT unexpectedly updated a name created concurrently
+		// by another actor. The write landed, but ownership is not acquired.
+		if m.credential == "e2e-possible-capture" && row.KeyID != "" && row.Surface == adapter.Secret && !claimed {
+			if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, ReleaseLedger: true, Conflict: true, ProviderStatus: http.StatusNoContent, Finding: "possible_capture"}); err != nil {
+				return result, err
+			}
+			result.Conflicts = append(result.Conflicts, adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Conflict})
+			return result, fmt.Errorf("%w: possible_capture secret %s", adapter.ErrConflict, row.EffectiveName)
+		}
 		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Owned}); err != nil {
 			return result, err
 		}

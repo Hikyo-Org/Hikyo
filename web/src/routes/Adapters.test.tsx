@@ -113,6 +113,7 @@ it('lists each failed name on its own line and every warning separately', async 
       selected_repository_ids: [], name_prefix: '', generation: 1, state: 'active', sync_status: 'degraded',
       converged_revision: null, last_attempted_revision: null, last_attempted_at: null,
       last_error_class: '', retry_at: null, paused_at: null, drift_attention: false,
+      findings: [{ surface: 'secret', effective_name: 'TOKEN', finding: 'possible_capture' }, { surface: 'variable', effective_name: 'MODE', finding: 'owned_missing' }],
       failure_names: ['DB_URL', 'API_KEY'], warnings: ['rate limited', 'name truncated'],
       keys: [], conflicts: [],
     };
@@ -141,11 +142,32 @@ it('lists each failed name on its own line and every warning separately', async 
     // Two settles: the adapter list lands first, the target detail second.
     await settleTask();
     await settleTask();
-    const failures = [...container.querySelectorAll('.adapters__failures li')].map((li) => li.textContent?.trim());
+    const failures = [...container.querySelectorAll('[aria-label="Failed names"] li')].map((li) => li.textContent?.trim());
     expect(failures).toEqual(['! DB_URL: failed', '! API_KEY: failed']);
     const warnings = [...container.querySelectorAll('.adapters__warnings li')].map((li) => li.textContent);
     expect(warnings).toEqual(['rate limited', 'name truncated']);
+    expect(container.querySelector('[aria-label="Sync findings"]')?.textContent).toContain('possible_capture');
+    expect(container.querySelector('[aria-label="Sync findings"]')?.textContent).toContain('owned_missing');
   } finally {
     await unmount();
   }
+});
+
+it('requires an explicit environment auto-create checkbox before sending consent', async () => {
+  const submitted: AdapterTargetInput[] = [];
+  const { container, unmount } = await renderForm(<TargetForm title="Add target" environments={[{ id: 'env_1', name: 'prod' }]} keys={[]} busy={false} onCancel={() => undefined} onSubmit={(input) => { submitted.push(input); return Promise.resolve(); }} />);
+  try {
+    const kind = [...container.querySelectorAll('label')].find((label) => label.textContent?.startsWith('Destination kind'))?.querySelector('select');
+    if (!(kind instanceof HTMLSelectElement)) throw new Error('kind missing');
+    await act(async () => selectValue(kind, 'environment'));
+    expect(container.textContent).toContain('Administration:write');
+    const form = container.querySelector('form');
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[0]?.allow_environment_create).toBe(false);
+    const consent = container.querySelector('input[type="checkbox"]');
+    if (!(consent instanceof HTMLInputElement)) throw new Error('consent missing');
+    await act(async () => consent.click());
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[1]?.allow_environment_create).toBe(true);
+  } finally { await unmount(); }
 });

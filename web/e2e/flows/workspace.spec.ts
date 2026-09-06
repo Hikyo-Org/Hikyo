@@ -108,6 +108,11 @@ test.describe('multi-instance', () => {
     await page.goto('/remotes');
     const panel = page.getByRole('region', { name: 'This instance', exact: true });
     await expect(panel.getByText('Identity', { exact: true })).toBeVisible();
+    const identity = await panel.locator('dd').first().textContent();
+    expect(identity).not.toBeNull();
+    const add = page.getByRole('region', { name: 'Add a remote' });
+    await expect(add).toContainText(`This instance: ${identity ?? ''}`);
+    await expect(add).toContainText('The server refuses this identity even through another URL.');
     await expect(panel.locator('dd').first()).not.toBeEmpty();
     await expect(panel.getByText('Version', { exact: true })).toBeVisible();
     await expect(panel.getByText('Organisations', { exact: true })).toBeVisible();

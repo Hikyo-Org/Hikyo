@@ -316,6 +316,18 @@ func testTarget() adapter.Target {
 	return adapter.Target{ID: "target_1", Generation: 1, Destination: adapter.Destination{Kind: adapter.Repository, Owner: "team", Name: "repo", NumericID: 42}}
 }
 
+func TestConnectionDoesNotCreateMissingEnvironmentWithoutConsent(t *testing.T) {
+	api := &fakeAPI{resolveErrors: []error{&ResponseError{Status: http.StatusNotFound}}}
+	module := &Module{API: api, Seal: fakeSeal}
+	_, err := module.TestConnection(t.Context(), adapter.ConnectionRequest{
+		Destination: adapter.Destination{Kind: adapter.Environment, Owner: "team", Name: "repo", Environment: "prod"},
+		Access:      adapter.Access{Credential: "github_pat_fine"}, Gate: allow,
+	})
+	if err == nil || api.createEnvironmentCalls != 0 {
+		t.Fatalf("without consent: err=%v create calls=%d", err, api.createEnvironmentCalls)
+	}
+}
+
 func TestConnectionAutoCreatesMissingEnvironmentThenPinsBothIdentities(t *testing.T) {
 	api := &fakeAPI{id: 73, repositoryID: 42, resolveErrors: []error{&ResponseError{Status: http.StatusNotFound}, nil}}
 	module := &Module{API: api, Seal: fakeSeal}

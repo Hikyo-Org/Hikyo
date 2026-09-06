@@ -533,6 +533,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 		// The settings knob calls LowerEffectiveWindow, which is the Auth
 		// service's library — one Auth, so the window the knob writes and the
 		// window the reveal guard reads cannot come from two configurations.
+		Discovery:       &service.Discovery{DB: db},
 		Settings:        &service.ProjectSettings{DB: db, Auth: authSvc},
 		Retention:       retentionSvc,
 		RetentionHealth: retentionSvc,

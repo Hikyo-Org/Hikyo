@@ -399,3 +399,6 @@ operations:
   renewLease:                  {webui: machine-access}
   revokeLease:                 {webui: machine-access}
   settleLease:                 {webui: machine-access}
+
+  diffRevisions: {webui: history}
+  revealRevisionDiff: {webui: history}

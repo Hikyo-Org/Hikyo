@@ -466,10 +466,12 @@ func (s *Orgs) Delete(ctx context.Context, actor Actor, org domain.OrgID) error 
 
 // Project is the service layer's project.
 type Project struct {
-	ID        string
-	OrgID     string
-	Name      string
-	CreatedAt time.Time
+	CanManagePolicy *bool
+	CanDelete       *bool
+	ID              string
+	OrgID           string
+	Name            string
+	CreatedAt       time.Time
 }
 
 func projectOf(p store.Project) Project {
@@ -520,19 +522,29 @@ func (s *Projects) Create(ctx context.Context, actor Actor, org domain.OrgID, na
 }
 
 func (s *Projects) Get(ctx context.Context, actor Actor, scope domain.Scope) (Project, error) {
-	var out store.Project
+	var out Project
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		_, p, err := authorize(ctx, az, actor, authz.OpProjectGet, scope, time.Now().UTC())
+		caller, p, err := authorize(ctx, az, actor, authz.OpProjectGet, scope, time.Now().UTC())
 		if err != nil {
 			return err
 		}
-		out, err = r.Projects().Get(ctx, p)
-		return err
+		row, err := r.Projects().Get(ctx, p)
+		if err != nil {
+			return err
+		}
+		canPolicy, err := az.CallerHolds(ctx, caller, authz.OpDefinitionsSettingsSet, scope)
+		if err != nil {
+			return err
+		}
+		canDelete, err := az.CallerHolds(ctx, caller, authz.OpProjectDelete, scope)
+		if err != nil {
+			return err
+		}
+		out = projectOf(row)
+		out.CanManagePolicy, out.CanDelete = &canPolicy, &canDelete
+		return nil
 	})
-	if err != nil {
-		return Project{}, err
-	}
-	return projectOf(out), nil
+	return out, err
 }
 
 func (s *Projects) List(ctx context.Context, actor Actor, org domain.OrgID) ([]Project, error) {

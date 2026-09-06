@@ -874,7 +874,11 @@ function CreateAdapterPanel({
           <select
             value={provider}
             onChange={(event) =>
-              setProvider(event.target.value === 'github-actions' ? 'github-actions' : 'forgejo')
+              {
+              const next = event.target.value === 'github-actions' ? 'github-actions' : 'forgejo';
+              setProvider(next);
+              setOrigin(next === 'github-actions' ? 'https://api.github.com' : '');
+            }
             }
           >
             <option value="forgejo">Forgejo</option>
@@ -882,14 +886,15 @@ function CreateAdapterPanel({
           </select>
         </label>
         <label className="field">
-          <span className="field__label">Origin</span>
+          <span className="field__label">{provider === 'github-actions' ? 'GitHub API base URL' : 'Origin'}</span>
           <input
             value={origin}
             onChange={(event) => setOrigin(event.target.value)}
-            placeholder="https://git.example.com"
+            placeholder={provider === 'github-actions' ? 'https://HOST/api/v3' : 'https://git.example.com'}
             autoComplete="off"
           />
         </label>
+        {provider === 'github-actions' ? <p className="field__hint">GitHub Enterprise Server: use https://HOST/api/v3. GHES support is best-effort; CI verifies github.com only.</p> : null}
         <label className="field">
           <span className="field__label">Credential</span>
           <input
@@ -983,6 +988,7 @@ export function TargetForm({
   );
   const [owner, setOwner] = useState(initial?.destination_owner ?? '');
   const [name, setName] = useState(initial?.destination_name ?? '');
+  const [allowEnvironmentCreate, setAllowEnvironmentCreate] = useState(false);
   const [destinationEnvironment, setDestinationEnvironment] = useState(
     initial?.destination_environment ?? '',
   );
@@ -1034,6 +1040,7 @@ export function TargetForm({
       destination_owner: owner,
       destination_name: kind === 'organization' ? '' : name,
       destination_environment: kind === 'environment' ? destinationEnvironment : '',
+      allow_environment_create: kind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
       visibility: kind === 'organization' ? visibility : '',
       selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
       name_prefix: normalisePrefix(prefix),
@@ -1143,6 +1150,12 @@ export function TargetForm({
               disabled={lockRouting === true}
               onChange={(event) => setDestinationEnvironment(event.target.value)}
             />
+          </label>
+        ) : null}
+        {kind === 'environment' && lockRouting !== true ? (
+          <label className="field">
+            <span><input type="checkbox" checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} /> Create the GitHub environment if missing</span>
+            <span className="field__hint">Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</span>
           </label>
         ) : null}
         <label className="field">
@@ -1314,6 +1327,16 @@ function TargetDetail({
             <dt>Generation</dt>
             <dd>{String(target.generation)}</dd>
           </dl>
+          {(target.findings ?? []).length > 0 ? (
+            <ul className="adapters__failures" aria-label="Sync findings">
+              {(target.findings ?? []).map((finding) => (
+                <li key={`${finding.surface}:${finding.effective_name}`}>
+                  <span className="mono">{finding.surface}:{finding.effective_name}</span>: <strong>{finding.finding}</strong>
+                  {' '}{finding.finding === 'possible_capture' ? 'A first write may have replaced an existing value. Explicit adoption is required.' : finding.finding === 'owned_missing' ? 'The owned name is missing at the provider. Ownership is retained for recreation.' : 'A provider write was interrupted before its outcome was confirmed.'}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {target.failure_names.length > 0 ? (
             <div role="alert">
               <ul className="adapters__failures" aria-label="Failed names">

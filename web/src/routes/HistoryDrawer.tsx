@@ -67,6 +67,7 @@ import {
 } from './history-state.ts';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
 import { useModalDialog } from './useModalDialog.ts';
+import { RevisionDiffDialog } from './RevisionDiff.tsx';
 
 type Environment = EnvironmentList['items'][number];
 type MatrixKey = MatrixKeyList['items'][number];
@@ -110,10 +111,6 @@ const zPinComparisonValues = zExportedValues.superRefine((values, context) => {
  *    matrix's own draft dots appear and the ordinary publish sheet commits
  *    them, carrying the preview token that binds them.
  *
- * **Deferred, by name: the revision-to-revision diff modal.** The prototype
- * offers "diff vs previous" / "diff vs current"; no API computes a rev↔rev diff
- * (`diffValues` compares two ENVIRONMENTS), and neither C5 nor S3 names one. The
- * restore impact preview is this surface's "what would change" view.
  */
 export function HistoryDrawer({
   refData,
@@ -674,6 +671,7 @@ export function HistoryDrawer({
               </button>
               {selected === undefined || selectedGate === null ? null : (
                 <RevisionDetail
+                  environmentName={environment.name}
                   env={env}
                   revision={selected}
                   revisions={revisions}
@@ -909,6 +907,7 @@ function sheetRevisionKeys(sheet: Sheet | null): readonly HistorySnapshotKey[] {
  * is lineage and survives collection either way.
  */
 function RevisionDetail({
+  environmentName,
   env,
   revision,
   revisions,
@@ -926,6 +925,7 @@ function RevisionDetail({
   onRelease,
 }: {
   env: EnvRef;
+  environmentName: string;
   revision: HistoryRevision;
   revisions: readonly HistoryRevision[];
   headingRef: RefObject<HTMLHeadingElement | null>;
@@ -941,6 +941,8 @@ function RevisionDetail({
   onPin: (revisionKeys: readonly HistorySnapshotKey[]) => void;
   onRelease: (pin: HistoryPin) => void;
 }) {
+  const [diffTarget, setDiffTarget] = useState<bigint | null>(null);
+  const previous = revisions.find((item) => item.revision < revision.revision);
   const detail = useRevisionDetail(env, revision.revision, revision.payloadPresent);
   const revisionKeys: readonly HistorySnapshotKey[] = (detail.data?.keys ?? []).map((key) => ({
     keyId: key.key_id,
@@ -961,19 +963,9 @@ function RevisionDetail({
       <dl className="history__meta">
         <div>
           <dt>Published by</dt>
-          {/*
-            Principal IDS, not names. The revision list carries `published_by`
-            as an id only, and nothing in this API resolves a HUMAN principal
-            id to a display name (there is no member-listing operation, and
-            inventing one is a permission decision this ticket does not own),
-            so the row shows a shortened id and carries the whole one in
-            `title`. A display name needs the API to carry it. Workloads DO
-            resolve, through the project's service accounts, which is why the
-            pin rows below name them.
-          */}
           <dd>
             <span className="mono" title={revision.publishedBy}>
-              {shortPrincipal(revision.publishedBy)}
+              {revision.publishedByName ?? shortPrincipal(revision.publishedBy)}
             </span>
           </dd>
         </div>
@@ -1062,6 +1054,12 @@ function RevisionDetail({
           {`Pin r${String(revision.revision)}…`}
         </button>
       </div>
+
+      <div className="history__actions">
+        <button className="btn" type="button" disabled={!revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}>Diff vs previous</button>
+        <button className="btn" type="button" disabled={!revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}>Diff vs current</button>
+      </div>
+      {diffTarget !== null ? <RevisionDiffDialog key={`${env.environment}:${String(revision.revision)}:${String(diffTarget)}`} env={env} environmentName={environmentName} left={diffTarget < revision.revision ? diffTarget : revision.revision} right={diffTarget < revision.revision ? revision.revision : diffTarget} onClose={() => setDiffTarget(null)} /> : null}
 
       <h4>{`Pins (${String(pins.length)})`}</h4>
       <p className="history__pin-note">
@@ -1617,6 +1615,7 @@ function toHistoryRevision(item: HistoryRevisionItem): HistoryRevision {
     revision: item.revision,
     schemaRevision: item.schema_revision,
     publishedBy: item.published_by,
+    ...(item.published_by_name === undefined ? {} : { publishedByName: item.published_by_name }),
     publishedAt: item.published_at,
     changedKeys: item.changed_keys.map((changed) => ({
       keyId: changed.key_id,

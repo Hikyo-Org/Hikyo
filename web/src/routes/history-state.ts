@@ -26,6 +26,7 @@ type HistoryRevisionBase = {
   readonly revision: bigint;
   readonly schemaRevision: bigint;
   readonly publishedBy: string;
+  readonly publishedByName?: string;
   readonly publishedAt: string;
   readonly changedKeys: readonly HistoryChangedKey[];
 };

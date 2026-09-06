@@ -42,7 +42,7 @@ These behaviors are locked by the schema ADR; visual treatment follows DESIGN.md
 - **Near-miss warning** on key creation (small edit distance to an existing key), non-blocking.
 - **Visible trim** on save: when Unicode TrimSpace altered the value, say so; whitespace-significant values are refused knowingly, not silently trimmed into validity.
 - **Owner-only invalid-draft marker**: advisory validation verdicts on secret drafts render only to the draft's owner (the predicate channel is a disclosure).
-- **Deprecation warning** on keys pending deletion with live occurrences; **shared-secret-default** and **post-tightening-history** advisories ("tightening cannot un-disclose; rotate") at the moments the schema ADR names.
+- **Deprecation warning** on keys pending deletion with live occurrences; **post-tightening-history** advisory ("tightening cannot un-disclose; rotate") at the moment the schema ADR names. The former shared-secret-default advisory is superseded by [flat-model.md § Ripple register](../adr/flat-model.md#ripple-register-normative): project defaults and schema defaults do not exist.
 
 ## Interaction invariants (restated)
 

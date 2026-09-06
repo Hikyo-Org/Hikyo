@@ -614,7 +614,7 @@ export function prototypeReadFixture(
     const project = projectId === undefined
       ? undefined
       : prototypeExtraProjects.find((candidate) => candidate.id === projectId);
-    if (project !== undefined) return { status: 200, body: project };
+    if (project !== undefined) return { status: 200, body: { ...project, can_manage_policy: true, can_delete: true } };
   }
 
   const projectRead = new RegExp(
@@ -634,6 +634,8 @@ export function prototypeReadFixture(
         org_id: ids.org,
         name,
         created_at: fixtureTime,
+        can_manage_policy: true,
+        can_delete: true,
       },
     };
   }
@@ -659,6 +661,7 @@ export function prototypeReadFixture(
 }
 
 export const prototypeMeta = {
+  instance_identity: "ins_11111111-1111-4111-8111-111111111111",
   server_version: '0.9.5',
   api_revision: 1,
   protocol_capabilities: [],

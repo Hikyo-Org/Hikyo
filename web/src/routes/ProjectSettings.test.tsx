@@ -18,6 +18,29 @@ afterEach(() => {
 });
 
 describe('ProjectSettings', () => {
+  it('hides policy and danger controls when the project grants neither capability', async () => {
+    vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+      const request = input instanceof Request ? input : new Request(input);
+      const path = new URL(request.url).pathname;
+      if (path === '/api/v1/auth/whoami') return Promise.resolve(Response.json(authenticatedIdentity));
+      if (path === '/api/v1/orgs/org_1/projects/project_1') return Promise.resolve(Response.json({
+        id: 'prj_123e4567-e89b-12d3-a456-426614174000',
+        org_id: 'org_123e4567-e89b-12d3-a456-426614174001',
+        name: 'Payments', created_at: '2026-01-01T00:00:00Z',
+        can_manage_policy: false, can_delete: false,
+      }));
+      return Promise.resolve(Response.json(settingsResponse(request.method, path, 'db')));
+    }));
+    const { container, unmount } = await renderForm(<AuthProvider><MemoryRouter initialEntries={['/orgs/org_1/projects/project_1/settings']}><Routes><Route path="/orgs/:org/projects/:project/settings" element={<ProjectSettings />} /></Routes></MemoryRouter></AuthProvider>);
+    await settleTask();
+    expect(container.textContent).toContain('Payments');
+    expect(container.querySelector('#project-policy')).toBeNull();
+    expect(container.querySelector('#project-danger')).toBeNull();
+    expect(container.querySelector('a[href="#project-policy"]')).toBeNull();
+    expect(container.querySelector('a[href="#project-danger"]')).toBeNull();
+    await unmount();
+  });
+
   it('navigates to the project list after deleting the current project', async () => {
     const fetchMock = vi.fn((...args: Parameters<typeof fetch>) => {
       const input = args[0];
@@ -338,6 +361,8 @@ function settingsResponse(
       id: 'prj_123e4567-e89b-12d3-a456-426614174000',
       org_id: 'org_123e4567-e89b-12d3-a456-426614174001',
       name: 'Payments',
+      can_manage_policy: true,
+      can_delete: true,
       created_at: '2026-01-01T00:00:00Z',
     };
   }

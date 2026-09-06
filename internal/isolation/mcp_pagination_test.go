@@ -194,7 +194,13 @@ func TestMCPPendingSecretDraftCarriesNoMaterial(t *testing.T) {
 		values := valueSvc(t, db)
 		revisions := &service.Revisions{DB: db, Keyring: probeKeyring(t, db)}
 		scope := scopeEnv(orgA, prjA1, envA1)
-		mustCreateKey(t, keys, scopeProject(orgA, prjA1), "PENDING_SECRET", schema.Secret)
+		key, err := keys.Create(t.Context(), service.LocalPrincipal(custodian), scopeProject(orgA, prjA1), service.KeySpec{
+			Name: "PENDING_SECRET", Classification: string(schema.Secret),
+			Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeInteger}}, Presence: schema.DefaultPresenceRules(),
+		}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if _, err := values.Set(t.Context(), service.LocalPrincipal(custodian), scope, "PENDING_SECRET", secretDraft, nil); err != nil {
 			t.Fatalf("stage secret draft: %v", err)
 		}
@@ -208,13 +214,39 @@ func TestMCPPendingSecretDraftCarriesNoMaterial(t *testing.T) {
 				continue
 			}
 			found = true
-			if d.Value != "" || d.Revealed || d.Classification != string(schema.Secret) {
+			if d.Value != "" || d.Revealed || d.Classification != string(schema.Secret) || d.OwnerID != string(custodian) || d.Valid {
 				t.Fatalf("secret draft carried material: %+v", d)
 			}
 		}
 		if !found {
 			t.Fatal("secret draft absent from the page")
 		}
+		// The advisory is evaluated against today's declaration, not captured
+		// when the draft was written. Relax it without replacing the draft.
+		if _, err := keys.UpdateDeclaration(t.Context(), service.LocalPrincipal(custodian), scopeProject(orgA, prjA1), key.ID, service.KeyDeclarationUpdate{
+			Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeString}}, Presence: schema.DefaultPresenceRules(),
+		}, nil); err != nil {
+			t.Fatal(err)
+		}
+		updated, err := revisions.PendingDraftsPage(t.Context(), service.LocalPrincipal(custodian), scope, "", 25)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, draft := range updated {
+			if draft.KeyID == key.ID && (!draft.Valid || draft.Value != "" || draft.Revealed || draft.OwnerID != string(custodian)) {
+				t.Fatalf("current-schema owner advisory = %+v", draft)
+			}
+		}
+		other, err := revisions.PendingDraftsPage(t.Context(), service.LocalPrincipal(alice), scope, "", 25)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, draft := range other {
+			if draft.KeyID == key.ID {
+				t.Fatalf("another caller learned draft advisory: %+v", draft)
+			}
+		}
+
 	})
 }
 
@@ -263,7 +295,7 @@ func TestMCPRevisionsPageMatchesList(t *testing.T) {
 			t.Fatalf("revisions: paged %d, full %d", len(paged), len(full))
 		}
 		for i := range full {
-			if paged[i].Revision != full[i].Revision || paged[i].SchemaRevision != full[i].SchemaRevision {
+			if paged[i].Revision != full[i].Revision || paged[i].SchemaRevision != full[i].SchemaRevision || paged[i].PublishedByName != full[i].PublishedByName {
 				t.Fatalf("revision %d: paged %+v, full %+v", i, paged[i], full[i])
 			}
 			if i > 0 && paged[i-1].Revision <= paged[i].Revision {

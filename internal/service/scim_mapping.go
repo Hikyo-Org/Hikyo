@@ -45,7 +45,17 @@ type SCIMMappingView struct {
 	// Capabilities is what this row expands into — the ADR's "expansion at sync
 	// time is expansion at grant time", made visible so a reader does not have
 	// to know the template table by heart.
-	Capabilities []string
+	Capabilities      []string
+	CapabilityOrigins []SCIMCapabilityOrigin
+}
+
+// SCIMCapabilityOrigin identifies the mapping source of an expanded capability.
+// This is mapping intent, not a claim that any principal currently holds it.
+type SCIMCapabilityOrigin struct {
+	Capability string
+	BindingID  string
+	MappingID  string
+	GroupID    string
 }
 
 // SCIMBlastWarning is server-authored consequence language for a mapping row
@@ -457,6 +467,9 @@ func mappingView(row store.SCIMMapping, caps []domain.Capability) SCIMMappingVie
 	}
 	for _, c := range caps {
 		out.Capabilities = append(out.Capabilities, string(c))
+		if !row.Inert {
+			out.CapabilityOrigins = append(out.CapabilityOrigins, SCIMCapabilityOrigin{Capability: string(c), BindingID: row.BindingID, MappingID: row.ID, GroupID: row.GroupID})
+		}
 	}
 	return out
 }

@@ -24,6 +24,10 @@ export type AdapterVisibility = 'all' | 'private' | 'selected';
 export type AdapterProvider = string;
 
 export type AdapterTargetInput = {
+    /**
+     * Explicit consent to create missing GitHub environments using Administration:write.
+     */
+    allow_environment_create?: boolean;
     environment_id: Id;
     destination_kind: AdapterDestinationKind;
     destination_owner: string;
@@ -128,6 +132,7 @@ export type ResumeAdapterTargetMoveRequest = {
 };
 
 export type AdapterTarget = {
+    findings?: Array<AdapterFinding>;
     id: Id;
     adapter_id: Id;
     environment_id: Id;
@@ -515,6 +520,10 @@ export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_f
  *
  */
 export type Meta = {
+    /**
+     * Stable server-generated instance identity, independent of URL aliases.
+     */
+    instance_identity?: string;
     /**
      * The build's version string; `dev` for unreleased builds.
      */
@@ -1020,6 +1029,14 @@ export type CreateProjectRequest = {
 };
 
 export type Project = {
+    /**
+     * Whether the caller can manage policy for this project.
+     */
+    can_manage_policy?: boolean;
+    /**
+     * Whether the caller can delete this project.
+     */
+    can_delete?: boolean;
     id: Id;
     org_id: Id;
     name: string;
@@ -1107,6 +1124,10 @@ export type PendingChange = {
  *
  */
 export type PendingDraft = {
+    advisory?: {
+        owner_id: Id;
+        valid: boolean;
+    };
     version_id: Id;
     key_id: Id;
     name: KeyName;
@@ -1403,6 +1424,33 @@ export type ChangedKey = {
     change: 'added' | 'edited' | 'removed';
 };
 
+export type RevisionDiffRequest = {
+    left_revision: number;
+    right_revision: number;
+};
+
+export type RevealRevisionDiffRequest = {
+    left_revision: number;
+    right_revision: number;
+    key_id: Id;
+};
+
+export type RevisionDiff = {
+    left_revision: number;
+    right_revision: number;
+    items: Array<RevisionDiffRow>;
+};
+
+export type RevisionDiffRow = {
+    key_id: Id;
+    name: string;
+    classification: KeyClassification;
+    status: 'added' | 'removed' | 'edited' | 'not_edited' | 'changed' | 'unchanged';
+    revealed: boolean;
+    before?: string;
+    after?: string;
+};
+
 export type RevisionList = {
     items: Array<Revision>;
     count: number;
@@ -1412,6 +1460,10 @@ export type Revision = {
     revision: number;
     schema_revision: number;
     published_by: Id;
+    /**
+     * Current display name of the publisher, absent if the principal no longer exists.
+     */
+    published_by_name?: string;
     published_at: string;
     changed_keys: Array<ChangedKey>;
     /**
@@ -1435,6 +1487,10 @@ export type RevisionDetail = {
     revision: number;
     schema_revision: number;
     published_by: Id;
+    /**
+     * Current display name of the publisher, absent if the principal no longer exists.
+     */
+    published_by_name?: string;
     published_at: string;
     changed_keys: Array<ChangedKey>;
     change_token: string;
@@ -2213,6 +2269,10 @@ export type MintCredentialResult = {
      */
     value: string;
     credential: MachineCredential;
+    /**
+     * Effective expiry; null means explicitly indefinite.
+     */
+    expires_at: string | null;
     /**
      * True when the instance ceiling shortened what was asked for, so
      * the caller can say so rather than let the operator discover it
@@ -3671,6 +3731,7 @@ export type ScimDirectoryUserList = {
 };
 
 export type ScimMapping = {
+    capability_origins?: Array<ScimCapabilityOrigin>;
     id: Id;
     binding_id: Id;
     group_id: Id;
@@ -4194,6 +4255,20 @@ export type AuditPage = {
      *
      */
     exhausted: boolean;
+};
+
+export type AdapterFinding = {
+    surface: 'secret' | 'variable';
+    effective_name: string;
+    finding: 'possible_capture' | 'owned_missing' | 'crash_window';
+};
+
+export type ScimCapabilityOrigin = {
+    capability: string;
+    kind: 'scim';
+    binding_id: Id;
+    mapping_id: Id;
+    group_id: Id;
 };
 
 /**
@@ -18250,6 +18325,169 @@ export type GetApprovalCeremonyResponses = {
 };
 
 export type GetApprovalCeremonyResponse = GetApprovalCeremonyResponses[keyof GetApprovalCeremonyResponses];
+
+export type DiffRevisionsData = {
+    body: RevisionDiffRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff';
+};
+
+export type DiffRevisionsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type DiffRevisionsError = DiffRevisionsErrors[keyof DiffRevisionsErrors];
+
+export type DiffRevisionsResponses = {
+    /**
+     * The requested comparison, without change tokens or digests.
+     */
+    200: RevisionDiff;
+};
+
+export type DiffRevisionsResponse = DiffRevisionsResponses[keyof DiffRevisionsResponses];
+
+export type RevealRevisionDiffData = {
+    body: RevealRevisionDiffRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff/reveal';
+};
+
+export type RevealRevisionDiffErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+};
+
+export type RevealRevisionDiffError = RevealRevisionDiffErrors[keyof RevealRevisionDiffErrors];
+
+export type RevealRevisionDiffResponses = {
+    /**
+     * The requested comparison, without change tokens or digests.
+     */
+    200: RevisionDiff;
+};
+
+export type RevealRevisionDiffResponse = RevealRevisionDiffResponses[keyof RevealRevisionDiffResponses];
 
 export type GetEnvironmentSignalsData = {
     body?: never;

@@ -12,6 +12,7 @@ import {
 
 import {
   INTERACTIVE_ELEMENT_SELECTOR,
+  expectNoSeriousAxeViolations,
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
   expectTouchTargets,
@@ -22,6 +23,7 @@ import {
   zFixtureStaged as zStaged,
 } from '../fixtures/api.ts';
 import {
+  ADMIN,
   countDisclosureEvents,
   establishSession,
   readSeed,
@@ -352,9 +354,10 @@ test.describe('revision history', () => {
     await expectNoFixtureSecret(drawer);
     await openRevision(page, facts.secretEdit);
 
-    // The actor is a principal id, shortened, with the whole one in `title`:
-    // nothing in this API resolves a human principal to a name.
+    // The server resolves the publisher's name without exposing a principal
+    // directory to callers who can only read this environment's history.
     await expect(drawer).toContainText('Published by');
+    await expect(drawer).toContainText(ADMIN.displayName);
     await expect(drawer).toContainText('Schema revision pinned');
 
     // r2 is the secret edit. Write-presence only, the marker and the
@@ -413,6 +416,39 @@ test.describe('revision history', () => {
     await drawer.getByRole('button', { name: '✕ show every revision' }).click();
     await expect(list.getByRole('button')).toHaveCount(facts.devRevisions);
     await expectNoFixtureSecret(drawer);
+  });
+
+  test('compares retained revisions and reveals only the selected secret behind its ceremony', async ({
+    passkeyPage: page,
+  }, testInfo) => {
+    await page.context().clearCookies();
+    await page.goto(DEV_HISTORY);
+    await establishSession(page);
+    await page.goto(DEV_HISTORY);
+    await openRevision(page, facts.secretEdit);
+    await page.getByRole('button', { name: 'Diff vs previous', exact: true }).click();
+    const diff = page.getByRole('dialog', { name: /^Diff r/ });
+    const secret = diff.getByRole('listitem').filter({ hasText: seed.history.secretKey });
+    await expect(secret).toContainText('masked');
+    await expectNoFixtureSecret(diff);
+    const config = diff.getByRole('listitem').filter({ hasText: seed.history.configKey });
+    await expect(config).toContainText('debug');
+    const before = countDisclosureEvents();
+    await secret.getByRole('button', { name: `Reveal ${seed.history.secretKey} in diff` }).click();
+    await expect(page.getByRole('list', { name: 'Keys this decision covers' })).toContainText(seed.history.secretKey);
+    await expectNoFixtureSecret(diff);
+    await page.getByRole('button', { name: 'Use a passkey' }).click();
+    for (const value of seed.history.secretValues) {
+      await expect(secret).toContainText(value);
+    }
+    expect(countDisclosureEvents() - before).toBe(2);
+    await secret.getByRole('button', { name: `Mask ${seed.history.secretKey}` }).click();
+    await expect(secret).toContainText('masked');
+    await expectNoFixtureSecret(diff);
+    await expectNoSeriousAxeViolations(page);
+    await page.screenshot({ path: testInfo.outputPath('revision-diff-masked.png'), fullPage: true });
+    await diff.getByRole('button', { name: 'Close diff' }).click();
+    await expect(diff).toBeHidden();
   });
 
   test('restores an environment to an earlier revision and publishes the staged drafts', async ({

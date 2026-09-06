@@ -726,9 +726,9 @@ test.describe('project settings', () => {
       await expect(page).toHaveURL(new RegExp(`${seed.project}/settings$`));
       await expect(page.getByLabel('Name', { exact: true })).toHaveValue('');
       await expect(page.getByLabel('Name', { exact: true })).toBeDisabled();
-      const nextDanger = page.locator('#project-danger');
-      await expect(nextDanger.getByLabel('Delete this project')).toHaveValue('');
-      await expect(nextDanger.getByRole('button', { name: 'Delete project' })).toBeDisabled();
+      // Unknown permission hides the destructive surface entirely.
+      await expect(page.locator('#project-danger')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Delete project' })).toHaveCount(0);
     } finally {
       await page.unroute(projectRead);
     }

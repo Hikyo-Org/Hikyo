@@ -547,14 +547,15 @@ function MappingRow({
           or deleted; it is never removed automatically.
         </p>
       ) : null}
-      {/* Origin chip per capability line, as Members does. The wire carries no
-          per-capability origins on a mapping, but every capability on this row
-          comes from this row's group, so the origin is the row itself. */}
       <ul className="scim-mapping__caps">
         {row.capabilities.map((capability) => (
           <li key={capability} className="capability">
             <span className="capability__name mono">{capability}</span>
-            <span className="badge mono">scim: {groupName}</span>
+            {(row.capability_origins ?? []).filter((origin) => origin.capability === capability).map((origin) => (
+              <span className="badge mono" key={`${origin.binding_id}:${origin.mapping_id}:${origin.group_id}`} title={`Binding ${origin.binding_id}, mapping ${origin.mapping_id}`}>
+                {origin.kind}: {origin.group_id === row.group_id ? groupName : origin.group_id}
+              </span>
+            ))}
           </li>
         ))}
       </ul>

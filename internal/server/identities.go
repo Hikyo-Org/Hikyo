@@ -96,6 +96,7 @@ func (a *API) MintMachineCredential(ctx context.Context, req apigen.MintMachineC
 	}
 	return apigen.MintMachineCredential200JSONResponse{
 		Value: res.Value, Credential: wireCredential(res.Credential), Clamped: res.Clamped,
+		ExpiresAt: optionalTime(res.Credential.ExpiresAt),
 	}, nil
 }
 

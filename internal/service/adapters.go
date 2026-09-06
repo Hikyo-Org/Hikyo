@@ -113,6 +113,7 @@ type AdapterRecord = store.AdapterRecord
 type AdapterMove = store.AdapterMove
 
 type AdapterTargetInput struct {
+	AllowEnvironmentCreate bool
 	EnvironmentID          string
 	DestinationKind        string
 	DestinationOwner       string
@@ -405,7 +406,7 @@ func (s *Adapters) Create(ctx context.Context, actor Actor, scope domain.Scope, 
 	}
 	beforeCreate, afterCreate := s.environmentCreateAudit(actor, scope, targetID, request.Target, configureEventID)
 	destination := adapterDestination(request.Target)
-	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: adapter.Config{Origin: request.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, request.Target.EnvironmentID), AllowEnvironmentCreate: true, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
+	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: adapter.Config{Origin: request.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, request.Target.EnvironmentID), AllowEnvironmentCreate: request.Target.AllowEnvironmentCreate, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
 	if err != nil {
 		return AdapterView{}, err
 	}
@@ -581,7 +582,7 @@ func (s *Adapters) AddTarget(ctx context.Context, actor Actor, scope domain.Scop
 	}
 	beforeCreate, afterCreate := s.environmentCreateAudit(actor, scope, targetID, input, configureEventID)
 	destination := adapterDestination(input)
-	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: adapter.Config{Origin: record.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, input.EnvironmentID), AllowEnvironmentCreate: true, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
+	connection, err := lease.Module.TestConnection(ctx, adapter.ConnectionRequest{Config: adapter.Config{Origin: record.Origin}, Destination: destination, Access: adapter.Access{Credential: string(plain)}, Gate: s.providerGate(actor, authz.OpAdapterConfigure, scope, input.EnvironmentID), AllowEnvironmentCreate: input.AllowEnvironmentCreate, BeforeEnvironmentCreate: beforeCreate, AfterEnvironmentCreate: afterCreate})
 	if err != nil {
 		return store.AdapterTarget{}, err
 	}

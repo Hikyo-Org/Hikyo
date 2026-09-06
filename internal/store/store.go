@@ -590,7 +590,15 @@ type AdapterConflictArtifact struct {
 	CreatedAt        time.Time
 }
 
+// AdapterFinding is the latest unresolved journal finding for one provider name.
+type AdapterFinding struct {
+	Surface       string
+	EffectiveName string
+	Finding       string
+}
+
 type AdapterTarget struct {
+	Findings               []AdapterFinding
 	ID                     string
 	AdapterID              string
 	Provider               string
