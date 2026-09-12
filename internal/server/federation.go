@@ -31,7 +31,7 @@ import (
 // FederationService is the domain surface this transport exposes.
 type FederationService interface {
 	CreateIssuer(ctx context.Context, actor service.Actor, req service.IssuerRequest) (service.IssuerView, error)
-	UpdateIssuer(ctx context.Context, actor service.Actor, id string, source jwkssource.KeySource, refused []string) (service.IssuerView, error)
+	UpdateIssuer(ctx context.Context, actor service.Actor, id string, source jwkssource.KeySource, refused []string, caBundle *string) (service.IssuerView, error)
 	ListIssuers(ctx context.Context, actor service.Actor) ([]service.IssuerView, error)
 	DeleteIssuer(ctx context.Context, actor service.Actor, id string) error
 	CreateBinding(ctx context.Context, actor service.Actor, scope domain.Scope, saID string, req service.BindingRequest) (service.BindingView, error)
@@ -60,6 +60,9 @@ func (a *API) CreateFederationIssuer(ctx context.Context, req apigen.CreateFeder
 		KeySource:        source,
 		RefusedAudiences: req.Body.RefusedAudiences,
 	}
+	if req.Body.CaBundlePem != nil {
+		want.CABundlePEM = *req.Body.CaBundlePem
+	}
 	iss, err := a.Federation.CreateIssuer(ctx, service.Bearer(bearer(ctx)), want)
 	if err != nil {
 		return nil, err
@@ -73,7 +76,7 @@ func (a *API) UpdateFederationIssuer(ctx context.Context, req apigen.UpdateFeder
 		return nil, err
 	}
 	iss, err := a.Federation.UpdateIssuer(ctx, service.Bearer(bearer(ctx)), req.Issuer,
-		source, req.Body.RefusedAudiences)
+		source, req.Body.RefusedAudiences, req.Body.CaBundlePem)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +121,7 @@ func wireIssuer(iss service.IssuerView) apigen.FederationIssuer {
 		JwksMode:         apigen.JWKSMode(iss.KeySource.Mode()),
 		RefusedAudiences: iss.RefusedAudiences,
 		CreatedAt:        iss.CreatedAt, CreatedBy: string(iss.CreatedBy),
-		LiveBindings: int(iss.Bindings),
+		LiveBindings: int(iss.Bindings), CaBundleConfigured: iss.CABundlePEM != "",
 	}
 	out.UpdatedAt = optionalTime(iss.UpdatedAt)
 	out.UpdatedBy = optional(string(iss.UpdatedBy))

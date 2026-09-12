@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"

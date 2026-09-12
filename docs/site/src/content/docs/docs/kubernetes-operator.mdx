@@ -308,6 +308,79 @@ a resource hash through an environment variable, exposing a bare digest of
 secret material in a workload-readable field. Its non-default annotations
 strategy avoids that shape but still needs the same workload patch authority.
 
+## Native Secret types
+
+`spec.target.type` defaults to `Opaque`. Set a native type when a Kubernetes
+consumer requires one. First opt in with Helm `--set operator.nativeSecretTypes=true`.
+This enables the runtime capability and adds Secret `delete` within the configured
+namespace authority. Opaque-only installs omit that permission. Standalone
+operators set `HIKYO_OPERATOR_NATIVE_SECRET_TYPES=true` with matching delete RBAC.
+Disabling the capability refuses typed targets before fetching and retains existing
+targets; migrate or remove them explicitly before disabling it.
+
+Map Hikyo's uppercase source key to the native data key:
+
+```yaml
+spec:
+  target:
+    name: registry-credentials
+    type: kubernetes.io/dockerconfigjson
+  mapping:
+    - key: REGISTRY_DOCKERCONFIGJSON
+      secretKey: .dockerconfigjson
+```
+
+This is a fragment of the `HikyoSecret` above; keep its instance, identity and
+scope fields. The mapped value is the JSON text itself, not base64 text. For
+K3s, enable `--secrets-encryption` before syncing credentials: native Secrets
+are stored in the cluster datastore, which is plaintext at rest by default.
+Reference `registry-credentials` in the consuming pod's `imagePullSecrets`.
+
+| `target.type` | Required mapped data keys | Content validation |
+| --- | --- | --- |
+| `Opaque` | None beyond the mapping | Unchanged |
+| `kubernetes.io/dockerconfigjson` | `.dockerconfigjson` | Valid JSON object; `null` is refused |
+| `kubernetes.io/tls` | `tls.crt`, `tls.key` | Keys must exist; the consumer validates certificate and key |
+| `kubernetes.io/basic-auth` | `username`, `password` | Both keys required by Hikyo; Kubernetes itself permits either |
+| `kubernetes.io/ssh-auth` | `ssh-privatekey` | Non-empty value |
+
+For an Ingress, map `TLS_CERTIFICATE` to `tls.crt` and `TLS_PRIVATE_KEY` to
+`tls.key`, set `type: kubernetes.io/tls`, then reference the target name from
+`spec.tls[].secretName`. Neither image-pull nor TLS data keys are environment
+variable names; consume them through the native reference, not `envFrom`.
+
+Unknown types are rejected at admission. Missing required destination mappings
+report `Delivery=False/KeysMissing` before fetching. Invalid content reports
+`Delivery=False/InvalidSecretData`; both retain any existing target. No partial
+Secret or delivery cursor is written. Loader-control acknowledgement still
+applies to every mapped destination.
+
+Changing the type of an existing target reports
+`Conflict=True/TargetTypeImmutable`. The operator never deletes and recreates
+a Secret to change its type. Create a new `HikyoSecret` with a new target name
+and migrate its consumers explicitly.
+
+Authorization withdrawal differs from a type change. An authenticated 404, or
+a successful manifest that removes a mandatory mapped key, deletes an owned
+typed target because Kubernetes cannot represent the withdrawn state as an
+empty Secret of that type. This includes an accidental published unset: the
+operator cannot distinguish it from intentional withdrawal and must not continue
+serving a removed credential. In contrast, malformed content for a still-present
+key rejects its replacement and retains the last accepted target. TLS content is
+not parsed by Kubernetes or Hikyo; malformed certificate/key bytes are delivered
+and the consumer decides whether to keep its previous certificate. Publish coupled
+credential changes atomically and monitor delivery conditions.
+
+Deletion uses UID and resource-version preconditions,
+followed by an uncached absence check. A replacement target is never deleted;
+pending deletion is reported as failure. The cursor is cleared and opted-in
+workloads receive the empty-content stamp. Repeated refusals keep the target
+absent; a later complete authorized delivery recreates it. `creationPolicy:
+Orphan` controls CR deletion only and does not suppress authorization withdrawal.
+With `operator.nativeSecretTypes=true`, Secret RBAC includes `delete` in bound namespaces, without
+granting `list` or `watch`. Pods may retain values already loaded into memory;
+removal from Kubernetes does not erase a consumer's cache.
+
 ## Lifecycle and conditions
 
 `Ready=True` is the summary: `Synced=True` with no active refusal condition.
@@ -327,11 +400,13 @@ The operator uses this closed reason set:
 | `Designation=False` | `AudienceMissing` | Federation was selected but the instance has no audience. |
 | `Conflict=True` | `ManagedSecretNotOwned` | Target exists without this CR's controller owner reference; adoption is refused. |
 | `Conflict=True` | `TargetClaimed` | An earlier `HikyoSecret` claims the same target. |
+| `Conflict=True` | `TargetTypeImmutable` | Existing target has a different type; no write or recreation occurs. |
 | `Delivery=False` | `UndeliveredSecrets` | Mapped secret values were presence-only; all-or-nothing delivery refused. |
-| `Delivery=False` | `KeysMissing` | Mapped source keys left the manifest and are dropped from the target. |
+| `Delivery=False` | `KeysMissing` | Required mappings are missing, or source keys left the manifest. A typed target missing a mandatory source key is withdrawn. |
+| `Delivery=False` | `InvalidSecretData` | Content is invalid for the native Secret type; the existing target is retained. |
 | `Delivery=False` | `LoaderControlUnacknowledged` | Loader-control destination keys lack exact acknowledgement. |
 | `Delivery=True` | `EnvFromSkip` | Warning: an invalid environment name may be skipped by `envFrom`; sync remains true. |
-| `Scrubbed=True` | `AuthorizationWithdrawn` | An authenticated 404 converged the managed Secret to empty. |
+| `Scrubbed=True` | `AuthorizationWithdrawn` | An authenticated 404 emptied an Opaque target or deleted an owned typed target. |
 | `Rollout=False` | `Stalled` | An opted-in workload did not progress after its stamp patch. |
 | `CredentialExpiry=True` | `ExpiresSoon` | The finite credential expires within seven days. |
 | `CredentialExpiry=True` | `Expired` | The finite credential expiry has passed. |
@@ -413,3 +488,67 @@ the application pod remains blocked.
 An upstream External Secrets Operator provider is the named future direction
 after the Hikyo API freezes. It is not a v1 integration; ESO's latest-minor
 support policy brings an ongoing monthly upstream release cost.
+
+## In-cluster Kubernetes issuers
+
+Discovery-mode federation can follow Kubernetes ServiceAccount signing-key
+rotation without copying a static JWKS document. Two prerequisites apply to
+private-CA clusters such as k3s:
+
+1. The cluster must permit unauthenticated reads of its issuer discovery and
+   JWKS endpoints. A cluster administrator can bind the built-in discovery role
+   when that exposure is appropriate:
+
+   ```bash
+   kubectl create clusterrolebinding hikyo-issuer-discovery \
+     --clusterrole=system:service-account-issuer-discovery \
+     --group=system:unauthenticated
+   ```
+
+   This exposes public discovery metadata and signing public keys, not workload
+   tokens. Check the cluster's anonymous-authentication policy too; an RBAC
+   binding cannot enable an authentication mode the API server disables.
+
+2. Configure the issuer with its cluster CA. Obtain `ca.crt` from a trusted
+   administrator or the cluster's `kube-root-ca.crt` ConfigMap:
+
+   ```bash
+   kubectl --namespace default get configmap kube-root-ca.crt \
+     -o jsonpath='{.data.ca\.crt}' > cluster-ca.pem
+   hikyo instance-config federation-issuer add \
+     --issuer https://kubernetes.default.svc.cluster.local \
+     --type kubernetes --jwks discovery \
+     --refuse-audience https://kubernetes.default.svc.cluster.local \
+     --ca-bundle-file cluster-ca.pem
+   ```
+
+Use the cluster's actual byte-exact issuer and default API-server audience;
+they need not be identical. The CA bundle contains PEM CA certificates only,
+up to 64 KiB. It **replaces system roots for this issuer's discovery and JWKS
+requests**, including HTTPS redirects. Other issuers keep their own trust.
+Hostname verification remains mandatory, and HTTP redirects remain refused.
+The bundle is write-only; issuer listings report `ca_bundle_configured`.
+
+TLS trust does not grant network reachability. The server's OIDC egress policy
+must separately allow the private CIDRs for both the issuer origin and the
+origin in the discovered `jwks_uri`. For example, import an operator-owned file
+with `HIKYO_OIDC_EGRESS_POLICY_FILE` during initial setup:
+
+```json
+{
+  "https://kubernetes.default.svc.cluster.local": ["10.43.0.1/32"],
+  "https://192.168.1.10:6443": ["192.168.1.10/32"]
+}
+```
+
+Replace those addresses with the exact cluster endpoints. Existing managed
+instances change the node's `HIKYO_OIDC_EGRESS_POLICY_JSON` through the explicit
+configuration publish and Apply flow.
+
+Use `federation-issuer update --id <issuer-id> --jwks discovery
+--refuse-audience <default-audience> --ca-bundle-file cluster-ca.pem` to replace
+the CA bundle. Omitting the bundle preserves current discovery trust;
+`--clear-ca-bundle` restores system roots. Changing or clearing trust forces a
+fresh discovery/JWKS fetch before that configuration authenticates tokens.
+Switching to static mode clears the CA bundle, and `--ca-bundle-file` is refused
+with `--jwks static`. Static JWKS remains the offline option.

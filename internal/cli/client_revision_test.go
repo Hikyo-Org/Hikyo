@@ -32,6 +32,8 @@ func TestClientRefusesSubminimumOperationBeforeDispatch(t *testing.T) {
 		{"ordinary read", "GET", "/api/v1/orgs", 0},
 		{"ordinary mutation", "POST", "/api/v1/orgs", 0},
 		{"later definitions operation", "POST", "/api/v1/orgs/org_a/projects/prj_a/definitions/check", 1},
+		{"parameter read", "GET", "/api/v1/orgs/org_a/projects/prj_a/environments/env_a/parameters", 2},
+		{"parameter mutation", "POST", "/api/v1/orgs/org_a/projects/prj_a/environments/env_a/parameters", 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			discovery, operations := 0, 0

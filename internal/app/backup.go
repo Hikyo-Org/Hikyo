@@ -27,14 +27,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
-	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"

@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/parameters"
 	"github.com/Hikyo-Org/hikyo/internal/scanning"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -333,11 +334,35 @@ func presenceOfKey(key store.CatalogueKey, rows []store.KeyPresence) schema.Pres
 	return presenceOf(key.ID, key.RequiredMode, key.ForbiddenMode, rows)
 }
 
-// validateValue runs the declaration against the value. The write path is a
-// delivering path in this slice — what commits is what an environment
-// delivers — so an invalid value is refused HERE, not deferred to a publish
-// that does not exist yet.
-func validateValue(key store.CatalogueKey, value string) error {
+func validateValueWithParameters(key store.CatalogueKey, value string, declarations map[string]string) error {
+	if key.Classification != string(schema.Config) || len(declarations) == 0 || !strings.Contains(value, "${") {
+		return validateLiteralValue(key, value)
+	}
+	if len(value) > schema.MaxValueBytes {
+		return invalidDetail("key %q exceeds the value byte limit", key.Name)
+	}
+	refs, err := parameters.References(value)
+	if err != nil {
+		return invalidDetail("key %q: %s", key.Name, err)
+	}
+	for _, name := range refs {
+		if _, ok := declarations[name]; !ok {
+			return invalidDetail("key %q: undeclared parameter %s", key.Name, name)
+		}
+	}
+
+	if len(refs) > 0 {
+		return nil
+	} // Caller-dependent schema checks run at delivery.
+	// An escaped-only value is deterministic, so validate its delivered literal now.
+	resolved, err := parameters.Resolve(value, nil, schema.MaxValueBytes)
+	if err != nil {
+		return invalidDetail("key %q: %s", key.Name, err)
+	}
+	return validateLiteralValue(key, resolved)
+}
+
+func validateLiteralValue(key store.CatalogueKey, value string) error {
 	decl, err := schema.ParseDeclaration([]byte(key.Declaration))
 	if err != nil {
 		return fmt.Errorf("service: key %s: stored declaration unreadable: %w", key.ID, err)
@@ -674,7 +699,11 @@ func (s *Values) declare(ctx context.Context, actor Actor, scope domain.Scope, e
 			if err := checkNotForbidden(key, presenceOfKey(key, rows), envID); err != nil {
 				return declareWriteResult{}, err
 			}
-			if err := validateValue(key, value); err != nil {
+			declarations, err := environmentParameters(ctx, r.Environments(), p)
+			if err != nil {
+				return declareWriteResult{}, err
+			}
+			if err := validateValueWithParameters(key, value, declarations); err != nil {
 				return declareWriteResult{}, err
 			}
 			updatedAt, err := writeCell(ctx, r, p, sealer, envScope, key, caller.Principal, value)
@@ -1132,6 +1161,28 @@ func (s *Values) Copy(ctx context.Context, actor Actor, scope domain.Scope, req 
 				return copyWriteResult{}, err
 			}
 		}
+		// Copy reads live cells, so template preflight uses the live declarations
+		// and config values too. A delivery snapshot can predate either one.
+		templateKey, err := copySourceTemplateKey(ctx, r, sealer, plan)
+		if err != nil {
+			return copyWriteResult{}, err
+		}
+		if templateKey != "" {
+			for _, destID := range req.DestinationEnvironmentIDs {
+				destScope := domain.Scope{Org: scope.Org, Project: scope.Project, Env: domain.EnvID(destID)}
+				p, err := az.Authorize(ctx, caller, authz.OpValueCopyDestinationConfig, destScope)
+				if err != nil {
+					return copyWriteResult{}, err
+				}
+				declarations, err := environmentParameters(ctx, r.Environments(), p)
+				if err != nil {
+					return copyWriteResult{}, err
+				}
+				if len(declarations) == 0 {
+					return copyWriteResult{}, invalidDetail("key %q uses template syntax; declare destination environment parameters before copying", templateKey)
+				}
+			}
+		}
 		// The SOURCE ceremony. A copy carries `reveal(source E)` in the locked
 		// formula, so it takes the same enumerated-key ceremony a cell reveal
 		// does — including copy-without-display, which discloses to a
@@ -1280,6 +1331,31 @@ type copySourcePlan struct {
 	skipped      []string
 	readProof    authz.Proof
 	revealProof  authz.Proof // non-nil iff at least one secret cell is planned
+}
+
+// copySourceTemplateKey inspects only live config cells under the source read.
+// Secret cells remain unopened until every destination preflight has passed.
+// The predicate matches validateValueWithParameters, including escaped syntax:
+// without declarations the same bytes are literals and can copy unchanged.
+func copySourceTemplateKey(ctx context.Context, r store.Repos, sealer *crypto.ProjectSealer, plan copySourcePlan) (string, error) {
+	declarations, err := environmentParameters(ctx, r.Environments(), plan.readProof)
+	if err != nil || len(declarations) == 0 {
+		return "", err
+	}
+	for _, cell := range plan.config {
+		entry, err := r.Values().Get(ctx, plan.readProof, cell.key.ID)
+		if err != nil {
+			return "", err
+		}
+		value, err := openCell(sealer, entry)
+		if err != nil {
+			return "", err
+		}
+		if strings.Contains(value, "${") {
+			return cell.key.Name, nil
+		}
+	}
+	return "", nil
 }
 
 // copySourceKeyResolver snapshots the source catalogue once, then resolves
@@ -1439,16 +1515,16 @@ func openCopySourcePlan(ctx context.Context, r store.Repos, az *authz.TxAuthoriz
 
 // openSourceMaterial decrypts a preflight's planned cells into a materialSet and
 // records the source-side disclosure — one EventValueRevealed per `secret` cell
-// it opens. This is the ONLY place plaintext leaves the sealer and the only
-// place the source disclosure trail is written, so a caller that must abort does
+// it opens. This is the ONLY place secret plaintext leaves the sealer and the
+// only place the source disclosure trail is written, so a caller that must abort does
 // so against the plan (before calling this), never against opened material: a
 // rollback past this point is a real fault, never an abort erasing a disclosure
 // it should have stood behind. `config` opens no event — reading it discloses
 // nothing beyond the `read` the caller already holds.
 // The ceremony runs between the plan and the open, on EVERY caller of this
 // pair: `gate` is handed the planned `secret` unit, and a refusal lands before
-// the first ciphertext is touched — so a copy or clone whose source ceremony is
-// missing opens nothing and writes no disclosure event, which is the same
+// the first secret ciphertext is touched, so a copy or clone whose source ceremony
+// is missing opens no secret and writes no disclosure event, which is the same
 // ordering the destination preflight already establishes.
 func openSourceMaterial(ctx context.Context, r store.Repos, sealer *crypto.ProjectSealer,
 	principal domain.PrincipalID, plan copySourcePlan, surface string, gate discloseGate) (materialSet, error) {
@@ -1574,13 +1650,17 @@ func writeMaterial(ctx context.Context, r store.Repos, p authz.Proof, sealer *cr
 	if err != nil {
 		return nil, nil, err
 	}
+	declarations, err := environmentParameters(ctx, r.Environments(), p)
+	if err != nil {
+		return nil, nil, err
+	}
 	out := make([]CopiedValue, 0, len(material))
 	var findings []Finding
 	for _, m := range material {
 		if err := checkNotForbidden(m.key, presenceOfKey(m.key, presence), destID); err != nil {
 			return nil, nil, err
 		}
-		if err := validateValue(m.key, m.plaintext); err != nil {
+		if err := validateValueWithParameters(m.key, m.plaintext, declarations); err != nil {
 			return nil, nil, err
 		}
 		if _, err := writeCell(ctx, r, p, sealer, destScope, m.key, caller.Principal, m.plaintext); err != nil {
@@ -1651,6 +1731,16 @@ func cloneInto(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, calle
 	readProof, err := az.Authorize(ctx, caller, authz.OpValueList, sourceScope)
 	if err != nil {
 		return out, err
+	}
+	// Clone cannot declare parameters on its new destination before its first
+	// publication. Refuse live parameter declarations explicitly; do not let
+	// a template silently become a literal in a zero-declaration destination.
+	declarations, err := environmentParameters(ctx, r.Environments(), readProof)
+	if err != nil {
+		return out, err
+	}
+	if len(declarations) > 0 {
+		return out, invalidDetail("cannot clone a parameterized environment; create the destination, declare its parameters and copy explicitly")
 	}
 	present, err := r.Values().List(ctx, readProof)
 	if err != nil {

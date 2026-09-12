@@ -223,6 +223,7 @@ type ProjectRepo interface {
 
 // EnvironmentReader is the read side of the environments aggregate.
 type EnvironmentReader interface {
+	Parameters(ctx context.Context, p authz.Proof) (string, error)
 	// Get returns the environment addressed by the proof's resolved chain.
 	Get(ctx context.Context, p authz.Proof) (Environment, error)
 	// List returns the project's environments in display order.
@@ -265,6 +266,7 @@ type EnvironmentSettings struct {
 
 // EnvironmentRepo is the full environments aggregate.
 type EnvironmentRepo interface {
+	SetParameters(ctx context.Context, p authz.Proof, declarations string) error
 	EnvironmentReader
 	// SetSettings writes the protection state and window together: marking
 	// an environment protected CAPS its window, so the two are one fact and

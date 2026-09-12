@@ -46,7 +46,9 @@ var SpecYAML []byte
 //
 // Revision 2 introduces the definitions Git-flow operations. Every pre-existing
 // operation remains revision 1; clients gate only the new verbs on revision 2.
-const Revision = 2
+// Revision 3 adds environment parameter operations and delivery snapshot revision
+// metadata. Existing operation minimums remain stable for older clients.
+const Revision = 3
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

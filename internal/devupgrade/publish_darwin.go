@@ -3,8 +3,9 @@
 package devupgrade
 
 import (
-	"golang.org/x/sys/unix"
 	"os"
+
+	"golang.org/x/sys/unix"
 )
 
 func publish(parent *os.File, from, to string) error {

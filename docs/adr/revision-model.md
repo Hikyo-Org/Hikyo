@@ -154,3 +154,13 @@ The matrix view receives **server-pushed change notifications** so another user'
 - **Architecture ([#22](https://github.com/Hikyo-Org/Hikyo/issues/22))** — owns the live-update transport (SSE recommended) and its polling fallback, under the metadata-only, per-event-authorized, advisory-only constraints above.
 - **Kubernetes integration ([#19](https://github.com/Hikyo-Org/Hikyo/issues/19))** — consumes the **keyed change token** for hash-annotation restarts; must use the token, never a content digest, and must handle the token-scheme version prefix.
 - **Operations spec (fog)** — fixes default retention values (N revisions, X days), pin quotas and expiry defaults, the unlimited-retention option and its backup-exposure consequence, and the **backup-retention bound** without which GC does not retire historical secrets.
+
+
+**Fetch-parameter amendment (#723, 2026-09-12):** Parameterized snapshots retain
+literal config templates and an immutable contract containing declarations and
+config schemas. Publication validates reference syntax; the final resolved value
+and total render size are validated atomically at delivery. Revision browsing
+continues to identify stored material. Fetch tokens additionally bind canonical
+caller parameters and the resolved manifest; historical exports and pins use
+the captured historical contract. Declaration edits affect only later normal
+publications. See [flat-model amendment](./flat-model.md#declared-amendment-bounded-fetch-time-config-parameters-723-2026-09-12).

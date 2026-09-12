@@ -888,7 +888,7 @@ func disclosureObjectIDsSince(t *testing.T, db *store.DB, envID string, after in
 
 func exportedValue(t *testing.T, db *store.DB, actor service.Actor, scope domain.Scope, name string) (string, bool) {
 	t.Helper()
-	values, _, err := revisionSvc(t, db).Export(t.Context(), actor, scope, 0, false)
+	values, _, err := revisionSvc(t, db).ExportWithParameters(t.Context(), actor, scope, 0, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"context"
+
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 

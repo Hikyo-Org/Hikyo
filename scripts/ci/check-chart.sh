@@ -54,6 +54,8 @@ render_mode namespaced \
 	--set 'operator.designatedServiceAccounts.ns-a={sa-a,sa-shared}' \
 	--set 'operator.designatedServiceAccounts.ns-b={sa-b}'
 render_mode no-rollouts --set operator.triggerRollouts=false
+render_mode native-secrets --set operator.nativeSecretTypes=true
+render_mode native-secrets-namespaced --set operator.nativeSecretTypes=true --set 'operator.namespaces={ns-a,ns-b}'
 render_mode native-tls \
 	--set 'network.trustedProxyCIDRs={}' \
 	--set tls.existingSecret=fixture-tls
@@ -90,7 +92,7 @@ assert verification[0]["attestors"] == [{"entries": [{"keyless": {
 }}]}], "keyless admission must require exact workflow/tag identity and transparency proof"
 PY
 
-python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" "$tmp/native-tls.yaml" "$tmp/mcp-enabled.yaml" <<'PY' || exit 1
+python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" "$tmp/native-tls.yaml" "$tmp/mcp-enabled.yaml" "$tmp/native-secrets.yaml" "$tmp/native-secrets-namespaced.yaml" <<'PY' || exit 1
 import sys, yaml
 
 cluster_wide, namespaced, no_rollouts, native_tls, mcp_enabled = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
@@ -157,12 +159,13 @@ STATUS = rule(["hikyo.dev"], ["hikyosecrets/status"], ["update", "patch"])
 FINALIZERS = rule(["hikyo.dev"], ["hikyosecrets/finalizers"], ["update"])
 EVENTS = rule([""], ["events"], ["create", "patch"])
 SECRETS = rule([""], ["secrets"], ["get", "create", "update", "patch"])
+NATIVE_SECRETS = rule([""], ["secrets"], ["get", "create", "update", "patch", "delete"])
 WORKLOAD = rule(["apps"], ["deployments", "statefulsets", "daemonsets"], ["get", "list", "watch", "patch"])
 SERVICEACCOUNTS = rule([""], ["serviceaccounts"], ["get"])
 
 # Cluster-scoped reads that always live on the ClusterRole.
 CLUSTER_READS = [INSTANCES, CRD]
-# Per-CR converge rules; secrets is get/create/update/patch ONLY (never list/watch).
+# Per-CR converge rules; native mode alone adds Secret delete (never list/watch).
 CONVERGE = [HIKYOSECRETS, STATUS, FINALIZERS, EVENTS, SECRETS, SERVICEACCOUNTS]
 
 def assert_rbac_inventory(docs, expected, mode):
@@ -228,6 +231,10 @@ def assert_hardened(docs, mode):
     if op.get("args") != ["operator"]:
         fail(f"{mode}: operator args = {op.get('args')}, want [operator]")
     assert_env_allowlist(op, mode)
+    env = {e["name"]: e.get("value") for e in op.get("env", [])}
+    expected_native = "true" if mode.startswith("native-secrets") else "false"
+    if env.get("HIKYO_OPERATOR_NATIVE_SECRET_TYPES") != expected_native:
+        fail(f"{mode}: native Secret type runtime gate differs from RBAC")
     return op
 
 def assert_server_network(docs, mode, tls):
@@ -346,6 +353,7 @@ def assert_server_network(docs, mode, tls):
 ALLOWED_ENV = {
     "HIKYO_OPERATOR_NAMESPACES",
     "HIKYO_OPERATOR_TRIGGER_ROLLOUTS",
+    "HIKYO_OPERATOR_NATIVE_SECRET_TYPES",
     "HIKYO_OPERATOR_NAMESPACE",
     "POD_NAMESPACE",
 }
@@ -423,6 +431,16 @@ expect_rules(cr["rules"], CLUSTER_READS + CONVERGE, "no-rollouts ClusterRole")
 assert_leader_election(nr, "no-rollouts")
 assert_hardened(nr, "no-rollouts")
 assert_server_network(nr, "no-rollouts", False)
+
+native_converge = [r for r in CONVERGE if r != SECRETS] + [NATIVE_SECRETS]
+nt = load(sys.argv[6])
+expect_rules(one(nt, "ClusterRole", OP)["rules"], CLUSTER_READS + native_converge + [WORKLOAD], "native-secrets ClusterRole")
+assert_hardened(nt, "native-secrets")
+ntns = load(sys.argv[7])
+expect_rules(one(ntns, "ClusterRole", OP)["rules"], CLUSTER_READS, "native-secrets-namespaced ClusterRole")
+for n in ("ns-a", "ns-b"):
+    expect_rules(one(ntns, "Role", OP, n)["rules"], native_converge + [WORKLOAD], f"native-secrets-namespaced Role {n}")
+assert_hardened(ntns, "native-secrets-namespaced")
 
 tls_docs = load(native_tls)
 assert_hardened(tls_docs, "native-tls")

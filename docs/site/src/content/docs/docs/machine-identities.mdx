@@ -7,6 +7,12 @@ editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs
 Use a service account for a workload or automation job. Give it only the
 capabilities and scope required by that workload.
 
+Automation can create and delete ordinary environments, stage and publish its
+own changes, and copy values under the existing disclosure gates. Environment
+lifecycle requires project-wide `definitions-edit`; protected environments cannot
+be deleted by machines. [The preview guide](/docs/preview-environments/) shows a
+dedicated-project recipe with cloning, explicit publication, export and cleanup.
+
 ## Create and grant
 
 ```bash

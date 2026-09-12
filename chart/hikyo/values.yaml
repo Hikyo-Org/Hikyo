@@ -125,6 +125,8 @@ operator:
   # Empty watches cluster-wide; otherwise this same list creates namespace RBAC.
   namespaces: []
   triggerRollouts: true
+  # Opt in to non-Opaque Secret types and conditional delete on withdrawal.
+  nativeSecretTypes: false
   # Namespace -> ServiceAccount names allowed for TokenRequest creation.
   designatedServiceAccounts: {}
   resources:

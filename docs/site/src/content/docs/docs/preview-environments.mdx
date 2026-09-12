@@ -1,0 +1,171 @@
+---
+title: Pull-request preview environments
+description: Clone, publish, export and clean up isolated preview values with a scoped automation credential.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/preview-environments.mdx
+---
+
+Give each pull request an independent Hikyo environment. CI clones a published
+`preview` environment, publishes the values unique to that pull request, and
+exports the committed result. Later changes to the source do not propagate.
+
+## Prepare a dedicated preview project
+
+An administrator creates the project, key declarations and long-lived `preview`
+environment. Keep production in a different project. A name such as `pr-123`
+is a label, not a permission boundary: `definitions-edit` governs the entire
+project, including environment creation and deletion. There is no built-in
+production tier. Mark important environments protected; machine credentials
+cannot delete protected environments or access Hikyo's managed system hierarchy.
+
+Create an `automation` service account with project-scoped `read`, `edit`,
+`publish` and `definitions-edit`. To clone or export existing secrets, enable the
+project's machine-reveal opt-in and grant `reveal` separately. Both the source
+and destination must be covered. These are administrator operations described
+in [Machine identities](/docs/machine-identities/).
+
+This grants the CI runner standing decryption authority over the preview project,
+including future environments. Give deployment workloads separate credentials;
+never put the lifecycle credential in an application pod. Only trusted CI jobs
+may receive it. A fork pull request's code must not run with these credentials.
+
+Provision the runner's credential and matching trust bundle through the CI secret
+store. Set `HIKYO_TOKEN` or use `--token-file`, plus `HIKYO_TRUST_BUNDLE`.
+Set `HIKYO_INSTANCE`, `HIKYO_ORG` and `HIKYO_PROJECT` to the approved target.
+The org/project scope values are their returned identifiers. Repository files
+cannot establish trust. See [Contexts and targets](/docs/contexts/).
+
+## Create or reuse the pull request's environment
+
+The following Bash examples require `jq` and an existing `preview` environment.
+Serialize jobs for the same pull request, including teardown. The script resolves
+display names to identifiers and refuses ambiguous results.
+
+```bash
+set -euo pipefail
+set +x
+: "${PR_NUMBER:?Set the pull request number from trusted CI metadata}"
+[[ "$PR_NUMBER" =~ ^[0-9]{1,6}$ ]] || exit 1
+preview_name="pr-${PR_NUMBER}"
+
+environments=$(hikyo env list -o json)
+source_id=$(jq -er '
+  [.items[] | select(.name == "preview") | .id]
+  | if length == 1 then .[0] else error("expected one preview source") end
+' <<<"$environments")
+preview_id=$(jq -er --arg name "$preview_name" '
+  [.items[] | select(.name == $name) | .id]
+  | if length == 0 then "" elif length == 1 then .[0]
+    else error("ambiguous preview name") end
+' <<<"$environments")
+
+if [[ -z "$preview_id" ]]; then
+  created=$(hikyo env create --name "$preview_name" --clone-from "$source_id" -o json)
+  preview_id=$(jq -er '.environment.id' <<<"$created")
+fi
+```
+
+An existing name causes `env create` to fail; it does not replace that environment.
+Reusing it preserves its independently published values. Record the returned
+identifier with the deployment if teardown runs in another job.
+
+## Stage and publish the per-PR values
+
+Declare the keys first. This example assumes CI already holds the database
+password and authentication secret created for this preview. Keep those stable
+across pushes unless the matching database/application credentials are rotated.
+
+```bash
+: "${POSTGRES_PASSWORD:?Set the preview database password}"
+: "${BETTER_AUTH_SECRET:?Set the preview authentication secret}"
+
+url_version=$(printf '%s' "https://pr-${PR_NUMBER}.preview.example.com" |
+  hikyo values set APP_BASE_URL --env "$preview_id" --stdin -o json |
+  jq -er '.version_id')
+password_version=$(printf '%s' "$POSTGRES_PASSWORD" |
+  hikyo values set POSTGRES_PASSWORD --env "$preview_id" --stdin -o json |
+  jq -er '.version_id')
+auth_version=$(printf '%s' "$BETTER_AUTH_SECRET" |
+  hikyo values set BETTER_AUTH_SECRET --env "$preview_id" --stdin -o json |
+  jq -er '.version_id')
+
+published=$(hikyo values publish --env "$preview_id" \
+  --versions "$url_version,$password_version,$auth_version" -o json)
+jq -e '.environments | length > 0' <<<"$published" >/dev/null
+```
+
+`values set` only creates a draft owned by this automation principal. Export
+continues delivering the previous published revision until publication succeeds.
+Approval policies remain effective: publication may create an approval request
+instead of advancing a revision. The final check above stops deployment in that
+case. Do not bypass the policy or export the previous revision as the new result.
+
+## Export to Kubernetes
+
+Export into a private temporary directory. The CLI creates the output file with
+mode `0600`; the pipeline applies it without printing plaintext to the CI log.
+Disable shell tracing and do not upload the directory as a build artifact.
+
+```bash
+preview_dir=$(mktemp -d)
+trap 'rm -rf -- "$preview_dir"' EXIT
+namespace="app-pr-${PR_NUMBER}"
+
+hikyo values export --env "$preview_id" --reveal --format json \
+  --output-file "$preview_dir/preview.json"
+jq -e --arg namespace "$namespace" '{
+  apiVersion: "v1", kind: "Secret", type: "Opaque",
+  metadata: {name: "app-config", namespace: $namespace},
+  data: (.items | map(select(.value != null) |
+    {key: .name, value: (.value | @base64)}) | from_entries)
+}' "$preview_dir/preview.json" |
+  kubectl --namespace "$namespace" apply -f - >/dev/null
+```
+
+Create the namespace through your deployment workflow first. JSON and base64
+preserve quotes and multiline text exactly; a dotenv file is not interchangeable
+with Kubernetes' env-file grammar. Machine exports use the delivery API and report
+the revision it actually selected. They cannot select an arbitrary `--revision`;
+workload credentials retain their durable pin selection. Without `--reveal`,
+machine exports request config only. With it, any set secret withheld by the
+server refuses the export before output is written.
+
+For continuous delivery, use the
+[Kubernetes operator](/docs/kubernetes-operator/) with a separately provisioned
+workload credential and explicit key mapping. The operator also supports native
+registry and TLS Secret types.
+
+## Teardown and failure handling
+
+On pull-request close, remove the application deployment and its Kubernetes
+Secrets, then delete the recorded Hikyo environment:
+
+```bash
+hikyo env delete "$preview_id"
+```
+
+Deletion removes that environment's values, drafts, pins and revision payloads
+immediately; it is not a wait for revision garbage collection. Audit events
+remain under audit retention. The long-lived `preview` source is untouched.
+Grants scoped to the deleted environment and their origins are removed in the
+same transaction, with affected principals' authorization generations advanced.
+Each removed grant records `grant.revoked`, including its released origin kinds.
+Revocation also invalidates the affected principal's sessions, so humans holding
+a grant scoped to the deleted preview must sign in again. This applies to both
+direct deletion and definitions apply.
+Project, organization and sibling-environment grants remain intact.
+
+- A clone omits secrets the actor cannot reveal and lists their names. If an
+  omitted secret is required in the new environment, creation aborts atomically.
+- A project permits 50 environments total, including the source. Reconcile
+  abandoned previews when CI jobs are cancelled or close events are missed.
+- Revoking the runner credential stops its next operation. It neither deletes
+  existing previews nor removes already exported Kubernetes Secrets. Use a
+  separately authorized cleanup job or an administrator to finish teardown.
+- Re-cloning does not update an existing preview. Publish deliberate changes
+  there, or copy selected shared values under the normal reveal/publish gates.
+
+For previews differing only in non-secret strings, see
+[environment parameters](/docs/environment-parameters/). They share one
+environment's secrets and do not provide distinct per-PR passwords.
+
+Next: [inspect revisions and common value workflows](/docs/values-workflows/).

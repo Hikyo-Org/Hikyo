@@ -4,10 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
+
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/jackc/pgx/v5"
-	"time"
 )
 
 type sqliteSelfConfigStorage struct{ q *sqlitegen.Queries }

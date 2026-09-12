@@ -1,11 +1,12 @@
 package store
 
 import (
+	"testing"
+
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	gatefixture "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
-	"testing"
 )
 
 func admittedStoreFixture(t testing.TB, cfg Config) (*DB, error) {

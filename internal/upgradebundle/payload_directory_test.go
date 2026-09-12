@@ -4,10 +4,11 @@ package upgradebundle
 
 import (
 	"context"
-	"golang.org/x/sys/unix"
 	"os"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestPayloadDirectoryFIFORefusesWithoutExternalWriter(t *testing.T) {

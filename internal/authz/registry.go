@@ -44,13 +44,14 @@ const (
 	OpProjectRename Operation = "project.rename"
 	OpProjectDelete Operation = "project.delete"
 
-	OpEnvCreate     Operation = "environment.create"
-	OpEnvRead       Operation = "environment.read"
-	OpEnvList       Operation = "environment.list"
-	OpEnvRename     Operation = "environment.rename"
-	OpEnvReorder    Operation = "environment.reorder"
-	OpEnvDelete     Operation = "environment.delete"
-	OpEnvUpdateNote Operation = "environment.update-note"
+	OpEnvCreate       Operation = "environment.create"
+	OpEnvRead         Operation = "environment.read"
+	OpEnvList         Operation = "environment.list"
+	OpEnvParameterSet Operation = "environment.parameter-set"
+	OpEnvRename       Operation = "environment.rename"
+	OpEnvReorder      Operation = "environment.reorder"
+	OpEnvDelete       Operation = "environment.delete"
+	OpEnvUpdateNote   Operation = "environment.update-note"
 
 	// The key catalogue (#49, schema-model ADR). Every operation addresses
 	// PROJECT depth: a key is declared once per project and the scope lattice
@@ -657,9 +658,11 @@ const (
 	StoreDefinitionsPlanPrune         StoreOp = "definitions.PruneExpiredPlans"
 	StoreDefinitionsLatestAppliedPlan StoreOp = "definitions.LatestAppliedPlan"
 
-	StoreEnvironmentsCreate StoreOp = "environments.Create"
-	StoreEnvironmentsGet    StoreOp = "environments.Get"
-	StoreEnvironmentsList   StoreOp = "environments.List"
+	StoreEnvironmentParametersGet StoreOp = "environments.Parameters"
+	StoreEnvironmentParametersSet StoreOp = "environments.SetParameters"
+	StoreEnvironmentsCreate       StoreOp = "environments.Create"
+	StoreEnvironmentsGet          StoreOp = "environments.Get"
+	StoreEnvironmentsList         StoreOp = "environments.List"
 	// StoreEnvironmentsListPage is the MCP-bounded keyset environment read (#629).
 	StoreEnvironmentsListPage   StoreOp = "environments.ListPage"
 	StoreEnvironmentsCount      StoreOp = "environments.Count"
@@ -815,7 +818,8 @@ const (
 	// being staged (ops-spec §8, ≤100 pending versions per project).
 	StorePendingCountForProjectExcludingCell StoreOp = "pending.CountForProjectExcludingCell"
 
-	StoreSnapshotsLatest StoreOp = "snapshots.Latest"
+	StoreSnapshotsLatest            StoreOp = "snapshots.Latest"
+	StoreSnapshotsParameterContract StoreOp = "snapshots.ParameterContract"
 	// StoreSnapshotsProjectRevisions is the project-scoped per-environment latest
 	// revision behind the definitions plan/apply value-snapshot pin (#70).
 	StoreSnapshotsProjectRevisions StoreOp = "snapshots.ProjectRevisions"
@@ -1087,6 +1091,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	// fetch that presents it rides remote.list/show, which carry their own
 	// events.
 	StoreEnvironmentsGet:                      true,
+	StoreEnvironmentParametersGet:             true,
 	StoreEnvironmentsList:                     true,
 	StoreEnvironmentsListPage:                 true,
 	StoreEnvironmentsCount:                    true,
@@ -1158,6 +1163,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSnapshotsList:                        true,
 	StoreSnapshotsListPage:                    true,
 	StoreSnapshotsEntries:                     true,
+	StoreSnapshotsParameterContract:           true,
 	StoreSnapshotsSecretValueOccurrenceIDs:    true,
 	StoreSnapshotsChanges:                     true,
 	StorePinsGetForWorkload:                   true,
@@ -1491,7 +1497,7 @@ var operationTable = map[Operation]opSpec{
 	},
 	OpSelfConfigTest: {
 		class: ClassTenant, level: domain.LevelEnv, formula: Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}, {Cap: domain.CapRead, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreSelfConfigBinding: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventSelfConfigTestRequested, audit.EventSelfConfigTestCompleted},
 	},
 	OpSelfConfigProvisionProject: {
@@ -1757,7 +1763,7 @@ var operationTable = map[Operation]opSpec{
 		class:    ClassTenant,
 		level:    domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
-		storeOps: map[StoreOp]bool{StoreEnvironmentsGet: true},
+		storeOps: map[StoreOp]bool{StoreEnvironmentsGet: true, StoreEnvironmentParametersGet: true},
 		// A proof-scoped pure read whose result the trail would only
 		// duplicate — the exact (and only) shape the default-deny permit
 		// rule accepts.
@@ -1770,6 +1776,17 @@ var operationTable = map[Operation]opSpec{
 		storeOps:    map[StoreOp]bool{StoreEnvironmentsList: true, StoreEnvironmentsListPage: true},
 		auditedNone: true,
 	},
+	OpEnvParameterSet: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapDefinitionsEdit, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{
+			StoreProjectsGet: true, StoreProjectsLock: true,
+			StoreEnvironmentParametersGet: true, StoreEnvironmentParametersSet: true,
+			StoreCatalogueRevisionBump: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventEnvParameterChanged},
+	},
+
 	OpEnvRename: {
 		class:   ClassTenant,
 		level:   domain.LevelEnv,
@@ -1826,7 +1843,7 @@ var operationTable = map[Operation]opSpec{
 			StorePinsDeleteEnvironment: true,
 			StoreEnvironmentsDelete:    true, StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventEnvDeleted},
+		events: []audit.EventType{audit.EventEnvDeleted, audit.EventGrantRevoked},
 	},
 	OpEnvUpdateNote: {
 		class:    ClassTenant,
@@ -2147,7 +2164,7 @@ var operationTable = map[Operation]opSpec{
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{
-			audit.EventDefinitionsApplied,
+			audit.EventDefinitionsApplied, audit.EventGrantRevoked,
 			audit.EventDefinitionsApplyRejectedStale,
 			audit.EventDefinitionsDeletionRefused,
 			audit.EventEnvCreated, audit.EventEnvRenamed, audit.EventEnvDeleted,
@@ -2237,6 +2254,7 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
+			StoreEnvironmentParametersGet: true,
 			// Values().Get joins List because the `config` half of a copy and
 			// of a clone reads its material under THIS operation: `config`
 			// values are `read`-class material, so duplicating them needs no
@@ -2292,7 +2310,8 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
 		},
 		storeOps: map[StoreOp]bool{
-			StoreProjectsLock: true, StoreCatalogueList: true,
+			StoreEnvironmentParametersGet: true,
+			StoreProjectsLock:             true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreValuesPut: true,
 			StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
@@ -2350,7 +2369,8 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
 		},
 		storeOps: map[StoreOp]bool{
-			StoreProjectsLock: true, StoreCatalogueList: true,
+			StoreEnvironmentParametersGet: true,
+			StoreProjectsLock:             true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreEnvironmentsGetSettings: true,
 			StoreApprovalPolicyCovering: true,
 			StoreValuesPut:              true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
@@ -2366,7 +2386,8 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapPublish, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreProjectsLock: true, StoreCatalogueList: true,
+			StoreEnvironmentParametersGet: true,
+			StoreProjectsLock:             true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreEnvironmentsGetSettings: true,
 			StoreApprovalPolicyCovering: true,
 			StoreValuesPut:              true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
@@ -2420,7 +2441,8 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
 		},
 		storeOps: map[StoreOp]bool{
-			StoreProjectsLock: true, StoreCatalogueList: true,
+			StoreEnvironmentParametersGet: true,
+			StoreProjectsLock:             true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreCatalogueRevisionGet: true,
 			StoreValuesList: true, StoreValuesPut: true,
 			StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
@@ -2475,7 +2497,7 @@ var operationTable = map[Operation]opSpec{
 			StorePendingListForOwner: true, StorePendingListMarkers: true,
 			StorePendingDiscard:  true,
 			StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
-			StoreSnapshotsInsert: true, StoreSnapshotsInsertEntry: true,
+			StoreSnapshotsInsert: true, StoreSnapshotsInsertEntry: true, StoreEnvironmentParametersGet: true,
 			StoreSnapshotsSecretValueOccurrenceIDs:    true,
 			StoreSnapshotsRecordSecretValueOccurrence: true,
 			StoreSnapshotsInsertChange:                true,
@@ -2655,9 +2677,9 @@ var operationTable = map[Operation]opSpec{
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
 		},
-		auditedNone: true,
+		events: []audit.EventType{audit.EventValuesExported},
 	},
 	OpValueExportReveal: {
 		class: ClassTenant,
@@ -2668,9 +2690,9 @@ var operationTable = map[Operation]opSpec{
 		},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true, StoreAuditTenantInsert: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventValueRevealed},
+		events: []audit.EventType{audit.EventValueRevealed, audit.EventValuesExported},
 	},
 	OpValueExportRevealHistory: {
 		class: ClassTenant,
@@ -2681,9 +2703,9 @@ var operationTable = map[Operation]opSpec{
 		},
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsAtRevision: true,
-			StoreSnapshotsEntries: true, StoreAuditTenantInsert: true,
+			StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventValueRevealed},
+		events: []audit.EventType{audit.EventValueRevealed, audit.EventValuesExported},
 	},
 	// History is lineage: numbers, publishers, timestamps and which keys moved.
 	// It never carries a value, so it rides `read` like any other browse verb.
@@ -2837,7 +2859,8 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreCatalogueList: true, StoreCataloguePresenceList: true, StorePendingListForOwnerInEnvironment: true,
+			StoreEnvironmentParametersGet: true,
+			StoreCatalogueList:            true, StoreCataloguePresenceList: true, StorePendingListForOwnerInEnvironment: true,
 			// The MCP-bounded pending page (#629) reads the caller's drafts by
 			// keyset and resolves each page key's name and classification with
 			// GetInProject, both under this read authorization.
@@ -2904,7 +2927,8 @@ var operationTable = map[Operation]opSpec{
 			{Cap: domain.CapPublish, At: domain.LevelEnv},
 		},
 		storeOps: map[StoreOp]bool{
-			StoreOrgsGet: true, StoreProjectsGet: true, StoreProjectsLock: true, StoreCatalogueList: true,
+			StoreSnapshotsParameterContract: true,
+			StoreOrgsGet:                    true, StoreProjectsGet: true, StoreProjectsLock: true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreSnapshotsLatest: true,
 			StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreSnapshotsList: true,
 			StoreSnapshotsSecretValueOccurrenceIDs: true,
@@ -3569,7 +3593,7 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
+			StoreSnapshotsLatest: true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
 			StoreSnapshotsAtRevision: true, StorePinsGetForWorkload: true,
 			StoreCatalogueList:         true,
 			StoreCataloguePresenceList: true,
@@ -4247,8 +4271,8 @@ const (
 // those three an empty set is the fail-closed default.
 var systemSites = map[SystemSite]map[StoreOp]bool{
 	SiteSelfConfigSeed:     {StoreSelfConfigSeedInputs: true, StoreSelfConfigHostSeedInputs: true, StoreSelfConfigPutSeedInput: true},
-	SiteSelfConfigRecovery: {StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigRecoverTarget: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
-	SiteSelfConfigRuntime:  {StoreSelfConfigBinding: true, StoreSelfConfigPreviousRevision: true, StoreSelfConfigRollout: true, StoreSelfConfigPutRollout: true, StoreSelfConfigNextRolloutSequence: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigPutNode: true, StoreSelfConfigFinishJob: true, StoreSelfConfigFenceRestored: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
+	SiteSelfConfigRecovery: {StoreSelfConfigBinding: true, StoreSelfConfigJobs: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigRecoverTarget: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
+	SiteSelfConfigRuntime:  {StoreSelfConfigBinding: true, StoreSelfConfigPreviousRevision: true, StoreSelfConfigRollout: true, StoreSelfConfigPutRollout: true, StoreSelfConfigNextRolloutSequence: true, StoreSelfConfigJobs: true, StoreSelfConfigJob: true, StoreSelfConfigNodes: true, StoreSelfConfigRetained: true, StoreSelfConfigPutNode: true, StoreSelfConfigFinishJob: true, StoreSelfConfigFenceRestored: true, StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true, StoreCatalogueList: true, StoreCatalogueRevisionGet: true, StoreAuditTenantInsert: true},
 	SiteEscrow:             {StoreKeysActiveMasterWrappers: true, StoreKeysAllOpenableTier3: true, StoreKeysAcquireHierarchyGeneration: true, StoreEscrowVerificationWrite: true, StoreAuditInstanceInsert: true},
 	SiteBoot:               bootKeyringOps,
 	SiteMigration:          {},

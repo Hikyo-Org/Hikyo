@@ -9,9 +9,9 @@
 -- hikyo:authn-resolution
 -- name: InsertFederationIssuer :exec
 INSERT INTO federation_issuers (
-    id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
+    id, issuer, issuer_type, jwks_mode, static_jwks, ca_bundle_pem, refused_audiences,
     created_at, created_by, updated_at, updated_by
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL);
 
 -- The BYTE-EXACT issuer lookup. There is no LOWER(), no TRIM() and no URL
 -- normalization anywhere on this path: `iss` is case-sensitive by
@@ -21,14 +21,14 @@ INSERT INTO federation_issuers (
 -- hikyo:authn-resolution
 -- name: FederationIssuerByIssuer :one
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 WHERE issuer = ?;
 
 -- hikyo:authn-resolution
 -- name: FederationIssuerByID :one
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 WHERE id = ?;
 
@@ -39,7 +39,7 @@ WHERE id = ?;
 -- hikyo:authn-resolution
 -- name: ListFederationIssuers :many
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 ORDER BY issuer;
 
@@ -51,7 +51,7 @@ ORDER BY issuer;
 -- hikyo:authn-resolution
 -- name: UpdateFederationIssuer :execrows
 UPDATE federation_issuers
-SET jwks_mode = ?, static_jwks = ?, refused_audiences = ?, updated_at = ?, updated_by = ?
+SET jwks_mode = ?, static_jwks = ?, ca_bundle_pem = ?, refused_audiences = ?, updated_at = ?, updated_by = ?
 WHERE id = ?;
 
 -- hikyo:authn-resolution

@@ -45,6 +45,8 @@ type ProjectService interface {
 }
 
 type EnvironmentService interface {
+	Parameters(context.Context, service.Actor, domain.Scope) (map[string]string, error)
+	SetParameter(context.Context, service.Actor, domain.Scope, string, string, bool) error
 	Create(ctx context.Context, actor service.Actor, scope domain.Scope, name string, acks []string) (service.Environment, error)
 	// Clone is create-with-clone-at-creation (#50). It is a separate method
 	// because its RESULT is different: a clone reports what it could not take.

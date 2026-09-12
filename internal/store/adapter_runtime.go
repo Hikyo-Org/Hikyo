@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
+	"github.com/Hikyo-Org/hikyo/internal/parameters"
 )
 
 // adapterPushOutcomePayload is the audit payload for adapter.push_outcome events.
@@ -153,14 +154,21 @@ func (r *AdapterRuntime) LoadExecution(ctx context.Context, job adapter.Job) (Ad
 		}
 
 		snapshotQuery := db.SQLPerEngine(
-			`SELECT id,revision FROM snapshots WHERE org_id=? AND project_id=? AND environment_id=? AND payload_present=1 ORDER BY revision DESC LIMIT 1`,
-			`SELECT id,revision FROM snapshots WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND payload_present=true ORDER BY revision DESC LIMIT 1`)
-		var snapshotID string
-		if err := db.QueryRow(ctx, snapshotQuery, job.OrgID, job.ProjectID, job.EnvironmentID).Scan(&snapshotID, &out.Revision); err != nil {
+			`SELECT id,revision,parameter_contract FROM snapshots WHERE org_id=? AND project_id=? AND environment_id=? AND payload_present=1 ORDER BY revision DESC LIMIT 1`,
+			`SELECT id,revision,parameter_contract FROM snapshots WHERE org_id=$1 AND project_id=$2 AND environment_id=$3 AND payload_present=true ORDER BY revision DESC LIMIT 1`)
+		var snapshotID, parameterContract string
+		if err := db.QueryRow(ctx, snapshotQuery, job.OrgID, job.ProjectID, job.EnvironmentID).Scan(&snapshotID, &out.Revision, &parameterContract); err != nil {
 			if isNoRows(err) {
 				return out, nil
 			}
 			return AdapterExecution{}, err
+		}
+		var contract parameters.Contract
+		if err := json.Unmarshal([]byte(parameterContract), &contract); err != nil {
+			return AdapterExecution{}, err
+		}
+		if len(contract.Declarations) > 0 {
+			return AdapterExecution{}, errors.New("adapter delivery does not support environment parameters; use a concrete environment")
 		}
 		entryQuery := db.SQL(
 			`SELECT e.id,e.snapshot_id,e.key_id,e.key_name,e.classification,e.ciphertext FROM snapshot_entries e JOIN adapter_target_keys k ON k.key_id=e.key_id AND k.target_id=? AND k.org_id=e.org_id AND k.project_id=e.project_id AND k.environment_id=e.environment_id WHERE e.snapshot_id=? AND e.org_id=? AND e.project_id=? AND e.environment_id=? ORDER BY e.key_name`,

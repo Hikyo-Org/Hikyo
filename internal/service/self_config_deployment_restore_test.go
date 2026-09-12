@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
+	"testing"
+
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/config"
 	"github.com/Hikyo-Org/hikyo/internal/configrollout"
@@ -11,8 +14,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"k8s.io/apimachinery/pkg/types"
-	"strings"
-	"testing"
 )
 
 type restoreRaceProbe struct {

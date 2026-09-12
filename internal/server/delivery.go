@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
@@ -39,6 +40,11 @@ func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequest
 		cursor = *req.Params.Cursor
 	}
 	opts := service.FetchOptions{}
+	if req.Params.Parameters != nil {
+		if err := json.Unmarshal([]byte(*req.Params.Parameters), &opts.Parameters); err != nil || opts.Parameters == nil {
+			return nil, domain.ErrInvalid
+		}
+	}
 	if req.Params.Projection != nil {
 		opts.Projection = delivery.Mode(*req.Params.Projection)
 	}
@@ -69,6 +75,7 @@ func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequest
 		})
 	}
 	out := apigen.FetchDelivery200JSONResponse{
+		Revision:          res.Revision,
 		CredentialId:      res.CredentialID,
 		Current:           res.Current,
 		Cursor:            res.Cursor,

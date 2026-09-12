@@ -182,9 +182,10 @@ const (
 	EventProjectRenamed EventType = "settings.project_renamed"
 	EventProjectDeleted EventType = "settings.project_deleted"
 
-	EventEnvCreated EventType = "settings.environment_created"
-	EventEnvRenamed EventType = "settings.environment_renamed"
-	EventEnvDeleted EventType = "settings.environment_deleted"
+	EventEnvCreated          EventType = "settings.environment_created"
+	EventEnvParameterChanged EventType = "settings.environment_parameter_changed"
+	EventEnvRenamed          EventType = "settings.environment_renamed"
+	EventEnvDeleted          EventType = "settings.environment_deleted"
 	// settings.environment_reordered records one authorized rewrite of a
 	// project's whole display order, naming how many environments it covered.
 	// The ids are the object of the operation, not free text, and the count is
@@ -393,6 +394,10 @@ const (
 	// investigator filtering "who read this key" must not have to know four
 	// spellings.
 	EventValueRevealed EventType = "disclosure.value_revealed"
+	// Public export inputs are recorded once per successful parameterized export.
+	// Ordinary config exports remain unaudited; per-key export disclosure records
+	// remain exclusive to secrets.
+	EventValuesExported EventType = "disclosure.values_exported"
 	// value.staged records an edit landing in the actor's own WORKING STATE
 	// (#51). It is deliberately its own type rather than a `value.set` with a
 	// flag: a draft delivers nothing, so an investigator asking "when did this
@@ -1373,8 +1378,13 @@ var registry = map[EventType]TypeSpec{
 	EventOrgDeleted:     hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
 	EventProjectRenamed: hierarchyEvent(renameSchema("name")),
 	EventProjectDeleted: hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
-	EventEnvRenamed:     hierarchyEvent(renameSchema("name")),
-	EventEnvDeleted:     hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
+	EventEnvParameterChanged: hierarchyEvent(Schema{
+		"name":    {Kind: KindFreeText, Required: true},
+		"pattern": {Kind: KindFreeText},
+		"action":  {Kind: KindString, Required: true, Enum: []string{"add", "delete"}},
+	}),
+	EventEnvRenamed: hierarchyEvent(renameSchema("name")),
+	EventEnvDeleted: hierarchyEvent(Schema{"name": {Kind: KindFreeText, Required: true}}),
 	// The resulting order, not only its length: an investigator must be able to
 	// tell "production and staging swapped" from any other permutation of the
 	// same set. audit.Schema has no list kind, so the order is one
@@ -1511,6 +1521,7 @@ var registry = map[EventType]TypeSpec{
 	// the plaintext went. Never what it was. Offline-only provenance fields
 	// preserve the serving credential even when it has since been revoked.
 	EventValueRevealed: hierarchyEvent(Schema{
+		"parameters":           {Kind: KindFreeTextMap, MaxLen: 32, MaxBytes: 256},
 		"key_id":               {Kind: KindString, Required: true},
 		"name":                 {Kind: KindFreeText, Required: true},
 		"surface":              {Kind: KindString, Required: true},
@@ -1519,6 +1530,10 @@ var registry = map[EventType]TypeSpec{
 		"served_credential_id": {Kind: KindString},
 		"generation":           {Kind: KindString},
 		"served_from":          {Kind: KindString},
+	}),
+	EventValuesExported: hierarchyEvent(Schema{
+		"parameters": {Kind: KindFreeTextMap, MaxLen: 32, MaxBytes: 256, Required: true},
+		"revision":   {Kind: KindInt, Required: true},
 	}),
 	// Drafts and publishing (#51).
 	EventValueStaged: hierarchyEvent(Schema{
@@ -2382,8 +2397,9 @@ var registry = map[EventType]TypeSpec{
 			"issuer":      {Kind: KindFreeText, Required: true},
 			"issuer_type": {Kind: KindString, Required: true},
 			// created | updated | deleted.
-			"change":    {Kind: KindString, Required: true},
-			"jwks_mode": {Kind: KindString, Required: true},
+			"change":           {Kind: KindString, Required: true},
+			"jwks_mode":        {Kind: KindString, Required: true},
+			"ca_bundle_sha256": {Kind: KindString},
 			// The refused-audience list is recorded because it IS the
 			// default-audience defence: an operator who narrowed it narrowed the
 			// rule, and that has to be visible without diffing configuration.
@@ -2654,6 +2670,7 @@ var registry = map[EventType]TypeSpec{
 		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
 		Trails:        map[Trail]bool{TrailTenant: true},
 		Schema: Schema{
+			"parameters": {Kind: KindFreeTextMap, MaxLen: 32, MaxBytes: 256},
 			// full | current. A "current" answer delivers nothing and is not a
 			// disclosure; a full answer delivers the authorized projection. One
 			// immutable record either way, never aggregated, never a counter.

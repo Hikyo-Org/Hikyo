@@ -44,7 +44,7 @@ type RevisionService interface {
 	Show(ctx context.Context, actor service.Actor, scope domain.Scope, revision int64) (service.RevisionDetail, error)
 	Signals(ctx context.Context, actor service.Actor, scope domain.Scope) (service.EnvironmentSignals, error)
 	PendingDrafts(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.PendingDraft, error)
-	Export(ctx context.Context, actor service.Actor, scope domain.Scope, revision int64, reveal bool) ([]service.ExportedValue, int64, error)
+	ExportWithParameters(ctx context.Context, actor service.Actor, scope domain.Scope, revision int64, reveal bool, supplied map[string]string) ([]service.ExportedValue, int64, error)
 	Watch(ctx context.Context, actor service.Actor, scope domain.Scope) (<-chan service.AdvisoryEvent, error)
 	RotateTokenKey(ctx context.Context, actor service.Actor) (service.TokenKeyRotation, error)
 	RotateScanningKey(ctx context.Context, actor service.Actor) (service.ScanningKeyRotation, error)
@@ -362,9 +362,10 @@ func (a *API) ListPendingDrafts(ctx context.Context, req apigen.ListPendingDraft
 			StagedFromRevision: draft.StagedFromRevision, CreatedAt: draft.CreatedAt,
 			Revealed: draft.Revealed,
 			Advisory: &struct {
-				OwnerId apigen.ID `json:"owner_id"`
-				Valid   bool      `json:"valid"`
-			}{OwnerId: apigen.ID(draft.OwnerID), Valid: draft.Valid},
+				OwnerId            apigen.ID `json:"owner_id"`
+				Valid              bool      `json:"valid"`
+				ValidationDeferred *bool     `json:"validation_deferred,omitempty"`
+			}{OwnerId: apigen.ID(draft.OwnerID), Valid: draft.Valid, ValidationDeferred: &draft.ValidationDeferred},
 		}
 		if draft.Revealed {
 			value := draft.Value
@@ -386,8 +387,11 @@ func (a *API) ExportValues(ctx context.Context, req apigen.ExportValuesRequestOb
 		}
 		reveal = derefBool(req.Body.Reveal)
 	}
-	values, served, err := a.Revisions.Export(ctx, service.Bearer(bearer(ctx)),
-		envScope(req.Org, req.Project, req.Environment), revision, reveal)
+	var supplied map[string]string
+	if req.Body != nil && req.Body.Parameters != nil {
+		supplied = *req.Body.Parameters
+	}
+	values, served, err := a.Revisions.ExportWithParameters(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment), revision, reveal, supplied)
 	if err != nil {
 		return nil, err
 	}

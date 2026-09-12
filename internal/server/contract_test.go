@@ -1578,7 +1578,7 @@ func (s stubRevisions) PendingDrafts(context.Context, service.Actor, domain.Scop
 	return nil, s.outcome()
 }
 
-func (s stubRevisions) Export(context.Context, service.Actor, domain.Scope, int64, bool) ([]service.ExportedValue, int64, error) {
+func (s stubRevisions) ExportWithParameters(context.Context, service.Actor, domain.Scope, int64, bool, map[string]string) ([]service.ExportedValue, int64, error) {
 	return nil, 0, s.outcome()
 }
 
@@ -2211,4 +2211,11 @@ func (s stubAuth) MyProfile(context.Context, string) (service.AccountProfile, er
 }
 func (s stubAuth) UpdateMyProfile(context.Context, string, service.AccountProfile, string) (service.AccountProfile, error) {
 	return service.AccountProfile{}, domain.ErrUnauthenticated
+}
+
+func (s stubEnvs) Parameters(context.Context, service.Actor, domain.Scope) (map[string]string, error) {
+	return nil, s.outcome()
+}
+func (s stubEnvs) SetParameter(context.Context, service.Actor, domain.Scope, string, string, bool) error {
+	return s.outcome()
 }

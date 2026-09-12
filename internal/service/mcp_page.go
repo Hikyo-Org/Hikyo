@@ -154,6 +154,10 @@ func (s *Revisions) PendingDraftsPage(ctx context.Context, actor Actor, scope do
 		if err != nil {
 			return err
 		}
+		declarations, err := environmentParameters(ctx, r.Environments(), p)
+		if err != nil {
+			return err
+		}
 		out = make([]PendingDraft, 0, len(changes))
 		for _, change := range changes {
 			key, err := r.Catalogue().GetInProject(ctx, p, change.KeyID)
@@ -164,7 +168,7 @@ func (s *Revisions) PendingDraftsPage(ctx context.Context, actor Actor, scope do
 			if err != nil {
 				return err
 			}
-			draft, err := pendingDraftView(change, key, presence, sealer)
+			draft, err := pendingDraftView(change, key, presence, sealer, declarations)
 			if err != nil {
 				return err
 			}

@@ -6,8 +6,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"io"
+
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 
 	"github.com/jackc/pgx/v5"
 )

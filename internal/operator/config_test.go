@@ -17,6 +17,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.OwnNamespace != "hikyo-system" {
 		t.Errorf("OwnNamespace = %q", cfg.OwnNamespace)
 	}
+	if cfg.NativeSecretTypes {
+		t.Error("NativeSecretTypes should default false")
+	}
 	if !cfg.TriggerRollouts {
 		t.Error("TriggerRollouts should default true")
 	}
@@ -30,13 +33,17 @@ func TestLoadConfigDefaults(t *testing.T) {
 
 func TestLoadConfigNamespacesAndOverrides(t *testing.T) {
 	cfg, err := LoadConfig(envFrom(map[string]string{
-		"HIKYO_OPERATOR_NAMESPACE":        "ops",
-		"HIKYO_OPERATOR_NAMESPACES":       "team-a, team-b ",
-		"HIKYO_OPERATOR_TRIGGER_ROLLOUTS": "false",
-		"HIKYO_OPERATOR_METRICS_ADDR":     ":9000",
+		"HIKYO_OPERATOR_NAMESPACE":           "ops",
+		"HIKYO_OPERATOR_NAMESPACES":          "team-a, team-b ",
+		"HIKYO_OPERATOR_TRIGGER_ROLLOUTS":    "false",
+		"HIKYO_OPERATOR_NATIVE_SECRET_TYPES": "true",
+		"HIKYO_OPERATOR_METRICS_ADDR":        ":9000",
 	}))
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
+	}
+	if !cfg.NativeSecretTypes {
+		t.Error("NativeSecretTypes should be true")
 	}
 	if cfg.TriggerRollouts {
 		t.Error("TriggerRollouts should be false")
@@ -85,5 +92,14 @@ func TestLoadConfigBadBool(t *testing.T) {
 	}))
 	if err == nil {
 		t.Fatal("a non-boolean TRIGGER_ROLLOUTS must fail loud")
+	}
+}
+
+func TestLoadConfigBadNativeSecretBool(t *testing.T) {
+	_, err := LoadConfig(envFrom(map[string]string{
+		"POD_NAMESPACE": "ns", "HIKYO_OPERATOR_NATIVE_SECRET_TYPES": "maybe",
+	}))
+	if err == nil {
+		t.Fatal("non-boolean NATIVE_SECRET_TYPES must fail loud")
 	}
 }

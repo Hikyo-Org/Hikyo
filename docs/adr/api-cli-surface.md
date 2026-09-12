@@ -1,5 +1,7 @@
 # Hikyo API & CLI surface (ADR, locked 2026-08-02)
 
+> **Declared amendment (2026-09-12, #730, user-authorized implementation):** Automation may use `env create/delete`, including clone-at-creation, `values set/publish/copy`, and read-only `env list/show`, `pin list`, `revision show`. CLI and HTTP artifact admission agree. Existing per-operation capability formulas, human ceremonies, machine-reveal opt-in, copy disclosure checks, approval policies and protected self-configuration exclusions remain effective. `values import`, account/administration verbs and pin mutations remain human-only. Machine environment deletion additionally refuses a protected target at the shared authorizer, including definitions-apply deletion. Lifecycle authority remains project-scoped; no name-prefix grant or production tier is introduced. The recommended per-PR deployment boundary is a dedicated preview project.
+
 > **Declared amendment (2026-09-05, 1.0 diagnostics, #79):** `hikyo escrow verify --root-key-file FILE --assert-separate-custody` is a local-host-only custody operation. Its narrow `local-escrow-verification` SystemProof is the declared addition to the closed exception set; it has no remote equivalent because private escrow material must not cross the API. Health findings remain available through the existing authorized instance health endpoint, CLI doctor and web status banners.
 
 
@@ -187,3 +189,30 @@ Every CLI path that handles secret plaintext belongs to exactly one of **two exh
 ## Binds
 
 #26 (MVP boundary: FIDO2-in-terminal candidate; parity exemption list confirmation), #27 (synthesis: this ADR is the API/CLI spec's skeleton), #28 (adapter verbs join the taxonomy under this ADR's grammar — spellings there, grammar here), #29/#30/#31 (UI prototypes inherit the parity principle as a review criterion), #32 (ops spec: handoff/device-code/user-code lifetimes and admission values, login-path rate limits, meta-endpoint bounds, context/pin-file conventions, golden-snapshot scenario matrix, `--output-file` docs guidance).
+
+
+**Parameter amendment (#723, 2026-09-12):** `env param add|list|delete` manages
+public environment declarations for the next publication. `values export --param
+NAME=value` is repeatable and refuses duplicate names. Machine delivery accepts a
+bounded JSON `parameters` query object; `HikyoSecret.spec.parameters` carries the
+same public inputs. This does not broaden secret disclosure authority.
+
+The #723 implementation scopes declaration management to CLI and parameter input
+to CLI/operator. The parity registry adds the narrowly checked
+`preview-parameter-configuration` exception for exactly the list/change parameter
+operations; it does not exempt other environment settings or lifecycle actions.
+
+**Machine export amendment (#730, 2026-09-12):** machine `values export` uses
+`GET /delivery`, preserving current or durable-pin selection and live disclosure
+authority. The human historical export endpoint remains human-only. Explicit
+`--revision` is refused for machines. Without `--reveal` the CLI requests
+config-only projection; with it, a withheld set secret refuses the whole export
+before output. Delivery reports the selected snapshot revision so exports never
+infer it from a separate, racing metadata request.
+
+**Revision amendment (#723/#730, 2026-09-12):** API revision 3 introduces the
+parameter list/change operations and selected snapshot revision in delivery.
+The new operations declare minimum revision 3. Existing operation minimums stay
+unchanged because the added response metadata is compatible with old clients.
+Machine CLI export requires revision 3 before delivery so an older server's
+missing snapshot revision cannot silently become revision zero.

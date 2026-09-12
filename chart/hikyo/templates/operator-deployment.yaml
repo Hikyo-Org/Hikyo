@@ -36,6 +36,8 @@ spec:
           env:
             - name: HIKYO_OPERATOR_NAMESPACES
               value: {{ join "," .Values.operator.namespaces | quote }}
+            - name: HIKYO_OPERATOR_NATIVE_SECRET_TYPES
+              value: {{ ternary "true" "false" .Values.operator.nativeSecretTypes | quote }}
             - name: HIKYO_OPERATOR_TRIGGER_ROLLOUTS
               value: {{ ternary "true" "false" .Values.operator.triggerRollouts | quote }}
             - name: HIKYO_OPERATOR_NAMESPACE

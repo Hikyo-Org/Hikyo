@@ -2,8 +2,9 @@ package upgrade
 
 import (
 	"errors"
-	"golang.org/x/sys/windows"
 	"os"
+
+	"golang.org/x/sys/windows"
 )
 
 func requireSingleLink(path string, _ os.FileInfo) error {

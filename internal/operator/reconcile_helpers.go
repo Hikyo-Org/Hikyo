@@ -171,7 +171,7 @@ func (r *HikyoSecretReconciler) eligibleCursor(
 	ctx context.Context, cr *hikyov1.HikyoSecret, inst *hikyov1.HikyoInstance,
 	cred credential, existing *corev1.Secret, existed bool, root []byte,
 ) string {
-	if cr.Status.Cursor == "" || !existed || !metav1.IsControlledBy(existing, cr) {
+	if cr.Status.Cursor == "" || !existed || !metav1.IsControlledBy(existing, cr) || effectiveSecretType(existing.Type) != effectiveSecretType(cr.Spec.Target.Type) {
 		return ""
 	}
 	// stamp(current Secret data) must equal the recorded stamp — a tampered or
@@ -190,6 +190,7 @@ func (r *HikyoSecretReconciler) eligibleCursor(
 
 func bindingInputFor(cr *hikyov1.HikyoSecret, inst *hikyov1.HikyoInstance, cred credential) bindingInput {
 	return bindingInput{
+		parameters:                parameterInputs(cr),
 		authObjectUID:             cred.uid,
 		authObjectResourceVersion: cred.resourceVersion,
 		org:                       string(cr.Spec.Scope.Org),
@@ -198,6 +199,7 @@ func bindingInputFor(cr *hikyov1.HikyoSecret, inst *hikyov1.HikyoInstance, cred 
 		projection:                string(effectiveProjection(cr)),
 		mapping:                   cr.Spec.Mapping,
 		targetName:                cr.Spec.Target.Name,
+		targetType:                string(effectiveSecretType(cr.Spec.Target.Type)),
 		instanceUID:               string(inst.UID),
 	}
 }
@@ -336,7 +338,7 @@ func summarize(conditions []metav1.Condition) (ready bool, reason string, lifecy
 	}
 	if c := meta.FindStatusCondition(conditions, hikyov1.ConditionDelivery); c != nil &&
 		c.Status == metav1.ConditionFalse &&
-		(c.Reason == hikyov1.ReasonUndeliveredSecrets || c.Reason == hikyov1.ReasonLoaderControlUnacknowledged) {
+		(c.Reason == hikyov1.ReasonUndeliveredSecrets || c.Reason == hikyov1.ReasonLoaderControlUnacknowledged || c.Reason == hikyov1.ReasonInvalidSecretData) {
 		return false, c.Reason, hikyov1.LifecycleRefused
 	}
 	if c := meta.FindStatusCondition(conditions, hikyov1.ConditionSynced); c != nil {
@@ -504,4 +506,16 @@ func decodeCABundle(b64 string) ([]byte, error) {
 		return nil, fmt.Errorf("caBundle is not valid base64 (the CRD documents base64-encoded PEM): %w", err)
 	}
 	return raw, nil
+}
+
+// parameterInputs converts the CRD's bounded string type to delivery inputs.
+func parameterInputs(cr *hikyov1.HikyoSecret) map[string]string {
+	if len(cr.Spec.Parameters) == 0 {
+		return nil
+	}
+	inputs := make(map[string]string, len(cr.Spec.Parameters))
+	for name, value := range cr.Spec.Parameters {
+		inputs[name] = string(value)
+	}
+	return inputs
 }

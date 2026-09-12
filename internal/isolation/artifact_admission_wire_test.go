@@ -70,8 +70,9 @@ func runArtifactClassAdmissionWire(t *testing.T, db *store.DB) {
 
 	// Machine credential has enough authority for this existing environment;
 	// only the operation's human-session declaration may refuse it.
-	humanOnlyPath := api.PathPrefix + "/orgs/" + e.org + "/projects/" + e.project +
+	environmentPath := api.PathPrefix + "/orgs/" + e.org + "/projects/" + e.project +
 		"/environments/" + e.env
+	humanOnlyPath := environmentPath + "/settings"
 	machineCode, machineBody := e.callAs(t, minted.Value, http.MethodGet, humanOnlyPath, nil)
 	if machineCode != missingCode || !bytes.Equal(machineBody, missingBody) {
 		t.Fatalf("machine on human-only route = %d %s, want nonexistent control %d %s",
@@ -120,7 +121,7 @@ func runArtifactClassAdmissionWire(t *testing.T, db *store.DB) {
 
 	// delivery.fetch is machine-only. A human with read authority receives the
 	// same nonexistent wire response, before delivery can materialize anything.
-	machineOnlyPath := humanOnlyPath + "/delivery"
+	machineOnlyPath := environmentPath + "/delivery"
 	humanCode, humanBody := e.call(t, http.MethodGet, machineOnlyPath, nil)
 	if humanCode != missingCode || !bytes.Equal(humanBody, missingBody) {
 		t.Fatalf("human on machine-only route = %d %s, want nonexistent control %d %s",

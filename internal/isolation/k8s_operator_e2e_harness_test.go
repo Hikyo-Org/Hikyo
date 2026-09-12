@@ -329,11 +329,12 @@ func (e *opEnv) seedStampRoot() {
 // sequential scenarios never fight over :8080/:8081.
 func (e *opEnv) managerConfig() operator.Config {
 	return operator.Config{
-		Namespaces:      []string{e.ns},
-		TriggerRollouts: true,
-		OwnNamespace:    e.ns,
-		MetricsAddr:     "0",
-		HealthAddr:      "0",
+		Namespaces:        []string{e.ns},
+		TriggerRollouts:   true,
+		NativeSecretTypes: true,
+		OwnNamespace:      e.ns,
+		MetricsAddr:       "0",
+		HealthAddr:        "0",
 	}
 }
 
@@ -385,7 +386,7 @@ func (e *opEnv) reconcilerWith(writer client.Client) *operatorReconciler {
 		Reader:      e.cl,
 		Scheme:      e.scheme,
 		Recorder:    e.recorder,
-		Config:      operator.Config{OwnNamespace: e.ns, TriggerRollouts: true},
+		Config:      operator.Config{OwnNamespace: e.ns, TriggerRollouts: true, NativeSecretTypes: true},
 		Log:         discardLog(),
 		TokenMinter: e2eMinter{cs: e.cs},
 	}
@@ -479,6 +480,7 @@ type crSpec struct {
 	mapping        [][2]string // {sourceKey, secretKey}
 	projection     hikyov1.Projection
 	policy         hikyov1.CreationPolicy
+	secretType     corev1.SecretType
 }
 
 func (e *opEnv) createCR(s crSpec) *hikyov1.HikyoSecret {
@@ -487,7 +489,7 @@ func (e *opEnv) createCR(s crSpec) *hikyov1.HikyoSecret {
 		Spec: hikyov1.HikyoSecretSpec{
 			InstanceRef: hikyov1.InstanceRef{Name: instanceName},
 			Scope:       hikyov1.Scope{Org: e2eOrg, Project: e2ePrj, Environment: e2eEnv},
-			Target:      hikyov1.Target{Name: s.target},
+			Target:      hikyov1.Target{Name: s.target, Type: s.secretType},
 		},
 	}
 	if s.secretRef != "" {

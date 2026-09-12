@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )

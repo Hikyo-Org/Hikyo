@@ -153,7 +153,7 @@ func newHarness(t *testing.T, interceptors interceptor.Funcs, objs ...client.Obj
 		Reader:   cl,
 		Scheme:   sch,
 		Recorder: rec,
-		Config:   Config{OwnNamespace: testOwnNS, TriggerRollouts: true},
+		Config:   Config{OwnNamespace: testOwnNS, TriggerRollouts: true, NativeSecretTypes: true},
 		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
 		NewClientForURL: func(rawURL string, _ []byte) (deliveryClient, error) {
 			return opclient.NewClient(srv.URL, ca, "hikyo-operator/test")
@@ -390,7 +390,7 @@ func emptyPodTemplate() corev1.PodTemplateSpec {
 // deliveryJSON builds a 200 response body.
 func deliveryJSON(current bool, cursor, changeToken string, keys []deliveredKey, credExpiresAt *time.Time) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, `{"current":%t,"cursor":%q,"change_token":%q,"schema_revision":3,"pin_expired":false`, current, cursor, changeToken)
+	fmt.Fprintf(&b, `{"current":%t,"cursor":%q,"change_token":%q,"schema_revision":3,"revision":1,"pin_expired":false`, current, cursor, changeToken)
 	if credExpiresAt != nil {
 		fmt.Fprintf(&b, `,"credential_expires_at":%q`, credExpiresAt.Format(time.RFC3339))
 	}

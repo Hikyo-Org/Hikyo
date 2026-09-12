@@ -627,6 +627,9 @@ func (s *Definitions) deleteEnvironment(ctx context.Context, r store.Repos, az *
 	if err := r.Catalogue().DeletePresenceForEnvironment(ctx, ep); err != nil {
 		return err
 	}
+	if err := releaseEnvironmentGrants(ctx, r, az, ep, caller.Principal, envScope); err != nil {
+		return err
+	}
 	return r.Environments().Delete(ctx, ep)
 }
 

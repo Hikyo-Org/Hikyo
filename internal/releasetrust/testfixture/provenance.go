@@ -1,8 +1,9 @@
 package testfixture
 
 import (
-	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 )
 
 func StableProvenance(t testing.TB, policy releasetrust.StablePolicy, manifest releasetrust.Manifest) []byte {

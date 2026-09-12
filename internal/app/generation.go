@@ -105,9 +105,13 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
 	}
 
+	federationClient, err := federationhttp.NewClient(federationPolicy, federationhttp.DocumentBytes)
+	if err != nil {
+		return nil, fmt.Errorf("boot: machine federation transport: %w", err)
+	}
 	federation := &service.Federation{
 		DB: db, Auth: authSvc, Admission: limiter,
-		Cache: &oidcfed.Cache{Limiter: limiter},
+		Cache: &oidcfed.Cache{Limiter: limiter, HTTP: federationClient},
 	}
 	scimSvc := &service.SCIM{DB: db, Auth: authSvc}
 	fetchCfg := remotefetch.DefaultConfig()

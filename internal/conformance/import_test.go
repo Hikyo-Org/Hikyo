@@ -265,7 +265,7 @@ func scenarioImportStrict(t *testing.T, db *store.DB) {
 	}
 	// Import is an immediate publish-authorized write. Its values must be in the
 	// committed snapshot that delivery reads, not only in value_entries.
-	exported, _, err := revisionSvc(t, db).Export(t.Context(), actor, prod, 0, false)
+	exported, _, err := revisionSvc(t, db).ExportWithParameters(t.Context(), actor, prod, 0, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

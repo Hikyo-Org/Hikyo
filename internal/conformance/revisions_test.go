@@ -816,7 +816,7 @@ func scenarioRestoreSupersededSecret(t *testing.T, db *store.DB) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	got, _, err := revisions.Export(t.Context(), actor, dev, 0, true)
+	got, _, err := revisions.ExportWithParameters(t.Context(), actor, dev, 0, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -918,7 +918,7 @@ func scenarioHistoricalExportFormula(t *testing.T, db *store.DB) {
 		"usr_export_historian_"+string(scope.Project), []grantSpec{
 			{"read", envScope}, {"reveal-history", envScope},
 		}))
-	exported, served, err := revisions.Export(t.Context(), historian, dev, historicalRevision, true)
+	exported, served, err := revisions.ExportWithParameters(t.Context(), historian, dev, historicalRevision, true, nil)
 	if err != nil {
 		t.Fatalf("read+reveal-history could not export a historical revision: %v", err)
 	}
@@ -929,7 +929,7 @@ func scenarioHistoricalExportFormula(t *testing.T, db *store.DB) {
 		t.Fatalf("historical export under reveal-history = %+v, want tok-rev-1 revealed", exported)
 	}
 	// The same historian must NOT reveal the present: latest rides `reveal`.
-	if _, _, err := revisions.Export(t.Context(), historian, dev, 0, true); err == nil {
+	if _, _, err := revisions.ExportWithParameters(t.Context(), historian, dev, 0, true, nil); err == nil {
 		t.Fatal("reveal-history alone exported CURRENT material — the current half of the formula was not evaluated")
 	}
 
@@ -938,10 +938,10 @@ func scenarioHistoricalExportFormula(t *testing.T, db *store.DB) {
 		"usr_export_revealer_"+string(scope.Project), []grantSpec{
 			{"read", envScope}, {"reveal", envScope},
 		}))
-	if _, _, err := revisions.Export(t.Context(), revealer, dev, historicalRevision, true); err == nil {
+	if _, _, err := revisions.ExportWithParameters(t.Context(), revealer, dev, historicalRevision, true, nil); err == nil {
 		t.Fatal("reveal alone exported HISTORICAL material — the historical half of the formula was not evaluated")
 	}
-	exported, served, err = revisions.Export(t.Context(), revealer, dev, 0, true)
+	exported, served, err = revisions.ExportWithParameters(t.Context(), revealer, dev, 0, true, nil)
 	if err != nil {
 		t.Fatalf("read+reveal could not export current material: %v", err)
 	}
@@ -1049,7 +1049,7 @@ func scenarioPublishSerialization(t *testing.T, db *store.DB) {
 	}
 	// …and the delivered snapshot at that revision carries both new values, so
 	// the latest pointer and the payload agree.
-	exported, servedRevision, err := revisions.Export(t.Context(), actor, dev, 0, false)
+	exported, servedRevision, err := revisions.ExportWithParameters(t.Context(), actor, dev, 0, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1272,7 +1272,7 @@ func scenarioRevisionCiphertextBinding(t *testing.T, db *store.DB) {
 		WHERE id = (SELECT se.id FROM snapshot_entries se JOIN snapshots s ON s.id = se.snapshot_id
 			WHERE se.environment_id = $2 AND se.key_name = $3 ORDER BY s.revision DESC LIMIT 1)`,
 		string(prod.Env), string(dev.Env), "SOURCE")
-	if _, _, err := revisionSvc(t, db).Export(t.Context(), actor, prod, 0, false); !errors.Is(err, crypto.ErrDecrypt) {
+	if _, _, err := revisionSvc(t, db).ExportWithParameters(t.Context(), actor, prod, 0, false, nil); !errors.Is(err, crypto.ErrDecrypt) {
 		t.Fatalf("relocated snapshot ciphertext opened under changed environment/snapshot metadata: %v", err)
 	}
 }

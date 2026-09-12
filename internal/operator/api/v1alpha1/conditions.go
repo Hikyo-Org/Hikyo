@@ -19,8 +19,8 @@ const (
 	ConditionConflict = "Conflict"
 	// ConditionDelivery reports a delivery-content refusal or caveat.
 	ConditionDelivery = "Delivery"
-	// ConditionScrubbed reports the managed Secret was converged to empty under
-	// an authoritative refusal.
+	// ConditionScrubbed reports the managed Secret was emptied (Opaque) or
+	// deleted (typed) under an authoritative refusal.
 	ConditionScrubbed = "Scrubbed"
 	// ConditionRollout reports whether opted-in workloads progressed after a
 	// stamp patch.
@@ -52,10 +52,12 @@ const (
 	// Conflict.
 	ReasonManagedSecretNotOwned = "ManagedSecretNotOwned" // target exists without this CR's controller ownerRef
 	ReasonTargetClaimed         = "TargetClaimed"         // another HikyoSecret (earlier) names the same target
+	ReasonTargetTypeImmutable   = "TargetTypeImmutable"   // existing target has a different immutable Secret type
 
 	// Delivery.
 	ReasonUndeliveredSecrets          = "UndeliveredSecrets"          // all-or-nothing: secret keys arrived presence-only
 	ReasonKeysMissing                 = "KeysMissing"                 // mapped source keys absent from the manifest
+	ReasonInvalidSecretData           = "InvalidSecretData"           // mapped data is invalid for the requested native Secret type
 	ReasonLoaderControlUnacknowledged = "LoaderControlUnacknowledged" // mapped secretKey on baseline, not acknowledged
 	ReasonEnvFromSkip                 = "EnvFromSkip"                 // secretKey is not a valid env identifier (warning)
 

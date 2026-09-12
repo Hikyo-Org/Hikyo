@@ -186,7 +186,14 @@ func machineSatisfiable(op authz.Operation) bool {
 	for _, class := range domain.MachineClasses() {
 		ok := true
 		for _, atom := range formula {
-			if !domain.MachineMayHold(class, atom.Cap) {
+			// This asks whether the formula is ever satisfiable. Reveal can
+			// be granted under the live project opt-in even though it is not
+			// in the unconditional machine allowlist. Runtime checks still
+			// require that opt-in and grants on both sides of a secret copy.
+			// Pin-bound reveal-history does not admit a generic historical
+			// operation; machines exercise that delegation through delivery.
+			conditionalReveal := atom.Cap == domain.CapReveal && domain.MachineMayHoldRevealByOptIn(class)
+			if !domain.MachineMayHold(class, atom.Cap) && !conditionalReveal {
 				ok = false
 				break
 			}
@@ -196,6 +203,25 @@ func machineSatisfiable(op authz.Operation) bool {
 		}
 	}
 	return false
+}
+
+func TestMachineFormulaSatisfiabilityIncludesConditionalReveal(t *testing.T) {
+	for _, tc := range []struct {
+		op   authz.Operation
+		want bool
+	}{
+		{authz.OpEnvRead, true},
+		{authz.OpValueCopyDestination, true},
+		{authz.OpValueCopyDestinationConfig, true},
+		{authz.OpSelfConfigTest, false},
+		{authz.OpValueExportRevealHistory, false},
+	} {
+		t.Run(string(tc.op), func(t *testing.T) {
+			if got := machineSatisfiable(tc.op); got != tc.want {
+				t.Fatalf("machine satisfiable = %t, want %t", got, tc.want)
+			}
+		})
+	}
 }
 
 // chiPath converts an OpenAPI path template to chi's spelling. They agree

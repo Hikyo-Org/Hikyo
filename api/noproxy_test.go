@@ -208,6 +208,9 @@ func TestRemoteContractSurfaceIsPinned(t *testing.T) {
 // THIS instance's own data — its configuration, its metadata, a snapshot it
 // stored — and never fetches, relays or forwards on behalf of the caller.
 var pinnedContractSurface = map[string]bool{
+	// Parameter declarations are local metadata; references cannot select URLs or upstreams.
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters":  true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters": true,
 	// Owner-local immutable binding only. Test sends through the configured SMTP relay; no remote API proxy.
 	"GET /api/v1/instance/config":            true,
 	"GET /api/v1/instance/config/adoption":   true,

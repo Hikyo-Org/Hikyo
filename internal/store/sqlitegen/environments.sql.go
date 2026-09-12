@@ -112,6 +112,24 @@ func (q *Queries) GetEnvironment(ctx context.Context, arg GetEnvironmentParams) 
 	return i, err
 }
 
+const getEnvironmentParameters = `-- name: GetEnvironmentParameters :one
+SELECT parameters_json FROM environments
+WHERE org_id = ?1 AND project_id = ?2 AND id = ?3
+`
+
+type GetEnvironmentParametersParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+}
+
+func (q *Queries) GetEnvironmentParameters(ctx context.Context, arg GetEnvironmentParametersParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getEnvironmentParameters, arg.ChainOrgID, arg.ChainProjectID, arg.ChainEnvID)
+	var parameters_json string
+	err := row.Scan(&parameters_json)
+	return parameters_json, err
+}
+
 const getEnvironmentSettings = `-- name: GetEnvironmentSettings :one
 
 SELECT protected, reauth_window_seconds FROM environments
@@ -426,6 +444,31 @@ func (q *Queries) SetEnvironmentOrder(ctx context.Context, arg SetEnvironmentOrd
 		arg.OrgID,
 		arg.ProjectID,
 		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const setEnvironmentParameters = `-- name: SetEnvironmentParameters :execrows
+UPDATE environments SET parameters_json = ?1
+WHERE org_id = ?2 AND project_id = ?3 AND id = ?4
+`
+
+type SetEnvironmentParametersParams struct {
+	ParametersJson string
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+}
+
+func (q *Queries) SetEnvironmentParameters(ctx context.Context, arg SetEnvironmentParametersParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, setEnvironmentParameters,
+		arg.ParametersJson,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ChainEnvID,
 	)
 	if err != nil {
 		return 0, err

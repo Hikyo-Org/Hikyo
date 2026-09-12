@@ -530,6 +530,9 @@ func prepareSelfConfigSnapshot(ctx context.Context, snapshots store.SnapshotRead
 	if !snapshot.PayloadPresent() {
 		return nil, collectedRevisionError(snapshot)
 	}
+	if _, err := snapshotParameters(ctx, snapshots, p, snapshot, nil); err != nil {
+		return nil, err
+	}
 	entries, err := snapshots.Entries(ctx, p, snapshot)
 	if err != nil {
 		return nil, err

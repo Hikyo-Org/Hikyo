@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 	"github.com/jackc/pgx/v5"

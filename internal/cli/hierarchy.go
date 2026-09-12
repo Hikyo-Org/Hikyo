@@ -181,6 +181,9 @@ func runProject(ctx context.Context, ios IO, args []string) error {
 // the same reason the endpoint does: a partial reorder is how two environments
 // end up sharing a position.
 func runEnv(ctx context.Context, ios IO, args []string) error {
+	if len(args) > 0 && args[0] == "param" {
+		return runEnvParam(ctx, ios, args[1:])
+	}
 	sub, rest, err := subverb("env", args, "list", "show", "create", "rename", "reorder", "delete")
 	if err != nil {
 		return err

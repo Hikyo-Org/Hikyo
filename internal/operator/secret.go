@@ -12,9 +12,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
+	"github.com/Hikyo-Org/hikyo/internal/parameters"
 )
 
 // stampPairsFromData renders a managed Secret's data as stamp pairs so the
@@ -35,7 +37,11 @@ func stampPairsFromData(data map[string][]byte) []crypto.StampPair {
 func (r *HikyoSecretReconciler) computeStamp(
 	inst *hikyov1.HikyoInstance, cr *hikyov1.HikyoSecret, pairs []crypto.StampPair, root []byte,
 ) (string, error) {
-	key, err := crypto.StampKey(root, string(inst.UID), string(cr.UID), cr.Spec.Target.Name)
+	targetBinding := cr.Spec.Target.Name
+	if len(cr.Spec.Parameters) > 0 {
+		targetBinding += "\x00parameters/v1\x00" + parameters.Encode(parameterInputs(cr))
+	}
+	key, err := crypto.StampKey(root, string(inst.UID), string(cr.UID), targetBinding)
 	if err != nil {
 		return "", err
 	}
@@ -107,7 +113,7 @@ func (r *HikyoSecretReconciler) writeManagedSecret(
 	if !existed {
 		sec := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{Namespace: cr.Namespace, Name: cr.Spec.Target.Name},
-			Type:       corev1.SecretTypeOpaque,
+			Type:       effectiveSecretType(cr.Spec.Target.Type),
 			Data:       data,
 		}
 		if err := ctrl.SetControllerReference(cr, sec, r.Scheme); err != nil {
@@ -124,8 +130,11 @@ func (r *HikyoSecretReconciler) writeManagedSecret(
 	if !metav1.IsControlledBy(existing, cr) {
 		return nil, fmt.Errorf("operator: refusing to update Secret %q not controlled by this CR", cr.Spec.Target.Name)
 	}
+	if effectiveSecretType(existing.Type) != effectiveSecretType(cr.Spec.Target.Type) {
+		return nil, fmt.Errorf("operator: refusing to change immutable Secret type %q to %q", existing.Type, effectiveSecretType(cr.Spec.Target.Type))
+	}
 	existing.Data = data
-	existing.Type = corev1.SecretTypeOpaque
+	existing.Type = effectiveSecretType(cr.Spec.Target.Type)
 	// existing carries the resourceVersion from the read, so Update fails on a
 	// concurrent modification rather than clobbering it.
 	if err := r.Update(ctx, existing); err != nil {
@@ -155,6 +164,9 @@ func (r *HikyoSecretReconciler) verifyManagedSecret(ctx context.Context, cr *hik
 	if got.UID != wantUID {
 		return nil, fmt.Errorf("operator: managed Secret %q UID %q after write does not match the written UID %q (deleted/recreated between write and verify)", cr.Spec.Target.Name, got.UID, wantUID)
 	}
+	if effectiveSecretType(got.Type) != effectiveSecretType(cr.Spec.Target.Type) {
+		return nil, fmt.Errorf("operator: managed Secret type did not match what was written")
+	}
 	if !dataEqual(got.Data, want) {
 		return nil, fmt.Errorf("operator: managed Secret data did not match what was written")
 	}
@@ -178,6 +190,14 @@ func dataEqual(a, b map[string][]byte) bool {
 // patched into opted-in workloads, cursor cleared, Scrubbed=True. It follows the
 // same write ordering as a delivery — the empty state IS a delivery.
 func (r *HikyoSecretReconciler) scrub(ctx context.Context, cr *hikyov1.HikyoSecret, cause error, root []byte) (ctrl.Result, error) {
+	return r.withdraw(ctx, cr, root, hikyov1.ReasonAuthorizationWithdrawn, fmt.Sprintf("authorization withdrawn (404): %v; managed Secret withdrawn", cause))
+}
+
+// withdraw removes previously delivered values under authoritative refusal.
+// Opaque targets converge to empty. Native typed targets are deleted because
+// Kubernetes rejects an empty instance of those types. This is never used to
+// change a target's type or bypass its immutable-type conflict.
+func (r *HikyoSecretReconciler) withdraw(ctx context.Context, cr *hikyov1.HikyoSecret, root []byte, reason, message string) (ctrl.Result, error) {
 	inst := &hikyov1.HikyoInstance{}
 	if err := r.Get(ctx, types.NamespacedName{Name: cr.Spec.InstanceRef.Name}, inst); err != nil {
 		return ctrl.Result{}, err
@@ -202,7 +222,12 @@ func (r *HikyoSecretReconciler) scrub(ctx context.Context, cr *hikyov1.HikyoSecr
 		return ctrl.Result{}, err
 	}
 
-	written, err := r.writeManagedSecret(ctx, cr, empty, existing, existed)
+	var written *corev1.Secret
+	if effectiveSecretType(cr.Spec.Target.Type) == corev1.SecretTypeOpaque {
+		written, err = r.writeManagedSecret(ctx, cr, empty, existing, existed)
+	} else {
+		err = r.deleteWithdrawnSecret(ctx, cr, existing, existed)
+	}
 	if err != nil {
 		// Failure before the cursor write leaves no cursor (decision 7); clear it
 		// before persisting status (accessError persists via done()).
@@ -219,16 +244,24 @@ func (r *HikyoSecretReconciler) scrub(ctx context.Context, cr *hikyov1.HikyoSecr
 	// AuthorizationWithdrawn belongs to Scrubbed=True ONLY (§ 0.3's closed table);
 	// Synced is NOT given this reason — Ready derives False from Scrubbed=True.
 	// Remove any stale Synced condition rather than leaving a Delivered=True.
-	r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonAuthorizationWithdrawn, "authorization withdrawn (404): %v", cause)
-	r.setCond(cr, hikyov1.ConditionScrubbed, metav1.ConditionTrue, hikyov1.ReasonAuthorizationWithdrawn,
-		"authorization withdrawn; managed Secret converged to empty")
+	r.event(cr, corev1.EventTypeWarning, reason, "%s", message)
+	if reason == hikyov1.ReasonAuthorizationWithdrawn {
+		r.setCond(cr, hikyov1.ConditionScrubbed, metav1.ConditionTrue, reason, message)
+	} else {
+		meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionScrubbed)
+		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, reason, message)
+	}
 	meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionSynced)
 	// Cursor cleared — never advanced on a refusal.
 	cr.Status.Cursor = ""
 	cr.Status.CursorBinding = ""
 	cr.Status.Stamp = stamp
-	cr.Status.ManagedSecretUID = string(written.UID)
-	cr.Status.ManagedSecretResourceVersion = written.ResourceVersion
+	cr.Status.ManagedSecretUID = ""
+	cr.Status.ManagedSecretResourceVersion = ""
+	if written != nil {
+		cr.Status.ManagedSecretUID = string(written.UID)
+		cr.Status.ManagedSecretResourceVersion = written.ResourceVersion
+	}
 
 	// Roll opted-in workloads into the scrubbed state. A patch FAILURE is handled
 	// exactly as on the delivery path (§ 0.5): surface Rollout=False and return
@@ -244,4 +277,36 @@ func (r *HikyoSecretReconciler) scrub(ctx context.Context, cr *hikyov1.HikyoSecr
 	}
 	meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionRollout)
 	return r.done(ctx, cr, r.resyncResult(cr), nil)
+}
+
+// deleteWithdrawnSecret rechecks authority and uses both identity and version
+// preconditions: a replacement or re-owned Secret must never be deleted. An
+// uncached absence check also refuses to report successful withdrawal while a
+// finalizer or racing recreation leaves a Secret at the target name.
+func (r *HikyoSecretReconciler) deleteWithdrawnSecret(ctx context.Context, cr *hikyov1.HikyoSecret, existing *corev1.Secret, existed bool) error {
+	if existed {
+		if !metav1.IsControlledBy(existing, cr) {
+			return fmt.Errorf("operator: refusing to delete Secret %q not controlled by this CR", cr.Spec.Target.Name)
+		}
+		if effectiveSecretType(existing.Type) != effectiveSecretType(cr.Spec.Target.Type) {
+			return fmt.Errorf("operator: refusing to delete Secret %q with a different type", cr.Spec.Target.Name)
+		}
+		if existing.UID == "" || existing.ResourceVersion == "" {
+			return fmt.Errorf("operator: cannot withdraw Secret without UID and resourceVersion")
+		}
+		if err := r.Delete(ctx, existing, &client.DeleteOptions{Preconditions: &metav1.Preconditions{
+			UID: &existing.UID, ResourceVersion: &existing.ResourceVersion,
+		}}); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("operator: delete withdrawn managed Secret: %w", err)
+		}
+	}
+	var got corev1.Secret
+	err := r.Reader.Get(ctx, types.NamespacedName{Namespace: cr.Namespace, Name: cr.Spec.Target.Name}, &got)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("operator: verify withdrawn managed Secret: %w", err)
+	}
+	return fmt.Errorf("operator: managed Secret %q still exists after withdrawal; deletion pending or target recreated", cr.Spec.Target.Name)
 }

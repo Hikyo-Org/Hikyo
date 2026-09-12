@@ -499,6 +499,7 @@ type Environment struct {
 	DisplayOrder        int64
 	Protected           int64
 	ReauthWindowSeconds sql.NullInt64
+	ParametersJson      string
 }
 
 type ExternalIdentity struct {
@@ -523,6 +524,7 @@ type FederationIssuer struct {
 	CreatedBy        string
 	UpdatedAt        sql.NullString
 	UpdatedBy        sql.NullString
+	CaBundlePem      string
 }
 
 type Folder struct {
@@ -1168,17 +1170,18 @@ type SingletonLease struct {
 }
 
 type Snapshot struct {
-	ID              string
-	OrgID           string
-	ProjectID       string
-	EnvironmentID   string
-	Revision        int64
-	SchemaRevision  int64
-	PublishedBy     string
-	PublishedAt     string
-	PayloadPresent  int64
-	CollectedAt     sql.NullString
-	CollectedPolicy string
+	ID                string
+	OrgID             string
+	ProjectID         string
+	EnvironmentID     string
+	Revision          int64
+	SchemaRevision    int64
+	PublishedBy       string
+	PublishedAt       string
+	PayloadPresent    int64
+	CollectedAt       sql.NullString
+	CollectedPolicy   string
+	ParameterContract string
 }
 
 type SnapshotEntry struct {

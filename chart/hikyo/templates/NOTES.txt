@@ -50,6 +50,7 @@ MCP: disabled (set mcp.enabled=true to expose /mcp)
 Operator: enabled
   mode: {{ if empty .Values.operator.namespaces }}cluster-wide{{ else }}namespaced{{ end }}
   namespaces: {{ if empty .Values.operator.namespaces }}all{{ else }}{{ join "," .Values.operator.namespaces }}{{ end }}
+  native Secret types: {{ .Values.operator.nativeSecretTypes }}
   trigger rollouts: {{ .Values.operator.triggerRollouts }}
   stamp root Secret: hikyo-operator-stamp-root (created by the operator in {{ .Release.Namespace }})
 {{- else }}

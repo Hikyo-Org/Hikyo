@@ -3,8 +3,9 @@
 package upgradebundle
 
 import (
-	"golang.org/x/sys/unix"
 	"os"
+
+	"golang.org/x/sys/unix"
 )
 
 func openDocument(root *os.Root, name string) (*os.File, error) {

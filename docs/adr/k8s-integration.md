@@ -124,7 +124,7 @@ Default `resyncInterval` and backoff curves are operations-spec values. Push/web
 
 Visibility is honest per mode: in the cluster-wide install, a CR anywhere is seen, and one in a namespace the admin excluded from *authority* gets a visible unreconciled condition. In the namespaced install the operator **cannot see** a CR outside its watch list and makes no promise about it; surfacing orphaned CRs there belongs to CLI tooling and docs, not to a controller that would need cluster-wide read to keep the promise.
 
-Verb surface, per bound namespace: get/list/watch on `HikyoSecret` **plus update/patch on its `status`**; create/patch on Events; get/create/update/patch on Secrets; get/list/watch/patch on Deployments/StatefulSets/DaemonSets (trigger only — omitted entirely when triggering is disabled); get on ServiceAccounts and create on `serviceaccounts/token` (federation path only, `resourceNames`-restricted per § *Identity*). Cluster-scoped: read on `HikyoInstance` and the CRDs. Nothing touches Secrets cluster-wide unless the admin chose the cluster-wide binding.
+Verb surface, per bound namespace: get/list/watch on `HikyoSecret` **plus update/patch on its `status`**; create/patch on Events; get/create/update/patch/delete on Secrets (delete only for the typed-target withdrawal amendment below); get/list/watch/patch on Deployments/StatefulSets/DaemonSets (trigger only, omitted entirely when triggering is disabled); get on ServiceAccounts and create on `serviceaccounts/token` (federation path only, `resourceNames`-restricted per § *Identity*). Cluster-scoped: read on `HikyoInstance` and the CRDs. Nothing touches Secrets cluster-wide unless the admin chose the cluster-wide binding.
 
 *Rejected: config allowlist with broad RBAC* — above. *Rejected: per-namespace operator instances* — N× footprint on Pi-class nodes, and the one thing needing centralization (the connection endpoint) is already the cluster-scoped `HikyoInstance`.
 
@@ -168,3 +168,53 @@ Ships with v1 at documentation cost only:
 - **ESO provider** — post-API-freeze, monthly-train cost stated above.
 - **CSI provider / webhook injector** — revisit on a concrete never-in-etcd demand.
 - **Per-namespace operator instances** — revisit only if a multi-tenant install demands hard operator-level isolation that RoleBindings cannot express.
+
+## Amendment: native Secret types (#725)
+
+`HikyoSecret.spec.target.type` defaults to `Opaque`. Admission permits only
+`Opaque`, `kubernetes.io/dockerconfigjson`, `kubernetes.io/tls`,
+`kubernetes.io/basic-auth`, and `kubernetes.io/ssh-auth`. These are representations
+of already-authorized values; they add no Hikyo authorization or reveal grant.
+Loader-control acknowledgement is unchanged.
+
+Before fetching, the operator checks that the mapping contains all mandatory
+destination keys. Before writing, it checks the delivered data contains those
+keys, Docker config parses as Kubernetes-compatible JSON, and SSH private-key
+data is nonempty. Basic auth requires both username and password, a stricter
+operator contract than Kubernetes' either-key minimum. TLS validation checks
+key presence only, matching Kubernetes; the consuming controller validates the
+certificate/key pair. No payload or parser diagnostic enters status/events.
+Invalid mappings and malformed content are named delivery refusals, retaining
+the prior target and never advancing its cursor.
+
+An existing target's type is immutable. A mismatch reports
+`Conflict=True/TargetTypeImmutable`; the operator never updates, deletes, or
+recreates the target to change its type. The cursor binding includes the type,
+cursor eligibility checks the actual stored type, and uncached write
+verification checks type alongside data, controller ownership and UID.
+
+**Authoritative withdrawal must not retain old typed credentials.** Under an
+authenticated 404, Opaque targets still converge to empty. Typed targets are
+deleted because Kubernetes rejects an empty typed Secret. The same deletion
+applies when a full authorized manifest no longer contains a mandatory mapped
+key: partial delivery is impossible, so the entire typed target is withdrawn.
+An accidentally published unset has the same withdrawal semantics: the operator
+cannot infer publisher intent and cannot retain an absent authorized credential.
+An invalid mapping detected before any fetch, or malformed content of a key that
+remains present, rejects a replacement and retains the previously accepted target.
+TLS payload syntax is not validated here; its consumer owns certificate handling. Deletion
+rechecks controller ownership and type, requires UID and resource-version
+preconditions, and verifies absence through the uncached API reader. A
+replacement or pending deletion is a failure, never a successful scrub.
+
+The cursor/binding and managed-object identity are cleared, and opted-in
+workloads receive the empty-content stamp. Repeated refusals leave the typed
+target absent. A later complete authorized delivery can recreate it.
+`creationPolicy: Orphan` only governs CR deletion; it cannot retain withdrawn
+credentials. `operator.nativeSecretTypes` defaults false and gates both the
+runtime capability (`HIKYO_OPERATOR_NATIVE_SECRET_TYPES`) and namespaced Secret
+`delete`. Opaque-only installs need no delete permission. Disabled operators
+refuse typed targets before credential acquisition or fetch, retain existing
+targets and clear cursors; migrate or remove typed targets before disabling.
+No Secret `list` or `watch` is added. Consumers can retain already-loaded values in memory;
+the existing restart and revocation limitations remain.

@@ -8,9 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"reflect"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store"

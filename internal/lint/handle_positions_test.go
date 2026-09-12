@@ -2,9 +2,10 @@ package lint
 
 import (
 	"go/token"
-	"golang.org/x/tools/go/packages"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func TestRawDriverAuthorityIsExactFileScoped(t *testing.T) {

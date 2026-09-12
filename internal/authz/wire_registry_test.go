@@ -25,11 +25,12 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// Self-configuration adds five owner-local HTTP routes and operation links.
 	// #680 adds two revision-diff routes and one disclosure event surface.
 	// Account profiles add two self-service routes and one audit event.
-	if got := len(facts.Wire()); got != 327 {
-		t.Fatalf("wire entries = %d, want 327", got)
+	// #723 adds two local parameter-declaration routes and their operation links.
+	if got := len(facts.Wire()); got != 329 {
+		t.Fatalf("wire entries = %d, want 329", got)
 	}
-	if got := len(facts.WireRoutes()); got != 232 {
-		t.Fatalf("operation-linked entries = %d, want 232", got)
+	if got := len(facts.WireRoutes()); got != 234 {
+		t.Fatalf("operation-linked entries = %d, want 234", got)
 	}
 	if got := len(facts.WireEvents()); got != 70 {
 		t.Fatalf("direct-event entries = %d, want 70", got)

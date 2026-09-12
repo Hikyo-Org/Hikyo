@@ -1,0 +1,63 @@
+// Package freetext provides bounded, token-redacting hygiene for untrusted text.
+package freetext
+
+import (
+	"regexp"
+	"strings"
+	"unicode/utf8"
+)
+
+// Free-text hygiene (audit-model ADR § The event envelope): every
+// caller-originated string landing in a durable audit record is
+// length-bounded, UTF-8-sanitized, stored as data and never interpreted,
+// and passed through the token-grammar redaction filter. Envelope fields
+// included, not just payloads.
+
+// FreeTextBound is the byte bound on any single free-text field. The concrete
+// value is the operations spec's (§ 20 audit ops / row 20: free text 1 KiB),
+// applied under the threat model's bounded-payload baseline.
+const FreeTextBound = 1024
+
+// RedactionMarker replaces any substring matching the hikyo token grammar.
+const RedactionMarker = "[REDACTED:hikyo-token]"
+
+// tokenGrammarRe matches the active `hik_` bearer-token grammar and the legacy
+// `ew_` grammar. Legacy artifacts are rejected by the parser, but remain secret
+// material that must never be copied into a durable audit trail. The matcher is
+// deliberately tolerant on version and type fields (future closed-list widening
+// still redacts) and requires enough base62 body that ordinary prose cannot trip
+// it. The scannability of the grammar is a designed-in property; this filter is
+// its consumer.
+var tokenGrammarRe = regexp.MustCompile(`(?:hik|ew)_[0-9A-Za-z]{1,8}_[a-z]{2,8}_[0-9A-Za-z]{16,}`)
+
+// RedactTokens replaces every token-grammar match in s with the redaction
+// marker. What this cannot catch is stated in the ADR: an arbitrary secret
+// value in free text has no recognizable grammar; the bound and the
+// schema-typed fields limit the blast.
+func RedactTokens(s string) string {
+	return tokenGrammarRe.ReplaceAllString(s, RedactionMarker)
+}
+
+// SanitizeFreeText applies the full free-text hygiene: strip invalid UTF-8
+// and control characters, truncate to the bound (on a rune boundary), and
+// redact token-grammar matches. Emitters call this once at capture; the
+// write boundary re-checks with checkSanitized and refuses rather than
+// silently re-cleaning.
+func SanitizeFreeText(s string) string {
+	s = strings.ToValidUTF8(s, "�")
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1 // drop control characters; stored as data, never interpreted
+		}
+		return r
+	}, s)
+	s = RedactTokens(s)
+	if len(s) > FreeTextBound {
+		cut := FreeTextBound
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+		s = s[:cut]
+	}
+	return s
+}

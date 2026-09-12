@@ -412,9 +412,12 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /api/v1/orgs/{org}/projects/{project}/retention": {Class: ClassTenant, Ops: []Operation{OpProjectRetentionRead}},
 	"http:PUT /api/v1/orgs/{org}/projects/{project}/retention": {Class: ClassTenant, Ops: []Operation{OpProjectRetentionUpdate}},
 
-	"http:GET /api/v1/orgs/{org}/projects/{project}/environments":                  {Class: ClassTenant, Ops: []Operation{OpEnvList}},
-	"http:POST /api/v1/orgs/{org}/projects/{project}/environments":                 {Class: ClassTenant, Ops: []Operation{OpEnvCreate}},
-	"http:PUT /api/v1/orgs/{org}/projects/{project}/environments/order":            {Class: ClassTenant, Ops: []Operation{OpEnvReorder}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments":                           {Class: ClassTenant, Ops: []Operation{OpEnvList}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments":                          {Class: ClassTenant, Ops: []Operation{OpEnvCreate}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/environments/order":                     {Class: ClassTenant, Ops: []Operation{OpEnvReorder}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters":  {Class: ClassTenant, Ops: []Operation{OpEnvRead}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters": {Class: ClassTenant, Ops: []Operation{OpEnvParameterSet}},
+
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}":    {Class: ClassTenant, Ops: []Operation{OpEnvRead}},
 	"http:PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}":  {Class: ClassTenant, Ops: []Operation{OpEnvRename}},
 	"http:DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}": {Class: ClassTenant, Ops: []Operation{OpEnvDelete}},
@@ -989,10 +992,9 @@ var caches = map[string]Cache{
 		ProofGatedAt: "service seam (#50); no tenant caller today",
 	},
 	"oidcfed.jwks": {
-		// Keyed by the BYTE-EXACT issuer string, and that string IS the whole
-		// key: an issuer is instance configuration under a unique index, so it
-		// is already an injective identifier with no chain to compose.
-		KeyConstructor: "internal/oidcfed.Issuer.Issuer (byte-exact issuer string)",
+		// The byte-exact issuer identifies the authority. The CA digest binds
+		// cached signing keys to the roots under which they were fetched.
+		KeyConstructor: "internal/oidcfed.Issuer.Issuer + SHA-256(CABundlePEM)",
 		// Not proof-gated, and here that is the right answer rather than a
 		// deferral. The contents are the PUBLIC signing keys an issuer publishes
 		// at a well-known URL — no tenant material, nothing a proof could
@@ -1007,6 +1009,13 @@ var caches = map[string]Cache{
 		// repository. Channel selection happens after the list is read.
 		KeyConstructor: "singleton: github.com/Hikyo-Org/hikyo releases",
 		ProofGatedAt:   "not proof-gated: public release metadata; endpoint authorization precedes access",
+	},
+	"parameters.patterns": {
+		// Compiled RE2 programs are pure functions of bounded public pattern
+		// text. Entries contain no values, tenant identifiers or authorization
+		// decisions; reuse cannot disclose another environment's contract.
+		KeyConstructor: "internal/parameters.compiledPattern: byte-exact pattern string",
+		ProofGatedAt:   "stored declarations require service authorization; caller-supplied syntax may compile before authorization; pure compiled programs contain no tenant results and are bounded to 128 entries",
 	},
 	"selfupdate.nightly-downloads": {
 		// On-disk directories under the operator CLI state directory, one per

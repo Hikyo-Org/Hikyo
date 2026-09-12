@@ -77,7 +77,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpKeyCreate, authz.OpKeyRename, authz.OpKeyUpdateDeclaration, authz.OpKeyUpdateMetadata,
 		authz.OpKeySetGroup, authz.OpKeyDelete, authz.OpKeyReclassify,
 		authz.OpKeyGroupCreate, authz.OpKeyGroupRename, authz.OpKeyGroupDelete,
-		authz.OpEnvCreate, authz.OpEnvRename, authz.OpEnvDelete, authz.OpDefinitionsApply)
+		authz.OpEnvParameterSet, authz.OpEnvCreate, authz.OpEnvRename, authz.OpEnvDelete, authz.OpDefinitionsApply)
 
 	// ---- DEFAULT-EXPENSIVE (charged budgetDefault at the owning service method) ----
 	add(budgetClassDefaultExpensive, "crypto rewrap proportional to every stored/historical row",

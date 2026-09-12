@@ -385,6 +385,10 @@ func validatePinnedSnapshot(ctx context.Context, r store.Repos, p authz.Proof, s
 	if err != nil {
 		return err
 	}
+	contract, err := readSnapshotParameterContract(ctx, r.Snapshots(), p, snapshot)
+	if err != nil {
+		return err
+	}
 	entryByKey := make(map[string]store.SnapshotEntry, len(entries))
 	for _, entry := range entries {
 		entryByKey[entry.KeyID] = entry
@@ -409,7 +413,7 @@ func validatePinnedSnapshot(ctx context.Context, r store.Repos, p authz.Proof, s
 	if err != nil {
 		return err
 	}
-	return index.validateResolvedPublish(cells, string(scope.Env))
+	return index.validateResolvedPublish(cells, string(scope.Env), contract.Declarations)
 }
 
 func pinnedHistoricalSecrets(ctx context.Context, r store.Repos, p authz.Proof,

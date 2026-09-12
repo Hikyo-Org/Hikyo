@@ -176,7 +176,7 @@ func (historyRevisionService) Signals(context.Context, service.Actor, domain.Sco
 func (historyRevisionService) PendingDrafts(context.Context, service.Actor, domain.Scope) ([]service.PendingDraft, error) {
 	return nil, domain.ErrNotFound
 }
-func (historyRevisionService) Export(context.Context, service.Actor, domain.Scope, int64, bool) ([]service.ExportedValue, int64, error) {
+func (historyRevisionService) ExportWithParameters(context.Context, service.Actor, domain.Scope, int64, bool, map[string]string) ([]service.ExportedValue, int64, error) {
 	return nil, 0, domain.ErrNotFound
 }
 func (historyRevisionService) Watch(context.Context, service.Actor, domain.Scope) (<-chan service.AdvisoryEvent, error) {

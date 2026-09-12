@@ -56,6 +56,10 @@
 
 operations:
 
+  # Bounded preview delivery configuration (#723), CLI/operator acceptance scope.
+  listEnvironmentParameters: {exception: preview-parameter-configuration}
+  changeEnvironmentParameter: {exception: preview-parameter-configuration}
+
   # Managed instance configuration
   getInstanceConfig: {webui: instance-config}
   previewInstanceConfigAdoption: {webui: instance-config}

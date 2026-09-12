@@ -31,6 +31,11 @@ type Config struct {
 	// patch verbs entirely.
 	TriggerRollouts bool
 
+	// NativeSecretTypes permits non-Opaque targets and their conditional deletion
+	// on authoritative withdrawal. Disabled by default; the chart gates delete
+	// authority with the same switch.
+	NativeSecretTypes bool
+
 	// OwnNamespace is the operator's own namespace, where the stamp-root Secret
 	// lives. From HIKYO_OPERATOR_NAMESPACE, falling back to POD_NAMESPACE
 	// (downward API). Missing is a hard error — the operator cannot derive or
@@ -75,6 +80,12 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("HIKYO_OPERATOR_TRIGGER_ROLLOUTS: %w", err)
 	}
 	cfg.TriggerRollouts = trigger
+
+	native, err := parseBoolDefault(getenv("HIKYO_OPERATOR_NATIVE_SECRET_TYPES"), false)
+	if err != nil {
+		return Config{}, fmt.Errorf("HIKYO_OPERATOR_NATIVE_SECRET_TYPES: %w", err)
+	}
+	cfg.NativeSecretTypes = native
 
 	// Own namespace: explicit override wins, else the downward-API POD_NAMESPACE.
 	own := strings.TrimSpace(getenv("HIKYO_OPERATOR_NAMESPACE"))

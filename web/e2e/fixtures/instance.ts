@@ -387,8 +387,11 @@ async function configureAndLinkOIDC(instance: Instance, issuer: string): Promise
 async function waitForHealthz(instance: Instance, deadlineMs = 30_000): Promise<void> {
   const until = Date.now() + deadlineMs;
   for (;;) {
-    if (instance.proc.exitCode !== null) {
-      throw new Error(`the instance exited immediately with ${String(instance.proc.exitCode)}`);
+    if (instance.proc.exitCode !== null || instance.proc.signalCode !== null) {
+      throw new Error(
+        `the instance exited before becoming healthy at ${instance.operationalBase} ` +
+          `(code=${String(instance.proc.exitCode)} signal=${String(instance.proc.signalCode)})`,
+      );
     }
     try {
       const resp = await fetch(`${instance.operationalBase}/healthz`);
@@ -766,17 +769,31 @@ async function startInstanceAt(
       process.stderr.write(chunk);
     }
   });
+  const lastOutput = (): string => Buffer.concat(tail).subarray(-64 * 1024).toString();
   proc.on('exit', (code, signal) => {
     if (instance.expectedExit) {
       return;
     }
     process.stderr.write(
       `\ninstance at ${base} exited unexpectedly (code=${String(code)} signal=${String(signal)}); ` +
-        `last output follows\n${Buffer.concat(tail).toString()}\n`,
+        `last output follows\n${lastOutput()}\n`,
     );
   });
 
-  await waitForHealthz(instance);
+  try {
+    await waitForHealthz(instance);
+  } catch (err) {
+    // Global setup marks cleanup exits as expected and deletes the temp
+    // directory. Preserve the existing bounded process log before that happens,
+    // including failures where the child remains alive but never serves healthz.
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `${reason}\ninstance at ${base} failed startup ` +
+        `(code=${String(proc.exitCode)} signal=${String(proc.signalCode)}); ` +
+        `last output follows\n${lastOutput()}`,
+      { cause: err },
+    );
+  }
 
   // `admin` reads its datastore and root key from the environment only, so the
   // dev root key the server just generated is handed to it explicitly.

@@ -379,10 +379,18 @@ func (r sqliteSnapshots) PayloadBytesForProject(ctx context.Context, p authz.Pro
 	if err != nil {
 		return 0, err
 	}
-	return r.q.SumSnapshotPayloadForProject(ctx, sqlitegen.SumSnapshotPayloadForProjectParams{
+	payload, err := r.q.SumSnapshotPayloadForProject(ctx, sqlitegen.SumSnapshotPayloadForProjectParams{
 		OrgID:     string(chain.Org),
 		ProjectID: string(chain.Project),
 	})
+	if err != nil {
+		return 0, err
+	}
+	contracts, err := r.q.SumSnapshotContractForProject(ctx, sqlitegen.SumSnapshotContractForProjectParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project)})
+	if err != nil {
+		return 0, err
+	}
+	return payload + contracts, nil
 }
 
 func (r sqliteSnapshots) InstancePayloadByProject(ctx context.Context, p authz.Proof) ([]ProjectPayloadBytes, error) {
@@ -597,14 +605,15 @@ func (r sqliteSnapshots) Insert(ctx context.Context, p authz.Proof, snapshot New
 		return err
 	}
 	return constraint(r.q.InsertSnapshot(ctx, sqlitegen.InsertSnapshotParams{
-		ID:             snapshot.ID,
-		OrgID:          string(chain.Org),
-		ProjectID:      string(chain.Project),
-		EnvironmentID:  env,
-		Revision:       snapshot.Revision,
-		SchemaRevision: snapshot.SchemaRevision,
-		PublishedBy:    snapshot.PublishedBy,
-		PublishedAt:    CanonTime(snapshot.PublishedAt).Format(timeFormat),
+		ID:                snapshot.ID,
+		ParameterContract: nonEmptyJSON(snapshot.ParameterContract),
+		OrgID:             string(chain.Org),
+		ProjectID:         string(chain.Project),
+		EnvironmentID:     env,
+		Revision:          snapshot.Revision,
+		SchemaRevision:    snapshot.SchemaRevision,
+		PublishedBy:       snapshot.PublishedBy,
+		PublishedAt:       CanonTime(snapshot.PublishedAt).Format(timeFormat),
 	}))
 }
 
@@ -1189,10 +1198,18 @@ func (r pgSnapshots) PayloadBytesForProject(ctx context.Context, p authz.Proof) 
 	if err != nil {
 		return 0, err
 	}
-	return r.q.SumSnapshotPayloadForProject(ctx, pggen.SumSnapshotPayloadForProjectParams{
+	payload, err := r.q.SumSnapshotPayloadForProject(ctx, pggen.SumSnapshotPayloadForProjectParams{
 		ChainOrgID:     string(chain.Org),
 		ChainProjectID: string(chain.Project),
 	})
+	if err != nil {
+		return 0, err
+	}
+	contracts, err := r.q.SumSnapshotContractForProject(ctx, pggen.SumSnapshotContractForProjectParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project)})
+	if err != nil {
+		return 0, err
+	}
+	return payload + contracts, nil
 }
 
 func (r pgSnapshots) InstancePayloadByProject(ctx context.Context, p authz.Proof) ([]ProjectPayloadBytes, error) {
@@ -1402,14 +1419,15 @@ func (r pgSnapshots) Insert(ctx context.Context, p authz.Proof, snapshot NewSnap
 		return err
 	}
 	return constraint(r.q.InsertSnapshot(ctx, pggen.InsertSnapshotParams{
-		ID:             snapshot.ID,
-		ChainOrgID:     string(chain.Org),
-		ChainProjectID: string(chain.Project),
-		ChainEnvID:     env,
-		Revision:       snapshot.Revision,
-		SchemaRevision: snapshot.SchemaRevision,
-		PublishedBy:    snapshot.PublishedBy,
-		PublishedAt:    pgtype.Timestamptz{Time: CanonTime(snapshot.PublishedAt), Valid: true},
+		ID:                snapshot.ID,
+		ParameterContract: nonEmptyJSON(snapshot.ParameterContract),
+		ChainOrgID:        string(chain.Org),
+		ChainProjectID:    string(chain.Project),
+		ChainEnvID:        env,
+		Revision:          snapshot.Revision,
+		SchemaRevision:    snapshot.SchemaRevision,
+		PublishedBy:       snapshot.PublishedBy,
+		PublishedAt:       pgtype.Timestamptz{Time: CanonTime(snapshot.PublishedAt), Valid: true},
 	}))
 }
 

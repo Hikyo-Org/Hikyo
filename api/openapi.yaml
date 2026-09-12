@@ -1156,7 +1156,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: environment.list
       x-hikyo-formula: [read@project]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
         "503":
@@ -1192,7 +1192,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: environment.create
       x-hikyo-formula: [definitions-edit@project]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -1252,7 +1252,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: environment.create
       x-hikyo-formula: [definitions-edit@project]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -1343,7 +1343,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: environment.read
       x-hikyo-formula: [read@environment]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
         "503":
@@ -1409,10 +1409,13 @@ paths:
         The remaining environments keep their positions: display order is a
         property of each row, not an invariant over the set, so a gap is not a
         defect and closing it would be an unrequested write.
+        Automation requires project-scoped definitions-edit and cannot delete
+        a protected environment. Deletion removes values, drafts, pins and
+        revision payloads; audit events remain subject to audit retention.
       x-hikyo-class: tenant
       x-hikyo-operation: environment.delete
       x-hikyo-formula: [definitions-edit@project]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
         "503":
@@ -3344,7 +3347,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: value.stage
       x-hikyo-formula: [edit@environment]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -3388,7 +3391,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: value.stage
       x-hikyo-formula: [edit@environment]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
         "503":
@@ -3486,7 +3489,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: value.copy-destination
       x-hikyo-formula: [reveal@environment, publish@environment]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -6098,6 +6101,82 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listEnvironmentParameters
+      tags: [environments]
+      summary: List declarations used by the next publication.
+      x-hikyo-class: tenant
+      x-hikyo-operation: environment.read
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 3
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: Parameter names mapped to validation patterns.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentParameters"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: changeEnvironmentParameter
+      tags: [environments]
+      summary: Add or delete one parameter declaration for the next publication.
+      x-hikyo-class: tenant
+      x-hikyo-operation: environment.parameter-set
+      x-hikyo-formula: [definitions-edit@project]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 3
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, action]
+              properties:
+                name:
+                  type: string
+                  pattern: '^[A-Z][A-Z0-9_]{0,63}$'
+                action:
+                  type: string
+                  enum: [add, delete]
+                pattern:
+                  type: string
+                  maxLength: 512
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Declaration changed; existing snapshots remain unchanged.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -6106,6 +6185,12 @@ paths:
       - $ref: "#/components/parameters/DeliveryCursor"
       - $ref: "#/components/parameters/DeliveryProjection"
       - $ref: "#/components/parameters/DeliveryAcknowledgedKeys"
+      - name: parameters
+        in: query
+        description: JSON object of public parameter names and string values. All declared parameters are required. Never supply secrets.
+        schema:
+          type: string
+          maxLength: 16384
     get:
       operationId: fetchDelivery
       tags: [delivery]
@@ -9312,7 +9397,7 @@ paths:
       x-hikyo-class: tenant
       x-hikyo-operation: pin.list
       x-hikyo-formula: [read@environment]
-      x-hikyo-artifacts: [human-session]
+      x-hikyo-artifacts: [human-session, machine-credential]
       x-hikyo-min-revision: 1
       responses:
         "503":
@@ -13041,6 +13126,9 @@ components:
           properties:
             owner_id: {$ref: "#/components/schemas/ID"}
             valid: {type: boolean}
+            validation_deferred:
+              type: boolean
+              description: True when caller parameters are needed for final config schema validation at fetch. Valid then describes template structure and presence only.
         version_id:
           $ref: "#/components/schemas/ID"
         key_id:
@@ -13643,10 +13731,24 @@ components:
             changed" signal, which names only the last published revision --
             it is not a per-cell last-change history; older changes live in
             the revision list.
+    EnvironmentParameters:
+      type: object
+      maxProperties: 32
+      additionalProperties:
+        type: string
+        maxLength: 512
+    FetchParameters:
+      type: object
+      maxProperties: 32
+      additionalProperties:
+        type: string
+        maxLength: 256
     ExportValuesRequest:
       type: object
       additionalProperties: false
       properties:
+        parameters:
+          $ref: "#/components/schemas/FetchParameters"
         revision:
           type: integer
           format: int64
@@ -14730,7 +14832,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        [id, issuer, issuer_type, jwks_mode, refused_audiences, created_at, created_by, live_bindings]
+        [id, issuer, issuer_type, jwks_mode, refused_audiences, created_at, created_by, live_bindings, ca_bundle_configured]
       description: |
         One instance-scoped issuer configuration. There is deliberately no
         `static_jwks` property on the READ shape: the document is configuration
@@ -14772,6 +14874,9 @@ components:
           $ref: "#/components/schemas/Timestamp"
         updated_by:
           $ref: "#/components/schemas/ID"
+        ca_bundle_configured:
+          type: boolean
+          description: Whether discovery uses an issuer-specific CA bundle instead of system roots.
         live_bindings:
           type: integer
           minimum: 0
@@ -14812,6 +14917,15 @@ components:
           $ref: "#/components/schemas/IssuerType"
         jwks_mode:
           $ref: "#/components/schemas/JWKSMode"
+        ca_bundle_pem:
+          type: string
+          maxLength: 65536
+          description: |
+            PEM CA certificates for discovery and JWKS HTTPS requests, including
+            redirects. Replaces system roots for this issuer only. Nonempty values
+            are refused in static mode. On update, omission preserves the current
+            bundle in discovery mode; an empty string clears it. Static mode clears
+            the bundle. This field is write-only; reads report ca_bundle_configured.
         static_jwks:
           type: string
           maxLength: 1048576
@@ -14838,6 +14952,15 @@ components:
       properties:
         jwks_mode:
           $ref: "#/components/schemas/JWKSMode"
+        ca_bundle_pem:
+          type: string
+          maxLength: 65536
+          description: |
+            PEM CA certificates for discovery and JWKS HTTPS requests, including
+            redirects. Replaces system roots for this issuer only. Nonempty values
+            are refused in static mode. On update, omission preserves the current
+            bundle in discovery mode; an empty string clears it. Static mode clears
+            the bundle. This field is write-only; reads report ca_bundle_configured.
         static_jwks:
           type: string
           maxLength: 1048576
@@ -14990,7 +15113,7 @@ components:
     DeliveryResponse:
       type: object
       additionalProperties: false
-      required: [current, cursor, change_token, schema_revision, keys, pin_expired, issued_at, snapshot_expires_at, credential_id]
+      required: [current, cursor, change_token, schema_revision, revision, keys, pin_expired, issued_at, snapshot_expires_at, credential_id]
       description: |
         Either the authorized projection, or the statement that the presented
         cursor is current — in which case `keys` is empty and NOTHING was
@@ -15044,6 +15167,11 @@ components:
           type: integer
           minimum: 0
           description: The project's monotonic key-catalogue revision.
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The committed snapshot selected by this fetch; zero before first publication.
         pinned_revision:
           type: integer
           format: int64

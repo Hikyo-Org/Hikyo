@@ -304,7 +304,7 @@ func (q *Queries) DeleteSnapshotsForEnvironment(ctx context.Context, arg DeleteS
 
 const getLatestSnapshot = `-- name: GetLatestSnapshot :one
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = $1 AND project_id = $2
   AND environment_id = $3
@@ -335,6 +335,7 @@ func (q *Queries) GetLatestSnapshot(ctx context.Context, arg GetLatestSnapshotPa
 		&i.PayloadPresent,
 		&i.CollectedAt,
 		&i.CollectedPolicy,
+		&i.ParameterContract,
 	)
 	return i, err
 }
@@ -384,7 +385,7 @@ func (q *Queries) GetRevisionPinForWorkload(ctx context.Context, arg GetRevision
 
 const getSnapshotByRevision = `-- name: GetSnapshotByRevision :one
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = $1 AND project_id = $2
   AND environment_id = $3 AND revision = $4
@@ -417,8 +418,34 @@ func (q *Queries) GetSnapshotByRevision(ctx context.Context, arg GetSnapshotByRe
 		&i.PayloadPresent,
 		&i.CollectedAt,
 		&i.CollectedPolicy,
+		&i.ParameterContract,
 	)
 	return i, err
+}
+
+const getSnapshotParameterContract = `-- name: GetSnapshotParameterContract :one
+SELECT parameter_contract FROM snapshots
+WHERE org_id = $1 AND project_id = $2
+  AND environment_id = $3 AND id = $4
+`
+
+type GetSnapshotParameterContractParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+	SnapshotID     string
+}
+
+func (q *Queries) GetSnapshotParameterContract(ctx context.Context, arg GetSnapshotParameterContractParams) (string, error) {
+	row := q.db.QueryRow(ctx, getSnapshotParameterContract,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ChainEnvID,
+		arg.SnapshotID,
+	)
+	var parameter_contract string
+	err := row.Scan(&parameter_contract)
+	return parameter_contract, err
 }
 
 const insertPendingChange = `-- name: InsertPendingChange :exec
@@ -568,23 +595,24 @@ func (q *Queries) InsertRevisionPin(ctx context.Context, arg InsertRevisionPinPa
 const insertSnapshot = `-- name: InsertSnapshot :exec
 INSERT INTO snapshots (
     id, org_id, project_id, environment_id, revision,
-    schema_revision, published_by, published_at
+    schema_revision, published_by, published_at, parameter_contract
 ) VALUES (
     $1, $2, $3,
     $4, $5, $6,
-    $7, $8
+    $7, $8, $9
 )
 `
 
 type InsertSnapshotParams struct {
-	ID             string
-	ChainOrgID     string
-	ChainProjectID string
-	ChainEnvID     string
-	Revision       int64
-	SchemaRevision int64
-	PublishedBy    string
-	PublishedAt    pgtype.Timestamptz
+	ID                string
+	ChainOrgID        string
+	ChainProjectID    string
+	ChainEnvID        string
+	Revision          int64
+	SchemaRevision    int64
+	PublishedBy       string
+	PublishedAt       pgtype.Timestamptz
+	ParameterContract string
 }
 
 func (q *Queries) InsertSnapshot(ctx context.Context, arg InsertSnapshotParams) error {
@@ -597,6 +625,7 @@ func (q *Queries) InsertSnapshot(ctx context.Context, arg InsertSnapshotParams) 
 		arg.SchemaRevision,
 		arg.PublishedBy,
 		arg.PublishedAt,
+		arg.ParameterContract,
 	)
 	return err
 }
@@ -1161,7 +1190,7 @@ func (q *Queries) ListSnapshotEntriesForReencrypt(ctx context.Context, arg ListS
 
 const listSnapshots = `-- name: ListSnapshots :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = $1 AND project_id = $2
   AND environment_id = $3
@@ -1195,6 +1224,7 @@ func (q *Queries) ListSnapshots(ctx context.Context, arg ListSnapshotsParams) ([
 			&i.PayloadPresent,
 			&i.CollectedAt,
 			&i.CollectedPolicy,
+			&i.ParameterContract,
 		); err != nil {
 			return nil, err
 		}
@@ -1208,7 +1238,7 @@ func (q *Queries) ListSnapshots(ctx context.Context, arg ListSnapshotsParams) ([
 
 const listSnapshotsPage = `-- name: ListSnapshotsPage :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = $1 AND project_id = $2
   AND environment_id = $3
@@ -1255,6 +1285,7 @@ func (q *Queries) ListSnapshotsPage(ctx context.Context, arg ListSnapshotsPagePa
 			&i.PayloadPresent,
 			&i.CollectedAt,
 			&i.CollectedPolicy,
+			&i.ParameterContract,
 		); err != nil {
 			return nil, err
 		}
@@ -1387,10 +1418,32 @@ func (q *Queries) ReencryptSnapshotEntry(ctx context.Context, arg ReencryptSnaps
 	return result.RowsAffected(), nil
 }
 
+const sumSnapshotContractForProject = `-- name: SumSnapshotContractForProject :one
+SELECT COALESCE(SUM(CASE WHEN parameter_contract = '{}' THEN 0 ELSE OCTET_LENGTH(parameter_contract) END), 0)::bigint FROM snapshots
+WHERE org_id = $1 AND project_id = $2
+`
+
+type SumSnapshotContractForProjectParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+}
+
+func (q *Queries) SumSnapshotContractForProject(ctx context.Context, arg SumSnapshotContractForProjectParams) (int64, error) {
+	row := q.db.QueryRow(ctx, sumSnapshotContractForProject, arg.ChainOrgID, arg.ChainProjectID)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const sumSnapshotPayloadByProject = `-- name: SumSnapshotPayloadByProject :many
-SELECT org_id, project_id, COALESCE(SUM(OCTET_LENGTH(ciphertext)), 0)::bigint AS bytes
-FROM snapshot_entries
-GROUP BY org_id, project_id
+WITH payload_sizes AS (
+    SELECT org_id, project_id, OCTET_LENGTH(ciphertext) AS bytes FROM snapshot_entries
+    UNION ALL
+    SELECT org_id, project_id, OCTET_LENGTH(parameter_contract) AS bytes FROM snapshots
+    WHERE parameter_contract <> '{}'
+)
+SELECT org_id, project_id, COALESCE(SUM(bytes), 0)::bigint AS bytes
+FROM payload_sizes GROUP BY org_id, project_id
 `
 
 type SumSnapshotPayloadByProjectRow struct {
@@ -1404,6 +1457,7 @@ type SumSnapshotPayloadByProjectRow struct {
 // surface (doctor warn, metric). Cross-tenant by definition, so it is annotated
 // instance-scoped and content-pinned.
 // hikyo:instance-scoped
+// Project sizes only, never whole encrypted payloads in a sorter.
 func (q *Queries) SumSnapshotPayloadByProject(ctx context.Context) ([]SumSnapshotPayloadByProjectRow, error) {
 	rows, err := q.db.Query(ctx, sumSnapshotPayloadByProject)
 	if err != nil {

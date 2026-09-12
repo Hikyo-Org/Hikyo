@@ -179,13 +179,15 @@ modes (ADR § Identity: mandatory per-namespace, resourceNames-restricted).
 - apiGroups: [""]
   resources: ["events"]
   verbs: ["create", "patch"]
-# Secrets: EXACTLY get/create/update/patch — no list/watch. The operator reads
+# Secrets: get/create/update/patch; no list/watch. Opt-in delete withdraws
+# owned typed Secrets under authoritative refusal, using UID/version preconditions.
+# The operator reads
 # every Secret through the uncached API reader (no Secret informer), so
 # list/watch would only cache Secret values and enlarge the compromise blast
 # radius.
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["get", "create", "update", "patch"]
+  verbs: ["get", "create", "update", "patch"{{ if .Values.operator.nativeSecretTypes }}, "delete"{{ end }}]
 {{- if .Values.operator.triggerRollouts }}
 - apiGroups: ["apps"]
   resources: ["deployments", "statefulsets", "daemonsets"]

@@ -2,8 +2,9 @@ package upgrade
 
 import (
 	"context"
-	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"math"
+
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
 // Lease invalidation shares the control/pending transaction. A stale worker

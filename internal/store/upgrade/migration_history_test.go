@@ -2,8 +2,9 @@ package upgrade
 
 import (
 	"embed"
-	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 )
 
 //go:embed testdata/history-*/*.sql

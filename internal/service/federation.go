@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -142,6 +144,7 @@ type IssuerView struct {
 	Issuer           string
 	Type             domain.IssuerType
 	KeySource        jwkssource.KeySource
+	CABundlePEM      string
 	RefusedAudiences []string
 	CreatedAt        time.Time
 	CreatedBy        domain.PrincipalID
@@ -159,6 +162,7 @@ type IssuerRequest struct {
 	Issuer           string
 	Type             domain.IssuerType
 	KeySource        jwkssource.KeySource
+	CABundlePEM      string
 	RefusedAudiences []string
 }
 
@@ -179,14 +183,14 @@ func (s *Federation) CreateIssuer(ctx context.Context, actor Actor, req IssuerRe
 			return err
 		}
 		if err := az.CreateFederationIssuer(ctx, authz.NewFederationIssuer{
-			ID: id, Issuer: req.Issuer, Type: req.Type, KeySource: req.KeySource,
+			ID: id, Issuer: req.Issuer, Type: req.Type, KeySource: req.KeySource, CABundlePEM: req.CABundlePEM,
 			RefusedAudiences: req.RefusedAudiences,
 			CreatedAt:        now, CreatedBy: caller.Principal,
 		}); err != nil {
 			return err
 		}
 		out = IssuerView{
-			ID: id, Issuer: req.Issuer, Type: req.Type, KeySource: req.KeySource,
+			ID: id, Issuer: req.Issuer, Type: req.Type, KeySource: req.KeySource, CABundlePEM: req.CABundlePEM,
 			RefusedAudiences: req.RefusedAudiences, CreatedAt: now, CreatedBy: caller.Principal,
 		}
 		e, err := issuerEvent(ctx, caller.Principal, id, req.Issuer, "created", req)
@@ -202,7 +206,7 @@ func (s *Federation) CreateIssuer(ctx context.Context, actor Actor, req IssuerRe
 // audiences. It cannot move the issuer string or the platform type: changing
 // either would silently re-point every binding underneath at a different
 // external authority, which is a replacement, not an edit.
-func (s *Federation) UpdateIssuer(ctx context.Context, actor Actor, id string, source jwkssource.KeySource, refused []string) (IssuerView, error) {
+func (s *Federation) UpdateIssuer(ctx context.Context, actor Actor, id string, source jwkssource.KeySource, refused []string, caBundle *string) (IssuerView, error) {
 	if err := checkRefusedAudiences(refused); err != nil {
 		return IssuerView{}, err
 	}
@@ -220,16 +224,26 @@ func (s *Federation) UpdateIssuer(ctx context.Context, actor Actor, id string, s
 			}
 			return err
 		}
-		if _, err := az.UpdateFederationIssuer(ctx, id, source, refused, caller.Principal, now); err != nil {
+		bundle := before.CABundlePEM
+		if source.Mode() == domain.JWKSStatic {
+			bundle = ""
+		}
+		if caBundle != nil {
+			bundle = *caBundle
+		}
+		if err := checkIssuerCABundle(source, bundle); err != nil {
+			return err
+		}
+		if _, err := az.UpdateFederationIssuer(ctx, id, source, refused, bundle, caller.Principal, now); err != nil {
 			return err
 		}
 		out = IssuerView{
-			ID: id, Issuer: before.Issuer, Type: before.Type, KeySource: source,
+			ID: id, Issuer: before.Issuer, Type: before.Type, KeySource: source, CABundlePEM: bundle,
 			RefusedAudiences: refused, CreatedAt: before.CreatedAt, CreatedBy: before.CreatedBy,
 			UpdatedAt: now, UpdatedBy: caller.Principal,
 		}
 		e, err := issuerEvent(ctx, caller.Principal, id, before.Issuer, "updated", IssuerRequest{
-			Issuer: before.Issuer, Type: before.Type, KeySource: source,
+			Issuer: before.Issuer, Type: before.Type, KeySource: source, CABundlePEM: bundle,
 			RefusedAudiences: refused,
 		})
 		if err != nil {
@@ -264,7 +278,7 @@ func (s *Federation) ListIssuers(ctx context.Context, actor Actor) ([]IssuerView
 				return err
 			}
 			out = append(out, IssuerView{
-				ID: iss.ID, Issuer: iss.Issuer, Type: iss.Type, KeySource: iss.KeySource,
+				ID: iss.ID, Issuer: iss.Issuer, Type: iss.Type, KeySource: iss.KeySource, CABundlePEM: iss.CABundlePEM,
 				RefusedAudiences: iss.RefusedAudiences, CreatedAt: iss.CreatedAt,
 				CreatedBy: iss.CreatedBy, UpdatedAt: iss.UpdatedAt, UpdatedBy: iss.UpdatedBy,
 				Bindings: bindings,
@@ -314,7 +328,7 @@ func (s *Federation) DeleteIssuer(ctx context.Context, actor Actor, id string) e
 			return err
 		}
 		e, err := issuerEvent(ctx, caller.Principal, id, before.Issuer, "deleted", IssuerRequest{
-			Issuer: before.Issuer, Type: before.Type, KeySource: before.KeySource,
+			Issuer: before.Issuer, Type: before.Type, KeySource: before.KeySource, CABundlePEM: before.CABundlePEM,
 			RefusedAudiences: before.RefusedAudiences,
 		})
 		if err != nil {
@@ -740,7 +754,7 @@ func (s *Federation) Authenticate(ctx context.Context, presented string) (Federa
 	}
 
 	fedIssuer := oidcfed.Issuer{
-		ID: issuer.ID, Issuer: issuer.Issuer, Type: issuer.Type, KeySource: issuer.KeySource,
+		ID: issuer.ID, Issuer: issuer.Issuer, Type: issuer.Type, KeySource: issuer.KeySource, CABundlePEM: issuer.CABundlePEM,
 		RefusedAudiences: issuer.RefusedAudiences,
 	}
 	claims, state, err := s.Cache.Verify(ctx, fedIssuer, presented, now)
@@ -820,7 +834,7 @@ func (s *Federation) Authenticate(ctx context.Context, presented string) (Federa
 // them means the row was replaced, which the id comparison catches.
 func issuerPolicyMoved(before, current authz.FederationIssuer) bool {
 	if before.ID != current.ID || before.Issuer != current.Issuer ||
-		before.Type != current.Type || !before.KeySource.Equal(current.KeySource) {
+		before.Type != current.Type || before.CABundlePEM != current.CABundlePEM || !before.KeySource.Equal(current.KeySource) {
 		return true
 	}
 	return !slices.Equal(before.RefusedAudiences, current.RefusedAudiences)
@@ -956,6 +970,9 @@ func checkIssuerRequest(req IssuerRequest) error {
 	}
 	if !domain.IsIssuerType(req.Type) {
 		return ErrIssuerValue
+	}
+	if err := checkIssuerCABundle(req.KeySource, req.CABundlePEM); err != nil {
+		return err
 	}
 	return checkRefusedAudiences(req.RefusedAudiences)
 }
@@ -1134,13 +1151,30 @@ func (s *Federation) postStateReach(ctx context.Context, az *authz.TxAuthorizer,
 }
 
 func issuerEvent(ctx context.Context, actor domain.PrincipalID, id, issuer, change string, req IssuerRequest) (audit.Event, error) {
+	payload := audit.Payload{
+		"issuer_id":         id,
+		"issuer":            audit.SanitizeFreeText(issuer),
+		"issuer_type":       string(req.Type),
+		"change":            change,
+		"jwks_mode":         string(req.KeySource.Mode()),
+		"refused_audiences": req.RefusedAudiences,
+	}
+	if req.CABundlePEM != "" {
+		payload["ca_bundle_sha256"] = fmt.Sprintf("%x", sha256.Sum256([]byte(req.CABundlePEM)))
+	}
 	return newAuditEvent(ctx, audit.EventFederationIssuerChanged, actor,
-		audit.Object{Type: "instance", ID: id}, audit.OutcomeSuccess, "", audit.Payload{
-			"issuer_id":         id,
-			"issuer":            audit.SanitizeFreeText(issuer),
-			"issuer_type":       string(req.Type),
-			"change":            change,
-			"jwks_mode":         string(req.KeySource.Mode()),
-			"refused_audiences": req.RefusedAudiences,
-		})
+		audit.Object{Type: "instance", ID: id}, audit.OutcomeSuccess, "", payload)
+}
+
+func checkIssuerCABundle(source jwkssource.KeySource, bundle string) error {
+	if bundle == "" {
+		return nil
+	}
+	if source.Mode() != domain.JWKSDiscovery {
+		return fmt.Errorf("%w: a CA bundle requires discovery mode", ErrIssuerValue)
+	}
+	if _, err := federationhttp.ParseCABundle(bundle); err != nil {
+		return fmt.Errorf("%w: %v", ErrIssuerValue, err)
+	}
+	return nil
 }

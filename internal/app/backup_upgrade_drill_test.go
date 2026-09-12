@@ -224,12 +224,13 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 50, while the
+// The runtime-created fixture includes migrations 45 through 52, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
-// audit policy, privacy restriction, configuration, ceremony, adapter finding or contact email refuses
-// removal. The subsequent pinned catalog inspection proves the exact legacy schema
-// and migration digest;
+// audit policy, privacy restriction, configuration, ceremony, adapter finding,
+// contact email, issuer CA trust or parameter contract refuses removal. The
+// subsequent pinned catalog inspection proves the exact legacy schema and
+// migration digest;
 // this test-only surgery adds no runtime downgrade capability.
 func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	t.Helper()
@@ -242,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+6 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 50 only")
+	if len(current.Entries) != len(legacy.Entries)+8 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 52 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -274,6 +275,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM cli_reauth_handoffs",
 		"SELECT COUNT(*) FROM adapter_effects WHERE finding <> ''",
 		"SELECT COUNT(*) FROM accounts WHERE email <> ''",
+		"SELECT COUNT(*) FROM federation_issuers WHERE ca_bundle_pem <> ''",
+		"SELECT COUNT(*) FROM environments WHERE parameters_json <> '{}'",
+		"SELECT COUNT(*) FROM snapshots WHERE parameter_contract <> '{}'",
 	} {
 		var evidence int
 		if db.Engine() == store.EngineSQLite {
@@ -282,7 +286,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding or contact email evidence", err)
+			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust or parameter evidence", err)
 		}
 	}
 	if db.Engine() == store.EngineSQLite {
@@ -310,6 +314,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_purpose_check CHECK (purpose IN ('adapter','reveal','copy'))")
 	}
 	for _, query := range []string{
+		"ALTER TABLE snapshots DROP COLUMN parameter_contract",
+		"ALTER TABLE environments DROP COLUMN parameters_json",
+		"ALTER TABLE federation_issuers DROP COLUMN ca_bundle_pem",
 		"DROP TABLE self_config_rollouts",
 		"DROP TABLE self_config_rollout_sequences",
 		"DROP TABLE self_config_seed_inputs",
@@ -327,7 +334,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"DROP INDEX audit_instance_retention_unit",
 		"DROP TABLE audit_retention_policy",
 		"DROP TABLE ops_diagnostics",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52)",
 	} {
 		drillExec(t, db, query)
 	}

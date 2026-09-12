@@ -200,3 +200,21 @@ Pruning is the licensed deleter above: policy-driven, per-class, per retention u
 ## Binds
 
 This ADR binds **[#25](https://github.com/Hikyo-Org/Hikyo/issues/25)**, **[#28](https://github.com/Hikyo-Org/Hikyo/issues/28)**, **[#32](https://github.com/Hikyo-Org/Hikyo/issues/32)**, **[#26](https://github.com/Hikyo-Org/Hikyo/issues/26)**, **[#29](https://github.com/Hikyo-Org/Hikyo/issues/29)** and the synthesis (**[#27](https://github.com/Hikyo-Org/Hikyo/issues/27)**) as propagated above. It **amends [#15](https://github.com/Hikyo-Org/Hikyo/issues/15), [#16](https://github.com/Hikyo-Org/Hikyo/issues/16) and [#23](https://github.com/Hikyo-Org/Hikyo/issues/23)** in five declared parts: `audit-read` joins the capability set with `admin`-template seeding, joins the MFA-mandatory list, and joins the `automation` machine allowlist; the enumerated authorization interface gains the denial writer; and the audit tables are the composite-FK rule's single declared exception. Every other upstream constraint it touches is restated, not changed.
+
+
+## Public parameter export amendment (#723)
+
+A successful export with supplied public parameters records one
+`disclosure.values_exported` event, containing the selected revision and bounded,
+sanitized public inputs. The event is committed before export material leaves the
+server. Ordinary exports without parameters retain their previous audit behavior:
+config keys create no per-key disclosure events. Exporting secrets continues to
+record one `disclosure.value_revealed` per secret. The human consent probe does not
+create an export event when it refuses pending ceremony completion. A config-only
+probe that succeeds with parameters records one export event, never one per config
+key. No exported values appear in either payload.
+
+Environment deletion, including deletion through definitions apply, records one
+`grant.revoked` per removed environment-scoped grant using the existing revocation
+schema. Origin release, grant deletion, principal generation advance, human session
+invalidation and all audit records commit atomically with environment deletion.

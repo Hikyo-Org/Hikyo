@@ -81,7 +81,7 @@ func Run(ctx context.Context, log *slog.Logger) error {
 	}
 
 	log.Info("hikyo operator starting",
-		"namespaces", cfg.Namespaces, "triggerRollouts", cfg.TriggerRollouts,
+		"namespaces", cfg.Namespaces, "triggerRollouts", cfg.TriggerRollouts, "nativeSecretTypes", cfg.NativeSecretTypes,
 		"ownNamespace", cfg.OwnNamespace, "version", Version)
 	if err := mgr.Start(ctx); err != nil {
 		return fmt.Errorf("operator: manager exited: %w", err)

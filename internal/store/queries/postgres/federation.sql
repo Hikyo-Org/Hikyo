@@ -4,31 +4,31 @@
 -- hikyo:authn-resolution
 -- name: InsertFederationIssuer :exec
 INSERT INTO federation_issuers (
-    id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
+    id, issuer, issuer_type, jwks_mode, static_jwks, ca_bundle_pem, refused_audiences,
     created_at, created_by, updated_at, updated_by
 ) VALUES (sqlc.arg(id), sqlc.arg(issuer), sqlc.arg(issuer_type), sqlc.arg(jwks_mode),
-          sqlc.arg(static_jwks), sqlc.arg(refused_audiences),
+          sqlc.arg(static_jwks), sqlc.arg(ca_bundle_pem), sqlc.arg(refused_audiences),
           sqlc.arg(created_at), sqlc.arg(created_by), NULL, NULL);
 
 -- The BYTE-EXACT issuer lookup; see the sqlite dialect for why nothing folds.
 -- hikyo:authn-resolution
 -- name: FederationIssuerByIssuer :one
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 WHERE issuer = sqlc.arg(issuer);
 
 -- hikyo:authn-resolution
 -- name: FederationIssuerByID :one
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 WHERE id = sqlc.arg(id);
 
 -- hikyo:authn-resolution
 -- name: ListFederationIssuers :many
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 ORDER BY issuer;
 
@@ -37,7 +37,7 @@ ORDER BY issuer;
 -- name: UpdateFederationIssuer :execrows
 UPDATE federation_issuers
 SET jwks_mode = sqlc.arg(jwks_mode), static_jwks = sqlc.arg(static_jwks),
-    refused_audiences = sqlc.arg(refused_audiences),
+    ca_bundle_pem = sqlc.arg(ca_bundle_pem), refused_audiences = sqlc.arg(refused_audiences),
     updated_at = sqlc.arg(updated_at), updated_by = sqlc.arg(updated_by)
 WHERE id = sqlc.arg(id);
 

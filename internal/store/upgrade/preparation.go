@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"context"
+
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 	"github.com/jackc/pgx/v5"

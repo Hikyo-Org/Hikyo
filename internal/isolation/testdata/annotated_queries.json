@@ -501,13 +501,13 @@
     "engine": "postgres",
     "name": "FederationIssuerByID",
     "annotation": "authn-resolution",
-    "hash": "53a36a2d06285430ea8d1ebdc152d4be41244abd0c066decd53bfafb105f1870"
+    "hash": "6f63bd656e2344aba8aa8924662bd8f794336487b65fc516f3eb1a45213a9df2"
   },
   {
     "engine": "postgres",
     "name": "FederationIssuerByIssuer",
     "annotation": "authn-resolution",
-    "hash": "a25ee03eb250af60512d86fc16310bba28ba3ecf96299ea2427e3c6163f536bc"
+    "hash": "88af34cc9dbf9f3a1f31ea6a33a94e82b3616dd5669004d8fde3d22dafd1132c"
   },
   {
     "engine": "postgres",
@@ -903,7 +903,7 @@
     "engine": "postgres",
     "name": "InsertFederationIssuer",
     "annotation": "authn-resolution",
-    "hash": "514a45b185c62b4be0aabd6f616ec0e30dcc04eac91c8729d3e3b89e4e4d241c"
+    "hash": "d2f697819b16a321e6fca60d0331dba1532425c4c4957b467c023d32115b90c6"
   },
   {
     "engine": "postgres",
@@ -1101,7 +1101,7 @@
     "engine": "postgres",
     "name": "ListFederationIssuers",
     "annotation": "authn-resolution",
-    "hash": "1139f76c90e0b533d815df7ee67b88486d667af6e715ed41b371829ca3158554"
+    "hash": "99a549db3ddcd2a06aa1ed7aaa8e88dbcc64566c7f0add6e5989bbd2b6ecd6a3"
   },
   {
     "engine": "postgres",
@@ -1845,7 +1845,7 @@
     "engine": "postgres",
     "name": "SumSnapshotPayloadByProject",
     "annotation": "instance-scoped",
-    "hash": "2c98ca3910e31be8709383f7a9c3d298e69a75f005bcd74fdc275319883f86bf"
+    "hash": "bbef41662ef95abb194a5283cfdbe0787cbf2c6a0ab1f72a08f333e1774ac480"
   },
   {
     "engine": "postgres",
@@ -1887,7 +1887,7 @@
     "engine": "postgres",
     "name": "UpdateFederationIssuer",
     "annotation": "authn-resolution",
-    "hash": "c57739c2b1170b8d706089d1877f62b85bf405d80d8af2a5c40ff032e557860c"
+    "hash": "5ee2590369848941619583f839a2c11e62cacc8d6c7436ed918945904c291b20"
   },
   {
     "engine": "postgres",
@@ -2451,13 +2451,13 @@
     "engine": "sqlite",
     "name": "FederationIssuerByID",
     "annotation": "authn-resolution",
-    "hash": "ec0bfde3c68ab0ced1492f8cb5ceea9e11036b5b78d387074a27ffa3f370a8d1"
+    "hash": "d827260772a8f5a6067bbea356ade4291eff30a4a83e37cd6bb256248361af70"
   },
   {
     "engine": "sqlite",
     "name": "FederationIssuerByIssuer",
     "annotation": "authn-resolution",
-    "hash": "19f5b8e759461faa3f66473f15dc49522d92a9696d5a57f85dd7750009de893c"
+    "hash": "a76a37b40b89a0f2218e6dc63ccc93dc8bba84f2a746d338e49dd78afb588fbe"
   },
   {
     "engine": "sqlite",
@@ -2853,7 +2853,7 @@
     "engine": "sqlite",
     "name": "InsertFederationIssuer",
     "annotation": "authn-resolution",
-    "hash": "6201e32fefe5ff452564a729531ff34acf6220840dab206c46bb83bc60f867ae"
+    "hash": "c55f5ee6691a736f04af36bd220f7ee1c5d506199f0392e53a7af3a662f23d13"
   },
   {
     "engine": "sqlite",
@@ -3051,7 +3051,7 @@
     "engine": "sqlite",
     "name": "ListFederationIssuers",
     "annotation": "authn-resolution",
-    "hash": "1139f76c90e0b533d815df7ee67b88486d667af6e715ed41b371829ca3158554"
+    "hash": "99a549db3ddcd2a06aa1ed7aaa8e88dbcc64566c7f0add6e5989bbd2b6ecd6a3"
   },
   {
     "engine": "sqlite",
@@ -3795,7 +3795,7 @@
     "engine": "sqlite",
     "name": "SumSnapshotPayloadByProject",
     "annotation": "instance-scoped",
-    "hash": "9b825fcc7022b2f9afdba9788c4d1dfece82bbdb6ca4bf19cffba09374fbca4a"
+    "hash": "a38bb264e53323db441f5ff5326806c6734f14cd3e1d15f88df7fc7541c93328"
   },
   {
     "engine": "sqlite",
@@ -3837,7 +3837,7 @@
     "engine": "sqlite",
     "name": "UpdateFederationIssuer",
     "annotation": "authn-resolution",
-    "hash": "3e1efc023ce69cbbc706ff3553b296aa57989fb8b5a2bddec71a59e98995ac23"
+    "hash": "d7c8a14c48f7fbefb9e0049cf90b8bff98db36e49af14981d788961883109bb3"
   },
   {
     "engine": "sqlite",

@@ -1,0 +1,143 @@
+---
+title: Environment parameters
+description: Deliver shared preview configuration with validated public identifiers supplied at fetch time.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/environment-parameters.mdx
+---
+
+One environment can serve multiple preview instances whose configuration differs
+only by public identifiers such as a pull-request number. Parameters substitute
+declared identifiers in `config` values. Each instance receives the same stored
+secrets. Use [independent preview environments](/docs/preview-environments/) when
+instances need different passwords, secret rotation, grants or revision histories.
+
+## Declare, stage and publish
+
+An administrator resolves the environment's display name to its immutable ID,
+then declares parameter names and validation patterns. Select the intended
+organisation and project in the current CLI context first:
+
+```sh
+preview_env=$(hikyo env list -o json | jq -er '[.items[] | select(.name == "preview")] | if length == 1 then .[0].id else error("expected one preview environment") end')
+hikyo env param add --env "$preview_env" --name PR_NUMBER --pattern '^[0-9]{1,6}$'
+hikyo env param list --env "$preview_env"
+```
+
+Names use uppercase letters, digits and underscores, begin with a letter, and
+contain at most 64 characters. There are at most 32 declarations per environment.
+Patterns use Go's RE2 syntax and match the **whole** supplied value, whether or not
+the pattern contains anchors. Each pattern is limited to 512 bytes.
+
+Declaration changes require `definitions-edit` on the project and advance its
+definitions revision. They are available for database-managed definitions only;
+the definitions bundle does not currently transport parameter declarations.
+Declaration edits affect the **next publication**, never existing snapshots.
+To change a pattern, delete its declaration and add the new one:
+
+```sh
+hikyo env param delete --env "$preview_env" --name PR_NUMBER
+```
+
+Stage a config value containing an exact `${NAME}` reference, preserving the
+dollar sign from shell expansion:
+
+```sh
+printf '%s' 'https://pr-${PR_NUMBER}.preview.example.com' |
+  hikyo values set APP_BASE_URL --env "$preview_env" --stdin
+hikyo values publish --env "$preview_env" --versions <version-id-from-set>
+```
+
+The key must already exist and be classified as `config`. Publication refuses
+undeclared or malformed references when the environment has at least one parameter
+declaration. Use `$${` to deliver a literal `${` in that environment, for example
+`$${PORT}` delivers `${PORT}`. Any dollar immediately before a `${` opening
+escapes that opening: `$$${NAME}` delivers literal `$${NAME}`, and `$$$${NAME}`
+delivers literal `$$${NAME}`. Repeated dollars elsewhere remain unchanged (`$$`
+delivers `$$`). There is no template spelling for a literal dollar immediately
+followed by a resolved reference. Escapes and references are processed once. Only
+literal text, escaped openings and `${NAME}` references are supported: no defaults, conditions, functions, cross-key lookup or recursive
+evaluation. A `secret` value containing `${NAME}` remains literal bytes.
+
+**Upgrade and first opt-in:** environments without declarations preserve every
+config value literally, including `${NAME}`, incomplete `${` and `$${`. Upgrading
+does not reinterpret existing values or block their next publication. Adding the
+first declaration enables templating at the next publication: escape existing
+literal `${` openings as `$${` before publishing. A refusal names the affected
+config key. Existing published snapshots keep their original interpretation.
+
+Publication keeps its ordinary `publish` authority, protected-environment
+confirmation and approval-policy checks. A declaration edit alone neither
+publishes values nor bypasses those checks.
+
+## Fetch one instance
+
+```sh
+hikyo values export --env "$preview_env" --param PR_NUMBER=123 --format dotenv
+```
+
+Repeat `--param NAME=value` for multiple identifiers. Duplicate flags, undeclared
+names, missing declarations and pattern mismatches fail. Values are public config,
+limited to 256 UTF-8 bytes without control characters. **Never supply secrets as
+parameters:** they appear in command arguments, delivery query strings and audits.
+
+After substitution, Hikyo validates the complete value against the config key's
+schema captured at publication. A schema failure or render-size overflow refuses
+the whole fetch/export, with no partial output. This means a published template
+can be structurally valid while a particular caller's input produces a value the
+schema refuses. The owner draft advisory reports `validation_deferred: true` for
+these templates; `valid: true` then means the reference syntax, declared names
+and presence rules pass, not that every caller input satisfies the config schema.
+Escaped-only values are schema-validated before publication because their result
+is known. One synthetic input cannot prove validity for all allowed inputs.
+Errors identify the parameter or config key.
+
+Secret export still requires `--reveal`, the separate reveal capability and the
+normal disclosure output controls. Parameters grant no additional access.
+
+## Kubernetes operator
+
+Add public inputs to a `HikyoSecret`:
+
+```yaml
+spec:
+  parameters:
+    PR_NUMBER: "123"
+```
+
+The operator sends these with every fetch. Parameterized delivery requires an
+API revision 3 server: a successful response without its selected snapshot
+revision is refused, including a conditional current response. Upgrade the
+server before configuring operator parameters. Changing a parameter invalidates its
+conditional cursor and changes the keyed delivery stamp, including when the
+changed parameter does not alter any mapped key. Invalid input delivers nothing;
+the operator reports the fetch failure and retains its previous successful
+Secret until a valid fetch succeeds. Parameter changes are not revocation events.
+
+See [Kubernetes operator](/docs/kubernetes-operator/) for the surrounding
+`HikyoInstance`, scope, credentials, key mappings and rollout annotations.
+
+## Revisions, audit and supported consumers
+
+A snapshot preserves the template, its parameter declarations and the relevant
+config schemas (at most 256 KiB per snapshot, counted in project storage usage). Historical exports and pinned workload fetches use that captured
+contract, so a later pattern or key-schema change does not reinterpret history.
+Snapshot browsing and its change token describe stored templates; parameterized
+delivery tokens additionally bind the caller's exact input map and resolved
+values. Different inputs therefore change delivery tokens and cursors even when
+the resulting mapped data is equal. Ordinary snapshots retain their existing
+token behavior.
+
+Delivery access records carry the public parameter map. Per-value disclosure
+records link to that access record. Each successful parameterized export records
+the map and selected revision once in `disclosure.values_exported`, never exported
+values. Audit token redaction still applies if a credential is
+accidentally supplied as config.
+
+The supported consumers are `values export` and the Kubernetes operator. Compose,
+`run`, managed instance configuration and outbound deployment adapters do not
+accept parameter inputs and refuse parameterized delivery. They never substitute
+defaults or deploy unresolved templates. Use concrete environments for those
+consumers. Copying a template requires declaring its parameters in the destination
+before publication. Clone-at-creation cannot predeclare parameters on its new
+destination, so cloning a source containing config references is refused
+atomically. Use a concrete source for cloning, or create the destination, declare
+its parameters and copy explicitly. No copy creates a live source relationship.

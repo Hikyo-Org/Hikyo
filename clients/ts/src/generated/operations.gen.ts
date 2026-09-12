@@ -75,6 +75,7 @@ import {
   authMethods,
   beginRecovery,
   cancelAdapterMove,
+  changeEnvironmentParameter,
   checkDefinitions,
   clearValue,
   cloneEnvironment,
@@ -167,6 +168,7 @@ import {
   listApprovalPolicies,
   listApprovalRequests,
   listDynamicProviders,
+  listEnvironmentParameters,
   listEnvironments,
   listFederationIssuers,
   listFolders,
@@ -350,6 +352,7 @@ import type {
   AuthMethodsData,
   BeginRecoveryData,
   CancelAdapterMoveData,
+  ChangeEnvironmentParameterData,
   CheckDefinitionsData,
   ClearValueData,
   CloneEnvironmentData,
@@ -442,6 +445,7 @@ import type {
   ListApprovalPoliciesData,
   ListApprovalRequestsData,
   ListDynamicProvidersData,
+  ListEnvironmentParametersData,
   ListEnvironmentsData,
   ListFederationIssuersData,
   ListFoldersData,
@@ -704,6 +708,7 @@ import {
   zListApprovalPoliciesResponse,
   zListApprovalRequestsResponse,
   zListDynamicProvidersResponse,
+  zListEnvironmentParametersResponse,
   zListEnvironmentsResponse,
   zListFederationIssuersResponse,
   zListFoldersResponse,
@@ -949,6 +954,7 @@ export const listAdapterTargetsOp: BodyOperation<ListAdapterTargetsData, typeof 
 export const listApprovalPoliciesOp: BodyOperation<ListApprovalPoliciesData, typeof zListApprovalPoliciesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalPolicies, [200], zListApprovalPoliciesResponse);
 export const listApprovalRequestsOp: BodyOperation<ListApprovalRequestsData, typeof zListApprovalRequestsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalRequests, [200], zListApprovalRequestsResponse);
 export const listDynamicProvidersOp: BodyOperation<ListDynamicProvidersData, typeof zListDynamicProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listDynamicProviders, [200], zListDynamicProvidersResponse);
+export const listEnvironmentParametersOp: BodyOperation<ListEnvironmentParametersData, typeof zListEnvironmentParametersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listEnvironmentParameters, [200], zListEnvironmentParametersResponse);
 export const listEnvironmentsOp: BodyOperation<ListEnvironmentsData, typeof zListEnvironmentsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listEnvironments, [200], zListEnvironmentsResponse);
 export const listFederationIssuersOp: BodyOperation<ListFederationIssuersData, typeof zListFederationIssuersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFederationIssuers, [200], zListFederationIssuersResponse);
 export const listFoldersOp: BodyOperation<ListFoldersData, typeof zListFoldersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listFolders, [200], zListFoldersResponse);
@@ -1096,6 +1102,7 @@ export const updateMyProfileOp: BodyOperation<UpdateMyProfileData, typeof zUpdat
 export const updateScimMappingOp: BodyOperation<UpdateScimMappingData, typeof zUpdateScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateScimMapping, [200], zUpdateScimMappingResponse);
 export const voteApprovalRequestOp: BodyOperation<VoteApprovalRequestData, typeof zVoteApprovalRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(voteApprovalRequest, [200], zVoteApprovalRequestResponse);
 export const whoamiOp: BodyOperation<WhoamiData, typeof zWhoamiResponse> = /* @__PURE__ */ new GeneratedBodyOperation(whoami, [200], zWhoamiResponse);
+export const changeEnvironmentParameterOp: BodylessOperation<ChangeEnvironmentParameterData> = /* @__PURE__ */ new GeneratedBodylessOperation(changeEnvironmentParameter, [204]);
 export const deleteApprovalPolicyOp: BodylessOperation<DeleteApprovalPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteApprovalPolicy, [204]);
 export const deleteEnvironmentOp: BodylessOperation<DeleteEnvironmentData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteEnvironment, [204]);
 export const deleteFederationIssuerOp: BodylessOperation<DeleteFederationIssuerData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFederationIssuer, [204]);

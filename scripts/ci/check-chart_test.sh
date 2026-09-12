@@ -37,7 +37,15 @@ refute 'missing operator runAsNonRoot' \
 # verb check exists to catch).
 refute 'secrets list/watch' \
 	templates/_helpers.tpl \
-	's/\["get", "create", "update", "patch"\]/["get", "list", "watch", "create", "update", "patch"]/'
+	's/verbs: \["get", "create", "update", "patch"/verbs: ["get", "list", "watch", "create", "update", "patch"/'
+
+refute 'native Secret runtime gate missing' \
+	templates/operator-deployment.yaml \
+	'/- name: HIKYO_OPERATOR_NATIVE_SECRET_TYPES/,+1d'
+
+refute 'Secret delete granted without native opt-in' \
+	templates/_helpers.tpl \
+	's/{{ if .Values.operator.nativeSecretTypes }}/{{ if true }}/'
 
 # Change the operator container args away from the pinned [operator] multicall.
 refute 'operator args tampered' \

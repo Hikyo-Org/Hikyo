@@ -113,7 +113,7 @@ func (q *Queries) FederatedBindingByIdentity(ctx context.Context, arg FederatedB
 
 const federationIssuerByID = `-- name: FederationIssuerByID :one
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 WHERE id = $1
 `
@@ -133,13 +133,14 @@ func (q *Queries) FederationIssuerByID(ctx context.Context, id string) (Federati
 		&i.CreatedBy,
 		&i.UpdatedAt,
 		&i.UpdatedBy,
+		&i.CaBundlePem,
 	)
 	return i, err
 }
 
 const federationIssuerByIssuer = `-- name: FederationIssuerByIssuer :one
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 WHERE issuer = $1
 `
@@ -160,6 +161,7 @@ func (q *Queries) FederationIssuerByIssuer(ctx context.Context, issuer string) (
 		&i.CreatedBy,
 		&i.UpdatedAt,
 		&i.UpdatedBy,
+		&i.CaBundlePem,
 	)
 	return i, err
 }
@@ -185,11 +187,11 @@ func (q *Queries) GetPinGeneration(ctx context.Context, arg GetPinGenerationPara
 const insertFederationIssuer = `-- name: InsertFederationIssuer :exec
 
 INSERT INTO federation_issuers (
-    id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
+    id, issuer, issuer_type, jwks_mode, static_jwks, ca_bundle_pem, refused_audiences,
     created_at, created_by, updated_at, updated_by
 ) VALUES ($1, $2, $3, $4,
-          $5, $6,
-          $7, $8, NULL, NULL)
+          $5, $6, $7,
+          $8, $9, NULL, NULL)
 `
 
 type InsertFederationIssuerParams struct {
@@ -198,6 +200,7 @@ type InsertFederationIssuerParams struct {
 	IssuerType       string
 	JwksMode         string
 	StaticJwks       pgtype.Text
+	CaBundlePem      string
 	RefusedAudiences string
 	CreatedAt        pgtype.Timestamptz
 	CreatedBy        string
@@ -213,6 +216,7 @@ func (q *Queries) InsertFederationIssuer(ctx context.Context, arg InsertFederati
 		arg.IssuerType,
 		arg.JwksMode,
 		arg.StaticJwks,
+		arg.CaBundlePem,
 		arg.RefusedAudiences,
 		arg.CreatedAt,
 		arg.CreatedBy,
@@ -222,7 +226,7 @@ func (q *Queries) InsertFederationIssuer(ctx context.Context, arg InsertFederati
 
 const listFederationIssuers = `-- name: ListFederationIssuers :many
 SELECT id, issuer, issuer_type, jwks_mode, static_jwks, refused_audiences,
-       created_at, created_by, updated_at, updated_by
+       created_at, created_by, updated_at, updated_by, ca_bundle_pem
 FROM federation_issuers
 ORDER BY issuer
 `
@@ -248,6 +252,7 @@ func (q *Queries) ListFederationIssuers(ctx context.Context) ([]FederationIssuer
 			&i.CreatedBy,
 			&i.UpdatedAt,
 			&i.UpdatedBy,
+			&i.CaBundlePem,
 		); err != nil {
 			return nil, err
 		}
@@ -300,14 +305,15 @@ func (q *Queries) SetPinGeneration(ctx context.Context, arg SetPinGenerationPara
 const updateFederationIssuer = `-- name: UpdateFederationIssuer :execrows
 UPDATE federation_issuers
 SET jwks_mode = $1, static_jwks = $2,
-    refused_audiences = $3,
-    updated_at = $4, updated_by = $5
-WHERE id = $6
+    ca_bundle_pem = $3, refused_audiences = $4,
+    updated_at = $5, updated_by = $6
+WHERE id = $7
 `
 
 type UpdateFederationIssuerParams struct {
 	JwksMode         string
 	StaticJwks       pgtype.Text
+	CaBundlePem      string
 	RefusedAudiences string
 	UpdatedAt        pgtype.Timestamptz
 	UpdatedBy        pgtype.Text
@@ -320,6 +326,7 @@ func (q *Queries) UpdateFederationIssuer(ctx context.Context, arg UpdateFederati
 	result, err := q.db.Exec(ctx, updateFederationIssuer,
 		arg.JwksMode,
 		arg.StaticJwks,
+		arg.CaBundlePem,
 		arg.RefusedAudiences,
 		arg.UpdatedAt,
 		arg.UpdatedBy,

@@ -38,7 +38,7 @@ func TestCopySourceKeyResolverQueriesCatalogueOnce(t *testing.T) {
 
 func TestValidateConfigValueReturnsSchemaLeafInCallerSafeNamedDetail(t *testing.T) {
 	const submitted = `{"unexpected":"caller-visible-config"}`
-	err := validateValue(store.CatalogueKey{
+	err := validateLiteralValue(store.CatalogueKey{
 		Name:           "APP_CONFIG",
 		Classification: "config",
 		Declaration:    `{"rule":{"type":"json","json_schema":{"type":"object","additionalProperties":false}}}`,
@@ -65,7 +65,7 @@ func TestValidateSecretValueReturnsCallerSafeNamedDetail(t *testing.T) {
 		plaintext = `{"tenant-leaf-9f4a":"DO-NOT-ECHO-secret-7c31"}`
 		fragment  = "tenant-leaf-9f4a"
 	)
-	err := validateValue(store.CatalogueKey{
+	err := validateLiteralValue(store.CatalogueKey{
 		Name:           "API_SECRET",
 		Classification: "secret",
 		Declaration:    `{"rule":{"type":"json","json_schema":{"type":"object","additionalProperties":false}}}`,

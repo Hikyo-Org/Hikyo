@@ -5,10 +5,11 @@ package upgradeassembly
 import (
 	"context"
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 )
 
 func TestPublicationNeverReplacesAnOutput(t *testing.T) {

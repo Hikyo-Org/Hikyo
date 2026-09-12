@@ -197,6 +197,8 @@ This is not symmetry for its own sake. The presented token's own short expiry bo
 
 **A per-issuer static JWKS is a configured alternative**, for air-gapped installations and for deployments where the issuer's discovery endpoint is unreachable from Hikyo. It is configuration, not machinery, and air-gapped operation is a settled product principle. It is not the default: a static-only installation breaks silently on the day someone rotates the issuer's keys.
 
+**Discovery may use per-issuer CA certificates** (#721), administered under the same instance-scoped issuer authority. A configured bundle replaces system roots only for that issuer's discovery and JWKS HTTPS requests, including redirects. Certificates never bypass hostname verification, the HTTPS requirement, or the operator-owned origin/CIDR egress policy. Static mode rejects a nonempty bundle. Changing or removing a bundle invalidates that issuer's cached trust and the in-flight issuer-policy snapshot; configuration audit records its SHA-256 digest, never PEM contents.
+
 **Unknown-`kid` refresh is rate-limited, and that is load-bearing rather than hygiene.** It sits on a pre-authentication path, so a stream of fabricated `kid` values is an outbound-fetch amplifier aimed at the issuer. It falls under #16's instance-wide admission budget and the threat model's no-unbounded-work rule.
 
 ## Authentication, authorization and the fetch path

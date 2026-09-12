@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/parameters"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -55,7 +56,7 @@ type RevisionDetail struct {
 }
 
 // SnapshotKey is one delivered key of one snapshot, without its value. The
-// value lives behind Export and its formula; a browse verb never emits one.
+// value lives behind ExportWithParameters and its formula; a browse verb never emits one.
 type SnapshotKey struct {
 	KeyID          string
 	Name           string
@@ -102,6 +103,7 @@ type EnvironmentSignals struct {
 type PendingDraft struct {
 	OwnerID            string
 	Valid              bool
+	ValidationDeferred bool `json:"validation_deferred"`
 	VersionID          string
 	KeyID              string
 	Name               string
@@ -357,6 +359,10 @@ func (s *Revisions) PendingDrafts(ctx context.Context, actor Actor, scope domain
 		if err != nil {
 			return err
 		}
+		declarations, err := environmentParameters(ctx, r.Environments(), p)
+		if err != nil {
+			return err
+		}
 		byID := make(map[string]store.CatalogueKey, len(keys))
 		for _, key := range keys {
 			byID[key.ID] = key
@@ -367,7 +373,7 @@ func (s *Revisions) PendingDrafts(ctx context.Context, actor Actor, scope domain
 			if !ok {
 				return fmt.Errorf("service: pending change %s references missing key %s", change.ID, change.KeyID)
 			}
-			draft, err := pendingDraftView(change, key, presence, sealer)
+			draft, err := pendingDraftView(change, key, presence, sealer, declarations)
 			if err != nil {
 				return err
 			}
@@ -399,7 +405,7 @@ type revisionExportResult struct {
 	revision int64
 }
 
-// Export is the one bulk-disclosure verb: the resolved snapshot of one
+// ExportWithParameters is the bulk-disclosure verb: the resolved snapshot of one
 // environment, from committed state, never from live values.
 //
 // FORMULA, stated separately because the capabilities imply nothing about each
@@ -408,7 +414,7 @@ type revisionExportResult struct {
 // A human session additionally runs the ceremony, which enumerates exactly the
 // key set the export covers before any ciphertext is opened, and one audit
 // event is written per disclosed key. Never "exported N secrets" as one row.
-func (s *Revisions) Export(ctx context.Context, actor Actor, scope domain.Scope, revision int64, reveal bool) ([]ExportedValue, int64, error) {
+func (s *Revisions) ExportWithParameters(ctx context.Context, actor Actor, scope domain.Scope, revision int64, reveal bool, supplied map[string]string) ([]ExportedValue, int64, error) {
 	if s.Keyring == nil {
 		return nil, 0, errors.New("service: value export requires a keyring")
 	}
@@ -483,6 +489,10 @@ func (s *Revisions) Export(ctx context.Context, actor Actor, scope domain.Scope,
 		if err != nil {
 			return revisionExportResult{}, err
 		}
+		contract, err := snapshotParameters(ctx, r.Snapshots(), p, snapshot, supplied)
+		if err != nil {
+			return revisionExportResult{}, err
+		}
 		if reveal {
 			unit := make([]string, 0, len(entries))
 			for _, entry := range entries {
@@ -495,6 +505,7 @@ func (s *Revisions) Export(ctx context.Context, actor Actor, scope domain.Scope,
 				return revisionExportResult{}, err
 			}
 		}
+		renderBytes := 0
 		for _, entry := range entries {
 			value := ExportedValue{Name: entry.KeyName, Classification: entry.Classification}
 			if entry.Classification == string(schema.Config) || reveal {
@@ -503,7 +514,15 @@ func (s *Revisions) Export(ctx context.Context, actor Actor, scope domain.Scope,
 				if err != nil {
 					return revisionExportResult{}, fmt.Errorf("service: snapshot entry %s: %w", entry.ID, err)
 				}
-				value.Value, value.Revealed = string(plain), true
+				resolved, err := resolveConfig(contract, supplied, entry.KeyName, entry.Classification, string(plain))
+				if err != nil {
+					return revisionExportResult{}, err
+				}
+				renderBytes += len(resolved)
+				if renderBytes > MaxRenderBytesPerTarget {
+					return revisionExportResult{}, invalidDetail("resolved environment exceeds the per-target render limit")
+				}
+				value.Value, value.Revealed = resolved, true
 			}
 			result.values = append(result.values, value)
 			if entry.Classification != string(schema.Secret) || !value.Revealed {
@@ -515,6 +534,18 @@ func (s *Revisions) Export(ctx context.Context, actor Actor, scope domain.Scope,
 					"name":     audit.SanitizeFreeText(entry.KeyName),
 					"surface":  "export",
 					"revision": snapshot.Revision,
+				})
+			if err != nil {
+				return revisionExportResult{}, err
+			}
+			if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+				return revisionExportResult{}, err
+			}
+		}
+		if len(supplied) > 0 {
+			ev, err := domainEvent(ctx, audit.EventValuesExported, caller.Principal,
+				audit.Object{Type: "environment", ID: string(scope.Env)}, audit.Payload{
+					"parameters": auditedParameters(supplied), "revision": snapshot.Revision,
 				})
 			if err != nil {
 				return revisionExportResult{}, err
@@ -692,7 +723,7 @@ func revisionPublisherName(ctx context.Context, az *authz.TxAuthorizer, principa
 // pendingDraftView is the owner-filtered projection shared by full and bounded
 // reads. Only config previews may leave this boundary with plaintext; secret
 // bytes are opened solely to evaluate their owner's current-schema advisory.
-func pendingDraftView(change store.PendingChange, key store.CatalogueKey, presence []store.KeyPresence, sealer *crypto.ProjectSealer) (PendingDraft, error) {
+func pendingDraftView(change store.PendingChange, key store.CatalogueKey, presence []store.KeyPresence, sealer *crypto.ProjectSealer, declarations map[string]string) (PendingDraft, error) {
 	draft := PendingDraft{
 		OwnerID: change.OwnerID, Valid: true,
 		VersionID: change.ID, KeyID: change.KeyID, Name: key.Name,
@@ -704,21 +735,19 @@ func pendingDraftView(change store.PendingChange, key store.CatalogueKey, presen
 	// Only the owner-selected rows are evaluated. The validity bit is a
 	// predicate on secret material and must never reach another reader.
 	if change.Operation == store.PendingSet {
-		decl, err := schema.ParseDeclaration([]byte(key.Declaration))
-		if err != nil {
-			return PendingDraft{}, err
-		}
-		compiled, err := schema.CompileClassified(schema.Classification(key.Classification), decl)
-		if err != nil {
-			return PendingDraft{}, err
-		}
 		plain, err := sealer.OpenField(pendingAAD(change.OrgID, change.ProjectID, change.EnvironmentID, change.KeyID, change.ID), change.Ciphertext)
 		if err != nil {
 			return PendingDraft{}, fmt.Errorf("service: pending change %s: %w", change.ID, err)
 		}
 		value := string(plain)
 		crypto.Zero(plain)
-		draft.Valid = compiled.Validate(value).Valid && draft.Valid
+		// Template drafts report structural validity; final config schemas run
+		// after caller parameters are supplied, matching publication semantics.
+		draft.Valid = validateValueWithParameters(key, value, declarations) == nil && draft.Valid
+		if draft.Valid && key.Classification == string(schema.Config) && len(declarations) > 0 {
+			refs, err := parameters.References(value)
+			draft.ValidationDeferred = err == nil && len(refs) > 0
+		}
 		// Sticky historical secrecy also applies when a key is now config.
 		if key.Classification == string(schema.Config) && !change.MaterialSecret {
 			draft.Revealed = true

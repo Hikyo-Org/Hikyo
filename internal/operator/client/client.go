@@ -20,6 +20,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/freetext"
 )
 
 // pathPrefix mirrors api.PathPrefix ("/api/v1"). Duplicated as a const so the
@@ -60,10 +62,12 @@ type DeliveredKey struct {
 // fields § 0.1 fixes are decoded; any additive member the server grows is
 // ignored (no DisallowUnknownFields).
 type DeliveryResponse struct {
-	Current             bool           `json:"current"`
-	Cursor              string         `json:"cursor"`
-	ChangeToken         string         `json:"change_token"`
-	SchemaRevision      int64          `json:"schema_revision"`
+	Current        bool   `json:"current"`
+	Cursor         string `json:"cursor"`
+	ChangeToken    string `json:"change_token"`
+	SchemaRevision int64  `json:"schema_revision"`
+	// Revision is absent on older servers that may ignore parameter inputs.
+	Revision            *int64         `json:"revision,omitempty"`
 	PinnedRevision      *int64         `json:"pinned_revision,omitempty"`
 	PinExpired          bool           `json:"pin_expired"`
 	CredentialExpiresAt *time.Time     `json:"credential_expires_at,omitempty"`
@@ -77,6 +81,7 @@ type FetchRequest struct {
 	Cursor                    string
 	Projection                string
 	AcknowledgedKeys          []string
+	Parameters                map[string]string
 	// Bearer is presented as `Authorization: Bearer <token>`, only to the bound
 	// origin — the redirect guard keeps it off any other host.
 	Bearer string
@@ -151,6 +156,7 @@ type wireResponse struct {
 	Cursor              *string    `json:"cursor"`
 	ChangeToken         *string    `json:"change_token"`
 	SchemaRevision      *int64     `json:"schema_revision"`
+	Revision            *int64     `json:"revision"`
 	PinExpired          *bool      `json:"pin_expired"`
 	Keys                *[]wireKey `json:"keys"`
 	PinnedRevision      *int64     `json:"pinned_revision"`
@@ -205,6 +211,7 @@ func decodeDelivery(payload []byte) (*DeliveryResponse, error) {
 		Cursor:              *w.Cursor,
 		ChangeToken:         *w.ChangeToken,
 		SchemaRevision:      *w.SchemaRevision,
+		Revision:            w.Revision,
 		PinExpired:          *w.PinExpired,
 		PinnedRevision:      w.PinnedRevision,
 		CredentialExpiresAt: w.CredentialExpiresAt,
@@ -260,6 +267,13 @@ func (c *Client) Fetch(ctx context.Context, r FetchRequest) (*DeliveryResponse, 
 	// validator — an omitted parameter is the wire encoding of "no acknowledged
 	// keys", which the server records as the empty list all the same (§ 0.6).
 	// form/explode:false → comma-joined when present.
+	if len(r.Parameters) > 0 {
+		raw, err := json.Marshal(r.Parameters)
+		if err != nil {
+			return nil, OutcomeFetchFailed, err
+		}
+		q.Set("parameters", string(raw))
+	}
 	if len(r.AcknowledgedKeys) > 0 {
 		q.Set("acknowledged_keys", strings.Join(r.AcknowledgedKeys, ","))
 	}
@@ -300,7 +314,30 @@ func (c *Client) Fetch(ctx context.Context, r FetchRequest) (*DeliveryResponse, 
 			// (§ 0.4/§ 0.11). Unknown additive members are still ignored.
 			return nil, OutcomeFetchFailed, fmt.Errorf("operator client: %w", err)
 		}
+		// Revision metadata and parameter support arrived together in API revision
+		// 3. Older servers may ignore the unknown query and return literal config.
+		// Require a selected snapshot even on current answers before accepting
+		// the response; an unsupported server must never advance the cursor.
+		if len(r.Parameters) > 0 && (out.Revision == nil || *out.Revision <= 0) {
+			return nil, OutcomeFetchFailed, errors.New("operator client: parameterized delivery requires API revision 3 with a positive snapshot revision; upgrade the server")
+		}
 		return out, OutcomeOK, nil
+	case resp.StatusCode == http.StatusBadRequest:
+		// Only the typed bad_request detail is caller-safe. Never relay bodies,
+		// unknown error shapes or non-validation responses into Kubernetes events.
+		payload, err := io.ReadAll(io.LimitReader(resp.Body, (16<<10)+1))
+		if err == nil && len(payload) <= 16<<10 {
+			var envelope struct {
+				Error struct {
+					Code   string  `json:"code"`
+					Detail *string `json:"detail"`
+				} `json:"error"`
+			}
+			if json.Unmarshal(payload, &envelope) == nil && envelope.Error.Code == "bad_request" && envelope.Error.Detail != nil && *envelope.Error.Detail != "" {
+				return nil, OutcomeFetchFailed, fmt.Errorf("operator client: invalid fetch parameters: %s", freetext.SanitizeFreeText(*envelope.Error.Detail))
+			}
+		}
+		return nil, OutcomeFetchFailed, fmt.Errorf("operator client: fetch validation failed (400)")
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, OutcomeScrub, fmt.Errorf("operator client: authoritative refusal (404): scope nonexistent or read withdrawn")
 	case resp.StatusCode == http.StatusConflict:

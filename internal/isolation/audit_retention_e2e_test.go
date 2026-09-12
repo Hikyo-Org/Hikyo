@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"

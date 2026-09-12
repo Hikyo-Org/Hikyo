@@ -3,10 +3,11 @@ package isolation
 import (
 	"errors"
 	"fmt"
+	"testing"
+
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"testing"
 )
 
 func TestAccountProfileSelfService(t *testing.T) {

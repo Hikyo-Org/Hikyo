@@ -1177,6 +1177,10 @@ export type PendingDraft = {
     advisory?: {
         owner_id: Id;
         valid: boolean;
+        /**
+         * True when caller parameters are needed for final config schema validation at fetch. Valid then describes template structure and presence only.
+         */
+        validation_deferred?: boolean;
     };
     version_id: Id;
     key_id: Id;
@@ -1600,7 +1604,16 @@ export type CellSignal = {
     changed_in_revision?: number;
 };
 
+export type EnvironmentParameters = {
+    [key: string]: string;
+};
+
+export type FetchParameters = {
+    [key: string]: string;
+};
+
 export type ExportValuesRequest = {
+    parameters?: FetchParameters;
     /**
      * The revision to export; omitted means the latest.
      */
@@ -2400,6 +2413,10 @@ export type FederationIssuer = {
     updated_at?: Timestamp;
     updated_by?: Id;
     /**
+     * Whether discovery uses an issuer-specific CA bundle instead of system roots.
+     */
+    ca_bundle_configured: boolean;
+    /**
      * How many bindings name this issuer, LIVE OR HISTORICAL, so an operator
      * sees the blast radius before attempting a delete — which is refused
      * while any remain. Revoked bindings count: erasing the issuer a past
@@ -2426,6 +2443,15 @@ export type CreateFederationIssuerRequest = {
     issuer_type: IssuerType;
     jwks_mode: JwksMode;
     /**
+     * PEM CA certificates for discovery and JWKS HTTPS requests, including
+     * redirects. Replaces system roots for this issuer only. Nonempty values
+     * are refused in static mode. On update, omission preserves the current
+     * bundle in discovery mode; an empty string clears it. Static mode clears
+     * the bundle. This field is write-only; reads report ca_bundle_configured.
+     *
+     */
+    ca_bundle_pem?: string;
+    /**
      * The JWKS document, required under `static` mode and refused under
      * `discovery`. The pairing is total: a document stored but unused is a
      * key set nobody rotates.
@@ -2443,6 +2469,15 @@ export type CreateFederationIssuerRequest = {
  */
 export type UpdateFederationIssuerRequest = {
     jwks_mode: JwksMode;
+    /**
+     * PEM CA certificates for discovery and JWKS HTTPS requests, including
+     * redirects. Replaces system roots for this issuer only. Nonempty values
+     * are refused in static mode. On update, omission preserves the current
+     * bundle in discovery mode; an empty string clears it. Static mode clears
+     * the bundle. This field is write-only; reads report ca_bundle_configured.
+     *
+     */
+    ca_bundle_pem?: string;
     static_jwks?: string;
     refused_audiences: Array<string>;
 };
@@ -2613,6 +2648,10 @@ export type DeliveryResponse = {
      * The project's monotonic key-catalogue revision.
      */
     schema_revision: number;
+    /**
+     * The committed snapshot selected by this fetch; zero before first publication.
+     */
+    revision: number;
     /**
      * Present when a durable workload pin selected the snapshot.
      */
@@ -15364,6 +15403,148 @@ export type CreateFederatedBindingResponses = {
 
 export type CreateFederatedBindingResponse = CreateFederatedBindingResponses[keyof CreateFederatedBindingResponses];
 
+export type ListEnvironmentParametersData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters';
+};
+
+export type ListEnvironmentParametersErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListEnvironmentParametersError = ListEnvironmentParametersErrors[keyof ListEnvironmentParametersErrors];
+
+export type ListEnvironmentParametersResponses = {
+    /**
+     * Parameter names mapped to validation patterns.
+     */
+    200: EnvironmentParameters;
+};
+
+export type ListEnvironmentParametersResponse = ListEnvironmentParametersResponses[keyof ListEnvironmentParametersResponses];
+
+export type ChangeEnvironmentParameterData = {
+    body: {
+        name: string;
+        action: 'add' | 'delete';
+        pattern?: string;
+    };
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters';
+};
+
+export type ChangeEnvironmentParameterErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ChangeEnvironmentParameterError = ChangeEnvironmentParameterErrors[keyof ChangeEnvironmentParameterErrors];
+
+export type ChangeEnvironmentParameterResponses = {
+    /**
+     * Declaration changed; existing snapshots remain unchanged.
+     */
+    204: void;
+};
+
+export type ChangeEnvironmentParameterResponse = ChangeEnvironmentParameterResponses[keyof ChangeEnvironmentParameterResponses];
+
 export type FetchDeliveryData = {
     body?: never;
     path: {
@@ -15410,6 +15591,10 @@ export type FetchDeliveryData = {
          *
          */
         acknowledged_keys?: Array<KeyName>;
+        /**
+         * JSON object of public parameter names and string values. All declared parameters are required. Never supply secrets.
+         */
+        parameters?: string;
     };
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery';
 };

@@ -2,10 +2,11 @@ package testfixture
 
 import (
 	"encoding/json"
-	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
-	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/releasetrust"
 )
 
 func StableWorkflow(t testing.TB) (*Fixture, releasetrust.SnapshotMaterial, releasetrust.StableMaterial, func([]byte, string, string) []byte) {

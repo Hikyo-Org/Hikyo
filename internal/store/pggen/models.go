@@ -501,6 +501,7 @@ type Environment struct {
 	DisplayOrder        int64
 	Protected           bool
 	ReauthWindowSeconds pgtype.Int8
+	ParametersJson      string
 }
 
 type ExternalIdentity struct {
@@ -525,6 +526,7 @@ type FederationIssuer struct {
 	CreatedBy        string
 	UpdatedAt        pgtype.Timestamptz
 	UpdatedBy        pgtype.Text
+	CaBundlePem      string
 }
 
 type Folder struct {
@@ -1170,17 +1172,18 @@ type SingletonLease struct {
 }
 
 type Snapshot struct {
-	ID              string
-	OrgID           string
-	ProjectID       string
-	EnvironmentID   string
-	Revision        int64
-	SchemaRevision  int64
-	PublishedBy     string
-	PublishedAt     pgtype.Timestamptz
-	PayloadPresent  bool
-	CollectedAt     pgtype.Timestamptz
-	CollectedPolicy string
+	ID                string
+	OrgID             string
+	ProjectID         string
+	EnvironmentID     string
+	Revision          int64
+	SchemaRevision    int64
+	PublishedBy       string
+	PublishedAt       pgtype.Timestamptz
+	PayloadPresent    bool
+	CollectedAt       pgtype.Timestamptz
+	CollectedPolicy   string
+	ParameterContract string
 }
 
 type SnapshotEntry struct {

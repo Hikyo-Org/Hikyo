@@ -1020,7 +1020,12 @@ export const zRevealRevisionDiffRequest = z.object({
     key_id: zId
 });
 
+export const zEnvironmentParameters = z.record(z.string(), z.string().max(512));
+
+export const zFetchParameters = z.record(z.string(), z.string().max(256));
+
 export const zExportValuesRequest = z.object({
+    parameters: zFetchParameters.optional(),
     revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     reveal: z.boolean().optional()
 });
@@ -1397,6 +1402,7 @@ export const zFederationIssuer = z.object({
     created_by: zId,
     updated_at: zTimestamp.optional(),
     updated_by: zId.optional(),
+    ca_bundle_configured: z.boolean(),
     live_bindings: z.int().gte(0)
 });
 
@@ -1409,6 +1415,7 @@ export const zCreateFederationIssuerRequest = z.object({
     issuer: z.string().min(9).max(512),
     issuer_type: zIssuerType,
     jwks_mode: zJwksMode,
+    ca_bundle_pem: z.string().max(65536).optional(),
     static_jwks: z.string().max(1048576).optional(),
     refused_audiences: z.array(z.string().max(512)).min(1).max(16)
 });
@@ -1421,6 +1428,7 @@ export const zCreateFederationIssuerRequest = z.object({
  */
 export const zUpdateFederationIssuerRequest = z.object({
     jwks_mode: zJwksMode,
+    ca_bundle_pem: z.string().max(65536).optional(),
     static_jwks: z.string().max(1048576).optional(),
     refused_audiences: z.array(z.string().max(512)).min(1).max(16)
 });
@@ -1961,7 +1969,8 @@ export const zPendingChange = z.object({
 export const zPendingDraft = z.object({
     advisory: z.object({
         owner_id: zId,
-        valid: z.boolean()
+        valid: z.boolean(),
+        validation_deferred: z.boolean().optional()
     }).optional(),
     version_id: zId,
     key_id: zId,
@@ -2195,6 +2204,7 @@ export const zDeliveryResponse = z.object({
     change_token: z.string().max(128),
     credential_expires_at: zTimestamp.optional(),
     schema_revision: z.int().gte(0),
+    revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     pinned_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     pin_expired: z.boolean(),
     keys: z.array(zDeliveredKey),
@@ -5121,6 +5131,34 @@ export const zCreateFederatedBindingPath = z.object({
  */
 export const zCreateFederatedBindingResponse = zFederatedBinding;
 
+export const zListEnvironmentParametersPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Parameter names mapped to validation patterns.
+ */
+export const zListEnvironmentParametersResponse = zEnvironmentParameters;
+
+export const zChangeEnvironmentParameterBody = z.object({
+    name: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/),
+    action: z.enum(['add', 'delete']),
+    pattern: z.string().max(512).optional()
+});
+
+export const zChangeEnvironmentParameterPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Declaration changed; existing snapshots remain unchanged.
+ */
+export const zChangeEnvironmentParameterResponse = z.void();
+
 export const zFetchDeliveryPath = z.object({
     org: zId,
     project: zId,
@@ -5130,7 +5168,8 @@ export const zFetchDeliveryPath = z.object({
 export const zFetchDeliveryQuery = z.object({
     cursor: z.string().max(128).optional(),
     projection: z.enum(['full', 'config-only']).optional().default('full'),
-    acknowledged_keys: z.array(zKeyName).max(64).optional()
+    acknowledged_keys: z.array(zKeyName).max(64).optional(),
+    parameters: z.string().max(16384).optional()
 });
 
 /**

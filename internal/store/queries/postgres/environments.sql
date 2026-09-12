@@ -79,3 +79,11 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
 -- name: ListEnvironmentProtection :many
 SELECT id, protected FROM environments
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id) ORDER BY id;
+
+-- name: GetEnvironmentParameters :one
+SELECT parameters_json FROM environments
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id) AND id = sqlc.arg(chain_env_id);
+
+-- name: SetEnvironmentParameters :execrows
+UPDATE environments SET parameters_json = sqlc.arg(parameters_json)
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id) AND id = sqlc.arg(chain_env_id);

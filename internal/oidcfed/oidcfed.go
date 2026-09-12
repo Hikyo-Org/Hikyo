@@ -20,6 +20,9 @@ package oidcfed
 import (
 	"context"
 	"crypto"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +40,7 @@ import (
 	jose "github.com/go-jose/go-jose/v4"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 )
 
@@ -174,10 +178,11 @@ var (
 // Issuer is the cache's projection of one configured issuer. It carries only
 // what fetching and verifying need, so this package never sees a stored row.
 type Issuer struct {
-	ID        string
-	Issuer    string
-	Type      domain.IssuerType
-	KeySource jwkssource.KeySource
+	ID          string
+	Issuer      string
+	Type        domain.IssuerType
+	KeySource   jwkssource.KeySource
+	CABundlePEM string
 	// RefusedAudiences are the issuer's default audiences. A token carrying
 	// ANY of them is refused even when it also carries the bound one: a token
 	// minted for the Kubernetes API server that happens to list Hikyo too is
@@ -311,10 +316,38 @@ func (c *Cache) now() time.Time {
 //
 // The copy is deliberate — a caller's client (the test fixture's, which carries
 // the fixture CA) must not have its redirect policy mutated by us.
-func (c *Cache) guardedClient() *http.Client {
+func (c *Cache) guardedClient(bundle string) (*http.Client, error) {
 	base := http.Client{Timeout: fetchTimeout}
 	if c.HTTP != nil {
 		base = *c.HTTP
+	}
+	if bundle != "" {
+		roots, err := federationhttp.ParseCABundle(bundle)
+		if err != nil {
+			return nil, err
+		}
+		transport := base.Transport
+		if transport == nil {
+			transport = http.DefaultTransport
+		}
+		switch t := transport.(type) {
+		case interface {
+			CloneWithRootCAs(*x509.CertPool) http.RoundTripper
+		}:
+			base.Transport = t.CloneWithRootCAs(roots)
+		case *http.Transport:
+			clone := t.Clone()
+			if clone.TLSClientConfig == nil {
+				clone.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+			} else {
+				clone.TLSClientConfig = clone.TLSClientConfig.Clone()
+			}
+			clone.TLSClientConfig.RootCAs = roots
+			clone.TLSClientConfig.InsecureSkipVerify = false
+			base.Transport = clone
+		default:
+			return nil, errors.New("oidcfed: configured transport cannot apply issuer CA roots")
+		}
 	}
 	base.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
@@ -322,7 +355,7 @@ func (c *Cache) guardedClient() *http.Client {
 		}
 		return requireHTTPS(req.URL.String())
 	}
-	return &base
+	return &base, nil
 }
 
 // requireHTTPS refuses any URL that is not HTTPS. It is applied to the issuer,
@@ -927,7 +960,7 @@ func (c *Cache) keysFor(ctx context.Context, iss Issuer, kid string, now time.Ti
 	// deadlock-free: `Cache.mu` may be taken while no `entry.mu` is held, and
 	// `entry.mu` is never taken while `Cache.mu` is held. entryFor is the only
 	// place that touches the map, and it returns before any entry lock is taken.
-	e := c.entryFor(iss.Issuer)
+	e := c.entryFor(fmt.Sprintf("%s\x00%x", iss.Issuer, sha256.Sum256([]byte(iss.CABundlePEM))))
 	defer e.inflight.Add(-1)
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -1089,7 +1122,11 @@ func (c *Cache) fetch(ctx context.Context, iss Issuer, now time.Time) (*entry, e
 	}
 	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 	defer cancel()
-	client := c.guardedClient()
+	client, err := c.guardedClient(iss.CABundlePEM)
+	if err != nil {
+		return nil, err
+	}
+	defer client.CloseIdleConnections()
 	ctx = oidc.ClientContext(ctx, client)
 
 	provider, err := oidc.NewProvider(ctx, iss.Issuer)

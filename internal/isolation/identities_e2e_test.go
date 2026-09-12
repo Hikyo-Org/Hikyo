@@ -1183,13 +1183,13 @@ func runIdentityLifecycle(t *testing.T, db *store.DB) {
 	request := httptest.NewRequest(http.MethodGet,
 		api.PathPrefix+"/orgs/org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fee/"+
 			"projects/prj_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fdd/"+
-			"environments/env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc", nil).WithContext(ctx)
+			"environments/env_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0fcc/settings", nil).WithContext(ctx)
 	validated, err := api.ValidateRequest(request)
 	if err != nil {
-		t.Fatalf("getEnvironment did not validate through the embedded contract: %v", err)
+		t.Fatalf("getEnvironmentSettings did not validate through the embedded contract: %v", err)
 	}
 	admissionCtx := validated.Request().Context()
-	if _, err := (&service.Environments{DB: db}).Get(admissionCtx,
+	if _, err := (&service.ProjectSettings{DB: db}).GetEnvironment(admissionCtx,
 		service.Bearer(minted.Value), envScope(envA1)); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("auth.artifact_class_refused: %v", err)
 	}

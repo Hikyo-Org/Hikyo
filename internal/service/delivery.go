@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/oidcfed"
+	"github.com/Hikyo-Org/hikyo/internal/parameters"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -70,6 +71,8 @@ type FetchResult struct {
 	// SchemaRevision is the project's monotonic key-catalogue revision, the
 	// human-facing ordering the ADR pairs with the opaque token.
 	SchemaRevision int64
+	// Revision is the committed snapshot selected by this fetch.
+	Revision int64
 	// Keys is the delivered projection, empty when Current.
 	Keys []DeliveredKey
 	// PinnedRevision is non-zero when a durable pin selected the snapshot.
@@ -113,6 +116,7 @@ type DeliveredKey struct {
 // projection, no acknowledgement — which is what the below-the-network callers
 // that do not care about either want.
 type FetchOptions struct {
+	Parameters map[string]string
 	// Projection is the delivery projection. The empty value means `full`.
 	Projection delivery.Mode
 	// AcknowledgedKeys is the loader-control acknowledgement, recorded on the
@@ -223,6 +227,9 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 	// below-the-network path has no OpenAPI enum in front of it, so validating
 	// here is what keeps a bogus projection from reaching the cursor and the
 	// audit schema as a value neither can name.
+	if err := parameters.CheckSupplied(opts.Parameters); err != nil {
+		return FetchResult{}, invalidDetail("%s", err)
+	}
 	mode := delivery.NormalizeMode(opts.Projection)
 	if mode != delivery.ModeFull && mode != delivery.ModeConfigOnly {
 		return FetchResult{}, invalidDetail("unknown delivery projection %q", opts.Projection)
@@ -367,11 +374,11 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		}
 
 		rows, manifest, revision, snapshotRevision, err := deliveryRows(
-			ctx, r, p, sealer, scope, selected, grants, mode, pinnedNonCurrent)
+			ctx, r, p, sealer, scope, selected, grants, mode, pinnedNonCurrent, opts.Parameters)
 		if err != nil {
 			return err
 		}
-		changeToken, err := s.Keyring.ChangeToken(string(scope.Org), string(scope.Project), string(scope.Env), delivery.Manifest(manifest))
+		changeToken, err := s.Keyring.ChangeToken(string(scope.Org), string(scope.Project), string(scope.Env), parameterizedManifest(manifest, opts.Parameters))
 		if err != nil {
 			return err
 		}
@@ -417,7 +424,8 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 			subtle.ConstantTimeCompare([]byte(cursor), []byte(computed)) == 1
 
 		out = FetchResult{
-			Current: current, Cursor: computed, ChangeToken: changeToken,
+			Revision: snapshotRevision,
+			Current:  current, Cursor: computed, ChangeToken: changeToken,
 			CredentialExpiresAt: caller.CredentialExpiresAt,
 			SchemaRevision:      revision, PinnedRevision: out.PinnedRevision,
 			PinExpired:        out.PinExpired,
@@ -453,6 +461,7 @@ func (s *Delivery) FetchAs(ctx context.Context, actor Actor, scope domain.Scope,
 		fetchEvent, err := domainEvent(ctx, audit.EventDeliveryFetched, caller.Principal,
 			audit.Object{Type: "environment", ID: string(scope.Env)}, audit.Payload{
 				"disposition":          disposition,
+				"parameters":           auditedParameters(opts.Parameters),
 				"credential_id":        caller.CredentialID,
 				"credential_kind":      caller.Artifact,
 				"principal_class":      string(caller.Class),
@@ -714,7 +723,7 @@ func (s *Delivery) recordUnbound(ctx context.Context, actor Actor, cause error) 
 // ordering.
 func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *crypto.ProjectSealer,
 	scope domain.Scope, selected *store.Snapshot, grants []authz.GrantRow, mode delivery.Mode,
-	pinnedNonCurrent bool) (keys []DeliveredKey, manifest []delivery.Row, schemaRevision, snapshotRevision int64, err error) {
+	pinnedNonCurrent bool, supplied map[string]string) (keys []DeliveredKey, manifest []delivery.Row, schemaRevision, snapshotRevision int64, err error) {
 	var snapshot store.Snapshot
 	if selected == nil {
 		snapshot, err = r.Snapshots().Latest(ctx, p)
@@ -731,6 +740,10 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 	if err != nil {
 		return nil, nil, 0, 0, err
 	}
+	contract, err := snapshotParameters(ctx, r.Snapshots(), p, snapshot, supplied)
+	if err != nil {
+		return nil, nil, 0, 0, err
+	}
 	// The capability that authorizes a secret VALUE for this fetch: history for
 	// a pinned non-current revision (it discloses the past), reveal otherwise.
 	secretCap := domain.CapReveal
@@ -742,6 +755,7 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 
 	keys = make([]DeliveredKey, 0, len(entries))
 	manifest = make([]delivery.Row, 0, len(entries))
+	renderBytes := 0
 	for _, entry := range entries {
 		secret := entry.Classification == string(schema.Secret)
 		// config-only is a server-side authorized term: a secret key is not in
@@ -755,6 +769,16 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 		if err != nil {
 			return nil, nil, 0, 0, fmt.Errorf("service: snapshot entry %s: %w", entry.ID, err)
 		}
+		resolved, err := resolveConfig(contract, supplied, entry.KeyName, entry.Classification, string(plain))
+		if err != nil {
+			return nil, nil, 0, 0, err
+		}
+		if !secret || revealsSecret {
+			renderBytes += len(resolved)
+		}
+		if renderBytes > MaxRenderBytesPerTarget {
+			return nil, nil, 0, 0, invalidDetail("resolved environment exceeds the per-target render limit")
+		}
 		key := DeliveredKey{
 			KeyID: entry.KeyID, Name: entry.KeyName, Classification: entry.Classification,
 			Presence: delivery.PresenceSet,
@@ -762,12 +786,12 @@ func deliveryRows(ctx context.Context, r store.Repos, p authz.Proof, sealer *cry
 		// Config crosses under the read the operation already required; a secret
 		// crosses only under reveal / reveal-history, else presence-only.
 		if !secret || revealsSecret {
-			value := string(plain)
+			value := resolved
 			key.Value = &value
 		}
 		keys = append(keys, key)
 		manifest = append(manifest, delivery.Row{
-			Key: entry.KeyName, Classification: entry.Classification, Value: string(plain),
+			Key: entry.KeyName, Classification: entry.Classification, Value: resolved,
 		})
 	}
 	// The PINNED schema revision, not the live one: what this snapshot was

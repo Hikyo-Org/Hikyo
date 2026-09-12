@@ -1314,7 +1314,7 @@ func TestFederationIssuerPolicyCannotGoStale(t *testing.T) {
 	// audience this token carries.
 	r.fed.OnValidated = func() {
 		if _, err := r.fed.UpdateIssuer(t.Context(), service.LocalPrincipal(root), iss.ID,
-			jwkssource.RemoteDiscovery(), []string{shape.DefaultAudience, hikyoAudience}); err != nil {
+			jwkssource.RemoteDiscovery(), []string{shape.DefaultAudience, hikyoAudience}, nil); err != nil {
 			t.Errorf("mid-flight issuer update: %v", err)
 		}
 		r.fed.OnValidated = nil
@@ -1603,7 +1603,7 @@ func runFederationLifecycle(t *testing.T, db *store.DB) {
 		t.Fatalf("identity.federation_issuer_read: %v", err)
 	}
 	if _, err := r.fed.UpdateIssuer(t.Context(), service.LocalPrincipal(root), iss.ID,
-		jwkssource.RemoteDiscovery(), []string{shape.DefaultAudience, "https://other.test"}); err != nil {
+		jwkssource.RemoteDiscovery(), []string{shape.DefaultAudience, "https://other.test"}, nil); err != nil {
 		t.Fatalf("identity.federation_issuer_changed (updated): %v", err)
 	}
 	sa, binding := r.bindShape(t, "audited-binding", shape, hikyoAudience)

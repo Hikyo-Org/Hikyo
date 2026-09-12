@@ -21,6 +21,8 @@
     "values-workflows",
     "machine-identities",
     "account-security",
+    "preview-environments",
+    "environment-parameters",
     "deployment-adapters",
     "dynamic-secrets",
     "mcp",

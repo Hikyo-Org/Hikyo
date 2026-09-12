@@ -20,6 +20,7 @@ export type MatrixPendingEntry = {
   readonly classification: 'config' | 'secret';
   readonly operation: 'set' | 'unset';
   readonly configPreview?: string;
+  readonly validationDeferred?: boolean;
   /** The linked-key group this key belongs to, when the matrix knows it. */
   readonly group?: { readonly id: string; readonly name: string };
 };
@@ -189,6 +190,9 @@ export function MatrixPublishSheet({
                         {entry.name}
                       </span>
                       <span>{publishPreview(entry)}</span>
+                      {entry.validationDeferred === true ? (
+                        <span>Validated at fetch: invalid resolved config refuses delivery.</span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -200,7 +204,11 @@ export function MatrixPublishSheet({
                     .join('; ')}. This environment has violations or missing required keys.`}
                 </div>
               ) : (
-                <span className="matrix__publish-ready">✓ ready</span>
+                <span className="matrix__publish-ready">
+                  {entries.some((entry) => entry.validationDeferred === true)
+                    ? 'Ready to publish; template schemas are checked with each fetch.'
+                    : '✓ ready'}
+                </span>
               )}
             </div>
           );
@@ -261,7 +269,7 @@ export function MatrixPublishSheet({
             <span>{mutationError}</span>
           </p>
         )}
-        <p>Invalid environments cannot publish: delivery only sees valid revisions.</p>
+        <p>Invalid environments cannot publish. Templates are also checked with each caller's parameters before delivery.</p>
       </section>
       {protectedGuard.request === null ? null : (
         <Ceremony

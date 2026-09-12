@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/federationhttp"
 )
 
 // The OIDC federation verbs (#62): instance-scoped issuer configuration and
@@ -39,8 +40,9 @@ func runFederationIssuer(ctx context.Context, ios IO, args []string) error {
 	}
 
 	var (
-		format, id, issuer, issuerType, jwksMode, jwksFile string
-		refused                                            stringList
+		format, id, issuer, issuerType, jwksMode, jwksFile, caBundleFile string
+		clearCA                                                          bool
+		refused                                                          stringList
 	)
 	st, flags, err := parseCommon("instance-config federation-issuer "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
@@ -63,6 +65,10 @@ func runFederationIssuer(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&jwksMode, "jwks", "", "discovery or static; required on update")
 		}
 		if sub == "add" || sub == "update" {
+			fs.StringVar(&caBundleFile, "ca-bundle-file", "", "PEM CA bundle; replaces system roots for this discovery issuer")
+			if sub == "update" {
+				fs.BoolVar(&clearCA, "clear-ca-bundle", false, "restore system roots for discovery")
+			}
 			fs.StringVar(&jwksFile, "jwks-file", "", "the JWKS document, required under --jwks static")
 			fs.Var(&refused, "refuse-audience",
 				"an audience no binding may name and no token may carry; repeatable, at least one required")
@@ -102,6 +108,27 @@ func runFederationIssuer(ctx context.Context, ios IO, args []string) error {
 		}
 	}
 
+	var caBundle *string
+	if caBundleFile != "" || clearCA {
+		if jwksMode != "discovery" {
+			return failf(ExitUsage, "hikyo instance-config federation-issuer: --ca-bundle-file and --clear-ca-bundle require --jwks discovery")
+		}
+		if caBundleFile != "" && clearCA {
+			return failf(ExitUsage, "hikyo instance-config federation-issuer: --ca-bundle-file and --clear-ca-bundle are mutually exclusive")
+		}
+		bundle := ""
+		if caBundleFile != "" {
+			raw, err := os.ReadFile(caBundleFile)
+			if err != nil {
+				return failf(ExitUsage, "hikyo instance-config federation-issuer: --ca-bundle-file: %v", err)
+			}
+			bundle = string(raw)
+			if _, err := federationhttp.ParseCABundle(bundle); err != nil {
+				return failf(ExitUsage, "hikyo instance-config federation-issuer: %v", err)
+			}
+		}
+		caBundle = &bundle
+	}
 	client, _, _, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
@@ -120,7 +147,7 @@ func runFederationIssuer(ctx context.Context, ios IO, args []string) error {
 			Issuer:           issuer,
 			IssuerType:       apigen.IssuerType(issuerType),
 			JwksMode:         apigen.JWKSMode(jwksMode),
-			RefusedAudiences: refused,
+			RefusedAudiences: refused, CaBundlePem: caBundle,
 		}
 		if document != "" {
 			body.StaticJwks = &document
@@ -135,7 +162,7 @@ func runFederationIssuer(ctx context.Context, ios IO, args []string) error {
 	case "update":
 		body := apigen.UpdateFederationIssuerRequest{
 			JwksMode:         apigen.JWKSMode(jwksMode),
-			RefusedAudiences: refused,
+			RefusedAudiences: refused, CaBundlePem: caBundle,
 		}
 		if document != "" {
 			body.StaticJwks = &document

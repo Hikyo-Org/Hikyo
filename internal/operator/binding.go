@@ -28,7 +28,9 @@ type bindingInput struct {
 	org, project, environment string
 	projection                string
 	mapping                   []hikyov1.Mapping
+	parameters                map[string]string
 	targetName                string
+	targetType                string
 	instanceUID               string
 }
 
@@ -61,6 +63,7 @@ func bindingDigest(in bindingInput) string {
 	buf = lp(buf, in.environment)
 	buf = lp(buf, in.projection)
 	buf = lp(buf, in.targetName)
+	buf = lp(buf, in.targetType)
 	buf = lp(buf, in.instanceUID)
 	buf = lp(buf, stampKeyVersion)
 	buf = binary.AppendUvarint(buf, uint64(len(pairs)))
@@ -69,6 +72,18 @@ func bindingDigest(in bindingInput) string {
 		buf = lp(buf, p[1])
 	}
 
+	if len(in.parameters) > 0 {
+		buf = lp(buf, "parameters/v1")
+		names := make([]string, 0, len(in.parameters))
+		for name := range in.parameters {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		for _, name := range names {
+			buf = lp(buf, name)
+			buf = lp(buf, in.parameters[name])
+		}
+	}
 	sum := sha256.Sum256(buf)
 	return hex.EncodeToString(sum[:])
 }

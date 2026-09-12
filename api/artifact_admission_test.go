@@ -66,6 +66,18 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 	// delivery's post-release presence-only behavior is proved end-to-end in
 	// TestWorkloadRevealHistoryPinSQLite/Postgres.
 	wantMachine := map[string]string{
+		"listEnvironments":           "non-value-bearing environment metadata",
+		"getEnvironment":             "non-value-bearing environment metadata",
+		"createEnvironment":          "not reachable with workload read",
+		"cloneEnvironment":           "not reachable with workload read; copy disclosure gates preserved",
+		"deleteEnvironment":          "not reachable with workload read; protected deletion refused",
+		"setValue":                   "write-only new draft, not reachable with workload read",
+		"clearValue":                 "write-only absent draft, not reachable with workload read",
+		"copyValues":                 "not reachable with workload read; source and destination reveal plus publish required for secrets",
+		"listRevisionPins":           "non-value-bearing pin metadata",
+		"listEnvironmentParameters":  "non-value-bearing public parameter declarations",
+		"changeEnvironmentParameter": "not reachable with workload read; definitions-edit required",
+
 		"exportDefinitions":       "non-value-bearing definitions",
 		"checkDefinitions":        "non-value-bearing definitions",
 		"createDefinitionsPlan":   "not reachable with workload read",

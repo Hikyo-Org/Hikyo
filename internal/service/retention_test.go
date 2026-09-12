@@ -2,10 +2,11 @@ package service
 
 import (
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/store"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )

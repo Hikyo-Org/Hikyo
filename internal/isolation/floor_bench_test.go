@@ -52,8 +52,8 @@ func TestFloorBenchPublish(t *testing.T) {
 	// Counting catalogue rows alone would accept an empty or partial publish.
 	read := 0
 	for _, env := range floorEnvironments(10) {
-		values, revision, err := revisionSvc(t, db).Export(t.Context(), service.LocalPrincipal(custodian),
-			domain.Scope{Org: orgA, Project: prjA1, Env: domain.EnvID(env)}, 0, false)
+		values, revision, err := revisionSvc(t, db).ExportWithParameters(t.Context(), service.LocalPrincipal(custodian),
+			domain.Scope{Org: orgA, Project: prjA1, Env: domain.EnvID(env)}, 0, false, nil)
 		if err != nil || revision < 1 || len(values) != 10000 {
 			t.Fatalf("committed environment %s: revision=%d cells=%d error=%v", env, revision, len(values), err)
 		}

@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/parameters"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -1132,7 +1133,37 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 		cells = append(cells, cell)
 	}
 
-	if err := groups.validateResolvedPublish(cells, string(scope.Env)); err != nil {
+	declarations, err := environmentParameters(ctx, r.Environments(), p)
+	if err != nil {
+		return PublishedEnvironment{}, err
+	}
+	contract := parameters.Contract{Declarations: declarations, Schemas: map[string]string{}}
+	if len(declarations) > 0 {
+		contract.Version = 1
+	}
+	for _, cell := range cells {
+		if len(declarations) == 0 || !cell.set || cell.key.Classification != string(schema.Config) {
+			continue
+		}
+		if err := parameters.CheckReferences(cell.value, declarations); err != nil {
+			return PublishedEnvironment{}, invalidDetail("key %q: %s", cell.key.Name, err)
+		}
+		refs, err := parameters.References(cell.value)
+		if err != nil {
+			return PublishedEnvironment{}, err
+		}
+		if len(refs) > 0 || strings.Contains(cell.value, "$${") {
+			contract.Schemas[cell.key.Name] = cell.key.Declaration
+		}
+	}
+	contractJSON, err := json.Marshal(contract)
+	if err != nil {
+		return PublishedEnvironment{}, err
+	}
+	if len(contractJSON) > parameters.MaxContractBytes {
+		return PublishedEnvironment{}, invalidDetail("environment parameter contract exceeds %d bytes", parameters.MaxContractBytes)
+	}
+	if err := groups.validateResolvedPublish(cells, string(scope.Env), contract.Declarations); err != nil {
 		return PublishedEnvironment{}, err
 	}
 	if err := validateSelfConfigCells(p, cells); err != nil {
@@ -1213,10 +1244,14 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 		return PublishedEnvironment{}, err
 	}
 	if err := r.Snapshots().Insert(ctx, p, store.NewSnapshot{
-		ID: snapshotID, Revision: revision, SchemaRevision: schemaRevision,
+		ID: snapshotID, Revision: revision, SchemaRevision: schemaRevision, ParameterContract: string(contractJSON),
 		PublishedBy: string(publisher), PublishedAt: now,
 	}); err != nil {
 		return PublishedEnvironment{}, err
+	}
+
+	if storage != nil && string(contractJSON) != "{}" {
+		storage.total += int64(len(contractJSON))
 	}
 
 	// Writer fence (invariant 7): one assert before the snapshot-entry loop —

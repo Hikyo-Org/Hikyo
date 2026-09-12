@@ -267,6 +267,9 @@ hierarchy:
   hikyo project delete <project> --confirm <project-name>   irreversible: shreds the key
   hikyo project retention get|set --org <org> --project <project> [--max-age 720h --last-revisions 10 | --inherit]
   hikyo env list|show|create|rename|reorder|delete   --org/--project select the project
+  hikyo env param list --env <id>
+  hikyo env param add --env <id> --name <NAME> --pattern <RE2>
+  hikyo env param delete --env <id> --name <NAME>
   hikyo env create --name <name> [--clone-from <env>]   clone copies that env's values
   hikyo env rename <env> --name <new-name>
   hikyo env reorder <env-id,env-id,...>             the whole ordered set, once each
@@ -306,6 +309,7 @@ values:                                            --env selects the environment
       [--preview-token T] [--confirm-protected <env,env>]
                                                  restore preview token; protected envs reviewed by automation
   hikyo values export [--format table|json|dotenv] [--revision N] [--reveal]
+      [--param NAME=value ...]                    public parameters, never secrets
       [--output-file PATH | --dangerously-print]
 
 import:                                            authors artifacts, then stops
@@ -493,9 +497,10 @@ oidc federation:
   hikyo instance-config federation-issuer list [-o table|json]
   hikyo instance-config federation-issuer add --issuer <url>
       --type kubernetes|forgejo|github-actions --refuse-audience <aud>
-      [--jwks discovery|static --jwks-file PATH]
+      [--jwks discovery|static --jwks-file PATH] [--ca-bundle-file PATH]
   hikyo instance-config federation-issuer update --id <id>
       --jwks discovery|static --refuse-audience <aud> [--jwks-file PATH]
+      [--ca-bundle-file PATH | --clear-ca-bundle]
   hikyo instance-config federation-issuer remove --id <id>
   hikyo sa binding create --sa <id> --issuer <url> --subject <sub>
       --audience <aud> --claim name=value [--claim ...]

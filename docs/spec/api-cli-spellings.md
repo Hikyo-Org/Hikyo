@@ -353,11 +353,12 @@ These confirmations settle the named freeze notes in handoffs #47, #48, #49, #50
 | `org` | `list`, `show`, `create`, `rename`, `delete`; rename addresses one org and takes `--name` | `internal/cli/verbs.go` |
 | `project` | `list`, `show`, `create`, `rename`, `delete` | `internal/cli/hierarchy.go` |
 | `env` | `list`, `show`, `create`, `rename`, `reorder`, `delete` | `internal/cli/hierarchy.go` |
+| `env param` | `list`, `add --name --pattern`, `delete --name`; next-publication public declarations | `internal/cli/parameters.go` |
 | `folder` | `list`, `show`, `create`, `rename`, `delete` | `internal/cli/hierarchy.go` |
 | `key` | `list`, `show`, `create`, `rename`, `declare`, `reclassify`, `update`, `set-group`, `delete` | `internal/cli/keys.go` |
 | `key group` | `list`, `show`, `create`, `rename`, `delete` | `internal/cli/keys.go` |
 | `values` | Retain `declare` and `copy`; `declare --envs` names first-value destinations; `copy --from --to` names source and destinations; `set --clear` stages absence | `internal/cli/values.go` |
-| `values export` | `--format table/json/dotenv` selects the payload; it is not `-o`. Disclosure still uses the print triad | `internal/cli/values.go` |
+| `values export` | `--param NAME=value` is repeatable for public config inputs; `--format table/json/dotenv` selects the payload; it is not `-o`. Disclosure still uses the print triad | `internal/cli/values.go` |
 | `definitions` | `export`, `check`, `plan`, `apply`, `scaffold`; `scaffold --from` consumes dotenv | `internal/cli/definitions.go` |
 | `values import` | `--from-dotenv` is the strict declared-key path; `--file` names import-authored values, mutually exclusive | `internal/cli/importer.go` |
 

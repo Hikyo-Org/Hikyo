@@ -143,7 +143,9 @@ func (t *transport) RoundTrip(request *http.Request) (*http.Response, error) {
 	}
 	defer base.CloseIdleConnections()
 	// A fresh transport resolves every request and dials only the validated IP;
-	// TLS still authenticates the original hostname. Redirects never issue a hop.
+	// TLS still authenticates the original hostname. The default client refuses
+	// redirects; machine federation explicitly permits HTTPS hops, and each hop
+	// passes through this same origin/address policy.
 	response, err := base.RoundTrip(request.Clone(ctx))
 	if err != nil {
 		return nil, ErrTransport

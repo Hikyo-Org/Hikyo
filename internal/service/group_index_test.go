@@ -94,7 +94,7 @@ func TestGroupIndexResolvedEnvironmentPermutations(t *testing.T) {
 			for _, key := range keys {
 				cells = append(cells, resolvedCell{key: key, set: tc.set[key.ID], value: "value"})
 			}
-			err := index.validateResolvedPublish(cells, tc.envID)
+			err := index.validateResolvedPublish(cells, tc.envID, nil)
 			if got := err != nil; got != tc.wantError {
 				t.Fatalf("validateResolvedPublish() error = %v, wantError %t", err, tc.wantError)
 			}

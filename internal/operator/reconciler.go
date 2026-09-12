@@ -41,7 +41,7 @@ type HikyoSecretReconciler struct {
 	client.Client
 	// Reader is the UNCACHED API reader (mgr.GetAPIReader()). Every Secret and
 	// ServiceAccount read goes through it, never the informer cache: the operator
-	// holds only get/create/update/patch on Secrets (no list/watch), so a cached
+	// holds only get/create/update/patch/delete on Secrets (no list/watch), so a cached
 	// read would fail to start its informer, and — more importantly — the managed
 	// Secret's controller-ownership/UID is the authority test and must be read
 	// read-after-write, not from a cache that can lag a delete/recreate/re-own.
@@ -120,6 +120,16 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 		return r.done(ctx, cr, ctrl.Result{}, fmt.Errorf("operator: invalid resyncInterval: %w", err))
 	}
 
+	// Refuse native targets before credentials or plaintext are requested.
+	// Disabling this capability retains existing targets for explicit migration.
+	if !r.Config.NativeSecretTypes && effectiveSecretType(cr.Spec.Target.Type) != corev1.SecretTypeOpaque {
+		msg := "native Secret types are disabled; enable operator.nativeSecretTypes (HIKYO_OPERATOR_NATIVE_SECRET_TYPES) with matching Secret delete RBAC"
+		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonBlocked, "%s", msg)
+		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonBlocked, msg)
+		cr.Status.Cursor, cr.Status.CursorBinding = "", ""
+		return r.done(ctx, cr, r.resyncResult(cr), nil)
+	}
+
 	// Resolve the cluster-scoped instance.
 	var inst hikyov1.HikyoInstance
 	if err := r.Get(ctx, types.NamespacedName{Name: cr.Spec.InstanceRef.Name}, &inst); err != nil {
@@ -172,6 +182,34 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 			"Secret %q exists without this CR's controller ownerRef", cr.Spec.Target.Name)
 		r.setCond(cr, hikyov1.ConditionConflict, metav1.ConditionTrue, hikyov1.ReasonManagedSecretNotOwned,
 			fmt.Sprintf("Secret %q exists and is not controlled by this HikyoSecret; refusing to adopt", cr.Spec.Target.Name))
+		return r.done(ctx, cr, r.resyncResult(cr), nil)
+	}
+
+	if existed && effectiveSecretType(existing.Type) != effectiveSecretType(cr.Spec.Target.Type) {
+		msg := fmt.Sprintf("Secret %q has immutable type %q; requested %q; use a new target name", cr.Spec.Target.Name, effectiveSecretType(existing.Type), effectiveSecretType(cr.Spec.Target.Type))
+		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonTargetTypeImmutable, "%s", msg)
+		r.setCond(cr, hikyov1.ConditionConflict, metav1.ConditionTrue, hikyov1.ReasonTargetTypeImmutable, msg)
+		cr.Status.Cursor, cr.Status.CursorBinding = "", ""
+		return r.done(ctx, cr, r.resyncResult(cr), nil)
+	}
+	required, err := requiredSecretKeys(cr.Spec.Target.Type)
+	if err != nil {
+		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonInvalidSecretData, err.Error())
+		cr.Status.Cursor, cr.Status.CursorBinding = "", ""
+		return r.done(ctx, cr, r.resyncResult(cr), nil)
+	}
+	mappedData := make(map[string][]byte, len(cr.Spec.Mapping))
+	for _, m := range cr.Spec.Mapping {
+		mappedData[m.EffectiveSecretKey()] = nil
+	}
+	if missing := missingSecretKeys(required, mappedData); len(missing) > 0 {
+		msg := fmt.Sprintf("Secret type %q requires mapped destination keys: %s", effectiveSecretType(cr.Spec.Target.Type), strings.Join(missing, ", "))
+		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonKeysMissing, "%s", msg)
+		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonKeysMissing, msg)
+		// Unlike dropped optional source keys, an invalid mandatory mapping is
+		// a refusal. Do not let a previous successful delivery keep Ready true.
+		meta.RemoveStatusCondition(&cr.Status.Conditions, hikyov1.ConditionSynced)
+		cr.Status.Cursor, cr.Status.CursorBinding = "", ""
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 
@@ -228,6 +266,7 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 		Cursor:           fetchCursor,
 		Projection:       string(effectiveProjection(cr)),
 		AcknowledgedKeys: acknowledgedKeys(cr),
+		Parameters:       parameterInputs(cr),
 		Bearer:           cred.token,
 	})
 
@@ -335,6 +374,28 @@ func (r *HikyoSecretReconciler) deliver(
 			strings.Join(presenceOnly, ", "))
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonUndeliveredSecrets, "%s", msg)
 		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonUndeliveredSecrets, msg)
+		return r.done(ctx, cr, r.resyncResult(cr), nil)
+	}
+
+	// A type-mandated key removed from the authorized manifest cannot be
+	// dropped in-place. Withdraw the typed target instead of retaining it.
+	// Missing authorized data is withdrawal, even when the publisher removed it
+	// accidentally. Malformed present data below is a rejected replacement, not
+	// withdrawal; it retains the last accepted target.
+	required, err := requiredSecretKeys(cr.Spec.Target.Type)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if missingRequired := missingSecretKeys(required, data); len(missingRequired) > 0 {
+		msg := fmt.Sprintf("authorized manifest lacks required data keys for Secret type %q: %s; managed Secret withdrawn", effectiveSecretType(cr.Spec.Target.Type), strings.Join(missingRequired, ", "))
+		return r.withdraw(ctx, cr, root, hikyov1.ReasonKeysMissing, msg)
+	}
+	if err := validateSecretData(cr.Spec.Target.Type, data); err != nil {
+		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonInvalidSecretData, "%s", err)
+		r.setCond(cr, hikyov1.ConditionDelivery, metav1.ConditionFalse, hikyov1.ReasonInvalidSecretData, err.Error())
+		// Recovery must receive a full manifest to clear this content refusal;
+		// an old conditional cursor must not skip that validation.
+		cr.Status.Cursor, cr.Status.CursorBinding = "", ""
 		return r.done(ctx, cr, r.resyncResult(cr), nil)
 	}
 

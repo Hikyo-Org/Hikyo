@@ -414,6 +414,14 @@
     ]
   },
   {
+    "operation": "environment.parameter-set",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "definitions-edit@project"
+    ]
+  },
+  {
     "operation": "environment.read",
     "class": "tenant",
     "level": "environment",

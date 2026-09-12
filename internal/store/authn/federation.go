@@ -58,7 +58,8 @@ type FederationIssuer struct {
 	Type   domain.IssuerType
 	// KeySource is the closed remote-discovery or canonical-static value. The
 	// database keeps its compatible two-column encoding behind this façade.
-	KeySource jwkssource.KeySource
+	KeySource   jwkssource.KeySource
+	CABundlePEM string
 	// RefusedAudiences are the issuer's DEFAULT audiences, which a binding may
 	// never name. This is not ceremony: a Kubernetes token minted for the
 	// default API-server audience would otherwise authenticate to Hikyo, and
@@ -85,6 +86,7 @@ type NewFederationIssuer struct {
 	Issuer           string
 	Type             domain.IssuerType
 	KeySource        jwkssource.KeySource
+	CABundlePEM      string
 	RefusedAudiences []string
 	CreatedAt        time.Time
 	CreatedBy        domain.PrincipalID
@@ -114,15 +116,15 @@ func (r *Resolver) CreateFederationIssuer(ctx context.Context, iss NewFederation
 		return issuerConstraint(r.sq.InsertFederationIssuer(ctx, sqlitegen.InsertFederationIssuerParams{
 			ID: iss.ID, Issuer: iss.Issuer, IssuerType: string(iss.Type),
 			JwksMode: string(mode), StaticJwks: nullString(staticJWKS),
-			RefusedAudiences: joinAudiences(iss.RefusedAudiences),
-			CreatedAt:        encodeTime(iss.CreatedAt), CreatedBy: string(iss.CreatedBy),
+			RefusedAudiences: joinAudiences(iss.RefusedAudiences), CaBundlePem: iss.CABundlePEM,
+			CreatedAt: encodeTime(iss.CreatedAt), CreatedBy: string(iss.CreatedBy),
 		}))
 	}
 	return issuerConstraint(r.pg.InsertFederationIssuer(ctx, pggen.InsertFederationIssuerParams{
 		ID: iss.ID, Issuer: iss.Issuer, IssuerType: string(iss.Type),
 		JwksMode: string(mode), StaticJwks: pgText(staticJWKS),
-		RefusedAudiences: joinAudiences(iss.RefusedAudiences),
-		CreatedAt:        pgTimestamp(iss.CreatedAt), CreatedBy: string(iss.CreatedBy),
+		RefusedAudiences: joinAudiences(iss.RefusedAudiences), CaBundlePem: iss.CABundlePEM,
+		CreatedAt: pgTimestamp(iss.CreatedAt), CreatedBy: string(iss.CreatedBy),
 	}))
 }
 
@@ -235,21 +237,21 @@ func (r *Resolver) FederationIssuers(ctx context.Context) ([]FederationIssuer, e
 // refused audiences. It cannot move `issuer` or `issuer_type`: changing either
 // would silently re-point every binding underneath at a different external
 // authority, which is a replacement, not an edit.
-func (r *Resolver) UpdateFederationIssuer(ctx context.Context, id string, source jwkssource.KeySource, refused []string, actor domain.PrincipalID, at time.Time) (bool, error) {
+func (r *Resolver) UpdateFederationIssuer(ctx context.Context, id string, source jwkssource.KeySource, refused []string, caBundle string, actor domain.PrincipalID, at time.Time) (bool, error) {
 	var n int64
 	var err error
 	mode, staticJWKS := source.StorageColumns()
 	if r.sq != nil {
 		n, err = r.sq.UpdateFederationIssuer(ctx, sqlitegen.UpdateFederationIssuerParams{
 			JwksMode: string(mode), StaticJwks: nullString(staticJWKS),
-			RefusedAudiences: joinAudiences(refused),
-			UpdatedAt:        nullString(encodeTime(at)), UpdatedBy: nullString(string(actor)), ID: id,
+			RefusedAudiences: joinAudiences(refused), CaBundlePem: caBundle,
+			UpdatedAt: nullString(encodeTime(at)), UpdatedBy: nullString(string(actor)), ID: id,
 		})
 	} else {
 		n, err = r.pg.UpdateFederationIssuer(ctx, pggen.UpdateFederationIssuerParams{
 			JwksMode: string(mode), StaticJwks: pgText(staticJWKS),
-			RefusedAudiences: joinAudiences(refused),
-			UpdatedAt:        pgTimestamp(at), UpdatedBy: pgText(string(actor)), ID: id,
+			RefusedAudiences: joinAudiences(refused), CaBundlePem: caBundle,
+			UpdatedAt: pgTimestamp(at), UpdatedBy: pgText(string(actor)), ID: id,
 		})
 	}
 	return n > 0, err
@@ -441,7 +443,7 @@ func issuerFromSQLite(row sqlitegen.FederationIssuer) (FederationIssuer, error) 
 	}
 	return FederationIssuer{
 		ID: row.ID, Issuer: row.Issuer, Type: domain.IssuerType(row.IssuerType),
-		KeySource:        source,
+		KeySource: source, CABundlePEM: row.CaBundlePem,
 		RefusedAudiences: splitAudiences(row.RefusedAudiences),
 		CreatedAt:        created, CreatedBy: domain.PrincipalID(row.CreatedBy),
 		UpdatedAt: updated, UpdatedBy: domain.PrincipalID(row.UpdatedBy.String),
@@ -455,7 +457,7 @@ func issuerFromPG(row pggen.FederationIssuer) (FederationIssuer, error) {
 	}
 	return FederationIssuer{
 		ID: row.ID, Issuer: row.Issuer, Type: domain.IssuerType(row.IssuerType),
-		KeySource:        source,
+		KeySource: source, CABundlePEM: row.CaBundlePem,
 		RefusedAudiences: splitAudiences(row.RefusedAudiences),
 		CreatedAt:        row.CreatedAt.Time, CreatedBy: domain.PrincipalID(row.CreatedBy),
 		UpdatedAt: row.UpdatedAt.Time, UpdatedBy: domain.PrincipalID(row.UpdatedBy.String),

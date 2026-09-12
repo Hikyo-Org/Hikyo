@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	gatefixture "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	gatefixture "github.com/Hikyo-Org/hikyo/internal/upgradegate/testfixture"
 
 	"github.com/Hikyo-Org/hikyo/internal/backupreceipt"
 	"github.com/Hikyo-Org/hikyo/internal/crypto/backup"

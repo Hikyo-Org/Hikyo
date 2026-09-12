@@ -102,18 +102,18 @@ ORDER BY environment_id, key_id, owner_id;
 -- name: InsertSnapshot :exec
 INSERT INTO snapshots (
     id, org_id, project_id, environment_id, revision,
-    schema_revision, published_by, published_at
+    schema_revision, published_by, published_at, parameter_contract
 ) VALUES (
     sqlc.arg(id), sqlc.arg(chain_org_id), sqlc.arg(chain_project_id),
     sqlc.arg(chain_env_id), sqlc.arg(revision), sqlc.arg(schema_revision),
-    sqlc.arg(published_by), sqlc.arg(published_at)
+    sqlc.arg(published_by), sqlc.arg(published_at), sqlc.arg(parameter_contract)
 );
 
 -- GetLatestSnapshot is the delivery-shaped read: a workload fetch defaults to
 -- the latest published snapshot for its (project, environment).
 -- name: GetLatestSnapshot :one
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id)
@@ -122,7 +122,7 @@ LIMIT 1;
 
 -- name: GetSnapshotByRevision :one
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id) AND revision = sqlc.arg(revision);
@@ -137,7 +137,7 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
 
 -- name: ListSnapshots :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id)
@@ -149,7 +149,7 @@ ORDER BY revision DESC;
 -- revision and never materializes the whole history to slice a limit afterwards.
 -- name: ListSnapshotsPage :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id)
@@ -315,6 +315,21 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
 -- instance-scoped and content-pinned.
 -- hikyo:instance-scoped
 -- name: SumSnapshotPayloadByProject :many
-SELECT org_id, project_id, COALESCE(SUM(OCTET_LENGTH(ciphertext)), 0)::bigint AS bytes
-FROM snapshot_entries
-GROUP BY org_id, project_id;
+-- Project sizes only, never whole encrypted payloads in a sorter.
+WITH payload_sizes AS (
+    SELECT org_id, project_id, OCTET_LENGTH(ciphertext) AS bytes FROM snapshot_entries
+    UNION ALL
+    SELECT org_id, project_id, OCTET_LENGTH(parameter_contract) AS bytes FROM snapshots
+    WHERE parameter_contract <> '{}'
+)
+SELECT org_id, project_id, COALESCE(SUM(bytes), 0)::bigint AS bytes
+FROM payload_sizes GROUP BY org_id, project_id;
+
+-- name: SumSnapshotContractForProject :one
+SELECT COALESCE(SUM(CASE WHEN parameter_contract = '{}' THEN 0 ELSE OCTET_LENGTH(parameter_contract) END), 0)::bigint FROM snapshots
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id);
+
+-- name: GetSnapshotParameterContract :one
+SELECT parameter_contract FROM snapshots
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(chain_env_id) AND id = sqlc.arg(snapshot_id);

@@ -33,6 +33,8 @@ const (
 	KindStringList
 	// KindObject is a nested, closed-schema object.
 	KindObject
+	// KindFreeTextMap is a bounded public config map with sanitized keys and values.
+	KindFreeTextMap
 )
 
 // FieldSpec declares one payload field.
@@ -136,6 +138,21 @@ func checkConstraints(spec FieldSpec, v any) error {
 		return checkInt(spec, int64(t))
 	case int64:
 		return checkInt(spec, t)
+	case map[string]string:
+		if spec.MaxLen > 0 && len(t) > spec.MaxLen {
+			return fmt.Errorf("map exceeds %d entries", spec.MaxLen)
+		}
+		for key, value := range t {
+			if err := checkSanitized(key); err != nil {
+				return err
+			}
+			if err := checkSanitized(value); err != nil {
+				return err
+			}
+			if len(key) > 64 || (spec.MaxBytes > 0 && len(value) > spec.MaxBytes) {
+				return fmt.Errorf("map entry exceeds its byte bound")
+			}
+		}
 	case []string:
 		if spec.MaxLen > 0 && len(t) > spec.MaxLen {
 			return fmt.Errorf("list has %d entries, bound is %d", len(t), spec.MaxLen)
@@ -189,6 +206,10 @@ func checkKind(k FieldKind, v any) error {
 	case KindStringList:
 		if _, ok := v.([]string); !ok {
 			return fmt.Errorf("want []string, got %T", v)
+		}
+	case KindFreeTextMap:
+		if _, ok := v.(map[string]string); !ok {
+			return fmt.Errorf("want map[string]string, got %T", v)
 		}
 	case KindObject:
 		return fmt.Errorf("object kind requires a nested schema")

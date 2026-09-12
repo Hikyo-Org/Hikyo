@@ -61,6 +61,13 @@ var parityExceptionClasses = map[string]struct {
 	admits func(op api.Operation) bool
 	rule   string
 }{
+	"preview-parameter-configuration": {
+		admits: func(op api.Operation) bool {
+			return op.Path == "/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters" &&
+				(op.ID == "listEnvironmentParameters" || op.ID == "changeEnvironmentParameter")
+		},
+		rule: "the two CLI-managed declaration operations for parameterized preview delivery (#723)",
+	},
 	"identity-protocol": {
 		admits: func(op api.Operation) bool {
 			return strings.HasPrefix(op.Path, "/api/v1/auth/") || strings.Contains(op.Path, "/scim/v2/")

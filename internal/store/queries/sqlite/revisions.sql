@@ -89,14 +89,14 @@ ORDER BY environment_id, key_id, owner_id;
 -- name: InsertSnapshot :exec
 INSERT INTO snapshots (
     id, org_id, project_id, environment_id, revision,
-    schema_revision, published_by, published_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+    schema_revision, published_by, published_at, parameter_contract
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- GetLatestSnapshot is the delivery-shaped read: a workload fetch defaults to
 -- the latest published snapshot for its (project, environment).
 -- name: GetLatestSnapshot :one
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = ? AND project_id = ? AND environment_id = ?
 ORDER BY revision DESC
@@ -104,7 +104,7 @@ LIMIT 1;
 
 -- name: GetSnapshotByRevision :one
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = ? AND project_id = ? AND environment_id = ? AND revision = ?;
 
@@ -118,7 +118,7 @@ WHERE org_id = ? AND project_id = ?;
 
 -- name: ListSnapshots :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = ? AND project_id = ? AND environment_id = ?
 ORDER BY revision DESC;
@@ -129,7 +129,7 @@ ORDER BY revision DESC;
 -- revision and never materializes the whole history to slice a limit afterwards.
 -- name: ListSnapshotsPage :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy
+       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
 FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id)
@@ -261,12 +261,23 @@ WHERE org_id = ? AND project_id = ?;
 -- instance-scoped and content-pinned.
 -- hikyo:instance-scoped
 -- name: SumSnapshotPayloadByProject :many
--- Project sizes before grouping. OFFSET 0 prevents SQLite flattening this
--- projection into the sorter; LIMIT -1 preserves every row. Sorting whole
--- ciphertext BLOBs instead can exceed the health transaction deadline.
+-- Project sizes only, never whole encrypted payloads in a sorter.
+-- LIMIT -1 OFFSET 0 prevents flattening this projection into the GROUP BY:
+-- the temporary sorter must retain integer sizes, not ciphertext/contract blobs.
 WITH payload_sizes AS (
-    SELECT org_id, project_id, LENGTH(ciphertext) AS bytes FROM snapshot_entries LIMIT -1 OFFSET 0
+    SELECT org_id, project_id, LENGTH(ciphertext) AS bytes FROM snapshot_entries
+    UNION ALL
+    SELECT org_id, project_id, LENGTH(CAST(parameter_contract AS BLOB)) AS bytes FROM snapshots
+    WHERE parameter_contract <> '{}' LIMIT -1 OFFSET 0
 )
 SELECT org_id, project_id, CAST(COALESCE(SUM(bytes), 0) AS INTEGER) AS bytes
-FROM payload_sizes
-GROUP BY org_id, project_id;
+FROM payload_sizes GROUP BY org_id, project_id;
+
+-- name: SumSnapshotContractForProject :one
+SELECT CAST(COALESCE(SUM(CASE WHEN parameter_contract = '{}' THEN 0 ELSE LENGTH(CAST(parameter_contract AS BLOB)) END), 0) AS INTEGER) FROM snapshots
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id);
+
+-- name: GetSnapshotParameterContract :one
+SELECT parameter_contract FROM snapshots
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(chain_env_id) AND id = sqlc.arg(snapshot_id);

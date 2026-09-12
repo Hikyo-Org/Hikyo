@@ -503,6 +503,7 @@ export function Matrix({
             classification: signal.classification,
             operation: signal.pending.operation,
             configPreview: pendingConfigPreview(signal, draftsByVersion),
+            validationDeferred: draftsByVersion.get(signal.pending.versionId)?.advisory?.validation_deferred === true,
             ...(group === undefined ? {} : { group: { id: group.id, name: group.name } }),
           });
         }
@@ -1604,6 +1605,7 @@ function MatrixCell({
   onOpen: () => void;
 }) {
   const invalidDraft = draft?.advisory?.valid === false;
+  const validationDeferred = draft?.advisory?.validation_deferred === true;
   const requiredProblem = problems.find((problem) => problem.kind === 'required-absent');
   const validationProblem = problems.find((problem) => problem.kind === 'validation');
   let state = '· absent';
@@ -1642,6 +1644,7 @@ function MatrixCell({
     changedRevision === undefined ? null : `changed in r${String(changedRevision)}`,
     otherDraft ? 'another editor has a draft here' : null,
     invalidDraft ? 'your draft is invalid' : null,
+    validationDeferred ? 'template schema validated at fetch' : null,
   ].filter((word): word is string => word !== null);
   const label = `${keyRecord.name} in ${environment.name}: ${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
 
@@ -1685,6 +1688,7 @@ function MatrixCell({
       {validationProblem === undefined ? null : (
         <span className="matrix-cell__error">{validationProblem.message}</span>
       )}
+      {validationDeferred ? <span>Validated at fetch</span> : null}
     </>
   );
 }

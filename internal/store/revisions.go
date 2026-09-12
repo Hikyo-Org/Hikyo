@@ -126,11 +126,12 @@ func (s Snapshot) CollectionPolicy() string {
 
 // NewSnapshot carries the caller-suppliable fields of a snapshot insert.
 type NewSnapshot struct {
-	ID             string
-	Revision       int64
-	SchemaRevision int64
-	PublishedBy    string
-	PublishedAt    time.Time
+	ParameterContract string
+	ID                string
+	Revision          int64
+	SchemaRevision    int64
+	PublishedBy       string
+	PublishedAt       time.Time
 }
 
 // SnapshotEntry is one delivered key of one snapshot. Name and classification
@@ -251,6 +252,7 @@ type ReencryptFieldRow struct {
 
 // SnapshotReader is the read side of the published state.
 type SnapshotReader interface {
+	ParameterContract(ctx context.Context, p authz.Proof, snapshot Snapshot) (string, error)
 	// Latest returns the proof's environment's newest snapshot, or ErrNotFound
 	// when the environment has never been materialized.
 	Latest(ctx context.Context, p authz.Proof) (Snapshot, error)

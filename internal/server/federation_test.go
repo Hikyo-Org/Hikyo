@@ -95,12 +95,12 @@ func (s stubFederation) CreateIssuer(_ context.Context, _ service.Actor, req ser
 	}
 	return service.IssuerView{
 		ID: "fis_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f15", Issuer: req.Issuer,
-		Type: req.Type, KeySource: req.KeySource, RefusedAudiences: req.RefusedAudiences,
+		Type: req.Type, KeySource: req.KeySource, RefusedAudiences: req.RefusedAudiences, CABundlePEM: req.CABundlePEM,
 		CreatedAt: time.Unix(1_800_000_000, 0).UTC(), CreatedBy: "usr_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f17",
 	}, s.err
 }
 
-func (s stubFederation) UpdateIssuer(context.Context, service.Actor, string, jwkssource.KeySource, []string) (service.IssuerView, error) {
+func (s stubFederation) UpdateIssuer(context.Context, service.Actor, string, jwkssource.KeySource, []string, *string) (service.IssuerView, error) {
 	return service.IssuerView{}, s.err
 }
 
@@ -457,7 +457,7 @@ func TestFederationIssuerRouteHidesTheStaticDocument(t *testing.T) {
 	if len(raw) != 1 {
 		t.Fatalf("listed %d issuers, want 1", len(raw))
 	}
-	for _, forbidden := range []string{"static_jwks", "jwks", "keys"} {
+	for _, forbidden := range []string{"static_jwks", "jwks", "keys", "ca_bundle_pem"} {
 		if _, present := raw[0][forbidden]; present {
 			t.Errorf("the issuer read shape carries %q", forbidden)
 		}
@@ -515,5 +515,33 @@ func TestFederationIssuerRouteCanonicalizesStaticJWKSOnce(t *testing.T) {
 	}
 	if canonical == raw || !json.Valid([]byte(canonical)) {
 		t.Fatalf("service received non-canonical JWKS %q", canonical)
+	}
+}
+
+func TestFederationIssuerRouteCarriesCAWriteOnly(t *testing.T) {
+	bundle := "configuration-forwarding-fixture"
+	var got service.IssuerRequest
+	srv := federationServer(t, stubFederation{createRequest: &got}, stubDelivery{})
+	body := apigen.CreateFederationIssuerRequest{
+		Issuer: "https://issuer.test", IssuerType: apigen.IssuerTypeKubernetes,
+		JwksMode: apigen.Discovery, CaBundlePem: &bundle,
+		RefusedAudiences: []string{"https://kubernetes.default.svc"},
+	}
+	resp, payload := call(t, srv, http.MethodPost, api.PathPrefix+"/instance/federation-issuers", "hik_1_cli_abc", body)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create CA issuer -> %d: %s", resp.StatusCode, payload)
+	}
+	if got.CABundlePEM != bundle {
+		t.Fatal("CA bundle did not reach service")
+	}
+	var out map[string]any
+	if err := json.Unmarshal(payload, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out["ca_bundle_configured"] != true {
+		t.Fatal("missing configured metadata")
+	}
+	if _, present := out["ca_bundle_pem"]; present {
+		t.Fatal("response disclosed CA document")
 	}
 }

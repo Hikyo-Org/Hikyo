@@ -3,13 +3,14 @@ package store
 import (
 	"context"
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
-	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/store/upgrade"
 )
 
 func TestRuntimeSQLiteChildExclusion(t *testing.T) {

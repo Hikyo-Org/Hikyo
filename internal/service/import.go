@@ -402,6 +402,10 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 			return err
 		}
 
+		declarations, err := environmentParameters(ctx, r.Environments(), p)
+		if err != nil {
+			return err
+		}
 		for _, entry := range req.Entries {
 			key, err := keyByName(keys, entry.Key)
 			if err != nil {
@@ -416,7 +420,7 @@ func (s *Values) Import(ctx context.Context, actor Actor, scope domain.Scope, re
 			if err := checkNotForbidden(key, presenceOfKey(key, presence), string(scope.Env)); err != nil {
 				return err
 			}
-			if err := validateValue(key, entry.Value); err != nil {
+			if err := validateValueWithParameters(key, entry.Value, declarations); err != nil {
 				return err
 			}
 			if _, err := writeCell(ctx, r, p, sealer, scope, key, caller.Principal, entry.Value); err != nil {

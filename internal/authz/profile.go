@@ -2,6 +2,7 @@ package authz
 
 import (
 	"context"
+
 	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 )
 

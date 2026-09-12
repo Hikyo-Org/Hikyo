@@ -8,6 +8,9 @@ If a job can fetch values at runtime, use workload federation. Use a
 deployment adapter only for static values that must exist before the first
 fetch.
 
+For a CI job that creates and tears down its own environments, use the
+[pull-request preview guide](/docs/preview-environments/).
+
 Both compiled-in adapters are one-way and value-blind. They write selected
 values from one Hikyo environment to a repository, organization, or GitHub
 repository-environment Actions

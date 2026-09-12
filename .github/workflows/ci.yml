@@ -507,6 +507,8 @@ jobs:
             go-generated-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Format
         run: test -z "$("$(go env GOROOT)/bin/gofmt" -l .)" || { "$(go env GOROOT)/bin/gofmt" -l .; exit 1; }
+      - name: Go import formatting
+        run: ./scripts/ci/check-go-imports.sh
       - name: Generated code is fresh
         run: |
           go tool sqlc generate

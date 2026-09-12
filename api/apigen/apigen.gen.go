@@ -2705,6 +2705,24 @@ func (e ExportEnvAuditParamsOutcome) Valid() bool {
 	}
 }
 
+// Defines values for ChangeEnvironmentParameterJSONBodyAction.
+const (
+	ChangeEnvironmentParameterJSONBodyActionAdd    ChangeEnvironmentParameterJSONBodyAction = "add"
+	ChangeEnvironmentParameterJSONBodyActionDelete ChangeEnvironmentParameterJSONBodyAction = "delete"
+)
+
+// Valid indicates whether the value is a known member of the ChangeEnvironmentParameterJSONBodyAction enum.
+func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
+	switch e {
+	case ChangeEnvironmentParameterJSONBodyActionAdd:
+		return true
+	case ChangeEnvironmentParameterJSONBodyActionDelete:
+		return true
+	default:
+		return false
+	}
+}
+
 // AccountProfile defines model for AccountProfile.
 type AccountProfile struct {
 	DisplayName string `json:"display_name"`
@@ -3847,6 +3865,13 @@ type CreateEnvironmentRequest struct {
 
 // CreateFederationIssuerRequest defines model for CreateFederationIssuerRequest.
 type CreateFederationIssuerRequest struct {
+	// CaBundlePem PEM CA certificates for discovery and JWKS HTTPS requests, including
+	// redirects. Replaces system roots for this issuer only. Nonempty values
+	// are refused in static mode. On update, omission preserves the current
+	// bundle in discovery mode; an empty string clears it. Static mode clears
+	// the bundle. This field is write-only; reads report ca_bundle_configured.
+	CaBundlePem *string `json:"ca_bundle_pem,omitempty"`
+
 	// Issuer The byte-exact `iss`, `https://` only. Discovery and JWKS are fetched
 	// from this URL, so an `http` issuer would rest the instance's whole
 	// federation trust on whoever holds the network path.
@@ -4373,6 +4398,9 @@ type DeliveryResponse struct {
 	// PinnedRevision Present when a durable workload pin selected the snapshot.
 	PinnedRevision *int64 `json:"pinned_revision,omitempty"`
 
+	// Revision The committed snapshot selected by this fetch; zero before first publication.
+	Revision int64 `json:"revision"`
+
 	// SchemaRevision The project's monotonic key-catalogue revision.
 	SchemaRevision int `json:"schema_revision"`
 
@@ -4544,6 +4572,9 @@ type EnvironmentOrderRequest struct {
 	EnvironmentIds []ID `json:"environment_ids"`
 }
 
+// EnvironmentParameters defines model for EnvironmentParameters.
+type EnvironmentParameters map[string]string
+
 // EnvironmentSettings defines model for EnvironmentSettings.
 type EnvironmentSettings struct {
 	Protected bool `json:"protected"`
@@ -4610,6 +4641,8 @@ type EstablishCredentialRequest struct {
 
 // ExportValuesRequest defines model for ExportValuesRequest.
 type ExportValuesRequest struct {
+	Parameters *FetchParameters `json:"parameters,omitempty"`
+
 	// Reveal Ask for `secret` plaintext. Without it a `secret` key reports
 	// write-presence and no value; `config` values are returned either
 	// way, because classification IS the sensitivity boundary.
@@ -4709,6 +4742,9 @@ type FederatedClaimPin struct {
 // an operator supplied and can re-supply, nothing needs it back, and a read
 // surface that returned it would carry a key document for no reason.
 type FederationIssuer struct {
+	// CaBundleConfigured Whether discovery uses an issuer-specific CA bundle instead of system roots.
+	CaBundleConfigured bool `json:"ca_bundle_configured"`
+
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt Timestamp `json:"created_at"`
 
@@ -4765,6 +4801,9 @@ type FederationIssuerList struct {
 	Count int                `json:"count"`
 	Items []FederationIssuer `json:"items"`
 }
+
+// FetchParameters defines model for FetchParameters.
+type FetchParameters map[string]string
 
 // Folder defines model for Folder.
 type Folder struct {
@@ -5924,6 +5963,9 @@ type PendingDraft struct {
 		// OwnerId A prefixed UUIDv7, e.g. `org_0198…`.
 		OwnerId ID   `json:"owner_id"`
 		Valid   bool `json:"valid"`
+
+		// ValidationDeferred True when caller parameters are needed for final config schema validation at fetch. Valid then describes template structure and presence only.
+		ValidationDeferred *bool `json:"validation_deferred,omitempty"`
 	} `json:"advisory,omitempty"`
 
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
@@ -7546,6 +7588,13 @@ type UpdateAdapterTargetRequestVisibility string
 // changing either would silently re-point every binding underneath at a
 // different external authority, which is a replacement, not an edit.
 type UpdateFederationIssuerRequest struct {
+	// CaBundlePem PEM CA certificates for discovery and JWKS HTTPS requests, including
+	// redirects. Replaces system roots for this issuer only. Nonempty values
+	// are refused in static mode. On update, omission preserves the current
+	// bundle in discovery mode; an empty string clears it. Static mode clears
+	// the bundle. This field is write-only; reads report ca_bundle_configured.
+	CaBundlePem *string `json:"ca_bundle_pem,omitempty"`
+
 	// JwksMode Where the issuer's signing keys come from. `discovery` is the default:
 	// keys are fetched and cached with a bounded staleness window. `static` is
 	// the configured alternative for air-gapped installations and for
@@ -8529,6 +8578,9 @@ type FetchDeliveryParams struct {
 	// which the server cannot see. Comma-separated, each item under the key
 	// grammar, at most 64.
 	AcknowledgedKeys *DeliveryAcknowledgedKeys `form:"acknowledged_keys,omitempty" json:"acknowledged_keys,omitempty"`
+
+	// Parameters JSON object of public parameter names and string values. All declared parameters are required. Never supply secrets.
+	Parameters *string `form:"parameters,omitempty" json:"parameters,omitempty"`
 }
 
 // RevokeEnvGrantParams defines parameters for RevokeEnvGrant.
@@ -8539,6 +8591,16 @@ type RevokeEnvGrantParams struct {
 	// Capability The capability atom being revoked.
 	Capability GrantCapability `form:"capability" json:"capability"`
 }
+
+// ChangeEnvironmentParameterJSONBody defines parameters for ChangeEnvironmentParameter.
+type ChangeEnvironmentParameterJSONBody struct {
+	Action  ChangeEnvironmentParameterJSONBodyAction `json:"action"`
+	Name    string                                   `json:"name"`
+	Pattern *string                                  `json:"pattern,omitempty"`
+}
+
+// ChangeEnvironmentParameterJSONBodyAction defines parameters for ChangeEnvironmentParameter.
+type ChangeEnvironmentParameterJSONBodyAction string
 
 // RevokeProjectGrantParams defines parameters for RevokeProjectGrant.
 type RevokeProjectGrantParams struct {
@@ -8894,6 +8956,9 @@ type MintLeaseJSONRequestBody = MintLeaseRequest
 
 // RenewLeaseJSONRequestBody defines body for RenewLease for application/json ContentType.
 type RenewLeaseJSONRequestBody = RenewLeaseRequest
+
+// ChangeEnvironmentParameterJSONRequestBody defines body for ChangeEnvironmentParameter for application/json ContentType.
+type ChangeEnvironmentParameterJSONRequestBody ChangeEnvironmentParameterJSONBody
 
 // CreateRevisionPinJSONRequestBody defines body for CreateRevisionPin for application/json ContentType.
 type CreateRevisionPinJSONRequestBody = RevisionPinRequest
@@ -9787,6 +9852,12 @@ type ServerInterface interface {
 	// SettleLease Settle an uncertain lease by re-probing it at the provider.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle)
 	SettleLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID)
+	// ListEnvironmentParameters List declarations used by the next publication.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters)
+	ListEnvironmentParameters(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ChangeEnvironmentParameter Add or delete one parameter declaration for the next publication.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters)
+	ChangeEnvironmentParameter(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
 	// ListPendingDrafts Preview the caller's pending drafts in one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pending)
 	ListPendingDrafts(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -11158,6 +11229,18 @@ func (_ Unimplemented) RevokeLease(w http.ResponseWriter, r *http.Request, org O
 // SettleLease Settle an uncertain lease by re-probing it at the provider.
 // (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle)
 func (_ Unimplemented) SettleLease(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, lease LeaseID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListEnvironmentParameters List declarations used by the next publication.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters)
+func (_ Unimplemented) ListEnvironmentParameters(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ChangeEnvironmentParameter Add or delete one parameter declaration for the next publication.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters)
+func (_ Unimplemented) ChangeEnvironmentParameter(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -17136,6 +17219,19 @@ func (siw *ServerInterfaceWrapper) FetchDelivery(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// ------------- Optional query parameter "parameters" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "parameters", r.URL.Query(), &params.Parameters, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "parameters"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "parameters", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.FetchDelivery(w, r, org, project, environment, params)
 	}))
@@ -17643,6 +17739,94 @@ func (siw *ServerInterfaceWrapper) SettleLease(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SettleLease(w, r, org, project, environment, lease)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListEnvironmentParameters operation middleware
+func (siw *ServerInterfaceWrapper) ListEnvironmentParameters(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEnvironmentParameters(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeEnvironmentParameter operation middleware
+func (siw *ServerInterfaceWrapper) ChangeEnvironmentParameter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeEnvironmentParameter(w, r, org, project, environment)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -22396,6 +22580,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/bindings", wrapper.CreateFederatedBinding)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters", wrapper.ListEnvironmentParameters)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters", wrapper.ChangeEnvironmentParameter)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery", wrapper.FetchDelivery)
@@ -42425,6 +42615,221 @@ func (response SettleLease503JSONResponse) VisitSettleLeaseResponse(w http.Respo
 	return err
 }
 
+type ListEnvironmentParametersRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListEnvironmentParametersResponseObject interface {
+	VisitListEnvironmentParametersResponse(w http.ResponseWriter) error
+}
+
+type ListEnvironmentParameters200JSONResponse EnvironmentParameters
+
+func (response ListEnvironmentParameters200JSONResponse) VisitListEnvironmentParametersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEnvironmentParameters401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListEnvironmentParameters401JSONResponse) VisitListEnvironmentParametersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEnvironmentParameters404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListEnvironmentParameters404JSONResponse) VisitListEnvironmentParametersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEnvironmentParameters429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListEnvironmentParameters429JSONResponse) VisitListEnvironmentParametersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEnvironmentParameters500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListEnvironmentParameters500JSONResponse) VisitListEnvironmentParametersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListEnvironmentParameters503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListEnvironmentParameters503JSONResponse) VisitListEnvironmentParametersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeEnvironmentParameterRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *ChangeEnvironmentParameterJSONRequestBody
+}
+
+type ChangeEnvironmentParameterResponseObject interface {
+	VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error
+}
+
+type ChangeEnvironmentParameter204Response struct {
+}
+
+func (response ChangeEnvironmentParameter204Response) VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ChangeEnvironmentParameter400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ChangeEnvironmentParameter400JSONResponse) VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeEnvironmentParameter401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ChangeEnvironmentParameter401JSONResponse) VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeEnvironmentParameter404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ChangeEnvironmentParameter404JSONResponse) VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeEnvironmentParameter409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ChangeEnvironmentParameter409JSONResponse) VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeEnvironmentParameter429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ChangeEnvironmentParameter429JSONResponse) VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeEnvironmentParameter500JSONResponse struct{ InternalJSONResponse }
+
+func (response ChangeEnvironmentParameter500JSONResponse) VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeEnvironmentParameter503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ChangeEnvironmentParameter503JSONResponse) VisitChangeEnvironmentParameterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListPendingDraftsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -54067,6 +54472,12 @@ type StrictServerInterface interface {
 	// SettleLease Settle an uncertain lease by re-probing it at the provider.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle)
 	SettleLease(ctx context.Context, request SettleLeaseRequestObject) (SettleLeaseResponseObject, error)
+	// ListEnvironmentParameters List declarations used by the next publication.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters)
+	ListEnvironmentParameters(ctx context.Context, request ListEnvironmentParametersRequestObject) (ListEnvironmentParametersResponseObject, error)
+	// ChangeEnvironmentParameter Add or delete one parameter declaration for the next publication.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/parameters)
+	ChangeEnvironmentParameter(ctx context.Context, request ChangeEnvironmentParameterRequestObject) (ChangeEnvironmentParameterResponseObject, error)
 	// ListPendingDrafts Preview the caller's pending drafts in one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/pending)
 	ListPendingDrafts(ctx context.Context, request ListPendingDraftsRequestObject) (ListPendingDraftsResponseObject, error)
@@ -59615,6 +60026,69 @@ func (sh *strictHandler) SettleLease(w http.ResponseWriter, r *http.Request, org
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SettleLeaseResponseObject); ok {
 		if err := validResponse.VisitSettleLeaseResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListEnvironmentParameters operation middleware
+func (sh *strictHandler) ListEnvironmentParameters(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListEnvironmentParametersRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListEnvironmentParameters(ctx, request.(ListEnvironmentParametersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListEnvironmentParameters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListEnvironmentParametersResponseObject); ok {
+		if err := validResponse.VisitListEnvironmentParametersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangeEnvironmentParameter operation middleware
+func (sh *strictHandler) ChangeEnvironmentParameter(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ChangeEnvironmentParameterRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body ChangeEnvironmentParameterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangeEnvironmentParameter(ctx, request.(ChangeEnvironmentParameterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangeEnvironmentParameter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangeEnvironmentParameterResponseObject); ok {
+		if err := validResponse.VisitChangeEnvironmentParameterResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

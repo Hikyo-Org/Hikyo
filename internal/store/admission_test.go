@@ -7,13 +7,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/Hikyo-Org/hikyo/internal/adapter"
-	"github.com/jackc/pgx/v5"
 	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"

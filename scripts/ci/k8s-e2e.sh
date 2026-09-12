@@ -34,7 +34,10 @@ kubeconfig="$(mktemp -t hikyo-e2e-kubeconfig.XXXXXX)"
 config="$(mktemp -t hikyo-e2e-kind.XXXXXX)"
 image_root="$(mktemp -d -t hikyo-e2e-image.XXXXXX)"
 created=false
+# shellcheck source=scripts/ci/k8s-native-registry.sh
+source ./scripts/ci/k8s-native-registry.sh
 cleanup() {
+	native_registry_cleanup
 	if [ "$created" = true ]; then
 		kind delete cluster --name "$CLUSTER" >/dev/null 2>&1 || true
 	fi
@@ -56,6 +59,7 @@ kind create cluster --name "$CLUSTER" --image "$NODE_IMAGE" \
 created=true
 
 export HIKYO_K8S_E2E_KUBECONFIG="$kubeconfig"
+native_registry_setup "$CLUSTER"
 
 echo "k8s-e2e: building local Hikyo server image"
 CGO_ENABLED=0 GOOS=linux go build -trimpath -o "$image_root/hikyo" ./cmd/hikyo

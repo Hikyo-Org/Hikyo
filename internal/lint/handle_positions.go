@@ -2,9 +2,10 @@ package lint
 
 import (
 	"go/token"
-	"golang.org/x/tools/go/packages"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/tools/go/packages"
 )
 
 // Exact source-owned exceptions. Being inside store, a fixture package or the

@@ -161,6 +161,20 @@ func (a *TxAuthorizer) authorizeTenant(ctx context.Context, caller Identity, op 
 		a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, domain.Scope{})
 		return nil, domain.ErrNotFound
 	}
+	// Automation owns topology only within its granted project. Protected
+	// environments cannot be deleted by a machine, including through a
+	// definitions plan; checking here keeps both lifecycle entry points bound
+	// to the same live protection state.
+	if domain.IsServiceAccountKind(caller.Class) && op == OpEnvDelete {
+		settings, err := a.r.EnvironmentReauthSettings(ctx, string(chain.Env))
+		if err != nil {
+			return nil, err
+		}
+		if settings.Protected {
+			a.captureDenial(ctx, principal, op, spec, resolutionResolvable, chain, scope)
+			return nil, domain.ErrNotFound
+		}
+	}
 	protected, permitted, err := a.selfConfigProfile(ctx, caller, op, chain, grants)
 	if err != nil {
 		return nil, err
