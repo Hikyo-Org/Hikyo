@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 fixture=${HIKYO_UNATTENDED_FIXTURE_OUTPUT:?set the signed A/B/C fixture directory}
-for tool in kind kubectl helm docker jq openssl python3 rg; do
+for tool in kind kubectl helm docker jq openssl python3 grep; do
 	command -v "$tool" >/dev/null || { echo "unattended-kind: missing $tool" >&2; exit 2; }
 done
 python3 -c 'import yaml' || { echo 'unattended-kind: Python requires PyYAML' >&2; exit 2; }
@@ -40,7 +40,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM HUP
-if kind get clusters 2>/dev/null | rg -qx "$CLUSTER"; then
+if kind get clusters 2>/dev/null | grep -Fxq "$CLUSTER"; then
 	echo 'unattended-kind: refusing existing cluster' >&2; exit 1
 fi
 case "$(docker info --format '{{.Architecture}}')" in
@@ -284,5 +284,5 @@ for release in b c; do
 done
 custody_after=$(docker exec "$node" sha256sum /var/lib/hikyo-unattended-state/operator-custody/unattended/custody/operator.age | cut -d ' ' -f1)
 [[ "$custody_before" == "$custody_after" ]]
-kubectl -n "$NAMESPACE" exec deployment/postgres -- psql -U hikyo -d hikyo_scratch -Atc 'SELECT count(*) FROM upgrade_control' | rg -qx '1'
+kubectl -n "$NAMESPACE" exec deployment/postgres -- psql -U hikyo -d hikyo_scratch -Atc 'SELECT count(*) FROM upgrade_control' | grep -Fxq '1'
 echo 'unattended-kind: distroless A restart and A->B->C passed; root/custody PVC retained; PostgreSQL scratch restore and encrypted backups verified'
