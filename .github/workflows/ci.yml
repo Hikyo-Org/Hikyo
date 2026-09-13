@@ -104,6 +104,8 @@ jobs:
             .githooks/* scripts/git/*.sh scripts/lib/*.sh scripts/ci/*.sh \
             scripts/release/*.sh scripts/bench/*.sh scripts/compose-demo.sh install/install.sh.in install/upgrade-nightly*.sh
           echo "$shellcheck_dir" >>"$GITHUB_PATH"
+      - name: Require full commit pins for workflow actions
+        run: go test ./scripts/ci -run '^TestWorkflowActionPins' -count=1
       - name: Actionlint
         run: ./scripts/ci/run-go-tool.sh actionlint
       - name: Save lint Go cache

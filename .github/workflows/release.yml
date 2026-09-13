@@ -238,7 +238,7 @@ jobs:
         with:
           version: v0.36.1
           driver-opts: image=moby/buildkit:v0.32.2@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679fd # v4.6.0
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
