@@ -112,7 +112,10 @@ entrypoint reauthenticates archives and executes the actual coordinator. The
 harnesses assert same-image restart, A-to-B-to-C replacement, durable instance and
 custody, encrypted recovery proof, and exact healthy admission. Docker also
 asserts older-image refusal. The Kubernetes harness uses TLS PostgreSQL and a
-separate scratch database. Local fixture generation/static checks passed, but
+separate scratch database. The three images share the current migration/schema
+set and start empty; these deployment checks do not independently prove new SQL
+execution or populated-secret preservation. The populated migration/crash and
+credential-recovery suites provide those separate component proofs. Local fixture generation/static checks passed, but
 local Docker/kind execution was stopped during host memory pressure before
 application acceptance. CI must provide the deployment result before support
 is advertised.
