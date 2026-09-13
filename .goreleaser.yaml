@@ -3,6 +3,11 @@ version: 2
 
 project_name: hikyo
 
+before:
+  hooks:
+    # Keep the growing compatibility inventory out of exec arguments/environment.
+    - go run ./scripts/release/embed-compatibility
+
 builds:
   - id: hikyo
     main: ./cmd/hikyo
@@ -37,7 +42,6 @@ builds:
         -X main.updateRecoveryKey={{ with index .Env "HIKYO_UPDATE_RECOVERY_KEY" }}{{ . }}{{ end }}
         -X github.com/Hikyo-Org/hikyo/internal/buildcompat.encodedTrustRoot={{ with index .Env "HIKYO_UPDATE_TRUST_ROOT" }}{{ . }}{{ end }}
         -X github.com/Hikyo-Org/hikyo/internal/buildcompat.encodedRecoveryPublicKey={{ with index .Env "HIKYO_UPDATE_RECOVERY_KEY" }}{{ . }}{{ end }}
-        -X github.com/Hikyo-Org/hikyo/internal/buildcompat.encodedDeclaration={{ with index .Env "HIKYO_COMPATIBILITY_BASE64" }}{{ . }}{{ end }}
         -X github.com/Hikyo-Org/hikyo/internal/buildcompat.declarationSHA256={{ with index .Env "HIKYO_COMPATIBILITY_SHA256" }}{{ . }}{{ end }}
 
 archives:

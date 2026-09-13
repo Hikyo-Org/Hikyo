@@ -90,7 +90,16 @@ grep -F 'id-token: write' "$workflow" >/dev/null || fail 'nightly lacks GitHub O
 grep -F 'test "$commit" = "$GITHUB_SHA"' "$workflow" >/dev/null || fail 'checkout can differ from OIDC source identity'
 grep -F 'go run ./scripts/release/nightly preflight' "$workflow" >/dev/null || fail 'nightly bootstrap is optional'
 if grep -F 'if [ -f release/trust/root.json ]' "$workflow" >/dev/null; then fail 'missing production stamp can be published'; fi
-grep -F 'HIKYO_COMPATIBILITY_BASE64: ${{ steps.compatibility.outputs.base64 }}' "$workflow" >/dev/null || fail 'nightly compatibility is not embedded'
+for release_workflow in "$workflow" "$official"; do
+	grep -F 'HIKYO_COMPATIBILITY_PATH: ${{ steps.compatibility.outputs.path }}' "$release_workflow" >/dev/null || fail 'release compatibility file is not passed to the build'
+	if grep -F 'HIKYO_COMPATIBILITY_BASE64' "$release_workflow" >/dev/null; then
+		fail 'release compatibility still exceeds exec environment limits'
+	fi
+done
+grep -F 'go run ./scripts/release/embed-compatibility' "$goreleaser" >/dev/null || fail 'release compatibility source is not generated'
+if grep -F 'buildcompat.encodedDeclaration=' "$goreleaser" >/dev/null; then
+	fail 'release compatibility still exceeds linker argument limits'
+fi
 grep -F 'cosign sign-blob --yes --use-signing-config=false --new-bundle-format=true' "$workflow" >/dev/null || fail 'complete keyless bundle signing missing'
 grep -F 'go run ./scripts/release/nightly verify --directory nightly-payloads' "$workflow" >/dev/null || fail 'runtime verifier is not used before publishing'
 grep -F 'nightly-payloads/*' "$workflow" >/dev/null || fail 'publication inventory differs from signed directory'

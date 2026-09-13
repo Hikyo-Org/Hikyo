@@ -209,10 +209,8 @@ jobs:
           go run ./scripts/release/compatibility --profile nightly/v1 --candidate "$candidate" \
             --sources "$RUNNER_TEMP/nightly-sources.json" --out "$declaration"
           {
+            printf 'path=%s\n' "$declaration"
             printf 'sha256=%s\n' "$(sha256sum "$declaration" | awk '{print $1}')"
-            printf 'base64='
-            base64 <"$declaration" | tr -d '\n'
-            printf '\n'
           } >>"$GITHUB_OUTPUT"
       - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
         if: steps.identity.outputs.skip != 'true'
@@ -246,7 +244,7 @@ jobs:
           HIKYO_UPDATE_CHANNEL: nightly
           HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}
           HIKYO_UPDATE_RECOVERY_KEY: ${{ steps.update-trust.outputs.recovery }}
-          HIKYO_COMPATIBILITY_BASE64: ${{ steps.compatibility.outputs.base64 }}
+          HIKYO_COMPATIBILITY_PATH: ${{ steps.compatibility.outputs.path }}
           HIKYO_COMPATIBILITY_SHA256: ${{ steps.compatibility.outputs.sha256 }}
         with:
           distribution: goreleaser
