@@ -272,8 +272,11 @@ func validateRegistry(gotRegistry registry, workflowData []byte) error {
 		return fmt.Errorf("ci-required needs mismatch: workflow=%v registry=%v", directNeeds, wantNeeds)
 	}
 
-	const shardMatrix = "${{ fromJSON(needs.analysis_shards.outputs.shards) }}"
-	for _, job := range []string{"isolation_shard", "race_shard", "fuzz_shard"} {
+	for job, shardMatrix := range map[string]string{
+		"isolation_shard": "${{ fromJSON(needs.analysis_shards.outputs.shards) }}",
+		"race_shard":      "${{ fromJSON(needs.analysis_shards.outputs.race_shards) }}",
+		"fuzz_shard":      "${{ fromJSON(needs.analysis_shards.outputs.shards) }}",
+	} {
 		if _, registered := gotRegistry.Jobs[job]; !registered {
 			continue
 		}
