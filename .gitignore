@@ -44,6 +44,7 @@ hikyo-dev.db*
 # Release build output
 /dist/
 /image-root/
+/internal/buildcompat/declaration_generated.go
 
 # Signing private keys are always offline; public roots are committed explicitly.
 release/trust/*.key

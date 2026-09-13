@@ -181,9 +181,6 @@ jobs:
           {
             printf 'path=%s\n' "$declaration"
             printf 'sha256=%s\n' "$(sha256sum "$declaration" | awk '{print $1}')"
-            printf 'base64='
-            base64 <"$declaration" | tr -d '\n'
-            printf '\n'
           } >>"$GITHUB_OUTPUT"
 
       - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
@@ -193,7 +190,7 @@ jobs:
           HIKYO_UPDATE_CHANNEL: stable
           HIKYO_UPDATE_TRUST_ROOT: ${{ steps.update-trust.outputs.root }}
           HIKYO_UPDATE_RECOVERY_KEY: ${{ steps.update-trust.outputs.recovery }}
-          HIKYO_COMPATIBILITY_BASE64: ${{ steps.compatibility.outputs.base64 }}
+          HIKYO_COMPATIBILITY_PATH: ${{ steps.compatibility.outputs.path }}
           HIKYO_COMPATIBILITY_SHA256: ${{ steps.compatibility.outputs.sha256 }}
         with:
           distribution: goreleaser

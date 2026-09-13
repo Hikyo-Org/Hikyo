@@ -10,8 +10,11 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/upgradecompat"
 )
 
-// Set only by the release linker. No environment or runtime setter exists.
+// Set by generated release source (or the linker in test fixtures). No
+// environment or runtime setter exists.
 var encodedDeclaration string
+
+// Set only by the release linker.
 var declarationSHA256 string
 
 func Current() ([]byte, upgradecompat.Declaration, error) {
