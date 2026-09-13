@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"go/ast"
+	"go/doc"
 	"go/parser"
 	"go/token"
 	"hash/fnv"
@@ -49,15 +50,12 @@ type options struct {
 
 var preferredShards = map[string]map[string]int{
 	"race": {
-		// Each repeatedly boots the authenticated database fixture. Keep the
-		// largest suites on separate runners instead of contending on shard 0.
-		"internal/app":           0,
-		"internal/service":       1,
-		"internal/lint":          1,
-		"internal/store/migrate": 1,
-		"internal/conformance":   2,
-		"internal/store":         2,
-		"internal/store/tx":      2,
+		// App and service are split by target name across the first four
+		// runners. Keep the remaining heavy suites on the last two runners.
+		"internal/lint":          4,
+		"internal/store":         4,
+		"internal/upgradegate":   5,
+		"internal/store/upgrade": 5,
 	},
 	"fuzz": {
 		"internal/importer":      0,
@@ -166,24 +164,23 @@ func listPackages(root string) ([]packageInfo, error) {
 	return packages, nil
 }
 
-// writeRaceShard lists this shard's packages. internal/app is the largest
-// race suite: whole, it took up to 16 minutes under the detector and a loaded
-// runner pushed it past the 20-minute package limit. Its top-level tests are
-// therefore spread over every shard by name, emitted as
-// "<import path>\t^(TestA|TestB)$"; the scheduler runs that subset with -run.
+// writeRaceShard splits the app and service suites across up to four runners
+// by top-level target name. The scheduler runs each filtered suite separately
+// after its peers to avoid database contention. Include fuzz seeds and runnable
+// examples, which an unfiltered go test would execute too.
 func writeRaceShard(output io.Writer, packages []packageInfo, opts options) error {
 	for _, pkg := range packages {
 		if pkg.relativePath == "internal/isolation" {
 			continue
 		}
-		if pkg.relativePath == "internal/app" {
-			tests, err := discoverPackageTests(pkg)
+		if pkg.relativePath == "internal/app" || pkg.relativePath == "internal/service" {
+			tests, err := discoverPackageTargets(pkg, true)
 			if err != nil {
 				return err
 			}
 			names := make([]string, 0, len(tests))
 			for _, test := range tests {
-				if appRaceShard(test.name, opts.shardCount) == opts.shard {
+				if splitRaceShard(pkg.relativePath, test.name, opts.shardCount) == opts.shard {
 					names = append(names, test.name)
 				}
 			}
@@ -255,19 +252,23 @@ func discoverIsolationTests(packages []packageInfo) ([]isolationTest, error) {
 // discoverPackageTests lists one package's top-level Test functions from its
 // source, so a shard plan never depends on running the package first.
 func discoverPackageTests(pkg packageInfo) ([]isolationTest, error) {
+	return discoverPackageTargets(pkg, false)
+}
+
+func discoverPackageTargets(pkg packageInfo, includeRaceTargets bool) ([]isolationTest, error) {
 	tests := make([]isolationTest, 0)
 	seen := make(map[string]string)
 	files := append(append([]string(nil), pkg.TestGoFiles...), pkg.XTestGoFiles...)
 	sort.Strings(files)
 	for _, name := range files {
 		path := filepath.Join(pkg.Dir, name)
-		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution|parser.ParseComments)
 		if err != nil {
 			return nil, fmt.Errorf("parse %s: %w", path, err)
 		}
 		for _, declaration := range parsed.Decls {
 			function, ok := declaration.(*ast.FuncDecl)
-			if !ok || function.Recv != nil || !isTestName(function.Name.Name) {
+			if !ok || function.Recv != nil || (!isTestName(function.Name.Name) && !(includeRaceTargets && isFuzzName(function.Name.Name))) {
 				continue
 			}
 			if previous, exists := seen[function.Name.Name]; exists {
@@ -275,6 +276,19 @@ func discoverPackageTests(pkg packageInfo) ([]isolationTest, error) {
 			}
 			seen[function.Name.Name] = path
 			tests = append(tests, isolationTest{name: function.Name.Name})
+		}
+		if includeRaceTargets {
+			for _, example := range doc.Examples(parsed) {
+				if example.Output == "" && !example.EmptyOutput {
+					continue
+				}
+				name := "Example" + example.Name
+				if previous, exists := seen[name]; exists {
+					return nil, fmt.Errorf("duplicate test %s in %s and %s", name, previous, path)
+				}
+				seen[name] = path
+				tests = append(tests, isolationTest{name: name})
+			}
 		}
 	}
 	sort.Slice(tests, func(i, j int) bool {
@@ -338,24 +352,10 @@ func isGoTargetName(name, prefix string) bool {
 	return !unicode.IsLower(first)
 }
 
-// appRaceShard places an internal/app race test. The other heavy suites are
-// pinned to shards 1 and 2 (service, lint, migrate; conformance) and measured
-// at about 14 and 16 minutes under the detector, while shard 0's remaining
-// packages take about 5. The app suite is about 12. An even split put it on
-// top of the heavy shards (measured 9 / 18 / 20 minutes); sending two thirds
-// of it to shard 0 lands near 13 / 16 / 18 with headroom under the 20-minute
-// package limit. Deterministic by name, so assignments stay stable.
-func appRaceShard(name string, shardCount int) int {
-	if shardCount == 1 {
-		return 0
-	}
-	hash := fnv.New32a()
-	_, _ = io.WriteString(hash, "race-app:"+name)
-	bucket := int(hash.Sum32() % uint32(2*shardCount))
-	if bucket < shardCount {
-		return 0
-	}
-	return bucket - shardCount
+// splitRaceShard assigns targets uniformly by name. With six runners, reserve
+// the last two for the remaining heavy whole-package suites.
+func splitRaceShard(packagePath, name string, shardCount int) int {
+	return shardFor("race-target", packagePath+":"+name, min(shardCount, 4))
 }
 
 func shardFor(kind, relativePath string, shardCount int) int {

@@ -13,11 +13,14 @@ mkdir -p \
 	"$fixture_dir/internal/crypto" \
 	"$fixture_dir/internal/isolation" \
 	"$fixture_dir/internal/service" \
-	"$fixture_dir/internal/store"
+	"$fixture_dir/internal/store" \
+	"$fixture_dir/internal/lint" \
+	"$fixture_dir/internal/upgradegate" \
+	"$fixture_dir/internal/store/upgrade"
 
 printf '%s\n' 'module example.com/shards' 'go 1.27.0' >"$fixture_dir/go.mod"
 
-for package in extra internal/app internal/crypto internal/isolation internal/service internal/store; do
+for package in extra internal/app internal/crypto internal/isolation internal/service internal/store internal/lint internal/upgradegate internal/store/upgrade; do
 	package_name=${package##*/}
 	printf 'package %s\n' "$package_name" >"$fixture_dir/$package/$package_name.go"
 done
@@ -44,6 +47,11 @@ func TestDiagnostics(t *testing.T)    {}
 func TestOwnerRuntime(t *testing.T)   {}
 func TestAutomaticDrill(t *testing.T) {}
 func helperNotATest(t *testing.T)     {}
+func FuzzApp(f *testing.F) { f.Fuzz(func(*testing.T, []byte) {}) }
+func Example() {
+	// Output:
+}
+func Example_documentation() {}
 EOF
 
 cat >"$fixture_dir/internal/crypto/crypto_test.go" <<'EOF'
@@ -81,6 +89,25 @@ package service
 import "testing"
 
 func FuzzService(f *testing.F) { f.Fuzz(func(*testing.T, []byte) {}) }
+func TestOne(t *testing.T) {}
+func TestTwo(t *testing.T) {}
+func TestThree(t *testing.T) {}
+func TestFour(t *testing.T) {}
+func TestFive(t *testing.T) {}
+func TestSix(t *testing.T) {}
+func TestSeven(t *testing.T) {}
+func TestEight(t *testing.T) {}
+EOF
+cat >"$fixture_dir/internal/service/external_test.go" <<'EOF'
+package service_test
+
+import "testing"
+
+func TestExternal(t *testing.T) {}
+func FuzzExternal(f *testing.F) { f.Fuzz(func(*testing.T, []byte) {}) }
+func Example_external() {
+	// Output:
+}
 EOF
 
 race_actual=$fixture_dir/race-actual
@@ -92,8 +119,6 @@ isolation_actual=$fixture_dir/isolation-actual
 
 shard=0
 while [ "$shard" -lt 3 ]; do
-	"$planner" race --root "$fixture_dir" --shard "$shard" --shards 3 |
-		awk -v shard="$shard" '{ print shard "\t" $0 }' >>"$race_actual"
 	"$planner" fuzz --root "$fixture_dir" --shard "$shard" --shards 3 |
 		awk -v shard="$shard" '{ print shard "\t" $0 }' >>"$fuzz_actual"
 	"$planner" isolation --root "$fixture_dir" --shard "$shard" --shards 3 |
@@ -101,33 +126,50 @@ while [ "$shard" -lt 3 ]; do
 	shard=$((shard + 1))
 done
 
-# Whole packages are assigned once. internal/app is spread over every shard by
-# test name; each of its tests must be assigned exactly once and nothing else
-# may carry a filter.
-tab=$(printf '\t')
-if [ -n "$(grep -v "internal/app$tab" "$race_actual" | cut -f2 | sort | uniq -d)" ]; then
-	printf 'analysis shard fixture failed: race package assigned more than once\n' >&2
-	exit 1
-fi
-if grep -v "internal/app$tab" "$race_actual" | grep -q "$tab.*$tab"; then
-	printf 'analysis shard fixture failed: a package other than app carries a test filter\n' >&2
-	exit 1
-fi
-app_tests=$(grep "internal/app$tab" "$race_actual" | cut -f3 | sed 's/^\^(//; s/)\$$//' | tr '|' '\n' | sort)
-if [ -n "$(printf '%s\n' "$app_tests" | uniq -d)" ]; then
-	printf 'analysis shard fixture failed: app test assigned more than once\n' >&2
-	exit 1
-fi
-expected_app_tests=$(printf '%s\n' TestAutomaticDrill TestBoot TestDiagnostics TestMaintenance TestOwnerRuntime TestRestore TestScheduler TestUpgrade)
-if [ "$app_tests" != "$expected_app_tests" ]; then
-	printf 'analysis shard fixture failed: app tests not covered exactly once: %s\n' "$app_tests" >&2
-	exit 1
-fi
-app_shards=$(grep -c "internal/app$tab" "$race_actual" | tr -d ' ')
-if [ "$app_shards" -lt 2 ]; then
-	printf 'analysis shard fixture failed: app tests were not spread across shards\n' >&2
-	exit 1
-fi
+# Across supported layouts, every normal package and every split-suite target
+# must run exactly once, including external tests, fuzz seeds and examples.
+for shard_count in 1 3 6; do
+	: >"$race_actual"
+	shard=0
+	while [ "$shard" -lt "$shard_count" ]; do
+		"$planner" race --root "$fixture_dir" --shard "$shard" --shards "$shard_count" |
+			awk -v shard="$shard" '{ print shard "\t" $0 }' >>"$race_actual"
+		shard=$((shard + 1))
+	done
+	awk -F '\t' '$2 !~ /internal\/(app|service)$/ { print $2 }' "$race_actual" | sort >"$fixture_dir/whole-actual"
+	printf '%s\n' extra internal/crypto internal/lint internal/store internal/store/upgrade internal/upgradegate |
+		sed 's|^|example.com/shards/|' | sort >"$fixture_dir/whole-expected"
+	cmp "$fixture_dir/whole-expected" "$fixture_dir/whole-actual"
+	if awk -F '\t' '$2 !~ /internal\/(app|service)$/ && NF != 2 { found=1 } END { exit !found }' "$race_actual"; then
+		printf 'analysis shard fixture failed: unexpected filter on whole package\n' >&2
+		exit 1
+	fi
+	for package in app service; do
+		awk -F '\t' -v package="example.com/shards/internal/$package" '$2 == package { print $3 }' "$race_actual" |
+			sed 's/^\^(//; s/)\$$//' | tr '|' '\n' | sort >"$fixture_dir/targets-actual"
+		if [ "$package" = app ]; then
+			printf '%s\n' Example FuzzApp TestAutomaticDrill TestBoot TestDiagnostics TestMaintenance TestOwnerRuntime TestRestore TestScheduler TestUpgrade
+		else
+			printf '%s\n' Example_external FuzzExternal FuzzService TestEight TestExternal TestFive TestFour TestOne TestSeven TestSix TestThree TestTwo
+		fi | sort >"$fixture_dir/targets-expected"
+		cmp "$fixture_dir/targets-expected" "$fixture_dir/targets-actual"
+		split_count=$(awk -F '\t' -v package="example.com/shards/internal/$package" '$2 == package { print $1 }' "$race_actual" | sort -u | wc -l | tr -d ' ')
+		expected_count=$shard_count
+		[ "$expected_count" -ne 3 ] || expected_count=2
+		[ "$expected_count" -le 4 ] || expected_count=4
+		[ "$split_count" -ge "$expected_count" ] || {
+			printf 'analysis shard fixture failed: %s not spread over %s runners\n' "$package" "$expected_count" >&2
+			exit 1
+		}
+	done
+	if [ "$shard_count" -eq 6 ]; then
+		awk -F '\t' '
+			$2 ~ /internal\/(app|service)$/ && $1 >= 4 { exit 1 }
+			$2 ~ /internal\/(store|lint)$/ && $1 != 4 { exit 1 }
+			$2 ~ /internal\/(upgradegate|store\/upgrade)$/ && $1 != 5 { exit 1 }
+		' "$race_actual"
+	fi
+done
 if [ -n "$(cut -f2- "$fuzz_actual" | sort | uniq -d)" ]; then
 	printf 'analysis shard fixture failed: fuzz target assigned more than once\n' >&2
 	exit 1
@@ -137,32 +179,14 @@ if [ -n "$(cut -f2 "$isolation_actual" | sort | uniq -d)" ]; then
 	exit 1
 fi
 
-cut -f2 "$race_actual" | sort -u >"$fixture_dir/race-packages"
-cat >"$fixture_dir/race-expected" <<'EOF'
-example.com/shards/extra
-example.com/shards/internal/app
-example.com/shards/internal/crypto
-example.com/shards/internal/service
-example.com/shards/internal/store
-EOF
-cmp "$fixture_dir/race-expected" "$fixture_dir/race-packages"
-
-# The cumulative service/store race timeout came from co-locating the largest
-# authenticated datastore fixtures. Keep them on independent runners; app is
-# split by test name so its share on any runner stays bounded.
-heavy_shards=$(awk -F '\t' '$2 ~ /^example.com\/shards\/internal\/(service|store)$/ { print $1 }' \
-	"$race_actual" | sort -u | wc -l | tr -d ' ')
-[ "$heavy_shards" -eq 2 ] || {
-	printf 'analysis shard fixture failed: heavy race packages share a runner\n' >&2
-	exit 1
-}
-
 cut -f2- "$fuzz_actual" | sort >"$fixture_dir/fuzz-targets"
 cat >"$fixture_dir/fuzz-expected" <<'EOF'
 example.com/shards/extra	FuzzAuto
+example.com/shards/internal/app	FuzzApp
 example.com/shards/internal/crypto	FuzzOpen
 example.com/shards/internal/crypto	FuzzParse
 example.com/shards/internal/isolation	FuzzIsolation
+example.com/shards/internal/service	FuzzExternal
 example.com/shards/internal/service	FuzzService
 EOF
 cmp "$fixture_dir/fuzz-expected" "$fixture_dir/fuzz-targets"
