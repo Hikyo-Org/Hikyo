@@ -233,6 +233,10 @@ func TestEveryDirectRuntimeFamilyRefusesMaintenanceAndOldGeneration(t *testing.T
 				t.Fatal(err)
 			}
 			check := func() {
+				observed, err := db.RuntimeUpgradeState(t.Context())
+				if err != nil || observed.Maintenance != current.Maintenance || observed.Pending == nil || observed.Pending.Phase != current.Pending.Phase {
+					t.Fatalf("runtime control status unavailable or stale while tenant admission is fenced: %v", err)
+				}
 				for name, probe := range probes {
 					t.Run(name, func(t *testing.T) {
 						if err := probe(); !errors.Is(err, upgrade.ErrConflict) {

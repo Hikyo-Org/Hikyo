@@ -236,6 +236,9 @@ the evidence/backup/legacy-stop environment settings for ordinary restarts.
 
 ## Compose and Kubernetes
 
+This section retains manual defaults. New installations choosing unattended
+upgrades use the separate [container deployment runbook](unattended-container-upgrades.md).
+
 `install/compose/server.yaml` provides a rootless manual server deployment.
 Supply its required environment variables in a protected local environment file;
 `HIKYO_SERVER_IMAGE` must be the verified repository plus `@sha256:` digest.

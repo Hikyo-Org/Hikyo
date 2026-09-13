@@ -1,5 +1,14 @@
 # Signed upgrade compatibility and platform orchestration
 
+> **Approved container custody exception (2026-09-13):** The owner explicitly
+> selected encrypted local custody for deployments enrolled in unattended
+> container upgrades, after disclosure that this grants the opted-in container
+> recovery authority. The exception below supersedes operator/server custody
+> separation only for this mode. Its execution design and acceptance criteria
+> are [recorded separately](../design/unattended-container-upgrades.md); this
+> approval does not claim that container automation has shipped or that its
+> broader implementation has passed the existing safety gates.
+
 > **Platform-download amendment (2026-09-11, owner requested):** Automatic
 > upgrades fetch only the native OS/architecture binary archive and required
 > metadata. The complete signed manifest remains unchanged; v2 runtime bundles
@@ -183,6 +192,44 @@ cover a paused transaction, an old process returning after completion, direct
 runtime writers, and crashes after each phase and each migration commit.
 
 ## Backup and restore custody
+
+### Approved local custody for opted-in containers (2026-09-13)
+
+Unattended container upgrades require an explicit, default-off enrollment chosen
+by the operator from initial deployment. Manual deployments keep their existing
+custody and evidence requirements. Enrollment grants permission to automate the
+verified upgrade procedure; a flag is still not proof of release compatibility,
+source identity, backup recoverability or writer exclusion.
+
+For this mode only, the opted-in container may hold a persistent encrypted local
+vault containing the backup identity, attestation private key and root escrow.
+The vault is wrapped with a secret derived from the installation root key, using
+the existing custody implementation. The container can unlock it without human
+input. Whoever controls that runtime and root key therefore obtains recovery
+and attestation authority. Its attestation is local operational evidence, not
+independent evidence against a compromised runtime. This is the expressly
+approved change to the custody boundary; it does not provide an off-host
+disaster-recovery copy.
+
+Persist the encrypted vault, installation identity, upgrade journal and encrypted
+backup across container replacement. Keep private material out of command
+arguments, environment values, logs and public evidence. Existing manual and
+systemd separation requirements remain unchanged. No Docker socket, deployment
+controller credentials, Kubernetes workload-control credentials or Git authority
+are granted to the server by this exception.
+
+The candidate is the exact running signed image release, never a separately
+discovered latest release. Preserve authenticated route and target checks,
+verified encrypted backup plus same-engine scratch restore, durable writer
+exclusion before backup, fail-closed admission and explicit recovery after
+uncertain writes. There is no automatic database or old-image rollback.
+
+The initial implementation covers Docker with SQLite and non-HA,
+single-replica Kubernetes with PostgreSQL and an operator-provisioned empty
+same-engine scratch database. Execution, fencing compatibility and restart
+acceptance must be demonstrated before claiming support. The design
+does not relax the platform-automation acceptance gate or authorize HA rolling
+migrations. See [the design and acceptance criteria](../design/unattended-container-upgrades.md).
 
 ### Operator-approved local custody for nightly CLI upgrades (2026-09-06)
 

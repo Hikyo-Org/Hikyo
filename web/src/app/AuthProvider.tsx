@@ -31,6 +31,7 @@ import {
 import { ApiError, parsed, readCsrfToken } from '../api/client.ts';
 import { transitionWorkspaceOwner } from '../api/workspace.ts';
 import { makeQueryClient } from './queryClient.ts';
+import { RuntimeMaintenanceBoundary } from './RuntimeMaintenanceBoundary.tsx';
 
 export type WhoAmI = z.infer<typeof zWhoAmI>;
 
@@ -67,7 +68,7 @@ type AuthContextValue = {
   readonly acceptSession: (identity: AcceptedIdentity, guard: SessionTransitionGuard) => void;
   readonly acceptAccountSession: (identity: AcceptedIdentity, guard: SessionTransitionGuard, transfer: SensitiveStateTransfer) => boolean;
   readonly endSession: (guard: SessionTransitionGuard) => void;
-  readonly refreshSession: () => Promise<void>;
+  readonly refreshSession: (signal?: AbortSignal) => Promise<void>;
   readonly revalidate: () => Promise<void>;
 };
 
@@ -98,13 +99,18 @@ const DEGRADED_RETRY_BASE_MS = 1_000;
 const DEGRADED_RETRY_MAX_MS = 30_000;
 
 /** Read root identity without putting it in a session-owned query cache. */
-async function readIdentity(): Promise<WhoAmI | null> {
+async function readIdentity(signal?: AbortSignal): Promise<WhoAmI | null> {
+  signal?.throwIfAborted();
   const cookie = readCsrfToken();
   try {
-    const identity = await parsed(whoamiOp, {});
+    const identity = await parsed(whoamiOp, { signal });
+    // A response already in SDK decoding when cancellation arrived must not
+    // settle an identity after the caller's recovery deadline has expired.
+    signal?.throwIfAborted();
     if (cookie !== readCsrfToken()) throw new SessionChangedError();
     return identity;
   } catch (error) {
+    signal?.throwIfAborted();
     if (cookie !== readCsrfToken()) throw new SessionChangedError();
     if (error instanceof ApiError && error.status === 401) {
       return null;
@@ -165,7 +171,7 @@ function identityVersion(identity: WhoAmI | null): string | null {
  * verified account-security remint preserves entries and invalidates their
  * answers for re-evaluation.
  */
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children, monitorRuntime = false }: { children: ReactNode; monitorRuntime?: boolean }) {
   const [snapshot, setSnapshot] = useState<Snapshot>(() => ({
     epoch: 0,
     checkingRotation: false,
@@ -200,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const settleIdentity = useCallback(
-    (identity: WhoAmI | null, publish: boolean, expectedRotation?: ExpectedSessionRotation) => {
+    (identity: WhoAmI | null, publish: boolean, expectedRotation?: ExpectedSessionRotation, invalidateQueries = true) => {
       const current = snapshotRef.current;
       const sameSession =
         identity !== null &&
@@ -239,7 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           degraded: null,
           checkingRotation: false,
         });
-        void current.queries.invalidateQueries();
+        if (invalidateQueries) void current.queries.invalidateQueries();
       } else {
         const fresh = destroySessionCache(current);
         flushSync(() => commit({
@@ -268,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkSession = useCallback(
     async function checkSession(
-      mode: SessionCheckMode, expectedRotation?: ExpectedSessionRotation,
+      mode: SessionCheckMode, expectedRotation?: ExpectedSessionRotation, signal?: AbortSignal,
     ): Promise<void> {
       const blocking = mode === 'blocking' || mode === 'blocking-and-publish';
       const publish = mode === 'blocking-and-publish' || mode === 'refresh-and-publish' || mode === 'rotation-and-publish';
@@ -290,17 +296,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       }
       try {
-        const identity = await readIdentity();
+        const identity = await readIdentity(signal);
         if (mountedRef.current && requestRef.current === request) {
-          settleIdentity(identity, publish, expectedRotation);
+          settleIdentity(identity, publish, expectedRotation, signal === undefined);
+        } else if (signal !== undefined) {
+          // Runtime recovery needs a verified current answer, not merely a
+          // completed request that lost authority to another session check.
+          throw new Error('Session revalidation was superseded');
         }
       } catch (error) {
+        // Cancellation is not an authentication result or a session change.
+        // The caller retains its edit fence and owns retry scheduling.
+        signal?.throwIfAborted();
         if (requestRef.current !== request) {
+          if (signal !== undefined) throw error;
           return;
         }
         if (error instanceof SessionChangedError) {
           invalidateIdentity();
-          return checkSession(mode);
+          return checkSession(mode, undefined, signal);
         }
         const latest = snapshotRef.current;
         const problem =
@@ -334,6 +348,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             checkingRotation: false,
           });
         }
+        if (signal !== undefined) throw problem;
       }
     },
     [commit, destroySessionCache, invalidateIdentity, settleIdentity],
@@ -356,13 +371,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   ), [checkSession, replaceFromPeer]);
 
   const refreshSession = useCallback(
-    () => {
+    async (signal?: AbortSignal) => {
       // Operation completion must stale the affected session answers now, not
       // one identity round-trip later. The root still owns that broad
       // invalidation and the subsequent whoami check remains the only place an
       // operation-adjacent 401 can end the browser session.
-      void snapshotRef.current.queries.invalidateQueries();
-      return checkSession('refresh-and-publish');
+      if (signal === undefined) {
+        void snapshotRef.current.queries.invalidateQueries();
+        return checkSession('refresh-and-publish');
+      }
+      // Recovery must verify the owner before refetching its active cache and
+      // keep editing fenced until those answers succeed within the deadline.
+      await checkSession('refresh-and-publish', undefined, signal);
+      signal.throwIfAborted();
+      const { queries } = snapshotRef.current;
+      const request = requestRef.current;
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => {
+          if (snapshotRef.current.queries === queries && requestRef.current === request) {
+            void queries.cancelQueries();
+          }
+          reject(signal.reason);
+        };
+        signal.addEventListener('abort', abort, { once: true });
+        void queries.invalidateQueries({}, { throwOnError: true }).then(resolve, reject)
+          .finally(() => signal.removeEventListener('abort', abort));
+      });
+      signal.throwIfAborted();
+      if (!mountedRef.current || requestRef.current !== request || snapshotRef.current.queries !== queries) {
+        throw new Error('Cache revalidation was superseded');
+      }
+      if (queries.getQueryCache().findAll({ type: 'active' }).some((query) => query.state.fetchStatus !== 'idle' || query.state.status === 'error')) {
+        throw new Error('Active queries have not completed recovery');
+      }
     },
     [checkSession],
   );
@@ -622,13 +663,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     revalidate,
   };
 
-  return (
+  const content = (
     <div className="session-owner" hidden={snapshot.checkingRotation}>
       <QueryClientProvider key={snapshot.epoch} client={snapshot.queries}>
         <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
       </QueryClientProvider>
     </div>
   );
+  return monitorRuntime
+    ? <RuntimeMaintenanceBoundary failure={snapshot.failure ?? snapshot.degraded} refreshSession={refreshSession} queries={snapshot.queries}>{content}</RuntimeMaintenanceBoundary>
+    : content;
 }
 
 export function useAuth(): AuthContextValue {

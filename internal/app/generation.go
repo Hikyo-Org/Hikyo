@@ -194,6 +194,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	valuesSvc := &service.Values{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Scan: ruleset, Budget: budget}
 	revisionsSvc := &service.Revisions{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget}
 	api := &server.API{
+		Runtime:  &service.System{DB: db, Store: sc},
 		Auth:     authSvc,
 		SAMLAuth: authSvc,
 		Orgs:     &service.Orgs{DB: db},

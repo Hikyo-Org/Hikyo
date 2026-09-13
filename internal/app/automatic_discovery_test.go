@@ -242,3 +242,49 @@ func TestAutomaticDiscoveryPreservesDeterministicRouteTieBreak(t *testing.T) {
 		t.Fatal("did not authenticate both relevant shallow branches")
 	}
 }
+
+func TestAutomaticDiscoveryCompleteResumeBundleStillPreparesSelectedExecutables(t *testing.T) {
+	for _, unavailable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unavailable=%t", unavailable), func(t *testing.T) {
+			f := newAutomaticDiscoveryFixture(t)
+			target := f.prepared[f.identities[2]]
+			full, err := f.AssembleNightlyRoute(t.Context(), target, []selfupdate.PreparedNightly{f.prepared[f.identities[0]], f.prepared[f.identities[1]]})
+			if err != nil {
+				t.Fatal(err)
+			}
+			bundle, err := upgradebundle.Load(t.Context(), full, f.trust.Pinned, releaseidentity.SnapshotFloor{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			plan, err := bundle.Plan(f.source, target.Identity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target.BundleDirectory = full
+			previous := &automaticJournal{Phase: "schema-applied", Target: target.Identity, Source: f.source, Instance: "actual-installation", Route: plan.Digest(), Hop: 1}
+			f.forbidden[f.identities[1]] = unavailable
+			inspection := f.inspection(0)
+			result, err := discoverAutomaticRoute(t.Context(), f, f, target, f.trust.Pinned, inspection, releaseidentity.SQLite, previous)
+			if unavailable {
+				if err == nil {
+					t.Fatal("resume accepted missing intermediate executable")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Plan.Digest() != previous.Route || result.Instance != previous.Instance || inspection.installedCalls != 0 {
+				t.Fatal("resume changed original route authority")
+			}
+			for _, step := range result.Plan.Steps() {
+				if result.Executables[step.Target].Identity != step.Target {
+					t.Fatal("resume omitted authenticated route executable")
+				}
+			}
+			if !slices.Equal(f.fetched, f.identities[:2]) {
+				t.Fatalf("unexpected exact payload requests: %v", f.fetched)
+			}
+		})
+	}
+}

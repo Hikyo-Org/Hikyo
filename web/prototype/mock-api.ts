@@ -473,6 +473,9 @@ export function prototypeReadFixture(
   scenario: Scenario = 'populated',
 ): PrototypeReadFixture | undefined {
   path = canonicalPrototypePath(path);
+  if (path === '/api/v1/runtime/status') {
+    return { status: 200, body: { state: 'ready', phase: null } };
+  }
   if (path === '/api/v1/auth/methods') {
     return {
       status: 200,

@@ -69,6 +69,8 @@ operations:
 
   # meta
   getMeta:                     {webui: overview}
+  # RuntimeMaintenanceBoundary also covers initial authentication outages.
+  getRuntimeStatus:            {webui: login, reach: path}
 
   # auth
   establishCredential:         {webui: establish-credential}

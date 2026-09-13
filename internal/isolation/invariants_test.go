@@ -514,6 +514,11 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 		// selfupdate.nightly-downloads.
 		lint.Module + "/internal/selfupdate": true,
 	}
+	// Register this declaration precisely; future app caches still need their
+	// own key and access review instead of inheriting a package exemption.
+	registeredDeclarations := map[string]string{
+		lint.Module + "/internal/app.cachedUnattendedImage": "app.unattended-image",
+	}
 	for _, p := range pkgs {
 		if p.Types == nil || !strings.HasPrefix(p.PkgPath, lint.Module) {
 			continue
@@ -523,6 +528,12 @@ func TestInvariant12CacheDiscipline(t *testing.T) {
 			continue // the harness names the invariant; crypto's cache is registered
 		}
 		for _, name := range p.Types.Scope().Names() {
+			if key := registeredDeclarations[base+"."+name]; key != "" {
+				if _, ok := registered[key]; !ok {
+					t.Errorf("%s.%s references missing cache registry entry %q", base, name, key)
+				}
+				continue
+			}
 			if strings.Contains(strings.ToLower(name), "cache") {
 				t.Errorf("%s.%s: cache-shaped declaration with no entry in the cache registry — state its key constructor and proof-gating layer (invariant 12)", base, name)
 			}

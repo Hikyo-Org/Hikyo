@@ -318,6 +318,7 @@ var pinnedContractSurface = map[string]bool{
 	"PATCH /api/v1/me/profile":                                             true,
 	"GET /api/v1/me/orgs":                                                  true,
 	"GET /api/v1/me/sessions":                                              true,
+	"GET /api/v1/runtime/status":                                           true,
 	"GET /api/v1/meta":                                                     true,
 	"GET /api/v1/orgs":                                                     true,
 	"GET /api/v1/orgs/{org}":                                               true,

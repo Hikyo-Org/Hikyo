@@ -4,6 +4,11 @@ export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
 };
 
+export type RuntimeStatus = {
+    state: 'ready' | 'maintenance' | 'recovery-required';
+    phase: 'preparing' | 'backup' | 'restore-check' | 'migration' | 'health-check' | null;
+};
+
 export type AccountProfile = {
     username: string;
     display_name: string;
@@ -4789,6 +4794,37 @@ export type AuditObjectId = string;
  *
  */
 export type AuditCorrelationId = string;
+
+export type GetRuntimeStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/runtime/status';
+};
+
+export type GetRuntimeStatusErrors = {
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetRuntimeStatusError = GetRuntimeStatusErrors[keyof GetRuntimeStatusErrors];
+
+export type GetRuntimeStatusResponses = {
+    /**
+     * Current runtime status. Responses must not be cached.
+     */
+    200: RuntimeStatus;
+};
+
+export type GetRuntimeStatusResponse = GetRuntimeStatusResponses[keyof GetRuntimeStatusResponses];
 
 export type GetMetaData = {
     body?: never;

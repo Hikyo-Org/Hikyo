@@ -62,6 +62,7 @@ func (s *Session) PlanOperatorRotation(ctx context.Context, expected State, stro
 	pending := *expected.Pending
 	pending.Invalidated = true
 	pending.Phase = RestoreRequired
+	pending.Preparation = nil
 	next.Pending = &pending
 	return next, next.Validate()
 }
@@ -86,6 +87,7 @@ func (s *Session) applyOperatorRotation(ctx context.Context, before, after State
 	pending := *before.Pending
 	pending.Invalidated = true
 	pending.Phase = RestoreRequired
+	pending.Preparation = nil
 	expected.Pending = &pending
 	expected.Maintenance = true
 	expected.Generation = after.Generation

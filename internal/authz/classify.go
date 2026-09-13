@@ -115,7 +115,8 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// one. `logout` and `whoami` take an artifact but are classified here
 	// too, because an unresolvable artifact is exactly the case they must not
 	// distinguish.
-	"http:GET /api/v1/meta": {Class: ClassUnauthenticated},
+	"http:GET /api/v1/runtime/status": {Class: ClassUnauthenticated},
+	"http:GET /api/v1/meta":           {Class: ClassUnauthenticated},
 	"http:POST /api/v1/auth/credential/establish": {Class: ClassUnauthenticated, Events: []audit.EventType{
 		audit.EventAuthCredentialEstablished,
 		audit.EventAuthAuthorityRefused,
@@ -981,6 +982,14 @@ type Cache struct {
 
 // caches is the closed cache registry.
 var caches = map[string]Cache{
+	"app.unattended-image": {
+		// One public release descriptor per private installation directory.
+		// Every read reauthenticates the bundle and native archive against the
+		// running build and the database's durable trust floor; descriptor
+		// paths and hashes never independently authorize executable bytes.
+		KeyConstructor: "internal/app.cachedUnattendedImage: installation StateDirectory/unattended/image.json; exact embedded release claim",
+		ProofGatedAt:   "not tenant proof-gated: public signed release assets; RunUnattendedUpgrade holds installation exclusion, VerifyCachedRelease reauthenticates archives, and the database gate controls migration/admission",
+	},
 	"crypto.dek-lru": {
 		KeyConstructor: "internal/crypto.dekScope",
 		// No tenant-facing caller exists yet: the DEK LRU is reachable only

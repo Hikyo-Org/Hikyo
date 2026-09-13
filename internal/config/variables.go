@@ -138,7 +138,9 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_UPGRADE_OPERATOR_INSTANCE", Audience: VariableCommand, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: true, Import: VariableExternal},
 	{Key: "HIKYO_UPGRADE_STATE_DIR", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_UPGRADE_TARGET_MANIFEST", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal},
+	{Key: "HIKYO_UPGRADE_UNATTENDED", Audience: VariableServer, Scope: VariableNode, Activation: VariableBootstrap, Secret: false, Import: VariableExternal},
 	{Key: "XDG_STATE_HOME", Audience: VariableClient, Scope: VariableNode, Activation: VariableNone, Secret: false, Import: VariableExternal},
 }

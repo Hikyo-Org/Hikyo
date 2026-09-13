@@ -26,23 +26,24 @@ type ImportConfinement struct {
 // internal/store or its subpackages. Additions here are architecture
 // decisions, not conveniences.
 var storeImporters = map[string]bool{
-	module + "/scripts/ci/chartfixture":          true, // test-only signed deployment fixture verifies source-owned embedded migration bytes
-	module + "/internal/upgradegate":             true, // closed control capability only; stricter production rule below
-	module + "/internal/upgradegate/testfixture": true, // real signed development admission fixture
-	module + "/internal/store/upgrade":           true, // closed candidate-health reader; no runtime repository handle
-	module + "/internal/service":                 true,
-	module + "/internal/app":                     true, // construction wiring only
-	module + "/internal/authz":                   true, // the resolution surface (store/authn) only — see authnImporters
-	module + "/internal/store":                   true,
-	module + "/internal/store/authn":             true,
-	module + "/internal/store/tx":                true,
-	module + "/internal/store/migrate":           true,
-	module + "/internal/store/keyring":           true, // crypto.KeyStore implementation
-	module + "/internal/store/auditrow":          true, // shared audit Row→params mapping
-	module + "/internal/store/sqlitegen":         true,
-	module + "/internal/store/pggen":             true,
-	module + "/internal/conformance":             true, // cross-engine test harness
-	module + "/internal/isolation":               true, // probe harness (#44)
+	module + "/scripts/ci/unattendedfixture/inspect": true, // disposable deployment acceptance reads the closed control ledger; never linked into the server
+	module + "/scripts/ci/chartfixture":              true, // test-only signed deployment fixture verifies source-owned embedded migration bytes
+	module + "/internal/upgradegate":                 true, // closed control capability only; stricter production rule below
+	module + "/internal/upgradegate/testfixture":     true, // real signed development admission fixture
+	module + "/internal/store/upgrade":               true, // closed candidate-health reader; no runtime repository handle
+	module + "/internal/service":                     true,
+	module + "/internal/app":                         true, // construction wiring only
+	module + "/internal/authz":                       true, // the resolution surface (store/authn) only — see authnImporters
+	module + "/internal/store":                       true,
+	module + "/internal/store/authn":                 true,
+	module + "/internal/store/tx":                    true,
+	module + "/internal/store/migrate":               true,
+	module + "/internal/store/keyring":               true, // crypto.KeyStore implementation
+	module + "/internal/store/auditrow":              true, // shared audit Row→params mapping
+	module + "/internal/store/sqlitegen":             true,
+	module + "/internal/store/pggen":                 true,
+	module + "/internal/conformance":                 true, // cross-engine test harness
+	module + "/internal/isolation":                   true, // probe harness (#44)
 }
 
 // authnImporters is the stricter allowlist for the authorization package's

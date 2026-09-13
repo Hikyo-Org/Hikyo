@@ -109,6 +109,32 @@ tags:
       authorises one exact reviewed change set and is never a second mutation
       path: merge and emergency bypass ride the ordinary publish endpoint.
 paths:
+  /api/v1/runtime/status:
+    get:
+      operationId: getRuntimeStatus
+      tags: [meta]
+      summary: Public runtime availability for maintenance and reconnection.
+      description: |
+        Reports only this instance's availability and upgrade phase. No tenant
+        data, identity, configuration, paths, or failure details are exposed.
+        Polling does not extend sessions. Storage failures return unavailable,
+        never a guessed ready or maintenance state.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [none]
+      x-hikyo-min-revision: 4
+      responses:
+        "200":
+          description: Current runtime status. Responses must not be cached.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeStatus"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
   /api/v1/meta:
     get:
       operationId: getMeta
@@ -11522,6 +11548,18 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    RuntimeStatus:
+      type: object
+      additionalProperties: false
+      required: [state, phase]
+      properties:
+        state:
+          type: string
+          enum: [ready, maintenance, recovery-required]
+        phase:
+          type: [string, "null"]
+          enum: [preparing, backup, restore-check, migration, health-check, null]
+
     AccountProfile:
       type: object
       required: [username, display_name, email, managed, username_editable]

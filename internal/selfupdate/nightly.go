@@ -88,6 +88,10 @@ func (i *Installer) prepareNightly(ctx context.Context, status updatecheck.Statu
 	if err != nil {
 		return err
 	}
+	known.Floor, err = i.preparedSnapshotFloor(known.Floor)
+	if err != nil {
+		return err
+	}
 	pinned := releasetrust.PinnedTrust{Root: rootRaw, RecoveryPublicKey: recovery}
 	material, snapshot, err := i.nightlySnapshot(ctx, pinned, known.Floor)
 	if err != nil {

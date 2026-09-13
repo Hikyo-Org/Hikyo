@@ -72,6 +72,7 @@ func reconcileRestore(ctx context.Context, row func(string, ...any) scanner, exe
 	pending := *old.Pending
 	pending.Invalidated = true
 	pending.Phase = RestoreRequired
+	pending.Preparation = nil
 	next.Pending = &pending
 	if err := next.Validate(); err != nil {
 		return State{}, err

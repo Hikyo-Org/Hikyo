@@ -153,6 +153,7 @@ import {
   getRetentionHealth,
   getRevealWindow,
   getRevision,
+  getRuntimeStatus,
   getSamlProvider,
   getScimBinding,
   getScimCredential,
@@ -430,6 +431,7 @@ import type {
   GetRetentionHealthData,
   GetRevealWindowData,
   GetRevisionData,
+  GetRuntimeStatusData,
   GetSamlProviderData,
   GetScimBindingData,
   GetScimCredentialData,
@@ -693,6 +695,7 @@ import {
   zGetRetentionHealthResponse,
   zGetRevealWindowResponse,
   zGetRevisionResponse,
+  zGetRuntimeStatusResponse,
   zGetSamlProviderResponse,
   zGetScimBindingResponse,
   zGetScimCredentialResponse,
@@ -939,6 +942,7 @@ export const getProjectRetentionOp: BodyOperation<GetProjectRetentionData, typeo
 export const getRetentionHealthOp: BodyOperation<GetRetentionHealthData, typeof zGetRetentionHealthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getRetentionHealth, [200], zGetRetentionHealthResponse);
 export const getRevealWindowOp: BodyOperation<GetRevealWindowData, typeof zGetRevealWindowResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getRevealWindow, [200], zGetRevealWindowResponse);
 export const getRevisionOp: BodyOperation<GetRevisionData, typeof zGetRevisionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getRevision, [200], zGetRevisionResponse);
+export const getRuntimeStatusOp: BodyOperation<GetRuntimeStatusData, typeof zGetRuntimeStatusResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getRuntimeStatus, [200], zGetRuntimeStatusResponse);
 export const getSamlProviderOp: BodyOperation<GetSamlProviderData, typeof zGetSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getSamlProvider, [200], zGetSamlProviderResponse);
 export const getScimBindingOp: BodyOperation<GetScimBindingData, typeof zGetScimBindingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getScimBinding, [200], zGetScimBindingResponse);
 export const getScimCredentialOp: BodyOperation<GetScimCredentialData, typeof zGetScimCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getScimCredential, [200], zGetScimCredentialResponse);

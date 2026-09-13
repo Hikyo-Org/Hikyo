@@ -370,7 +370,7 @@ test.describe('app chrome', () => {
   // A still-valid session must survive a transient background revalidation
   // outage: the server briefly going unreachable for a whoami re-read must not
   // latch the global reload wall over the working UI (#440).
-  test('holds a still-valid session through a background revalidation outage', async ({ page }) => {
+  test('retains a still-valid session behind the reconnecting fence during a revalidation outage', async ({ page }) => {
     await page.clock.install();
     let firstIdentity = true;
     let whoamiDown = true;
@@ -408,9 +408,11 @@ test.describe('app chrome', () => {
     await page.clock.fastForward(31_000);
     await failed;
 
-    // A passed idle deadline is not definitive expiry. A failed revalidation
-    // must retain the known owner while the absolute deadline remains valid.
-    await expect(heading).toBeVisible();
+    // A passed idle deadline is not definitive expiry. Retain the known owner
+    // and mounted page, but pause editing until identity and queries recover.
+    await expect(page.getByRole('heading', { name: 'Projects', level: 1, includeHidden: true })).toBeAttached();
+    await expect(page.getByRole('dialog', { name: 'Reconnecting to Hikyo' })).toBeVisible();
+    await expect(heading).toHaveCount(0);
     await expect(wall).toHaveCount(0);
 
     // Recovery uses the provider's own retry, without a replacement broadcast
@@ -421,7 +423,10 @@ test.describe('app chrome', () => {
     );
     await page.clock.fastForward(1_100);
     await recovered;
+    // The runtime poll must also finish identity and active-query recovery.
+    await page.clock.runFor(15_100);
     await expect(heading).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Reconnecting to Hikyo' })).toHaveCount(0);
     await expect(wall).toHaveCount(0);
     await page.unrouteAll({ behavior: 'ignoreErrors' });
   });

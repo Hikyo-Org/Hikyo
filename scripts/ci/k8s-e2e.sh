@@ -122,3 +122,15 @@ CGO_ENABLED=0 GOOS=linux go build -trimpath -tags ui \
 	-o "$image_root/hikyo-ui" ./cmd/hikyo
 HIKYO_CHART_KIND_BINARY="$image_root/hikyo-ui" \
 	HIKYO_CHART_KIND_PUBLIC_DIR="$image_root/chart-fixture/public" ./scripts/ci/chart-kind.sh
+
+
+# Reuse the signed Linux fixture across sequential Docker and singleton chart
+# replacement checks. chart-kind has already removed its owned cluster, so only
+# one Kubernetes control plane is resident at any time.
+export HIKYO_UNATTENDED_FIXTURE_OUTPUT="$image_root/unattended-fixture"
+echo "k8s-e2e: building authenticated unattended replacement fixtures"
+go test -count=1 -run '^TestWriteUnattendedContainerFixture$' ./scripts/ci/unattendedfixture
+echo "k8s-e2e: checking actual Docker SQLite image replacements"
+./scripts/ci/unattended-docker.sh
+echo "k8s-e2e: checking actual singleton Kubernetes PostgreSQL replacements"
+./scripts/ci/unattended-kind.sh

@@ -14,6 +14,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -40,9 +41,11 @@ type Datastore struct {
 	PostgresPoolMax int32  // HIKYO_PG_POOL_MAX override; zero uses DSN/locked default
 }
 
-// UpgradeConfiguration contains only installation paths and public evidence.
-// Private backup identities and operator signing keys are never server config.
+// UpgradeConfiguration holds installation paths, public evidence and the
+// dedicated scratch database connection. Private custody keys stay in the vault.
 type UpgradeConfiguration struct {
+	Unattended            bool
+	ScratchPostgresDSN    string
 	BundleDirectory       string
 	StateDirectory        string
 	EvidenceDirectory     string
@@ -232,6 +235,8 @@ var knownEnv = map[string]bool{
 	"HIKYO_ROOT_KEY_FILE":                  true,
 	"HIKYO_ROOT_KEY":                       true,
 	"HIKYO_UPGRADE_BUNDLE":                 true,
+	"HIKYO_UPGRADE_UNATTENDED":             true,
+	"HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN":   true,
 	"HIKYO_UPGRADE_STATE_DIR":              true,
 	"HIKYO_UPGRADE_EVIDENCE":               true,
 	"HIKYO_UPGRADE_BACKUP":                 true,
@@ -309,7 +314,16 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 	*autoMigrate = true
 	*rootKeyFile = getenv("HIKYO_ROOT_KEY_FILE")
 	rolloutEnrollment, rolloutSigningKey := new(string), new(string)
+	unattended := new(bool)
+	if raw := getenv("HIKYO_UPGRADE_UNATTENDED"); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, nil, errors.New("HIKYO_UPGRADE_UNATTENDED: invalid boolean")
+		}
+		*unattended = value
+	}
 	if subcommand == "server" {
+		unattended = fs.Bool("upgrade-unattended", *unattended, "allow enrolled noninteractive upgrades before serving")
 		listen = fs.String("listen", "", "listen address (default 127.0.0.1:8080, env HIKYO_LISTEN)")
 		operationalListen = fs.String("operational-listen", "", "operational listen address (default 127.0.0.1:8081, env HIKYO_OPERATIONAL_LISTEN)")
 		tlsCertFile = fs.String("tls-cert-file", "", "TLS certificate chain file (env HIKYO_TLS_CERT_FILE)")
@@ -339,6 +353,8 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 
 	cfg := &Config{
 		Upgrade: UpgradeConfiguration{
+			Unattended:            *unattended,
+			ScratchPostgresDSN:    getenv("HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN"),
 			BundleDirectory:       getenv("HIKYO_UPGRADE_BUNDLE"),
 			StateDirectory:        getenv("HIKYO_UPGRADE_STATE_DIR"),
 			EvidenceDirectory:     getenv("HIKYO_UPGRADE_EVIDENCE"),
@@ -583,8 +599,47 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		if err := loadHAConfig(cfg, getenv); err != nil {
 			return nil, nil, err
 		}
+		if err := validateUnattendedConfig(cfg); err != nil {
+			return nil, nil, err
+		}
 	}
 	return cfg, warnings, nil
+}
+
+func validateUnattendedConfig(cfg *Config) error {
+	if !cfg.Upgrade.Unattended {
+		return nil
+	}
+	if cfg.Dev {
+		return errors.New("unattended upgrades require a signed production release")
+	}
+	if cfg.HA {
+		return errors.New("unattended upgrades require one replica; HIKYO_HA is unsupported")
+	}
+	if cfg.ConfigRolloutEnrollment != "" {
+		return errors.New("unattended upgrades cannot share authority with configuration rollout enrollment")
+	}
+	if !cfg.AutoMigrate {
+		return errors.New("unattended upgrades require --auto-migrate=true")
+	}
+	if !filepath.IsAbs(cfg.Upgrade.StateDirectory) {
+		return errors.New("unattended upgrades require an absolute persistent HIKYO_UPGRADE_STATE_DIR")
+	}
+	if cfg.RootKeyFile == "" && !cfg.RootKeyFromEnv {
+		return errors.New("unattended upgrades require an explicitly configured persistent root key")
+	}
+	if cfg.Store.Engine == EnginePostgres {
+		scratch, err := parseDatastore(cfg.Upgrade.ScratchPostgresDSN)
+		if err != nil || scratch.Engine != EnginePostgres {
+			return errors.New("unattended PostgreSQL upgrades require HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN selecting a separate empty database")
+		}
+		if scratch.DSN == cfg.Store.DSN {
+			return errors.New("unattended upgrade scratch database must differ from the live database")
+		}
+	} else if cfg.Upgrade.ScratchPostgresDSN != "" {
+		return errors.New("HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN requires a PostgreSQL source")
+	}
+	return nil
 }
 
 func parseMCPAllowedOrigins(raw string) ([]string, error) {

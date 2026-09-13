@@ -73,6 +73,10 @@ func prepareAutomaticRoute(ctx context.Context, installer automaticReleasePrepar
 }
 
 func discoverAutomaticRoute(ctx context.Context, installer automaticReleasePreparer, source automaticReleaseSource, target selfupdate.PreparedNightly, pinned releasetrust.PinnedTrust, database automaticInspection, engine releaseidentity.Engine, previous *automaticJournal) (automaticRoute, error) {
+	return discoverReleaseRoute(ctx, installer, source, target, pinned, database, engine, previous, false)
+}
+
+func discoverReleaseRoute(ctx context.Context, installer automaticReleasePreparer, source automaticReleaseSource, target selfupdate.PreparedNightly, pinned releasetrust.PinnedTrust, database automaticInspection, engine releaseidentity.Engine, previous *automaticJournal, allowStable bool) (automaticRoute, error) {
 	result := automaticRoute{Directory: target.BundleDirectory, Executables: map[releaseidentity.Identity]selfupdate.PreparedNightly{target.Identity: target}}
 	floor := releaseidentity.SnapshotFloor{}
 	control, err := database.Control(ctx)
@@ -107,7 +111,7 @@ func discoverAutomaticRoute(ctx context.Context, installer automaticReleasePrepa
 			plan, planErr := result.Bundle.Plan(previous.Source, target.Identity)
 			if planErr == nil && plan.Digest() == previous.Route {
 				result.Plan, result.Instance = plan, previous.Instance
-				return result, nil
+				return completeAutomaticRouteExecutables(ctx, installer, source, result, allowStable)
 			}
 			lastPlanError = errors.New("unfinished upgrade no longer has its exact authenticated original route")
 		} else {
@@ -174,7 +178,7 @@ func discoverAutomaticRoute(ctx context.Context, installer automaticReleasePrepa
 		// older nodes beyond the found route cannot improve it.
 		if candidatePlan.Valid() && (len(references) == 0 || depths[references[0]] >= len(candidatePlan.Steps())) {
 			result.Plan, result.Instance = candidatePlan, candidateInstance
-			return result, nil
+			return completeAutomaticRouteExecutables(ctx, installer, source, result, allowStable)
 		}
 		if len(references) == 0 {
 			if lastPlanError != nil {
@@ -186,24 +190,9 @@ func discoverAutomaticRoute(ctx context.Context, installer automaticReleasePrepa
 			return result, errors.New("automatic upgrade graph exceeds release bound")
 		}
 		identity := references[0]
-		if identity.Profile != releaseidentity.NightlyV1 {
-			return result, errors.New("automatic nightly upgrade cannot cross into a stable release")
-		}
-		diagnostics.Printf(ctx, 1, "  Route from the installed release needs nightly %s; fetching its evidence.\n", identity.Version)
-		release, err := source.ReleaseByVersion(ctx, identity.Version)
+		prepared, err := prepareAutomaticRouteExecutable(ctx, installer, source, identity, allowStable)
 		if err != nil {
 			return result, err
-		}
-		status, err := nightlyStatus(release)
-		if err != nil {
-			return result, err
-		}
-		prepared, err := installer.PrepareNightlySource(ctx, status, identity)
-		if err != nil {
-			return result, err
-		}
-		if prepared.Identity != identity {
-			return result, errors.New("prepared source differs from authenticated reference")
 		}
 		result.Executables[identity] = prepared
 		expandedDepth = depths[identity]
@@ -221,4 +210,46 @@ func discoverAutomaticRoute(ctx context.Context, installer automaticReleasePrepa
 			return result, err
 		}
 	}
+}
+
+// Complete bundles can survive a restart independently of their executable
+// cache. Authenticate every selected payload before the route can be applied.
+func completeAutomaticRouteExecutables(ctx context.Context, installer automaticReleasePreparer, source automaticReleaseSource, route automaticRoute, allowStable bool) (automaticRoute, error) {
+	for _, step := range route.Plan.Steps() {
+		if _, present := route.Executables[step.Target]; present {
+			continue
+		}
+		prepared, err := prepareAutomaticRouteExecutable(ctx, installer, source, step.Target, allowStable)
+		if err != nil {
+			return route, err
+		}
+		route.Executables[step.Target] = prepared
+	}
+	return route, nil
+}
+
+func prepareAutomaticRouteExecutable(ctx context.Context, installer automaticReleasePreparer, source automaticReleaseSource, identity releaseidentity.Identity, allowStable bool) (selfupdate.PreparedNightly, error) {
+	if identity.Profile != releaseidentity.NightlyV1 && !allowStable {
+		return selfupdate.PreparedNightly{}, errors.New("automatic nightly upgrade cannot cross into a stable release")
+	}
+	diagnostics.Printf(ctx, 1, "  Route from the installed release needs %s; fetching its evidence.\n", identity.Version)
+	release, err := source.ReleaseByVersion(ctx, identity.Version)
+	if err != nil {
+		return selfupdate.PreparedNightly{}, err
+	}
+	status, err := nightlyStatus(release)
+	if allowStable && !release.Prerelease && release.Immutable {
+		status, err = updatecheck.Status{Available: true, Channel: updatecheck.ChannelStable, LatestVersion: release.Version, Immutable: true, Assets: release.Assets, URL: release.URL}, nil
+	}
+	if err != nil {
+		return selfupdate.PreparedNightly{}, err
+	}
+	prepared, err := installer.PrepareNightlySource(ctx, status, identity)
+	if err != nil {
+		return selfupdate.PreparedNightly{}, err
+	}
+	if prepared.Identity != identity {
+		return selfupdate.PreparedNightly{}, errors.New("prepared source differs from authenticated reference")
+	}
+	return prepared, nil
 }

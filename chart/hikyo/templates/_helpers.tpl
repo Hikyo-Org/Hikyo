@@ -21,10 +21,30 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- define "hikyo.server.validate" -}}
 {{- $databaseSecret := required "database.existingSecret is required" .Values.database.existingSecret -}}
 {{- $rootKeySecret := required "rootKey.existingSecret is required" .Values.rootKey.existingSecret -}}
-{{- $upgradeClaim := required "upgrade.existingClaim is required" .Values.upgrade.existingClaim -}}
 {{- $upgradeStateClaim := required "upgrade.stateExistingClaim is required" .Values.upgrade.stateExistingClaim -}}
+{{- if .Values.upgrade.unattended.enabled -}}
+  {{- if or .Values.ha.enabled (ne (int .Values.replicaCount) 1) -}}
+    {{- fail "upgrade.unattended requires ha.enabled=false and replicaCount=1" -}}
+  {{- end -}}
+  {{- if .Values.rollout.enabled -}}
+    {{- fail "upgrade.unattended cannot share authority with rollout.enabled" -}}
+  {{- end -}}
+  {{- if or .Values.upgrade.existingClaim .Values.upgrade.evidence .Values.upgrade.targetManifestSHA256 .Values.upgrade.legacyWritersStopped -}}
+    {{- fail "upgrade.unattended cannot combine manual bundle, evidence, target or legacy-writer overrides" -}}
+  {{- end -}}
+  {{- $scratchSecret := required "upgrade.unattended.scratchDatabaseExistingSecret is required" .Values.upgrade.unattended.scratchDatabaseExistingSecret -}}
+  {{- $scratchKey := required "upgrade.unattended.scratchDatabaseKey is required" .Values.upgrade.unattended.scratchDatabaseKey -}}
+  {{- if lt (int .Values.upgrade.unattended.startupFailureThreshold) 1 -}}
+    {{- fail "upgrade.unattended.startupFailureThreshold must be positive" -}}
+  {{- end -}}
+  {{- if or (eq $scratchKey ".") (eq $scratchKey "..") (not (regexMatch "^[A-Za-z0-9._-]+$" $scratchKey)) -}}
+    {{- fail "upgrade.unattended.scratchDatabaseKey must be one Secret key name" -}}
+  {{- end -}}
+{{- else -}}
+{{- $upgradeClaim := required "upgrade.existingClaim is required" .Values.upgrade.existingClaim -}}
 {{- if eq $upgradeClaim $upgradeStateClaim -}}
   {{- fail "upgrade public artifacts and writable installation state require separate claims" -}}
+{{- end -}}
 {{- end -}}
 {{- if and .Values.upgrade.targetManifestSHA256 (not (regexMatch "^[0-9a-f]{64}$" .Values.upgrade.targetManifestSHA256)) -}}
   {{- fail "upgrade.targetManifestSHA256 must be an exact lowercase SHA-256" -}}

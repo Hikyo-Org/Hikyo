@@ -2,6 +2,21 @@
 
 import * as z from 'zod';
 
+export const zRuntimeStatus = z.object({
+    state: z.enum([
+        'ready',
+        'maintenance',
+        'recovery-required'
+    ]),
+    phase: z.enum([
+        'preparing',
+        'backup',
+        'restore-check',
+        'migration',
+        'health-check'
+    ]).nullable()
+});
+
 export const zAccountProfile = z.object({
     username: z.string(),
     display_name: z.string(),
@@ -3618,6 +3633,11 @@ export const zAuditObjectId = z.string().max(64);
  *
  */
 export const zAuditCorrelationId = z.string().max(64);
+
+/**
+ * Current runtime status. Responses must not be cached.
+ */
+export const zGetRuntimeStatusResponse = zRuntimeStatus;
 
 /**
  * Instance metadata.
