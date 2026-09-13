@@ -64,7 +64,8 @@ upgrade:
   # Use regular files; projected ConfigMap/Secret symlinks are refused by readers.
   existingClaim: ""
   # Separate persistent installation pin/journal, never restored from DB backup.
-  # Provision volume root gid 65532 mode 2770 (including setgid), with child
+  # Unattended custody requires volume root uid 0, gid 65532, mode 3770.
+  # For manual custody, provision root gid 65532 mode 2770, with child
   # operator-custody owned by UID 65532 mode 0700. OnRootMismatch must skip
   # recursive permission changes; drivers must preserve private child modes.
   # Must support shared POSIX locks/durability when used by multiple HA replicas.

@@ -78,8 +78,10 @@ in Helm values or shell command arguments. The runtime verifies the actual
 database identities and pins the scratch identity for subsequent owned drills.
 Do not share the scratch database with another application.
 
-Provision a persistent upgrade PVC whose volume root has group 65532 and mode
-2770, with an `operator-custody` child owned by UID/GID 65532 and mode 0700.
+Provision a persistent upgrade PVC whose volume root is owned by UID 0, group
+65532 and mode 3770, with an `operator-custody` child owned by UID/GID 65532 and
+mode 0700. The root-owned sticky parent prevents other group members from
+replacing private custody; setgid satisfies kubelet's root permission check.
 The storage driver must preserve these modes on remount so
 `fsGroupChangePolicy: OnRootMismatch` does not recursively broaden private file
 permissions. Data, custody and journal must survive pod replacement; `emptyDir`

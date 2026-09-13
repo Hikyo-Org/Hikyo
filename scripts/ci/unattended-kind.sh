@@ -61,8 +61,11 @@ node=$(kind get nodes --name "$CLUSTER")
 docker exec "$node" mkdir -p /var/lib/hikyo-unattended-public /var/lib/hikyo-unattended-state/operator-custody/unattended
 docker cp "$fixture/public/." "$node:/var/lib/hikyo-unattended-public/" >/dev/null
 docker exec "$node" chown -R 65532:65532 /var/lib/hikyo-unattended-public
-docker exec "$node" chown -R 65532:65532 /var/lib/hikyo-unattended-state
-docker exec "$node" chmod 2770 /var/lib/hikyo-unattended-state
+docker exec "$node" chown 0:65532 /var/lib/hikyo-unattended-state
+docker exec "$node" chown -R 65532:65532 /var/lib/hikyo-unattended-state/operator-custody
+# Root-owned sticky parent protects private custody from other fsGroup members;
+# setgid and group permissions also satisfy kubelet's OnRootMismatch check.
+docker exec "$node" chmod 3770 /var/lib/hikyo-unattended-state
 docker exec "$node" chmod 0700 /var/lib/hikyo-unattended-state/operator-custody /var/lib/hikyo-unattended-state/operator-custody/unattended
 for release in a b c; do
 	mkdir -p "$work/build/image-root/$arch"

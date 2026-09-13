@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { act } from 'react';
+import { act, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle } from '../testkit/renderForm.tsx';
@@ -48,6 +48,37 @@ function SecretProbe() {
 }
 
 describe('runtime interruption', () => {
+  it('keeps a transient identity outage fenced until runtime recovery revalidates the cache', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ state: 'ready', phase: null })));
+    let changeFailure: (failure: Error | null) => void = () => { throw new Error('not mounted'); };
+    let completeRecovery: () => void = () => { throw new Error('recovery not started'); };
+    const refresh = vi.fn(() => new Promise<void>((resolve) => { completeRecovery = resolve; }));
+    const queries = new QueryClient();
+    function Probe() {
+      const [failure, setFailure] = useState<Error | null>(null);
+      changeFailure = setFailure;
+      return <RuntimeMaintenanceBoundary failure={failure} refreshSession={refresh} queries={queries}>
+        <input defaultValue="Preserved draft" />
+      </RuntimeMaintenanceBoundary>;
+    }
+    const result = await renderForm(<Probe />);
+    cleanup = result.unmount;
+    await settle();
+    const draft = result.container.querySelector('input');
+    await act(async () => { changeFailure(new Error('Identity unavailable')); });
+    expect(result.container.querySelector('[inert]')).not.toBeNull();
+    // The auth provider's own retry can succeed between runtime polls.
+    await act(async () => { changeFailure(null); });
+    expect(result.container.querySelector('[inert]')).not.toBeNull();
+    await advance(15_000);
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(result.container.querySelector('[inert]')).not.toBeNull();
+    await act(async () => { completeRecovery(); });
+    await settle();
+    expect(result.container.querySelector('dialog')).toBeNull();
+    expect(result.container.querySelector('input')).toBe(draft);
+  });
+
   it('keeps editing fenced through pending and failed cache revalidation after whoami succeeds', async () => {
     let statusReads = 0;
     let identityReads = 0;

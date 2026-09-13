@@ -31,7 +31,17 @@ export function RuntimeMaintenanceBoundary({ children, failure, refreshSession, 
 }) {
   const [status, setStatus] = useState<DisplayStatus>({ state: 'ready', phase: null });
   const latest = useRef({ failure, refreshSession });
+  const interrupted = useRef(false);
   latest.current = { failure, refreshSession };
+
+  useLayoutEffect(() => {
+    if (failure !== null) {
+      // An independent auth retry may clear failure before the next status poll.
+      // Only complete runtime/session/cache recovery may release this fence.
+      interrupted.current = true;
+      setStatus((current) => current.state === 'ready' ? { state: 'reconnecting' } : current);
+    }
+  }, [failure]);
 
   useEffect(() => {
     let disposed = false;
@@ -39,7 +49,6 @@ export function RuntimeMaintenanceBoundary({ children, failure, refreshSession, 
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let request: AbortController | undefined;
     let failures = 0;
-    let interrupted = false;
     let running = false;
 
     const poll = async () => {
@@ -58,18 +67,18 @@ export function RuntimeMaintenanceBoundary({ children, failure, refreshSession, 
         const result = runtimeStatus.parse(response.status === 404 ? { state: 'ready', phase: null } : await response.json());
         if (disposed) return;
         failures = 0;
-        if (result.state === 'ready' && (interrupted || latest.current.failure !== null)) {
+        if (result.state === 'ready' && (interrupted.current || latest.current.failure !== null)) {
           // Keep editing blocked until the root session has been revalidated.
           await latest.current.refreshSession(request.signal);
           request.signal.throwIfAborted();
           if (disposed) return;
         }
-        interrupted = result.state !== 'ready';
+        interrupted.current = result.state !== 'ready';
         setStatus(result);
         if (result.state !== 'ready' || latest.current.failure !== null) delay = 2_000;
       } catch {
         if (disposed) return;
-        interrupted = true;
+        interrupted.current = true;
         failures += 1;
         delay = Math.min(30_000, 1_000 * 2 ** Math.min(failures - 1, 5));
         setStatus({ state: 'reconnecting' });

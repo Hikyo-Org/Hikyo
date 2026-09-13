@@ -58,6 +58,14 @@ Operator: disabled
 {{- end }}
 
 Hikyo values land in native Kubernetes Secrets, which are plaintext at rest by default on K3s. Enable --secrets-encryption to encrypt them, and see the docs runbook.
+{{- if .Values.upgrade.unattended.enabled }}
+Unattended upgrades:
+  Persistent installation custody: PVC {{ .Values.upgrade.stateExistingClaim }}
+  State volume root: uid 0, gid 65532, mode 3770; operator-custody child: uid/gid 65532, mode 0700.
+  Retain the root-key Secret and custody PVC through every image replacement.
+  Enable only on the first deployment of an empty installation.
+  Runbook: https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/unattended-container-upgrades.md
+{{- else }}
 Manual upgrade artifacts:
   Public bundle and operator key: PVC {{ .Values.upgrade.existingClaim }} (read-only)
   Persistent installation custody: PVC {{ .Values.upgrade.stateExistingClaim }}
@@ -65,3 +73,4 @@ Manual upgrade artifacts:
   Keep these available on every boot; never restore installation custody from a DB backup.
   Stop all writers and run one verified migrator before replacing an existing release.
   Runbook: https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md
+{{- end }}
