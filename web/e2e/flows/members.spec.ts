@@ -122,15 +122,17 @@ test.describe('members and grants', () => {
 
   test('keeps project chrome and narrows the members projection from a project link', async ({
     page,
+    isMobile,
   }) => {
     await page.goto(`/orgs/${seed.org}/projects/${seed.project}/matrix`);
     const menu = page.getByRole('button', { name: 'Menu' });
-    if (await menu.isVisible()) await menu.click();
+    // Use the configured device: isVisible() can run before the SPA mounts.
+    if (isMobile) await menu.click();
     const projectNav = page.getByRole('navigation', { name: 'Project' });
     await projectNav.getByRole('link', { name: 'Members' }).click();
 
     await expect(page).toHaveURL(PROJECT_PATH);
-    if (await menu.isVisible()) await menu.click();
+    if (isMobile) await menu.click();
     await expect(page.getByRole('heading', { name: 'Project · payments' })).toBeVisible();
     await expect(
       page.getByRole('heading', { name: 'Members · payments', level: 1 }),
@@ -139,7 +141,7 @@ test.describe('members and grants', () => {
       'aria-current',
       'page',
     );
-    if (await menu.isVisible()) await page.keyboard.press('Escape');
+    if (isMobile) await page.keyboard.press('Escape');
 
     const scope = page.getByLabel('On scope', { exact: true });
     await expect(scope.locator(`option[value="project:${seed.project}"]`)).toHaveCount(1);
