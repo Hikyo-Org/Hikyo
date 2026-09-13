@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 52, while the
+// The runtime-created fixture includes migrations 45 through 53, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+8 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 52 only")
+	if len(current.Entries) != len(legacy.Entries)+9 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 53 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -314,6 +314,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_purpose_check CHECK (purpose IN ('adapter','reveal','copy'))")
 	}
 	for _, query := range []string{
+		"DROP INDEX audit_tenant_events_env_seq",
+		"DROP INDEX audit_tenant_events_project_seq",
 		"ALTER TABLE snapshots DROP COLUMN parameter_contract",
 		"ALTER TABLE environments DROP COLUMN parameters_json",
 		"ALTER TABLE federation_issuers DROP COLUMN ca_bundle_pem",
@@ -334,7 +336,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"DROP INDEX audit_instance_retention_unit",
 		"DROP TABLE audit_retention_policy",
 		"DROP TABLE ops_diagnostics",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53)",
 	} {
 		drillExec(t, db, query)
 	}

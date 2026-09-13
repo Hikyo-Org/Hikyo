@@ -42,7 +42,7 @@ No listener was started or changed. These seven findings cannot establish
 
 Cross-provider review: skipped because the user confirmed Claude is out of tokens.
 This is not a CLEAN cross-provider verdict. Commit, push and PR creation were
-subsequently authorized; merge and deployment are outside this delivery request.
+subsequently authorized, followed by merge-on-green authorization for PR #734.
 
 Validation passed: full CLI, store (including migrations and upgrade), importer,
 admission, release identity, build compatibility, upgrade gate and development
@@ -56,3 +56,11 @@ The local shell initially selected PostgreSQL 14 and the scratch cluster inherit
 the host timezone. Historical catalog checks refused that setup. PostgreSQL 18
 with UTC matches CI and passes the historical migration check. No pinned genesis
 or production schema-inspection logic was changed to make the tests pass.
+
+PR #734's supply-chain lane exposed the historical signed backup-drill fixture's
+explicit migration-52 ceiling. The required real-Cosign test reproduced that
+failure locally. The fixture now enumerates migration 53 and removes only its
+two indexes when constructing the historical schema-44 archive; the immutable
+prefix, pristine-data checks and pinned legacy-catalog verification remain.
+After correction, the full app suite passed in 222.668 seconds with PostgreSQL
+and the real-Cosign test required, and app `go vet` passed.
