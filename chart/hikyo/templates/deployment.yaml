@@ -147,7 +147,17 @@ spec:
             - --tls-key-file=/run/hikyo-tls/tls.key
             {{- end }}
           env:
-            {{- if and .Values.rollout.enabled .Values.rollout.enrolled .Values.rollout.upgradeSources }}
+            {{- if .Values.upgrade.unattended.enabled }}
+            - name: HIKYO_UPGRADE_UNATTENDED
+              value: "true"
+            - name: HIKYO_UPGRADE_STATE_DIR
+              value: /var/lib/hikyo-upgrade/operator-custody
+            - name: HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.upgrade.unattended.scratchDatabaseExistingSecret | quote }}
+                  key: {{ .Values.upgrade.unattended.scratchDatabaseKey | quote }}
+            {{- else if and .Values.rollout.enabled .Values.rollout.enrolled .Values.rollout.upgradeSources }}
             {{- $initial := index .Values.rollout.upgradeSources .Values.rollout.initialUpgradeSource }}
             {{- range $key, $value := (include "hikyo.rollout.upgradeEnvironment" $initial | fromJson) }}
             - name: {{ $key }}
@@ -230,14 +240,24 @@ spec:
             failureThreshold: 3
           startupProbe:
             httpGet:
+              {{- if .Values.upgrade.unattended.enabled }}
+              path: /healthz
+              {{- else }}
               path: /readyz
+              {{- end }}
               port: ops
             periodSeconds: 5
+            {{- if .Values.upgrade.unattended.enabled }}
+            failureThreshold: {{ .Values.upgrade.unattended.startupFailureThreshold }}
+            {{- else }}
             failureThreshold: 30
+            {{- end }}
           volumeMounts:
+            {{- if not .Values.upgrade.unattended.enabled }}
             - name: upgrade-public
               mountPath: /run/hikyo-upgrade
               readOnly: true
+            {{- end }}
             - name: upgrade-state
               mountPath: /var/lib/hikyo-upgrade
             {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
@@ -313,10 +333,12 @@ spec:
             {{- toYaml .Values.tls.reloaderResources | nindent 12 }}
         {{- end }}
       volumes:
+        {{- if not .Values.upgrade.unattended.enabled }}
         - name: upgrade-public
           persistentVolumeClaim:
             claimName: {{ .Values.upgrade.existingClaim }}
             readOnly: true
+        {{- end }}
         - name: upgrade-state
           persistentVolumeClaim:
             claimName: {{ .Values.upgrade.stateExistingClaim }}

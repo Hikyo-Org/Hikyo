@@ -494,7 +494,7 @@ func readAutomaticJournal(path string) (*automaticJournal, error) {
 		return nil, err
 	}
 	var journal automaticJournal
-	if definitions.DecodeStrict(raw, &journal) != nil || journal.Format != "hikyo.host-upgrade/v1" || journal.Target.Validate() != nil || journal.Source.Identity.Validate() != nil || journal.Source.Migrations.Validate() != nil || journal.Source.SchemaSHA256.Validate() != nil || journal.Route.Validate() != nil || journal.Hop < 0 || journal.Hop > upgradecompat.MaxHops {
+	if definitions.DecodeStrict(raw, &journal) != nil || (journal.Format != "hikyo.host-upgrade/v1" && journal.Format != "hikyo.container-upgrade/v1") || journal.Target.Validate() != nil || journal.Source.Identity.Validate() != nil || journal.Source.Migrations.Validate() != nil || journal.Source.SchemaSHA256.Validate() != nil || journal.Route.Validate() != nil || journal.Hop < 0 || journal.Hop > upgradecompat.MaxHops {
 		return nil, errors.New("invalid private upgrade journal")
 	}
 	switch journal.Phase {

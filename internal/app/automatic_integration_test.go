@@ -40,7 +40,7 @@ import (
 // production server and HTTP readiness are all the real implementations.
 func TestAutomaticUpgradePackagedNightlyRoute(t *testing.T) {
 	source := newUpgradeDrillFixture(t, store.EngineSQLite, true, true)
-	route, claims := automaticProcessRoute(t, source)
+	route, claims, _ := automaticProcessRoute(t, source)
 	for _, scenario := range []string{"success", "install-interruption", "health-failure"} {
 		t.Run(scenario, func(t *testing.T) {
 			failInstall := scenario == "install-interruption"
@@ -155,7 +155,7 @@ func TestAutomaticUpgradePackagedNightlyRoute(t *testing.T) {
 	}
 }
 
-func automaticProcessRoute(t *testing.T, source upgradeDrillFixture) (automaticRoute, [][]byte) {
+func automaticProcessRoute(t *testing.T, source upgradeDrillFixture) (automaticRoute, [][]byte, releasetrust.PinnedTrust) {
 	t.Helper()
 	work := t.TempDir()
 	directory := filepath.Join(work, "bundle")
@@ -236,7 +236,7 @@ func automaticProcessRoute(t *testing.T, source upgradeDrillFixture) (automaticR
 		raw := automaticProcessRead(t, binary)
 		route.Executables[identity] = selfupdate.PreparedNightly{Identity: identity, BinaryPath: binary, BinarySHA256: releaseidentity.Hash(raw), BundleDirectory: directory}
 	}
-	return route, claims
+	return route, claims, f.Pinned
 }
 
 func automaticProcessProof(t *testing.T, f upgradeDrillFixture, route automaticRoute) (*automaticProcessHost, *automaticJournal) {

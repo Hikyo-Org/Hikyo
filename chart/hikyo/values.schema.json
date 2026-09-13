@@ -20,10 +20,27 @@
         "targetManifestSHA256",
         "legacyWritersStopped"
       ],
+      "allOf": [
+        {
+          "if": {"properties": {"unattended": {"properties": {"enabled": {"const": true}}, "required": ["enabled"]}}, "required": ["unattended"]},
+          "then": {"properties": {"existingClaim": {"maxLength": 0}}},
+          "else": {"properties": {"existingClaim": {"minLength": 1}}}
+        }
+      ],
       "properties": {
+        "unattended": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "scratchDatabaseExistingSecret", "scratchDatabaseKey", "startupFailureThreshold"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "scratchDatabaseExistingSecret": {"type": "string"},
+            "scratchDatabaseKey": {"type": "string", "minLength": 1},
+            "startupFailureThreshold": {"type": "integer", "minimum": 1}
+          }
+        },
         "existingClaim": {
-          "type": "string",
-          "minLength": 1
+          "type": "string"
         },
         "stateExistingClaim": {
           "type": "string",

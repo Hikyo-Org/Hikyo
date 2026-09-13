@@ -1937,6 +1937,57 @@ func (e RotateRootKeyRequestPhase) Valid() bool {
 	}
 }
 
+// Defines values for RuntimeStatusPhase.
+const (
+	RuntimeStatusPhaseBackup       RuntimeStatusPhase = "backup"
+	RuntimeStatusPhaseHealthCheck  RuntimeStatusPhase = "health-check"
+	RuntimeStatusPhaseLessThannil  RuntimeStatusPhase = "<nil>"
+	RuntimeStatusPhaseMigration    RuntimeStatusPhase = "migration"
+	RuntimeStatusPhasePreparing    RuntimeStatusPhase = "preparing"
+	RuntimeStatusPhaseRestoreCheck RuntimeStatusPhase = "restore-check"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeStatusPhase enum.
+func (e RuntimeStatusPhase) Valid() bool {
+	switch e {
+	case RuntimeStatusPhaseBackup:
+		return true
+	case RuntimeStatusPhaseHealthCheck:
+		return true
+	case RuntimeStatusPhaseLessThannil:
+		return true
+	case RuntimeStatusPhaseMigration:
+		return true
+	case RuntimeStatusPhasePreparing:
+		return true
+	case RuntimeStatusPhaseRestoreCheck:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RuntimeStatusState.
+const (
+	RuntimeStatusStateMaintenance      RuntimeStatusState = "maintenance"
+	RuntimeStatusStateReady            RuntimeStatusState = "ready"
+	RuntimeStatusStateRecoveryRequired RuntimeStatusState = "recovery-required"
+)
+
+// Valid indicates whether the value is a known member of the RuntimeStatusState enum.
+func (e RuntimeStatusState) Valid() bool {
+	switch e {
+	case RuntimeStatusStateMaintenance:
+		return true
+	case RuntimeStatusStateReady:
+		return true
+	case RuntimeStatusStateRecoveryRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SamlMetadataSource.
 const (
 	SamlMetadataSourceFile SamlMetadataSource = "file"
@@ -6756,6 +6807,18 @@ type RotateRootKeyRequest struct {
 // old wrapper. Run in that order.
 type RotateRootKeyRequestPhase string
 
+// RuntimeStatus defines model for RuntimeStatus.
+type RuntimeStatus struct {
+	Phase *RuntimeStatusPhase `json:"phase"`
+	State RuntimeStatusState  `json:"state"`
+}
+
+// RuntimeStatusPhase defines model for RuntimeStatus.Phase.
+type RuntimeStatusPhase string
+
+// RuntimeStatusState defines model for RuntimeStatus.State.
+type RuntimeStatusState string
+
 // SamlACSRequest defines model for SamlACSRequest.
 type SamlACSRequest struct {
 	// RelayState Server-minted opaque transaction handle, never a continuation URL.
@@ -10152,6 +10215,9 @@ type ServerInterface interface {
 	// ScimReplaceUser Replace a provisioned user (RFC replacement).
 	// (PUT /api/v1/orgs/{org}/scim/v2/{binding}/Users/{id})
 	ScimReplaceUser(w http.ResponseWriter, r *http.Request, org OrgID, binding ScimBindingID, id ScimResourceID)
+	// GetRuntimeStatus Public runtime availability for maintenance and reconnection.
+	// (GET /api/v1/runtime/status)
+	GetRuntimeStatus(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -11829,6 +11895,12 @@ func (_ Unimplemented) ScimPatchUser(w http.ResponseWriter, r *http.Request, org
 // ScimReplaceUser Replace a provisioned user (RFC replacement).
 // (PUT /api/v1/orgs/{org}/scim/v2/{binding}/Users/{id})
 func (_ Unimplemented) ScimReplaceUser(w http.ResponseWriter, r *http.Request, org OrgID, binding ScimBindingID, id ScimResourceID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetRuntimeStatus Public runtime availability for maintenance and reconnection.
+// (GET /api/v1/runtime/status)
+func (_ Unimplemented) GetRuntimeStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -21997,6 +22069,20 @@ func (siw *ServerInterfaceWrapper) ScimReplaceUser(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// GetRuntimeStatus operation middleware
+func (siw *ServerInterfaceWrapper) GetRuntimeStatus(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRuntimeStatus(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -22110,6 +22196,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/runtime/status", wrapper.GetRuntimeStatus)
+	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/meta", wrapper.GetMeta)
 	})
@@ -53933,6 +54022,57 @@ func (response ScimReplaceUser503ApplicationScimPlusJSONResponse) VisitScimRepla
 	return err
 }
 
+type GetRuntimeStatusRequestObject struct {
+}
+
+type GetRuntimeStatusResponseObject interface {
+	VisitGetRuntimeStatusResponse(w http.ResponseWriter) error
+}
+
+type GetRuntimeStatus200JSONResponse RuntimeStatus
+
+func (response GetRuntimeStatus200JSONResponse) VisitGetRuntimeStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRuntimeStatus429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetRuntimeStatus429JSONResponse) VisitGetRuntimeStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRuntimeStatus503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetRuntimeStatus503JSONResponse) VisitGetRuntimeStatusResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ResetCredential Issue a credential-establishment authority for another account.
@@ -54772,6 +54912,9 @@ type StrictServerInterface interface {
 	// ScimReplaceUser Replace a provisioned user (RFC replacement).
 	// (PUT /api/v1/orgs/{org}/scim/v2/{binding}/Users/{id})
 	ScimReplaceUser(ctx context.Context, request ScimReplaceUserRequestObject) (ScimReplaceUserResponseObject, error)
+	// GetRuntimeStatus Public runtime availability for maintenance and reconnection.
+	// (GET /api/v1/runtime/status)
+	GetRuntimeStatus(ctx context.Context, request GetRuntimeStatusRequestObject) (GetRuntimeStatusResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -63163,6 +63306,30 @@ func (sh *strictHandler) ScimReplaceUser(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ScimReplaceUserResponseObject); ok {
 		if err := validResponse.VisitScimReplaceUserResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRuntimeStatus operation middleware
+func (sh *strictHandler) GetRuntimeStatus(w http.ResponseWriter, r *http.Request) {
+	var request GetRuntimeStatusRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRuntimeStatus(ctx, request.(GetRuntimeStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRuntimeStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRuntimeStatusResponseObject); ok {
+		if err := validResponse.VisitGetRuntimeStatusResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

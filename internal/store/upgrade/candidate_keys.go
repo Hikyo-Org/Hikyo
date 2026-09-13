@@ -30,6 +30,13 @@ func (s *Session) HealthyKeys(ctx context.Context, expected State) (*candidateKe
 	return s.existingKeys(ctx, expected, Healthy)
 }
 
+// FrozenKeys exposes the same read-only source hierarchy and configuration
+// while an authenticated backup intent retains maintenance. It grants no
+// runtime transactions and expires with the owning migration session.
+func (s *Session) FrozenKeys(ctx context.Context, expected State) (*candidateKeys, error) {
+	return s.existingKeys(ctx, expected, BackupPreparing)
+}
+
 func (s *Session) existingKeys(ctx context.Context, expected State, phase Phase) (*candidateKeys, error) {
 	// Keep the capability's authority snapshot independent of caller mutation.
 	if expected.Pending != nil {
@@ -48,17 +55,18 @@ func (s *Session) existingKeys(ctx context.Context, expected State, phase Phase)
 }
 
 type candidateKeys struct {
-	session          *Session
-	expected         State
-	phase            Phase
-	operatorRecovery bool
+	session                  *Session
+	expected                 State
+	phase                    Phase
+	operatorRecovery         bool
+	maintenanceConfiguration bool
 }
 
 func (r *candidateKeys) check(ctx context.Context) error {
 	if r == nil || r.session == nil || r.expected.Pending == nil || r.expected.Pending.Phase != r.phase {
 		return ErrConflict
 	}
-	if r.operatorRecovery {
+	if r.operatorRecovery || r.maintenanceConfiguration {
 		if err := r.session.check(); err != nil {
 			return err
 		}
@@ -78,6 +86,10 @@ func (r *candidateKeys) check(ctx context.Context) error {
 		}
 	case Healthy:
 		if r.expected.Maintenance {
+			return ErrConflict
+		}
+	case BackupPreparing:
+		if !r.expected.Maintenance || r.expected.Pending.Preparation == nil {
 			return ErrConflict
 		}
 	default:

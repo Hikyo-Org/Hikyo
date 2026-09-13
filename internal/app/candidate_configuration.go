@@ -23,6 +23,18 @@ func checkCandidateConfiguration(ctx context.Context, cfg *config.Config, projec
 }
 
 func checkCandidateConfigurationFromSources(ctx context.Context, cfg *config.Config, projection *upgrade.CandidateConfiguration, values map[string]string, sourcesDirectory string) error {
+	return checkedCandidateConfiguration(ctx, cfg, projection, values, sourcesDirectory, nil)
+}
+
+// resolveCandidateConfiguration captures validated managed configuration without
+// opening a listener or retaining the encrypted configuration reader capability.
+func resolveCandidateConfiguration(ctx context.Context, cfg *config.Config, projection *upgrade.CandidateConfiguration, values map[string]string) (*config.Config, error) {
+	var effective *config.Config
+	err := checkedCandidateConfiguration(ctx, cfg, projection, values, deploymentSourcesDirectory, func(resolved *config.Config) { effective = resolved })
+	return effective, err
+}
+
+func checkedCandidateConfiguration(ctx context.Context, cfg *config.Config, projection *upgrade.CandidateConfiguration, values map[string]string, sourcesDirectory string, capture func(*config.Config)) error {
 	var bundle *runtimeconfig.Bundle
 	var err error
 	// Both initial seed and missing-node recovery use the same lazy, captured
@@ -142,5 +154,11 @@ func checkCandidateConfigurationFromSources(ctx context.Context, cfg *config.Con
 	}
 	// ApplyManagedOwnerAndNodeValues above validates the effective TLS content.
 	// An existing node overlay does not consult retired bootstrap sources.
-	return ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if capture != nil {
+		capture(cfg)
+	}
+	return nil
 }

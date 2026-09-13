@@ -300,6 +300,57 @@ func runServer(ctx context.Context, args []string) int {
 	for _, w := range warnings {
 		log.Warn(w)
 	}
+	window := app.NewUpgradeWindow()
+	upgradeCtx, cancelUpgrade := context.WithCancel(ctx)
+	defer cancelUpgrade()
+	var windowWatchDone chan struct{}
+	cleanupUpgrade, err := app.RunUnattendedUpgrade(upgradeCtx, cfg, app.UnattendedUpgradeOptions{
+		Progress: window.Progress,
+		PreparedConfiguration: func(effective *config.Config) error {
+			if err := window.Start(effective); err != nil {
+				return err
+			}
+			windowWatchDone = make(chan struct{})
+			go func() {
+				defer close(windowWatchDone)
+				if err := window.Wait(upgradeCtx); err != nil {
+					log.Error("upgrade maintenance listener failed", "err", err)
+					cancelUpgrade()
+				}
+			}()
+			return nil
+		},
+	})
+	defer func() {
+		if err := cleanupUpgrade(); err != nil {
+			log.Error("release unattended upgrade custody", "err", err)
+		}
+	}()
+	defer func() {
+		cancelUpgrade()
+		if windowWatchDone != nil {
+			<-windowWatchDone
+		}
+		if err := window.Close(); err != nil {
+			log.Error("close upgrade maintenance listener", "err", err)
+		}
+	}()
+	if err != nil {
+		log.Error("unattended upgrade failed", "err", err)
+		if window.Started() && ctx.Err() == nil && upgradeCtx.Err() == nil {
+			window.Progress("recovery-required")
+			_ = window.Wait(ctx)
+		}
+		return 1
+	}
+	cancelUpgrade()
+	if windowWatchDone != nil {
+		<-windowWatchDone
+	}
+	if err := window.Close(); err != nil {
+		log.Error("upgrade maintenance handoff failed", "err", err)
+		return 1
+	}
 	srv, err := app.Boot(ctx, cfg, log)
 	if err != nil {
 		log.Error("startup failed", "err", err)

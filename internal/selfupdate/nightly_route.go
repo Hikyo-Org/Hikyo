@@ -41,6 +41,10 @@ func (i *Installer) AssembleNightlyRoute(ctx context.Context, target PreparedNig
 	if err != nil {
 		return "", err
 	}
+	known.Floor, err = i.preparedSnapshotFloor(known.Floor)
+	if err != nil {
+		return "", err
+	}
 	root, err := decodeStamped("trust root", i.config.TrustRootBase64)
 	if err != nil {
 		return "", err

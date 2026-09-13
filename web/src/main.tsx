@@ -29,7 +29,7 @@ if (host === null) {
 
 createRoot(host).render(
   <StrictMode>
-    <AuthProvider>
+    <AuthProvider monitorRuntime>
       <App />
     </AuthProvider>
   </StrictMode>,

@@ -115,7 +115,8 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// one. `logout` and `whoami` take an artifact but are classified here
 	// too, because an unresolvable artifact is exactly the case they must not
 	// distinguish.
-	"http:GET /api/v1/meta": {Class: ClassUnauthenticated},
+	"http:GET /api/v1/runtime/status": {Class: ClassUnauthenticated},
+	"http:GET /api/v1/meta":           {Class: ClassUnauthenticated},
 	"http:POST /api/v1/auth/credential/establish": {Class: ClassUnauthenticated, Events: []audit.EventType{
 		audit.EventAuthCredentialEstablished,
 		audit.EventAuthAuthorityRefused,

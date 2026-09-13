@@ -165,7 +165,7 @@ export function App() {
           <span className="alert__glyph" aria-hidden="true">
             !
           </span>
-          <span>Could not reach the server. Reload once it is back.</span>
+          <span>Reconnecting to the server automatically.</span>
         </p>
       </main>
       <ToastViewport />

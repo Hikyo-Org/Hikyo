@@ -1,6 +1,7 @@
 // Package upgradecustody owns encrypted, operator-only installation custody.
-// Only the interactive operator process may open a Vault. Its private material
-// must never enter server configuration, deployment adapters, or child argv/env.
+// Host custody remains root-only. An explicitly enrolled unattended container
+// may use the local-owner API, wrapping custody with its existing root key.
+// Private material must never enter child argv/env or public configuration.
 package upgradecustody
 
 import (

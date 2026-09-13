@@ -26,8 +26,9 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// #680 adds two revision-diff routes and one disclosure event surface.
 	// Account profiles add two self-service routes and one audit event.
 	// #723 adds two local parameter-declaration routes and their operation links.
-	if got := len(facts.Wire()); got != 329 {
-		t.Fatalf("wire entries = %d, want 329", got)
+	// Container maintenance adds one unauthenticated runtime status route.
+	if got := len(facts.Wire()); got != 330 {
+		t.Fatalf("wire entries = %d, want 330", got)
 	}
 	if got := len(facts.WireRoutes()); got != 234 {
 		t.Fatalf("operation-linked entries = %d, want 234", got)

@@ -1,0 +1,58 @@
+---
+title: Unattended container upgrades
+description: Opt into noninteractive Docker and Kubernetes upgrades with persistent local recovery custody.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/container-upgrades.mdx
+---
+
+**Release status:** implementation and deployment acceptance are being verified.
+Older published images may not support this option. See the
+[design and acceptance record](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/design/unattended-container-upgrades.md).
+
+Choose unattended upgrades at the first deployment of an empty installation.
+Later image replacements can then verify the signed release, back up, restore
+to scratch, migrate and resume serving without a terminal or manual approval.
+[Manual upgrades](/docs/upgrades/#manual-upgrade-inputs) remain the default.
+
+## Choose a deployment
+
+| Deployment | Initial opt-in | Persistent prerequisites |
+| --- | --- | --- |
+| Docker with SQLite | `HIKYO_UPGRADE_UNATTENDED=true` | SQLite data, root key and private upgrade directory |
+| Kubernetes with PostgreSQL | `upgrade.unattended.enabled: true` | One non-HA replica, root-key Secret, upgrade PVC and a separate empty scratch database |
+
+Follow the complete
+[deployment runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/unattended-container-upgrades.md)
+for the [Compose example](https://github.com/Hikyo-Org/Hikyo/blob/main/install/compose/server-unattended.yaml),
+Helm values, Secret references, storage ownership and probes. Existing manually
+managed databases cannot be enrolled just by adding the flag.
+
+## What the opt-in means
+
+The container holds encrypted local backup and attestation keys, wrapped with a
+secret derived from its root key. A compromised runtime that can read that root
+key also has recovery authority. Keep the encrypted vault and root key in your
+recovery process; local custody does not provide an off-host copy.
+
+Watchtower or your Kubernetes image updater chooses the new image. Hikyo verifies
+that exact release and its permitted migration route. It never changes the target
+to a newer release discovered during boot. The server needs no Docker socket,
+Git credentials or Kubernetes deployment token.
+
+## During an upgrade
+
+Writers are excluded before the encrypted backup and real scratch restore.
+Readiness stays false until migration and health checks succeed. An already
+loaded browser shows confirmed maintenance phases, pauses editing and reconnects
+automatically. The URL and ordinary drafts survive; secrets still follow session
+lifetime rules. Changes are never submitted automatically.
+
+A generic connection failure is shown as reconnecting. A fresh navigation while
+Kubernetes has no ready backend may show the ingress's unavailable page instead
+of Hikyo's interface.
+
+## If recovery is required
+
+An uncertain or failed schema write keeps the instance fenced. Preserve its
+journal and backup for [operator recovery](/docs/backup-and-restore/). There is no
+automatic database restore or old-image rollback. Removing the flag or deleting
+upgrade state cannot safely bypass recovery.

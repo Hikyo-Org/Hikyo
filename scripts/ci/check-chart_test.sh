@@ -9,6 +9,7 @@ script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 chart="$script_dir/../../chart/hikyo"
 
 "$script_dir/check-chart.sh" "$chart" >/dev/null
+sh "$script_dir/check-unattended-chart_test.sh"
 
 # refute CHART DESCRIPTION FILE SED-EXPR
 # copies the chart, applies SED-EXPR to FILE (relative to the chart), and asserts
@@ -58,7 +59,7 @@ refute 'server root-key arg missing' \
 
 refute 'root-key source widened to group-readable' \
 	templates/deployment.yaml \
-	'0,/defaultMode: 0400/s//defaultMode: 0440/'
+	's/defaultMode: 0400/defaultMode: 0440/'
 
 refute 'root-key staging bypassed' \
 	templates/deployment.yaml \
@@ -66,7 +67,7 @@ refute 'root-key staging bypassed' \
 
 refute 'semantic readiness path replaced' \
 	templates/deployment.yaml \
-	'0,/path: \/readyz/s//path: \/healthz/'
+	's|path: /readyz|path: /healthz|'
 
 refute 'external origin env missing' \
 	templates/deployment.yaml \

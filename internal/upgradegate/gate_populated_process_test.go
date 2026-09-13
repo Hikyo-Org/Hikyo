@@ -85,7 +85,7 @@ func populateProcessSource(t *testing.T, db *store.DB, kr *crypto.Keyring) {
 
 func TestGatePopulatedProcessCrashRoutes(t *testing.T) {
 	for _, engine := range []releaseidentity.Engine{releaseidentity.SQLite, releaseidentity.Postgres} {
-		for _, scenario := range []string{"direct-sql-complete", "multihop-first-healthy", "multihop-final-schema-applied"} {
+		for _, scenario := range []string{"direct-sql-complete", "multihop-first-healthy", "multihop-final-schema-applied", "multihop-backup-preparing"} {
 			t.Run(string(engine)+"/"+scenario, func(t *testing.T) {
 				cfg := upgradegate.GateStoreForProcessTest(t, engine)
 				manifest, err := releaseidentity.BuildMigrationManifest(store.MigrationsFS, "migrations/"+string(engine), engine)
@@ -140,7 +140,39 @@ func TestGatePopulatedProcessCrashRoutes(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				exported, err := (&service.Backup{DB: db, Options: backup.Options{Recipients: []string{recipient}}}).ExportUpgrade(t.Context(), t.TempDir(), plan, nil)
+				operator, err := backupreceipt.PinOperator(booted.State.InstanceID, fixture.Signer.PrimaryPublic)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var exported service.ExportResult
+				if scenario == "multihop-backup-preparing" {
+					request.Target, request.Operator, request.Mode = fixture.Identities[target], operator, upgradegate.PrepareBackup
+					frozen, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(target))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if frozen.State.Pending.Phase != upgrade.BackupPreparing || frozen.State.Applied != booted.State.Applied {
+						t.Fatal("pre-backup fence changed installed source")
+					}
+					err = upgrade.WithLock(t.Context(), cfg, func(session *upgrade.Session) error {
+						authority, err := session.PrepareExport(t.Context(), plan)
+						if err != nil {
+							return err
+						}
+						prepared, err := store.OpenPreparation(t.Context(), processStoreConfig(cfg), authority)
+						if err != nil {
+							return err
+						}
+						defer prepared.Close()
+						exported, err = service.ExportPreparedUpgrade(t.Context(), prepared, backup.Options{Recipients: []string{recipient}}, t.TempDir(), plan, nil)
+						return err
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					exported, err = (&service.Backup{DB: db, Options: backup.Options{Recipients: []string{recipient}}}).ExportUpgrade(t.Context(), t.TempDir(), plan, nil)
+				}
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -153,10 +185,6 @@ func TestGatePopulatedProcessCrashRoutes(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer pinned.Close()
-				operator, err := backupreceipt.PinOperator(booted.State.InstanceID, fixture.Signer.PrimaryPublic)
-				if err != nil {
-					t.Fatal(err)
-				}
 				drill, err := app.DrillUpgrade(t.Context(), app.UpgradeDrillRequest{Scratch: processStoreConfig(upgradegate.GateStoreForProcessTest(t, engine)), Ciphertext: pinned, Receipt: receipt, Plan: plan, Operator: operator, Unlock: backup.Unlock{Identity: identity}, RootKey: bytes.Clone(root), Principal: domain.PrincipalID("usr_process"), Scope: domain.Scope{Org: "org_process", Project: "prj_process"}, Now: time.Now().UTC(), Lifetime: time.Hour})
 				if err != nil {
 					t.Fatal(err)
@@ -166,11 +194,22 @@ func TestGatePopulatedProcessCrashRoutes(t *testing.T) {
 				}
 				request.Target, request.Operator, request.Ciphertext = fixture.Identities[target], operator, pinned
 				request.Evidence = backupreceipt.EvidenceMaterial{Receipt: receipt, Attestation: drill.Attestation, Signature: trustfixture.Sign(t, fixture.Signer.PrimarySigner, drill.Attestation)}
+				if scenario == "multihop-backup-preparing" {
+					request.Mode = upgradegate.PrepareRoute
+					prepared, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(target))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if prepared.State.Pending.Phase != upgrade.Prepared || prepared.State.Pending.Preparation != nil || prepared.State.Pending.Target != fixture.Identities[1] || prepared.Admission.Valid() {
+						t.Fatal("latest coordinator did not prepare historical first hop without admission")
+					}
+					request.Mode = upgradegate.Boot
+				}
 				if err := db.Close(); err != nil {
 					t.Fatal(err)
 				}
 				current, boundary := 1, "sql-complete"
-				if scenario == "multihop-first-healthy" {
+				if scenario == "multihop-first-healthy" || scenario == "multihop-backup-preparing" {
 					boundary = "healthy"
 				}
 				if scenario == "multihop-final-schema-applied" {
@@ -199,7 +238,7 @@ func TestGatePopulatedProcessCrashRoutes(t *testing.T) {
 					t.Fatal("refused old binary changed durable route", err)
 				}
 				resumed, err := upgradegate.RunSignedGateProcessFixture(t, request, claim(current))
-				if scenario == "multihop-first-healthy" {
+				if scenario == "multihop-first-healthy" || scenario == "multihop-backup-preparing" {
 					if !errors.Is(err, upgradegate.ErrNextBinary) {
 						t.Fatalf("completed intermediate binary became serving: %v", err)
 					}

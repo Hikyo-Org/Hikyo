@@ -238,8 +238,15 @@ func (s *Session) Prepare(ctx context.Context, expected State, operation Operati
 	if err != nil {
 		return State{}, err
 	}
-	if expected.Pending == nil || expected.Pending.Phase != Healthy || operation.Source != expected.Applied || operation.SourceSchemaDigest != expected.SchemaDigest || operation.SourceMigrationDigest != expected.MigrationDigest || operation.Generation != generation || operation.RecoveryIncarnation != expected.RecoveryIncarnation || operation.Phase != Prepared || operation.Invalidated {
+	if expected.Pending == nil || (expected.Pending.Phase != Healthy && expected.Pending.Phase != BackupPreparing) || operation.Source != expected.Applied || operation.SourceSchemaDigest != expected.SchemaDigest || operation.SourceMigrationDigest != expected.MigrationDigest || operation.Generation != generation || operation.RecoveryIncarnation != expected.RecoveryIncarnation || operation.Phase != Prepared || operation.Invalidated || operation.Preparation != nil {
 		return State{}, ErrConflict
+	}
+	if expected.Pending.Phase == BackupPreparing {
+		intent := expected.Pending.Preparation
+		proof := operation.Acceptance.Attestation
+		if intent == nil || operation.Hop != 0 || operation.RouteDigest != intent.RouteDigest || proof == nil || proof.OperatorKeyID != intent.OperatorKeyID {
+			return State{}, ErrConflict
+		}
 	}
 	next.Pending = &operation
 	next.Generation, next.Maintenance = generation, true

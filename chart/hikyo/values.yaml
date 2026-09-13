@@ -45,11 +45,22 @@ rootKey:
   existingSecret: ""
   key: root-key
 
-# Manual, verified deployment inputs. Populate these PVCs before installation.
-# Neither the server nor the secrets delivery operator prepares or applies an
-# upgrade. Read docs/operations/manual-upgrades.md for the exact directory layout.
+# Upgrade storage and default manual deployment inputs. Populate the state PVC
+# before installation. Manual mode also needs public evidence; the explicit
+# unattended opt-in prepares its own verified evidence and local recovery vault.
 upgrade:
-  # Read-only public bundle, operator.pub and optional evidence/backup.age.
+  # Choose at first deployment. Grants this container encrypted local recovery
+  # custody; never bypasses signed release, backup/restore or migration gates.
+  unattended:
+    enabled: false
+    # Existing Secret holding a DSN for a separate empty PostgreSQL scratch DB.
+    # Never put DSN values in Helm values. Used only when enabled.
+    scratchDatabaseExistingSecret: ""
+    scratchDatabaseKey: HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN
+    # 5-second startup probes: allow 15 minutes for signed artifact preflight.
+    # Once maintenance starts, /healthz stays live while /readyz stays false.
+    startupFailureThreshold: 180
+  # Manual mode only: read-only public bundle, operator.pub and evidence/backup.age.
   # Use regular files; projected ConfigMap/Secret symlinks are refused by readers.
   existingClaim: ""
   # Separate persistent installation pin/journal, never restored from DB backup.

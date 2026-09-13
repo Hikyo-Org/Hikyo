@@ -48,7 +48,8 @@ func (s *Session) PrepareExport(ctx context.Context, plan upgradecompat.Plan) (P
 		state := source.Ledger
 		healthy := state.Pending.Phase == Healthy && !state.Maintenance && !state.Pending.Invalidated
 		restored := state.Pending.Phase == RestoreRequired && state.Maintenance && state.Pending.Invalidated
-		if !healthy && !restored {
+		fenced := state.Pending.Phase == BackupPreparing && state.Maintenance && !state.Pending.Invalidated && state.Pending.Preparation != nil && state.Pending.Preparation.RouteDigest == plan.Digest() && state.Pending.Preparation.Target == plan.Target()
+		if !healthy && !restored && !fenced {
 			return PreparationAdmission{}, ErrConflict
 		}
 	}

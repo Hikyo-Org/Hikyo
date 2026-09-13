@@ -68,7 +68,7 @@ func (i *Installer) extractPreparedBinary(ctx context.Context, directory string,
 	}
 	matched := false
 	for _, artifact := range release.Artifacts() {
-		if artifact.Name == name && artifact.Kind == "binary" && artifact.Platform == runtime.GOOS+"/"+runtime.GOARCH {
+		if artifact.Name == name && artifact.Kind == "binary" && (artifact.Platform == runtime.GOOS+"/"+runtime.GOARCH || release.Identity().Profile == releaseidentity.StableV1 && artifact.Platform == "") {
 			matched = true
 		}
 	}

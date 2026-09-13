@@ -41,6 +41,7 @@ const (
 	SchemaWriteStarted Phase = "schema-write-started"
 	SchemaApplied      Phase = "schema-applied"
 	Healthy            Phase = "healthy"
+	BackupPreparing    Phase = "backup-preparing"
 	RestoreRequired    Phase = "restore-required"
 	FreshGenesis             = releaseidentity.FreshGenesisV1
 	LegacyGenesis            = releaseidentity.LegacyGenesisV1
@@ -107,6 +108,17 @@ type Operation struct {
 	Phase                 Phase                    `json:"phase"`
 	// Invalidated marks restored historical evidence. It can never resume.
 	Invalidated bool `json:"invalidated"`
+	// Preparation freezes a completed source before backup. It is removed
+	// before the first migration candidate starts, including historical builds.
+	Preparation *BackupPreparation `json:"preparation,omitempty"`
+}
+
+// BackupPreparation binds the maintenance interval before a backup exists.
+// The completed operation remains intact so Applied never claims a new release.
+type BackupPreparation struct {
+	Target        releaseidentity.Identity `json:"target"`
+	RouteDigest   releaseidentity.Digest   `json:"route_digest"`
+	OperatorKeyID releaseidentity.Digest   `json:"operator_key_id"`
 }
 
 type State struct {
@@ -145,6 +157,14 @@ func (s State) Validate() error {
 	}
 	p := s.Pending
 	if p == nil {
+		return ErrCorrupt
+	}
+	if p.Phase == BackupPreparing {
+		preparation := p.Preparation
+		if preparation == nil || p.Invalidated || preparation.Target.Validate() != nil || preparation.RouteDigest.Validate() != nil || preparation.OperatorKeyID.Validate() != nil || !s.Maintenance || p.Hop+1 != p.RouteLength || preparation.Target.Sequence <= p.Target.Sequence {
+			return ErrCorrupt
+		}
+	} else if p.Preparation != nil {
 		return ErrCorrupt
 	}
 	if p.Kind != UpgradeOperation && p.Kind != RecoveryOperation {
@@ -204,8 +224,8 @@ func (s State) Validate() error {
 		if !s.Maintenance || s.Applied != p.Source || s.MigrationDigest != p.SourceMigrationDigest || s.SchemaDigest != p.SourceSchemaDigest {
 			return ErrCorrupt
 		}
-	case Healthy:
-		if s.Maintenance != (p.Hop+1 < p.RouteLength) || s.Applied != (Source{Release: p.Target}) || s.MigrationDigest != p.TargetMigrationDigest || s.SchemaDigest != p.TargetSchemaDigest {
+	case Healthy, BackupPreparing:
+		if s.Maintenance != (p.Phase == BackupPreparing || p.Hop+1 < p.RouteLength) || s.Applied != (Source{Release: p.Target}) || s.MigrationDigest != p.TargetMigrationDigest || s.SchemaDigest != p.TargetSchemaDigest {
 			return ErrCorrupt
 		}
 	default:

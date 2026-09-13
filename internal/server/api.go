@@ -138,6 +138,7 @@ type DefinitionsService interface {
 
 // API implements the generated strict server.
 type API struct {
+	Runtime         RuntimeStatusSource
 	SelfConfig      *service.SelfConfig
 	Discovery       *service.Discovery
 	Auth            AuthService

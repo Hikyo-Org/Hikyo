@@ -48,7 +48,8 @@ var SpecYAML []byte
 // operation remains revision 1; clients gate only the new verbs on revision 2.
 // Revision 3 adds environment parameter operations and delivery snapshot revision
 // metadata. Existing operation minimums remain stable for older clients.
-const Revision = 3
+// Revision 4 adds public runtime maintenance status.
+const Revision = 4
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

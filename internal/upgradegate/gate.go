@@ -27,6 +27,14 @@ type Mode string
 const (
 	Boot    Mode = "boot"
 	Migrate Mode = "migrate"
+	// PrepareBackup authenticates a route and freezes its source before export.
+	PrepareBackup Mode = "prepare-backup"
+	// PrepareRoute attaches verified recovery evidence without running SQL.
+	// The final target coordinator can then launch an older first-hop binary.
+	PrepareRoute Mode = "prepare-route"
+	// MaintenanceConfiguration opens only the authenticated managed transport
+	// projection during a resumed maintenance operation. It never migrates.
+	MaintenanceConfiguration Mode = "maintenance-configuration"
 )
 
 var (
@@ -90,13 +98,13 @@ func RunDevelopment(ctx context.Context, request Request) (Result, error) {
 }
 
 func run(ctx context.Context, request Request, build []byte, domain upgrade.TrustDomain, verifyBuild func(upgradecompat.VerifiedNode) error) (Result, error) {
-	if request.Mode != Boot && request.Mode != Migrate {
+	if request.Mode != Boot && request.Mode != Migrate && request.Mode != PrepareBackup && request.Mode != PrepareRoute && request.Mode != MaintenanceConfiguration {
 		return Result{}, errors.New("unknown upgrade gate operation")
 	}
 	if request.Store.Engine.Validate() != nil || domain.Validate() != nil {
 		return Result{}, errors.New("invalid upgrade datastore or trust domain")
 	}
-	if request.Mode == Boot && len(request.RootKey) != crypto.KeySize {
+	if (request.Mode == Boot || request.Mode == MaintenanceConfiguration) && len(request.RootKey) != crypto.KeySize {
 		return Result{}, crypto.ErrRootKeyFormat
 	}
 	diagnostics.Printf(ctx, 1, "Inspecting installed schema and release trust")
@@ -108,6 +116,9 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 	absent := errors.Is(err, upgrade.ErrAbsent)
 	if err != nil && !absent {
 		return Result{}, err
+	}
+	if absent && (request.Mode == PrepareBackup || request.Mode == PrepareRoute || request.Mode == MaintenanceConfiguration) {
+		return Result{}, errors.New("unattended preparation requires an enrolled released source")
 	}
 	rootDigest := releaseidentity.Hash(request.Pinned.Root)
 	floor := releaseidentity.SnapshotFloor{}
@@ -153,6 +164,9 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 		defer custody.close()
 		if custody.value.Journal != nil {
 			return Result{}, errors.New("operator rotation incomplete; resume the exact local operator command")
+		}
+		if request.Mode == MaintenanceConfiguration && custody.value.InstanceID == "" {
+			return Result{}, errors.New("maintenance configuration requires bound installation custody")
 		}
 	}
 	var result Result
@@ -234,6 +248,17 @@ func run(ctx context.Context, request Request, build []byte, domain upgrade.Trus
 		}
 		if current.Pending == nil {
 			return ErrRestoreRequired
+		}
+		if request.Mode == MaintenanceConfiguration {
+			result, err = inspectMaintenanceConfiguration(ctx, session, request, bundle, node, current)
+			return err
+		}
+		if request.Mode == PrepareBackup || request.Mode == PrepareRoute {
+			result, err = prepareUnattendedRoute(ctx, session, request, bundle, node, current, rootDigest)
+			return err
+		}
+		if current.Pending.Phase == upgrade.BackupPreparing {
+			return ErrNextBinary
 		}
 		if current.Pending.Invalidated {
 			observed, source, err := inspectSource(ctx, request.Store, bundle)

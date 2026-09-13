@@ -92,7 +92,8 @@ func (r UpgradeExportRequest) bind(inspected upgrade.InstalledSource, m *Manifes
 		state := inspected.Ledger
 		healthy := !state.Maintenance && state.Pending != nil && state.Pending.Phase == upgrade.Healthy && !state.Pending.Invalidated
 		restored := r.preparation.Valid() && state.Maintenance && state.Pending != nil && state.Pending.Phase == upgrade.RestoreRequired && state.Pending.Invalidated
-		if r.LegacyProposal != nil || (!healthy && !restored) {
+		frozen := r.preparation.Valid() && state.Maintenance && state.Pending != nil && state.Pending.Phase == upgrade.BackupPreparing && !state.Pending.Invalidated && state.Pending.Preparation != nil && state.Pending.Preparation.RouteDigest == r.Plan.Digest() && state.Pending.Preparation.Target == r.Plan.Target()
+		if r.LegacyProposal != nil || (!healthy && !restored && !frozen) {
 			return errors.New("upgrade export requires healthy current source authority")
 		}
 		raw, err := state.RecoveryIncarnation.MarshalText()

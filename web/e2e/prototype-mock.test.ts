@@ -28,6 +28,7 @@ describe('prototype mock session', () => {
 
   it('serves every read needed by the finalized non-matrix app chrome', () => {
     const paths = [
+      '/api/v1/runtime/status',
       '/api/v1/auth/methods',
       '/api/v1/auth/identities',
       '/api/v1/me/sessions',
@@ -51,6 +52,12 @@ describe('prototype mock session', () => {
 });
 
 describe('prototype mock contract shape', () => {
+  it('keeps the prototype interactive with the runtime status contract', async () => {
+    const { zRuntimeStatus } = await import('../../clients/ts/src/generated/zod.gen.ts');
+    const fixture = prototypeReadFixture('/api/v1/runtime/status');
+    expect(fixture?.status).toBe(200);
+    expect(zRuntimeStatus.parse(fixture?.body)).toEqual({ state: 'ready', phase: null });
+  });
   it('serves instance health and meta in the generated contract shape', async () => {
     const { zMeta, zRetentionHealth } = await import('../../clients/ts/src/generated/zod.gen.ts');
     const { prototypeMeta, prototypeRetentionHealth } = await import('../prototype/mock-api.ts');

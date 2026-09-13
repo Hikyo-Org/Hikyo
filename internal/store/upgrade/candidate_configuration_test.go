@@ -8,7 +8,7 @@ import (
 
 func TestCandidateConfigurationProjectionBindsOwnerScopeAndSession(t *testing.T) {
 	both(t, func(t *testing.T, cfg Config) {
-		var retained *candidateKeys
+		var retained, maintenance *candidateKeys
 		err := WithLock(t.Context(), cfg, func(s *Session) error {
 			state := prepareSessionMigration(t, s, "testdata/session-key-inventory")
 			state, err := s.Advance(t.Context(), state, SchemaWriteStarted)
@@ -23,6 +23,10 @@ func TestCandidateConfigurationProjectionBindsOwnerScopeAndSession(t *testing.T)
 				return err
 			}
 			retained, err = s.CandidateKeys(t.Context(), state)
+			if err != nil {
+				return err
+			}
+			maintenance, err = s.MaintenanceConfigurationKeys(t.Context(), state)
 			if err != nil {
 				return err
 			}
@@ -54,6 +58,10 @@ func TestCandidateConfigurationProjectionBindsOwnerScopeAndSession(t *testing.T)
 			if len(projection.Fields) != 1 || projection.Fields[0].AAD.OwnerRowID != "entry" || len(projection.Catalogue) != 1 {
 				return errors.New("projection escaped fixed desired scope")
 			}
+			resumed, err := maintenance.Configuration(t.Context())
+			if err != nil || resumed == nil || len(resumed.Fields) != 1 || resumed.Fields[0].AAD.OwnerRowID != "entry" {
+				return fmt.Errorf("resumed maintenance projection escaped owner scope: %v", err)
+			}
 			for _, mutation := range []struct{ change, restore string }{
 				{"UPDATE self_config_binding SET owner_instance_id='remote'", "UPDATE self_config_binding SET owner_instance_id=$1"},
 				{"UPDATE self_config_binding SET desired_snapshot_id='other'", "UPDATE self_config_binding SET desired_snapshot_id='snapshot'"},
@@ -82,6 +90,9 @@ func TestCandidateConfigurationProjectionBindsOwnerScopeAndSession(t *testing.T)
 			if _, err := retained.Configuration(t.Context()); !errors.Is(err, ErrConflict) {
 				return errors.New("phase change retained configuration authority")
 			}
+			if _, err := maintenance.Configuration(t.Context()); !errors.Is(err, ErrConflict) {
+				return errors.New("phase change retained maintenance configuration authority")
+			}
 			return nil
 		})
 		if err != nil {
@@ -89,6 +100,9 @@ func TestCandidateConfigurationProjectionBindsOwnerScopeAndSession(t *testing.T)
 		}
 		if _, err := retained.Configuration(t.Context()); err == nil {
 			t.Fatal("closed session retained configuration authority")
+		}
+		if _, err := maintenance.Configuration(t.Context()); err == nil {
+			t.Fatal("closed session retained maintenance configuration authority")
 		}
 	})
 }

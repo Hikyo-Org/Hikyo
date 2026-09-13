@@ -26,6 +26,15 @@ func (i *Installer) assembleNightlyBundle(ctx context.Context, nightly string, m
 }
 
 func (i *Installer) assembleNightlyEvidence(ctx context.Context, evidence []PreparedNightly, material releasetrust.SnapshotMaterial, snapshot releasetrust.Snapshot, pinned releasetrust.PinnedTrust) (string, error) {
+	for _, item := range evidence {
+		if item.Identity.Profile != releaseidentity.NightlyV1 {
+			return "", errors.New("selfupdate: nightly evidence requires nightly profile")
+		}
+	}
+	return i.assembleReleaseEvidence(ctx, evidence, material, snapshot, pinned)
+}
+
+func (i *Installer) assembleReleaseEvidence(ctx context.Context, evidence []PreparedNightly, material releasetrust.SnapshotMaterial, snapshot releasetrust.Snapshot, pinned releasetrust.PinnedTrust) (string, error) {
 	defer diagnostics.Time(ctx, "assemble nightly evidence")()
 	if len(evidence) == 0 || len(evidence) > upgradecompat.MaxReleases {
 		return "", errors.New("selfupdate: nightly route exceeds release bound")
@@ -33,14 +42,23 @@ func (i *Installer) assembleNightlyEvidence(ctx context.Context, evidence []Prep
 	identities := make([]string, 0, len(evidence))
 	seen := map[releaseidentity.Digest]bool{}
 	for _, item := range evidence {
-		if item.Identity.Validate() != nil || item.Identity.Profile != releaseidentity.NightlyV1 || seen[item.Identity.ManifestSHA256] {
+		if item.Identity.Validate() != nil || seen[item.Identity.ManifestSHA256] {
 			return "", errors.New("selfupdate: invalid or duplicate route release")
 		}
 		seen[item.Identity.ManifestSHA256] = true
 		if err := realNightlyDirectory(item.Directory); err != nil {
 			return "", err
 		}
-		verified, err := upgradebundle.VerifyNightlyPlatformDirectory(ctx, item.Directory, snapshot, nightlyPlatform())
+		var verified releasetrust.VerifiedRelease
+		var err error
+		switch item.Identity.Profile {
+		case releaseidentity.NightlyV1:
+			verified, err = upgradebundle.VerifyNightlyPlatformDirectory(ctx, item.Directory, snapshot, nightlyPlatform())
+		case releaseidentity.StableV1:
+			verified, err = verifyPreparedStableDirectory(item.Directory, snapshot)
+		default:
+			return "", errors.New("selfupdate: unsupported route profile")
+		}
 		if err != nil {
 			return "", err
 		}
@@ -110,7 +128,29 @@ func (i *Installer) assembleNightlyEvidence(ctx context.Context, evidence []Prep
 	}
 	options := upgradeassembly.Options{Pinned: pinned, Floor: snapshot.Floor(), SnapshotDirectory: filepath.Join(stage, "snapshot"), KeysDirectory: filepath.Join(stage, "keys"), OutputDirectory: destination, NightlyPolicy: material.NightlyPolicy, NightlyPlatform: nightlyPlatform()}
 	for _, item := range evidence {
-		options.Nightlies = append(options.Nightlies, item.Directory)
+		if item.Identity.Profile == releaseidentity.NightlyV1 {
+			options.Nightlies = append(options.Nightlies, item.Directory)
+			continue
+		}
+		// Stable assembly accepts a closed metadata directory. Keep executable
+		// payloads in their verified download cache, outside that exact inventory.
+		directory := "stable/" + string(item.Identity.ManifestSHA256)
+		names := []string{"release-manifest.json", "release-manifest.sigstore.json", "release-candidate.json", "upgrade-compatibility.json"}
+		if _, err := os.Lstat(filepath.Join(item.Directory, "build-provenance.json")); err == nil {
+			names = append(names, "build-provenance.json", "build-provenance.json.sigstore.json")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		for _, name := range names {
+			raw, err := readNightlyFile(filepath.Join(item.Directory, name), releasetrust.MaxDocumentBytes)
+			if err != nil {
+				return "", err
+			}
+			if err := write(directory+"/"+name, raw); err != nil {
+				return "", err
+			}
+		}
+		options.Releases = append(options.Releases, filepath.Join(stage, filepath.FromSlash(directory)))
 	}
 	var bridgeBytes int
 	for _, digest := range snapshot.BridgeDigests() {

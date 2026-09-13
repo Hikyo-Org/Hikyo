@@ -39,6 +39,7 @@
     "high-availability",
     "backup-and-restore",
     "upgrades",
+    "container-upgrades",
     "troubleshooting",
     "---Security and privacy---",
     "compliance",
