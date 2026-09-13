@@ -109,6 +109,30 @@ publish_line=$(grep -nF 'gh release create "$TAG"' "$workflow" | cut -d: -f1)
 upgrade_line=$(grep -nF "go test ./internal/upgradegate -run '^TestPackagedNightlyReleaseUpgrade$'" "$workflow" | cut -d: -f1)
 [ -n "$upgrade_line" ] && [ "$upgrade_line" -lt "$publish_line" ] || fail 'populated previous-release upgrade does not gate publication'
 grep -F 'export HIKYO_NIGHTLY_PREVIOUS_BINARY=' "$workflow" >/dev/null || fail 'upgrade gate does not execute the previous release archive'
+
+# Container publication is independently retryable after the signed release,
+# and must consume the verified archives rather than invoke a second build.
+container_block=$(sed -n '/^  container:/,$p' "$workflow")
+[ -n "$container_block" ] || fail 'nightly container job is missing'
+for required in \
+	'needs: publish' \
+	'packages: write' \
+	'ref: ${{ needs.publish.outputs.commit }}' \
+	'./scripts/release/nightly-image.sh prepare' \
+	'./scripts/release/nightly-image.sh resolve' \
+	'./scripts/release/nightly-image.sh promote' \
+	'file: Dockerfile.release' \
+	'platforms: linux/amd64,linux/arm64' \
+	'tags: ${{ steps.inputs.outputs.image }}:${{ needs.publish.outputs.version }}'; do
+	printf '%s\n' "$container_block" | grep -F "$required" >/dev/null || fail "nightly container job lacks $required"
+done
+if printf '%s\n' "$container_block" | grep -E 'go build|goreleaser-action|:latest' >/dev/null; then
+	fail 'nightly container job rebuilds release binaries or changes latest'
+fi
+if sed -n '1,/^  container:/p' "$workflow" | grep -F 'packages: write' >/dev/null; then
+	fail 'package write permission escapes the container job'
+fi
+"$repo_root/scripts/release/nightly-image_test.sh"
 "$repo_root/scripts/release/create-nightly-manifest_test.sh"
 
 "$repo_root/scripts/release/next-nightly-version_test.sh"
@@ -116,4 +140,4 @@ grep -F 'export HIKYO_NIGHTLY_PREVIOUS_BINARY=' "$workflow" >/dev/null || fail '
 "$repo_root/scripts/release/latest-nightly-tag_test.sh"
 "$repo_root/scripts/release/nightly-run-tag_test.sh"
 "$repo_root/scripts/release/require-green-main_test.sh"
-printf 'nightly release fixture: CI-gated archives and native packages stay outside official signing\n'
+printf 'nightly release fixture: CI-gated archives, packages and retryable images stay outside official signing\n'

@@ -94,6 +94,51 @@ its release. To restart the chain deliberately, dispatch the workflow with
 `allow_missing_predecessor=true` and publish a recovery bridge for the
 installations below the gap, as catalog 3 did after nightly 26 was deleted.
 
+## Container images
+
+After the GitHub prerelease is published, a separate job downloads and verifies
+its complete signed inventory. It extracts the Linux amd64 and arm64 binaries
+and checks them against the signed binary provenance before building
+`Dockerfile.release`. The image uses those exact binaries, including the embedded
+web UI, with the same non-root distroless runtime as stable releases.
+
+The registry is `ghcr.io/hikyo-org/hikyo`. Each nightly gets its exact version
+tag without the leading `v`, such as
+`0.0.1-nightly.20260913.39.ga60e8dc3`. The moving `:nightly` tag is promoted only
+after the image has passed its container smoke test and its digest signature
+has been verified. Stable version tags and `:latest` are not changed.
+
+```sh
+docker pull ghcr.io/hikyo-org/hikyo:nightly
+docker run --rm ghcr.io/hikyo-org/hikyo:nightly --version
+```
+
+Use the digest from the workflow summary for deployment and verification:
+
+```sh
+image='ghcr.io/hikyo-org/hikyo@sha256:<image-digest>'
+cosign verify \
+  --certificate-identity='https://github.com/Hikyo-Org/Hikyo/.github/workflows/nightly.yml@refs/heads/main' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  "$image"
+docker pull "$image"
+```
+
+Docker and Kubernetes accept the same digest reference. The image signature
+authenticates the OCI digest separately from the archive manifest; the image is
+not an additional payload in the closed `nightly/v1` archive inventory. Runtime
+bundle verification, operator custody, storage and key provisioning still apply.
+See [manual verified upgrades](manual-upgrades.md) for Compose and Helm setup,
+or [installation documentation](https://hikyo.app/docs/installation/#nightly-container-images)
+for image references.
+
+The container job alone has `packages: write`; GitHub tags and release assets
+remain owned by the scoped nightly GitHub App. If the release exists but the
+image job fails, rerun the failed job. A full workflow rerun also recovers the
+existing release identity. Existing version images are checked and reused, never
+overwritten. An older release cannot move `:nightly` backward. A registry or
+verification failure leaves the moving tag unchanged.
+
 ## Revoke one published nightly
 
 Every nightly bundles the policy it was built under, and a GitHub release is

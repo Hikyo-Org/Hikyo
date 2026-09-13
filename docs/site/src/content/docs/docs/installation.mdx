@@ -15,6 +15,7 @@ treat a development build or a nightly as a supported production release.
 | Try Hikyo locally | [Getting started](/docs/getting-started/) | Loopback-only server, SQLite, embedded web UI |
 | Try the latest `main` build | [Unsigned development snapshot](#unsigned-development-snapshots) | Exact-commit archive for six desktop/server targets |
 | Run a signed nightly on a systemd host | [Upgrades](/docs/upgrades/#one-command-nightly-upgrade) | `sudo hikyo upgrade` with verified release evidence and a tested encrypted backup |
+| Pull a nightly for Docker or Kubernetes | [Nightly container images](#nightly-container-images) | Distroless image for Linux amd64 and arm64 |
 | Build a reusable binary | [Build from source](/docs/build-from-source/) | One binary for your current platform |
 | Prepare a real deployment | [Self-hosting baseline](/docs/self-hosting/) | Explicit storage, keys, TLS boundary, and backups |
 | Upgrade an existing instance | [Upgrades](/docs/upgrades/) | Pre-migration export and verified rollout |
@@ -27,6 +28,37 @@ treat a development build or a nightly as a supported production release.
   with `sudo hikyo upgrade`. Development snapshots below are unsigned CI
   output, not substitutes for either ceremony.
 </Callout>
+
+## Nightly container images
+
+The nightly workflow publishes the same signed release binaries in a non-root
+distroless image for `linux/amd64` and `linux/arm64`:
+
+```sh
+docker pull ghcr.io/hikyo-org/hikyo:nightly
+docker run --rm ghcr.io/hikyo-org/hikyo:nightly --version
+```
+
+`:nightly` follows the newest successfully verified container publication.
+Each image also has the corresponding GitHub prerelease version as a tag,
+without the leading `v`. Find versions in [GitHub releases](https://github.com/Hikyo-Org/Hikyo/releases).
+The container job can be retried independently if the GitHub release succeeded
+but image publication failed.
+
+For a repeatable deployment, pin the image digest reported by the nightly
+workflow instead of the moving tag. Docker and Kubernetes use the same reference:
+
+```yaml
+image: ghcr.io/hikyo-org/hikyo@sha256:<verified-image-digest>
+```
+
+The image digest is signed with GitHub OIDC by the nightly workflow. See the
+[nightly container verification runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/signed-nightlies.md#container-images)
+for the verification command and retry behavior. These signatures are separate
+from the signed archive inventory. Pulling the image does not provision the
+database, root key, or authenticated runtime bundle. Follow the
+[manual deployment runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md)
+for Compose and Helm inputs. The image has no shell.
 
 ## Native packages after a signed release
 
