@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,5 +187,69 @@ func TestWriteUnattendedContainerFixture(t *testing.T) {
 		}
 		prepared := selfupdate.PreparedNightly{Identity: previous.Identity(), Directory: "/fixtures/release-" + label, BundleDirectory: "/fixtures/bundle-" + label, BinaryPath: "/usr/local/bin/hikyo", BinarySHA256: releaseidentity.Hash(binary)}
 		put("descriptor-"+label+".json", testfixture.JSON(t, prepared), 0644)
+	}
+	// The assembler intentionally stages private directories/documents. This
+	// exported subtree contains only signed public evidence, and the actual
+	// distroless UID must be able to traverse/read it across a read-only mount.
+	if err := makeFixturePublic(filepath.Join(output, "public")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func makeFixturePublic(directory string) error {
+	return filepath.WalkDir(directory, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return os.Chmod(path, 0755)
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("public fixture contains non-regular artifact %s", path)
+		}
+		return os.Chmod(path, 0644)
+	})
+}
+
+func TestFixturePublicPermissions(t *testing.T) {
+	output := t.TempDir()
+	public := filepath.Join(output, "public")
+	directory := filepath.Join(public, "bundle-a", "releases", "fixture")
+	if err := os.MkdirAll(directory, 0700); err != nil {
+		t.Fatal(err)
+	}
+	manifest := filepath.Join(directory, "manifest.json")
+	if err := os.WriteFile(manifest, []byte("public signed evidence"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	private := filepath.Join(output, "root.key")
+	if err := os.WriteFile(private, []byte("private fixture root"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := makeFixturePublic(public); err != nil {
+		t.Fatal(err)
+	}
+	if err := filepath.WalkDir(public, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		want := os.FileMode(0644)
+		if entry.IsDir() {
+			want = 0755
+		}
+		if info.Mode().Perm() != want {
+			return fmt.Errorf("%s mode %o, want %o for distroless reads", path, info.Mode().Perm(), want)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(private)
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatalf("private root permissions changed: %v", err)
 	}
 }
