@@ -1,6 +1,14 @@
 # Unattended container upgrades
 
-Status: implemented; deployment acceptance in progress, 2026-09-13.
+Status: implemented; Docker and Kubernetes deployment acceptance verified, 2026-09-14.
+
+Deployment evidence: [CI run 34787001441, k8s-e2e job](https://github.com/Hikyo-Org/Hikyo/actions/runs/34787001441/job/103804199716)
+passed on `47ab69fecab18ebf6ca930a30bef2ca7849a8761`. Real distroless Docker
+replacements and singleton Helm/PostgreSQL A-to-B-to-C replacements retained
+custody and verified scratch restores; Docker also refused the older image.
+The fixtures start empty and share compiled migrations. Populated-data,
+schema-changing and crash/recovery proofs come from the separate backend suites,
+not from these deployment fixtures. See the [verification handoff](../handoff/unattended-container-upgrades.md).
 Encrypted local container custody is explicitly owner-approved; the execution
 design below is not a declaration of shipped support or a newly locked runtime
 contract. The governing [signed-upgrade ADR](../adr/signed-upgrade-compatibility.md)

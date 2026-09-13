@@ -86,7 +86,7 @@ Additional verified results:
 - Offline release cache verification derives executable authority from the
   authenticated archive. Substituted descriptors, archives and executables
   refuse; the full selfupdate race suite passed.
-- Web typecheck and 976 tests pass, including stalled authentication and
+- Web typecheck and 977 tests pass, including stalled authentication and
   pending/failed cached-query recovery. The edit fence stays until both succeed.
 - Full configuration, authorization, API and repository lint tests pass.
 - Ordinary independent Standards and Spec review findings were fixed. The
@@ -102,7 +102,8 @@ third diagnostic run was stopped during the same host/VM slowdown. All twelve
 crash-boundary cases passed together in 18.43 seconds. Native PostgreSQL monitoring
 recorded 621 client samples without Lock or IO waits, while the 16 GiB host used
 15.2 GiB of swap and the Docker VM consumed over six cores. No timeout was
-increased. Remaining full gate and deployment acceptance execute on CI workers.
+increased. CI subsequently passed the full upgradegate suite in 123.331 seconds
+and the store upgrade suite in 101.891 seconds.
 
 Actual distroless Docker and singleton Helm replacement harnesses are wired into
 `scripts/ci/k8s-e2e.sh`, after the existing cluster is removed. The exporter builds
@@ -115,12 +116,25 @@ asserts older-image refusal. The Kubernetes harness uses TLS PostgreSQL and a
 separate scratch database. The three images share the current migration/schema
 set and start empty; these deployment checks do not independently prove new SQL
 execution or populated-secret preservation. The populated migration/crash and
-credential-recovery suites provide those separate component proofs. Local fixture generation/static checks passed, but
-local Docker/kind execution was stopped during host memory pressure before
-application acceptance. CI must provide the deployment result before support
-is advertised.
-Remaining delivery steps: signed/DCO commit, exact-head CI, merge, and feature
-release availability.
+credential-recovery suites provide those separate component proofs.
+
+[CI run 34787001441, k8s-e2e job](https://github.com/Hikyo-Org/Hikyo/actions/runs/34787001441/job/103804199716)
+passed on `47ab69fecab18ebf6ca930a30bef2ca7849a8761`. Docker verified replacements,
+same-image restarts and older-image refusal with data/custody unchanged.
+Kubernetes verified A restart, A-to-B-to-C replacements, retained root/custody
+PVCs, PostgreSQL scratch restore and encrypted backups. The runtime's strict
+custody checks require the documented root-owned sticky PVC parent; the initial
+group-writable fixture was corrected without weakening those checks.
+The complete exact-head CI run also passed, including every browser and race
+shard. This evidence update changes documentation only.
+
+Desktop and mobile browser checks passed against the rebuilt production UI.
+A reproduced identity-retry race is covered by a new regression: clearing a
+background authentication error cannot release the edit fence before runtime
+recovery completes session and active-query revalidation. All 16 maintenance
+boundary tests, the full 977-test web suite, typecheck, docs check and chart
+validation passed locally. Remaining delivery: final exact-head CI, merge,
+green merged-main CI and publication of the feature nightly.
 
 ## Nightly publication evidence
 

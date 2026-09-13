@@ -1,7 +1,8 @@
 # Unattended container deployment
 
-Release status: implementation and deployment acceptance are being verified.
-Do not assume an older published image supports these settings. The
+Introduced by [PR #737](https://github.com/Hikyo-Org/Hikyo/pull/737). Use a signed
+release built after that PR merged; older published images do not support these
+settings. Docker and singleton Kubernetes deployment acceptance passed. The
 [design and acceptance record](../design/unattended-container-upgrades.md)
 distinguishes the approved custody exception from completed runtime evidence.
 The [published docs entry](https://hikyo.app/docs/container-upgrades/) summarizes
