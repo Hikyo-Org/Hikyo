@@ -1093,6 +1093,7 @@ jobs:
       fuzz_plan: ${{ steps.plan.outputs.fuzz_plan }}
       isolation_plan: ${{ steps.plan.outputs.isolation_plan }}
       race_plan: ${{ steps.plan.outputs.race_plan }}
+      race_shards: ${{ steps.plan.outputs.race_shards }}
       shards: ${{ steps.plan.outputs.shards }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1122,16 +1123,21 @@ jobs:
           fuzz_plan='[]'
           isolation_plan='[]'
           shard_count=3
+          race_shard_count=6
+          shard=0
+          while [ "$shard" -lt "$race_shard_count" ]; do
+            race_shard=$(go run "$trusted_planner" race --root . \
+              --shard "$shard" --shards "$race_shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
+            race_plan=$(jq -cn --argjson plan "$race_plan" --argjson shard "$race_shard" \
+              '$plan + [$shard]')
+            shard=$((shard + 1))
+          done
           shard=0
           while [ "$shard" -lt "$shard_count" ]; do
-            race_shard=$(go run "$trusted_planner" race --root . \
-              --shard "$shard" --shards "$shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
             fuzz_shard=$(go run "$trusted_planner" fuzz --root . \
               --shard "$shard" --shards "$shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
             isolation_shard=$(go run "$trusted_planner" isolation --root . \
               --shard "$shard" --shards "$shard_count" | jq -Rsc 'split("\n") | map(select(length > 0))')
-            race_plan=$(jq -cn --argjson plan "$race_plan" --argjson shard "$race_shard" \
-              '$plan + [$shard]')
             fuzz_plan=$(jq -cn --argjson plan "$fuzz_plan" --argjson shard "$fuzz_shard" \
               '$plan + [$shard]')
             isolation_plan=$(jq -cn --argjson plan "$isolation_plan" --argjson shard "$isolation_shard" \
@@ -1149,7 +1155,8 @@ jobs:
             echo "race_plan=$race_plan"
             echo "fuzz_plan=$fuzz_plan"
             echo "isolation_plan=$isolation_plan"
-            echo "shards=$(printf '%s' "$race_plan" | jq -c 'keys')"
+            echo "race_shards=$(printf '%s' "$race_plan" | jq -c 'keys')"
+            echo "shards=$(printf '%s' "$isolation_plan" | jq -c 'keys')"
           } >>"$GITHUB_OUTPUT"
 
   isolation_shard:
@@ -1252,7 +1259,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJSON(needs.analysis_shards.outputs.shards) }}
+        shard: ${{ fromJSON(needs.analysis_shards.outputs.race_shards) }}
     services:
       postgres:
         image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
