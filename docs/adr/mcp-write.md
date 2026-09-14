@@ -1,24 +1,25 @@
-# Hikyo MCP write capability (ADR, DRAFT, proposed 2026-09-14)
+# Hikyo MCP write capability (ADR, decision locked 2026-09-14)
 
-> **Status: DRAFT, not operative.** This ADR becomes operative only on owner
-> decision, cross-model review concluding SOUND, and the governance PR merging,
-> per the [oss-mechanics.md](./oss-mechanics.md) amendment procedure. It is the
-> separate ADR that [mcp-server.md](./mcp-server.md) requires before any
-> mutating MCP tool can exist. Issue key:
-> [#742](https://github.com/Hikyo-Org/Hikyo/issues/742). The design below is a
-> proposal for grilling, not a locked decision.
+> **Status: decision locked, not yet operative.** The owner locked this decision
+> on 2026-09-14 via grilling ([#742](https://github.com/Hikyo-Org/Hikyo/issues/742)).
+> Per the [oss-mechanics.md](./oss-mechanics.md) amendment procedure it becomes
+> **operative** only after a cross-provider adversarial review of this ADR
+> concludes SOUND and the governance PR merges. It is the separate ADR that
+> [mcp-server.md](./mcp-server.md) requires before any mutating MCP tool can
+> exist. Until operative, MCP stays read-only.
 
 ## Context
 
 Phase 1 ([mcp-server.md](./mcp-server.md)) locked a read-only MCP adapter. Its
 phase-boundary table puts "any mutation, validation-as-dry-run, stage, publish,
 approval, or adapter action" out of scope and states a separate ADR is
-required. This ADR scopes the smallest viable write: a non-secret configuration
-mutation mapped 1:1 to an existing audited authorization operation, gated behind
-a second operator flag.
+required. This ADR delivers the smallest coherent write surface: staging a
+pending change and validating a proposed change, both mapped 1:1 to existing or
+net-new audited authorization operations, gated behind a second default-off
+operator flag.
 
-Secret entry and secret reveal remain out of scope for this ADR. They carry
-their own disclosure surface and require their own amendment.
+Publish, secret reveal, and every other out-of-scope path from the phase-1
+threat-model closing clause remain out; each needs its own later amendment.
 
 ## What blocks a write tool today
 
@@ -35,48 +36,76 @@ Everything below the `mcpserver` registration gate is already write-agnostic:
 
 - `internal/mcpserver/tools.go:69` acquires admission for any authorization
   operation before claiming rate and concurrency capacity.
-- `registry.go:138` refuses any artifact other than a machine credential.
+- `registry.go:138` refuses any artifact other than a machine credential; a
+  write tool inherits that refusal of human, SCIM, and session artifacts
+  unchanged.
 - The Host, Origin, bearer-redaction, and uniform-401 transport controls in
   `handler.go` are operation-agnostic and are reused unchanged.
 
 So the only structural blocker is the registration gate in `mcpserver`.
 
-## Decision (proposed)
+## Decision
 
-### 1. Map to a real audited mutating operation, 1:1
+### 1. Two tools, mapped 1:1 to audited operations
 
-A write tool maps to an existing mutating authorization operation, with no
-generic dispatch. `value.stage` and `value.publish`
-(`internal/authz/registry.go:204,206`) are the natural first targets. They
-already declare audit events, so their derived `AuditedNone` is false and their
-`ReadOnly` is false.
+- `hikyo_stage_change` maps to the existing `value.stage` operation
+  (`internal/authz/registry.go:2465`): formula `edit@env`, it writes a pending
+  draft (`StorePendingStage`) and emits `EventValueStaged`. It performs no
+  publish and no downstream delivery.
+- `hikyo_validate_change` maps to a **net-new** `value.validate` operation:
+  formula `edit@env`, zero mutating store operations, emitting a new
+  `EventValueChangeValidated`. It validates a caller-supplied proposed change
+  and returns findings. It is a genuine non-mutating operation, not a write
+  performed as a dry run (`research/hikyo-mcp-server.md:205`).
 
-This is the alignment point with the audit model:
+No generic dispatch: one tool, one operation, as in phase 1.
+
+### 2. Scope boundary: stage never publishes
+
+The "non-secret only" framing is dropped. The secret/non-secret distinction is
+a property of the key, not of `value.stage` (its `edit@env` formula covers
+both, and the secret scanner it runs is a detector, not an authorization gate).
+The enforceable and reviewable boundary is instead: **the MCP write surface can
+stage and validate, never publish or deliver.** A staged change is an inert
+pending draft; nothing reaches an adapter or downstream target until a separate
+`value.publish`, which stays out of scope and which a machine credential cannot
+perform (see § Protected environments). The existing secret scanner still runs
+at the stage ingress.
+
+### 3. Alignment with the audit model
+
 [audit-model.md:105](./audit-model.md) forbids `audited:none` for any operation
-whose formula is beyond bare `read` or that mutates state. A write tool
-therefore complies by mapping to an events-emitting operation, never by
-relaxing the audit disposition. `origin=mcp` already marks events emitted while
-a service operation is reached through `POST /mcp` (audit-model.md amendment
-2026-09-04), so a mutation performed over MCP is already audit-shaped; this ADR
-adds the emitting operations, not a new envelope.
+whose formula is beyond bare `read` or that mutates state, and permits it only
+for tenant-class proof-scoped pure reads. Both write-surface operations have an
+`edit@env` formula, so both are refused `audited:none` and must emit events:
+`value.stage` already emits `EventValueStaged`; `value.validate` emits the new
+`EventValueChangeValidated`. `origin=mcp` already marks events emitted while a
+service operation is reached through `POST /mcp` (audit-model.md amendment
+2026-09-04), so both tools are already audit-shaped. Note that
+`value.validate` mutates nothing yet is still audited, because it is an
+authority-bearing action, not a pure read whose result the trail would
+duplicate.
 
-### 2. Relax the registration gate, precisely
+### 4. Relax the registration gate, precisely, keyed off a declared tool class
 
-`registry.go` changes:
+`registry.go` gains an explicit tool class on `ToolSpec` (read vs
+write-surface) and the `AuditDisposition` type is extended to admit an
+events-emitting disposition alongside `audited:none`. The gate then asserts:
 
-- Extend the `AuditDisposition` type to admit an events-emitting disposition
-  alongside `audited:none`, and relax the `:128` check accordingly.
-- Relax the `:145` gate: a write tool requires its authorization operation to
-  emit events (not `AuditedNone`) and to be non-read-only. The gate stays
-  fail-closed: a tool must declare its class explicitly and it must match the
-  authz registry's derived policy for the mapped operation.
-- Make the registry row and tool annotations accurate per tool. A publishing or
-  staging tool is `ReadOnly: false`, `ReadOnlyHint: false`,
-  `IdempotentHint: false`, and destructive-hint set from the operation.
-  Annotations remain defense in depth, never authorization
-  ([mcp-server.md:243](./mcp-server.md)).
+- **read tool** requires `policy.ReadOnly && policy.AuditedNone` (unchanged).
+- **write-surface tool** requires `!policy.AuditedNone`: it must emit events.
+  `policy.ReadOnly` may be true (`value.validate`) or false (`value.stage`);
+  the registry row and tool annotations are derived from `policy.ReadOnly`, not
+  hand-set. `ReadOnly=false` means `ReadOnlyHint: false`, `IdempotentHint:
+  false`, and destructive-hint from the operation.
 
-### 3. Gate behind a second operator flag
+The one hard, fail-closed rule: **a write-surface tool is never
+`audited:none`.** An unaudited mutation or authority-bearing action can never
+register. As in phase 1 the tool's declared formula must still match the authz
+registry's derived policy for the mapped operation, so a tool cannot lie about
+its class.
+
+### 5. Gate behind a second operator flag
 
 Registration-time exclusion behind `HIKYO_MCP_WRITE_ENABLED`, a
 self-configuration catalogue entry alongside `HIKYO_MCP_ENABLED` and
@@ -85,20 +114,32 @@ self-configuration catalogue entry alongside `HIKYO_MCP_ENABLED` and
 
 - Write requires the read transport enabled first (`HIKYO_MCP_ENABLED`).
 - Default off. The flag controls availability, not permission.
-- Write tools are installed into the frozen registry only when the flag is set.
-  An unregistered tool cannot appear in `tools/list` or be called, which is
-  strictly stronger than a runtime per-call check.
+- Write-surface tools are installed into the frozen registry only when the flag
+  is set. An unregistered tool cannot appear in `tools/list` or be called,
+  which is strictly stronger than a runtime per-call check.
 
 The real authorization gate stays the per-operation authz formula plus the
 audit event, unchanged. The flag prevents accidental enablement; it grants no
 authority on its own.
 
-### 4. Cancellation rolls back open work
+### 6. Cancellation rolls back open work
 
-A write handler must roll store work back on cancellation or client
-disconnect, per the phase-1 cancellation semantics in
-[mcp-server.md](./mcp-server.md). No partial mutation may survive a cancelled
-`tools/call`.
+`value.stage` mutates, so its handler must roll store work back on cancellation
+or client disconnect, per the phase-1 cancellation semantics in
+[mcp-server.md](./mcp-server.md) ("cancellation reaches store work and rolls it
+back"). No partial stage may survive a cancelled `tools/call`.
+`value.validate` mutates nothing, so cancellation is trivially safe for it.
+
+## Protected environments
+
+`value.stage` carries no `postGrantForbidden` (only `value.publish` does,
+`internal/authz/registry.go:2492`), so a machine credential holding `edit@env`
+can stage pending drafts into any environment it is authorized for, including
+protected ones. This is accepted: staging produces only an inert pending draft;
+the protected-environment ceremony and the blocked-environment veto bite at
+publish, which is out of scope and which a machine credential cannot satisfy. No
+MCP-layer authorization refusal is added, because authorization belongs in the
+operation, never in the transport ([mcp-server.md:243](./mcp-server.md)).
 
 ## Review obligation: the read-only store-op classification map
 
@@ -115,17 +156,31 @@ omission case.
 ## Alternatives considered
 
 - Single flag reused for read and write: rejected. It removes the accidental-
-  enablement guard the owner asked for and couples two different trust
-  decisions.
+  enablement guard and couples two distinct trust decisions.
 - Runtime per-call write check instead of registration-time exclusion:
   rejected. A registered-but-refused write tool still appears in `tools/list`
   and leaks the surface; registration-time exclusion does not.
-- `audited:none` for a write op with a compensating log: rejected. Directly
-  violates audit-model.md:105 and defeats the trail the mutation requires.
+- `audited:none` for a write-surface op with a compensating log: rejected.
+  Directly violates audit-model.md:105 and defeats the trail the action
+  requires.
+- Enforcing "non-secret only" at the tool: rejected. Not expressible at the op
+  level; the enforceable boundary is "stage never publishes" instead.
+- `value.validate` as a read-shaped `read@env` audited-none tool: rejected. It
+  would let any read-capable caller drive the scanner and schema engine against
+  arbitrary input and drifts from the change-workflow intent; the authority
+  should match "you can validate a change where you could make one."
+- MCP-layer refusal of staging into protected environments: rejected. It would
+  place an authorization decision in the transport.
 
 ## Consequences
 
+- Two new operator-facing tools, `hikyo_stage_change` and
+  `hikyo_validate_change`, behind `HIKYO_MCP_WRITE_ENABLED`.
+- One net-new authorization operation `value.validate` and one net-new audit
+  event `EventValueChangeValidated`, with forward and rollback closed-enum
+  migrations on SQLite and PostgreSQL, landing with the emitter.
 - One new operator flag and its catalogue entry.
-- A relaxed but still fail-closed registration gate in `mcpserver`.
-- The first mutating MCP tool, mapped to an existing audited operation.
-- Secret entry and reveal remain out; a further amendment is required for them.
+- A relaxed but still fail-closed registration gate in `mcpserver`, keyed off a
+  declared tool class.
+- Publish, secret entry, and secret reveal remain out; each needs a further
+  amendment.

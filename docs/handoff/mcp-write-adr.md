@@ -6,11 +6,29 @@ threat-model.md. This doc lets a fresh context pick up without re-deriving.
 
 ## Status
 
-DRAFT, not operative. Operative requires: owner decision (grilling), a
-cross-model review concluding SOUND, and the governance PR merging. Per
-[oss-mechanics.md](../adr/oss-mechanics.md) § Governance, a locked ADR is
-amended only by reopening its ticket, running the same adversarial cross-model
-review that locks decisions, and recording the amendment in the ADR itself.
+Decision LOCKED 2026-09-14 via grilling. Not yet operative. Operative still
+requires: a cross-provider adversarial review of the ADR text concluding SOUND,
+and the governance PR merging. Per [oss-mechanics.md](../adr/oss-mechanics.md)
+§ Governance, a locked ADR is amended only by reopening its ticket, running the
+same adversarial cross-model review that locks decisions, and recording the
+amendment in the ADR itself.
+
+## Locked decisions (grilling 2026-09-14)
+
+1. First write op is `value.stage` only; "non-secret only" framing dropped; the
+   enforceable boundary is stage-and-validate never publish or deliver.
+2. Two flags: `HIKYO_MCP_ENABLED` (read) + `HIKYO_MCP_WRITE_ENABLED` (write);
+   write requires read; both default off; registration-time exclusion.
+3. `hikyo_validate_change` is in scope for this amendment.
+4. `value.validate` is a net-new op: `edit@env`, zero mutating store ops, emits
+   net-new `EventValueChangeValidated`, behind the write flag; closed-enum
+   migration on SQLite and PostgreSQL.
+5. Gate invariant: declared tool class on `ToolSpec`; read tool requires
+   `ReadOnly && AuditedNone`; write-surface tool requires `!AuditedNone` (must
+   emit events), `ReadOnly` per-op, annotations derived. A write-surface tool is
+   never `audited:none`.
+6. Protected environments: machine staging into protected envs is accepted;
+   protection bites at publish (out of scope); no MCP-layer authz refusal.
 
 ## What the code review established (verified, not asserted)
 
@@ -45,16 +63,18 @@ provider-routing rule. Verdict: OBJECTIONS. Findings reconciled as follows.
 | C1/D1/D3 "MCP is the only blocker", write flag "necessary" | overclaim | Accepted. These are the proposed design, not established requirements. The ADR frames the flag and mapping as proposal, open for grilling. |
 | B3/B5/C2/C3/D2 rendered as `<<ccr:...>>` blobs | unreadable | Reconstructed from primary source (stronger than the compressed text). B3: write ops are `AuditedNone=false` and emit events, so audited:none is forbidden for them (audit-model.md:105) and the tool complies by mapping to an emitting op. B5: secret entry/reveal separately out, non-secret config write is smallest viable first. C2: machine-credential-only admission inherited unchanged. C3: transport controls reused unchanged. D2: registration-time exclusion beats runtime per-call check. |
 
-## Open for the owner (grilling inputs, not decided here)
+## Wrinkle resolved during grilling
 
-- One flag vs two (recommended two: read and write are distinct trust
-  decisions; two preserves the accidental-enablement guard).
-- First target op: `value.stage`, `value.publish`, or both.
-- Whether `hikyo_validate_change` (validation-as-dry-run,
-  `research/hikyo-mcp-server.md:205`) belongs in the same amendment or a later
-  one.
+`value.stage` is the generic value-write ingress; the secret/non-secret split
+is a property of the key, not the op (`edit@env` covers both, and the secret
+scanner is a detector, not an authorization gate). So "non-secret only" is not
+expressible at the op level. Resolved by dropping that framing and adopting the
+checkable boundary "stage-and-validate never publish or deliver": a staged
+change is an inert pending draft, nothing is delivered until a separate
+`value.publish` that a machine credential cannot perform.
 
 ## Not done
 
-No implementation. No PR. No cross-model review of the ADR itself yet (the R1
-above reviewed the findings, not this ADR text). Not operative.
+No implementation. No PR. No cross-model review of the ADR text yet (the R1
+above reviewed the findings, not this ADR text; that review is the remaining
+gate to operative). Not operative.
