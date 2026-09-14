@@ -68,6 +68,13 @@ viewport is tall enough to hold it. 640px clears every e2e viewport (desktop
 800, Pixel 5 851), so the floor applies there = main's proven-green layout;
 below 640 the floor drops and the well fits the bounded column.
 
+The 640px gate is e2e-derived, not content-derived. With both Warning banners
+present (~367px, per the short-viewport sweep) a 640–~800px viewport gets the
+420px floor and still overflows into `.content` — the same bug-A symptom. This
+is **identical to main** (unconditional floor), so it is not a regression and
+this branch is ≥ main everywhere; but the short-viewport class is not fully
+closed. It rides on the banner-height deferred item below.
+
 Verified against the seeded e2e instance at 844×380 (below the gate, so the
 floor is absent), toggling the floor in the running DOM (A/B in one
 measurement):
@@ -191,12 +198,22 @@ decision:
   needs the popover in the top layer (`popover` attribute) — a design change.
 - On mobile the picker `<summary>` button paints over the open legend popover
   (the sticky `th` has its own stacking context).
-- `history.spec.ts` 559 leaves a lingering `WORKERS`-dev pending draft (no
-  `finally` cleanup), so any local multi-project or repeated run of the spec is
-  unreliable (see bug D note). Pre-existing on main, invisible in CI's isolated
-  runners. Fix is a `finally` that discards the staged draft; land it as a
-  separate commit once CI is green on the floor fix, so CI's verdict on the
-  regression fix stays uncontaminated by a spec change.
+- `history.spec.ts` 559 leaves a lingering `WORKERS`-dev pending draft, so a
+  local multi-project run (which shares one seeded instance across `desktop` and
+  `mobile`) or a re-execution of 559 fails "Save 0 drafts" (see bug D note).
+  **Root cause is harness-level, not test 559:** the local runner shares one
+  instance across the two projects; CI does not (each matrix leg = its own
+  runner + seed). Within a single leg later tests survive because staging is
+  delete-then-insert (test 685 re-stages `WORKERS` fresh), so this never bites
+  CI. A per-test `finally` would be a band-aid — and there is no clean fix for
+  it: there is no single-draft discard endpoint (`DELETE values/{key}` stages a
+  *clear*, still a pending row; `DiscardKey`/`DiscardEnvironment` are
+  store-internal with no HTTP surface), and the only removal, `publish`, creates
+  a revision that the revision-count/ordering-sensitive tests after 559 (759,
+  789, 905) would see — an unverifiable-by-CI change that can only add failures.
+  The real fix is a fresh instance per project in the local harness
+  (`playwright.config.ts` / `instance.ts`). Out of scope for a CSS fix — Marc's
+  call: separate issue vs. fold the harness change here.
 
 ### Validation
 
