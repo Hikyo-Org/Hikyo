@@ -401,8 +401,13 @@ func (r adapterQueries) Conflicts(ctx context.Context, p authz.Proof, targetID s
 	if err != nil {
 		return nil, err
 	}
+	// Only the current generation's artifacts are adoptable: adoptAdapter's
+	// COUNT requires target_generation to equal the live generation, so a
+	// stale-generation group would surface in the UI, fail adoption with a
+	// generic 409, and drive the retry loop in #744. Scope the read to the
+	// live generation so superseded artifacts stay in history but off-screen.
 	query := r.db.SQL(
-		`SELECT artifact_id,target_id,job_id,destination_id,repository_id,target_generation,surface,effective_name,created_at FROM adapter_conflicts WHERE target_id=? AND org_id=? AND project_id=? AND adopted_at IS NULL ORDER BY created_at,artifact_id,surface,effective_name`,
+		`SELECT c.artifact_id,c.target_id,c.job_id,c.destination_id,c.repository_id,c.target_generation,c.surface,c.effective_name,c.created_at FROM adapter_conflicts c JOIN adapter_targets t ON t.id=c.target_id AND t.org_id=c.org_id AND t.project_id=c.project_id WHERE c.target_id=? AND c.org_id=? AND c.project_id=? AND c.adopted_at IS NULL AND c.target_generation=t.generation ORDER BY c.created_at,c.artifact_id,c.surface,c.effective_name`,
 	)
 	rows, err := r.db.Query(ctx, query, targetID, chain.Org, chain.Project)
 	if err != nil {

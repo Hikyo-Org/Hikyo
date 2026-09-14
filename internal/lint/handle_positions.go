@@ -49,6 +49,7 @@ var driverFiles = map[string]bool{
 	"internal/service/backup_preparation_test.go":                true,
 	"internal/service/backup_prove_test.go":                      true,
 	"internal/service/updates_test.go":                           true,
+	"internal/store/adapter_bug744_test.go":                      true, // #744 both-engine origin-reuse + conflict-dedup fixtures
 	"internal/store/adapter_control_test.go":                     true,
 	"internal/store/adapter_runtime.go":                          true,
 	"internal/store/adapter_runtime_test.go":                     true,
