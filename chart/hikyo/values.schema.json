@@ -82,6 +82,34 @@
         "tls"
       ],
       "properties": {
+        "storageMonitoring": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "kubeletURL", "node", "namespace", "pvc"],
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "kubeletURL": {"type": "string"},
+            "node": {"type": "string", "maxLength": 253},
+            "namespace": {"type": "string", "maxLength": 63},
+            "pvc": {"type": "string", "maxLength": 253}
+          },
+          "if": {"properties": {"enabled": {"const": true}}},
+          "then": {
+            "properties": {
+              "kubeletURL": {"minLength": 1, "pattern": "^https://[^/@?#\\\\ ]+$"},
+              "node": {"minLength": 1},
+              "pvc": {"minLength": 1}
+            }
+          },
+          "else": {
+            "properties": {
+              "kubeletURL": {"maxLength": 0},
+              "node": {"maxLength": 0},
+              "namespace": {"maxLength": 0},
+              "pvc": {"maxLength": 0}
+            }
+          }
+        },
         "existingSecret": {
           "type": "string",
           "minLength": 1

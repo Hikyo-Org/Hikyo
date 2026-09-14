@@ -1,4 +1,4 @@
-// Package storagehealth measures the filesystem containing a local datastore.
+// Package storagehealth measures the filesystem containing a datastore.
 // It never substitutes the application filesystem for a remote database volume.
 package storagehealth
 

@@ -30,6 +30,16 @@ image:
   digest: sha256:RELEASE_IMAGE_DIGEST
 
 database:
+  # Optional PostgreSQL capacity reader. Explicitly bind the database PVC to
+  # its node's HTTPS kubelet; the serving certificate must chain to kube-root-ca.crt.
+  # Measures the backing filesystem, not the PVC's requested allocation.
+  storageMonitoring:
+    enabled: false
+    kubeletURL: ""
+    node: ""
+    # Empty uses the Helm release namespace.
+    namespace: ""
+    pvc: ""
   # Name of an existing Secret whose HIKYO_DB key contains the production DSN.
   existingSecret: ""
   # Optional CA certificate for a private PostgreSQL endpoint. The HIKYO_DB DSN

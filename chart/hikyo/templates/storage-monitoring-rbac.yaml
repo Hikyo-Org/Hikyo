@@ -1,0 +1,46 @@
+{{- if .Values.database.storageMonitoring.enabled }}
+{{- $name := include "hikyo.storage.name" . }}
+{{- $clusterName := printf "%s-%s" .Release.Namespace $name }}
+{{- $account := $name }}
+{{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
+{{- $account = printf "%s-server" (include "hikyo.rollout.name" .) }}
+{{- else }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $account }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+{{- end }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $clusterName }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+rules:
+  # Direct kubelet /stats/summary access. Never grant nodes/proxy: it exposes
+  # other kubelet APIs including workload execution. Node stats include all
+  # workloads on this one node; the reader selects the configured PVC only.
+  - apiGroups: [""]
+    resources: ["nodes/stats"]
+    resourceNames: [{{ .Values.database.storageMonitoring.node | quote }}]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $clusterName }}
+  labels:
+    {{- include "hikyo.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $clusterName }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $account }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
