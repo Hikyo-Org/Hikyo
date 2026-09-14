@@ -593,13 +593,15 @@ test.describe('environment matrix', () => {
   });
 
   test('keeps the matrix scroll inside its own well at a short viewport', async ({ page }) => {
-    // Regression: a stale `min-height: 420px` on `.matrix__layout` (from its
-    // display:block era, before #681 made it a flex:1 column) forced the matrix
-    // to overflow into `.content` on short viewports, so the whole page column
-    // scrolled instead of the matrix — the "scroll the sidebar, not the matrix"
-    // report. A phone-landscape height sits well under the ~570-630px (head
-    // toolbar wrap dependent) where the floor starts to bite the available
-    // height.
+    // Regression: a `min-height: 420px` floor on `.matrix__layout` applied
+    // unconditionally forced the matrix to overflow into `.content` on short
+    // viewports, so the whole page column scrolled instead of the matrix — the
+    // "scroll the sidebar, not the matrix" report. The floor is load-bearing
+    // above ~640px (it stops the flex column starving the well to 0 rows); the
+    // bug was that it had no height gate. It is now `@media (min-height: 640px)`,
+    // so this test's 380px viewport is below the gate and the floor is absent. A
+    // phone-landscape height sits well under the ~570-630px (head toolbar wrap
+    // dependent) where the floor would otherwise bite the available height.
     await page.setViewportSize({ width: 844, height: 380 });
     await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
 
@@ -617,10 +619,11 @@ test.describe('environment matrix', () => {
       };
     });
 
-    // Under the stale 420px floor the well cannot shrink, so it balloons past
+    // Under an ungated 420px floor the well cannot shrink, so it balloons past
     // the viewport column (measured 419 vs a 197px column) and the table scrolls
     // the whole page instead of the well — `wellHeight < columnHeight` fails.
-    // With `min-height: 0` the well fits the column and owns the table's scroll.
+    // Below the 640px gate the floor is absent, the well fits the column and
+    // owns the table's scroll.
     expect(scroll.wellHeight).toBeLessThan(scroll.columnHeight);
     expect(scroll.wellOverflow).toBeGreaterThan(0);
 

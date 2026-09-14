@@ -39,29 +39,66 @@ exactly "scroll the sidebar, not the matrix". #740's `minmax(0, 1fr)` row plus
 the sidebar `max-height: 100dvh` cap the shell to the viewport. This lands in
 nightly 43+.
 
-### Residual bug A found and fixed here — stale `min-height` floor (campsite rule)
+### Residual bug A found and fixed here — `min-height` floor lacked a height gate (campsite rule)
 
-`.matrix__layout { min-height: 420px }` is a stale floor. #57/#136 (`b90bd1b6`)
-added it when the element was `display: block`; #681 (`90b4ca6a`) converted it
-to `display: flex; flex: 1; flex-direction: column`, where a px `min-height`
-stops the flex column from shrinking to its bounded parent. Below roughly
-570–630px of viewport height (layout available ≈ innerHeight − 61 nav − 48
-padding − matrix head, where the head is ~44px but grows to ~100px once the
+`.matrix__layout { min-height: 420px }` was applied unconditionally. #57/#136
+(`b90bd1b6`) added it when the element was `display: block`; #681 (`90b4ca6a`)
+converted it to `display: flex; flex: 1; flex-direction: column`, where a px
+`min-height` stops the flex column from shrinking to its bounded parent. Below
+roughly 570–630px of viewport height (layout available ≈ innerHeight − 61 nav −
+48 padding − matrix head, where the head is ~44px but grows to ~100px once the
 toolbar wraps at narrow widths; below that the layout wants < 420) the matrix
 overflows into `.content`, so the page column scrolls and the `.matrix__scroll`
 virtualiser well goes dead — the same whole-page-scroll symptom, on short
 viewports, independent of #740.
 
-Fix: `min-height: 0`. `flex: 1` still fills the bounded column, so the empty
-matrix does not collapse; only the artificial floor is removed.
+The floor is **not stale** — it is load-bearing on tall viewports. `.matrix` is
+a flex column: the operational-diagnostics banners, `.matrix__head`, and the
+inline `.matrix__publish` sheet all keep their full natural height, and
+`.matrix__layout` is the only `min-height: 0` sibling, so the flex algorithm
+shrinks the well and nothing else. With no floor the well starves to 0px on a
+tall viewport too, the virtualiser renders no rows, and the matrix vanishes
+below the fold. The floor was masking that; only its **unconditional
+application** at short viewports was the bug.
 
-Verified against the seeded e2e instance at 844×380, toggling the floor in the
-running DOM (A/B in one measurement):
+Fix (height-gated floor): base `min-height: 0` so the short-viewport
+no-overflow contract holds, plus `@media (min-height: 640px) {
+.matrix__layout { min-height: 420px } }` to restore the working floor once the
+viewport is tall enough to hold it. 640px clears every e2e viewport (desktop
+800, Pixel 5 851), so the floor applies there = main's proven-green layout;
+below 640 the floor drops and the well fits the bounded column.
 
-| `.matrix__layout` floor | `.matrix__scroll` clientHeight | well owns scroll | page column |
+Verified against the seeded e2e instance at 844×380 (below the gate, so the
+floor is absent), toggling the floor in the running DOM (A/B in one
+measurement):
+
+| `.matrix__layout` floor at 844×380 | `.matrix__scroll` clientHeight | well owns scroll | page column |
 | --- | --- | --- | --- |
-| `420px` (broken) | 419px — ballooned past the 197px column | 0 (dead well) | scrolls |
-| `0` (fixed) | 36px — fits the column | 329px | table scroll lives in the well |
+| `420px` (ungated, broken) | 419px — ballooned past the 197px column | 0 (dead well) | scrolls |
+| gated off below 640 (fixed) | 36px — fits the column | 329px | table scroll lives in the well |
+
+### Regression bug D — removing the floor unconditionally starved tall viewports
+
+The first cut of this branch (`d32f58c1`) removed the floor outright as "stale".
+That turned CI red: on the e2e viewports (desktop 800, Pixel 5 851 — all above
+640px) the floorless well starved to 0 rows, so `matrix.spec.ts` 88 / 595 / 910
+and `history.spec.ts` 559 could not see their rows. These were **my regression,
+not pre-existing failures** (an earlier PR-body claim that they reproduced on
+`origin/main` was wrong and has been retracted). The height-gated floor above is
+the complete fix — it keeps the short-viewport contract (test 595 at 844×380,
+below the gate) *and* restores the tall-viewport floor (all other e2e viewports,
+above the gate = main's green layout).
+
+Note for anyone running the e2e suite **locally**: `playwright.config.ts` is
+`workers: 1`, `fullyParallel: false`, and a multi-project local run shares one
+seeded instance across the `desktop` and `mobile` projects. `history.spec.ts`
+559 stages a `WORKERS`-dev draft and publishes only the restore set, leaving a
+lingering pending draft (no `finally` cleanup); in a combined local run the
+desktop leg pollutes the shared DB and the mobile leg's editor then shows the
+leftover draft, so mobile-559 fails with "Save 0 drafts". CI never hits this —
+each matrix leg is its own runner with its own seeded instance (`ci.yml`, "each
+MATRIX LEG is its own runner"). mobile-559 run alone on a fresh instance passes.
+The draft-cleanup weakness is pre-existing on main; see the deferred list.
 
 ### Residual bug B found and fixed here — well was not a containing block
 
@@ -154,6 +191,12 @@ decision:
   needs the popover in the top layer (`popover` attribute) — a design change.
 - On mobile the picker `<summary>` button paints over the open legend popover
   (the sticky `th` has its own stacking context).
+- `history.spec.ts` 559 leaves a lingering `WORKERS`-dev pending draft (no
+  `finally` cleanup), so any local multi-project or repeated run of the spec is
+  unreliable (see bug D note). Pre-existing on main, invisible in CI's isolated
+  runners. Fix is a `finally` that discards the staged draft; land it as a
+  separate commit once CI is green on the floor fix, so CI's verdict on the
+  regression fix stays uncontaminated by a spec change.
 
 ### Validation
 
