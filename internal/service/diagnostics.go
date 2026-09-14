@@ -11,7 +11,7 @@ import (
 
 type DiagnosticFinding struct{ Code, Severity, Message string }
 
-// Diagnostics contains only boot-validated policy and an authoritative local
+// Diagnostics contains only boot-validated policy and an authoritative datastore
 // filesystem reader. A nil reader or policy reports unknown, never defaults.
 type Diagnostics struct {
 	Passwords *crypto.PasswordParams
@@ -39,6 +39,9 @@ func (s *Retention) diagnosticHealth(meta store.OpsMetadata, instance, incarnati
 		message := "Datastore filesystem capacity is unavailable; verify capacity with the host storage monitor"
 		if s.DB.Engine() == store.EnginePostgres {
 			message = "PostgreSQL volume capacity is not measurable from the application host; configure monitoring on the database storage host"
+			if s.Diagnostics != nil && s.Diagnostics.Volume != nil {
+				message = "Configured PostgreSQL volume measurement is unavailable; verify the database storage mapping, credentials and fresh kubelet statistics"
+			}
 		}
 		add("data-volume", "unknown", message)
 	} else {

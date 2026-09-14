@@ -18,6 +18,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/validation"
 )
 
 // Remote apply is retired at configuration admission as well as runtime. Keep
@@ -38,7 +40,17 @@ type Datastore struct {
 	Engine          Engine
 	Path            string // sqlite file path
 	DSN             string // postgres DSN
-	PostgresPoolMax int32  // HIKYO_PG_POOL_MAX override; zero uses DSN/locked default
+	PostgresStorage PostgresStorage
+	PostgresPoolMax int32 // HIKYO_PG_POOL_MAX override; zero uses DSN/locked default
+}
+
+// PostgresStorage identifies the kubelet and PVC hosting the database filesystem.
+// Empty fields disable measurement. These are deployment bootstrap inputs.
+type PostgresStorage struct {
+	KubeletURL string
+	Namespace  string
+	PVC        string
+	Node       string
 }
 
 // UpgradeConfiguration holds installation paths, public evidence and the
@@ -223,6 +235,10 @@ var knownEnv = map[string]bool{
 	"HIKYO_AUDIT_ACCESS_RETAIN_DAYS":       true,
 	"HIKYO_AUDIT_SECURITY_RETAIN_DAYS":     true,
 	"HIKYO_DB":                             true,
+	"HIKYO_PG_STORAGE_KUBELET_URL":         true,
+	"HIKYO_PG_STORAGE_NAMESPACE":           true,
+	"HIKYO_PG_STORAGE_PVC":                 true,
+	"HIKYO_PG_STORAGE_NODE":                true,
 	"HIKYO_PG_POOL_MAX":                    true,
 	"HIKYO_LISTEN":                         true,
 	"HIKYO_OPERATIONAL_LISTEN":             true,
@@ -595,6 +611,9 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 		cfg.Store.PostgresPoolMax = int32(poolMax)
 	}
+	if err := loadPostgresStorage(cfg, getenv); err != nil {
+		return nil, nil, err
+	}
 	if subcommand == "server" {
 		if err := loadHAConfig(cfg, getenv); err != nil {
 			return nil, nil, err
@@ -604,6 +623,56 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		}
 	}
 	return cfg, warnings, nil
+}
+
+func loadPostgresStorage(cfg *Config, getenv func(string) string) error {
+	storage := PostgresStorage{KubeletURL: getenv("HIKYO_PG_STORAGE_KUBELET_URL"), Namespace: getenv("HIKYO_PG_STORAGE_NAMESPACE"), PVC: getenv("HIKYO_PG_STORAGE_PVC"), Node: getenv("HIKYO_PG_STORAGE_NODE")}
+	values := []string{storage.KubeletURL, storage.Namespace, storage.PVC, storage.Node}
+	set := 0
+	for _, value := range values {
+		if value != "" {
+			set++
+		}
+	}
+	if set == 0 {
+		return nil
+	}
+	if set != len(values) {
+		return errors.New("HIKYO_PG_STORAGE_KUBELET_URL, HIKYO_PG_STORAGE_NAMESPACE, HIKYO_PG_STORAGE_PVC and HIKYO_PG_STORAGE_NODE must all be configured together")
+	}
+	if cfg.Store.Engine != EnginePostgres {
+		return errors.New("HIKYO_PG_STORAGE_* requires a PostgreSQL datastore")
+	}
+	if err := storage.Validate(); err != nil {
+		return err
+	}
+	cfg.Store.PostgresStorage = storage
+	return nil
+}
+
+// Validate checks the complete operator-supplied database volume mapping.
+// An empty mapping is only accepted by Load as an explicit disabled state.
+func (storage PostgresStorage) Validate() error {
+	origin, err := url.Parse(storage.KubeletURL)
+	if err != nil || origin.Scheme != "https" || origin.Hostname() == "" || origin.User != nil || storage.KubeletURL != "https://"+origin.Host || origin.Host != strings.ToLower(origin.Host) || strings.HasSuffix(origin.Hostname(), ".") {
+		return errors.New("HIKYO_PG_STORAGE_KUBELET_URL must be an exact canonical HTTPS origin without path, credentials, query or fragment")
+	}
+	if net.ParseIP(origin.Hostname()) == nil && len(validation.IsDNS1123Subdomain(origin.Hostname())) != 0 {
+		return errors.New("HIKYO_PG_STORAGE_KUBELET_URL must use an IP address or DNS hostname")
+	}
+	if strings.HasSuffix(origin.Host, ":") {
+		return errors.New("HIKYO_PG_STORAGE_KUBELET_URL has an empty port")
+	}
+	if port := origin.Port(); port != "" {
+		number, err := strconv.Atoi(port)
+		if err != nil || number < 1 || number > 65535 || strconv.Itoa(number) != port {
+			return errors.New("HIKYO_PG_STORAGE_KUBELET_URL port must be a canonical integer from 1 through 65535")
+		}
+	}
+	if len(validation.IsDNS1123Label(storage.Namespace)) != 0 || len(validation.IsDNS1123Subdomain(storage.PVC)) != 0 || len(validation.IsDNS1123Subdomain(storage.Node)) != 0 {
+		return errors.New("HIKYO_PG_STORAGE_NAMESPACE, HIKYO_PG_STORAGE_PVC and HIKYO_PG_STORAGE_NODE must be exact Kubernetes names")
+	}
+	return nil
 }
 
 func validateUnattendedConfig(cfg *Config) error {

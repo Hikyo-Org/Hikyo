@@ -148,10 +148,10 @@ Run `hikyo doctor --instance NAME -o json` using an authenticated human operator
 session. The CLI and operator-only web banners include the existing backup,
 restore, retention, project storage and adapter checks, plus:
 
-- SQLite datastore volume: warning at 80% used and critical at 90%, based on
-  space available to the process on the actual datastore filesystem. PostgreSQL
-  reports **unknown** because the application cannot measure remote database
-  storage; configure capacity alerts on the database host.
+- Datastore volume: warning at 80% used and critical at 90%, based on space
+  available on the actual datastore filesystem. SQLite measures locally.
+  PostgreSQL reports **unknown** unless Kubernetes storage monitoring is
+  configured as described below; otherwise configure alerts on the database host.
 - Current root escrow verification, bound to the finalized root epoch and
   recovery incarnation. Follow the [backup runbook](./backup-and-restore/) to
   verify a separately recovered root copy. Root rotation and restore invalidate
@@ -168,3 +168,56 @@ The existing public operational metrics expose bounded aggregate counts without
 identities or labels. `hikyo_data_volume_capacity_known` must be checked before
 using volume gauges; an unknown percentage is `NaN`, not zero. Escrow timestamp
 and verification gauges expose public metadata only.
+
+### PostgreSQL capacity on Kubernetes
+
+When PostgreSQL runs on Kubernetes, the Helm deployment can connect Hikyo to the
+database node's kubelet statistics. No Prometheus installation or additional
+collector is required when the kubelet reports statistics for the database PVC.
+Enable the reader with an explicit mapping:
+
+```yaml
+database:
+  storageMonitoring:
+    enabled: true
+    kubeletURL: https://192.0.2.10:10250
+    node: database-node
+    namespace: database # Omit to use the Helm release namespace.
+    pvc: data-postgres-0
+```
+
+Replace these example values with the node hosting PostgreSQL and its data PVC.
+The kubelet HTTPS serving certificate must validate against the cluster's
+`kube-root-ca.crt`, including its hostname or IP address. The Hikyo pod must be
+able to reach that endpoint; the kubelet must support service-account token
+authentication and webhook authorization. There is no insecure TLS option.
+
+The chart grants the server ServiceAccount only `get` on `nodes/stats`, restricted
+to the configured node, and projects a rotating token into the server container.
+It does not grant `nodes/proxy`, pod execution, or Secret access. Kubernetes
+authorizes statistics for the whole node; Hikyo selects only the exact configured
+node, namespace and PVC from that response.
+
+For deployments outside Helm, the equivalent bootstrap variables are
+`HIKYO_PG_STORAGE_KUBELET_URL`, `HIKYO_PG_STORAGE_NODE`,
+`HIKYO_PG_STORAGE_NAMESPACE`, and `HIKYO_PG_STORAGE_PVC`. Supply all four, plus
+the cluster CA and service-account token at the standard Kubernetes mount path.
+These settings require PostgreSQL.
+
+Incomplete or invalid settings and missing or invalid local credential files
+refuse startup. Once the reader is initialized, remote measurement failures are
+advisory and do not prevent serving requests.
+
+Samples older than two minutes, more than five seconds in the future, missing
+capacity fields, conflicting samples, TLS/authentication failures and unreachable
+kubelets produce **Unmeasured**. Requests time out after three seconds. These
+diagnostics remain advisory and do not change readiness or database admission.
+
+The reading describes the **backing filesystem**, which may be shared with other
+workloads. In particular, k3s `local-path` PVC requests do not establish a dedicated
+filesystem quota. Do not interpret a 10 GiB claim as 10 GiB of actual disk capacity.
+Update the mapping when moving PostgreSQL to another node, namespace or PVC,
+including when changing the configured database endpoint. This mapping is an
+operator assertion; Hikyo cannot infer the PostgreSQL-to-PVC relationship from
+the database DSN. For external databases or unsupported storage drivers, continue
+monitoring capacity at the database host.

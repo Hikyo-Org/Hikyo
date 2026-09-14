@@ -18,7 +18,7 @@ func TestManagedOwnerRoundTripPreservesDefaultsAndNodeConfiguration(t *testing.T
 	cfg.RootKeyFile = "/unreadable/root"
 	cfg.TLSCertFile, cfg.TLSKeyFile = "/unreadable/cert", "/unreadable/key"
 	cfg.NodeID, cfg.HA = "node-a", true
-	cfg.Store = Datastore{Engine: EnginePostgres, DSN: "do-not-open", PostgresPoolMax: 7}
+	cfg.Store = Datastore{Engine: EnginePostgres, DSN: "do-not-open", PostgresPoolMax: 7, PostgresStorage: PostgresStorage{KubeletURL: "https://tokyo:10250", Namespace: "database", PVC: "data", Node: "tokyo"}}
 	cfg.Upgrade.StateDirectory = "/unreadable/state"
 	cfg.AdapterEgressPolicy = map[string][]netip.Prefix{"https://private.example": {netip.MustParsePrefix("10.0.0.0/8")}}
 	cfg.ManagedInputs = map[string]string{"HIKYO_ROOT_KEY": "do-not-read"}

@@ -18,7 +18,33 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- printf "%s-operator" (include "hikyo.fullname" .) | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
+{{- define "hikyo.storage.name" -}}
+{{- printf "%s-storage" (include "hikyo.fullname" . | trunc 55 | trimSuffix "-") -}}
+{{- end -}}
+
 {{- define "hikyo.server.validate" -}}
+{{- $storage := .Values.database.storageMonitoring -}}
+{{- if $storage.enabled -}}
+  {{- $url := required "database.storageMonitoring.kubeletURL is required" $storage.kubeletURL -}}
+  {{- if not (regexMatch `^https://([a-z0-9]([a-z0-9.-]*[a-z0-9])?|\[[0-9a-f:]+\])(:[1-9][0-9]{0,4})?$` $url) -}}
+    {{- fail "database.storageMonitoring.kubeletURL must be an HTTPS origin without credentials, path, query or fragment" -}}
+  {{- end -}}
+  {{- $port := regexFind `:[0-9]+$` $url -}}
+  {{- if and $port (gt (atoi (trimPrefix ":" $port)) 65535) -}}
+    {{- fail "database.storageMonitoring.kubeletURL port must be in 1..65535" -}}
+  {{- end -}}
+  {{- range $field := list "node" "pvc" -}}
+    {{- $value := required (printf "database.storageMonitoring.%s is required" $field) (index $storage $field) -}}
+    {{- if or (gt (len $value) 253) (not (regexMatch `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$` $value)) -}}
+      {{- fail (printf "database.storageMonitoring.%s must be a Kubernetes DNS subdomain name" $field) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if and $storage.namespace (or (gt (len $storage.namespace) 63) (not (regexMatch `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` $storage.namespace))) -}}
+    {{- fail "database.storageMonitoring.namespace must be a Kubernetes namespace name" -}}
+  {{- end -}}
+{{- else if or $storage.kubeletURL $storage.node $storage.namespace $storage.pvc -}}
+  {{- fail "database.storageMonitoring inputs require enabled=true" -}}
+{{- end -}}
 {{- $databaseSecret := required "database.existingSecret is required" .Values.database.existingSecret -}}
 {{- $rootKeySecret := required "rootKey.existingSecret is required" .Values.rootKey.existingSecret -}}
 {{- $upgradeStateClaim := required "upgrade.stateExistingClaim is required" .Values.upgrade.stateExistingClaim -}}

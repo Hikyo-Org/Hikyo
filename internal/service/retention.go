@@ -574,6 +574,8 @@ func (s *Retention) OperationalHealth(ctx context.Context) (PruneHealth, error) 
 // GetHealth authorizes and audits the instance API read in one transaction.
 func (s *Retention) GetHealth(ctx context.Context, actor Actor) (PruneHealth, error) {
 	var out PruneHealth
+	var metadata store.OpsMetadata
+	var instance, incarnation string
 	now := s.now()
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, proof, err := authorize(ctx, az, actor, authz.OpRetentionHealthRead, domain.Scope{}, now)
@@ -600,15 +602,14 @@ func (s *Retention) GetHealth(ctx context.Context, actor Actor) (PruneHealth, er
 			return err
 		}
 		out = s.health(at, recorded, peak, backup, adapters)
-		metadata, err := r.Retention().Diagnostics(ctx, proof, now)
+		metadata, err = r.Retention().Diagnostics(ctx, proof, now)
 		if err != nil {
 			return err
 		}
-		instance, incarnation, err := s.DB.RecoveryIdentity()
+		instance, incarnation, err = s.DB.RecoveryIdentity()
 		if err != nil {
 			return err
 		}
-		out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
 		ev, err := domainEvent(ctx, audit.EventRetentionHealthRead, caller.Principal,
 			audit.Object{Type: "retention_health", ID: "payload_gc"}, audit.Payload{
 				"recorded": out.Recorded, "stale": out.Stale,
@@ -620,5 +621,11 @@ func (s *Retention) GetHealth(ctx context.Context, actor Actor) (PruneHealth, er
 		}
 		return r.Audit().InsertInstance(ctx, proof, ev)
 	})
-	return out, err
+	if err != nil {
+		return PruneHealth{}, err
+	}
+	// Storage measurement can perform network I/O. Do it only after the
+	// authorization and audit transaction has committed, without holding locks.
+	out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
+	return out, nil
 }

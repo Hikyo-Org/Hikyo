@@ -108,6 +108,25 @@ with tempfile.TemporaryDirectory(prefix="hikyo-rollout-chart-") as temporary:
 
     docs = render(values)
 
+    monitored = copy.deepcopy(values)
+    monitored["database"]["storageMonitoring"] = {
+        "enabled": True, "kubeletURL": "https://192.0.2.10:10250",
+        "node": "database-node", "pvc": "postgres-data", "namespace": "database",
+    }
+    monitored_docs = render(monitored)
+    monitored_pod = next(d for d in monitored_docs if d["kind"] == "Deployment")["spec"]["template"]["spec"]
+    assert monitored_pod["serviceAccountName"] == executor + "-server"
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount"
+    token_mounts = [m for m in monitored_pod["containers"][0]["volumeMounts"] if m["mountPath"] == token_path]
+    assert token_mounts == [{"name": "rollout-api-token", "mountPath": token_path, "readOnly": True}]
+    assert not any(v["name"] == "storage-api-token" for v in monitored_pod["volumes"])
+    storage_role = next(d for d in monitored_docs if d["kind"] == "ClusterRole")
+    assert storage_role["rules"] == [{"apiGroups": [""], "resources": ["nodes/stats"], "resourceNames": ["database-node"], "verbs": ["get"]}]
+    storage_binding = next(d for d in monitored_docs if d["kind"] == "ClusterRoleBinding")
+    assert storage_binding["subjects"] == [{"kind": "ServiceAccount", "name": executor + "-server", "namespace": namespace}]
+    assert storage_binding["roleRef"]["name"] == storage_role["metadata"]["name"]
+    assert len([d for d in monitored_docs if d["kind"] == "ServiceAccount"]) == 2
+
     def one(kind, wanted=None):
         result = [d for d in docs if d["kind"] == kind and (wanted is None or d["metadata"]["name"] == wanted)]
         assert len(result) == 1, (kind, wanted)

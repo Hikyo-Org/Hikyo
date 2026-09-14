@@ -134,8 +134,16 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		return nil, fmt.Errorf("boot: outbound directory client: %w", err)
 	}
 	diagnostics := &service.Diagnostics{Passwords: &kdf}
+	var postgresStorage *storagehealth.Kubernetes
 	if cfg.Store.Engine == config.EngineSQLite {
 		diagnostics.Volume = func() (storagehealth.Capacity, error) { return storagehealth.Read(filepath.Dir(cfg.Store.Path)) }
+	} else if cfg.Store.PostgresStorage.KubeletURL != "" {
+		storage := cfg.Store.PostgresStorage
+		postgresStorage, err = storagehealth.NewKubernetes(storagehealth.KubernetesOptions{KubeletURL: storage.KubeletURL, Namespace: storage.Namespace, PVC: storage.PVC, Node: storage.Node})
+		if err != nil {
+			return nil, fmt.Errorf("boot: PostgreSQL volume measurement: %w", err)
+		}
+		diagnostics.Volume = postgresStorage.Read
 	}
 	retentionSvc := &service.Retention{DB: db, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
 	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
@@ -316,12 +324,17 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// Construct the complete owner before disarming: future fallible work added
 	// to construction stays inside the guard's protection.
 	srv := &applicationGeneration{
-		cfg:                  cfg,
-		auth:                 authSvc,
-		limiter:              limiter,
-		retention:            retentionSvc,
-		certificate:          certificate,
-		closeIdleConnections: updateHTTP.CloseIdleConnections,
+		cfg:         cfg,
+		auth:        authSvc,
+		limiter:     limiter,
+		retention:   retentionSvc,
+		certificate: certificate,
+		closeIdleConnections: func() {
+			updateHTTP.CloseIdleConnections()
+			if postgresStorage != nil {
+				postgresStorage.CloseIdleConnections()
+			}
+		},
 		publicHandler: server.NewPublic(&service.System{DB: db, Store: sc}, api, webui.Assets(), server.PublicOptions{
 			HSTS:           config.EmitHSTS(cfg.ExternalOrigin),
 			ExternalOrigin: cfg.ExternalOrigin,
