@@ -1,1 +1,8 @@
 virtualStoreType: global
+# Storybook's @vitest/browser-playwright pulled a second playwright-core (1.63.0)
+# into the graph, which flipped @axe-core/playwright's peer off the 1.62.1 that
+# @playwright/test and the CI Playwright image (v1.62.1-noble) are pinned to,
+# producing a two-Page-type clash in e2e/fixtures/assertions.ts. Pin the whole
+# tree to the one version everything else already uses.
+overrides:
+  playwright-core: 1.62.1

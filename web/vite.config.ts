@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
+import { storybookTest } from '@storybook/addon-vitest/vitest-plugin';
+import { playwright } from '@vitest/browser-playwright';
+
 import { prototypeMockApi } from './prototype/mock-api.ts';
 
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
@@ -53,13 +56,38 @@ export default defineConfig(({ mode }) => ({
       polyfill: false,
     },
   },
-  // Unit tests live in the build config so they resolve `@hikyo/*` through the
-  // same aliases the bundle does; a second config file would be a second place
-  // for that mapping to be wrong.
+  // Two vitest projects. `unit` is the original build-config suite — it lives
+  // here so it resolves `@hikyo/*` through the same aliases the bundle does; a
+  // second config file would be a second place for that mapping to be wrong.
+  // `storybook` runs the stories in a headless Chromium and needs a browser, so
+  // it is opt-in (`pnpm run test-storybook`); `pnpm run test` stays `unit`-only
+  // to keep the browserless CI SPA-verify job (scripts/ci/build-spa.sh) green.
   test: {
-    // Playwright owns `.spec.ts` under e2e/flows. Picking those up here would
-    // fail on a missing browser, or — worse — skip and look like coverage.
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'e2e/**/*.test.ts'],
-    environment: 'node',
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'unit',
+          // Playwright owns `.spec.ts` under e2e/flows. Picking those up here
+          // would fail on a missing browser, or — worse — skip and look like
+          // coverage.
+          include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'e2e/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      {
+        extends: true,
+        plugins: [storybookTest({ configDir: here('.storybook') })],
+        test: {
+          name: 'storybook',
+          browser: {
+            enabled: true,
+            headless: true,
+            provider: playwright({}),
+            instances: [{ browser: 'chromium' }],
+          },
+        },
+      },
+    ],
   },
 }));

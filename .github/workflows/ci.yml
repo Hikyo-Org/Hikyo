@@ -759,6 +759,17 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
+      # Storybook stories run as vitest browser tests (chromium via
+      # @vitest/browser-playwright), so they need this container's browsers but
+      # not the app binary or a viewport — story coverage is theme- and
+      # prop-driven, identical on every leg. Piggyback one leg (desktop, group 1)
+      # like the session-epoch check below rather than spend a whole job or run
+      # it eight times.
+      - name: Storybook story tests
+        if: matrix.project == 'desktop' && matrix.group == 1
+        working-directory: web
+        run: pnpm run test-storybook
+
       # `playwright test` directly, not `pnpm run e2e`: the script rebuilds the
       # SPA so a developer cannot run the flows against a stale bundle, and
       # app-build already supplied this run's exact bundle and binary.

@@ -1204,6 +1204,38 @@ select {
   background: var(--bg-hover);
 }
 
+/* Overflow/action menu variant: a top-layer popover tucked below its invoking
+   button via the implicit popovertarget anchor. The base rule restores the UA
+   popover placement (fixed / inset:0 / margin:auto) over `.menu`'s account-menu
+   offsets, so a browser without anchor positioning (Firefox as of 2026) gets a
+   centred top-layer panel rather than one shoved off-screen by `left:100%+8px`.
+   ponytail: physical span-right (left-aligned, opens down-right) because the logical
+   `span-inline-start` keyword is unimplemented even in Chrome 153; a right-aligned
+   consumer can flip to span-left. */
+.menu--pop {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+}
+
+/* `.menu` sets `display: flex`, and an author `display` beats the UA
+   `[popover]:not(:popover-open) { display: none }` on cascade origin — so the
+   closed panel would otherwise stay laid out under the trigger. Re-hide it. */
+.menu--pop:not(:popover-open) {
+  display: none;
+}
+
+@supports (position-area: bottom span-right) {
+  .menu--pop {
+    position: absolute;
+    position-area: bottom span-right;
+    inset: auto;
+    /* Reset the UA popover `margin: auto` — auto margins re-centre the panel
+       across the position-area region and undo the anchor tuck. */
+    margin: 4px 0 0;
+  }
+}
+
 /* Skip link: the first tab stop, visible the moment it is focused. */
 .skip {
   position: absolute;

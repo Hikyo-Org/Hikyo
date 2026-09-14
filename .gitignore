@@ -68,3 +68,6 @@ internal/webui/dist/
 /nightly
 /hikyo
 /bin/
+
+*storybook.log
+storybook-static
