@@ -4,6 +4,7 @@ import react from '@astrojs/react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'astro/config';
 import { loadEnv } from 'vite';
+import { pwaAssetGraph } from './scripts/pwa-asset-graph.mjs';
 import {
   rehypeCode,
   remarkCodeTab,
@@ -139,6 +140,7 @@ export default defineConfig({
     }),
   },
   integrations: [
+    pwaAssetGraph(),
     react(),
     mdx({
       extendMarkdownConfig: true,
