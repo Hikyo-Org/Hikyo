@@ -1,0 +1,234 @@
+{
+  "node_count": 35671,
+  "unverified_node_count": 0,
+  "raw_edge_count": 115255,
+  "non_object_edges": 0,
+  "missing_endpoint_edges": 0,
+  "dangling_endpoint_edges": 11651,
+  "self_loop_edges": 21,
+  "valid_candidate_edges": 103604,
+  "exact_duplicate_edges": 220,
+  "directed_unique_endpoint_pairs": 101556,
+  "directed_same_endpoint_collapsed_edges": 2048,
+  "undirected_unique_endpoint_pairs": 101207,
+  "undirected_same_endpoint_collapsed_edges": 2397,
+  "same_endpoint_group_count": 1491,
+  "relation_variant_groups": 380,
+  "source_file_variant_groups": 0,
+  "source_location_variant_groups": 699,
+  "context_variant_groups": 270,
+  "post_build_graph_type": "Graph",
+  "post_build_node_count": 35330,
+  "post_build_edge_count": 100989,
+  "post_build_error": "",
+  "producer_suppression": {
+    "path": "graphify/extract.py",
+    "total_sites": 12,
+    "sites": [
+      {
+        "line": 1336,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 1869,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 1871,
+        "name": "seen_doc_refs",
+        "tuple_arity": 0,
+        "sample": "seen_doc_refs: set[str] = set()"
+      },
+      {
+        "line": 2241,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = {n[\"id\"] for n in nodes}"
+      },
+      {
+        "line": 2388,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids = {n.get(\"id\") for n in nodes}"
+      },
+      {
+        "line": 3026,
+        "name": "seen_keys",
+        "tuple_arity": 0,
+        "sample": "seen_keys: set[tuple] = set()"
+      },
+      {
+        "line": 3195,
+        "name": "seen_keys",
+        "tuple_arity": 0,
+        "sample": "seen_keys: set[tuple] = set()"
+      },
+      {
+        "line": 4887,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 4995,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 5074,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 5589,
+        "name": "seen_ids",
+        "tuple_arity": 0,
+        "sample": "seen_ids: set[str] = set()"
+      },
+      {
+        "line": 5590,
+        "name": "seen_edges",
+        "tuple_arity": 4,
+        "sample": "seen_edges: set[tuple[str, str, str, str | None]] = set()"
+      }
+    ],
+    "error": ""
+  },
+  "examples": [
+    {
+      "source": "internal_store_pggen_audit_sql_go_pggen_inserttenantauditeventparams",
+      "target": "go_type_github_com_jackc_pgx_v5_pgtype_text",
+      "edge_count": 10,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "internal/store/pggen/audit.sql.go"
+      ],
+      "source_locations": [
+        "L117",
+        "L119",
+        "L120",
+        "L123",
+        "L124",
+        "L125",
+        "L126",
+        "L128",
+        "L129",
+        "L130"
+      ],
+      "contexts": [
+        "field"
+      ]
+    },
+    {
+      "source": "internal_store_pggen_models_go_pggen_audittenantevent",
+      "target": "go_type_github_com_jackc_pgx_v5_pgtype_text",
+      "edge_count": 10,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "internal/store/pggen/models.go"
+      ],
+      "source_locations": [
+        "L337",
+        "L339",
+        "L340",
+        "L343",
+        "L344",
+        "L345",
+        "L346",
+        "L348",
+        "L349",
+        "L350"
+      ],
+      "contexts": [
+        "field"
+      ]
+    },
+    {
+      "source": "internal_store_sqlitegen_audit_sql_go_sqlitegen_inserttenantauditeventparams",
+      "target": "go_type_database_sql_nullstring",
+      "edge_count": 10,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "internal/store/sqlitegen/audit.sql.go"
+      ],
+      "source_locations": [
+        "L105",
+        "L107",
+        "L108",
+        "L111",
+        "L112",
+        "L113",
+        "L114",
+        "L116",
+        "L117",
+        "L118"
+      ],
+      "contexts": [
+        "field"
+      ]
+    },
+    {
+      "source": "internal_store_sqlitegen_models_go_sqlitegen_audittenantevent",
+      "target": "go_type_database_sql_nullstring",
+      "edge_count": 10,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "internal/store/sqlitegen/models.go"
+      ],
+      "source_locations": [
+        "L336",
+        "L338",
+        "L339",
+        "L342",
+        "L343",
+        "L344",
+        "L345",
+        "L347",
+        "L348",
+        "L349"
+      ],
+      "contexts": [
+        "field"
+      ]
+    },
+    {
+      "source": "server_stubauth",
+      "target": "go_type_context_context",
+      "edge_count": 9,
+      "relations": [
+        "references"
+      ],
+      "source_files": [
+        "internal/server/contract_test.go"
+      ],
+      "source_locations": [
+        "L40",
+        "L41",
+        "L42",
+        "L43",
+        "L44",
+        "L46",
+        "L47",
+        "L48",
+        "L49"
+      ],
+      "contexts": [
+        "field"
+      ]
+    }
+  ]
+}

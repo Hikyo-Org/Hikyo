@@ -1,0 +1,230 @@
+{
+  "detected_files": 2993,
+  "corpus_words": 4259905,
+  "code_files": 2217,
+  "documents": 674,
+  "images": 102,
+  "semantic_files_covered": 776,
+  "semantic_files_missing": [],
+  "semantic_nodes": 2780,
+  "semantic_edges": 3406,
+  "token_usage": "Unmeasured host-agent usage; zero counters are placeholders.",
+  "semantic_depth": "Focused source excerpts, core concepts and explicit references; not exhaustive clause-level analysis.",
+  "skipped_sensitive": [
+    "chart/hikyo/templates/operator-serviceaccount.yaml",
+    "docs/site/src/content/docs/docs/dynamic-secrets.mdx",
+    "docs/site/src/content/docs/docs/values-and-secrets.mdx",
+    "internal/service/common-passwords.txt",
+    "web/src/styles/tokens.css"
+  ],
+  "unsupported": [
+    ".dockerignore",
+    ".git",
+    ".gitignore",
+    ".nvmrc",
+    "Dockerfile.release",
+    "LICENSE",
+    "api/testdata/freeze/additive-changes-pass/verdict",
+    "api/testdata/freeze/alternate-dialect-fails/verdict",
+    "api/testdata/freeze/delete-deprecated-endpoint-fails/verdict",
+    "api/testdata/freeze/downgrade-to-30-fails/verdict",
+    "api/testdata/freeze/grow-closed-response-enum-fails/verdict",
+    "api/testdata/freeze/grow-open-enum-passes/verdict",
+    "api/testdata/freeze/legacy-nullable-fails/verdict",
+    "api/testdata/freeze/new-required-request-property-fails/verdict",
+    "api/testdata/freeze/remove-response-enum-value-fails/verdict",
+    "api/testdata/freeze/remove-security-requirement-fails/verdict",
+    "api/testdata/freeze/response-property-became-optional-fails/verdict",
+    "api/testdata/freeze/toplevel-webhooks-fails/verdict",
+    "chart/hikyo/files/release/trust/primary.pub",
+    "chart/hikyo/templates/_helpers.tpl",
+    "chart/hikyo/templates/_rollout.tpl",
+    "clients/ts/.gitignore",
+    "deploy/mcp/nginx.conf",
+    "docs/reports/1.0/combined-rehearsal/go-tests.jsonl",
+    "docs/reports/1.0/combined-rehearsal/web-typecheck.log",
+    "docs/reports/1.0/evidence/operator-floor/operator.log",
+    "docs/reports/1.0/forgejo-acceptance/baseline-lifecycle.log",
+    "docs/reports/1.0/forgejo-acceptance/lifecycle.log",
+    "docs/reports/1.0/forgejo-pr666/lifecycle.log",
+    "docs/reports/1.0/restore-publication-evidence/before-fix.log",
+    "docs/reports/1.0/restore-publication-evidence/drills.log",
+    "docs/reports/self-configuration/fonts/ibm-plex-mono-400.woff2",
+    "docs/reports/self-configuration/fonts/instrument-sans-400.woff2",
+    "docs/reports/self-configuration/fonts/instrument-sans-700.woff2",
+    "docs/reports/self-configuration/report.css",
+    "docs/site/.env.example",
+    "docs/site/.gitignore",
+    "docs/site/public/manifest.webmanifest",
+    "docs/site/src/styles/docs.css",
+    "docs/site/src/styles/landing.css",
+    "install/compose/demo/.gitignore",
+    "install/install.sh.in",
+    "install/systemd/hikyo-compose-sync.service",
+    "install/systemd/hikyo-compose-sync.timer",
+    "install/updater/compose.json.example",
+    "install/updater/flux.json.example",
+    "install/updater/hikyo-updater.service",
+    "install/updater/systemd.json.example",
+    "install/updater/updater.env.example",
+    "internal/importer/testdata/vault-capture-numbers.jsonl",
+    "internal/importer/testdata/vault-capture.jsonl",
+    "internal/scanning/rules/vendor/LICENSE",
+    "internal/scanning/rules/vendor/gitleaks.toml",
+    "release/trust/metadata.json.example",
+    "release/trust/nightly/policy.json.example",
+    "release/trust/primary-1.pub",
+    "release/trust/recovery-1.pub",
+    "release/trust/root.json.example",
+    "scripts/ci/assert-doctor-findings.jq",
+    "scripts/ci/host-upgrade-systemd.Dockerfile",
+    "web/prototype/directions/.gitignore",
+    "web/src/styles/app.css"
+  ],
+  "parser_warnings": [
+    {
+      "source_file": "docs/site/src/components/DocsLayout.astro",
+      "parse_errors": {
+        "first_error_line": 2,
+        "multiline_error": true
+      },
+      "symbols": 0
+    },
+    {
+      "source_file": "docs/site/src/components/PostHogConsent.astro",
+      "parse_errors": {
+        "first_error_line": 11,
+        "multiline_error": true
+      },
+      "symbols": 1
+    },
+    {
+      "source_file": "docs/site/src/components/prototype/HikyoHead.astro",
+      "parse_errors": {
+        "first_error_line": 2,
+        "multiline_error": false
+      },
+      "symbols": 0
+    },
+    {
+      "source_file": "docs/site/src/components/prototype/HikyoSwitcher.astro",
+      "parse_errors": {
+        "first_error_line": 2,
+        "multiline_error": true
+      },
+      "symbols": 0
+    },
+    {
+      "source_file": "docs/site/src/pages/index.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 0
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/1.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 3
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/10.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 6
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/11.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 0
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/2.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 4
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/3.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 3
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/4.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 3
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/5.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 2
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/6.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 3
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/7.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 2
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/8.astro",
+      "parse_errors": {
+        "first_error_line": 6,
+        "multiline_error": true
+      },
+      "symbols": 7
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/9.astro",
+      "parse_errors": {
+        "first_error_line": 1,
+        "multiline_error": true
+      },
+      "symbols": 2
+    },
+    {
+      "source_file": "docs/site/src/pages/prototype/hikyo/index.astro",
+      "parse_errors": {
+        "first_error_line": 2,
+        "multiline_error": true
+      },
+      "symbols": 2
+    }
+  ],
+  "source_commit": "106bc87c22c20ea8e3d084a4f35d06f8ffa09920",
+  "extraction_confidence_counts": {
+    "EXTRACTED": 106062,
+    "INFERRED": 9193
+  },
+  "final_nodes": 35330,
+  "final_edges": 100989,
+  "communities": 1281
+}
