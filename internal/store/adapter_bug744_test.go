@@ -162,6 +162,87 @@ func TestAdapterConflictInsertIdempotentAcrossRetries(t *testing.T) {
 // TestAdapterConflictsHideStaleGeneration proves the conflict read only returns
 // artifacts for the live generation, so a superseded group can no longer show
 // in the UI (where adopting it fails with a generic 409) while history is kept.
+// execAdapter runs one seed statement on either engine, translating the single
+// engine-sensitive literal (a boolean) via the caller's own text.
+func execAdapter(t *testing.T, db *store.DB, statement string) {
+	t.Helper()
+	var err error
+	if db.Engine() == store.EnginePostgres {
+		_, err = db.PG().Exec(t.Context(), statement)
+	} else {
+		_, err = db.SQLiteWrite().ExecContext(t.Context(), statement)
+	}
+	if err != nil {
+		t.Fatalf("seed %q: %v", statement, err)
+	}
+}
+
+// seedAdoptionFixture stands up an active forgejo adapter+target with a queued
+// converge and an un-adopted conflict artifact for (secret, TOKEN) at
+// generation 1 — the minimal shape adoptAdapter walks — on either engine.
+func seedAdoptionFixture(t *testing.T, db *store.DB) {
+	t.Helper()
+	truthy := map[store.Engine]string{store.EngineSQLite: "1", store.EnginePostgres: "TRUE"}[db.Engine()]
+	execAdapter(t, db, fmt.Sprintf(`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_adopt','Adopt',%s,'{}','2026-08-17T00:00:00Z')`, truthy))
+	execAdapter(t, db, `INSERT INTO projects (id,org_id,name,created_at) VALUES ('prj_adopt','org_adopt','Adopt','2026-08-17T00:00:00Z')`)
+	execAdapter(t, db, `INSERT INTO environments (id,org_id,project_id,name,note,created_at,display_order) VALUES ('env_adopt','org_adopt','prj_adopt','prod','','2026-08-17T00:00:00Z',0)`)
+	execAdapter(t, db, `INSERT INTO principals (id,kind,created_at) VALUES ('usr_adopt','human','2026-08-17T00:00:00Z')`)
+	execAdapter(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_adopt','usr_adopt','manage-adapters','org_adopt','prj_adopt',NULL,'2026-08-17T00:00:00Z')`)
+	execAdapter(t, db, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_1','org_adopt','prj_adopt','forgejo','https://git.example','usr_adopt','active','2026-08-17T00:00:00Z')`)
+	execAdapter(t, db, `INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,active_job_id,created_at) VALUES ('tgt_1','org_adopt','prj_adopt','env_adopt','adp_1','repository','acme','app',42,'',1,'active','converging','job_1','2026-08-17T00:00:00Z')`)
+	execAdapter(t, db, `INSERT INTO adapter_outbox (id,org_id,project_id,environment_id,target_id,kind,authority_principal_id,generation,dedup_key,next_attempt_at,state,created_at) VALUES ('job_1','org_adopt','prj_adopt','env_adopt','tgt_1','converge','usr_adopt',1,'tgt_1','2026-08-17T00:00:00Z','queued','2026-08-17T00:00:00Z')`)
+
+	// The un-adopted artifact adoptAdapter's COUNT requires: gen 1, repo 0, dest 42.
+	scope := domain.Scope{Org: "org_adopt", Project: "prj_adopt"}
+	if err := storetx.Write(t.Context(), db, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+		p, err := az.Authorize(ctx, authz.Identity{Principal: "usr_adopt"}, authz.OpAdapterPlan, scope)
+		if err != nil {
+			return err
+		}
+		return repos.Adapters().RecordPlan(ctx, p, "tgt_1", "plan_1", 1, 0, 42, []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "TOKEN"}}, time.Now().UTC())
+	}); err != nil {
+		t.Fatalf("record plan: %v", err)
+	}
+}
+
+func adoptTOKEN(t *testing.T, db *store.DB) error {
+	t.Helper()
+	scope := domain.Scope{Org: "org_adopt", Project: "prj_adopt"}
+	return storetx.Write(t.Context(), db, func(ctx context.Context, repos store.Repos, az *authz.TxAuthorizer) error {
+		p, err := az.Authorize(ctx, authz.Identity{Principal: "usr_adopt"}, authz.OpAdapterAdopt, scope)
+		if err != nil {
+			return err
+		}
+		_, err = repos.Adapters().Adopt(ctx, p, store.AdapterAdoption{
+			TargetID: "tgt_1", ArtifactID: "plan_1", Entries: []store.AdapterConflictEntry{{Surface: "secret", EffectiveName: "TOKEN"}},
+			AuthorityPrincipalID: "usr_adopt", LedgerIDs: []string{"led_adopt"}, JobID: "job_adopt", AuditAt: time.Now().UTC(),
+		})
+		return err
+	})
+}
+
+// #744 follow-up: adoptAdapter returned a raw driver error from its owned-ledger
+// insert, so a genuine unique-violation surfaced as a 500 (the unmapped-error
+// default) instead of a mapped 409. A leftover ledger row for the name — from a
+// prior worker reservation or a live target at the same provider origin — trips
+// UNIQUE(target_id, surface, normalized_name). Before the constraint() wrap this
+// returns a raw pgconn/sqlite error, not store.ErrConflict.
+func runAdoptionLedgerCollisionIsConflict(t *testing.T, db *store.DB) {
+	seedAdoptionFixture(t, db)
+	execAdapter(t, db, `INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,repository_id,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_squat','org_adopt','prj_adopt','env_adopt','tgt_1','https://git.example','repository',0,42,'secret','TOKEN','TOKEN','owned','2026-08-17T00:00:00Z')`)
+	if err := adoptTOKEN(t, db); !errors.Is(err, store.ErrConflict) {
+		t.Fatalf("adopt over owned ledger name = %v, want ErrConflict", err)
+	}
+}
+
+func TestAdapterAdoptionLedgerCollisionIsConflictSQLite(t *testing.T) {
+	runAdoptionLedgerCollisionIsConflict(t, openKeyTestDB(t, store.Config{Engine: store.EngineSQLite, Path: t.TempDir() + "/adapter-adopt.db"}))
+}
+
+func TestAdapterAdoptionLedgerCollisionIsConflictPostgres(t *testing.T) {
+	runAdoptionLedgerCollisionIsConflict(t, postgresTestDB(t))
+}
+
 func TestAdapterConflictsHideStaleGeneration(t *testing.T) {
 	db := adapterRuntimeDB(t)
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_adapter','usr_adapter','manage-adapters','org_adapter','prj_adapter',NULL,'2026-08-17T00:00:00Z')`); err != nil {

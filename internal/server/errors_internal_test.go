@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -71,6 +72,8 @@ func TestWirePolicyClassifiesWrappedErrors(t *testing.T) {
 		{"reauth expired", service.ErrReauthWindowExpired, http.StatusForbidden, apigen.ErrorCodeForbidden},
 		{"reauth mismatch", service.ErrReauthUnitMismatch, http.StatusForbidden, apigen.ErrorCodeForbidden},
 		{"reauth spent", service.ErrReauthWindowSpent, http.StatusForbidden, apigen.ErrorCodeForbidden},
+		{"adapter provider busy", adapter.ErrProviderBusy, http.StatusConflict, apigen.ErrorCodeConflict},
+		{"adapter superseded", adapter.ErrSuperseded, http.StatusConflict, apigen.ErrorCodeConflict},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

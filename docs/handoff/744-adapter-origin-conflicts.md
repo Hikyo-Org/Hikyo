@@ -56,21 +56,73 @@ break that uniformity invariant to describe a refusal the report never hit.
 If Marc wants the live collision to name the origin, that is a follow-up that
 touches the error-uniformity policy, not this bug.
 
+## Adoption 500 + empty audit trail (follow-up, same branch)
+
+Marc: "why adopting would lead to a 500 error. I can't find anything in the
+audit trail." Root-caused to three error kinds that escaped `adoptAdapter`
+(`internal/store/repos_adapters.go`) / the service `Adopt`
+(`internal/service/adapters.go`) as *unmapped* faults, which the server default
+turns into 500 (`internal/server/errors.go` `wireErrorFor` → `ErrorCodeInternal`):
+
+1. **Raw DB errors.** Every post-`Exec` return in `adoptAdapter` was
+   `return AdapterAdoptionResult{}, err` — un-wrapped. A genuine unique-violation
+   (pg 23505 / sqlite UNIQUE) on the owned-ledger insert therefore hit the
+   500 default instead of a mapped 409. Fixed by routing all six mutation
+   errors through `constraint(err)` (the same map `repos.go` uses everywhere
+   else). The reachable collision is the owned-ledger insert tripping
+   `UNIQUE(target_id, surface, normalized_name)` (or the cross-target
+   `adapter_ledger_active_provider_name`) when a leftover ledger row already
+   owns the name.
+2. **`adapter.ErrProviderBusy`** (provider lease held, or the generation-guarded
+   target update lost a race) and **3. `adapter.ErrSuperseded`** (the prior job
+   was no longer queued/running) are plain `errors.New` sentinels with **no
+   errmap entry**, so they too fell through to 500. Fixed by two rows in
+   `wireErrorRules` mapping both to `ErrorCodeConflict` — the documented
+   single-decision point, so this also closes the identical latent 500 on the
+   `RemoveTarget`/`Delete` fence-timeout path. Neither sentinel carries a
+   `SafeDetail`, so the 409 body stays byte-identical to every other conflict
+   (uniformity invariant preserved).
+   `Adopt` was also the only adapter mutation **not** wrapped in
+   `retryAdapterProviderFence` (RemoveTarget/Delete are); it is now, so a
+   transient lease retries to success instead of surfacing a spurious 409.
+
+**Why nothing in the audit trail:** the audit `InsertTenant` is inside the same
+`tx.Write` as the mutation (service `Adopt`), so *any* returned error rolls the
+audit row back with it. The empty trail is the shared-tx rollback, not a second
+bug — expected, and it is why a failed adoption leaves no trace.
+
+**The outbox dedup insert (line ~667) is defense-wrapped but unreachable as a
+500.** `adapter_outbox_active_dedup` permits at most one queued/running row per
+`dedup_key` (= target id), and the invariant "queued/running converge ⟺
+`active_job_id` set" holds across every writer (completion `active_job_id=NULL`
+pairs with the job leaving queued/running — `adapter_runtime.go:1287`; pause
+supersedes then nulls — `repos_adapters.go:846`; enqueue/adopt/tombstone/moves
+likewise). So adoption's supersede always clears the one active job before the
+new insert. The `constraint(err)` wrap there is belt-and-braces; there is no
+legitimate state to regress (a second queued row can't even be seeded — the
+index rejects it).
+
 ## Convergence — what is and is not root-caused
 
-- Fixed and proven by regression: retry flooding (1a) and stale-group display
-  (1b). Tombstone origin reuse (Bug 2) fixed and proven on both engines.
-- **Not** independently reproduced as a defect: the report's worker re-conflict
-  *after* adoption. Traced the two provider paths — Forgejo re-conflicts only
-  when `state == Reserved` (a fresh reservation); an adopted name loads from the
-  ledger as `Owned`, takes the `Update` disposition, and skips the conflict
-  branch. GitHub-Actions `possible_capture` release (`ReleaseLedger: true`) is
-  guarded by `freshReservation`, so an owned/adopted row is not deleted. Both
-  guards hold given a ledger key that matches adoption's written
-  `effective_name`. If Marc still sees re-conflict on the preview env after
-  these fixes, the next step is to capture the live `adapter_ledger` state for
-  the target right after adoption and confirm the stored `effective_name`
-  matches the desired row's name for the surface.
+- Fixed and proven by regression: retry flooding (1a), stale-group display
+  (1b), tombstone origin reuse (Bug 2), and the adoption 500 (three unmapped
+  error sources above; `internal/store/adapter_bug744_test.go`
+  `TestAdapterAdoptionLedgerCollisionIsConflict{SQLite,Postgres}` +
+  `internal/server/errors_internal_test.go` provider-busy/superseded rows).
+- **The 500 is the most likely root cause of Bug 1's re-conflict.**
+  `EnqueuePublished` bumps `generation` on every publish
+  (`repos_adapters.go:746/759`). If every `Adopt` 500'd, the adoption tx rolled
+  back (including its ledger `owned` writes and the conflict `adopted_at` mark),
+  so the names were never actually adopted — and each publish-driven generation
+  bump re-ran the converge and re-conflicted the same names (PROD_SSH_HOST at
+  gen 1, again at gen 2, PROD_SSH_KEY ×3 by gen 4). The empty audit trail is
+  consistent with "every adoption rolled back." This supersedes the earlier
+  "worker re-conflict after adoption" hypothesis: the worker analysis assumed a
+  *committed* adoption; if adoption never committed, there was no owned ledger
+  row for the worker to load, so it kept reserving fresh.
+- **Unconfirmed:** *which* of the three sources fired in Marc's run. All three
+  reduce to a routine 409 now, so the user-visible dead-end is resolved either
+  way. To close it precisely, batch for Marc (below).
 
 ## Validation
 
@@ -81,7 +133,26 @@ touches the error-uniformity policy, not this bug.
 - New regressions (`internal/store/adapter_bug744_test.go`), all PASS on both
   engines where dual: `TestAdapterOriginReusableAfterTombstone{SQLite,Postgres}`,
   `TestAdapterConflictInsertIdempotentAcrossRetries`,
-  `TestAdapterConflictsHideStaleGeneration`.
+  `TestAdapterConflictsHideStaleGeneration`,
+  `TestAdapterAdoptionLedgerCollisionIsConflict{SQLite,Postgres}`.
+- Adoption-500 mapping: `internal/server/errors_internal_test.go`
+  `TestWirePolicyClassifiesWrappedErrors` gains `adapter.ErrProviderBusy` and
+  `adapter.ErrSuperseded` → 409 conflict cases (green). `go vet` on
+  store/service/server clean; full SQLite `store/service/server/lint/adapter`
+  suite green; Postgres adapter regressions green.
+
+## Open questions for Marc (batched, non-blocking)
+
+- Pod log line at the 500 timestamp: `wireErrorFor` logs the cause and never
+  returns it, so the log names which source fired — a pg constraint name (ledger
+  collision), "adapter: provider write is still in flight" (ErrProviderBusy), or
+  "adapter: target generation superseded" (ErrSuperseded). Any one ends the
+  which-fired question.
+- On the live DB for the affected target:
+  `SELECT id, active_job_id, sync_status, generation FROM adapter_targets WHERE id=…`
+  and `SELECT target_id, state, surface, normalized_name FROM adapter_ledger
+  WHERE normalized_name IN ('PROD_SSH_KEY','PROD_SSH_HOST')` — confirms whether a
+  leftover ledger row was the collision.
 - `go test ./internal/lint/ -count=1`: green. The new test file is admitted to
   the driver-handle allowlist (`internal/lint/handle_positions.go`) for its
   both-engine fixture seeding, same as the other adapter `_test.go` files.

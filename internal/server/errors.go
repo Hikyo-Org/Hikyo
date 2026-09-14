@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
+	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
@@ -219,6 +220,14 @@ var wireErrorRules = []struct {
 
 	// Enumeration-safe server surfaces.
 	{service.ErrNoResetTarget, apigen.ErrorCodeNotFound},
+
+	// Adapter provider-lease contention and generation-supersede are post-auth
+	// contention, not faults: they escape the Adopt/RemoveTarget/Delete paths
+	// (the fence surfaces ErrProviderBusy once ctx is spent) and must render a
+	// uniform 409, never a 500. Neither carries a SafeDetail, so the conflict
+	// body stays byte-identical to every other conflict.
+	{adapter.ErrProviderBusy, apigen.ErrorCodeConflict},
+	{adapter.ErrSuperseded, apigen.ErrorCodeConflict},
 
 	// Domain and admission classes are deliberately last: specific service
 	// errors may wrap one of these while carrying a narrower public meaning.

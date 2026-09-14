@@ -1707,54 +1707,56 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 	}
 	now := store.CanonTime(s.now())
 	var out AdoptAdapterResult
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
-		caller, p, err := authorize(ctx, az, actor, authz.OpAdapterAdopt, scope, now)
-		if err != nil {
-			return err
-		}
-		target, err := r.Adapters().Target(ctx, p, request.TargetID)
-		if err != nil {
-			return err
-		}
-		if target.Generation != request.ExpectedGeneration || target.RepositoryID != request.ExpectedRepositoryID || target.DestinationID != request.ExpectedDestinationID {
-			return fmt.Errorf("%w: adoption target no longer matches the selected artifact", domain.ErrConflict)
-		}
-		environments, err := r.Adapters().TargetEnvironments(ctx, p, request.TargetID)
-		if err != nil {
-			return err
-		}
-		if len(environments) == 0 {
-			return domain.ErrNotFound
-		}
-		if err := s.requireAdapterCeremony(ctx, az, caller, scope, environments, authz.OpAdapterAdopt, now); err != nil {
-			return err
-		}
-		result, err := r.Adapters().Adopt(ctx, p, store.AdapterAdoption{
-			TargetID: request.TargetID, ArtifactID: request.ArtifactID, Entries: request.Entries,
-			AuthorityPrincipalID: string(caller.Principal), LedgerIDs: ledgerIDs, JobID: jobID, AuditAt: now,
+	err = retryAdapterProviderFence(ctx, func() error {
+		return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			caller, p, err := authorize(ctx, az, actor, authz.OpAdapterAdopt, scope, now)
+			if err != nil {
+				return err
+			}
+			target, err := r.Adapters().Target(ctx, p, request.TargetID)
+			if err != nil {
+				return err
+			}
+			if target.Generation != request.ExpectedGeneration || target.RepositoryID != request.ExpectedRepositoryID || target.DestinationID != request.ExpectedDestinationID {
+				return fmt.Errorf("%w: adoption target no longer matches the selected artifact", domain.ErrConflict)
+			}
+			environments, err := r.Adapters().TargetEnvironments(ctx, p, request.TargetID)
+			if err != nil {
+				return err
+			}
+			if len(environments) == 0 {
+				return domain.ErrNotFound
+			}
+			if err := s.requireAdapterCeremony(ctx, az, caller, scope, environments, authz.OpAdapterAdopt, now); err != nil {
+				return err
+			}
+			result, err := r.Adapters().Adopt(ctx, p, store.AdapterAdoption{
+				TargetID: request.TargetID, ArtifactID: request.ArtifactID, Entries: request.Entries,
+				AuthorityPrincipalID: string(caller.Principal), LedgerIDs: ledgerIDs, JobID: jobID, AuditAt: now,
+			})
+			if err != nil {
+				return err
+			}
+			entryNames := make([]string, 0, len(request.Entries))
+			for _, entry := range request.Entries {
+				entryNames = append(entryNames, entry.Surface+":"+entry.EffectiveName)
+			}
+			slices.Sort(entryNames)
+			ev, err := domainEvent(ctx, audit.EventAdapterAdopt, caller.Principal, audit.Object{Type: "adapter-target", ID: request.TargetID}, audit.Payload{
+				"artifact_id": request.ArtifactID, "target_generation": target.Generation, "entries": entryNames,
+			})
+			if err != nil {
+				return err
+			}
+			if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
+				return err
+			}
+			if err := auditSuperseded(ctx, r, p, caller.Principal, request.TargetID, result.SupersededJobID, result.JobID); err != nil {
+				return err
+			}
+			out = AdoptAdapterResult{Generation: result.Generation, JobID: result.JobID}
+			return nil
 		})
-		if err != nil {
-			return err
-		}
-		entryNames := make([]string, 0, len(request.Entries))
-		for _, entry := range request.Entries {
-			entryNames = append(entryNames, entry.Surface+":"+entry.EffectiveName)
-		}
-		slices.Sort(entryNames)
-		ev, err := domainEvent(ctx, audit.EventAdapterAdopt, caller.Principal, audit.Object{Type: "adapter-target", ID: request.TargetID}, audit.Payload{
-			"artifact_id": request.ArtifactID, "target_generation": target.Generation, "entries": entryNames,
-		})
-		if err != nil {
-			return err
-		}
-		if err := r.Audit().InsertTenant(ctx, p, ev); err != nil {
-			return err
-		}
-		if err := auditSuperseded(ctx, r, p, caller.Principal, request.TargetID, result.SupersededJobID, result.JobID); err != nil {
-			return err
-		}
-		out = AdoptAdapterResult{Generation: result.Generation, JobID: result.JobID}
-		return nil
 	})
 	return out, err
 }
