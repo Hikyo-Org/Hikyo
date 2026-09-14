@@ -80,6 +80,17 @@ func (f AuditFilter) Matches(e AuditEvent) bool {
 	}
 }
 
+// Selective reports whether any equality field is set — i.e. whether Matches
+// can reject a scanned row. The service uses this to size store reads: an
+// unselective filter returns every scanned row, so one read of the page limit
+// suffices; a selective one may reject most rows, so the service reads full
+// store pages and loops until the caller's page is filled. Kept beside Matches
+// so the field list stays in sync with it.
+func (f AuditFilter) Selective() bool {
+	return f.Actor != "" || f.Type != "" || f.Outcome != "" ||
+		f.ObjectType != "" || f.ObjectID != "" || f.CorrelationID != ""
+}
+
 // AuditPageOrder names the storage order for an audit page.
 type AuditPageOrder uint8
 
