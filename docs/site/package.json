@@ -7,8 +7,8 @@
     "prepare-content": "node scripts/prepare-content.mjs",
     "dev": "pnpm run prepare-content && astro dev",
     "check": "pnpm run prepare-content && astro check",
-    "build": "pnpm run prepare-content && astro build && node scripts/build-pwa.mjs",
-    "test": "pnpm run build && ../../scripts/ci/check-oss-policy.sh ../.. dist && ../../scripts/ci/check-docs-pwa.sh ../.. dist && node scripts/test-posthog.mjs && node scripts/test-csp.mjs && node scripts/test-pwa-offline.mjs",
+    "build": "pnpm run prepare-content && astro build",
+    "test": "node --test scripts/test-pwa-assets.mjs && pnpm run build && ../../scripts/ci/check-oss-policy.sh ../.. dist && ../../scripts/ci/check-docs-pwa.sh ../.. dist && node scripts/test-posthog.mjs && node scripts/test-csp.mjs && node scripts/test-pwa-offline.mjs",
     "verify": "pnpm run check && pnpm run test"
   },
   "dependencies": {

@@ -130,14 +130,68 @@ try {
     'service worker navigation fallback replaced the prototype hub',
   );
 
+  const generatedPrototype = await page.goto(`${origin}/prototype/hikyo/11/`, { waitUntil: 'networkidle' });
+  assert.ok(generatedPrototype?.ok(), 'generated prototype must remain available online');
+  assert.ok(await page.locator('h1').isVisible(), 'generated prototype did not render online');
+  const prototypeStyles = await page.locator('link[rel="stylesheet"]').evaluateAll((links) =>
+    links.map((link) => link.getAttribute('href')).filter((href) => href !== null));
+  const cachedPrototypeStyles = await page.evaluate(async (styles) => {
+    const urls = new Set();
+    for (const name of await caches.keys()) {
+      for (const request of await (await caches.open(name)).keys()) urls.add(new URL(request.url).pathname);
+    }
+    return styles.filter((style) => urls.has(new URL(style, location.href).pathname));
+  }, prototypeStyles);
+  assert.ok(cachedPrototypeStyles.length > 0, 'production CSS shared with a prototype must remain precached');
+  assert.ok(cachedPrototypeStyles.length < prototypeStyles.length, 'prototype-only emitted CSS leaked into the precache');
+
   const cacheNames = await page.evaluate(() => caches.keys());
   assert.ok(cacheNames.length > 0, 'service worker created no runtime cache');
 
+  // Check emitted CSS independently of the build graph. A graph missing
+  // CSS-to-font edges can otherwise pass HTML/title checks with fallback fonts.
+  const missingCssAssets = await page.evaluate(async () => {
+    const cacheNames = await caches.keys();
+    const cachedUrls = new Set();
+    for (const name of cacheNames) {
+      for (const request of await (await caches.open(name)).keys()) {
+        const url = new URL(request.url);
+        cachedUrls.add(`${url.origin}${url.pathname}`);
+      }
+    }
+    const missing = [];
+    for (const url of cachedUrls) {
+      if (!url.endsWith('.css')) continue;
+      const css = await (await fetch(url)).text();
+      for (const match of css.matchAll(/url\(\s*['"]?([^'"\s)]+)['"]?\s*\)/g)) {
+        const asset = new URL(match[1], url);
+        if (asset.origin === location.origin && !cachedUrls.has(`${asset.origin}${asset.pathname}`)) {
+          missing.push(asset.pathname);
+        }
+      }
+    }
+    return missing;
+  });
+  assert.deepEqual(missingCssAssets, [], 'a precached stylesheet references an uncached font or image');
+
   await context.setOffline(true);
   await closeServer();
+  const offlineFailures = [];
+  page.on('requestfailed', (request) => offlineFailures.push(request.url()));
   await page.goto(`${origin}/docs/architecture/`, { waitUntil: 'domcontentloaded' });
   assert.equal(await page.title(), 'Architecture — Hikyo');
   assert.match(await page.locator('body').innerText(), /Architecture/);
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => document.querySelector('astro-island[client="load"][ssr]') === null);
+  const offlineSearchAvailable = await page.evaluate(async () => {
+    const response = await fetch('/api/search.json');
+    return response.ok && (await response.text()).length > 0;
+  });
+  assert.ok(offlineSearchAvailable, 'complete docs search index must remain available offline');
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.getByRole('dialog').getByPlaceholder('Search').fill('configuration');
+  await page.getByRole('dialog').locator('button[aria-selected]').first().waitFor();
+  assert.deepEqual(offlineFailures, [], 'offline docs hydration, styles and fonts must not fall back to the network');
 
   await context.close();
   console.log('docs PWA browser gate: unvisited precached route loaded offline');
