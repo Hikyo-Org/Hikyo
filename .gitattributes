@@ -1,0 +1,4 @@
+# Generated Graphify snapshots are reviewed through their report and coverage.
+graphify-out/graph.json linguist-generated=true
+graphify-out/graph.html linguist-generated=true
+graphify-out/.graphify_labels.json linguist-generated=true
