@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -47,31 +49,63 @@ type AuditFilter struct {
 	AfterSeq          int64
 	ToSeq             int64 // session ceiling: interactive pages never return seq above this
 	Limit             int
-	Actor             string         // actor_id (the acting principal)
-	Type              string         // event type (the operation)
-	Outcome           string         // outcome
-	ObjectType        string         // object type (a supported resource identifier)
-	ObjectID          string         // object id (a supported resource identifier)
-	CorrelationID     string         // links INTENT and OUTCOME of one act
+	Actor             string         // actor_id (the acting principal), exact
+	ActorName         string         // actor display name/username, glob; service-resolved (see below)
+	Type              string         // event type (the operation), glob
+	Outcomes          []string       // outcomes; empty = any, else set membership
+	ObjectType        string         // object type (a supported resource identifier), glob
+	ObjectID          string         // object id (a supported resource identifier), glob
+	CorrelationID     string         // links INTENT and OUTCOME of one act, exact
 	Order             AuditPageOrder // service-controlled page mode; excluded from Normalized
 	AfterCommitSeq    AuditCommitSeq // service-controlled export cursor; excluded from Normalized
 }
 
-// Matches reports whether a scanned row satisfies the filter's equality fields.
-// It is pure and engine-independent by construction, so browser and CLI queries
-// over the same filter select the same events regardless of storage engine. The
-// time range, cursor and scope are already applied by the SQL that produced e.
+// matchGlob reports whether s satisfies a `*`-wildcard pattern. A pattern with
+// no `*` is an exact, case-sensitive match — identical to the pre-wildcard
+// behavior, so existing exact filters are unchanged. `*` matches any run
+// (including empty); segments between stars must appear in order. There is no
+// malformed-pattern error path (unlike path.Match), so no validation plumbing
+// is needed at the transport boundary — every string is a valid pattern.
+func matchGlob(pattern, s string) bool {
+	if !strings.Contains(pattern, "*") {
+		return pattern == s
+	}
+	parts := strings.Split(pattern, "*")
+	if !strings.HasPrefix(s, parts[0]) {
+		return false
+	}
+	s = s[len(parts[0]):]
+	last := parts[len(parts)-1]
+	for _, mid := range parts[1 : len(parts)-1] {
+		i := strings.Index(s, mid)
+		if i < 0 {
+			return false
+		}
+		s = s[i+len(mid):]
+	}
+	return strings.HasSuffix(s, last)
+}
+
+// Matches reports whether a scanned row satisfies the filter's row fields. It is
+// pure and engine-independent by construction, so browser and CLI queries over
+// the same filter select the same events regardless of storage engine. The time
+// range, cursor and scope are already applied by the SQL that produced e. The
+// text fields (Type, ObjectType, ObjectID) accept `*` wildcards via matchGlob;
+// Actor and CorrelationID stay exact (opaque ids). ActorName is NOT checked
+// here: it filters on the acting principal's display name, which only the
+// service can resolve (it needs the authorizer), so the service applies it
+// after Matches — see internal/service/audit.go.
 func (f AuditFilter) Matches(e AuditEvent) bool {
 	switch {
 	case f.Actor != "" && e.Actor.ID != f.Actor:
 		return false
-	case f.Type != "" && string(e.Type) != f.Type:
+	case f.Type != "" && !matchGlob(f.Type, string(e.Type)):
 		return false
-	case f.Outcome != "" && string(e.Outcome) != f.Outcome:
+	case len(f.Outcomes) > 0 && !slices.Contains(f.Outcomes, string(e.Outcome)):
 		return false
-	case f.ObjectType != "" && e.Object.Type != f.ObjectType:
+	case f.ObjectType != "" && !matchGlob(f.ObjectType, e.Object.Type):
 		return false
-	case f.ObjectID != "" && e.Object.ID != f.ObjectID:
+	case f.ObjectID != "" && !matchGlob(f.ObjectID, e.Object.ID):
 		return false
 	case f.CorrelationID != "" && e.CorrelationID != f.CorrelationID:
 		return false
@@ -80,14 +114,22 @@ func (f AuditFilter) Matches(e AuditEvent) bool {
 	}
 }
 
-// Selective reports whether any equality field is set — i.e. whether Matches
-// can reject a scanned row. The service uses this to size store reads: an
-// unselective filter returns every scanned row, so one read of the page limit
-// suffices; a selective one may reject most rows, so the service reads full
-// store pages and loops until the caller's page is filled. Kept beside Matches
-// so the field list stays in sync with it.
+// MatchesActorName reports whether a resolved actor display name satisfies the
+// ActorName glob. The service calls this after resolving e.Actor.ID -> name;
+// Matches cannot, because name resolution needs the authorizer. An empty
+// ActorName matches anything (the filter is unset).
+func (f AuditFilter) MatchesActorName(name string) bool {
+	return f.ActorName == "" || matchGlob(f.ActorName, name)
+}
+
+// Selective reports whether any row field is set — i.e. whether the filter can
+// reject a scanned row (by Matches or by the service's ActorName pass). The
+// service uses this to size store reads: an unselective filter returns every
+// scanned row, so one read of the page limit suffices; a selective one may
+// reject most rows, so the service reads full store pages and loops until the
+// caller's page is filled. Kept beside Matches so the field list stays in sync.
 func (f AuditFilter) Selective() bool {
-	return f.Actor != "" || f.Type != "" || f.Outcome != "" ||
+	return f.Actor != "" || f.ActorName != "" || f.Type != "" || len(f.Outcomes) > 0 ||
 		f.ObjectType != "" || f.ObjectID != "" || f.CorrelationID != ""
 }
 
@@ -152,11 +194,20 @@ func (f AuditFilter) Normalized() audit.Payload {
 	if f.Actor != "" {
 		p["filter_actor"] = f.Actor
 	}
+	if f.ActorName != "" {
+		p["filter_actor_name"] = f.ActorName
+	}
 	if f.Type != "" {
 		p["filter_type"] = f.Type
 	}
-	if f.Outcome != "" {
-		p["filter_outcome"] = f.Outcome
+	// One outcome renders as the scalar filter_outcome (unchanged payload for the
+	// common single-outcome query); several render as the filter_outcomes list.
+	switch len(f.Outcomes) {
+	case 0:
+	case 1:
+		p["filter_outcome"] = f.Outcomes[0]
+	default:
+		p["filter_outcomes"] = f.Outcomes
 	}
 	if f.ObjectType != "" {
 		p["filter_object_type"] = f.ObjectType

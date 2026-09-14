@@ -3594,19 +3594,32 @@ export const zAuditToSeq = z.coerce.bigint().gte(BigInt(0)).max(BigInt('92233720
 export const zAuditLimit = z.int().gte(1).lte(1000).default(100);
 
 /**
- * Match only events whose acting principal has this id.
+ * Match only events whose acting principal has this id (exact).
  */
 export const zAuditActor = z.string().max(64);
 
 /**
- * Match only events of this type (the operation), e.g. `value.set`. An
- * unknown type is not an error; it simply matches nothing.
+ * Match only events whose acting principal's display name (or username)
+ * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+ * Names are resolved only for principals that already appear in the trail
+ * you are authorized to read; this filter narrows that view and performs
+ * no directory lookup, so it discloses nothing you cannot already see.
+ *
+ */
+export const zAuditActorName = z.string().max(128);
+
+/**
+ * Match only events of this type (the operation), e.g. `value.set`.
+ * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+ * is not an error; it simply matches nothing.
  *
  */
 export const zAuditOperation = z.string().max(128);
 
 /**
- * Match only events with this outcome.
+ * Match only events with this outcome. To match several outcomes, use the
+ * repeatable `outcomes` parameter; both may be given and are unioned.
+ *
  */
 export const zAuditOutcome = z.enum([
     'intent',
@@ -3618,12 +3631,30 @@ export const zAuditOutcome = z.enum([
 ]);
 
 /**
- * Match only events acting on this object type.
+ * Match events with any of these outcomes (set membership). Repeat the
+ * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+ * Unioned with the singular `outcome` when both are present.
+ *
+ */
+export const zAuditOutcomes = z.array(z.enum([
+    'intent',
+    'success',
+    'denied',
+    'failure',
+    'unknown',
+    'disconnected'
+]));
+
+/**
+ * Match only events acting on this object type. Supports `*` wildcards
+ * (e.g. `secret*`).
+ *
  */
 export const zAuditObjectType = z.string().max(64);
 
 /**
- * Match only events acting on this object id.
+ * Match only events acting on this object id. Supports `*` wildcards.
+ *
  */
 export const zAuditObjectId = z.string().max(64);
 
@@ -5960,6 +5991,7 @@ export const zQueryOrgAuditQuery = z.object({
     to_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     limit: z.int().gte(1).lte(1000).optional().default(100),
     actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
     operation: z.string().max(128).optional(),
     outcome: z.enum([
         'intent',
@@ -5969,6 +6001,14 @@ export const zQueryOrgAuditQuery = z.object({
         'unknown',
         'disconnected'
     ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
     correlation_id: z.string().max(64).optional()
@@ -5987,6 +6027,7 @@ export const zExportOrgAuditQuery = z.object({
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
     actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
     operation: z.string().max(128).optional(),
     outcome: z.enum([
         'intent',
@@ -5996,6 +6037,14 @@ export const zExportOrgAuditQuery = z.object({
         'unknown',
         'disconnected'
     ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
     correlation_id: z.string().max(64).optional()
@@ -6018,6 +6067,7 @@ export const zQueryProjectAuditQuery = z.object({
     to_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     limit: z.int().gte(1).lte(1000).optional().default(100),
     actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
     operation: z.string().max(128).optional(),
     outcome: z.enum([
         'intent',
@@ -6027,6 +6077,14 @@ export const zQueryProjectAuditQuery = z.object({
         'unknown',
         'disconnected'
     ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
     correlation_id: z.string().max(64).optional()
@@ -6046,6 +6104,7 @@ export const zExportProjectAuditQuery = z.object({
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
     actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
     operation: z.string().max(128).optional(),
     outcome: z.enum([
         'intent',
@@ -6055,6 +6114,14 @@ export const zExportProjectAuditQuery = z.object({
         'unknown',
         'disconnected'
     ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
     correlation_id: z.string().max(64).optional()
@@ -6078,6 +6145,7 @@ export const zQueryEnvAuditQuery = z.object({
     to_seq: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     limit: z.int().gte(1).lte(1000).optional().default(100),
     actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
     operation: z.string().max(128).optional(),
     outcome: z.enum([
         'intent',
@@ -6087,6 +6155,14 @@ export const zQueryEnvAuditQuery = z.object({
         'unknown',
         'disconnected'
     ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
     correlation_id: z.string().max(64).optional()
@@ -6107,6 +6183,7 @@ export const zExportEnvAuditQuery = z.object({
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
     actor: z.string().max(64).optional(),
+    actor_name: z.string().max(128).optional(),
     operation: z.string().max(128).optional(),
     outcome: z.enum([
         'intent',
@@ -6116,6 +6193,14 @@ export const zExportEnvAuditQuery = z.object({
         'unknown',
         'disconnected'
     ]).optional(),
+    outcomes: z.array(z.enum([
+        'intent',
+        'success',
+        'denied',
+        'failure',
+        'unknown',
+        'disconnected'
+    ])).optional(),
     object_type: z.string().max(64).optional(),
     object_id: z.string().max(64).optional(),
     correlation_id: z.string().max(64).optional()

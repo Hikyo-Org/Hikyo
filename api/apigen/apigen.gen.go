@@ -2588,6 +2588,36 @@ func (e QueryOrgAuditParamsOutcome) Valid() bool {
 	}
 }
 
+// Defines values for QueryOrgAuditParamsOutcomes.
+const (
+	QueryOrgAuditParamsOutcomesDenied       QueryOrgAuditParamsOutcomes = "denied"
+	QueryOrgAuditParamsOutcomesDisconnected QueryOrgAuditParamsOutcomes = "disconnected"
+	QueryOrgAuditParamsOutcomesFailure      QueryOrgAuditParamsOutcomes = "failure"
+	QueryOrgAuditParamsOutcomesIntent       QueryOrgAuditParamsOutcomes = "intent"
+	QueryOrgAuditParamsOutcomesSuccess      QueryOrgAuditParamsOutcomes = "success"
+	QueryOrgAuditParamsOutcomesUnknown      QueryOrgAuditParamsOutcomes = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the QueryOrgAuditParamsOutcomes enum.
+func (e QueryOrgAuditParamsOutcomes) Valid() bool {
+	switch e {
+	case QueryOrgAuditParamsOutcomesDenied:
+		return true
+	case QueryOrgAuditParamsOutcomesDisconnected:
+		return true
+	case QueryOrgAuditParamsOutcomesFailure:
+		return true
+	case QueryOrgAuditParamsOutcomesIntent:
+		return true
+	case QueryOrgAuditParamsOutcomesSuccess:
+		return true
+	case QueryOrgAuditParamsOutcomesUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExportOrgAuditParamsOutcome.
 const (
 	ExportOrgAuditParamsOutcomeDenied       ExportOrgAuditParamsOutcome = "denied"
@@ -2612,6 +2642,36 @@ func (e ExportOrgAuditParamsOutcome) Valid() bool {
 	case ExportOrgAuditParamsOutcomeSuccess:
 		return true
 	case ExportOrgAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportOrgAuditParamsOutcomes.
+const (
+	ExportOrgAuditParamsOutcomesDenied       ExportOrgAuditParamsOutcomes = "denied"
+	ExportOrgAuditParamsOutcomesDisconnected ExportOrgAuditParamsOutcomes = "disconnected"
+	ExportOrgAuditParamsOutcomesFailure      ExportOrgAuditParamsOutcomes = "failure"
+	ExportOrgAuditParamsOutcomesIntent       ExportOrgAuditParamsOutcomes = "intent"
+	ExportOrgAuditParamsOutcomesSuccess      ExportOrgAuditParamsOutcomes = "success"
+	ExportOrgAuditParamsOutcomesUnknown      ExportOrgAuditParamsOutcomes = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ExportOrgAuditParamsOutcomes enum.
+func (e ExportOrgAuditParamsOutcomes) Valid() bool {
+	switch e {
+	case ExportOrgAuditParamsOutcomesDenied:
+		return true
+	case ExportOrgAuditParamsOutcomesDisconnected:
+		return true
+	case ExportOrgAuditParamsOutcomesFailure:
+		return true
+	case ExportOrgAuditParamsOutcomesIntent:
+		return true
+	case ExportOrgAuditParamsOutcomesSuccess:
+		return true
+	case ExportOrgAuditParamsOutcomesUnknown:
 		return true
 	default:
 		return false
@@ -2666,6 +2726,36 @@ func (e QueryProjectAuditParamsOutcome) Valid() bool {
 	}
 }
 
+// Defines values for QueryProjectAuditParamsOutcomes.
+const (
+	QueryProjectAuditParamsOutcomesDenied       QueryProjectAuditParamsOutcomes = "denied"
+	QueryProjectAuditParamsOutcomesDisconnected QueryProjectAuditParamsOutcomes = "disconnected"
+	QueryProjectAuditParamsOutcomesFailure      QueryProjectAuditParamsOutcomes = "failure"
+	QueryProjectAuditParamsOutcomesIntent       QueryProjectAuditParamsOutcomes = "intent"
+	QueryProjectAuditParamsOutcomesSuccess      QueryProjectAuditParamsOutcomes = "success"
+	QueryProjectAuditParamsOutcomesUnknown      QueryProjectAuditParamsOutcomes = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the QueryProjectAuditParamsOutcomes enum.
+func (e QueryProjectAuditParamsOutcomes) Valid() bool {
+	switch e {
+	case QueryProjectAuditParamsOutcomesDenied:
+		return true
+	case QueryProjectAuditParamsOutcomesDisconnected:
+		return true
+	case QueryProjectAuditParamsOutcomesFailure:
+		return true
+	case QueryProjectAuditParamsOutcomesIntent:
+		return true
+	case QueryProjectAuditParamsOutcomesSuccess:
+		return true
+	case QueryProjectAuditParamsOutcomesUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExportProjectAuditParamsOutcome.
 const (
 	ExportProjectAuditParamsOutcomeDenied       ExportProjectAuditParamsOutcome = "denied"
@@ -2690,6 +2780,36 @@ func (e ExportProjectAuditParamsOutcome) Valid() bool {
 	case ExportProjectAuditParamsOutcomeSuccess:
 		return true
 	case ExportProjectAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportProjectAuditParamsOutcomes.
+const (
+	ExportProjectAuditParamsOutcomesDenied       ExportProjectAuditParamsOutcomes = "denied"
+	ExportProjectAuditParamsOutcomesDisconnected ExportProjectAuditParamsOutcomes = "disconnected"
+	ExportProjectAuditParamsOutcomesFailure      ExportProjectAuditParamsOutcomes = "failure"
+	ExportProjectAuditParamsOutcomesIntent       ExportProjectAuditParamsOutcomes = "intent"
+	ExportProjectAuditParamsOutcomesSuccess      ExportProjectAuditParamsOutcomes = "success"
+	ExportProjectAuditParamsOutcomesUnknown      ExportProjectAuditParamsOutcomes = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ExportProjectAuditParamsOutcomes enum.
+func (e ExportProjectAuditParamsOutcomes) Valid() bool {
+	switch e {
+	case ExportProjectAuditParamsOutcomesDenied:
+		return true
+	case ExportProjectAuditParamsOutcomesDisconnected:
+		return true
+	case ExportProjectAuditParamsOutcomesFailure:
+		return true
+	case ExportProjectAuditParamsOutcomesIntent:
+		return true
+	case ExportProjectAuditParamsOutcomesSuccess:
+		return true
+	case ExportProjectAuditParamsOutcomesUnknown:
 		return true
 	default:
 		return false
@@ -2726,6 +2846,36 @@ func (e QueryEnvAuditParamsOutcome) Valid() bool {
 	}
 }
 
+// Defines values for QueryEnvAuditParamsOutcomes.
+const (
+	QueryEnvAuditParamsOutcomesDenied       QueryEnvAuditParamsOutcomes = "denied"
+	QueryEnvAuditParamsOutcomesDisconnected QueryEnvAuditParamsOutcomes = "disconnected"
+	QueryEnvAuditParamsOutcomesFailure      QueryEnvAuditParamsOutcomes = "failure"
+	QueryEnvAuditParamsOutcomesIntent       QueryEnvAuditParamsOutcomes = "intent"
+	QueryEnvAuditParamsOutcomesSuccess      QueryEnvAuditParamsOutcomes = "success"
+	QueryEnvAuditParamsOutcomesUnknown      QueryEnvAuditParamsOutcomes = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the QueryEnvAuditParamsOutcomes enum.
+func (e QueryEnvAuditParamsOutcomes) Valid() bool {
+	switch e {
+	case QueryEnvAuditParamsOutcomesDenied:
+		return true
+	case QueryEnvAuditParamsOutcomesDisconnected:
+		return true
+	case QueryEnvAuditParamsOutcomesFailure:
+		return true
+	case QueryEnvAuditParamsOutcomesIntent:
+		return true
+	case QueryEnvAuditParamsOutcomesSuccess:
+		return true
+	case QueryEnvAuditParamsOutcomesUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ExportEnvAuditParamsOutcome.
 const (
 	ExportEnvAuditParamsOutcomeDenied       ExportEnvAuditParamsOutcome = "denied"
@@ -2750,6 +2900,36 @@ func (e ExportEnvAuditParamsOutcome) Valid() bool {
 	case ExportEnvAuditParamsOutcomeSuccess:
 		return true
 	case ExportEnvAuditParamsOutcomeUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ExportEnvAuditParamsOutcomes.
+const (
+	ExportEnvAuditParamsOutcomesDenied       ExportEnvAuditParamsOutcomes = "denied"
+	ExportEnvAuditParamsOutcomesDisconnected ExportEnvAuditParamsOutcomes = "disconnected"
+	ExportEnvAuditParamsOutcomesFailure      ExportEnvAuditParamsOutcomes = "failure"
+	ExportEnvAuditParamsOutcomesIntent       ExportEnvAuditParamsOutcomes = "intent"
+	ExportEnvAuditParamsOutcomesSuccess      ExportEnvAuditParamsOutcomes = "success"
+	ExportEnvAuditParamsOutcomesUnknown      ExportEnvAuditParamsOutcomes = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the ExportEnvAuditParamsOutcomes enum.
+func (e ExportEnvAuditParamsOutcomes) Valid() bool {
+	switch e {
+	case ExportEnvAuditParamsOutcomesDenied:
+		return true
+	case ExportEnvAuditParamsOutcomesDisconnected:
+		return true
+	case ExportEnvAuditParamsOutcomesFailure:
+		return true
+	case ExportEnvAuditParamsOutcomesIntent:
+		return true
+	case ExportEnvAuditParamsOutcomesSuccess:
+		return true
+	case ExportEnvAuditParamsOutcomesUnknown:
 		return true
 	default:
 		return false
@@ -8127,6 +8307,9 @@ type AdapterTargetID = ID
 // AuditActor defines model for AuditActor.
 type AuditActor = string
 
+// AuditActorName defines model for AuditActorName.
+type AuditActorName = string
+
 // AuditAfterSeq defines model for AuditAfterSeq.
 type AuditAfterSeq = int64
 
@@ -8150,6 +8333,9 @@ type AuditOperation = string
 
 // AuditOutcome defines model for AuditOutcome.
 type AuditOutcome string
+
+// AuditOutcomes defines model for AuditOutcomes.
+type AuditOutcomes = []string
 
 // AuditTo defines model for AuditTo.
 type AuditTo = time.Time
@@ -8355,20 +8541,35 @@ type QueryOrgAuditParams struct {
 	// be fewer when a filter is set.
 	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Actor Match only events whose acting principal has this id.
+	// Actor Match only events whose acting principal has this id (exact).
 	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
 
-	// Operation Match only events of this type (the operation), e.g. `value.set`. An
-	// unknown type is not an error; it simply matches nothing.
+	// ActorName Match only events whose acting principal's display name (or username)
+	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+	// Names are resolved only for principals that already appear in the trail
+	// you are authorized to read; this filter narrows that view and performs
+	// no directory lookup, so it discloses nothing you cannot already see.
+	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`.
+	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+	// is not an error; it simply matches nothing.
 	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
 
-	// Outcome Match only events with this outcome.
+	// Outcome Match only events with this outcome. To match several outcomes, use the
+	// repeatable `outcomes` parameter; both may be given and are unioned.
 	Outcome *QueryOrgAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
 
-	// ObjectType Match only events acting on this object type.
+	// Outcomes Match events with any of these outcomes (set membership). Repeat the
+	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+	// Unioned with the singular `outcome` when both are present.
+	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+
+	// ObjectType Match only events acting on this object type. Supports `*` wildcards
+	// (e.g. `secret*`).
 	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
 
-	// ObjectId Match only events acting on this object id.
+	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
 	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
@@ -8379,6 +8580,9 @@ type QueryOrgAuditParams struct {
 // QueryOrgAuditParamsOutcome defines parameters for QueryOrgAudit.
 type QueryOrgAuditParamsOutcome string
 
+// QueryOrgAuditParamsOutcomes defines parameters for QueryOrgAudit.
+type QueryOrgAuditParamsOutcomes string
+
 // ExportOrgAuditParams defines parameters for ExportOrgAudit.
 type ExportOrgAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
@@ -8387,20 +8591,35 @@ type ExportOrgAuditParams struct {
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
 	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
 
-	// Actor Match only events whose acting principal has this id.
+	// Actor Match only events whose acting principal has this id (exact).
 	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
 
-	// Operation Match only events of this type (the operation), e.g. `value.set`. An
-	// unknown type is not an error; it simply matches nothing.
+	// ActorName Match only events whose acting principal's display name (or username)
+	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+	// Names are resolved only for principals that already appear in the trail
+	// you are authorized to read; this filter narrows that view and performs
+	// no directory lookup, so it discloses nothing you cannot already see.
+	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`.
+	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+	// is not an error; it simply matches nothing.
 	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
 
-	// Outcome Match only events with this outcome.
+	// Outcome Match only events with this outcome. To match several outcomes, use the
+	// repeatable `outcomes` parameter; both may be given and are unioned.
 	Outcome *ExportOrgAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
 
-	// ObjectType Match only events acting on this object type.
+	// Outcomes Match events with any of these outcomes (set membership). Repeat the
+	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+	// Unioned with the singular `outcome` when both are present.
+	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+
+	// ObjectType Match only events acting on this object type. Supports `*` wildcards
+	// (e.g. `secret*`).
 	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
 
-	// ObjectId Match only events acting on this object id.
+	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
 	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
@@ -8410,6 +8629,9 @@ type ExportOrgAuditParams struct {
 
 // ExportOrgAuditParamsOutcome defines parameters for ExportOrgAudit.
 type ExportOrgAuditParamsOutcome string
+
+// ExportOrgAuditParamsOutcomes defines parameters for ExportOrgAudit.
+type ExportOrgAuditParamsOutcomes string
 
 // RevokeOrgGrantParams defines parameters for RevokeOrgGrant.
 type RevokeOrgGrantParams struct {
@@ -8460,20 +8682,35 @@ type QueryProjectAuditParams struct {
 	// be fewer when a filter is set.
 	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Actor Match only events whose acting principal has this id.
+	// Actor Match only events whose acting principal has this id (exact).
 	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
 
-	// Operation Match only events of this type (the operation), e.g. `value.set`. An
-	// unknown type is not an error; it simply matches nothing.
+	// ActorName Match only events whose acting principal's display name (or username)
+	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+	// Names are resolved only for principals that already appear in the trail
+	// you are authorized to read; this filter narrows that view and performs
+	// no directory lookup, so it discloses nothing you cannot already see.
+	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`.
+	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+	// is not an error; it simply matches nothing.
 	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
 
-	// Outcome Match only events with this outcome.
+	// Outcome Match only events with this outcome. To match several outcomes, use the
+	// repeatable `outcomes` parameter; both may be given and are unioned.
 	Outcome *QueryProjectAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
 
-	// ObjectType Match only events acting on this object type.
+	// Outcomes Match events with any of these outcomes (set membership). Repeat the
+	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+	// Unioned with the singular `outcome` when both are present.
+	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+
+	// ObjectType Match only events acting on this object type. Supports `*` wildcards
+	// (e.g. `secret*`).
 	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
 
-	// ObjectId Match only events acting on this object id.
+	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
 	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
@@ -8484,6 +8721,9 @@ type QueryProjectAuditParams struct {
 // QueryProjectAuditParamsOutcome defines parameters for QueryProjectAudit.
 type QueryProjectAuditParamsOutcome string
 
+// QueryProjectAuditParamsOutcomes defines parameters for QueryProjectAudit.
+type QueryProjectAuditParamsOutcomes string
+
 // ExportProjectAuditParams defines parameters for ExportProjectAudit.
 type ExportProjectAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
@@ -8492,20 +8732,35 @@ type ExportProjectAuditParams struct {
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
 	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
 
-	// Actor Match only events whose acting principal has this id.
+	// Actor Match only events whose acting principal has this id (exact).
 	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
 
-	// Operation Match only events of this type (the operation), e.g. `value.set`. An
-	// unknown type is not an error; it simply matches nothing.
+	// ActorName Match only events whose acting principal's display name (or username)
+	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+	// Names are resolved only for principals that already appear in the trail
+	// you are authorized to read; this filter narrows that view and performs
+	// no directory lookup, so it discloses nothing you cannot already see.
+	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`.
+	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+	// is not an error; it simply matches nothing.
 	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
 
-	// Outcome Match only events with this outcome.
+	// Outcome Match only events with this outcome. To match several outcomes, use the
+	// repeatable `outcomes` parameter; both may be given and are unioned.
 	Outcome *ExportProjectAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
 
-	// ObjectType Match only events acting on this object type.
+	// Outcomes Match events with any of these outcomes (set membership). Repeat the
+	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+	// Unioned with the singular `outcome` when both are present.
+	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+
+	// ObjectType Match only events acting on this object type. Supports `*` wildcards
+	// (e.g. `secret*`).
 	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
 
-	// ObjectId Match only events acting on this object id.
+	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
 	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
@@ -8515,6 +8770,9 @@ type ExportProjectAuditParams struct {
 
 // ExportProjectAuditParamsOutcome defines parameters for ExportProjectAudit.
 type ExportProjectAuditParamsOutcome string
+
+// ExportProjectAuditParamsOutcomes defines parameters for ExportProjectAudit.
+type ExportProjectAuditParamsOutcomes string
 
 // ExportDefinitionsParams defines parameters for ExportDefinitions.
 type ExportDefinitionsParams struct {
@@ -8561,20 +8819,35 @@ type QueryEnvAuditParams struct {
 	// be fewer when a filter is set.
 	Limit *AuditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Actor Match only events whose acting principal has this id.
+	// Actor Match only events whose acting principal has this id (exact).
 	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
 
-	// Operation Match only events of this type (the operation), e.g. `value.set`. An
-	// unknown type is not an error; it simply matches nothing.
+	// ActorName Match only events whose acting principal's display name (or username)
+	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+	// Names are resolved only for principals that already appear in the trail
+	// you are authorized to read; this filter narrows that view and performs
+	// no directory lookup, so it discloses nothing you cannot already see.
+	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`.
+	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+	// is not an error; it simply matches nothing.
 	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
 
-	// Outcome Match only events with this outcome.
+	// Outcome Match only events with this outcome. To match several outcomes, use the
+	// repeatable `outcomes` parameter; both may be given and are unioned.
 	Outcome *QueryEnvAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
 
-	// ObjectType Match only events acting on this object type.
+	// Outcomes Match events with any of these outcomes (set membership). Repeat the
+	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+	// Unioned with the singular `outcome` when both are present.
+	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+
+	// ObjectType Match only events acting on this object type. Supports `*` wildcards
+	// (e.g. `secret*`).
 	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
 
-	// ObjectId Match only events acting on this object id.
+	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
 	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
@@ -8585,6 +8858,9 @@ type QueryEnvAuditParams struct {
 // QueryEnvAuditParamsOutcome defines parameters for QueryEnvAudit.
 type QueryEnvAuditParamsOutcome string
 
+// QueryEnvAuditParamsOutcomes defines parameters for QueryEnvAudit.
+type QueryEnvAuditParamsOutcomes string
+
 // ExportEnvAuditParams defines parameters for ExportEnvAudit.
 type ExportEnvAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
@@ -8593,20 +8869,35 @@ type ExportEnvAuditParams struct {
 	// To Inclusive upper time bound (recorded-at). Absent means unbounded.
 	To *AuditTo `form:"to,omitempty" json:"to,omitempty"`
 
-	// Actor Match only events whose acting principal has this id.
+	// Actor Match only events whose acting principal has this id (exact).
 	Actor *AuditActor `form:"actor,omitempty" json:"actor,omitempty"`
 
-	// Operation Match only events of this type (the operation), e.g. `value.set`. An
-	// unknown type is not an error; it simply matches nothing.
+	// ActorName Match only events whose acting principal's display name (or username)
+	// matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+	// Names are resolved only for principals that already appear in the trail
+	// you are authorized to read; this filter narrows that view and performs
+	// no directory lookup, so it discloses nothing you cannot already see.
+	ActorName *AuditActorName `form:"actor_name,omitempty" json:"actor_name,omitempty"`
+
+	// Operation Match only events of this type (the operation), e.g. `value.set`.
+	// Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+	// is not an error; it simply matches nothing.
 	Operation *AuditOperation `form:"operation,omitempty" json:"operation,omitempty"`
 
-	// Outcome Match only events with this outcome.
+	// Outcome Match only events with this outcome. To match several outcomes, use the
+	// repeatable `outcomes` parameter; both may be given and are unioned.
 	Outcome *ExportEnvAuditParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
 
-	// ObjectType Match only events acting on this object type.
+	// Outcomes Match events with any of these outcomes (set membership). Repeat the
+	// parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+	// Unioned with the singular `outcome` when both are present.
+	Outcomes *AuditOutcomes `form:"outcomes,omitempty" json:"outcomes,omitempty"`
+
+	// ObjectType Match only events acting on this object type. Supports `*` wildcards
+	// (e.g. `secret*`).
 	ObjectType *AuditObjectType `form:"object_type,omitempty" json:"object_type,omitempty"`
 
-	// ObjectId Match only events acting on this object id.
+	// ObjectId Match only events acting on this object id. Supports `*` wildcards.
 	ObjectId *AuditObjectID `form:"object_id,omitempty" json:"object_id,omitempty"`
 
 	// CorrelationId Match only events sharing this correlation id — the link between an
@@ -8616,6 +8907,9 @@ type ExportEnvAuditParams struct {
 
 // ExportEnvAuditParamsOutcome defines parameters for ExportEnvAudit.
 type ExportEnvAuditParamsOutcome string
+
+// ExportEnvAuditParamsOutcomes defines parameters for ExportEnvAudit.
+type ExportEnvAuditParamsOutcomes string
 
 // FetchDeliveryParams defines parameters for FetchDelivery.
 type FetchDeliveryParams struct {
@@ -13936,6 +14230,19 @@ func (siw *ServerInterfaceWrapper) QueryOrgAudit(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// ------------- Optional query parameter "actor_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_name", r.URL.Query(), &params.ActorName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_name", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "operation" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -13958,6 +14265,19 @@ func (siw *ServerInterfaceWrapper) QueryOrgAudit(w http.ResponseWriter, r *http.
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcomes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcomes", r.URL.Query(), &params.Outcomes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcomes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcomes", Err: err})
 		}
 		return
 	}
@@ -14069,6 +14389,19 @@ func (siw *ServerInterfaceWrapper) ExportOrgAudit(w http.ResponseWriter, r *http
 		return
 	}
 
+	// ------------- Optional query parameter "actor_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_name", r.URL.Query(), &params.ActorName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_name", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "operation" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -14091,6 +14424,19 @@ func (siw *ServerInterfaceWrapper) ExportOrgAudit(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcomes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcomes", r.URL.Query(), &params.Outcomes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcomes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcomes", Err: err})
 		}
 		return
 	}
@@ -15678,6 +16024,19 @@ func (siw *ServerInterfaceWrapper) QueryProjectAudit(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "actor_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_name", r.URL.Query(), &params.ActorName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_name", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "operation" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -15700,6 +16059,19 @@ func (siw *ServerInterfaceWrapper) QueryProjectAudit(w http.ResponseWriter, r *h
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcomes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcomes", r.URL.Query(), &params.Outcomes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcomes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcomes", Err: err})
 		}
 		return
 	}
@@ -15820,6 +16192,19 @@ func (siw *ServerInterfaceWrapper) ExportProjectAudit(w http.ResponseWriter, r *
 		return
 	}
 
+	// ------------- Optional query parameter "actor_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_name", r.URL.Query(), &params.ActorName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_name", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "operation" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -15842,6 +16227,19 @@ func (siw *ServerInterfaceWrapper) ExportProjectAudit(w http.ResponseWriter, r *
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcomes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcomes", r.URL.Query(), &params.Outcomes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcomes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcomes", Err: err})
 		}
 		return
 	}
@@ -16989,6 +17387,19 @@ func (siw *ServerInterfaceWrapper) QueryEnvAudit(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// ------------- Optional query parameter "actor_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_name", r.URL.Query(), &params.ActorName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_name", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "operation" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -17011,6 +17422,19 @@ func (siw *ServerInterfaceWrapper) QueryEnvAudit(w http.ResponseWriter, r *http.
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcomes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcomes", r.URL.Query(), &params.Outcomes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcomes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcomes", Err: err})
 		}
 		return
 	}
@@ -17140,6 +17564,19 @@ func (siw *ServerInterfaceWrapper) ExportEnvAudit(w http.ResponseWriter, r *http
 		return
 	}
 
+	// ------------- Optional query parameter "actor_name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "actor_name", r.URL.Query(), &params.ActorName, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "actor_name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "actor_name", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "operation" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "operation", r.URL.Query(), &params.Operation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -17162,6 +17599,19 @@ func (siw *ServerInterfaceWrapper) ExportEnvAudit(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcome"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcome", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "outcomes" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "outcomes", r.URL.Query(), &params.Outcomes, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "outcomes"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "outcomes", Err: err})
 		}
 		return
 	}

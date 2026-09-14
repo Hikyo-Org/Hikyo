@@ -53,7 +53,7 @@ func TestFillPageDensePaging(t *testing.T) {
 	// 100 rows, every 10th matches alice → 10 matches. limit 5, ceiling 100.
 	trail := trailByActor(100, 10)
 	f := store.AuditFilter{Limit: 5, Actor: "usr_alice"}
-	page, err := fillPage(ctx, f, 100, trail.read)
+	page, err := fillPage(ctx, f, 100, trail.read, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +73,7 @@ func TestFillPageDensePaging(t *testing.T) {
 	// Resume: the second page picks up the remaining 5 with no skip or dup.
 	f2 := f
 	f2.AfterSeq = page.NextSeq
-	page2, err := fillPage(ctx, f2, 100, trail.read)
+	page2, err := fillPage(ctx, f2, 100, trail.read, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestFillPageDensePaging(t *testing.T) {
 	// cursor, and does NOT read every chunk to the end.
 	big := trailByActor(1000000, 0) // no alice anywhere
 	miss := store.AuditFilter{Limit: 5, Actor: "usr_alice"}
-	pageMiss, err := fillPage(ctx, miss, 1000000, big.read)
+	pageMiss, err := fillPage(ctx, miss, 1000000, big.read, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,6 +101,39 @@ func TestFillPageDensePaging(t *testing.T) {
 	}
 	if big.reads > 16 {
 		t.Fatalf("scan budget breached: %d reads, want <= 16", big.reads)
+	}
+}
+
+// TestFillPageKeepFilter pins the service-side keep pass (the ActorName path):
+// keep runs after the store filter, keep-dropped rows still advance the scanned
+// cursor, the page fills to the limit from multiple reads, and NextSeq is the
+// last RETURNED seq. Here the store filter is unset and keep is the only
+// selector — the shape the actor_name glob takes at runtime.
+func TestFillPageKeepFilter(t *testing.T) {
+	ctx := context.Background()
+
+	// 100 rows, every 10th is alice → 10 kept. Resolve id->name and glob "Al*"
+	// via the same MatchesActorName the runtime keep uses.
+	trail := trailByActor(100, 10)
+	name := map[string]string{"usr_alice": "Alice", "usr_bob": "Bob"}
+	nameFilter := store.AuditFilter{ActorName: "Al*"}
+	keep := func(e store.AuditEvent) (bool, error) {
+		return nameFilter.MatchesActorName(name[e.Actor.ID]), nil
+	}
+
+	f := store.AuditFilter{Limit: 5} // no store-side field set; keep selects
+	page, err := fillPage(ctx, f, 100, trail.read, keep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := seqs(page.Events); len(got) != 5 || got[0] != 10 || got[4] != 50 {
+		t.Fatalf("kept seqs = %v, want 10..50 (full limit from keep pass)", got)
+	}
+	if page.NextSeq != 50 {
+		t.Fatalf("cursor = %d, want the last RETURNED seq 50", page.NextSeq)
+	}
+	if page.Exhausted {
+		t.Fatal("5 of 10 kept: must not be exhausted")
 	}
 }
 

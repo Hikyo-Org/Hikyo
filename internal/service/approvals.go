@@ -296,7 +296,7 @@ func (s *Approvals) ListPolicies(ctx context.Context, actor Actor, scope domain.
 			if err != nil {
 				return err
 			}
-			names := newPrincipalNames(az)
+			names := newPrincipalNames()
 			view.PrincipalNames = make(map[string]string)
 			ids := slices.Clone(view.Bypassers)
 			for _, approver := range view.Approvers {
@@ -305,7 +305,7 @@ func (s *Approvals) ListPolicies(ctx context.Context, actor Actor, scope domain.
 				}
 			}
 			for _, id := range ids {
-				name, err := names.get(ctx, domain.PrincipalID(id))
+				name, err := names.get(ctx, az, domain.PrincipalID(id))
 				if err != nil {
 					return err
 				}
@@ -899,13 +899,13 @@ func requestViewWithVotes(ctx context.Context, r store.Repos, az *authz.TxAuthor
 		return ApprovalRequestView{}, err
 	}
 	view := requestView(req)
-	names := newPrincipalNames(az)
-	view.RequesterName, err = names.get(ctx, domain.PrincipalID(req.RequesterPrincipalID))
+	names := newPrincipalNames()
+	view.RequesterName, err = names.get(ctx, az, domain.PrincipalID(req.RequesterPrincipalID))
 	if err != nil {
 		return ApprovalRequestView{}, err
 	}
 	for _, v := range votes {
-		name, err := names.get(ctx, domain.PrincipalID(v.PrincipalID))
+		name, err := names.get(ctx, az, domain.PrincipalID(v.PrincipalID))
 		if err != nil {
 			return ApprovalRequestView{}, err
 		}
