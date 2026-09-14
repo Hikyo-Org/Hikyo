@@ -591,6 +591,44 @@ test.describe('environment matrix', () => {
       await observer.close();
     }
   });
+
+  test('keeps the matrix scroll inside its own well at a short viewport', async ({ page }) => {
+    // Regression: a stale `min-height: 420px` on `.matrix__layout` (from its
+    // display:block era, before #681 made it a flex:1 column) forced the matrix
+    // to overflow into `.content` on short viewports, so the whole page column
+    // scrolled instead of the matrix — the "scroll the sidebar, not the matrix"
+    // report. A phone-landscape height sits well under the ~570-630px (head
+    // toolbar wrap dependent) where the floor starts to bite the available
+    // height.
+    await page.setViewportSize({ width: 844, height: 380 });
+    await expect(page.getByRole('heading', { name: 'Environment matrix', level: 1 })).toBeVisible();
+
+    const scroll = await page.evaluate(() => {
+      const content = document.querySelector('.content');
+      const scrollEl = document.querySelector('.matrix__scroll');
+      if (!(content instanceof HTMLElement) || !(scrollEl instanceof HTMLElement)) {
+        throw new Error('matrix scroll chain not found');
+      }
+      return {
+        wellHeight: scrollEl.clientHeight,
+        wellOverflow: scrollEl.scrollHeight - scrollEl.clientHeight,
+        columnHeight: content.clientHeight,
+      };
+    });
+
+    // Under the stale 420px floor the well cannot shrink, so it balloons past
+    // the viewport column (measured 419 vs a 197px column) and the table scrolls
+    // the whole page instead of the well — `wellHeight < columnHeight` fails.
+    // With `min-height: 0` the well fits the column and owns the table's scroll.
+    // `.content`'s own scrollHeight is not asserted: the absolutely-positioned
+    // legend and environment-picker bodies lay out (and overhang, seed and height
+    // depending) even while their `<details>` is closed, inflating content
+    // scrollHeight without any in-flow overflow. Confirmed by hiding every
+    // absolute descendant on the e2e seed: content overflow 287 -> 0, well
+    // unchanged. The well's clientHeight is the honest in-flow signal.
+    expect(scroll.wellHeight).toBeLessThan(scroll.columnHeight);
+    expect(scroll.wellOverflow).toBeGreaterThan(0);
+  });
 });
 
 /**

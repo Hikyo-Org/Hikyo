@@ -1599,7 +1599,13 @@ select {
   display: flex;
   flex: 1;
   flex-direction: column;
-  min-height: 420px;
+  /* min-height: 0 lets the flex column shrink to its bounded parent so
+     .matrix__scroll owns the scroll. A stale 420px floor (from the
+     display:block era, before #681 made this flex:1 column) forced the
+     matrix to overflow into .content at short viewports (phone landscape,
+     ~570-630px tall and below, depending on how the head toolbar wraps),
+     so the whole page scrolled instead. */
+  min-height: 0;
   min-width: 0;
 }
 
