@@ -97,15 +97,45 @@ below the gate) *and* restores the tall-viewport floor (all other e2e viewports,
 above the gate = main's green layout).
 
 Note for anyone running the e2e suite **locally**: `playwright.config.ts` is
-`workers: 1`, `fullyParallel: false`, and a multi-project local run shares one
-seeded instance across the `desktop` and `mobile` projects. `history.spec.ts`
-559 stages a `WORKERS`-dev draft and publishes only the restore set, leaving a
-lingering pending draft (no `finally` cleanup); in a combined local run the
-desktop leg pollutes the shared DB and the mobile leg's editor then shows the
-leftover draft, so mobile-559 fails with "Save 0 drafts". CI never hits this —
-each matrix leg is its own runner with its own seeded instance (`ci.yml`, "each
-MATRIX LEG is its own runner"). mobile-559 run alone on a fresh instance passes.
-The draft-cleanup weakness is pre-existing on main; see the deferred list.
+`workers: 1`, `fullyParallel: false`, and a single invocation running both the
+`desktop` and `mobile` projects shares one seeded instance (global setup boots
+one instance per invocation). `history.spec.ts` 559 stages a `WORKERS`-dev draft
+and publishes only the restore set, leaving a lingering pending draft; in a
+combined local run the desktop leg pollutes the shared DB and the mobile leg's
+editor then shows the leftover draft, so mobile-559 failed with "Save 0 drafts".
+CI never hit this — each matrix leg is its own runner with its own seeded
+instance (`ci.yml`, "each MATRIX LEG is its own runner") and passes exactly one
+`--project`, and within a single leg later tests survive anyway because staging
+is delete-then-insert (test 685 re-stages `WORKERS` fresh). This is now fixed at
+the root — see bug E.
+
+### Regression bug E — a multi-project local invocation silently shared one instance
+
+The bug-D investigation surfaced that the "one seeded instance per invocation"
+contract was only documented in a comment, not enforced. The supported local
+command already honours it — `pnpm run e2e` is
+`playwright test --project=desktop && playwright test --project=mobile`, two
+separate invocations, each with its own fresh instance, the same shape CI's
+per-viewport matrix gives (`ci.yml` runs `playwright test --project=<one>` per
+leg). But running `playwright test` directly with no `--project` runs both
+projects in ONE invocation against ONE shared instance, so the first project's
+writes (e.g. 559's staged draft) pollute the second. That is a footgun the
+comment did not stop.
+
+Root-cause fix (not a per-test `finally`): `e2e/global-setup.ts` now refuses a
+multi-project invocation before it boots anything, with a message naming the
+right command. Playwright's `config.projects` does not reflect the `--project`
+filter (it lists every configured project even when one is selected — verified
+empirically), so the selection is read from `process.argv`, the only place the
+filter survives; no `--project` flag means all configured projects run. A
+per-test discard was rejected: there is no single-draft discard endpoint
+(`DELETE values/{key}` stages a *clear*, still a pending row; the only removal
+is `publish`, which creates a revision the ordering-sensitive tests after 559 —
+759, 789, 905 — would see, an unverifiable-by-CI change). Verified: `playwright
+test` (no filter) fails in ~1s with the guidance message and boots no instance;
+`playwright test --project=mobile e2e/flows/history.spec.ts` runs and 559 passes
+on its own fresh instance. The guard cannot trip in CI (one `--project` per leg)
+and does not touch `session-epoch.config.ts` (which has no global setup).
 
 ### Residual bug B found and fixed here — well was not a containing block
 
@@ -198,22 +228,8 @@ decision:
   needs the popover in the top layer (`popover` attribute) — a design change.
 - On mobile the picker `<summary>` button paints over the open legend popover
   (the sticky `th` has its own stacking context).
-- `history.spec.ts` 559 leaves a lingering `WORKERS`-dev pending draft, so a
-  local multi-project run (which shares one seeded instance across `desktop` and
-  `mobile`) or a re-execution of 559 fails "Save 0 drafts" (see bug D note).
-  **Root cause is harness-level, not test 559:** the local runner shares one
-  instance across the two projects; CI does not (each matrix leg = its own
-  runner + seed). Within a single leg later tests survive because staging is
-  delete-then-insert (test 685 re-stages `WORKERS` fresh), so this never bites
-  CI. A per-test `finally` would be a band-aid — and there is no clean fix for
-  it: there is no single-draft discard endpoint (`DELETE values/{key}` stages a
-  *clear*, still a pending row; `DiscardKey`/`DiscardEnvironment` are
-  store-internal with no HTTP surface), and the only removal, `publish`, creates
-  a revision that the revision-count/ordering-sensitive tests after 559 (759,
-  789, 905) would see — an unverifiable-by-CI change that can only add failures.
-  The real fix is a fresh instance per project in the local harness
-  (`playwright.config.ts` / `instance.ts`). Out of scope for a CSS fix — Marc's
-  call: separate issue vs. fold the harness change here.
+_(The 559 local-pollution weakness that used to live here is now fixed — see
+bug E below. It is no longer deferred.)_
 
 ### Validation
 
