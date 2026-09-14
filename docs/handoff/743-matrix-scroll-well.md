@@ -39,7 +39,7 @@ exactly "scroll the sidebar, not the matrix". #740's `minmax(0, 1fr)` row plus
 the sidebar `max-height: 100dvh` cap the shell to the viewport. This lands in
 nightly 43+.
 
-### Residual bug found and fixed here (campsite rule)
+### Residual bug A found and fixed here — stale `min-height` floor (campsite rule)
 
 `.matrix__layout { min-height: 420px }` is a stale floor. #57/#136 (`b90bd1b6`)
 added it when the element was `display: block`; #681 (`90b4ca6a`) converted it
@@ -63,28 +63,73 @@ running DOM (A/B in one measurement):
 | `420px` (broken) | 419px — ballooned past the 197px column | 0 (dead well) | scrolls |
 | `0` (fixed) | 36px — fits the column | 329px | table scroll lives in the well |
 
+### Residual bug B found and fixed here — well was not a containing block
+
+With the floor gone the well fits the column, but `.content` *itself* still
+gained ~287px of blank scroll at 844×380. Root cause, instrumented on the seed
+(not guessed): `.matrix__scroll` was **unpositioned**. A `.visually-hidden`
+span (`position: absolute`, app.css `.visually-hidden`) rendered inside a
+virtualised matrix cell (`<span class="visually-hidden">draft</span>`,
+`Matrix.tsx`) therefore resolved its containing block against the nearest
+positioned ancestor — `.matrix__surface`, *above* the `overflow: auto` well —
+and so escaped the well's clip. An absolute descendant whose containing block
+is outside an `overflow` ancestor is not clipped by it; that span's box
+extended to scroll-bottom 484 and became the sole contributor to `.content`'s
+scroll extent. Scrolling `.content` to the bottom revealed blank space, matrix
+gone — a phantom page scroll.
+
+Fix: `.matrix__scroll { position: relative }`. The well becomes the containing
+block for its own absolute descendants, so they clip inside it again. Sticky
+`th` is unaffected (sticky is relative to the scrollport); no `z-index`, so no
+new stacking context; the virtualiser measures via the scroll element rect and
+is unaffected.
+
+Instrumented A/B on the seed at 844×380 (per absolute descendant, hidden one at
+a time, measuring `.content` overflow):
+
+| element | `position` | scroll-bottom | hiding it → `.content` overflow |
+| --- | --- | --- | --- |
+| `.visually-hidden` "draft" (in a virtualised cell) | absolute | 484 | **287 → 0** |
+| `.matrix__legend-body` (closed `<details>`) | absolute | 438 | 287 → 287 (no effect) |
+| `.matrix__environment-picker fieldset` (closed) | absolute | 312 | 287 → 287 (no effect) |
+
+The two closed-`<details>` bodies lay out (their rects report a height) but a
+closed `<details>` applies `content-visibility` containment to its content,
+which clips both paint and scrollable overflow — so they never entered
+`.content`'s scroll extent. **This corrects an earlier, wrong reading in this
+handoff** that attributed the 287px to those popover bodies "overhanging while
+closed"; the instrumented per-element A/B above shows only the in-cell
+`.visually-hidden` span contributed. The popovers were a red herring.
+
+### Residual bug C found and fixed here — env-picker popover clipped off-screen
+
+At ≤375px wide the "Visible environments" popover ran off the right viewport
+edge — its "PROTECTED" marker was unreachable. The `fieldset` is
+`position: absolute; left: 0`, and its containing block was
+`.matrix__environment-picker` (`position: relative`), which sits at the right
+end of `.matrix__key-heading` (`justify-content: space-between`). `left: 0`
+therefore anchored the popover to the button's far-right position and
+`width: max-content` grew it further right, off-screen. A width cap alone can't
+fix it (button ≈110px in + 351px popover > 375px).
+
+Fix: move the containing block to the Key cell — `.matrix__key-heading {
+position: relative }`, `.matrix__environment-picker { position: static }` (its
+`z-index` dropped; it's ignored on a static box and the `fieldset` carries its
+own). `left: 0` now anchors to the Key column's left edge, and
+`max-width: calc(100vw - 24px)` caps it. Verified by screenshot at 375 (popover
+fully on-screen, "PROTECTED" visible) and 1280 (popover shifts to the column
+left edge, reads clean, no clip).
+
 ### Regression test
 
 `web/e2e/flows/matrix.spec.ts` gains one test in the `environment matrix`
 describe: at 844×380 it asserts `.matrix__scroll.clientHeight < .content.clientHeight`
-(the scroll well fits inside the viewport column) and that the well owns the
-table's overflow. Under the 420px floor the well is 419px against a 197px
-column, so the first assertion fails — the test genuinely catches the bug.
-
-It deliberately does NOT assert `.content.scrollHeight`. The absolutely-
-positioned legend body (~364px) and environment-picker fieldset (~125px) lay
-out and can overhang the content bottom **even while their `<details>` is
-closed** (measured `[open]` = false, body still `position:absolute;
-visibility:visible`), inflating `.content.scrollHeight` with no in-flow
-overflow. Proven on the e2e seed by hiding every absolute descendant: content
-overflow 287 → 0 while the well is unchanged (`clientHeight` 36, owns 329). On a
-slightly taller seed the legend fits and content overflow is already 0 — the
-signal is seed/height dependent, so it is not asserted. The well's clientHeight
-is the honest in-flow discriminator.
-
-(Aside, out of scope: the legend `<details>` renders its body visibly while
-closed. It only bites here because it is `position:absolute`. Worth a separate
-look, not folded into this scroll fix.)
+(the well fits the viewport column), that the well owns the table's overflow,
+and — catching bug B — that `.content.scrollHeight - .content.clientHeight === 0`
+(`.content` does not scroll; everything lives in the well). Under the 420px
+floor the well is 419px against a 197px column (first assertion fails); without
+`position: relative` the escaped `.visually-hidden` span adds 287px of blank
+`.content` scroll (last assertion fails). The test catches both bugs.
 
 happy-dom has no layout engine, so this must be a Playwright test, not a vitest
 one. It carries no pinned-assertion claim, so it adds no registry surface; it
@@ -92,10 +137,27 @@ rides the existing spec file so the merge gate (which loads the base branch's
 spec-group lists) still runs it. Confirmed passing on both the `desktop` and
 `mobile` viewport projects.
 
+### Deferred (Marc's call, not folded in)
+
+Surfaced during the short/mobile UX sweep; none auto-fixed, each is a design
+decision:
+
+- Two non-dismissible Warning banners (root-escrow-not-verified, pins-expiring)
+  consume ~55% of a 375×667 portrait viewport before any matrix is visible.
+  Plausibly e2e/dev-instance states — confirm a healthy prod instance before
+  proposing collapse/dismiss.
+- At 844×380 the well is one row tall (36px): head + nav + padding leave almost
+  nothing. Option would be to let the matrix head scroll away on short
+  viewports.
+- The env-picker popover, being inside the well, is still clipped by the well
+  whenever the well is short (shares the 36px-well root above). Escaping it
+  needs the popover in the top layer (`popover` attribute) — a design change.
+- On mobile the picker `<summary>` button paints over the open legend popover
+  (the sticky `th` has its own stacking context).
+
 ### Validation
 
-web typecheck passes. The new regression test passes on the `desktop` and
-`mobile` projects against a freshly built instance; the A/B table above is the
-ground-truth measurement that proves it flips under the stale floor. app.css and
-matrix.spec.ts are not in `sensitiveInventory.sources`, so no inventory hash
-refresh was needed.
+web typecheck passes. The regression test passes on the `desktop` and `mobile`
+projects against a freshly built instance; the instrumented A/B tables above are
+the ground-truth measurements. `app.css` and `matrix.spec.ts` are not in
+`sensitiveInventory.sources`, so no inventory hash refresh was needed.
