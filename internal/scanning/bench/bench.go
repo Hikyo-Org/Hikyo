@@ -5,7 +5,7 @@ package bench
 
 import "slices"
 
-// HarnessVersion is bumped when the measurement method or the artifact schema
+// HarnessVersion is bumped when the artifact schema or the measured metric
 // changes, so a stale artifact fails the version match in the validation test.
 // Not bumped for the fastest-of-N noise rejection in cmd/bench-scan's measure:
 // it neither changes the schema nor the metric (same corpus, same per-item
