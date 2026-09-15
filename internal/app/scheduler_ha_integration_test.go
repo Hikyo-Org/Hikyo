@@ -60,9 +60,12 @@ func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 	})
 
 	leader := waitForSingleLeader(t, schedulers)
-	// Exactly one node ran the startup catch-up: the singleton executed at most
-	// once across the cluster (Interval is an hour, so nothing else can fire).
-	time.Sleep(300 * time.Millisecond)
+	// Wait for the startup catch-up to land instead of sleeping a fixed span the
+	// -race build can outrun. The singleton guarantee — that only one node runs
+	// it — rests on waitForSingleLeader above (exactly one leader) plus the hour
+	// Interval, which stops anything but the startup catch-up from firing; the
+	// count check below then confirms it.
+	waitFor(t, "cluster startup job", func() bool { return jobRuns.Load() >= 1 })
 	if got := jobRuns.Load(); got != 1 {
 		t.Fatalf("startup job ran %d times across the cluster, want exactly 1", got)
 	}
@@ -84,7 +87,7 @@ func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 	}
 	// The new leader ran its own startup catch-up exactly once more: takeover
 	// executes the singleton one additional time, never once per surviving node.
-	time.Sleep(300 * time.Millisecond)
+	waitFor(t, "failover startup job", func() bool { return jobRuns.Load() >= 2 })
 	if got := jobRuns.Load(); got != 2 {
 		t.Fatalf("startup job ran %d times after failover, want exactly 2", got)
 	}
