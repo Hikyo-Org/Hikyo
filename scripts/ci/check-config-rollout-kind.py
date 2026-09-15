@@ -520,7 +520,10 @@ class Fixture:
                      "env": [{"name": "POSTGRES_USER", "value": "hikyo"}, {"name": "POSTGRES_DB", "value": "hikyo"},
                              {"name": "POSTGRES_PASSWORD", "valueFrom": {"secretKeyRef": {"name": "postgres-auth", "key": "password"}}}],
                      "ports": [{"name": "postgres", "containerPort": 5432}],
-                     "readinessProbe": {"exec": {"command": ["pg_isready", "-U", "hikyo", "-d", "hikyo"]}, "periodSeconds": 2},
+                     # -h 127.0.0.1 forces a TCP check: postgres' initdb bootstrap runs a temporary
+                     # socket-only server that a socket probe accepts, marking the pod Ready before the
+                     # real server is up. TCP only sees the real server.
+                     "readinessProbe": {"exec": {"command": ["pg_isready", "-h", "127.0.0.1", "-U", "hikyo", "-d", "hikyo"]}, "periodSeconds": 2},
                      "volumeMounts": [{"name": "data", "mountPath": "/var/lib/postgresql"}, {"name": "tls", "mountPath": "/tls", "readOnly": True}]}
         self.apply({"apiVersion": "apps/v1", "kind": "Deployment", "metadata": {"name": "postgres", "namespace": self.ns},
                     "spec": {"replicas": 1, "selector": {"matchLabels": {"app": "postgres"}},

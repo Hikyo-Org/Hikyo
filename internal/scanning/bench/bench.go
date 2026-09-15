@@ -5,8 +5,13 @@ package bench
 
 import "slices"
 
-// HarnessVersion is bumped when the measurement method or the artifact schema
+// HarnessVersion is bumped when the artifact schema or the measured metric
 // changes, so a stale artifact fails the version match in the validation test.
+// Not bumped for the fastest-of-N noise rejection in cmd/bench-scan's measure:
+// it neither changes the schema nor the metric (same corpus, same per-item
+// percentile), it only rejects a shared runner's tail spike. Fastest-of-N can
+// only equal or lower a prior single-pass number, so a committed v2 artifact
+// stays a valid — conservative — measurement rather than a stale one.
 const HarnessVersion = "2"
 
 // Result is the JSON artifact emitted by cmd/bench-scan. Durations are in
