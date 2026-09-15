@@ -4969,7 +4969,8 @@ select {
 @media (pointer: coarse) {
   .chk input[type='checkbox'],
   .chk input[type='radio'],
-  .field.chk input[type='checkbox'] {
+  .field.chk input[type='checkbox'],
+  .audit__outcome-choice input[type='checkbox'] {
     width: var(--touch);
     height: var(--touch);
   }
