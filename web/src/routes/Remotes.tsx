@@ -167,7 +167,7 @@ export function ThisInstance() {
   );
 }
 
-function RemoteCard({
+export function RemoteCard({
   remote,
   duplicateIdentity,
 }: {
@@ -759,7 +759,7 @@ export function ConnectionCredentials() {
 }
 
 /** ConnectionRow is one inventory entry: bounded metadata, no plaintext. */
-function ConnectionRow({
+export function ConnectionRow({
   connection,
   onRevoke,
 }: {
@@ -826,7 +826,7 @@ type LifetimeChoice = 'default' | 'custom' | 'indefinite';
  * unreachable: the contract refuses a request that carries `lifetime_seconds`
  * and `indefinite` at once, so the UI can only ever send one of them.
  */
-function MintConnectionForm({
+export function MintConnectionForm({
   mint,
   onMinted,
 }: {
@@ -958,7 +958,7 @@ function MintConnectionForm({
  * routed through the same guard as Escape so the one disclosure is not lost to
  * a Back press or a reload.
  */
-function ConnectionMintDialog({
+export function ConnectionMintDialog({
   minted,
   onClose,
 }: {
@@ -1082,7 +1082,7 @@ function ConnectionMintDialog({
  * credential, so the copy says exactly what it does and does not do, and a
  * double revoke surfaces the 409 rather than pretending a second act happened.
  */
-function RevokeConnectionDialog({
+export function RevokeConnectionDialog({
   connection,
   onClose,
 }: {

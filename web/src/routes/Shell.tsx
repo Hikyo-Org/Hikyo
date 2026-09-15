@@ -635,7 +635,13 @@ export function Shell({ session }: { session: WhoAmI }) {
   );
 }
 
-function SidebarLinkItem({ link, onNavigate }: { link: SidebarLink; onNavigate: () => void }) {
+export function SidebarLinkItem({
+  link,
+  onNavigate,
+}: {
+  link: SidebarLink;
+  onNavigate: () => void;
+}) {
   const location = useLocation();
   if (link.disabledReason !== null) {
     return (
@@ -818,7 +824,7 @@ export function ProjectContext({
  * nothing until it resolves, a footer that flashed a placeholder would be
  * noisier than one that simply arrives.
  */
-function SidebarVersion({ version }: { version: string | undefined }) {
+export function SidebarVersion({ version }: { version: string | undefined }) {
   if (version === undefined) {
     return null;
   }
@@ -999,6 +1005,7 @@ export function ProfileUpdateBadge({ version }: { version: string }) {
   return (
     <span
       className="account-update-badge"
+      role="img"
       aria-label={`Update ${version} available`}
       title={`Update ${version} available`}
     />
@@ -1014,7 +1021,7 @@ export function ProfileUpdateBadge({ version }: { version: string }) {
  * tracks the OS preference live, otherwise a mid-session OS flip would leave a
  * sun over a dark page.
  */
-function ThemeToggle() {
+export function ThemeToggle() {
   const [choice, setChoice] = useThemeChoice();
   const [systemDark, setSystemDark] = useState(() => prefersDark());
 
