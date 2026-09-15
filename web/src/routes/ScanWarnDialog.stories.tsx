@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { ScanWarnDialog, type ScanWarnItem } from './ScanWarnDialog.tsx';
 
 // Two rows: one carries an acknowledgement token (offers "Keep as config"),
@@ -33,6 +34,7 @@ const items: readonly ScanWarnItem[] = [
 const meta = {
   component: ScanWarnDialog,
   tags: ['ai-generated'],
+  parameters: topLayerDocs,
   args: {
     keyName: 'DATABASE_URL',
     items,

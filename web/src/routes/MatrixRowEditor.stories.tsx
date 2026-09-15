@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
 
 type Props = Parameters<typeof MatrixRowEditor>[0];
@@ -58,7 +59,7 @@ const meta = {
   // A config key needs no reveal window, so an empty response table is enough:
   // the harness supplies the QueryClientProvider and Router the editor mounts
   // under, and any stray fetch 404s loud.
-  parameters: { app: { responses: [] } },
+  parameters: { app: { responses: [] }, ...topLayerDocs },
   args: {
     refData: { org: 'org-a', project: 'project-a' },
     keyRecord,

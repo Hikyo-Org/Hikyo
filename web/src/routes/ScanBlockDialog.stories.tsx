@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import type { RefusalFinding } from '../api/client.ts';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 
@@ -14,6 +15,7 @@ const acknowledgedFinding: RefusalFinding = {
 const meta = {
   component: ScanBlockDialog,
   tags: ['ai-generated'],
+  parameters: topLayerDocs,
   args: {
     title: 'Declaration blocked by secret scanning',
     intro: 'Declaring API_KEY was refused: the value looks like credential material.',
