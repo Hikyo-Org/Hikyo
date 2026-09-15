@@ -225,3 +225,37 @@ func TestOpsDiagnosticsReencryptCompletion(t *testing.T) {
 		}
 	})
 }
+
+func TestOpsVolumeMeasurementRunsOnlyAfterAuditCommit(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		calls := 0
+		health := &service.Retention{DB: db, Diagnostics: &service.Diagnostics{Volume: func() (storagehealth.Capacity, error) {
+			calls++
+			// A separate connection must see the committed audit before network I/O.
+			if count := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type='retention.health_read'"); count != 1 {
+				t.Errorf("measurement began before audit commit: rows=%d", count)
+			}
+			return storagehealth.Capacity{TotalBytes: 100, AvailableBytes: 70}, nil
+		}}}
+		if _, err := health.GetHealth(t.Context(), service.LocalPrincipal(nobody)); err == nil {
+			t.Fatal("unauthorized read succeeded")
+		}
+		if calls != 0 {
+			t.Fatal("unauthorized request measured volume")
+		}
+		if _, err := health.GetHealth(t.Context(), service.LocalPrincipal(root)); err != nil {
+			t.Fatal(err)
+		}
+		if calls != 1 {
+			t.Fatalf("measurement calls=%d", calls)
+		}
+		execRaw(t, db, "ALTER TABLE audit_instance_events RENAME TO audit_instance_events_broken")
+		defer execRaw(t, db, "ALTER TABLE audit_instance_events_broken RENAME TO audit_instance_events")
+		if _, err := health.GetHealth(t.Context(), service.LocalPrincipal(root)); err == nil {
+			t.Fatal("audit failure allowed health read")
+		}
+		if calls != 1 {
+			t.Fatal("audit-failed request measured volume")
+		}
+	})
+}

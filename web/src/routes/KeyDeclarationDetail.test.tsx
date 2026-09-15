@@ -195,6 +195,29 @@ describe('KeyDeclarationDetail', () => {
     await view.unmount();
   });
 
+  it('closes to the matrix on a pointer-down outside the panel, but stays for one inside', async () => {
+    mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
+    dbMode();
+
+    const view = await render();
+    const aside = view.container.querySelector('aside.key-detail');
+    if (aside === null) throw new Error('key-detail panel missing');
+
+    // Inside the panel: no close.
+    await act(async () => {
+      aside.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    expect(mocks.navigate).not.toHaveBeenCalled();
+
+    // Outside the panel: back to the matrix.
+    await act(async () => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    expect(mocks.navigate).toHaveBeenCalledWith(expect.stringContaining('/matrix'));
+
+    await view.unmount();
+  });
+
   it('is read-only with the Git notice and provenance in git mode', async () => {
     mocks.key.mockReturnValue({ isPending: false, isError: false, data: record });
     mocks.definitions.mockReturnValue({

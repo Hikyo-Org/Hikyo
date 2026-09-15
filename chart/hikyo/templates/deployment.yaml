@@ -41,6 +41,8 @@ spec:
     spec:
       {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
       serviceAccountName: {{ include "hikyo.rollout.name" . }}-server
+      {{- else if .Values.database.storageMonitoring.enabled }}
+      serviceAccountName: {{ include "hikyo.storage.name" . }}
       {{- end }}
       terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       {{- if .Values.ha.enabled }}
@@ -147,6 +149,16 @@ spec:
             - --tls-key-file=/run/hikyo-tls/tls.key
             {{- end }}
           env:
+            {{- if .Values.database.storageMonitoring.enabled }}
+            - name: HIKYO_PG_STORAGE_KUBELET_URL
+              value: {{ .Values.database.storageMonitoring.kubeletURL | quote }}
+            - name: HIKYO_PG_STORAGE_NODE
+              value: {{ .Values.database.storageMonitoring.node | quote }}
+            - name: HIKYO_PG_STORAGE_NAMESPACE
+              value: {{ default .Release.Namespace .Values.database.storageMonitoring.namespace | quote }}
+            - name: HIKYO_PG_STORAGE_PVC
+              value: {{ .Values.database.storageMonitoring.pvc | quote }}
+            {{- end }}
             {{- if .Values.upgrade.unattended.enabled }}
             - name: HIKYO_UPGRADE_UNATTENDED
               value: "true"
@@ -272,6 +284,11 @@ spec:
               readOnly: true
             - name: tmp
               mountPath: /tmp
+            {{- if and .Values.database.storageMonitoring.enabled (not (and .Values.rollout.enabled .Values.rollout.enrolled)) }}
+            - name: storage-api-token
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            {{- end }}
             {{- if and .Values.rollout.enabled .Values.rollout.enrolled }}
             - name: rollout-enrollment
               mountPath: /run/hikyo/rollout/enrollment
@@ -333,6 +350,25 @@ spec:
             {{- toYaml .Values.tls.reloaderResources | nindent 12 }}
         {{- end }}
       volumes:
+        {{- if and .Values.database.storageMonitoring.enabled (not (and .Values.rollout.enabled .Values.rollout.enrolled)) }}
+        - name: storage-api-token
+          projected:
+            defaultMode: 0440
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+              - downwardAPI:
+                  items:
+                    - path: namespace
+                      fieldRef:
+                        fieldPath: metadata.namespace
+        {{- end }}
         {{- if not .Values.upgrade.unattended.enabled }}
         - name: upgrade-public
           persistentVolumeClaim:

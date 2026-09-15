@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import type { RetentionConsequence } from '@hikyo/client';
 import { act, createRef } from 'react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
@@ -184,6 +184,59 @@ function drawer(
     </MemoryRouter>
   );
 }
+
+/** Surfaces the router's current path so a close-to-matrix navigation is observable. */
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="loc">{`${location.pathname}${location.search}`}</span>;
+}
+
+describe('HistoryDrawer outside-click close', () => {
+  it('closes to the matrix on a pointer-down outside the drawer, but stays for one inside', async () => {
+    const { container } = await renderForm(
+      <MemoryRouter initialEntries={['/orgs/org_a/projects/prj_a/matrix/history?env=env_a&rev=4']}>
+        <HistoryDrawer
+          refData={{ org: 'org_a', project: 'prj_a' }}
+          environments={[
+            {
+              id: 'env_a',
+              org_id: 'org_a',
+              project_id: 'prj_a',
+              name: 'production',
+              display_order: 0,
+              created_at: '2026-08-01T00:00:00Z',
+            },
+          ]}
+          keys={[]}
+          currentRevisions={new Map([['env_a', 7n]])}
+          protectedEnvironmentIds={[]}
+          cellsByEnvironment={new Map()}
+          pendingByEnvironment={new Map()}
+          pendingByOthersByEnvironment={new Map([['env_a', 0]])}
+          currentValuesByEnvironment={new Map()}
+          openerRef={createRef<HTMLAnchorElement>()}
+        />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    const aside = container.querySelector('aside.history');
+    if (aside === null) throw new Error('history drawer missing');
+    const loc = () => container.querySelector('[data-testid="loc"]')?.textContent ?? '';
+
+    // Inside the drawer: no close.
+    await act(async () => {
+      aside.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    expect(loc()).toContain('/history');
+
+    // Outside the drawer: back to the matrix.
+    await act(async () => {
+      document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    });
+    expect(loc()).toContain('/matrix');
+    expect(loc()).not.toContain('/history');
+  });
+});
 
 function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement {
   const button = [...container.querySelectorAll('button')].find((candidate) => candidate.textContent === name);

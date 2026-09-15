@@ -54,6 +54,78 @@ render_mode namespaced \
 	--set 'operator.designatedServiceAccounts.ns-a={sa-a,sa-shared}' \
 	--set 'operator.designatedServiceAccounts.ns-b={sa-b}'
 render_mode no-rollouts --set operator.triggerRollouts=false
+render_mode storage-monitoring --namespace database-app \
+	--set database.storageMonitoring.enabled=true \
+	--set database.storageMonitoring.kubeletURL=https://192.0.2.10:10250 \
+	--set database.storageMonitoring.node=database-node \
+	--set database.storageMonitoring.pvc=postgres-data
+render_mode storage-monitoring-other-namespace --namespace database-app \
+	--set database.storageMonitoring.enabled=true \
+	--set database.storageMonitoring.kubeletURL=https://192.0.2.10:10250 \
+	--set database.storageMonitoring.node=database-node \
+	--set database.storageMonitoring.namespace=database \
+	--set database.storageMonitoring.pvc=postgres-data
+
+python3 - "$tmp/storage-monitoring.yaml" "$tmp/storage-monitoring-other-namespace.yaml" "$tmp/cluster-wide.yaml" <<'PY' || exit 1
+import sys, yaml
+
+for path, expected_namespace in zip(sys.argv[1:3], ["database-app", "database"]):
+    with open(path) as stream:
+        docs = [doc for doc in yaml.safe_load_all(stream) if doc]
+    def named(kind, name):
+        return next(doc for doc in docs if doc["kind"] == kind and doc["metadata"]["name"] == name)
+    account = "fixture-hikyo-storage"
+    cluster_name = "database-app-" + account
+    assert named("ClusterRole", cluster_name)["rules"] == [{
+        "apiGroups": [""], "resources": ["nodes/stats"],
+        "resourceNames": ["database-node"], "verbs": ["get"],
+    }], "storage permission must remain node-scoped and read-only"
+    binding = named("ClusterRoleBinding", cluster_name)
+    assert binding["roleRef"]["name"] == cluster_name
+    assert binding["subjects"] == [{"kind": "ServiceAccount", "name": account, "namespace": "database-app"}]
+    assert named("ServiceAccount", account)["automountServiceAccountToken"] is False
+    pod = named("Deployment", "fixture-hikyo")["spec"]["template"]["spec"]
+    assert pod["serviceAccountName"] == account
+    assert pod["automountServiceAccountToken"] is False
+    server = pod["containers"][0]
+    env = {item["name"]: item.get("value") for item in server["env"]}
+    assert {key: value for key, value in env.items() if key.startswith("HIKYO_PG_STORAGE_")} == {
+        "HIKYO_PG_STORAGE_KUBELET_URL": "https://192.0.2.10:10250",
+        "HIKYO_PG_STORAGE_NODE": "database-node",
+        "HIKYO_PG_STORAGE_NAMESPACE": expected_namespace,
+        "HIKYO_PG_STORAGE_PVC": "postgres-data",
+    }
+    token_path = "/var/run/secrets/kubernetes.io/serviceaccount"
+    assert [mount for mount in server["volumeMounts"] if mount["mountPath"] == token_path] == [
+        {"name": "storage-api-token", "mountPath": token_path, "readOnly": True}
+    ]
+    volume = next(volume for volume in pod["volumes"] if volume["name"] == "storage-api-token")
+    assert volume["projected"]["defaultMode"] == 0o440
+    assert volume["projected"]["sources"][0] == {"serviceAccountToken": {"path": "token", "expirationSeconds": 3600}}
+    for container in pod.get("initContainers", []) + pod["containers"][1:]:
+        assert not any(mount["mountPath"] == token_path for mount in container.get("volumeMounts", []))
+with open(sys.argv[3]) as stream:
+    docs = [doc for doc in yaml.safe_load_all(stream) if doc]
+assert not any(doc["metadata"]["name"].endswith("-storage") for doc in docs), "disabled mode must not grant storage access"
+PY
+
+for override in \
+	database.storageMonitoring.kubeletURL= \
+	database.storageMonitoring.kubeletURL=http://192.0.2.10:10250 \
+	database.storageMonitoring.kubeletURL=https://192.0.2.10:70000 \
+	database.storageMonitoring.node= \
+	database.storageMonitoring.pvc= \
+	database.storageMonitoring.namespace=invalid_namespace \
+	database.storageMonitoring.enabled=false; do
+	if render_mode invalid-storage \
+		--set database.storageMonitoring.enabled=true \
+		--set database.storageMonitoring.kubeletURL=https://192.0.2.10:10250 \
+		--set database.storageMonitoring.node=database-node \
+		--set database.storageMonitoring.pvc=postgres-data \
+		--set "$override" >/dev/null 2>&1; then
+		fail "chart accepted invalid storage monitoring: $override"
+	fi
+done
 render_mode native-secrets --set operator.nativeSecretTypes=true
 render_mode native-secrets-namespaced --set operator.nativeSecretTypes=true --set 'operator.namespaces={ns-a,ns-b}'
 render_mode native-tls \
