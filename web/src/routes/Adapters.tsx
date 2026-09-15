@@ -271,7 +271,7 @@ function AdaptersPage() {
 
 type Feedback = ReturnType<typeof useFeedback>;
 
-function HealthChip({ target }: { readonly target: AdapterTarget }) {
+export function HealthChip({ target }: { readonly target: AdapterTarget }) {
   return (
     <span className={`chip adapters__health adapters__health--${target.sync_status}`}>
       <span className="adapters__health-glyph" aria-hidden="true" />
@@ -551,7 +551,7 @@ function OriginMoveForm({
 }
 
 /** CredentialForm replaces the write-only provider credential in place. */
-function CredentialForm({
+export function CredentialForm({
   busy,
   onCancel,
   onSubmit,
@@ -593,7 +593,7 @@ function CredentialForm({
 }
 
 /** RevokeCredentialDialog states the consequence before destroying custody. */
-function RevokeCredentialDialog({
+export function RevokeCredentialDialog({
   adapter,
   busy,
   onCancel,
@@ -632,7 +632,7 @@ function RevokeCredentialDialog({
  * DeleteAdapterDialog is the retain-or-prune decision over every target the
  * adapter has. Nothing is preselected, exactly like removing one target.
  */
-function DeleteAdapterDialog({
+export function DeleteAdapterDialog({
   adapter,
   busy,
   onCancel,
