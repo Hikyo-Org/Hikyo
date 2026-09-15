@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 53, while the
+// The runtime-created fixture includes migrations 45 through 54, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+9 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 53 only")
+	if len(current.Entries) != len(legacy.Entries)+10 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 54 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -273,6 +273,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM self_config_rollouts",
 		"SELECT COUNT(*) FROM self_config_rollout_sequences",
 		"SELECT COUNT(*) FROM cli_reauth_handoffs",
+		"SELECT COUNT(*) FROM adapters",
 		"SELECT COUNT(*) FROM adapter_effects WHERE finding <> ''",
 		"SELECT COUNT(*) FROM accounts WHERE email <> ''",
 		"SELECT COUNT(*) FROM federation_issuers WHERE ca_bundle_pem <> ''",
@@ -307,11 +308,36 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		drillExec(t, db, "DROP TABLE cli_reauth_handoffs")
 		drillExec(t, db, "CREATE TABLE cli_reauth_handoffs_new"+declaration)
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs_new RENAME TO cli_reauth_handoffs")
+		// 00054 replaced the unconditional UNIQUE (org_id, project_id, origin)
+		// with a partial index. SQLite cannot drop an inline UNIQUE, so restore
+		// the legacy declaration from 00025 (created by name, so its stored text
+		// matches the legacy genesis byte-for-byte) and let the partial index
+		// vanish with the old table. The empty-adapters evidence check above
+		// guarantees no child rows, so the implicit DELETE never violates a key.
+		adapterMigration, err := store.MigrationsFS.ReadFile("migrations/sqlite/00025_github_actions_adapter.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, adapterDecl, ok := strings.Cut(string(adapterMigration), "CREATE TABLE adapters")
+		if !ok {
+			t.Fatal("missing legacy adapters declaration")
+		}
+		adapterDecl, _, ok = strings.Cut(adapterDecl, ";")
+		if !ok {
+			t.Fatal("unterminated legacy adapters declaration")
+		}
+		drillExec(t, db, "DROP TABLE adapters")
+		drillExec(t, db, "CREATE TABLE adapters"+adapterDecl)
 	} else {
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs DROP CONSTRAINT cli_reauth_handoffs_operation_check")
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_operation_check CHECK (operation IN ('adapter.configure','adapter.credential-set','adapter.adopt','adapter.sync','value.reveal','value.copy-source'))")
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs DROP CONSTRAINT cli_reauth_handoffs_purpose_check")
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_purpose_check CHECK (purpose IN ('adapter','reveal','copy'))")
+		// Reverse 00054: drop the partial index and restore the unconditional
+		// UNIQUE constraint under its original name so the backing index matches
+		// the legacy genesis declaration.
+		drillExec(t, db, "DROP INDEX adapters_active_origin")
+		drillExec(t, db, "ALTER TABLE adapters ADD CONSTRAINT adapters_org_id_project_id_origin_key UNIQUE (org_id, project_id, origin)")
 	}
 	for _, query := range []string{
 		"DROP INDEX audit_tenant_events_env_seq",
@@ -336,7 +362,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"DROP INDEX audit_instance_retention_unit",
 		"DROP TABLE audit_retention_policy",
 		"DROP TABLE ops_diagnostics",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54)",
 	} {
 		drillExec(t, db, query)
 	}
