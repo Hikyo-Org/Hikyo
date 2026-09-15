@@ -54,15 +54,20 @@ export const AUDIT_OUTCOMES = [
 
 /**
  * AuditFilter is the browser's view of the query parameters. Every field is
- * optional; an empty string means "no filter" and is dropped before the
- * request so it never reaches the URL. `from`/`to` are datetime-local strings.
+ * optional; an empty string (or empty `outcomes`) means "no filter" and is
+ * dropped before the request so it never reaches the URL. `from`/`to` are
+ * datetime-local strings. `actor` is an exact principal id; `actorName` is a
+ * `*`-wildcard glob over the acting principal's display name (the server
+ * resolves the name). `operation`, `objectType`, and `objectId` accept `*`
+ * wildcards. `outcomes` is a set: any listed outcome matches.
  */
 export type AuditFilter = {
   readonly from: string;
   readonly to: string;
   readonly actor: string;
+  readonly actorName: string;
   readonly operation: string;
-  readonly outcome: string;
+  readonly outcomes: readonly string[];
   readonly objectType: string;
   readonly objectId: string;
   readonly correlationId: string;
@@ -72,8 +77,9 @@ export const emptyAuditFilter: AuditFilter = {
   from: '',
   to: '',
   actor: '',
+  actorName: '',
   operation: '',
-  outcome: '',
+  outcomes: [],
   objectType: '',
   objectId: '',
   correlationId: '',
@@ -88,8 +94,8 @@ const AUDIT_PAGE_LIMIT = 100;
  * carries no zone; treat it as UTC so the bound the operator picked is the
  * bound the server compares against, not one shifted by the browser's zone.
  */
-function auditQuery(filter: AuditFilter): Record<string, string> {
-  const query: Record<string, string> = {};
+function auditQuery(filter: AuditFilter): Record<string, string | string[]> {
+  const query: Record<string, string | string[]> = {};
   if (filter.from !== '') {
     query['from'] = localDatetimeToUtc(filter.from);
   }
@@ -99,11 +105,17 @@ function auditQuery(filter: AuditFilter): Record<string, string> {
   if (filter.actor !== '') {
     query['actor'] = filter.actor;
   }
+  if (filter.actorName !== '') {
+    query['actor_name'] = filter.actorName;
+  }
   if (filter.operation !== '') {
     query['operation'] = filter.operation;
   }
-  if (filter.outcome !== '') {
-    query['outcome'] = filter.outcome;
+  // The set filter goes on the repeatable `outcomes` param; the server unions
+  // it with the singular `outcome` (unused here). One selection still uses the
+  // list — the server treats a one-element set the same.
+  if (filter.outcomes.length > 0) {
+    query['outcomes'] = [...filter.outcomes];
   }
   if (filter.objectType !== '') {
     query['object_type'] = filter.objectType;
@@ -148,7 +160,7 @@ const auditPageKey = (scope: AuditScope, filter: AuditFilter) =>
   ['audit', scope.org, scope.project ?? '', scope.environment ?? '', filter] as const;
 
 /** queryScoped calls the one operation the scope addresses; the three share a response contract. */
-function queryScoped(scope: AuditScope, query: Record<string, string | number>): Promise<AuditPage> {
+function queryScoped(scope: AuditScope, query: Record<string, string | number | string[]>): Promise<AuditPage> {
   if (scope.project === undefined || scope.project === '') {
     return parsed(queryOrgAuditOp, { path: { org: scope.org }, query });
   }
@@ -162,12 +174,14 @@ function queryScoped(scope: AuditScope, query: Record<string, string | number>):
 }
 
 /**
- * useAuditTrail pages the org trail. Each page SCANS up to the limit and RETURNS
- * the filtered subset; `getNextPageParam` follows `next_after_seq` and stops
- * only when the server reports the scan reached the trail's end. A sparse filter
- * therefore yields more pages with few or no items, deliberately: the caller
- * drives "load more" so the trail is never walked unbounded, and every page it
- * reads writes its own audit.query event.
+ * useAuditTrail pages the org trail. The server FILLS each page: it scans as
+ * many stored rows as it must (up to a per-request budget) to return a full
+ * limit of filtered matches, so a selective filter no longer yields near-empty
+ * pages. `getNextPageParam` follows `next_after_seq` and stops when the server
+ * reports the scan reached the trail's end. A page can still come back short of
+ * the limit — the filter is very sparse and the server hit its scan budget
+ * before filling it — so "load more" resumes from the returned cursor; each
+ * page still writes its own audit.query event.
  */
 export function useAuditTrail(
   scope: AuditScope,
@@ -200,7 +214,16 @@ export function useAuditTrail(
  * fields are omitted: the export streams the whole filtered slice.
  */
 export function auditExportUrl(scope: AuditScope, filter: AuditFilter): string {
-  const params = new URLSearchParams(auditQuery(filter));
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(auditQuery(filter))) {
+    // A repeatable param (outcomes) appends one entry per value; the server's
+    // form-style parser reads them as the same set the query call sends.
+    if (Array.isArray(value)) {
+      for (const one of value) params.append(key, one);
+    } else {
+      params.append(key, value);
+    }
+  }
   const query = params.toString();
   const base = exportPath(scope);
   return query === '' ? base : `${base}?${query}`;

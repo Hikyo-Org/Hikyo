@@ -9749,8 +9749,10 @@ paths:
         - $ref: "#/components/parameters/AuditToSeq"
         - $ref: "#/components/parameters/AuditLimit"
         - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditActorName"
         - $ref: "#/components/parameters/AuditOperation"
         - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditOutcomes"
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
@@ -9798,8 +9800,10 @@ paths:
         - $ref: "#/components/parameters/AuditFrom"
         - $ref: "#/components/parameters/AuditTo"
         - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditActorName"
         - $ref: "#/components/parameters/AuditOperation"
         - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditOutcomes"
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
@@ -9840,8 +9844,10 @@ paths:
         - $ref: "#/components/parameters/AuditToSeq"
         - $ref: "#/components/parameters/AuditLimit"
         - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditActorName"
         - $ref: "#/components/parameters/AuditOperation"
         - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditOutcomes"
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
@@ -9879,8 +9885,10 @@ paths:
         - $ref: "#/components/parameters/AuditFrom"
         - $ref: "#/components/parameters/AuditTo"
         - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditActorName"
         - $ref: "#/components/parameters/AuditOperation"
         - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditOutcomes"
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
@@ -9922,8 +9930,10 @@ paths:
         - $ref: "#/components/parameters/AuditToSeq"
         - $ref: "#/components/parameters/AuditLimit"
         - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditActorName"
         - $ref: "#/components/parameters/AuditOperation"
         - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditOutcomes"
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
@@ -9962,8 +9972,10 @@ paths:
         - $ref: "#/components/parameters/AuditFrom"
         - $ref: "#/components/parameters/AuditTo"
         - $ref: "#/components/parameters/AuditActor"
+        - $ref: "#/components/parameters/AuditActorName"
         - $ref: "#/components/parameters/AuditOperation"
         - $ref: "#/components/parameters/AuditOutcome"
+        - $ref: "#/components/parameters/AuditOutcomes"
         - $ref: "#/components/parameters/AuditObjectType"
         - $ref: "#/components/parameters/AuditObjectID"
         - $ref: "#/components/parameters/AuditCorrelationID"
@@ -11399,17 +11411,31 @@ components:
       name: actor
       in: query
       required: false
-      description: Match only events whose acting principal has this id.
+      description: Match only events whose acting principal has this id (exact).
       schema:
         type: string
         maxLength: 64
+    AuditActorName:
+      name: actor_name
+      in: query
+      required: false
+      description: |
+        Match only events whose acting principal's display name (or username)
+        matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+        Names are resolved only for principals that already appear in the trail
+        you are authorized to read; this filter narrows that view and performs
+        no directory lookup, so it discloses nothing you cannot already see.
+      schema:
+        type: string
+        maxLength: 128
     AuditOperation:
       name: operation
       in: query
       required: false
       description: |
-        Match only events of this type (the operation), e.g. `value.set`. An
-        unknown type is not an error; it simply matches nothing.
+        Match only events of this type (the operation), e.g. `value.set`.
+        Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+        is not an error; it simply matches nothing.
       schema:
         type: string
         maxLength: 128
@@ -11417,15 +11443,34 @@ components:
       name: outcome
       in: query
       required: false
-      description: Match only events with this outcome.
+      description: |
+        Match only events with this outcome. To match several outcomes, use the
+        repeatable `outcomes` parameter; both may be given and are unioned.
       schema:
         type: string
         enum: [intent, success, denied, failure, unknown, disconnected]
+    AuditOutcomes:
+      name: outcomes
+      in: query
+      required: false
+      description: |
+        Match events with any of these outcomes (set membership). Repeat the
+        parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+        Unioned with the singular `outcome` when both are present.
+      schema:
+        type: array
+        items:
+          type: string
+          enum: [intent, success, denied, failure, unknown, disconnected]
+      explode: true
+      style: form
     AuditObjectType:
       name: object_type
       in: query
       required: false
-      description: Match only events acting on this object type.
+      description: |
+        Match only events acting on this object type. Supports `*` wildcards
+        (e.g. `secret*`).
       schema:
         type: string
         maxLength: 64
@@ -11433,7 +11478,8 @@ components:
       name: object_id
       in: query
       required: false
-      description: Match only events acting on this object id.
+      description: |
+        Match only events acting on this object id. Supports `*` wildcards.
       schema:
         type: string
         maxLength: 64

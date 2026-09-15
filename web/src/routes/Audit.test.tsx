@@ -6,6 +6,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { renderForm, settleTask } from '../testkit/renderForm.tsx';
 import { Audit } from './Audit.tsx';
 
+// The page reads the current principal id (for the "Self" filter shortcut) from
+// the auth context; stub it so the route renders without the full provider.
+vi.mock('../app/AuthProvider.tsx', () => ({
+  useAuth: () => ({ identity: { principal: { id: 'usr_self' } } }),
+}));
+
 afterEach(() => vi.unstubAllGlobals());
 
 const event = {
@@ -89,6 +95,36 @@ it('shows the actor name in the row while retaining its ID in event details', as
     await act(async () => row?.click());
     expect(container.querySelector('#audit-detail')?.textContent).toContain('Principal IDprn_dana');
   } finally { await unmount(); }
+});
+
+it('fills the principal field with the session id via Self, and carries checked outcomes to the export link', async () => {
+  const { container, release, unmount } = await renderAudit([]);
+  try {
+    await act(async () => release());
+    await settleTask();
+
+    const self = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Self');
+    await act(async () => self?.click());
+    const actor = container.querySelector<HTMLInputElement>('input[placeholder="usr_…"]');
+    expect(actor?.value).toBe('usr_self');
+
+    const boxes = [...container.querySelectorAll<HTMLInputElement>('.audit__outcomes input[type="checkbox"]')];
+    const denied = boxes.find((b) => b.parentElement?.textContent?.trim() === 'denied');
+    const failure = boxes.find((b) => b.parentElement?.textContent?.trim() === 'failure');
+    await act(async () => denied?.click());
+    await act(async () => failure?.click());
+
+    const apply = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Apply filter');
+    await act(async () => apply?.click());
+    await settleTask();
+
+    const href = container.querySelector<HTMLAnchorElement>('a[download]')?.getAttribute('href') ?? '';
+    const params = new URL(href, 'https://x').searchParams;
+    expect(params.get('actor')).toBe('usr_self');
+    expect(params.getAll('outcomes')).toEqual(['denied', 'failure']);
+  } finally {
+    await unmount();
+  }
 });
 
 it.each([

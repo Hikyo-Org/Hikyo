@@ -858,6 +858,21 @@ func (j *adapterJournal) ReleaseReservation(ctx context.Context, effect adapter.
 }
 
 func (j *adapterJournal) insertConflict(ctx context.Context, tx adapterDBTX, effect adapter.Effect, now time.Time) error {
+	// One conflict artifact per (target, generation, surface, name). A retried
+	// job re-runs the same effect against the same generation; without this
+	// guard every attempt minted a fresh acf/acn row, flooding the target with
+	// duplicate conflict groups (PROD_SSH_KEY x3 at generation 4 in #744). The
+	// row is already un-adopted, so re-raise drift and return without a dupe.
+	var existing int
+	dedup := tx.SQL(
+		`SELECT COUNT(*) FROM adapter_conflicts WHERE target_id=? AND org_id=? AND project_id=? AND environment_id=? AND target_generation=? AND surface=? AND effective_name=? AND adopted_at IS NULL`,
+	)
+	if err := tx.QueryRow(ctx, dedup, j.job.TargetID, j.job.OrgID, j.job.ProjectID, j.job.EnvironmentID, j.job.Generation, string(effect.Surface), effect.EffectiveName).Scan(&existing); err != nil {
+		return err
+	}
+	if existing > 0 {
+		return raiseDriftAttention(ctx, tx, adapterJobScope(j.job), j.job.TargetID, j.job.EnvironmentID)
+	}
 	insert := tx.SQL(
 		`INSERT INTO adapter_conflicts (id,artifact_id,org_id,project_id,environment_id,target_id,job_id,destination_id,repository_id,target_generation,surface,effective_name,created_at) SELECT ?,?,?,?,?,?,?,destination_id,repository_id,?,?,?,? FROM adapter_targets WHERE id=? AND org_id=? AND project_id=? AND environment_id=?`,
 	)

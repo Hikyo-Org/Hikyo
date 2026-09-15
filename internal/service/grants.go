@@ -1221,9 +1221,9 @@ func (s *Grants) List(ctx context.Context, actor Actor, scope domain.Scope) ([]M
 		if err != nil {
 			return err
 		}
-		names := newPrincipalNames(az)
+		names := newPrincipalNames()
 		for _, line := range lines {
-			name, err := names.get(ctx, line.Principal)
+			name, err := names.get(ctx, az, line.Principal)
 			if err != nil {
 				return err
 			}

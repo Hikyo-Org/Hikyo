@@ -401,8 +401,13 @@ func (r adapterQueries) Conflicts(ctx context.Context, p authz.Proof, targetID s
 	if err != nil {
 		return nil, err
 	}
+	// Only the current generation's artifacts are adoptable: adoptAdapter's
+	// COUNT requires target_generation to equal the live generation, so a
+	// stale-generation group would surface in the UI, fail adoption with a
+	// generic 409, and drive the retry loop in #744. Scope the read to the
+	// live generation so superseded artifacts stay in history but off-screen.
 	query := r.db.SQL(
-		`SELECT artifact_id,target_id,job_id,destination_id,repository_id,target_generation,surface,effective_name,created_at FROM adapter_conflicts WHERE target_id=? AND org_id=? AND project_id=? AND adopted_at IS NULL ORDER BY created_at,artifact_id,surface,effective_name`,
+		`SELECT c.artifact_id,c.target_id,c.job_id,c.destination_id,c.repository_id,c.target_generation,c.surface,c.effective_name,c.created_at FROM adapter_conflicts c JOIN adapter_targets t ON t.id=c.target_id AND t.org_id=c.org_id AND t.project_id=c.project_id WHERE c.target_id=? AND c.org_id=? AND c.project_id=? AND c.adopted_at IS NULL AND c.target_generation=t.generation ORDER BY c.created_at,c.artifact_id,c.surface,c.effective_name`,
 	)
 	rows, err := r.db.Query(ctx, query, targetID, chain.Org, chain.Project)
 	if err != nil {
@@ -631,7 +636,7 @@ func adoptAdapter(ctx context.Context, db adapterDB, chain domain.Scope, adoptio
 		)
 		if rows, err := db.Exec(ctx, insert, adoption.LedgerIDs[i], chain.Org, chain.Project, environmentID, adoption.TargetID, origin, destinationKind, repositoryID, destinationID, entry.Surface, entry.EffectiveName, strings.ToUpper(entry.EffectiveName), stamp); err != nil || rows != 1 {
 			if err != nil {
-				return AdapterAdoptionResult{}, err
+				return AdapterAdoptionResult{}, constraint(err)
 			}
 			return AdapterAdoptionResult{}, ErrConflict
 		}
@@ -640,7 +645,7 @@ func adoptAdapter(ctx context.Context, db adapterDB, chain domain.Scope, adoptio
 		)
 		if rows, err := db.Exec(ctx, mark, stamp, adoption.ArtifactID, adoption.TargetID, chain.Org, chain.Project, environmentID, entry.Surface, entry.EffectiveName); err != nil || rows != 1 {
 			if err != nil {
-				return AdapterAdoptionResult{}, err
+				return AdapterAdoptionResult{}, constraint(err)
 			}
 			return AdapterAdoptionResult{}, ErrConflict
 		}
@@ -649,7 +654,7 @@ func adoptAdapter(ctx context.Context, db adapterDB, chain domain.Scope, adoptio
 		supersede := db.SQL(`UPDATE adapter_outbox SET state='superseded',finished_at=?,lease_owner=NULL,lease_expires_at=NULL WHERE id=? AND target_id=? AND org_id=? AND project_id=? AND environment_id=? AND state IN ('queued','running')`)
 		rows, err := db.Exec(ctx, supersede, stamp, priorJob, adoption.TargetID, chain.Org, chain.Project, environmentID)
 		if err != nil {
-			return AdapterAdoptionResult{}, err
+			return AdapterAdoptionResult{}, constraint(err)
 		}
 		if rows != 1 {
 			return AdapterAdoptionResult{}, adapter.ErrSuperseded
@@ -661,7 +666,7 @@ func adoptAdapter(ctx context.Context, db adapterDB, chain domain.Scope, adoptio
 	)
 	if rows, err := db.Exec(ctx, insertJob, adoption.JobID, chain.Org, chain.Project, environmentID, adoption.TargetID, adoption.AuthorityPrincipalID, nextGeneration, adoption.TargetID, stamp, stamp); err != nil || rows != 1 {
 		if err != nil {
-			return AdapterAdoptionResult{}, err
+			return AdapterAdoptionResult{}, constraint(err)
 		}
 		return AdapterAdoptionResult{}, ErrConflict
 	}
@@ -670,14 +675,14 @@ func adoptAdapter(ctx context.Context, db adapterDB, chain domain.Scope, adoptio
 		`UPDATE adapter_targets SET generation=$1,sync_status='converging',failure_names='[]'::jsonb,active_job_id=$2,provider_lease_job_id=NULL,provider_lease_effect_id=NULL,provider_lease_expires_at=NULL WHERE id=$3 AND org_id=$4 AND project_id=$5 AND environment_id=$6 AND generation=$7 AND (provider_lease_job_id IS NULL OR provider_lease_expires_at<=$8)`)
 	if rows, err := db.Exec(ctx, updateTarget, nextGeneration, adoption.JobID, adoption.TargetID, chain.Org, chain.Project, environmentID, generation, stamp); err != nil || rows != 1 {
 		if err != nil {
-			return AdapterAdoptionResult{}, err
+			return AdapterAdoptionResult{}, constraint(err)
 		}
 		return AdapterAdoptionResult{}, adapter.ErrProviderBusy
 	}
 	updateAdapter := db.SQL(`UPDATE adapters SET authority_principal_id=? WHERE id=? AND org_id=? AND project_id=?`)
 	if rows, err := db.Exec(ctx, updateAdapter, adoption.AuthorityPrincipalID, adapterID, chain.Org, chain.Project); err != nil || rows != 1 {
 		if err != nil {
-			return AdapterAdoptionResult{}, err
+			return AdapterAdoptionResult{}, constraint(err)
 		}
 		return AdapterAdoptionResult{}, ErrNotFound
 	}

@@ -1,10 +1,149 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
+
+// fakeTrail is a seq-ordered audit trail backing a fillPage read closure: it
+// returns rows with Seq strictly above the cursor, ascending, capped at Limit —
+// the same shape PageTenant/PageInstance produce for AuditPageBySeq.
+type fakeTrail struct {
+	rows  []store.AuditEvent
+	reads int
+}
+
+func (t *fakeTrail) read(_ context.Context, f store.AuditFilter) ([]store.AuditEvent, error) {
+	t.reads++
+	out := make([]store.AuditEvent, 0, f.Limit)
+	for _, e := range t.rows {
+		if e.Seq <= f.AfterSeq {
+			continue
+		}
+		out = append(out, e)
+		if len(out) >= f.Limit {
+			break
+		}
+	}
+	return out, nil
+}
+
+func trailByActor(n int, everyNthAlice int) *fakeTrail {
+	t := &fakeTrail{rows: make([]store.AuditEvent, n)}
+	for i := range t.rows {
+		t.rows[i].Seq = int64(i + 1)
+		if everyNthAlice > 0 && (i+1)%everyNthAlice == 0 {
+			t.rows[i].Actor.ID = "usr_alice"
+		} else {
+			t.rows[i].Actor.ID = "usr_bob"
+		}
+	}
+	return t
+}
+
+// TestFillPageDensePaging pins the sparse-page fix: a selective filter fills the
+// page from multiple store reads instead of returning a near-empty one, resumes
+// without skipping or duplicating, ends with Exhausted, and yields under the
+// per-request scan budget rather than walking the whole trail.
+func TestFillPageDensePaging(t *testing.T) {
+	ctx := context.Background()
+
+	// 100 rows, every 10th matches alice → 10 matches. limit 5, ceiling 100.
+	trail := trailByActor(100, 10)
+	f := store.AuditFilter{Limit: 5, Actor: "usr_alice"}
+	page, err := fillPage(ctx, f, 100, trail.read, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Events) != 5 {
+		t.Fatalf("dense page = %d events, want the full limit 5 (not a sparse read)", len(page.Events))
+	}
+	if page.Exhausted {
+		t.Fatal("5 of 10 matches returned: must not be exhausted")
+	}
+	if page.Events[0].Seq != 10 || page.Events[4].Seq != 50 {
+		t.Fatalf("matched seqs = %d..%d, want 10..50", page.Events[0].Seq, page.Events[4].Seq)
+	}
+	if page.NextSeq != 50 {
+		t.Fatalf("cursor = %d, want the last RETURNED seq 50", page.NextSeq)
+	}
+
+	// Resume: the second page picks up the remaining 5 with no skip or dup.
+	f2 := f
+	f2.AfterSeq = page.NextSeq
+	page2, err := fillPage(ctx, f2, 100, trail.read, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page2.Events) != 5 || page2.Events[0].Seq != 60 || page2.Events[4].Seq != 100 {
+		t.Fatalf("resume page seqs = %v, want 60..100", seqs(page2.Events))
+	}
+	if !page2.Exhausted {
+		t.Fatal("last 5 matches at the ceiling: must be exhausted")
+	}
+
+	// A filter that matches nothing must not walk the whole trail in one request:
+	// the scan budget yields an empty page with Exhausted=false and an advanced
+	// cursor, and does NOT read every chunk to the end.
+	big := trailByActor(1000000, 0) // no alice anywhere
+	miss := store.AuditFilter{Limit: 5, Actor: "usr_alice"}
+	pageMiss, err := fillPage(ctx, miss, 1000000, big.read, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pageMiss.Events) != 0 || pageMiss.Exhausted {
+		t.Fatalf("budget-capped page = %d events exhausted=%v, want 0/false", len(pageMiss.Events), pageMiss.Exhausted)
+	}
+	if pageMiss.NextSeq == 0 {
+		t.Fatal("budget-capped page must advance the cursor so the caller can resume")
+	}
+	if big.reads > 16 {
+		t.Fatalf("scan budget breached: %d reads, want <= 16", big.reads)
+	}
+}
+
+// TestFillPageKeepFilter pins the service-side keep pass (the ActorName path):
+// keep runs after the store filter, keep-dropped rows still advance the scanned
+// cursor, the page fills to the limit from multiple reads, and NextSeq is the
+// last RETURNED seq. Here the store filter is unset and keep is the only
+// selector — the shape the actor_name glob takes at runtime.
+func TestFillPageKeepFilter(t *testing.T) {
+	ctx := context.Background()
+
+	// 100 rows, every 10th is alice → 10 kept. Resolve id->name and glob "Al*"
+	// via the same MatchesActorName the runtime keep uses.
+	trail := trailByActor(100, 10)
+	name := map[string]string{"usr_alice": "Alice", "usr_bob": "Bob"}
+	nameFilter := store.AuditFilter{ActorName: "Al*"}
+	keep := func(e store.AuditEvent) (bool, error) {
+		return nameFilter.MatchesActorName(name[e.Actor.ID]), nil
+	}
+
+	f := store.AuditFilter{Limit: 5} // no store-side field set; keep selects
+	page, err := fillPage(ctx, f, 100, trail.read, keep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := seqs(page.Events); len(got) != 5 || got[0] != 10 || got[4] != 50 {
+		t.Fatalf("kept seqs = %v, want 10..50 (full limit from keep pass)", got)
+	}
+	if page.NextSeq != 50 {
+		t.Fatalf("cursor = %d, want the last RETURNED seq 50", page.NextSeq)
+	}
+	if page.Exhausted {
+		t.Fatal("5 of 10 kept: must not be exhausted")
+	}
+}
+
+func seqs(es []store.AuditEvent) []int64 {
+	out := make([]int64, len(es))
+	for i, e := range es {
+		out[i] = e.Seq
+	}
+	return out
+}
 
 // TestFilterPageScanWindow pins the scan-window contract: the cursor advances
 // over SCANNED rows (matched or not) so a sparse filter never re-reads or skips,

@@ -71,12 +71,13 @@ type AuditFilter = store.AuditFilter
 type AuditEvent = store.AuditEvent
 
 // AuditPage is one interactive query response. Events are the rows that
-// matched the filter's equality fields; NextSeq is the seq of the last row the
-// page SCANNED (matched or not) and is the resume cursor for the next request;
-// Exhausted is true when the scan reached the end of the trail within this
-// window (fewer rows scanned than the page limit). A sparse filter can return
-// zero Events with Exhausted false — that means "keep scanning", not "no such
-// events" — which is why the cursor tracks scanned rows, not matched ones.
+// matched the filter's equality fields; NextSeq is the resume cursor for the
+// next request; Exhausted is true when the trail has no more rows within the
+// pinned window. The service fills the page (fillPage) — a selective filter no
+// longer returns a near-empty page just because the underlying store read was
+// sparse; it keeps reading until Events reaches the page limit or the trail
+// ends. Events can still be short with Exhausted=false only when a per-request
+// scan budget is spent (fillPage), in which case the caller resumes at NextSeq.
 type AuditPage struct {
 	ActorNames map[string]string
 	Events     []store.AuditEvent
@@ -130,6 +131,109 @@ func filterPage(scanned []store.AuditEvent, f store.AuditFilter, ceiling int64) 
 	return page
 }
 
+// fillPage reads store pages under the pinned ceiling until it has a full
+// limit-sized page of MATCHING rows, the trail is exhausted, or a bounded scan
+// budget is spent. It exists because the equality match runs in Go (analyzer 2:
+// an optional predicate has no provable SQL shape on a tenant-owned table), so a
+// single store read of `limit` rows can return far fewer matches than the caller
+// asked for — the sparse-page bug. Looping here, not in the store, keeps the
+// match in Go while still handing back a dense page. read wraps the scope-bound
+// PageTenant/PageInstance call; each iteration advances its own AfterSeq cursor.
+//
+// keep is an optional second predicate applied after the store's Matches — it
+// carries the ActorName filter, which needs the authorizer to resolve each
+// row's principal name and so cannot live in the pure store.Matches. nil means
+// no extra filter. Rows keep advancing the scanned cursor whether keep drops
+// them or not, exactly as Matches-rejected rows do.
+func fillPage(ctx context.Context, f store.AuditFilter, ceiling int64, read func(context.Context, store.AuditFilter) ([]store.AuditEvent, error), keep func(store.AuditEvent) (bool, error)) (AuditPage, error) {
+	limit := f.Limit
+	if limit > store.AuditMaxPageSize {
+		limit = store.AuditMaxPageSize
+	}
+	// An unselective filter matches every scanned row, so one read of `limit`
+	// fills the page; a selective one reads full store pages so a sparse trail
+	// still fills in few round trips.
+	chunk := limit
+	if f.Selective() {
+		chunk = store.AuditMaxPageSize
+	}
+	out := AuditPage{NextSeq: f.AfterSeq, UpperSeq: ceiling}
+	matched := make([]store.AuditEvent, 0, limit)
+	cf := f
+	cf.Limit = chunk
+	// ponytail: cap the per-request scan so a filter that matches almost nothing
+	// can't walk the whole trail in one request; a spent budget returns a short
+	// page with Exhausted=false and the caller pages on from NextSeq. 16 full
+	// store pages (up to 16 000 scanned rows) before yielding; raise if a real
+	// trail needs a deeper single-request reach.
+	const maxChunks = 16
+	for i := 0; i < maxChunks; i++ {
+		cf.AfterSeq = out.NextSeq
+		scanned, err := read(ctx, cf)
+		if err != nil {
+			return AuditPage{}, err
+		}
+		// filterPage scans one chunk under the ceiling: cf.Limit == chunk, so its
+		// short-page EOF test compares against the size actually requested.
+		cp := filterPage(scanned, cf, ceiling)
+		for idx, e := range cp.Events {
+			if keep != nil {
+				ok, err := keep(e)
+				if err != nil {
+					return AuditPage{}, err
+				}
+				if !ok {
+					continue
+				}
+			}
+			matched = append(matched, e)
+			if len(matched) >= limit {
+				out.Events = matched
+				// Resume at the last RETURNED row so surplus matches in this chunk
+				// are re-scanned next request, never skipped. More rows remain
+				// unless this was the chunk's last match and the chunk was itself
+				// exhausted (ceiling reached or trail ended).
+				out.NextSeq = e.Seq
+				out.Exhausted = idx == len(cp.Events)-1 && cp.Exhausted
+				return out, nil
+			}
+		}
+		out.NextSeq = cp.NextSeq
+		if cp.Exhausted {
+			out.Events = matched
+			out.Exhausted = true
+			return out, nil
+		}
+	}
+	// Scan budget spent without filling the page: hand back what matched and let
+	// the caller resume from the cursor. Rare — a filter matching < ~1/160 of the
+	// trail — and self-healing across requests.
+	out.Events = matched
+	out.Exhausted = false
+	return out, nil
+}
+
+// actorNameKeep builds the ActorName post-filter for fillPage, or nil when the
+// filter is unset. It resolves each scanned row's principal name through the
+// read transaction's authorizer — only names already disclosed on rows the
+// caller is authorized to read — and globs it against f.ActorName. This is the
+// "search principal by name" filter: it narrows an already-authorized view and
+// performs no directory lookup, so it exposes nothing the caller cannot already
+// read off the page (principal_names.go).
+func actorNameKeep(ctx context.Context, az *authz.TxAuthorizer, f store.AuditFilter) func(store.AuditEvent) (bool, error) {
+	if f.ActorName == "" {
+		return nil
+	}
+	names := newPrincipalNames()
+	return func(e store.AuditEvent) (bool, error) {
+		name, err := names.get(ctx, az, domain.PrincipalID(e.Actor.ID))
+		if err != nil {
+			return false, err
+		}
+		return f.MatchesActorName(name), nil
+	}
+}
+
 // Query returns one bounded page of the tenant trail addressed by scope. The
 // page is materialized, the query event inserted, and both commit in one
 // transaction — the event is durable before any byte of the response exists
@@ -156,11 +260,12 @@ func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope 
 				return err
 			}
 		}
-		scanned, err := r.Audit().PageTenant(ctx, p, f)
+		page, err = fillPage(ctx, f, ceiling, func(ctx context.Context, cf store.AuditFilter) ([]store.AuditEvent, error) {
+			return r.Audit().PageTenant(ctx, p, cf)
+		}, actorNameKeep(ctx, az, f))
 		if err != nil {
 			return err
 		}
-		page = filterPage(scanned, f, ceiling)
 		if err := nameAuditActors(ctx, az, &page); err != nil {
 			return err
 		}
@@ -197,11 +302,12 @@ func (s *Audits) InstanceQuery(ctx context.Context, principal domain.PrincipalID
 				return err
 			}
 		}
-		scanned, err := r.Audit().PageInstance(ctx, p, f)
+		page, err = fillPage(ctx, f, ceiling, func(ctx context.Context, cf store.AuditFilter) ([]store.AuditEvent, error) {
+			return r.Audit().PageInstance(ctx, p, cf)
+		}, actorNameKeep(ctx, az, f))
 		if err != nil {
 			return err
 		}
-		page = filterPage(scanned, f, ceiling)
 		if err := nameAuditActors(ctx, az, &page); err != nil {
 			return err
 		}
@@ -408,6 +514,11 @@ func (s *Audits) export(
 	streamed := 0
 	commitCursor := store.AuditCommitSeq(0)
 	writersSettled := false
+	// The ActorName filter resolves principal names, which needs the authorizer;
+	// the cache is warmed inside each page's read transaction (below) and read
+	// back when the page is filtered after commit. Same disclosure rule as the
+	// interactive query — only names on rows this proof already admitted.
+	names := newPrincipalNames()
 	for {
 		// Each page: its own transaction, its own freshly minted proof —
 		// #15's re-authorize-before-every-sensitive-step and #23's
@@ -423,7 +534,19 @@ func (s *Audits) export(
 				return err
 			}
 			rows, err = page(ctx, r, p, pf)
-			return err
+			if err != nil {
+				return err
+			}
+			// Warm the name cache for this page's rows while the authorizer is in
+			// scope; the name filter is applied after the transaction commits.
+			if f.ActorName != "" {
+				for _, e := range rows {
+					if _, err := names.get(ctx, az, domain.PrincipalID(e.Actor.ID)); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
 		})
 		if err != nil {
 			if isDenial(err) {
@@ -450,6 +573,12 @@ func (s *Audits) export(
 			// the end of the trail.
 			commitCursor = e.CommitSeq
 			if !f.Matches(e) {
+				continue
+			}
+			// The ActorName filter (glob on the resolved principal name) runs off
+			// the cache warmed inside the read transaction above — the store's
+			// Matches cannot resolve names. Empty ActorName keeps every row.
+			if !f.MatchesActorName(names.cached(domain.PrincipalID(e.Actor.ID))) {
 				continue
 			}
 			if werr := writeLine(w, e); werr != nil {

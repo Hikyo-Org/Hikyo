@@ -4762,29 +4762,53 @@ export type AuditToSeq = number;
 export type AuditLimit = number;
 
 /**
- * Match only events whose acting principal has this id.
+ * Match only events whose acting principal has this id (exact).
  */
 export type AuditActor = string;
 
 /**
- * Match only events of this type (the operation), e.g. `value.set`. An
- * unknown type is not an error; it simply matches nothing.
+ * Match only events whose acting principal's display name (or username)
+ * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+ * Names are resolved only for principals that already appear in the trail
+ * you are authorized to read; this filter narrows that view and performs
+ * no directory lookup, so it discloses nothing you cannot already see.
+ *
+ */
+export type AuditActorName = string;
+
+/**
+ * Match only events of this type (the operation), e.g. `value.set`.
+ * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+ * is not an error; it simply matches nothing.
  *
  */
 export type AuditOperation = string;
 
 /**
- * Match only events with this outcome.
+ * Match only events with this outcome. To match several outcomes, use the
+ * repeatable `outcomes` parameter; both may be given and are unioned.
+ *
  */
 export type AuditOutcome = 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
 
 /**
- * Match only events acting on this object type.
+ * Match events with any of these outcomes (set membership). Repeat the
+ * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+ * Unioned with the singular `outcome` when both are present.
+ *
+ */
+export type AuditOutcomes = Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+
+/**
+ * Match only events acting on this object type. Supports `*` wildcards
+ * (e.g. `secret*`).
+ *
  */
 export type AuditObjectType = string;
 
 /**
- * Match only events acting on this object id.
+ * Match only events acting on this object id. Supports `*` wildcards.
+ *
  */
 export type AuditObjectId = string;
 
@@ -20999,25 +21023,47 @@ export type QueryOrgAuditData = {
          */
         limit?: number;
         /**
-         * Match only events whose acting principal has this id.
+         * Match only events whose acting principal has this id (exact).
          */
         actor?: string;
         /**
-         * Match only events of this type (the operation), e.g. `value.set`. An
-         * unknown type is not an error; it simply matches nothing.
+         * Match only events whose acting principal's display name (or username)
+         * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+         * Names are resolved only for principals that already appear in the trail
+         * you are authorized to read; this filter narrows that view and performs
+         * no directory lookup, so it discloses nothing you cannot already see.
+         *
+         */
+        actor_name?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`.
+         * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+         * is not an error; it simply matches nothing.
          *
          */
         operation?: string;
         /**
-         * Match only events with this outcome.
+         * Match only events with this outcome. To match several outcomes, use the
+         * repeatable `outcomes` parameter; both may be given and are unioned.
+         *
          */
         outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
         /**
-         * Match only events acting on this object type.
+         * Match events with any of these outcomes (set membership). Repeat the
+         * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+         * Unioned with the singular `outcome` when both are present.
+         *
+         */
+        outcomes?: Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+        /**
+         * Match only events acting on this object type. Supports `*` wildcards
+         * (e.g. `secret*`).
+         *
          */
         object_type?: string;
         /**
-         * Match only events acting on this object id.
+         * Match only events acting on this object id. Supports `*` wildcards.
+         *
          */
         object_id?: string;
         /**
@@ -21096,25 +21142,47 @@ export type ExportOrgAuditData = {
          */
         to?: string;
         /**
-         * Match only events whose acting principal has this id.
+         * Match only events whose acting principal has this id (exact).
          */
         actor?: string;
         /**
-         * Match only events of this type (the operation), e.g. `value.set`. An
-         * unknown type is not an error; it simply matches nothing.
+         * Match only events whose acting principal's display name (or username)
+         * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+         * Names are resolved only for principals that already appear in the trail
+         * you are authorized to read; this filter narrows that view and performs
+         * no directory lookup, so it discloses nothing you cannot already see.
+         *
+         */
+        actor_name?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`.
+         * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+         * is not an error; it simply matches nothing.
          *
          */
         operation?: string;
         /**
-         * Match only events with this outcome.
+         * Match only events with this outcome. To match several outcomes, use the
+         * repeatable `outcomes` parameter; both may be given and are unioned.
+         *
          */
         outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
         /**
-         * Match only events acting on this object type.
+         * Match events with any of these outcomes (set membership). Repeat the
+         * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+         * Unioned with the singular `outcome` when both are present.
+         *
+         */
+        outcomes?: Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+        /**
+         * Match only events acting on this object type. Supports `*` wildcards
+         * (e.g. `secret*`).
+         *
          */
         object_type?: string;
         /**
-         * Match only events acting on this object id.
+         * Match only events acting on this object id. Supports `*` wildcards.
+         *
          */
         object_id?: string;
         /**
@@ -21217,25 +21285,47 @@ export type QueryProjectAuditData = {
          */
         limit?: number;
         /**
-         * Match only events whose acting principal has this id.
+         * Match only events whose acting principal has this id (exact).
          */
         actor?: string;
         /**
-         * Match only events of this type (the operation), e.g. `value.set`. An
-         * unknown type is not an error; it simply matches nothing.
+         * Match only events whose acting principal's display name (or username)
+         * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+         * Names are resolved only for principals that already appear in the trail
+         * you are authorized to read; this filter narrows that view and performs
+         * no directory lookup, so it discloses nothing you cannot already see.
+         *
+         */
+        actor_name?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`.
+         * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+         * is not an error; it simply matches nothing.
          *
          */
         operation?: string;
         /**
-         * Match only events with this outcome.
+         * Match only events with this outcome. To match several outcomes, use the
+         * repeatable `outcomes` parameter; both may be given and are unioned.
+         *
          */
         outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
         /**
-         * Match only events acting on this object type.
+         * Match events with any of these outcomes (set membership). Repeat the
+         * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+         * Unioned with the singular `outcome` when both are present.
+         *
+         */
+        outcomes?: Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+        /**
+         * Match only events acting on this object type. Supports `*` wildcards
+         * (e.g. `secret*`).
+         *
          */
         object_type?: string;
         /**
-         * Match only events acting on this object id.
+         * Match only events acting on this object id. Supports `*` wildcards.
+         *
          */
         object_id?: string;
         /**
@@ -21318,25 +21408,47 @@ export type ExportProjectAuditData = {
          */
         to?: string;
         /**
-         * Match only events whose acting principal has this id.
+         * Match only events whose acting principal has this id (exact).
          */
         actor?: string;
         /**
-         * Match only events of this type (the operation), e.g. `value.set`. An
-         * unknown type is not an error; it simply matches nothing.
+         * Match only events whose acting principal's display name (or username)
+         * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+         * Names are resolved only for principals that already appear in the trail
+         * you are authorized to read; this filter narrows that view and performs
+         * no directory lookup, so it discloses nothing you cannot already see.
+         *
+         */
+        actor_name?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`.
+         * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+         * is not an error; it simply matches nothing.
          *
          */
         operation?: string;
         /**
-         * Match only events with this outcome.
+         * Match only events with this outcome. To match several outcomes, use the
+         * repeatable `outcomes` parameter; both may be given and are unioned.
+         *
          */
         outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
         /**
-         * Match only events acting on this object type.
+         * Match events with any of these outcomes (set membership). Repeat the
+         * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+         * Unioned with the singular `outcome` when both are present.
+         *
+         */
+        outcomes?: Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+        /**
+         * Match only events acting on this object type. Supports `*` wildcards
+         * (e.g. `secret*`).
+         *
          */
         object_type?: string;
         /**
-         * Match only events acting on this object id.
+         * Match only events acting on this object id. Supports `*` wildcards.
+         *
          */
         object_id?: string;
         /**
@@ -21443,25 +21555,47 @@ export type QueryEnvAuditData = {
          */
         limit?: number;
         /**
-         * Match only events whose acting principal has this id.
+         * Match only events whose acting principal has this id (exact).
          */
         actor?: string;
         /**
-         * Match only events of this type (the operation), e.g. `value.set`. An
-         * unknown type is not an error; it simply matches nothing.
+         * Match only events whose acting principal's display name (or username)
+         * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+         * Names are resolved only for principals that already appear in the trail
+         * you are authorized to read; this filter narrows that view and performs
+         * no directory lookup, so it discloses nothing you cannot already see.
+         *
+         */
+        actor_name?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`.
+         * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+         * is not an error; it simply matches nothing.
          *
          */
         operation?: string;
         /**
-         * Match only events with this outcome.
+         * Match only events with this outcome. To match several outcomes, use the
+         * repeatable `outcomes` parameter; both may be given and are unioned.
+         *
          */
         outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
         /**
-         * Match only events acting on this object type.
+         * Match events with any of these outcomes (set membership). Repeat the
+         * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+         * Unioned with the singular `outcome` when both are present.
+         *
+         */
+        outcomes?: Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+        /**
+         * Match only events acting on this object type. Supports `*` wildcards
+         * (e.g. `secret*`).
+         *
          */
         object_type?: string;
         /**
-         * Match only events acting on this object id.
+         * Match only events acting on this object id. Supports `*` wildcards.
+         *
          */
         object_id?: string;
         /**
@@ -21548,25 +21682,47 @@ export type ExportEnvAuditData = {
          */
         to?: string;
         /**
-         * Match only events whose acting principal has this id.
+         * Match only events whose acting principal has this id (exact).
          */
         actor?: string;
         /**
-         * Match only events of this type (the operation), e.g. `value.set`. An
-         * unknown type is not an error; it simply matches nothing.
+         * Match only events whose acting principal's display name (or username)
+         * matches this pattern. Supports `*` wildcards (e.g. `alice*`, `*bot`).
+         * Names are resolved only for principals that already appear in the trail
+         * you are authorized to read; this filter narrows that view and performs
+         * no directory lookup, so it discloses nothing you cannot already see.
+         *
+         */
+        actor_name?: string;
+        /**
+         * Match only events of this type (the operation), e.g. `value.set`.
+         * Supports `*` wildcards (e.g. `value.*`). An unknown or unmatched pattern
+         * is not an error; it simply matches nothing.
          *
          */
         operation?: string;
         /**
-         * Match only events with this outcome.
+         * Match only events with this outcome. To match several outcomes, use the
+         * repeatable `outcomes` parameter; both may be given and are unioned.
+         *
          */
         outcome?: 'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected';
         /**
-         * Match only events acting on this object type.
+         * Match events with any of these outcomes (set membership). Repeat the
+         * parameter to select several, e.g. `outcomes=denied&outcomes=failure`.
+         * Unioned with the singular `outcome` when both are present.
+         *
+         */
+        outcomes?: Array<'intent' | 'success' | 'denied' | 'failure' | 'unknown' | 'disconnected'>;
+        /**
+         * Match only events acting on this object type. Supports `*` wildcards
+         * (e.g. `secret*`).
+         *
          */
         object_type?: string;
         /**
-         * Match only events acting on this object id.
+         * Match only events acting on this object id. Supports `*` wildcards.
+         *
          */
         object_id?: string;
         /**

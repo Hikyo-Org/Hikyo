@@ -4998,7 +4998,8 @@ select {
 @media (pointer: coarse) {
   .chk input[type='checkbox'],
   .chk input[type='radio'],
-  .field.chk input[type='checkbox'] {
+  .field.chk input[type='checkbox'],
+  .audit__outcome-choice input[type='checkbox'] {
     width: var(--touch);
     height: var(--touch);
   }
@@ -5478,6 +5479,52 @@ select {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+/* The principal id input and its "Self" shortcut sit on one row; the input
+   takes the slack so the button stays its intrinsic width. */
+.field__inline {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.field__inline input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The outcomes set is a fieldset, so reset the browser chrome to the plain
+   `.field` box and lay its checkboxes out in a wrapping row. */
+.audit__outcomes {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.audit__outcomes .field__label {
+  padding: 0;
+}
+
+.field.audit__outcomes {
+  gap: 6px;
+}
+
+.audit__outcome-choice {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--tx);
+  font-size: 13px;
+}
+
+.audit__outcome-choice input {
+  min-height: 0;
+}
+
+.audit__outcomes .audit__outcome-choice + .audit__outcome-choice {
+  margin-top: 2px;
 }
 
 .audit__panes {

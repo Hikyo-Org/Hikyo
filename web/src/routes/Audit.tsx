@@ -13,6 +13,7 @@ import {
 } from '../api/audit.ts';
 import { ApiError } from '../api/client.ts';
 import { useScopeNames } from '../api/scopeNames.ts';
+import { useAuth } from '../app/AuthProvider.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 
 /** The glyph before an outcome word, so the state is never colour-only. */
@@ -88,7 +89,12 @@ export function Audit() {
   return <AuditTrail key={`${org}/${project}`} org={org} project={project} />;
 }
 
+/** The text filter fields — every field but the `outcomes` set, which has its own toggle. */
+type AuditTextField = Exclude<keyof AuditFilter, 'outcomes'>;
+
 function AuditTrail({ org, project }: { readonly org: string; readonly project: string }) {
+  const auth = useAuth();
+  const selfId = auth.identity?.principal.id ?? '';
   const [draft, setDraft] = useState<AuditFilter>(emptyAuditFilter);
   const [applied, setApplied] = useState<AuditFilter>(emptyAuditFilter);
   const [environmentDraft, setEnvironmentDraft] = useState('');
@@ -120,8 +126,18 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
     apply(draft);
   }
 
-  function set<K extends keyof AuditFilter>(key: K, value: string) {
+  function set(key: AuditTextField, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  /** Toggle one outcome in the set; the set filter matches any listed outcome. */
+  function toggleOutcome(outcome: string, checked: boolean) {
+    setDraft((current) => ({
+      ...current,
+      outcomes: checked
+        ? [...current.outcomes, outcome]
+        : current.outcomes.filter((o) => o !== outcome),
+    }));
   }
 
   return (
@@ -178,10 +194,34 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           </label>
           <label className="field">
             <span className="field__label">Principal</span>
+            {/* An exact principal id. "Self" fills it with the current session's
+                own id — no server lookup, just the id whoami already returned. */}
+            <div className="field__inline">
+              <input
+                value={draft.actor}
+                onChange={(event) => set('actor', event.target.value)}
+                placeholder="usr_…"
+              />
+              {selfId === '' ? null : (
+                <button
+                  type="button"
+                  className="btn btn--quiet"
+                  onClick={() => set('actor', selfId)}
+                  disabled={draft.actor === selfId}
+                >
+                  Self
+                </button>
+              )}
+            </div>
+          </label>
+          <label className="field">
+            <span className="field__label">Principal name</span>
+            {/* A glob over the acting principal's display name; the server
+                resolves ids to names on rows you may already read. */}
             <input
-              value={draft.actor}
-              onChange={(event) => set('actor', event.target.value)}
-              placeholder="usr_…"
+              value={draft.actorName}
+              onChange={(event) => set('actorName', event.target.value)}
+              placeholder="Ada* — name, * wildcards"
             />
           </label>
           <label className="field">
@@ -189,26 +229,31 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             <input
               value={draft.operation}
               onChange={(event) => set('operation', event.target.value)}
-              placeholder="value.set"
+              placeholder="value.* — * wildcards"
             />
           </label>
-          <label className="field">
-            <span className="field__label">Outcome</span>
-            <select value={draft.outcome} onChange={(event) => set('outcome', event.target.value)}>
-              <option value="">Any</option>
-              {AUDIT_OUTCOMES.map((outcome) => (
-                <option key={outcome} value={outcome}>
-                  {outcome}
-                </option>
-              ))}
-            </select>
-          </label>
+          <fieldset className="field audit__outcomes">
+            <legend className="field__label">Outcomes</legend>
+            {/* A set: check several to match any of them; none checked means any
+                outcome. Checkboxes, not a multi-select — three values read
+                cleaner and stay keyboard-reachable. */}
+            {AUDIT_OUTCOMES.map((outcome) => (
+              <label key={outcome} className="audit__outcome-choice">
+                <input
+                  type="checkbox"
+                  checked={draft.outcomes.includes(outcome)}
+                  onChange={(event) => toggleOutcome(outcome, event.target.checked)}
+                />
+                {outcome}
+              </label>
+            ))}
+          </fieldset>
           <label className="field">
             <span className="field__label">Resource type</span>
             <input
               value={draft.objectType}
               onChange={(event) => set('objectType', event.target.value)}
-              placeholder="key"
+              placeholder="key — * wildcards"
             />
           </label>
           <label className="field">
@@ -216,6 +261,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             <input
               value={draft.objectId}
               onChange={(event) => set('objectId', event.target.value)}
+              placeholder="* wildcards"
             />
           </label>
           <label className="field">

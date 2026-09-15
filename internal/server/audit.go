@@ -33,8 +33,8 @@ func (a *API) auditPrincipal(ctx context.Context) (domain.PrincipalID, error) {
 
 // auditQueryFilter builds the store filter from the paged query parameters. An
 // absent limit defaults to 100; the store clamps anything above its cap.
-func auditQueryFilter(from, to *time.Time, afterSeq, toSeq *int64, limit *int, actor, operation, outcome, objectType, objectID, correlation *string) service.AuditFilter {
-	f := auditFilterFields(from, to, actor, operation, outcome, objectType, objectID, correlation)
+func auditQueryFilter(from, to *time.Time, afterSeq, toSeq *int64, limit *int, actor, actorName, operation, outcome, objectType, objectID, correlation *string, outcomes []string) service.AuditFilter {
+	f := auditFilterFields(from, to, actor, actorName, operation, outcome, objectType, objectID, correlation, outcomes)
 	f.Limit = 100
 	if afterSeq != nil {
 		f.AfterSeq = *afterSeq
@@ -50,7 +50,7 @@ func auditQueryFilter(from, to *time.Time, afterSeq, toSeq *int64, limit *int, a
 
 // auditFilterFields sets the equality and time-range fields shared by query and
 // export. The store applies the equality fields after the authorized page read.
-func auditFilterFields(from, to *time.Time, actor, operation, outcome, objectType, objectID, correlation *string) service.AuditFilter {
+func auditFilterFields(from, to *time.Time, actor, actorName, operation, outcome, objectType, objectID, correlation *string, outcomes []string) service.AuditFilter {
 	var f service.AuditFilter
 	if from != nil {
 		f.From = *from
@@ -61,12 +61,13 @@ func auditFilterFields(from, to *time.Time, actor, operation, outcome, objectTyp
 	if actor != nil {
 		f.Actor = *actor
 	}
+	if actorName != nil {
+		f.ActorName = *actorName
+	}
 	if operation != nil {
 		f.Type = *operation
 	}
-	if outcome != nil {
-		f.Outcome = *outcome
-	}
+	f.Outcomes = mergeOutcomes(outcome, outcomes)
 	if objectType != nil {
 		f.ObjectType = *objectType
 	}
@@ -79,11 +80,52 @@ func auditFilterFields(from, to *time.Time, actor, operation, outcome, objectTyp
 	return f
 }
 
+// mergeOutcomes folds the singular `outcome` param and the repeatable
+// `outcomes` param into one de-duplicated set. Both are kept on the wire:
+// `outcome` is the original single-value filter, `outcomes` the multi-select
+// added for the trail UI. A caller may send either or both. Every value is a
+// member of the closed AuditOutcome enum by the time it reaches here — the
+// contract validator (api.MatchedRequest.Validate → openapi3filter) refuses a
+// stranger, on both the scalar and each repeated array item, before the handler
+// runs — so this only de-duplicates the union.
+func mergeOutcomes(outcome *string, outcomes []string) []string {
+	if outcome == nil && len(outcomes) == 0 {
+		return nil
+	}
+	merged := make([]string, 0, len(outcomes)+1)
+	seen := make(map[string]bool, len(outcomes)+1)
+	add := func(v string) {
+		if v == "" || seen[v] {
+			return
+		}
+		seen[v] = true
+		merged = append(merged, v)
+	}
+	if outcome != nil {
+		add(*outcome)
+	}
+	for _, v := range outcomes {
+		add(v)
+	}
+	return merged
+}
+
 func optStr(s string) *string {
 	if s == "" {
 		return nil
 	}
 	return &s
+}
+
+// derefStrings unwraps an optional repeated query parameter (apigen renders it
+// as *[]string) to a plain slice; absent becomes nil. Enum membership of each
+// element is validated against the closed set by request validation before the
+// handler runs.
+func derefStrings(p *[]string) []string {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 // outcomeStr narrows a generated, per-operation outcome enum pointer to a plain
@@ -160,7 +202,7 @@ func (a *API) QueryOrgAudit(ctx context.Context, req apigen.QueryOrgAuditRequest
 		return nil, err
 	}
 	p := req.Params
-	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	page, err := a.Audits.Query(ctx, principal, domain.Scope{Org: domain.OrgID(req.Org)}, f)
 	if err != nil {
 		return nil, err
@@ -178,7 +220,7 @@ func (a *API) QueryProjectAudit(ctx context.Context, req apigen.QueryProjectAudi
 		return nil, err
 	}
 	p := req.Params
-	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	page, err := a.Audits.Query(ctx, principal, projectScope(req.Org, req.Project), f)
 	if err != nil {
 		return nil, err
@@ -196,7 +238,7 @@ func (a *API) QueryEnvAudit(ctx context.Context, req apigen.QueryEnvAuditRequest
 		return nil, err
 	}
 	p := req.Params
-	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditQueryFilter(p.From, p.To, p.AfterSeq, p.ToSeq, p.Limit, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	page, err := a.Audits.Query(ctx, principal, envScope(req.Org, req.Project, req.Environment), f)
 	if err != nil {
 		return nil, err
@@ -216,7 +258,7 @@ func (a *API) ExportOrgAudit(ctx context.Context, req apigen.ExportOrgAuditReque
 		return nil, err
 	}
 	p := req.Params
-	f := auditFilterFields(p.From, p.To, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
 		export: func(w io.Writer) error {
 			return a.Audits.Export(ctx, principal, domain.Scope{Org: domain.OrgID(req.Org)}, f, auditExportPageSize, w)
@@ -231,7 +273,7 @@ func (a *API) ExportProjectAudit(ctx context.Context, req apigen.ExportProjectAu
 		return nil, err
 	}
 	p := req.Params
-	f := auditFilterFields(p.From, p.To, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
 		export: func(w io.Writer) error {
 			return a.Audits.Export(ctx, principal, projectScope(req.Org, req.Project), f, auditExportPageSize, w)
@@ -246,7 +288,7 @@ func (a *API) ExportEnvAudit(ctx context.Context, req apigen.ExportEnvAuditReque
 		return nil, err
 	}
 	p := req.Params
-	f := auditFilterFields(p.From, p.To, p.Actor, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId)
+	f := auditFilterFields(p.From, p.To, p.Actor, p.ActorName, p.Operation, outcomeStr(p.Outcome), p.ObjectType, p.ObjectId, p.CorrelationId, derefStrings(p.Outcomes))
 	return auditExportStream{
 		export: func(w io.Writer) error {
 			return a.Audits.Export(ctx, principal, envScope(req.Org, req.Project, req.Environment), f, auditExportPageSize, w)

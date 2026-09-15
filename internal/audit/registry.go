@@ -818,8 +818,10 @@ var filterSchema = Schema{
 	// correlation that links an act's INTENT and OUTCOME — never a raw query
 	// string. Present only when the caller set them.
 	"filter_actor":          {Kind: KindString},
+	"filter_actor_name":     {Kind: KindString},
 	"filter_type":           {Kind: KindString},
 	"filter_outcome":        {Kind: KindString},
+	"filter_outcomes":       {Kind: KindStringList},
 	"filter_object_type":    {Kind: KindString},
 	"filter_object_id":      {Kind: KindString},
 	"filter_correlation_id": {Kind: KindString},
