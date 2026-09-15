@@ -1,1 +1,14 @@
 virtualStoreType: global
+# Storybook/Vite pull esbuild transitively, and pnpm 11 hard-errors
+# (ERR_PNPM_IGNORED_BUILDS) on its install script unless it is approved here.
+# This is what `pnpm approve-builds` writes; it does not touch the lockfile, so
+# `--frozen-lockfile` is unaffected.
+allowBuilds:
+  esbuild: true
+# Storybook's @vitest/browser-playwright pulled a second playwright-core (1.63.0)
+# into the graph, which flipped @axe-core/playwright's peer off the 1.62.1 that
+# @playwright/test and the CI Playwright image (v1.62.1-noble) are pinned to,
+# producing a two-Page-type clash in e2e/fixtures/assertions.ts. Pin the whole
+# tree to the one version everything else already uses.
+overrides:
+  playwright-core: 1.62.1

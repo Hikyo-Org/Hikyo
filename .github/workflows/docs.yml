@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/docs.yml"
       - "docs/**"
+      - "web/**"
       - "scripts/ci/check-docs-live*"
       - "scripts/ci/check-fallback-channel*"
       - "scripts/ci/check-oss-policy*"
@@ -47,6 +48,18 @@ jobs:
           PUBLIC_POSTHOG_HOST: ${{ vars.PUBLIC_POSTHOG_HOST }}
           PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.PUBLIC_POSTHOG_PROJECT_TOKEN }}
         run: ./scripts/ci/verify-docs.sh
+      - name: Build Storybook into the docs Pages tree
+        # verify-docs.sh already ran install-corepack.sh, so the pnpm shim is on
+        # PATH here. The generated Zod client resolves `zod` from clients/ts's
+        # node_modules, so install it before web or web's typecheck hits TS2307.
+        # Copy runs after verify-docs.sh built dist + the service worker, so the
+        # SW never precaches Storybook's bundle (mirrors the prototype exclusion
+        # in #738) and the existing tar step ships it under /storybook/.
+        run: |
+          pnpm --dir clients/ts install --frozen-lockfile
+          pnpm --dir web install --frozen-lockfile
+          pnpm --dir web run build-storybook
+          cp -r web/storybook-static docs/site/dist/storybook
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - name: Archive Pages artifact, including security.txt
@@ -92,3 +105,9 @@ jobs:
           DOCS_CACHE_BUST: ${{ github.sha }}
           DOCS_RETRY_DELAY_SECONDS: "10"
         run: ./scripts/ci/check-docs-live.sh https://hikyo.app security@developwent.io
+      - name: Verify Storybook published under /storybook/
+        env:
+          CACHE_BUST: ${{ github.sha }}
+        run: |
+          curl -fsS --retry 5 --retry-all-errors -o /dev/null \
+            "https://hikyo.app/storybook/index.json?${CACHE_BUST}"

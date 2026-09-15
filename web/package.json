@@ -10,9 +10,12 @@
     "prototype": "vite --mode prototype",
     "build": "vite build && node scripts/precompress.mjs ../internal/webui/dist",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test-storybook": "vitest run --project storybook",
     "e2e": "pnpm run build && playwright test --project=desktop && playwright test --project=mobile",
-    "e2e:install": "playwright install --with-deps chromium"
+    "e2e:install": "playwright install --with-deps chromium",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "5.3.0",
@@ -36,6 +39,15 @@
     "happy-dom": "^20.11.6",
     "typescript": "7.0.2",
     "vite": "8.2.2",
-    "vitest": "4.1.11"
+    "vitest": "4.1.11",
+    "storybook": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@storybook/addon-vitest": "10.6.0",
+    "@storybook/addon-a11y": "10.6.0",
+    "@storybook/addon-docs": "10.6.0",
+    "@storybook/addon-mcp": "10.6.0",
+    "@vitest/browser-playwright": "4.1.11",
+    "@vitest/coverage-v8": "4.1.11",
+    "playwright": "1.62.1"
   }
 }
