@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import { MatrixKeyCreate } from './MatrixKeyCreate.tsx';
 
 const development = {
@@ -16,6 +17,7 @@ const production = { ...development, id: 'env_01989abc-def0-7123-8123-0000000000
 const meta = {
   component: MatrixKeyCreate,
   tags: ['ai-generated'],
+  parameters: topLayerDocs,
   args: {
     folders: ['app'],
     environments: [development, production],

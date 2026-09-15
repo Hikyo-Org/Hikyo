@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import {
   Alert,
   ConsequencesDialog,
@@ -73,6 +74,7 @@ export const CopyOnce: Story = {
 };
 
 export const Consequences: Story = {
+  parameters: topLayerDocs,
   render: () => (
     <ConsequencesDialog
       titleId="ceremony-title"

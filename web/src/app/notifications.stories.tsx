@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useEffect } from 'react';
 import { expect, userEvent, waitFor } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import {
   ToastViewport,
   clearNotification,
@@ -30,6 +31,7 @@ function Emit({ kind }: { kind: 'error' | 'success' | 'info' }) {
 const meta = {
   component: ToastViewport,
   tags: ['ai-generated'],
+  parameters: topLayerDocs,
 } satisfies Meta<typeof ToastViewport>;
 
 export default meta;

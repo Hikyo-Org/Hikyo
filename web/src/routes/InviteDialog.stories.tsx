@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import type { InviteScope } from '../api/access.ts';
 import { InviteDialog } from './InviteDialog.tsx';
 
@@ -9,6 +10,7 @@ import { InviteDialog } from './InviteDialog.tsx';
 const meta = {
   component: InviteDialog,
   tags: ['ai-generated'],
+  parameters: topLayerDocs,
   args: {
     scope: { kind: 'org', org: 'org_01989abc-def0-7123-8123-000000000000' } satisfies InviteScope,
     scopeName: 'Acme',

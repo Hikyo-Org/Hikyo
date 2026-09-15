@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import type { FolderMoveOutcome } from '../api/catalogue.ts';
 import { FolderCleanupDialog } from './FolderCleanupDialog.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
@@ -18,6 +19,7 @@ const outcomes: readonly FolderMoveOutcome[] = proposals
 const meta = {
   component: FolderCleanupDialog,
   tags: ['ai-generated'],
+  parameters: topLayerDocs,
   args: {
     proposals,
     existingFolders: ['Legacy'],
