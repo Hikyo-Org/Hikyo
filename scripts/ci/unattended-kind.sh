@@ -191,7 +191,12 @@ spec:
           ports:
             - {name: postgres, containerPort: 5432}
           readinessProbe:
-            exec: {command: [pg_isready, -U, hikyo, -d, hikyo]}
+            # -h 127.0.0.1 forces a TCP check: postgres' initdb bootstrap runs a
+            # temporary socket-only server (listen_addresses='') that a socket
+            # probe accepts, marking the pod Ready before the real server is up —
+            # then the createdb below races the socket and fails. TCP can only see
+            # the real server.
+            exec: {command: [pg_isready, -h, 127.0.0.1, -U, hikyo, -d, hikyo]}
             periodSeconds: 2
             failureThreshold: 30
           volumeMounts:
