@@ -29,6 +29,8 @@ export type MockRoute = {
   readonly method?: string
   readonly status?: number
   readonly body?: unknown
+  /** Never settle — the screen's query stays pending, so its loading state is the story. */
+  readonly pending?: boolean
 }
 
 export type AppParameters = {
@@ -88,6 +90,11 @@ function router(routes: readonly MockRoute[]): typeof fetch {
           headers: { 'Content-Type': 'application/json' },
         }),
       )
+    }
+    // A pending row never resolves; the retry-free query client holds the
+    // screen in its loading state, which is exactly what the story shows.
+    if (route.pending === true) {
+      return new Promise<Response>(() => {})
     }
     return Promise.resolve(
       new Response(route.body === undefined ? null : JSON.stringify(route.body), {
