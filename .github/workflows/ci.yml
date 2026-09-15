@@ -759,17 +759,6 @@ jobs:
         working-directory: web
         run: pnpm install --frozen-lockfile
 
-      # Storybook stories run as vitest browser tests (chromium via
-      # @vitest/browser-playwright), so they need this container's browsers but
-      # not the app binary or a viewport — story coverage is theme- and
-      # prop-driven, identical on every leg. Piggyback one leg (desktop, group 1)
-      # like the session-epoch check below rather than spend a whole job or run
-      # it eight times.
-      - name: Storybook story tests
-        if: matrix.project == 'desktop' && matrix.group == 1
-        working-directory: web
-        run: pnpm run test-storybook
-
       # `playwright test` directly, not `pnpm run e2e`: the script rebuilds the
       # SPA so a developer cannot run the flows against a stale bundle, and
       # app-build already supplied this run's exact bundle and binary.
@@ -809,12 +798,14 @@ jobs:
   # flows across legs means no single leg runs them all, so the per-leg teardown
   # check is skipped (positional-spec filter); this job restores its force. It
   # merges the eight legs' run logs and asserts every flow×surface×theme claim ran
-  # for BOTH viewports. `needs: web` so it runs only when all legs passed — a
+  # for BOTH viewports. Also `needs: storybook` so it doubles as the web plan's
+  # enforcement gate for that indirect job (a red story blocks closure). `needs:
+  # web` so it runs only when all legs passed — a
   # failed leg already fails the gate, and a partial log here would be a false
   # negative. No pnpm install: the checker imports only registry.ts and the pure
   # surface list, so Node's native type stripping runs it with zero deps.
   web-closure:
-    needs: [changes, web]
+    needs: [changes, web, storybook]
     if: ${{ fromJSON(needs.changes.outputs.plan).web }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -838,6 +829,45 @@ jobs:
       - name: Enforce flow-registry closure over the merged log
         working-directory: web
         run: node e2e/check-closure.ts "$GITHUB_WORKSPACE/merged-pinned.log"
+
+  # Storybook stories run as vitest browser tests (chromium via
+  # @vitest/browser-playwright), so they need this container's browsers but not
+  # the app binary, a viewport, or the e2e flow legs — story coverage is theme-
+  # and prop-driven. Its own job keeps it off the app-build artifact and out of
+  # the web job's frontend-work fixture (whose guard forbids a browser shard
+  # repeating app-build frontend work). Registered `indirect` in
+  # ci-job-registry.json and enforced transitively: web-closure `needs` it, so a
+  # red story fails the web plan's closure gate without touching
+  # ci-required.needs (a directly-required job cannot be introduced in its own PR
+  # — the base-pinned governance check would reject it).
+  storybook:
+    needs: [changes]
+    if: ${{ fromJSON(needs.changes.outputs.plan).web }}
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Install Corepack and enable pnpm
+        run: ./scripts/ci/install-corepack.sh
+      # The SPA consumes clients/ts generated sources through aliases, so stories
+      # that mount those components resolve deps from clients/ts's node_modules.
+      - name: Install client package (generated sources' own deps)
+        working-directory: clients/ts
+        run: pnpm install --frozen-lockfile
+      - name: Install (frozen lockfile)
+        working-directory: web
+        run: pnpm install --frozen-lockfile
+      - name: Storybook story tests
+        working-directory: web
+        run: pnpm run test-storybook
 
   # The ui-tagged Go coverage the browser suite used to carry inline: the
   # release-shaped binary's govulncheck pass and the ui-tagged server/webui

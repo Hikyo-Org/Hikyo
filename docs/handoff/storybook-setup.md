@@ -105,12 +105,29 @@ the story-authoring pass from `storybook skills setup`.
   a violation. Proven live — a temporary no-name `<button/>` probe story turned
   the run red with axe `button-name`; removed after. All stories pass clean,
   including the four real screens (no component needed an axe fix).
-- **CI wiring.** The `web` job (already on `playwright:v1.62.1-noble`) runs
-  `pnpm run test-storybook` as one guarded step
-  (`if: matrix.project == 'desktop' && matrix.group == 1`), piggybacking the
-  session-epoch precedent — one leg, not a new job and not the 8× matrix. Story
-  edits under `web/**` already select the `web` class in
-  `scripts/ci/classify-changed-paths.sh`, so the gate fires on story changes.
+- **CI wiring.** A standalone `storybook` job (own `playwright:v1.62.1-noble`
+  container, `needs: [changes]`, `if: plan.web`) runs `pnpm run test-storybook`.
+  It is NOT piggybacked on the `web` job: the frozen
+  `check-build-artifact-reuse` guard forbids a browser shard in the
+  `web`→`web-closure` block from repeating app-build frontend work, and its
+  unanchored `pnpm run (typecheck|test|build)` regex matches `test-storybook` as
+  a substring — so the step had to leave that block entirely. The job carries no
+  app-build artifact / chmod / viewport (stories are theme- and prop-driven).
+  - **Governance.** The repo's `ci-job-registry.json` + `TestCIJobRegistry`
+    (in `supply-chain-checks`) enforce two invariants: every ci.yml job must be
+    registered (completeness), and every registered job must be enforced —
+    directly (in `ci-required.needs`) or indirectly (a required job `needs:` it).
+    There is no "registered-but-unenforced" state, so B1 ("standalone now,
+    register later") was impossible. A *directly*-required new job also can't be
+    introduced in its own PR: `ci-required` reads the registry from `BASE_SHA`,
+    so head-only `ci-required.needs` additions fail the base-pinned check
+    (anti-self-authorization). Resolution: register `storybook` as
+    `required_gate: indirect`, `plan_jobs: [web]`, and add it to
+    `web-closure`'s `needs` (the same pattern as `app-build`→`web`). A red story
+    fails `web-closure` → fails `ci-required`, enforcing stories from this PR on
+    without touching `ci-required.needs`. No follow-up on main is required.
+  - Story edits under `web/**` already select the `web` class in
+    `scripts/ci/classify-changed-paths.sh`, so the job fires on story changes.
 - Dropped the `../src/**/*.mdx` stories glob from `main.ts` (no `.mdx` docs
   exist; it only printed a "No story files found" warning). autodocs is
   tag-driven and unaffected. Demo `src/stories/` scaffold deleted. `.gitignore`
