@@ -1599,8 +1599,26 @@ select {
   display: flex;
   flex: 1;
   flex-direction: column;
-  min-height: 420px;
+  /* min-height: 0 lets the flex column shrink to its bounded parent so
+     .matrix__scroll owns the scroll at short viewports (phone landscape,
+     ~570-630px tall and below, depending on how the head toolbar wraps):
+     the whole matrix must not overflow into .content there. */
+  min-height: 0;
   min-width: 0;
+}
+
+/* Give the layout a working floor once the viewport is tall enough to hold it.
+   The well is a min-height:0 flex sibling of the operational-diagnostics
+   banners and the inline publish sheet, both of which keep their full natural
+   height; without a floor the flex algorithm starves the well to 0, the
+   virtualiser renders no rows, and the matrix vanishes below the fold. 640px
+   clears every e2e viewport (desktop 800, Pixel 5 851) so the well renders its
+   rows; below it the floor is dropped so the short-viewport no-overflow
+   contract above still holds. */
+@media (min-height: 640px) {
+  .matrix__layout {
+    min-height: 420px;
+  }
 }
 
 .matrix__group-link {
@@ -1728,8 +1746,11 @@ select {
 }
 
 .matrix__environment-picker {
-  position: relative;
-  z-index: 8;
+  /* Not the containing block for its popover — .matrix__key-heading is, so the
+     fieldset anchors to the Key column's left edge instead of the button's. At
+     narrow widths the button sits far right; anchoring there ran the popover
+     (and its "PROTECTED" marker) off the right viewport edge (#743). */
+  position: static;
 }
 
 /* The protected marker: a word, not a colour, the state has to survive being
@@ -1764,6 +1785,7 @@ select {
 }
 
 .matrix__key-heading {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1792,6 +1814,7 @@ select {
   gap: 2px;
   width: max-content;
   min-width: 220px;
+  max-width: calc(100vw - 24px);
   margin: 0;
   padding: 8px;
   border: 1px solid var(--line);
@@ -1830,6 +1853,12 @@ select {
 }
 
 .matrix__scroll {
+  /* Containing block for its own absolute descendants. Without this the well is
+     unpositioned, so an absolute child (a .visually-hidden span in a virtualised
+     row) resolves against .matrix__surface above the well, escapes the
+     overflow:auto clip, and inflates .content's scroll extent with blank space
+     (~287px at short viewports). position:relative clips it back into the well. */
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;

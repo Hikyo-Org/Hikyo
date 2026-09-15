@@ -176,6 +176,7 @@ export function HistoryDrawer({
   const [refusal, setRefusal] = useState<string | null>(null);
   // A deep link with `rev` lands on the detail pane on a phone, not on the list.
   const [mobileDetail, setMobileDetail] = useState(() => params.get('rev') !== null);
+  const drawer = useRef<HTMLElement>(null);
   const drawerHeading = useRef<HTMLHeadingElement>(null);
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const selectedRow = useRef<HTMLButtonElement>(null);
@@ -274,6 +275,25 @@ export function HistoryDrawer({
       detailHeading.current?.focus();
     }
   }, [mobileDetail, selected?.revision]);
+
+  // A pointer-down outside the drawer closes it back to the matrix, the same way
+  // the ✕ Close link and Escape do. Guarded on an open dialog: the restore/pin/
+  // release sheets are native `<dialog>`s rendered as SIBLINGS of the drawer, so
+  // a click inside one lands outside the aside — the guard keeps that from also
+  // collapsing the drawer, leaving each sheet its own dismissal.
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        drawer.current?.contains(event.target) !== true &&
+        document.querySelector('dialog[open]') === null
+      ) {
+        void navigate(matrixPath);
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [navigate, matrixPath]);
 
   if (environment === undefined) {
     return null;
@@ -496,6 +516,7 @@ export function HistoryDrawer({
   return (
     <>
       <aside
+        ref={drawer}
         className={`history${mobileDetail ? ' history--detail' : ''}`}
         aria-label="Revision history"
         onKeyDown={(event) => {

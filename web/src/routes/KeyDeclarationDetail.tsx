@@ -88,6 +88,7 @@ export function KeyDeclarationDetail({
   const definitions = useDefinitionsSettings(refData.org, refData.project);
 
   const heading = useRef<HTMLHeadingElement>(null);
+  const panel = useRef<HTMLElement>(null);
 
   // Back into the matrix, keeping the workspace: closing inside a workspace
   // must land on the remote's matrix, not this instance's (#71).
@@ -120,6 +121,27 @@ export function KeyDeclarationDetail({
     };
   }, [openerRef, keyId]);
 
+  // A pointer-down outside the panel closes it back to the matrix, the same way
+  // the ✕ Close link and Escape do, so a click anywhere on the matrix behind it
+  // dismisses without scrolling back up to the header. Guarded on an open dialog
+  // exactly like the Escape handler: a modal (scan block, reclassify confirm)
+  // owns the top layer and its own dismissal, and must not also collapse the
+  // surface behind it. Those dialogs render inside this subtree, so `contains`
+  // is true for a click within them regardless.
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      if (
+        event.target instanceof Node &&
+        panel.current?.contains(event.target) !== true &&
+        document.querySelector('dialog[open]') === null
+      ) {
+        void navigate(matrixPath);
+      }
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [navigate, matrixPath]);
+
   // Editing is available ONLY once the source is confirmed `db` by a read that
   // is CURRENT. This fails closed on both the initial unresolved/errored state
   // (no data) AND a failed refetch that left stale data behind, react-query
@@ -137,6 +159,7 @@ export function KeyDeclarationDetail({
 
   return (
     <aside
+      ref={panel}
       className="key-detail"
       aria-label="Key declaration"
       onKeyDown={(event) => {
