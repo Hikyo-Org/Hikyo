@@ -31,12 +31,17 @@ function OpenButton() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ node }),
       });
-      if (res.status === 404 || res.status === 405) {
+      // The body shape decides, not the status: the middleware answers 404 with a
+      // real `{ message }` when the node is missing from hikyo.pen, and that is the
+      // most common failure. Only a reply the middleware could not have written
+      // (a static host's HTML 404, or 405 from a static host's method handling)
+      // means there is no middleware, so only that falls back to the scheme.
+      const parsed = res.status === 405 ? null : reply.safeParse(await res.json().catch(() => null));
+      if (!parsed?.success) {
         window.location.assign(schemeUrl(node));
         return;
       }
-      const { message } = reply.parse(await res.json());
-      api.addNotification({ id: ADDON_ID, content: { headline: message }, duration: 4000 });
+      api.addNotification({ id: ADDON_ID, content: { headline: parsed.data.message }, duration: 4000 });
     } catch {
       window.location.assign(schemeUrl(node));
     }
