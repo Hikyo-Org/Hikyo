@@ -1,14 +1,22 @@
 # Repository knowledge graph
 
-[Interactive graph](graph.html) | [Audit report](GRAPH_REPORT.md) | [Graph JSON](graph.json) | [Coverage](COVERAGE.json)
+Only this README is tracked in Git. The graph itself (`graph.json`,
+`graph.html`, `GRAPH_REPORT.md`, community labels, coverage, health, benchmark)
+is a large, non-reproducible derived artifact and is **not** committed —
+`graph.json` alone is ~53 MB and a clean rebuild never reproduces the same
+community numbering, so pinning it in history bought unreviewable 50 MB+ diffs
+with no stable source of truth. Regenerate it locally instead:
 
-This snapshot maps application source at commit
-`106bc87c22c20ea8e3d084a4f35d06f8ffa09920`. The agent integration files added
-alongside it are not part of that source snapshot. It contains 35,330 nodes,
-100,989 edges, and 1,281 labeled communities, produced with Graphify 0.9.61.
+```sh
+graphify update .
+```
 
-The HTML is a community overview; individual nodes and source locations remain
-in `graph.json`. Serve the directory locally to explore it:
+This is AST-only and free (no LLM). It works from a fresh checkout with no
+graph present. Community names come out as mechanical hub names (e.g.
+`Checkbox.stories.tsx`); run `graphify label` (LLM, needs an API key) if you
+want prose names — they do not survive a rebuild, so there is nothing to
+commit. The HTML is a community overview; individual nodes and source
+locations remain in `graph.json`. Serve the directory locally to explore it:
 
 ```sh
 python3 -m http.server 8766 --bind 127.0.0.1 --directory graphify-out
@@ -41,23 +49,22 @@ graphify explain "OrgID"
 The CLI prints truncation notices when the budget omits results. Narrow the
 question or raise the budget before drawing conclusions from an incomplete result.
 
-## Updating and committing
+## Generating and updating
 
 Run `graphify update .` after application-code changes for an AST-only refresh.
 For changed document/image semantics, use the installed skill's
 `/graphify . --update` workflow. A fresh clone has no extraction cache or local
-manifest, so its first update may process more files. Check coverage, labels,
-source revision, and output before committing the refreshed snapshot.
+manifest, so its first update processes every file and takes longer.
 
-Keep the graph, HTML, report, community labels, coverage, health diagnostics,
-and benchmark together. The graph JSON is compacted without dropping fields
-to reduce repository size. Local interpreter/root paths, manifests, caches,
-token-accounting files, vocabulary, query memory, reflections, and browser
-session evidence are ignored. Do not force-add them.
+Nothing here is committed except this README, so there is no snapshot to keep
+in sync and no diff to review — `.gitignore` allowlists only
+`graphify-out/README.md`; everything else the tool writes (graph, HTML, report,
+labels, coverage, health, benchmark, caches, manifests, session evidence) is
+ignored. Do not force-add any of it.
 
-Graphify can regenerate the HTML with `graphify export html`. This snapshot
-disables vis-network's improved-layout pass because it could not position the
-large community graph; force-directed physics still positions the graph.
+Graphify can regenerate the HTML with `graphify export html`. It disables
+vis-network's improved-layout pass because it could not position the large
+community graph; force-directed physics still positions the graph.
 
 ## Limits
 
