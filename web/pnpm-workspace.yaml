@@ -4,6 +4,7 @@ virtualStoreType: global
 # This is what `pnpm approve-builds` writes; it does not touch the lockfile, so
 # `--frozen-lockfile` is unaffected.
 allowBuilds:
+  core-js: false
   esbuild: true
 # Storybook's @vitest/browser-playwright pulled a second playwright-core (1.63.0)
 # into the graph, which flipped @axe-core/playwright's peer off the 1.62.1 that
