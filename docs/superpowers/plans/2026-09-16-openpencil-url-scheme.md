@@ -4,7 +4,7 @@
 
 **Goal:** Let a web page (the published Hikyo Storybook) open a design file and select one node in the OpenPencil desktop app through `openpencil://open?file=<repo-relative>&node=<name path>`.
 
-**Architecture:** `tauri-plugin-deep-link` registers the `openpencil` scheme. The Rust side parses the URL into a `PendingOpenFile { path, node }` and reuses the existing `queue_open_paths` → `open-associated-files` → `take_pending_open` pipeline. The Vue side resolves a relative `file` against open tabs, then remembered roots, then a one-time picker, and after opening selects the node by exact name and zooms to fit. The scheme carries no authority: it can only open a file the user already opened or picks, and select.
+**Architecture:** `tauri-plugin-deep-link` registers the `openpencil` scheme. The Rust side parses the URL into a `PendingOpenFile { path, node }` and reuses the existing `open-associated-files` → `take_pending_open` pipeline. The Vue side resolves a relative `file` against open tabs, else asks with the file picker (the dialog plugin scopes the picked file, so no new fs authority is granted), and after opening selects the node by exact name and zooms to fit. The scheme carries no authority: it can only open a file the user already opened or picks, and select.
 
 **Tech Stack:** Tauri 2, `tauri-plugin-deep-link` 2.4.10, Rust, Vue 3, Bun. Repo: `~/code/homelab/open-pencil` (upstream `open-pencil/open-pencil`, main at `c29654c`, version 0.14.0).
 
@@ -25,12 +25,12 @@
 
 | Path (in open-pencil) | Responsibility |
 | --- | --- |
-| `desktop/Cargo.toml` | Add `tauri-plugin-deep-link = "2.4.10"`. |
+| `desktop/Cargo.toml` | Add `tauri-plugin-deep-link = "2.4.10"`; enable `features = ["deep-link"]` on `tauri-plugin-single-instance`. |
 | `desktop/tauri.conf.json` | `plugins.deep-link.desktop.schemes = ["openpencil"]`. |
 | `desktop/capabilities/default.json` | Add `deep-link:default`. |
 | `desktop/src/deep_link.rs` | Pure parser: URL → `Result<DeepLinkOpen, DeepLinkError>`; unit tests. |
 | `desktop/src/lib.rs` | Register plugin, feed parsed links into `PendingOpen`; `PendingOpenFile` gains `node: Option<String>`. |
-| `src/app/document/io/deep-link.ts` | Resolve relative file against open tabs / remembered roots / picker; select node by name after open. |
+| `src/app/document/io/deep-link.ts` | Resolve relative file against open tabs, else picker; select node by name after open. |
 | `src/views/EditorView.vue` | Use the resolver for pending files carrying `node` or a relative path. |
 | `packages/docs/en/…/mcp-server.md` (or the nearest "programmable" page) | Document the scheme. |
 
@@ -48,6 +48,10 @@
 Add under `[dependencies]`:
 ```toml
 tauri-plugin-deep-link = "2.4.10"
+```
+And change the single-instance line so a second process launched with an `openpencil://` argv forwards it to the running app (documented pairing):
+```toml
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 ```
 
 - [ ] **Step 2: tauri.conf.json**
@@ -89,7 +93,7 @@ git commit -s -m "feat(desktop): register openpencil:// deep link scheme"
 - Produces:
   ```rust
   pub struct DeepLinkOpen { pub file: String, pub node: Option<String> }
-  pub enum DeepLinkError { UnknownAction(String), MissingFile, AbsolutePath, ParentSegment, BadExtension, BadUrl }
+  pub enum DeepLinkError { UnknownAction(String), MissingFile, AbsolutePath, ParentSegment, BadExtension }
   pub fn parse_open_url(url: &url::Url) -> Result<DeepLinkOpen, DeepLinkError>
   ```
 
@@ -315,13 +319,15 @@ In the macOS `RunEvent::Opened { urls }` arm, split scheme URLs from file URLs:
 cargo check && cargo test
 ```
 
-- [ ] **Step 5: Manual smoke (macOS)**
+- [ ] **Step 5: Manual smoke (macOS needs a bundle)**
 
+macOS routes custom schemes only to a bundled app, so `tauri dev` cannot receive the link. Build a debug bundle and launch it:
 ```bash
-bun run tauri dev
+bun run tauri build --debug
+open desktop/target/debug/bundle/macos/OpenPencil.app
 open "openpencil://open?file=tests%2Ffixtures%2Fpencil_button.pen&node=Button%2FLarge%2FDefault"
 ```
-Expected: the app focuses and, until Task 4, logs a pending file with a relative path (open the devtools console; `take_pending_open` returns it). Note whether the URL arrived once or twice.
+Expected: the app focuses and, until Task 4, `take_pending_open` (devtools console) returns a pending file with a relative path. Note whether the URL arrived once or twice (plugin `on_open_url` plus `RunEvent::Opened`); keep one path.
 
 - [ ] **Step 6: Commit**
 
@@ -342,38 +348,31 @@ git commit -s -m "feat(desktop): queue openpencil:// links as pending opens"
 - Consumes: `openFileFromPath(path)` from `@/app/shell/menu/files`; `chooseTauriOpenPath()` from the same module; the open-documents store used by `openFileInNewTab` (find it with `grep -rn "openFileInNewTab" src/app/document` and read how tabs expose their `path`); the editor's selection and viewport commands (find with `grep -rn "zoomToFit\|zoom-to-fit" src/app src/components/editor` and `grep -rn "currentPage.selection" src/`).
 - Produces:
   ```ts
-  export function resolveDeepLinkFile(file: string, ctx: { openPaths: string[]; roots: string[]; exists: (p: string) => boolean }): string | null
-  export function rememberRoot(file: string, absolute: string, roots: string[]): string[]
-  export async function openDeepLink(pending: { path: string; node?: string }): Promise<void>
+  export function resolveDeepLinkFile(file: string, openPaths: string[]): string | null
+  export async function openDeepLink(pending: { path: string; node?: string }, deps: { openPaths; selectByName; notify }): Promise<void>
   ```
 
 - [ ] **Step 1: Failing tests for the pure resolver**
 
+Upstream runs `bun test` (see `test:unit` in `package.json`); put the test under `tests/engine/` like the existing unit tests.
 ```ts
-// src/app/document/io/deep-link.test.ts
-import { describe, expect, it } from 'bun:test'; // or vitest, whichever upstream uses (check an existing *.test.ts)
+// tests/engine/deep-link.test.ts
+import { describe, expect, it } from 'bun:test';
 
-import { rememberRoot, resolveDeepLinkFile } from './deep-link';
+import { resolveDeepLinkFile } from '@/app/document/io/deep-link';
 
 describe('resolveDeepLinkFile', () => {
-  it('prefers an open tab whose path ends with the relative file', () => {
-    expect(resolveDeepLinkFile('web/design/hikyo.pen', { openPaths: ['/r/hikyo/web/design/hikyo.pen'], roots: [], exists: () => true })).toBe('/r/hikyo/web/design/hikyo.pen');
-  });
-  it('falls back to a remembered root', () => {
-    expect(resolveDeepLinkFile('web/design/hikyo.pen', { openPaths: [], roots: ['/r/hikyo'], exists: () => true })).toBe('/r/hikyo/web/design/hikyo.pen');
+  it('matches an open tab whose path ends with the relative file', () => {
+    expect(resolveDeepLinkFile('web/design/hikyo.pen', ['/r/hikyo/web/design/hikyo.pen'])).toBe('/r/hikyo/web/design/hikyo.pen');
   });
   it('returns null when nothing matches', () => {
-    expect(resolveDeepLinkFile('web/design/hikyo.pen', { openPaths: ['/other/x.pen'], roots: [], exists: () => true })).toBeNull();
+    expect(resolveDeepLinkFile('web/design/hikyo.pen', ['/other/x.pen'])).toBeNull();
   });
   it('does not match a partial segment', () => {
-    expect(resolveDeepLinkFile('design/hikyo.pen', { openPaths: ['/r/redesign/hikyo.pen'], roots: [], exists: () => true })).toBeNull();
+    expect(resolveDeepLinkFile('design/hikyo.pen', ['/r/redesign/hikyo.pen'])).toBeNull();
   });
-});
-
-describe('rememberRoot', () => {
-  it('derives the root by stripping the relative file and dedupes', () => {
-    expect(rememberRoot('web/design/hikyo.pen', '/r/hikyo/web/design/hikyo.pen', ['/r/hikyo'])).toEqual(['/r/hikyo']);
-    expect(rememberRoot('a.pen', '/x/a.pen', [])).toEqual(['/x']);
+  it('accepts backslashes on either side', () => {
+    expect(resolveDeepLinkFile('web\\design\\hikyo.pen', ['C:\\r\\web\\design\\hikyo.pen'])).toBe('C:\\r\\web\\design\\hikyo.pen');
   });
 });
 ```
@@ -382,9 +381,10 @@ describe('rememberRoot', () => {
 
 ```ts
 // src/app/document/io/deep-link.ts
+// openpencil://open?file=<relative>&node=<name>. The file is resolved against
+// open tabs, else the user picks it once per link. No path is remembered and no
+// fs scope is widened by this module: the dialog plugin scopes what it returns.
 import { chooseTauriOpenPath, openFileFromPath } from '@/app/shell/menu/files';
-
-const ROOTS_KEY = 'openpencil.deepLinkRoots';
 
 function endsWithSegments(absolute: string, relative: string) {
   const a = absolute.replaceAll('\\', '/');
@@ -392,42 +392,19 @@ function endsWithSegments(absolute: string, relative: string) {
   return a === r || a.endsWith(`/${r}`);
 }
 
-export function resolveDeepLinkFile(
-  file: string,
-  ctx: { openPaths: string[]; roots: string[]; exists: (p: string) => boolean },
-): string | null {
-  const open = ctx.openPaths.find((p) => endsWithSegments(p, file));
-  if (open) return open;
-  for (const root of ctx.roots) {
-    const candidate = `${root.replace(/[/\\]$/, '')}/${file}`;
-    if (ctx.exists(candidate)) return candidate;
-  }
-  return null;
+export function resolveDeepLinkFile(file: string, openPaths: string[]): string | null {
+  return openPaths.find((p) => endsWithSegments(p, file)) ?? null;
 }
 
-export function rememberRoot(file: string, absolute: string, roots: string[]): string[] {
-  const a = absolute.replaceAll('\\', '/');
-  const root = a.slice(0, a.length - file.replaceAll('\\', '/').length - 1);
-  return roots.includes(root) ? roots : [...roots, root];
-}
-
-function loadRoots(): string[] {
-  try {
-    const raw = localStorage.getItem(ROOTS_KEY);
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) && parsed.every((x) => typeof x === 'string') ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-export async function openDeepLink(pending: { path: string; node?: string }, deps: {
-  openPaths: () => string[];
-  selectByName: (name: string) => boolean; // selects + zooms; false when not found
-  notify: (message: string) => void;
-  exists: (p: string) => boolean;
-}) {
-  let target = resolveDeepLinkFile(pending.path, { openPaths: deps.openPaths(), roots: loadRoots(), exists: deps.exists });
+export async function openDeepLink(
+  pending: { path: string; node?: string },
+  deps: {
+    openPaths: () => string[];
+    selectByName: (name: string) => boolean; // selects + zooms; false when not found
+    notify: (message: string) => void;
+  },
+) {
+  let target = resolveDeepLinkFile(pending.path, deps.openPaths());
   if (!target) {
     deps.notify(`Locate ${pending.path} for this link`);
     const picked = await chooseTauriOpenPath();
@@ -435,7 +412,6 @@ export async function openDeepLink(pending: { path: string; node?: string }, dep
       deps.notify(`Link cancelled: expected a file ending in ${pending.path}`);
       return;
     }
-    localStorage.setItem(ROOTS_KEY, JSON.stringify(rememberRoot(pending.path, picked, loadRoots())));
     target = picked;
   }
   await openFileFromPath(target);
@@ -444,7 +420,7 @@ export async function openDeepLink(pending: { path: string; node?: string }, dep
   }
 }
 ```
-`exists` is injected: the unit tests pass `() => true`; `openDeepLink` passes a wrapper over `exists` from `@tauri-apps/plugin-fs` (async, so resolve candidates before calling the pure function, or make the function async; keep the tests in step with whichever you pick).
+If the file is already open, `openFileFromPath` opens a second tab; check `openFileInNewTab` for an existing "focus tab if same path" branch and use it, otherwise add that check in this module before calling `openFileFromPath` (find the tab by path and activate it).
 
 - [ ] **Step 3: Wire EditorView**
 
@@ -470,17 +446,17 @@ async function openPendingAssociatedFiles() {
 - [ ] **Step 4: Tests, lint, smoke**
 
 ```bash
-bun test src/app/document/io/deep-link.test.ts
+bun test tests/engine/deep-link.test.ts
 bun run lint
-bun run tauri dev
+bun run tauri build --debug && open desktop/target/debug/bundle/macos/OpenPencil.app
 open "openpencil://open?file=tests%2Ffixtures%2Fpencil_button.pen&node=Button%2FLarge%2FDefault"
 ```
-Expected: first click prompts the picker once; picking `tests/fixtures/pencil_button.pen` opens it and selects the button; second click opens directly. A bad node shows the "not found" notice.
+Expected: with the file closed, the picker appears; picking `tests/fixtures/pencil_button.pen` opens it and selects the button. With the file open, the click selects directly. A bad node shows the "not found" notice.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/app/document/io/deep-link.ts src/app/document/io/deep-link.test.ts src/views/EditorView.vue
+git add src/app/document/io/deep-link.ts tests/engine/deep-link.test.ts src/views/EditorView.vue
 git commit -s -m "feat(app): resolve openpencil:// links and select the target node"
 ```
 
@@ -488,7 +464,7 @@ git commit -s -m "feat(app): resolve openpencil:// links and select the target n
 
 ### Task 5: Docs, changelog, PR
 
-- [ ] **Step 1:** Add a "URL scheme" subsection to the programmable docs page next to the MCP server section (English source; other locales follow upstream's translation process, check `packages/docs` README). Content: the URL format, the relative-path rule, the one-time picker, and that the scheme only opens and selects.
+- [ ] **Step 1:** Add a "URL scheme" subsection to the programmable docs page next to the MCP server section (English source; other locales follow upstream's translation process, check `packages/docs` README). Content: the URL format, the relative-path rule, the picker when the file is not open, and that the scheme only opens and selects.
 - [ ] **Step 2:** `CHANGELOG.md` entry under Unreleased.
 - [ ] **Step 3:** `bun run lint && bun run format:check && cargo test` in `desktop/`.
 - [ ] **Step 4:** Push the branch to a fork (`gh repo fork --remote`), open the PR against `open-pencil/open-pencil` with the smoke steps and a short screen recording. Link the PR in the Hikyo handoff doc and in the Hikyo follow-up issue for middleware removal.

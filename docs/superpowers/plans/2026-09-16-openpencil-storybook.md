@@ -21,7 +21,7 @@
 - The OpenPencil RPC bearer token never reaches browser code.
 - Pinned deps: `@open-pencil/cli@0.14.0`, `@open-pencil/mcp@0.14.0`, `@storybook/addon-designs@11.1.4`, `culori@4.x` (pin the exact version `pnpm add` resolves).
 - Working directory for all `pnpm` commands: `web/`. First run needs `pnpm --dir clients/ts install --frozen-lockfile && pnpm --dir web install --frozen-lockfile` (the worktree has no `node_modules`).
-- Tests for scripts live in `web/scripts/design/*.test.ts` and run under the `unit` vitest project (Task 1 adds the include).
+- Scripts are `.ts` run directly by Node 26 (`.nvmrc` = 26.7.0, native type stripping): `node scripts/design/export.ts`. Only erasable syntax (no enums, no parameter properties). Tests live in `web/scripts/design/*.test.ts` under the `unit` vitest project (Task 1 adds the include).
 - Format/lint: repo uses oxfmt/oxlint via CI; run `pnpm --dir web run typecheck` after each TypeScript task.
 
 ---
@@ -36,11 +36,11 @@
 | `web/.storybook/openpencil-addon.tsx` | Manager toolbar button "Open in OpenPencil". |
 | `web/.storybook/openpencil-middleware.ts` | Vite middleware + RPC client (dev only). Token stays here. |
 | `web/.storybook/main.ts` | Registers addon-designs, staticDirs, managerEntries, viteFinal. |
-| `web/scripts/design/lib.mjs` | Pure functions: collect nodes from stories, slug, parse CLI output, parse tokens.css, parse .pen variables, compare. |
-| `web/scripts/design/export.mjs` | CLI entry: resolve + export PNGs. |
-| `web/scripts/design/tokens-check.mjs` | CLI entry: drift check. |
-| `web/scripts/design/tokens-seed.mjs` | CLI entry: write/refresh the `variables` block of hikyo.pen from tokens.css. |
-| `web/scripts/design/lib.test.ts` | Unit tests for lib.mjs. |
+| `web/scripts/design/lib.ts` | Pure functions: collect nodes from stories, slug, parse CLI output, parse tokens.css, parse .pen variables, compare. |
+| `web/scripts/design/export.ts` | CLI entry: resolve + export PNGs. |
+| `web/scripts/design/tokens-check.ts` | CLI entry: drift check. |
+| `web/scripts/design/tokens-seed.ts` | CLI entry: write/refresh the `variables` block of hikyo.pen from tokens.css. |
+| `web/scripts/design/lib.test.ts` | Unit tests for lib.ts. |
 | `web/.storybook/openpencil-middleware.test.ts` | Middleware tests with fake discovery + stub RPC. |
 | `.claude/skills/design-loop/SKILL.md` | Agent workflow. |
 | `DESIGN.md` | New "Design source" section. |
@@ -73,8 +73,10 @@ Expected: prints `0.14.0`. If `pnpm add` picks a caret range, edit `package.json
 
 Append to `.gitignore` after line 63 (`internal/webui/dist/`):
 ```
-web/design/exports/
+web/design/exports/*
+!web/design/exports/.gitkeep
 ```
+Then `mkdir -p web/design/exports && touch web/design/exports/.gitkeep`. The `ci.yml` storybook job runs `test-storybook` without `design:export`, and `staticDirs` must point at an existing directory.
 
 - [ ] **Step 3: Vitest include and tsconfig**
 
@@ -94,7 +96,7 @@ Expected: both pass (no new tests yet).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add web/package.json web/pnpm-lock.yaml .gitignore web/vite.config.ts web/tsconfig.json
+git add web/package.json web/pnpm-lock.yaml .gitignore web/design/exports/.gitkeep web/vite.config.ts web/tsconfig.json
 git commit -s -m "build(web): add OpenPencil CLI/MCP, addon-designs, culori
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -102,10 +104,10 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: `lib.mjs` pure functions (TDD)
+### Task 2: `lib.ts` pure functions (TDD)
 
 **Files:**
-- Create: `web/scripts/design/lib.mjs`
+- Create: `web/scripts/design/lib.ts`
 - Create: `web/scripts/design/lib.test.ts`
 
 **Interfaces:**
@@ -116,7 +118,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
   - `parseQueryOutput(json: string): { id: string; name: string }[]` (Zod)
   - `parseTokensCss(css: string): { dark: Map<string,string>; light: Map<string,string> }`
   - `parsePenVariables(penJson: string): Map<string, { light: string; dark: string; type: 'color'|'number'|'string' }>` (Zod)
-  - `compareTokens(css, pen, tolerance): string[]` (empty = clean)
+  - `compareTokens(css, pen): string[]` (empty = clean; colours compared as lowercase hex, the form the .pen stores)
   - `MIRRORED_SKIP: Set<string>`
   - `cssToPenVariables(css): Record<string, PenVariable>` for the seed script
 
@@ -134,7 +136,7 @@ import {
   parseQueryOutput,
   parseTokensCss,
   slugFor,
-} from './lib.mjs';
+} from './lib.ts';
 
 const css = `
 :root {
@@ -210,25 +212,24 @@ describe('parsePenVariables', () => {
 });
 
 describe('compareTokens', () => {
-  const tol = { l: 0.005, c: 0.005, h: 1 };
-  it('is clean when pen mirrors css within tolerance', () => {
+  it('is clean when pen mirrors css', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(JSON.stringify({
       version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] },
       variables: cssToPenVariables(t),
     }));
-    expect(compareTokens(t, v, tol)).toEqual([]);
+    expect(compareTokens(t, v)).toEqual([]);
   });
   it('reports a drifted colour with the css value as expected', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(pen);
-    const errors = compareTokens(t, v, tol);
+    const errors = compareTokens(t, v);
     expect(errors.some((e) => e.includes('--bg') && e.includes('oklch(0.19 0.012 220)'))).toBe(true);
   });
   it('reports a missing token', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(JSON.stringify({ version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] }, variables: {} }));
-    expect(compareTokens(t, v, tol)).toContain('--bg: missing in hikyo.pen');
+    expect(compareTokens(t, v)).toContain('--bg: missing in hikyo.pen');
   });
   it('reports a number mismatch exactly', () => {
     const t = parseTokensCss(css);
@@ -236,7 +237,7 @@ describe('compareTokens', () => {
       version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] },
       variables: { ...cssToPenVariables(t), '--radius-control': { type: 'number', value: 5 } },
     }));
-    expect(compareTokens(t, v, tol)).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen)');
+    expect(compareTokens(t, v)).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen)');
   });
 });
 ```
@@ -246,14 +247,15 @@ describe('compareTokens', () => {
 ```bash
 pnpm run test -- scripts/design
 ```
-Expected: FAIL, cannot resolve `./lib.mjs`.
+Expected: FAIL, cannot resolve `./lib.ts`.
 
 - [ ] **Step 3: Implement**
 
-```js
-// web/scripts/design/lib.mjs
+```ts
+// web/scripts/design/lib.ts
 // Pure helpers behind the design scripts. No I/O here, so they are unit-testable.
-import { converter, formatHex, parse } from 'culori';
+// Node 26 runs .ts directly (type stripping), so no build step and no .mjs shim.
+import { formatHex, parse } from 'culori';
 import { z } from 'zod';
 
 export const NODE_PATH = /^[A-Za-z0-9][A-Za-z0-9 ]*(\/[A-Za-z0-9][A-Za-z0-9 ]*)+$/;
@@ -261,13 +263,13 @@ export const NODE_PATH = /^[A-Za-z0-9][A-Za-z0-9 ]*(\/[A-Za-z0-9][A-Za-z0-9 ]*)+
 /** Tokens that are derived (color-mix), motion, or font stacks: not mirrored in the design file. */
 export const MIRRORED_SKIP = new Set(['--ease', '--dur', '--font-ui', '--font-mono']);
 
-export function slugFor(node) {
+export function slugFor(node: string): string {
   return node.replaceAll('/', '--');
 }
 
 const designCall = /design\('([^']*)'\)/g;
 
-export function collectDesignNodes(sources) {
+export function collectDesignNodes(sources: string[]): string[] {
   const found = new Set();
   for (const source of sources) {
     for (const match of source.matchAll(designCall)) {
@@ -281,26 +283,28 @@ export function collectDesignNodes(sources) {
 
 const queryNode = z.object({ id: z.string(), name: z.string() });
 
-export function parseQueryOutput(json) {
+export function parseQueryOutput(json: string): { id: string; name: string }[] {
   return z.array(queryNode).parse(JSON.parse(json)).map(({ id, name }) => ({ id, name }));
 }
 
 const declaration = /(--[a-z0-9-]+)\s*:\s*([^;]+);/g;
 
-function block(css, header) {
+function block(css: string, header: string): string {
   const start = css.indexOf(header);
   if (start === -1) throw new Error(`tokens.css: block "${header}" not found`);
   const end = css.indexOf('}', start);
   return css.slice(start + header.length, end);
 }
 
-function isMirrored(name, value) {
+function isMirrored(name: string, value: string): boolean {
   return !MIRRORED_SKIP.has(name) && !value.startsWith('color-mix(');
 }
 
-export function parseTokensCss(css) {
-  const read = (text) => {
-    const map = new Map();
+export type TokenSides = { dark: Map<string, string>; light: Map<string, string> };
+
+export function parseTokensCss(css: string): TokenSides {
+  const read = (text: string) => {
+    const map = new Map<string, string>();
     for (const m of text.matchAll(declaration)) {
       const value = m[2].trim();
       if (isMirrored(m[1], value)) map.set(m[1], value);
@@ -318,9 +322,11 @@ const penValue = z.object({ value: z.union([z.string(), z.number()]), theme: z.o
 const penVariable = z.object({ type: z.enum(['color', 'number', 'string']), value: z.union([z.string(), z.number(), z.array(penValue)]) });
 const penDocument = z.object({ variables: z.record(z.string(), penVariable).default({}) });
 
-export function parsePenVariables(penJson) {
+export type PenSides = Map<string, { type: 'color' | 'number' | 'string'; light: string; dark: string }>;
+
+export function parsePenVariables(penJson: string): PenSides {
   const doc = penDocument.parse(JSON.parse(penJson));
-  const out = new Map();
+  const out: PenSides = new Map();
   for (const [name, v] of Object.entries(doc.variables)) {
     if (!Array.isArray(v.value)) {
       out.set(name, { type: v.type, light: String(v.value), dark: String(v.value) });
@@ -334,33 +340,25 @@ export function parsePenVariables(penJson) {
   return out;
 }
 
-const toOklch = converter('oklch');
-
-function cssKind(value) {
+function cssKind(value: string): 'color' | 'number' | 'string' {
   if (value.startsWith('oklch(')) return 'color';
   if (/^-?\d+(\.\d+)?px$/.test(value)) return 'number';
   return 'string';
 }
 
-function cssNumber(value) {
+function cssNumber(value: string): string {
   return value.replace(/px$/, '');
 }
 
-function colourDiff(expected, actual, tolerance) {
-  const a = toOklch(parse(expected));
-  const b = toOklch(parse(actual));
-  if (!a || !b) return `unparseable colour: ${expected} vs ${actual}`;
-  const dl = Math.abs(a.l - b.l);
-  const dc = Math.abs(a.c - b.c);
-  const dh = Math.abs(((a.h ?? 0) - (b.h ?? 0) + 540) % 360 - 180);
-  if (dl > tolerance.l || dc > tolerance.c || (a.c > 0.01 && dh > tolerance.h)) {
-    return `ΔL ${dl.toFixed(3)} ΔC ${dc.toFixed(3)} ΔH ${dh.toFixed(1)}`;
-  }
-  return null;
+/** The .pen stores sRGB hex. Convert the CSS side the same way the seed does, then compare strings: deterministic, no tolerance knob. */
+function cssHex(value: string): string {
+  const parsed = parse(value);
+  if (!parsed) throw new Error(`tokens.css: unparseable colour ${value}`);
+  return formatHex(parsed).toLowerCase();
 }
 
-export function compareTokens(css, pen, tolerance) {
-  const errors = [];
+export function compareTokens(css: TokenSides, pen: PenSides): string[] {
+  const errors: string[] = [];
   for (const [name, expectedDark] of css.dark) {
     const p = pen.get(name);
     if (!p) {
@@ -371,8 +369,9 @@ export function compareTokens(css, pen, tolerance) {
     const kind = cssKind(expectedDark);
     if (kind === 'color') {
       for (const [mode, expected, actual] of [['dark', expectedDark, p.dark], ['light', expectedLight, p.light]]) {
-        const diff = colourDiff(expected, actual, tolerance);
-        if (diff) errors.push(`${name} (${mode}): expected ${expected} (tokens.css), got ${actual} (hikyo.pen), ${diff}`);
+        if (cssHex(expected) !== actual.toLowerCase()) {
+          errors.push(`${name} (${mode}): expected ${expected} = ${cssHex(expected)} (tokens.css), got ${actual} (hikyo.pen)`);
+        }
       }
     } else {
       const expected = kind === 'number' ? cssNumber(expectedDark) : expectedDark;
@@ -388,8 +387,10 @@ export function compareTokens(css, pen, tolerance) {
 }
 
 /** Build the `variables` block of a .pen document from parsed tokens.css. Colours become hex, which is what the app stores. */
-export function cssToPenVariables(css) {
-  const variables = {};
+type PenVariable = z.infer<typeof penVariable>;
+
+export function cssToPenVariables(css: TokenSides): Record<string, PenVariable> {
+  const variables: Record<string, PenVariable> = {};
   for (const [name, dark] of css.dark) {
     const light = css.light.get(name) ?? dark;
     const kind = cssKind(dark);
@@ -418,7 +419,7 @@ Expected: PASS, 9 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add web/scripts/design/lib.mjs web/scripts/design/lib.test.ts
+git add web/scripts/design/lib.ts web/scripts/design/lib.test.ts
 git commit -s -m "feat(web): design-script helpers, node collection and token comparison
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -429,7 +430,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ### Task 3: Seed `hikyo.pen` from tokens.css
 
 **Files:**
-- Create: `web/scripts/design/tokens-seed.mjs`
+- Create: `web/scripts/design/tokens-seed.ts`
 - Create: `web/design/hikyo.pen`
 - Modify: `web/package.json` scripts
 
@@ -439,28 +440,28 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the seed script**
 
-```js
-// web/scripts/design/tokens-seed.mjs
+```ts
+// web/scripts/design/tokens-seed.ts
 // Writes or refreshes the `variables` block of hikyo.pen from tokens.css.
 // Direction is always CSS → design. Everything else in the .pen is preserved.
 import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 
-import { cssToPenVariables, parseTokensCss } from './lib.mjs';
+import { cssToPenVariables, parseTokensCss } from './lib.ts';
 
-const here = (p) => resolve(import.meta.dirname, '../..', p);
+const here = (p: string) => resolve(import.meta.dirname, '../..', p);
 const PEN = here('design/hikyo.pen');
 const CSS = here('src/styles/tokens.css');
 
 const penShell = z.object({ version: z.string(), children: z.array(z.unknown()), themes: z.record(z.string(), z.array(z.string())) }).passthrough();
 
 const css = parseTokensCss(await readFile(CSS, 'utf8'));
-let doc;
+let doc: z.infer<typeof penShell> & { variables?: unknown };
 try {
   doc = penShell.parse(JSON.parse(await readFile(PEN, 'utf8')));
 } catch (error) {
-  if (error?.code !== 'ENOENT') throw error;
+  if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
   doc = { version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] } };
 }
 doc.themes = { ...doc.themes, Mode: ['Light', 'Dark'] };
@@ -475,7 +476,7 @@ Note: `z.array(z.unknown())` for `children` is deliberate: the seed script does 
 
 `web/package.json` scripts, add:
 ```json
-    "design:seed": "node scripts/design/tokens-seed.mjs",
+    "design:seed": "node scripts/design/tokens-seed.ts",
 ```
 ```bash
 pnpm run design:seed
@@ -490,7 +491,7 @@ MCP: `open_file` with `path: "web/design/hikyo.pen"`, then `list_variables`. Exp
 - [ ] **Step 4: Commit**
 
 ```bash
-git add web/scripts/design/tokens-seed.mjs web/design/hikyo.pen web/package.json
+git add web/scripts/design/tokens-seed.ts web/design/hikyo.pen web/package.json
 git commit -s -m "feat(design): seed hikyo.pen variables from tokens.css
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -501,7 +502,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ### Task 4: Token drift check
 
 **Files:**
-- Create: `web/scripts/design/tokens-check.mjs`
+- Create: `web/scripts/design/tokens-check.ts`
 - Modify: `web/package.json` scripts
 
 **Interfaces:**
@@ -510,20 +511,18 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Write the script**
 
-```js
-// web/scripts/design/tokens-check.mjs
+```ts
+// web/scripts/design/tokens-check.ts
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
-import { compareTokens, parsePenVariables, parseTokensCss } from './lib.mjs';
+import { compareTokens, parsePenVariables, parseTokensCss } from './lib.ts';
 
-const here = (p) => resolve(import.meta.dirname, '../..', p);
-// First guess; the one knob expected to move after the pilot.
-const TOLERANCE = { l: 0.005, c: 0.005, h: 1 };
+const here = (p: string) => resolve(import.meta.dirname, '../..', p);
 
 const css = parseTokensCss(await readFile(here('src/styles/tokens.css'), 'utf8'));
 const pen = parsePenVariables(await readFile(here('design/hikyo.pen'), 'utf8'));
-const errors = compareTokens(css, pen, TOLERANCE);
+const errors = compareTokens(css, pen);
 if (errors.length > 0) {
   console.error('Design tokens drifted from tokens.css. Fix the CSS first, then run `pnpm run design:seed`.');
   for (const e of errors) console.error(`  ${e}`);
@@ -536,7 +535,7 @@ console.log(`design tokens: ${pen.size} variables match tokens.css`);
 
 `web/package.json` scripts, add:
 ```json
-    "design:check": "node scripts/design/tokens-check.mjs",
+    "design:check": "node scripts/design/tokens-check.ts",
 ```
 ```bash
 pnpm run design:check
@@ -549,7 +548,7 @@ Expected: first run prints the match line. Second run exits 1 and names the vari
 - [ ] **Step 3: Commit**
 
 ```bash
-git add web/scripts/design/tokens-check.mjs web/package.json
+git add web/scripts/design/tokens-check.ts web/package.json
 git commit -s -m "feat(design): token drift check between tokens.css and hikyo.pen
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -571,7 +570,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```ts
 // web/.storybook/design.ts
 // The one way a story points at its design. The node is a `Title/Variant`
-// name path inside web/design/hikyo.pen; scripts/design/export.mjs turns it
+// name path inside web/design/hikyo.pen; scripts/design/export.ts turns it
 // into /design/<slug>.png at build time, so authors never write a URL.
 const NODE_PATH = /^[A-Za-z0-9][A-Za-z0-9 ]*(\/[A-Za-z0-9][A-Za-z0-9 ]*)+$/;
 
@@ -585,6 +584,8 @@ export function design(node: string) {
 
 Replace `web/.storybook/main.ts` with:
 ```ts
+import { fileURLToPath } from 'node:url';
+
 import type { StorybookConfig } from '@storybook/react-vite';
 
 const config: StorybookConfig = {
@@ -597,7 +598,7 @@ const config: StorybookConfig = {
     '@storybook/addon-designs',
   ],
   framework: '@storybook/react-vite',
-  // Design exports rendered by scripts/design/export.mjs; gitignored.
+  // Design exports rendered by scripts/design/export.ts; gitignored.
   staticDirs: [{ from: '../design/exports', to: '/design' }],
   // Zero-telemetry ADR: no phone-home from local or CI builds.
   core: { disableTelemetry: true },
@@ -608,7 +609,6 @@ export default config;
 - [ ] **Step 3: Verify**
 
 ```bash
-mkdir -p design/exports
 pnpm run typecheck
 pnpm run build-storybook
 ```
@@ -628,7 +628,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ### Task 6: Export script wired into Storybook scripts
 
 **Files:**
-- Create: `web/scripts/design/export.mjs`
+- Create: `web/scripts/design/export.ts`
 - Modify: `web/package.json` scripts
 
 **Interfaces:**
@@ -637,31 +637,30 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Script**
 
-```js
-// web/scripts/design/export.mjs
+```ts
+// web/scripts/design/export.ts
 // For every design('Title/Variant') in a story, render that node of
 // hikyo.pen to design/exports/<slug>.png with the headless CLI. Unresolved
 // node = exit 1: a story must not point at a design that no longer exists.
 import { execFile } from 'node:child_process';
-import { mkdir, readFile } from 'node:fs/promises';
+import { glob, mkdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
-import { glob } from 'glob';
-
-import { collectDesignNodes, parseQueryOutput, slugFor } from './lib.mjs';
+import { collectDesignNodes, parseQueryOutput, slugFor } from './lib.ts';
 
 const run = promisify(execFile);
-const here = (p) => resolve(import.meta.dirname, '../..', p);
+const here = (p: string) => resolve(import.meta.dirname, '../..', p);
 const PEN = here('design/hikyo.pen');
 const OUT = here('design/exports');
 const CLI = here('node_modules/.bin/openpencil');
 
-const files = await glob('src/**/*.stories.tsx', { cwd: here('.'), absolute: true });
+const files: string[] = [];
+for await (const f of glob('src/**/*.stories.tsx', { cwd: here('.') })) files.push(here(f));
 const nodes = collectDesignNodes(await Promise.all(files.map((f) => readFile(f, 'utf8'))));
 await mkdir(OUT, { recursive: true });
 
-const failures = [];
+const failures: string[] = [];
 for (const node of nodes) {
   const escaped = node.replaceAll("'", "\\'");
   const { stdout } = await run(CLI, ['query', PEN, `//*[@name='${escaped}']`, '--json']);
@@ -681,13 +680,12 @@ if (failures.length > 0) {
 }
 console.log(`design: ${nodes.length} node(s) exported`);
 ```
-Check `glob` is already a transitive dep resolvable from `web/` (`pnpm why glob`). If not, use `readdir` recursion from `scripts/precompress.mjs` (`filesBelow`) instead of adding a dependency.
 
 - [ ] **Step 2: Scripts**
 
 `web/package.json` scripts, change:
 ```json
-    "design:export": "pnpm run design:check && node scripts/design/export.mjs",
+    "design:export": "pnpm run design:check && node scripts/design/export.ts",
     "storybook": "pnpm run design:export && storybook dev -p 6006",
     "build-storybook": "pnpm run design:export && storybook build",
 ```
@@ -705,7 +703,7 @@ Expected: second run exits 1 with `Ghost/Nope: not found in hikyo.pen`.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add web/scripts/design/export.mjs web/package.json
+git add web/scripts/design/export.ts web/package.json
 git commit -s -m "feat(storybook): render linked design nodes at build time
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
@@ -874,12 +872,12 @@ Note on `JSON.parse(data)` inside `rpc`: the caller parses with Zod (`foundNodes
 
 The button ships in every build (spec §3); only the middleware is dev-only. Add to the config object in `web/.storybook/main.ts`:
 ```ts
-  managerEntries: (entries = []) => [...entries, new URL('./openpencil-addon.tsx', import.meta.url).pathname],
+  managerEntries: (entries = []) => [...entries, fileURLToPath(new URL('./openpencil-addon.tsx', import.meta.url))],
   viteFinal: async (config, { configType }) => {
     if (configType !== 'DEVELOPMENT') return config;
     const { openPencilPlugin } = await import('./openpencil-middleware.ts');
-    const { resolve } = await import('node:path');
-    return { ...config, plugins: [...(config.plugins ?? []), openPencilPlugin(resolve(import.meta.dirname, '../design/hikyo.pen'))] };
+    const penPath = fileURLToPath(new URL('../design/hikyo.pen', import.meta.url));
+    return { ...config, plugins: [...(config.plugins ?? []), openPencilPlugin(penPath)] };
   },
 ```
 The addon file is created in Task 8; for this task's verification create `web/.storybook/openpencil-addon.tsx` containing only `export {};` and let Task 8 fill it.
@@ -920,8 +918,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```tsx
 // web/.storybook/openpencil-addon.tsx
 // "Open in OpenPencil" toolbar button. Tries the dev middleware first; on
-// 404 (static build, or middleware removed after the upstream scheme ships)
-// it falls back to the openpencil:// link, which the OS routes to the app.
+// 404/405 (static build, or middleware removed after the upstream scheme
+// ships) it falls back to the openpencil:// link, which the OS routes to the app.
 import React from 'react';
 import { addons, types, useParameter, useStorybookApi } from 'storybook/manager-api';
 import { IconButton } from 'storybook/internal/components';
@@ -948,7 +946,7 @@ function OpenButton() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ node }),
       });
-      if (res.status === 404) {
+      if (res.status === 404 || res.status === 405) {
         window.location.assign(schemeUrl(node));
         return;
       }
@@ -1009,7 +1007,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 With OpenPencil open on `web/design/hikyo.pen` (`open_file`), for each variant call `create_shape` (frame, auto-layout, padding 12 24, radius bound to `--radius-control`, fill bound to `--accent` for Primary and `--bg-raise` for Secondary via `bind_variable`), then `set_text` with the label in Instrument Sans 500 14px, `rename_node` to `Button/<Variant>`, `node_to_component`. Disabled: opacity 0.5. Icon: 36×36 with `☾`. Then `save_file` with `path: "web/design/hikyo.pen"`.
 
-Alternative without the app: write a minimal `web/design/bootstrap/button.html` using the real `.btn` markup and run `pnpm exec openpencil import design/bootstrap/button.html --css src/styles/tokens.css --css src/styles/app.css -o design/button.pen`, then copy its `children` into `hikyo.pen` and rename the frames. Delete `design/bootstrap/` and `design/button.pen` afterwards; they are scaffolding.
+Alternative without the app: write a minimal `web/design/bootstrap/button.html` using the real `.btn` markup and concatenate `src/styles/tokens.css` and `src/styles/app.css` into `design/bootstrap/button.css` (`--css` is accepted once) and run `pnpm exec openpencil import design/bootstrap/button.html --css design/bootstrap/button.css -o design/button.pen`, then copy its `children` into `hikyo.pen` and rename the frames. Delete `design/bootstrap/` and `design/button.pen` afterwards; they are scaffolding.
 
 - [ ] **Step 2: Link the stories**
 
@@ -1101,11 +1099,11 @@ Source of truth for tokens: `web/src/styles/tokens.css`. Design file:
 
 ## Token changes
 Edit `tokens.css` and `DESIGN.md`, then `pnpm --dir web run design:seed`.
-Never edit variables in the app; the check fails the build.
+Never edit variables in the app; the check compares hex for hex and fails the build.
 
 ## Bootstrapping from an existing component
 Save the story's rendered HTML, then
-`pnpm --dir web exec openpencil import that.html --css src/styles/tokens.css --css src/styles/app.css -o design/tmp.pen`,
+`cat src/styles/tokens.css src/styles/app.css > /tmp/hikyo.css && pnpm --dir web exec openpencil import that.html --css /tmp/hikyo.css -o design/tmp.pen`,
 copy its `children` into `hikyo.pen`, rename, delete `tmp.pen`.
 ```
 
@@ -1139,7 +1137,6 @@ ADR: docs/adr/design-tooling.md
   tagged release: bump MIN_APP_VERSION in `.storybook/openpencil-addon.tsx`,
   delete `.storybook/openpencil-middleware.ts` + its test + the `viteFinal`
   block, drop `@open-pencil/mcp` from devDependencies. Issue: #<n>.
-- Token tolerance (`tokens-check.mjs`) is a first guess.
 - Other 43 stories are unlinked by design; link as they are touched.
 ```
 

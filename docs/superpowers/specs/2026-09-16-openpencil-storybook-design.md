@@ -76,8 +76,11 @@ export const Primary: Story = {
 
 - `node` is the OpenPencil node name path inside `web/design/hikyo.pen`. The
   file path is fixed, not a per-story parameter; one design file per app.
-- A Zod schema in `web/.storybook/design.ts` parses the parameter; a story
-  with a malformed `design` fails the Storybook build, not silently.
+- `design()` in `web/.storybook/design.ts` is the only way to set it: it
+  validates the name path and returns the addon-designs config
+  `{ type: 'image', url: '/design/<slug>.png', name: node }`. A malformed
+  path throws at story-module load, so the Storybook build fails, not
+  silently.
 - Convention: OpenPencil top-level component name == story title; variant
   names == story export names. `design_to_component_map` already splits
   components from screens, mirroring `ui/` vs `routes/`.
@@ -86,11 +89,11 @@ export const Primary: Story = {
 
 - Add `@storybook/addon-designs@11.1.4` (peer range includes Storybook
   10.6.0, verified on npm). Registered in `web/.storybook/main.ts`.
-- The addon reads `parameters.design`; a preview-side loader in
-  `preview.tsx` rewrites `{ node }` into the addon's
-  `{ type: 'image', url: '/design/<slug>.png' }` where `<slug>` is the node
-  path with `/` → `--`. The story author never writes the image path.
-- `web/design/exports/` is gitignored and served through
+- The addon reads `parameters.design` as produced by `design()`; `<slug>`
+  is the node path with `/` → `--`. The story author never writes the image
+  path.
+- `web/design/exports/` is gitignored except a `.gitkeep` (the directory
+  must exist for `staticDirs`) and served through
   `staticDirs: [{ from: '../design/exports', to: '/design' }]`.
 - Script `web/scripts/design-export.mjs`:
   1. Collects every story file's `parameters.design.node` (regex over
@@ -123,19 +126,21 @@ scheme.
      `openpencil://open?file=web/design/hikyo.pen&node=<name path>`. If the
      scheme is not registered the browser does nothing; the button's tooltip
      says "Needs OpenPencil ≥ <version> installed".
-  2. In the dev server (`configType === 'DEVELOPMENT'`, passed to the addon
-     as a manager global): `fetch('/__openpencil/open', { method: 'POST',
-     body: { node } })`, falling back to the scheme link on 404 (middleware
-     removed) so the switch-over needs no addon change.
+  2. Always tries `fetch('/__openpencil/open', { method: 'POST', body:
+     { node } })` first and falls back to the scheme link on 404/405 or a
+     network error. A static host answers 404/405, a dev server without the
+     middleware (after removal) answers 404, so the switch-over needs no
+     addon change and no build-time flag.
 - **URL scheme (upstream contribution to open-pencil).** Separate PR in
   `~/code/homelab/open-pencil`, tracked as its own task:
   - `tauri-plugin-deep-link` registers `openpencil`. `RunEvent::Opened` and
     the single-instance handler already funnel file URLs into
     `queue_open_paths`; the scheme handler parses `open?file=…&node=…` and
     reuses it.
-  - `file` is repo-relative. The app resolves it against open documents and
-    recent files by path suffix; on no match it shows the file picker once
-    and remembers the chosen root per suffix. Absolute paths are refused.
+  - `file` is repo-relative. The app resolves it against open documents by
+    path suffix; on no match it shows the file picker, whose result the
+    dialog plugin already scopes. Nothing is remembered and no fs scope is
+    widened. Absolute paths and `..` segments are refused.
   - After opening, the app selects the node by name path and zooms to fit.
     Unknown node: document opens, status line says "node not found".
   - No other command is exposed through the scheme. A link can open a file
@@ -177,8 +182,7 @@ scheme.
   token is missing on either side. Non-colour tokens (radius, sizes) must
   match exactly.
 - Wired into `pnpm run design:export` so the Storybook build fails on drift.
-  Direction of fix is always CSS → design; the script prints the CSS value
-  as the expected one.
+  Direction of fix is always CSS → design: edit the CSS, run `design:seed`.
 
 ### 5. Project skill: `.claude/skills/design-loop/SKILL.md`
 
@@ -208,7 +212,7 @@ HTML, `openpencil import story.html --css tokens.css`, then tidy in the app.
 
 ## Error handling
 
-- Missing `.pen` file, unresolved node, malformed `design` parameter, token
+- Missing `.pen` file, unresolved node, malformed `design()` path, token
   drift: build fails with the offending story or token named.
 - App not running: dev shows the 503 message; a static build click is a
   browser no-op. Nothing else in Storybook depends on the app.
@@ -217,11 +221,10 @@ HTML, `openpencil import story.html --css tokens.css`, then tidy in the app.
 
 ## Testing
 
-- `design-export.mjs` and `design-tokens-check.mjs`: one Vitest each in
-  `web/scripts/*.test.ts` using a tiny fixture `.pen` (copied from the
-  OpenPencil repo's `tests/fixtures/pencil_button.pen`): resolution of a
-  name path, failure on a missing node, drift detection on one colour and
-  one number.
+- `web/scripts/design/lib.ts` (pure helpers behind export, seed, and check)
+  has Vitest coverage in `lib.test.ts`: node collection from story source,
+  slug, CLI output parsing, tokens.css parsing, `.pen` variable parsing,
+  drift on one colour, one number, one missing token.
 - Middleware: one Vitest with a fake discovery file and a stub RPC server,
   asserting the token is sent upstream and never in the response, and that a
   non-matching `Origin` is refused.
@@ -237,5 +240,4 @@ HTML, `openpencil import story.html --css tokens.css`, then tidy in the app.
 
 ## Open questions for the review
 
-None blocking. The token tolerance values are a first guess and are the
-one knob expected to change after the pilot.
+None blocking.
