@@ -1,0 +1,250 @@
+{
+  "version": "2.8",
+  "children": [],
+  "themes": {
+    "Mode": [
+      "Light",
+      "Dark"
+    ]
+  },
+  "variables": {
+    "--bg": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#eef5f5"
+        },
+        {
+          "value": "#0e1518",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--bg-raise": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#fafefe"
+        },
+        {
+          "value": "#161f21",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--bg-panel": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e2ecec"
+        },
+        {
+          "value": "#151d20",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--bg-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#d4dfdf"
+        },
+        {
+          "value": "#1e282c",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--line": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#848e90"
+        },
+        {
+          "value": "#5a666a",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--chrome-line": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#c5cccc"
+        },
+        {
+          "value": "#323c40",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--panel-line": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#bac7c9"
+        },
+        {
+          "value": "#303a3d",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--tx": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#10252c"
+        },
+        {
+          "value": "#e2eaea",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--tx-dim": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#47555a"
+        },
+        {
+          "value": "#aab3b4",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--tx-faint": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#4c5b60"
+        },
+        {
+          "value": "#9aa4a6",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#00616f"
+        },
+        {
+          "value": "#78d7d6",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--on-accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#f8fdfd"
+        },
+        {
+          "value": "#0b181c",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--tx-on-accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0b181c"
+        },
+        {
+          "value": "#0b181c",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--danger": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#9d3629"
+        },
+        {
+          "value": "#eb827b",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--changed": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#305880"
+        },
+        {
+          "value": "#96bbe3",
+          "theme": {
+            "Mode": "Dark"
+          }
+        }
+      ]
+    },
+    "--radius-container": {
+      "type": "number",
+      "value": 6
+    },
+    "--radius-control": {
+      "type": "number",
+      "value": 4
+    },
+    "--radius-badge": {
+      "type": "number",
+      "value": 3
+    },
+    "--radius-pill": {
+      "type": "number",
+      "value": 999
+    },
+    "--row": {
+      "type": "number",
+      "value": 36
+    },
+    "--touch": {
+      "type": "number",
+      "value": 44
+    },
+    "--rail": {
+      "type": "number",
+      "value": 56
+    }
+  }
+}
