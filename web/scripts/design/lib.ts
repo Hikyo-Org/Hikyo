@@ -12,13 +12,14 @@ export function slugFor(node: string): string {
   return node.replaceAll('/', '--');
 }
 
-const designCall = /design\('([^']*)'\)/g;
+// The argument must be a string literal: a variable or template expression is invisible here.
+const designCall = /design\((['"])([^'"]*)\1\)/g;
 
 export function collectDesignNodes(sources: string[]): string[] {
   const found = new Set<string>();
   for (const source of sources) {
     for (const match of source.matchAll(designCall)) {
-      const node = match[1];
+      const node = match[2];
       // The group is not optional, so this only ever satisfies the type checker.
       if (node === undefined) throw new Error('design(): regex matched without a capture group');
       if (!NODE_PATH.test(node)) {
@@ -33,10 +34,8 @@ export function collectDesignNodes(sources: string[]): string[] {
 const queryNode = z.object({ id: z.string(), name: z.string() });
 
 export function parseQueryOutput(json: string): { id: string; name: string }[] {
-  return z
-    .array(queryNode)
-    .parse(JSON.parse(json))
-    .map(({ id, name }) => ({ id, name }));
+  // The non-strict object already strips the CLI's extra keys.
+  return z.array(queryNode).parse(JSON.parse(json));
 }
 
 const declaration = /(--[a-z0-9-]+)\s*:\s*([^;]+);/g;
@@ -69,6 +68,15 @@ export function parseTokensCss(css: string): TokenSides {
   };
   const dark = read(block(css, ':root {'));
   const overrides = read(block(css, ":root[data-theme='light'] {"));
+  // tokens.css states light twice: once under prefers-color-scheme for people
+  // who never chose, once under the explicit opt-in. Only the second is used
+  // below, so the first has to be proven identical or the mirror silently
+  // tracks whichever half was edited last.
+  const media = read(block(css, ":root:not([data-theme='dark']) {"));
+  const differing = [...new Set([...media.keys(), ...overrides.keys()])].filter((k) => media.get(k) !== overrides.get(k)).sort();
+  if (differing.length > 0) {
+    throw new Error(`tokens.css: the prefers-color-scheme light block and the [data-theme='light'] block differ on ${differing.join(', ')}`);
+  }
   const light = new Map(dark);
   for (const [k, v] of overrides) light.set(k, v);
   return { dark, light };
@@ -134,7 +142,9 @@ export function compareTokens(css: TokenSides, pen: PenSides): string[] {
       errors.push(`${name}: missing in hikyo.pen`);
       continue;
     }
-    const expectedLight = css.light.get(name) ?? expectedDark;
+    const expectedLight = css.light.get(name);
+    // The light map is dark plus overrides, so this only ever satisfies the type checker.
+    if (expectedLight === undefined) throw new Error(`tokens.css: light map lacks ${name}`);
     const kind = cssKind(expectedDark);
     if (p.type !== kind) {
       errors.push(`${name}: expected type ${kind} (tokens.css), got ${p.type} (hikyo.pen)`);
@@ -170,7 +180,9 @@ export function compareTokens(css: TokenSides, pen: PenSides): string[] {
 export function cssToPenVariables(css: TokenSides): Record<string, PenVariable> {
   const variables: Record<string, PenVariable> = {};
   for (const [name, dark] of css.dark) {
-    const light = css.light.get(name) ?? dark;
+    const light = css.light.get(name);
+    // The light map is dark plus overrides, so this only ever satisfies the type checker.
+    if (light === undefined) throw new Error(`tokens.css: light map lacks ${name}`);
     const kind = cssKind(dark);
     if (kind === 'color') {
       variables[name] = {

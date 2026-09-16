@@ -21,6 +21,11 @@ const css = `
   --ease: cubic-bezier(0.25, 1, 0.5, 1);
   --dur: 180ms;
 }
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --bg: oklch(0.965 0.008 200);
+  }
+}
 :root[data-theme='light'] {
   color-scheme: light;
   --bg: oklch(0.965 0.008 200);
@@ -73,6 +78,9 @@ describe('collectDesignNodes', () => {
     const b = `design('Badge/Danger')\n design('Button/Primary')`;
     expect(collectDesignNodes([a, b])).toEqual(['Badge/Danger', 'Button/Primary']);
   });
+  it('finds double-quoted calls too', () => {
+    expect(collectDesignNodes([`design("Button/Primary")`])).toEqual(['Button/Primary']);
+  });
   it('rejects a malformed path', () => {
     expect(() => collectDesignNodes([`design('Button')`])).toThrow(/must be Title\/Variant/);
   });
@@ -95,6 +103,15 @@ describe('parseTokensCss', () => {
     expect(t.dark.has('--font-ui')).toBe(false);
     expect(t.dark.has('--ease')).toBe(false);
     expect(t.dark.has('--dur')).toBe(false);
+  });
+  it('throws when the two light blocks disagree', () => {
+    const drifted = css.replace(
+      `  :root:not([data-theme='dark']) {\n    --bg: oklch(0.965 0.008 200);`,
+      `  :root:not([data-theme='dark']) {\n    --bg: oklch(0.9 0.008 200);`,
+    );
+    expect(() => parseTokensCss(drifted)).toThrow(
+      /the prefers-color-scheme light block and the \[data-theme='light'\] block differ on --bg/,
+    );
   });
 });
 
