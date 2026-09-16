@@ -1,4 +1,4 @@
-import { zAuthMethodProvider } from '@hikyo/zod';
+import type { zAuthMethodProvider } from '@hikyo/zod';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { z } from 'zod';
 

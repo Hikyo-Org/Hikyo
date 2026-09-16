@@ -154,7 +154,8 @@ Rules locked 2026-09-16:
 - Identity provider sign-in: assurance is the provider's (`acr`/`amr`
   policy); no local factor asked. `StepUpBanner` stays for such sessions
   (3A) but its title "This session is password-only" is wrong for them;
-  copy fix on migration.
+  the copy fix is deferred to migration because the route is outside the
+  Storybook-only scope.
 
 `ui/auth/LoginFlow` walks all of it with mocked transport (password
 `correct`, code `123456`); six play tests assert the sequencing.
@@ -276,7 +277,7 @@ pnpm exec vitest run --project storybook
 ```
 
 Last run (at the commit): typecheck clean; `node --run test` 985 passed;
-`node --run test-storybook` 54 files / 204 stories passed with the a11y
+`node --run test-storybook` 54 files / 208 stories passed with the a11y
 addon on `error`, every route story rendering under the approved
 `ui.css`; `node --run build` and `node --run build-storybook` both pass.
 The unit log prints `ECONNREFUSED :3000` noise from a test that probes a

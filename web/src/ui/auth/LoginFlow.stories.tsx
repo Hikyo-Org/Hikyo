@@ -24,9 +24,9 @@ const links = (
 // `policy` is the one instance decision left: whether an account may exist
 // with no second factor at all. Password `correct`, code `123456`.
 //
-// Rules (approved 2026-09-16): a factor that stands is presented, never
-// skipped; an account with none is gated into enrolment when the policy
-// requires it. Passkey and provider legs never see either step.
+// Rules (storybook-ui-consistency handoff, decision 2B): a factor that stands
+// is presented, never skipped; an account with none is gated into enrolment
+// when the policy requires it. Passkey and provider legs never see either step.
 
 type Scenario = 'password-enrolled' | 'password-unenrolled' | 'passkey' | 'provider';
 type Policy = 'require-second-factor' | 'allow-unenrolled';
