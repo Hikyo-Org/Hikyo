@@ -12,17 +12,35 @@ needs the app running with the file open, `addon-mcp` needs the dev server on
 6006.
 
 ## 1. Design
-- `open_file` `web/design/hikyo.pen`. Never `new_document`.
-- Build the node with `create_shape` / `set_layout` / `set_text`. Bind every
-  fill, stroke, and radius to a variable with `bind_variable`, and any size
-  that has a token (`$--touch` for the 44 px touch target); raw values where a
-  token exists are a review finding.
-- Name it `Title/Variant` (`rename_node`) and make it a component
-  (`node_to_component`, which sets `"reusable": true` on the frame; the Button
-  pilot frames carry that flag). Screens follow the same rule (`Members/Empty`).
-  `design()` rejects anything else: letters, digits and single spaces, at
-  least two segments.
-- `save_file` to the same path.
+
+`.pen` is read-only in OpenPencil 0.14.0: `openpencil formats` reports
+`pen: support: read`, and `save_file` writes a `.fig` zip container even when
+handed a `.pen` path. The app is a viewer and inspection surface; edits made
+inside it cannot be saved back as JSON. Never call `save_file` onto
+`web/design/hikyo.pen`, it would replace the JSON with a binary. Upstream
+follow-up: a `.pen` writer (a contribution) would restore the round trip.
+
+So `web/design/hikyo.pen` is edited as JSON. Two routes:
+
+- Write the JSON directly, by hand or by an agent, using the `open-pencil` MCP
+  read tools (`get_node`, `node_tree`, `get_jsx`, `find_nodes`) to inspect what
+  is already there.
+- Or prototype in the app with the write tools (`create_shape` / `set_layout` /
+  `set_text` / `rename_node` / `node_to_component`), then export the affected
+  node with `get_jsx` or `node_tree` and transcribe the result into the JSON.
+  Nothing in the app reaches disk on its own.
+
+Either way:
+
+- `open_file` `web/design/hikyo.pen` to inspect. Never `new_document`.
+- Bind every fill, stroke, and radius to a variable, and any size that has a
+  token (`$--touch` for the 44 px touch target); raw values where a token
+  exists are a review finding.
+- Name it `Title/Variant` and give the frame `"reusable": true` in the JSON
+  (the Button pilot frames carry that flag; `node_to_component` sets it in the
+  app, but that change only lands on disk once transcribed). Screens follow the
+  same rule (`Members/Empty`). `design()` rejects anything else: letters,
+  digits and single spaces, at least two segments.
 
 ## 2. Implement
 - `get_codegen_prompt`, then `get_jsx` for the node.
@@ -51,8 +69,23 @@ Not mirrored into the design file, so nothing can bind to them: `--ease`,
 the `-soft` set).
 
 ## Bootstrapping from an existing component
-Author the frames in the app (`create_shape` and friends over the
-`open-pencil` MCP), or copy the JSON of an existing node in `hikyo.pen`,
-paste it as a sibling and rename it. `openpencil import` is not usable here:
+Copy the JSON of an existing node in `hikyo.pen`, paste it as a sibling and
+rename it. Or author the frames in the app (`create_shape` and friends over the
+`open-pencil` MCP) and transcribe them back with `get_jsx` / `node_tree`, since
+the app cannot write `.pen`. `openpencil import` is not usable here:
 `@open-pencil/cli` 0.14.0 reads the input with `Bun.file`, which does not
 exist under Node, so it throws under pnpm.
+
+## Troubleshooting
+- **App shows as not connected to MCP.** The desktop app attaches to the MCP
+  server named in `~/Library/Application Support/OpenPencil/mcp.json`. If a
+  stale `openpencil-mcp-http` from an earlier session still owns port 7600, the
+  app never attaches. Kill the stale server, delete the stale `mcp.json` and
+  `mcp.sock`, relaunch the app.
+- **Never leave an `openpencil-mcp-http` running after a test.** Kill dev
+  servers by PID only, never by port sweep or name match.
+- **The middleware cannot open a repo under a dot-directory.** The app's Tauri fs
+  scope uses `**`, which skips dot-directories, so a checkout under a hidden
+  path (T3 worktrees live under `~/.t3/`) cannot be opened by the middleware
+  until the user has opened that file once through the app's own dialog in the
+  same session. Normal checkouts under `~/code` are unaffected.

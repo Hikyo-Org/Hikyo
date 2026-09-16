@@ -39,3 +39,8 @@ Operative once that spec's implementation merges.
   frames in the app or by copying and renaming an existing node's JSON;
   `openpencil import` is not usable under pnpm in `@open-pencil/cli` 0.14.0.
   Sweeping all existing stories is a separate decision.
+- `.pen` is read-only in OpenPencil 0.14.0 (`openpencil formats` reports
+  `pen: support: read`; `save_file` writes a `.fig` container even for a `.pen`
+  path). Decision: the JSON file stays the source of truth and the app is a
+  viewer and inspection surface until a `.pen` writer ships upstream. Design
+  edits are made in the JSON, or prototyped in the app and transcribed back.
