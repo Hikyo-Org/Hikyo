@@ -11,6 +11,14 @@ export type TokenFamily = {
   tokens: readonly { name: string; role: string }[];
 };
 
+/**
+ * Breakpoints cannot be custom properties (media and container queries do not
+ * read them), so they are constants here and in DESIGN.md, and the adherence
+ * check exempts them. Two only: the phone layout and the container width at
+ * which a choice grid collapses.
+ */
+export const BREAKPOINTS = { phone: 800, choiceGrid: 480 } as const;
+
 export const TOKEN_FAMILIES: readonly TokenFamily[] = [
   {
     family: 'Surface',
@@ -106,6 +114,20 @@ export const TOKEN_FAMILIES: readonly TokenFamily[] = [
       { name: '--width-dialog', role: 'decision dialogs' },
       { name: '--width-dialog-wide', role: 'editor dialogs' },
       { name: '--measure', role: 'ledes, hints, errors' },
+    ],
+  },
+  {
+    family: 'Focus, disabled, line height, icon',
+    rule: 'One ring on every control, never removed; one disabled opacity, named by the cursor too; headings tight, body loose; glyphs are one em, standalone icons one box.',
+    tokens: [
+      { name: '--ring-width', role: 'focus ring width' },
+      { name: '--ring-offset', role: 'ring offset outside the control' },
+      { name: '--ring-color', role: 'ring colour (the accent)' },
+      { name: '--opacity-disabled', role: 'disabled controls and rows' },
+      { name: '--lh-tight', role: 'h1' },
+      { name: '--lh-heading', role: 'h2, badges, dialog titles' },
+      { name: '--lh-body', role: 'body, labels, rows' },
+      { name: '--icon', role: 'standalone icon box' },
     ],
   },
   {

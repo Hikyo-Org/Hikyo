@@ -101,6 +101,22 @@
   /* Shadows only on modal overlays (DESIGN.md). */
   --overlay-shadow: 0 14px 42px oklch(0 0 0 / 45%);
 
+  /* Focus: one ring on every control, never removed; the OS repaints it
+     under forced colours. Disabled: one opacity, named in the cursor too. */
+  --ring-width: 2px;
+  --ring-offset: 2px;
+  --ring-color: var(--accent);
+  --opacity-disabled: 0.6;
+
+  /* Line heights: headings tight, body loose; nothing in between. */
+  --lh-tight: 1.25;
+  --lh-heading: 1.3;
+  --lh-body: 1.5;
+
+  /* Icon box: glyphs are one em of the text they sit in; a standalone icon
+     control draws at this size inside its control box. */
+  --icon: 16px;
+
   /* Layers, named so no surface invents a z-index: chrome (rail, sidebar,
      sticky headers), sticky in-content bars, drawers, and the top-layer
      fallbacks (overlays that cannot use the platform top layer). */

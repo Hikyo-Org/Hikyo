@@ -81,6 +81,9 @@ Families and rules:
 - **Space:** `--space-1..6` (4/8/12/16/24/32) for every gap, padding and margin.
 - **Measure:** `--width-dialog` (520), `--width-dialog-wide` (760), `--measure` (68ch).
 - **Depth and motion:** `--overlay-shadow` on modal overlays only; `--z-chrome/sticky/drawer/overlay` are the only layers; `--ease`, `--dur`.
+- **Focus, disabled, line height, icon:** `--ring-width/offset/color` is the one focus ring; `--opacity-disabled` the one disabled treatment; `--lh-tight/heading/body` the line heights; `--icon` the standalone icon box (glyphs are one em).
+- **Breakpoints** are not custom properties (queries cannot read them): 800px is the phone layout, 480px the container width at which a choice grid collapses; both live in `web/src/ui/tokens.ts` as `BREAKPOINTS`.
+- **Tiers:** surface, line, ink and the state colours are semantic (named for what they mean); space, type sizes, radii and control heights are primitives (named for what they are). A new token joins one tier; a semantic token points at a primitive, never at a literal. The split is documentation until the migration lands; no token is renamed for it.
 
 ## Components
 

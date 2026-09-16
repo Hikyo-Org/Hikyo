@@ -18,6 +18,8 @@ import { useModalDialog } from './useModalDialog.ts';
  * - Shadow on: DESIGN.md reserves shadows for modal overlays, so both
  *   families get one.
  * - Buttons and fields are the page's: one control height, no dialog tier.
+ * - No close X (decided 2026-09-16): Escape and the Cancel action are the
+ *   two ways out; a corner X invites dismiss-by-reflex on a decision surface.
  *
  * `onCancel` receives the platform's cancel (Escape); a dialog that must be
  * acknowledged before it closes calls `preventDefault()` there.
