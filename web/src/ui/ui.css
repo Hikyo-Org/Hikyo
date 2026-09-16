@@ -633,3 +633,13 @@ label.chk {
 .card.panel {
   gap: 12px;
 }
+
+/* --- Alert tones ------------------------------------------------------------
+
+   `.alert__glyph` is danger-coloured in app.css, and the done tick inside
+   `.notice` inherited that, painting a confirmation in the colour DESIGN.md
+   reserves for violations (routes/Sections.tsx `Done` has the same bug).
+   The tick takes the accent. */
+.notice .alert__glyph {
+  color: var(--accent);
+}

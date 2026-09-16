@@ -44,7 +44,7 @@ export function Field({
     .filter((part): part is string => part !== null)
     .join(' ');
   return (
-    <div className={cx('field', error !== undefined && 'field--invalid', className)}>
+    <div className={cx('field', className)}>
       <label htmlFor={controlId}>{label}</label>
       {children({
         id: controlId,

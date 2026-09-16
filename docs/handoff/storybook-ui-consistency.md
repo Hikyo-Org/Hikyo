@@ -240,6 +240,8 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
 
 ## 5. Migration into the app (next, outside the Storybook-only scope)
 
+Known risks on migration, to verify on the real screens: `.matrix__history-link` grows from 11.5px to 14px under the button rule; `.settings-tag` drops from 32px to 20px inside settings rows aligned to 36px inputs; `StepUpBanner` title is wrong for provider sessions; the browser-blue unclassed link on the overview page.
+
 Also superseded by `ui/`: `routes/Sections.tsx` `Alert` and `Done` (by
 `ui/Alert`), `routes/useModalDialog.ts` `useModalDialog` (by
 `ui/useModalDialog.ts`; `useFeedback` stays), `routes/AccountSecurity.tsx`
@@ -261,7 +263,7 @@ pnpm exec vitest run --project storybook
 ```
 
 Last run (at the commit): typecheck clean; `node --run test` 985 passed;
-`node --run test-storybook` 54 files / 202 stories passed with the a11y
+`node --run test-storybook` 54 files / 204 stories passed with the a11y
 addon on `error`, every route story rendering under the approved
 `ui.css`; `node --run build` and `node --run build-storybook` both pass.
 The unit log prints `ECONNREFUSED :3000` noise from a test that probes a
