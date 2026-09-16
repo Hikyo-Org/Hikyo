@@ -71,7 +71,7 @@ export default defineConfig(({ mode }) => ({
           // Playwright owns `.spec.ts` under e2e/flows. Picking those up here
           // would fail on a missing browser, or — worse — skip and look like
           // coverage.
-          include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'e2e/**/*.test.ts'],
+          include: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'e2e/**/*.test.ts', 'scripts/**/*.test.ts', '.storybook/**/*.test.ts'],
           environment: 'node',
         },
       },

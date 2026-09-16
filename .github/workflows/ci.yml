@@ -865,6 +865,11 @@ jobs:
       - name: Install (frozen lockfile)
         working-directory: web
         run: pnpm install --frozen-lockfile
+      # Only job that can run it on a PR: it needs the Playwright container, Node
+      # from .nvmrc, network for the Fontsource fetch, and web's deps installed.
+      - name: Design exports (token drift + headless render)
+        working-directory: web
+        run: pnpm run design:export
       - name: Storybook story tests (dark, the default)
         working-directory: web
         run: pnpm run test-storybook

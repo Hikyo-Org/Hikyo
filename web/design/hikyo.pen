@@ -1,0 +1,420 @@
+{
+  "version": "2.8",
+  "children": [
+    {
+      "type": "frame",
+      "id": "btnSe",
+      "name": "Button/Secondary",
+      "reusable": true,
+      "x": 0,
+      "y": 0,
+      "width": "hug_content",
+      "height": "$--touch",
+      "layout": "horizontal",
+      "cornerRadius": "$--radius-control",
+      "gap": 8,
+      "padding": [
+        0,
+        16,
+        0,
+        16
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "fill": "$--bg-panel",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$--line"
+      },
+      "children": [
+        {
+          "type": "text",
+          "id": "txtSe",
+          "name": "Label",
+          "content": "Save changes",
+          "fill": "$--tx",
+          "fontFamily": "Instrument Sans",
+          "fontSize": 14,
+          "fontWeight": "400",
+          "lineHeight": 1.5,
+          "textAlign": "center",
+          "textAlignVertical": "middle"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "btnPr",
+      "name": "Button/Primary",
+      "reusable": true,
+      "x": 0,
+      "y": 80,
+      "width": "hug_content",
+      "height": "$--touch",
+      "layout": "horizontal",
+      "cornerRadius": "$--radius-control",
+      "gap": 8,
+      "padding": [
+        0,
+        16,
+        0,
+        16
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "fill": "$--accent",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$--accent"
+      },
+      "children": [
+        {
+          "type": "text",
+          "id": "txtPr",
+          "name": "Label",
+          "content": "Save changes",
+          "fill": "$--on-accent",
+          "fontFamily": "Instrument Sans",
+          "fontSize": 14,
+          "fontWeight": "500",
+          "lineHeight": 1.5,
+          "textAlign": "center",
+          "textAlignVertical": "middle"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "btnDi",
+      "name": "Button/Disabled",
+      "reusable": true,
+      "x": 0,
+      "y": 160,
+      "width": "hug_content",
+      "height": "$--touch",
+      "layout": "horizontal",
+      "cornerRadius": "$--radius-control",
+      "gap": 8,
+      "padding": [
+        0,
+        16,
+        0,
+        16
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "fill": "$--bg-panel",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$--line"
+      },
+      "opacity": 0.6,
+      "children": [
+        {
+          "type": "text",
+          "id": "txtDi",
+          "name": "Label",
+          "content": "Save changes",
+          "fill": "$--tx",
+          "fontFamily": "Instrument Sans",
+          "fontSize": 14,
+          "fontWeight": "400",
+          "lineHeight": 1.5,
+          "textAlign": "center",
+          "textAlignVertical": "middle"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "btnIc",
+      "name": "Button/Icon",
+      "reusable": true,
+      "x": 0,
+      "y": 240,
+      "width": "$--touch",
+      "height": "$--touch",
+      "layout": "horizontal",
+      "cornerRadius": "$--radius-control",
+      "gap": 8,
+      "padding": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "fill": "$--bg-panel",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$--line"
+      },
+      "children": [
+        {
+          "type": "text",
+          "id": "txtIc",
+          "name": "Label",
+          "content": "☾",
+          "fill": "$--tx",
+          "fontFamily": "Instrument Sans",
+          "fontSize": 14,
+          "fontWeight": "400",
+          "lineHeight": 1.5,
+          "textAlign": "center",
+          "textAlignVertical": "middle"
+        }
+      ]
+    }
+  ],
+  "themes": {
+    "Mode": [
+      "Dark",
+      "Light"
+    ]
+  },
+  "variables": {
+    "--bg": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0e1518"
+        },
+        {
+          "value": "#eef5f5",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--bg-raise": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#161f21"
+        },
+        {
+          "value": "#fafefe",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--bg-panel": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#151d20"
+        },
+        {
+          "value": "#e2ecec",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--bg-hover": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#1e282c"
+        },
+        {
+          "value": "#d4dfdf",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--line": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#5a666a"
+        },
+        {
+          "value": "#848e90",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--chrome-line": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#323c40"
+        },
+        {
+          "value": "#c5cccc",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--panel-line": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#303a3d"
+        },
+        {
+          "value": "#bac7c9",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--tx": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#e2eaea"
+        },
+        {
+          "value": "#10252c",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--tx-dim": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#aab3b4"
+        },
+        {
+          "value": "#47555a",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--tx-faint": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#9aa4a6"
+        },
+        {
+          "value": "#4c5b60",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#78d7d6"
+        },
+        {
+          "value": "#00616f",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--on-accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0b181c"
+        },
+        {
+          "value": "#f8fdfd",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--tx-on-accent": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#0b181c"
+        },
+        {
+          "value": "#0b181c",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--danger": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#eb827b"
+        },
+        {
+          "value": "#9d3629",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--changed": {
+      "type": "color",
+      "value": [
+        {
+          "value": "#96bbe3"
+        },
+        {
+          "value": "#305880",
+          "theme": {
+            "Mode": "Light"
+          }
+        }
+      ]
+    },
+    "--radius-container": {
+      "type": "number",
+      "value": 6
+    },
+    "--radius-control": {
+      "type": "number",
+      "value": 4
+    },
+    "--radius-badge": {
+      "type": "number",
+      "value": 3
+    },
+    "--radius-pill": {
+      "type": "number",
+      "value": 999
+    },
+    "--row": {
+      "type": "number",
+      "value": 36
+    },
+    "--touch": {
+      "type": "number",
+      "value": 44
+    },
+    "--rail": {
+      "type": "number",
+      "value": 56
+    }
+  }
+}

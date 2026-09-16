@@ -408,17 +408,25 @@ test.describe('project settings', () => {
       page.locator('.notice').filter({ hasText: `Environment ${created} created.` }),
     ).toBeVisible();
 
+    // Each row is addressed by the environment its summary names, never as
+    // "the open panel": more than one disclosure can be open at a time, so an
+    // open-panel locator is ambiguous by construction.
+    const row = (name: string) =>
+      panel
+        .locator('details.environment-lifecycle')
+        .filter({ has: page.getByText(`Manage ${name}`, { exact: true }) });
+
     // Open its disclosure once. The id is stable across rename and clone, so the
     // same <details> stays open for all three actions below the summary.
     await panel.locator('summary', { hasText: `Manage ${created}` }).click();
-    const open = panel.locator('details.environment-lifecycle[open]');
 
-    await open.getByLabel(`New name for ${created}`).fill(renamed);
-    await open.getByRole('button', { name: 'Rename environment' }).click();
+    await row(created).getByLabel(`New name for ${created}`).fill(renamed);
+    await row(created).getByRole('button', { name: 'Rename environment' }).click();
     await expect(
       page.locator('.notice').filter({ hasText: `renamed to ${renamed}` }),
     ).toBeVisible();
 
+    const open = row(renamed);
     await open.getByLabel(`Clone ${renamed} into`).fill(clone);
     await open.getByRole('button', { name: 'Clone environment' }).click();
     await expect(page.locator('.notice').filter({ hasText: `cloned to ${clone}` })).toBeVisible();
@@ -438,9 +446,12 @@ test.describe('project settings', () => {
     await expect(
       page.locator('.notice').filter({ hasText: `Environment ${renamed} deleted.` }),
     ).toBeVisible();
+    // The notice claims the row is gone, so hold it to that before touching the
+    // next one.
+    await expect(row(renamed)).toHaveCount(0);
 
     await panel.locator('summary', { hasText: `Manage ${clone}` }).click();
-    const cloneRow = panel.locator('details.environment-lifecycle[open]');
+    const cloneRow = row(clone);
     await cloneRow.getByLabel(`Delete ${clone}`).fill(clone);
     await cloneRow.getByRole('button', { name: 'Delete environment' }).click();
     await expect(

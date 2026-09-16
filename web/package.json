@@ -15,8 +15,11 @@
     "test-storybook:light": "STORYBOOK_THEME=light vitest run --project storybook",
     "e2e": "pnpm run build && playwright test --project=desktop && playwright test --project=mobile",
     "e2e:install": "playwright install --with-deps chromium",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build"
+    "storybook": "pnpm run design:export && storybook dev -p 6006",
+    "build-storybook": "pnpm run design:export && storybook build",
+    "design:seed": "node scripts/design/tokens-seed.ts",
+    "design:check": "node scripts/design/tokens-check.ts",
+    "design:export": "pnpm run design:check && node scripts/design/export.ts"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "5.3.0",
@@ -32,23 +35,28 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
+    "@open-pencil/cli": "0.14.0",
+    "@open-pencil/mcp": "0.14.0",
     "@playwright/test": "1.62.1",
+    "@storybook/addon-a11y": "10.6.0",
+    "@storybook/addon-designs": "11.1.4",
+    "@storybook/addon-docs": "10.6.0",
+    "@storybook/addon-mcp": "10.6.0",
+    "@storybook/addon-vitest": "10.6.0",
+    "@storybook/react-vite": "10.6.0",
+    "@types/culori": "4.0.1",
     "@types/node": "26.2.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.4",
     "@vitejs/plugin-react": "6.1.0",
-    "happy-dom": "^20.11.6",
-    "typescript": "7.0.2",
-    "vite": "8.2.2",
-    "vitest": "4.1.11",
-    "storybook": "10.6.0",
-    "@storybook/react-vite": "10.6.0",
-    "@storybook/addon-vitest": "10.6.0",
-    "@storybook/addon-a11y": "10.6.0",
-    "@storybook/addon-docs": "10.6.0",
-    "@storybook/addon-mcp": "10.6.0",
     "@vitest/browser-playwright": "4.1.11",
     "@vitest/coverage-v8": "4.1.11",
-    "playwright": "1.62.1"
+    "culori": "4.0.2",
+    "happy-dom": "^20.11.6",
+    "playwright": "1.62.1",
+    "storybook": "10.6.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   }
 }
