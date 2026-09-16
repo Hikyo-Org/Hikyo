@@ -26,8 +26,9 @@ const LIMIT = 1000;
 
 const failures: string[] = [];
 for (const node of nodes) {
-  // `query` (XPath) is unusable in @open-pencil/cli 0.14.0: its CJS default-export
-  // interop bug throws before the selector runs. So this uses `find`, whose --name
+  // `query` (XPath) is unusable in @open-pencil/cli 0.14.0 and 0.15.0: its CJS
+  // default-export interop bug throws (`evaluateXPathToNodes is not a function`)
+  // before the selector runs. So this uses `find`, whose --name
   // is a case-insensitive substring: the exact filter below is what makes the
   // match, and the duplicate count, correct.
   const { stdout } = await run(CLI, ['find', PEN, '--name', node, '--limit', String(LIMIT), '--json']);
