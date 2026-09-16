@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
+import { design } from '../../.storybook/design.ts';
 import { Button } from './Button.tsx';
 
 const meta = {
@@ -13,10 +14,13 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Secondary: Story = {};
-export const Primary: Story = { args: { variant: 'primary' } };
-export const Disabled: Story = { args: { disabled: true } };
-export const Icon: Story = { args: { icon: true, 'aria-label': 'Toggle theme', children: '☾' } };
+export const Secondary: Story = { parameters: { design: design('Button/Secondary') } };
+export const Primary: Story = { args: { variant: 'primary' }, parameters: { design: design('Button/Primary') } };
+export const Disabled: Story = { args: { disabled: true }, parameters: { design: design('Button/Disabled') } };
+export const Icon: Story = {
+  args: { icon: true, 'aria-label': 'Toggle theme', children: '☾' },
+  parameters: { design: design('Button/Icon') },
+};
 
 export const Clicks: Story = {
   play: async ({ canvas, args }) => {

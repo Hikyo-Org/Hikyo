@@ -1,6 +1,168 @@
 {
   "version": "2.8",
-  "children": [],
+  "children": [
+    {
+      "type": "frame",
+      "id": "btnSe",
+      "name": "Button/Secondary",
+      "reusable": true,
+      "x": 0,
+      "y": 0,
+      "width": 118,
+      "height": 44,
+      "layout": "horizontal",
+      "cornerRadius": "$--radius-control",
+      "gap": 8,
+      "padding": [
+        0,
+        16
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "fill": "$--bg-panel",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$--line"
+      },
+      "children": [
+        {
+          "type": "text",
+          "id": "txtSe",
+          "name": "Label",
+          "content": "Save changes",
+          "fill": "$--tx",
+          "fontFamily": "Instrument Sans",
+          "fontSize": 14,
+          "fontWeight": "400",
+          "lineHeight": 1.5,
+          "textAlign": "center",
+          "textAlignVertical": "middle"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "btnPr",
+      "name": "Button/Primary",
+      "reusable": true,
+      "x": 0,
+      "y": 80,
+      "width": 118,
+      "height": 44,
+      "layout": "horizontal",
+      "cornerRadius": "$--radius-control",
+      "gap": 8,
+      "padding": [
+        0,
+        16
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "fill": "$--accent",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$--accent"
+      },
+      "children": [
+        {
+          "type": "text",
+          "id": "txtPr",
+          "name": "Label",
+          "content": "Save changes",
+          "fill": "$--on-accent",
+          "fontFamily": "Instrument Sans",
+          "fontSize": 14,
+          "fontWeight": "500",
+          "lineHeight": 1.5,
+          "textAlign": "center",
+          "textAlignVertical": "middle"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "btnDi",
+      "name": "Button/Disabled",
+      "reusable": true,
+      "x": 0,
+      "y": 160,
+      "width": 118,
+      "height": 44,
+      "layout": "horizontal",
+      "cornerRadius": "$--radius-control",
+      "gap": 8,
+      "padding": [
+        0,
+        16
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "fill": "$--bg-panel",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$--line"
+      },
+      "opacity": 0.6,
+      "children": [
+        {
+          "type": "text",
+          "id": "txtDi",
+          "name": "Label",
+          "content": "Save changes",
+          "fill": "$--tx",
+          "fontFamily": "Instrument Sans",
+          "fontSize": 14,
+          "fontWeight": "400",
+          "lineHeight": 1.5,
+          "textAlign": "center",
+          "textAlignVertical": "middle"
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "btnIc",
+      "name": "Button/Icon",
+      "reusable": true,
+      "x": 0,
+      "y": 240,
+      "width": 44,
+      "height": 44,
+      "layout": "horizontal",
+      "cornerRadius": "$--radius-control",
+      "gap": 8,
+      "padding": [
+        0,
+        0
+      ],
+      "justifyContent": "center",
+      "alignItems": "center",
+      "fill": "$--bg-panel",
+      "stroke": {
+        "align": "inside",
+        "thickness": 1,
+        "fill": "$--line"
+      },
+      "children": [
+        {
+          "type": "text",
+          "id": "txtIc",
+          "name": "Label",
+          "content": "☾",
+          "fill": "$--tx",
+          "fontFamily": "Instrument Sans",
+          "fontSize": 14,
+          "fontWeight": "400",
+          "lineHeight": 1.5,
+          "textAlign": "center",
+          "textAlignVertical": "middle"
+        }
+      ]
+    }
+  ],
   "themes": {
     "Mode": [
       "Light",
