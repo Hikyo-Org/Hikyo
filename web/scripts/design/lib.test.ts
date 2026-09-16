@@ -7,6 +7,7 @@ import {
   parsePenVariables,
   parseQueryOutput,
   parseTokensCss,
+  type PenVariable,
   slugFor,
 } from './lib.ts';
 
@@ -37,6 +38,15 @@ const pen = JSON.stringify({
     '--radius-control': { type: 'number', value: 4 },
   },
 });
+
+/** A .pen document that mirrors tokens.css, with the given variables swapped in or added. */
+const penWith = (overrides: Record<string, PenVariable>) =>
+  JSON.stringify({
+    version: '2.8',
+    children: [],
+    themes: { Mode: ['Light', 'Dark'] },
+    variables: { ...cssToPenVariables(parseTokensCss(css)), ...overrides },
+  });
 
 describe('slugFor', () => {
   it('replaces slashes', () => {
@@ -109,6 +119,37 @@ describe('compareTokens', () => {
       version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] },
       variables: { ...cssToPenVariables(t), '--radius-control': { type: 'number', value: 5 } },
     }));
-    expect(compareTokens(t, v)).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen)');
+    expect(compareTokens(t, v)).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen, dark)');
+  });
+  it('names the light mode when only the light value differs', () => {
+    const t = parseTokensCss(css);
+    const v = parsePenVariables(penWith({
+      '--radius-control': { type: 'number', value: [{ value: 5 }, { value: 4, theme: { Mode: 'Dark' } }] },
+    }));
+    expect(compareTokens(t, v)).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen, light)');
+  });
+  it('reports a type mismatch', () => {
+    const t = parseTokensCss(css);
+    const v = parsePenVariables(penWith({ '--radius-control': { type: 'string', value: '4' } }));
+    expect(compareTokens(t, v)).toContain('--radius-control: expected type number (tokens.css), got string (hikyo.pen)');
+  });
+  it('reports a variable that only exists in the pen', () => {
+    const t = parseTokensCss(css);
+    const v = parsePenVariables(penWith({ '--extra': { type: 'number', value: 1 } }));
+    expect(compareTokens(t, v)).toContain('--extra: present in hikyo.pen, absent from tokens.css');
+  });
+});
+
+describe('error paths', () => {
+  it('throws on a colour culori cannot parse', () => {
+    const t = parseTokensCss(css.replace('oklch(0.19 0.012 220)', 'oklch(nope)'));
+    expect(() => cssToPenVariables(t)).toThrow(/unparseable colour/);
+  });
+  it('throws when a themed variable has no Light entry', () => {
+    const json = JSON.stringify({
+      version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] },
+      variables: { '--bg': { type: 'color', value: [{ value: '#22272d', theme: { Mode: 'Dark' } }] } },
+    });
+    expect(() => parsePenVariables(json)).toThrow(/--bg has no Light value/);
   });
 });

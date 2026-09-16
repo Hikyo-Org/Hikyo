@@ -131,6 +131,10 @@ export function compareTokens(css: TokenSides, pen: PenSides): string[] {
     }
     const expectedLight = css.light.get(name) ?? expectedDark;
     const kind = cssKind(expectedDark);
+    if (p.type !== kind) {
+      errors.push(`${name}: expected type ${kind} (tokens.css), got ${p.type} (hikyo.pen)`);
+      continue;
+    }
     if (kind === 'color') {
       const check = (mode: string, expected: string, actual: string) => {
         if (cssHex(expected) !== actual.toLowerCase()) {
@@ -142,7 +146,9 @@ export function compareTokens(css: TokenSides, pen: PenSides): string[] {
     } else {
       const expected = kind === 'number' ? cssNumber(expectedDark) : expectedDark;
       if (p.light !== expected || p.dark !== expected) {
-        errors.push(`${name}: expected ${expected} (tokens.css), got ${p.dark} (hikyo.pen)`);
+        // Dark first: when both modes differ the dark value is the canonical one to report.
+        const [mode, actual] = p.dark !== expected ? ['dark', p.dark] : ['light', p.light];
+        errors.push(`${name}: expected ${expected} (tokens.css), got ${actual} (hikyo.pen, ${mode})`);
       }
     }
   }

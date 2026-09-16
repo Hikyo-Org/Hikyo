@@ -18,13 +18,17 @@ const penShell = z.looseObject({
 });
 
 const css = parseTokensCss(await readFile(CSS, 'utf8'));
-let doc: z.infer<typeof penShell> & { variables?: Record<string, PenVariable> };
+// Only the read is guarded: a missing .pen is seeded from scratch, but a malformed one must always throw.
+let existing: string | undefined;
 try {
-  doc = penShell.parse(JSON.parse(await readFile(PEN, 'utf8')));
+  existing = await readFile(PEN, 'utf8');
 } catch (error) {
   if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
-  doc = { version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] } };
 }
+const doc: z.infer<typeof penShell> & { variables?: Record<string, PenVariable> } =
+  existing === undefined
+    ? { version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] } }
+    : penShell.parse(JSON.parse(existing));
 const variables = cssToPenVariables(css);
 doc.themes = { ...doc.themes, Mode: ['Light', 'Dark'] };
 doc.variables = variables;
