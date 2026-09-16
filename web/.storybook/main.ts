@@ -16,5 +16,14 @@ const config: StorybookConfig = {
   staticDirs: [{ from: '../design/exports', to: '/design' }],
   // Zero-telemetry ADR: no phone-home from local or CI builds.
   core: { disableTelemetry: true },
+  managerEntries: (entries = []) => [...entries, fileURLToPath(new URL('./openpencil-addon.tsx', import.meta.url))],
+  // The toolbar button ships in every build; the Node side that holds the RPC
+  // token is mounted only by the dev server.
+  viteFinal: async (config, { configType, port }) => {
+    if (configType !== 'DEVELOPMENT') return config;
+    const { openPencilPlugin } = await import('./openpencil-middleware.ts');
+    const penPath = fileURLToPath(new URL('../design/hikyo.pen', import.meta.url));
+    return { ...config, plugins: [...(config.plugins ?? []), openPencilPlugin(penPath, port)] };
+  },
 };
 export default config;
