@@ -1,10 +1,16 @@
 virtualStoreType: global
-# Storybook/Vite pull esbuild transitively, and pnpm 11 hard-errors
-# (ERR_PNPM_IGNORED_BUILDS) on its install script unless it is approved here.
-# This is what `pnpm approve-builds` writes; it does not touch the lockfile, so
+# pnpm 11 hard-errors (ERR_PNPM_IGNORED_BUILDS) on any transitive install script
+# that is not decided here, so every entry below is a deliberate yes/no. This is
+# the file `pnpm approve-builds` writes to; it does not touch the lockfile, so
 # `--frozen-lockfile` is unaffected.
 allowBuilds:
+  # core-js arrives via @open-pencil/core -> jspdf -> canvg; its postinstall only
+  # prints a funding banner, so there is nothing to build. `false` is the decision,
+  # not a placeholder: deleting this line brings ERR_PNPM_IGNORED_BUILDS back and
+  # breaks `pnpm install`.
   core-js: false
+  # Storybook/Vite pull esbuild transitively and it genuinely needs its install
+  # script to fetch the platform binary.
   esbuild: true
 # Storybook's @vitest/browser-playwright pulled a second playwright-core (1.63.0)
 # into the graph, which flipped @axe-core/playwright's peer off the 1.62.1 that
