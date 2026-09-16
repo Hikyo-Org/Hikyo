@@ -279,7 +279,7 @@ pnpm exec vitest run --project storybook
 ```
 
 Last run (at the commit): typecheck clean; `node --run test` 985 passed;
-`node --run test-storybook` 54 files / 209 stories passed with the a11y
+`node --run test-storybook` 56 files / 214 stories passed with the a11y
 addon on `error`, every route story rendering under the approved
 `ui.css`; `node --run build` and `node --run build-storybook` both pass.
 The unit log prints `ECONNREFUSED :3000` noise from a test that probes a

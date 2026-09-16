@@ -27,6 +27,9 @@ export type FieldControlProps = {
  *
  * Errors here are per control. A form-level refusal (server said no) stays
  * an {@link Alert} above the actions, as the routes do today.
+ *
+ * No story of its own: it is never rendered bare, and the Input, Select and
+ * Textarea stories (WithHint, WithError, ErrorIsWired) are its coverage.
  */
 export function Field({
   label,
