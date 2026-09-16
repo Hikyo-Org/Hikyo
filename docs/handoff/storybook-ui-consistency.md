@@ -208,7 +208,17 @@ above is therefore SEQUENCING only until the server enforces it. Needed:
 
 ## 4. Approved 2026-09-16 (4a, 4b, 4c all option a)
 
-### 4a. Control height tiers (Button, Input, Select, Textarea)
+### 4a. Control height (Button, Input, Select, Textarea)
+
+Amended 2026-09-16 after review in Storybook: ONE height, no per-surface
+override ("if the button is styled a certain way, we don't override the
+height"). Dialogs, ceremonies and the sign-in card use `--control` like
+page content: 36px on a fine pointer, 44px on a coarse one. Option (a)
+below is superseded on that point; its tokens and the compact tier stand.
+Migration consequence: EVERY desktop density pin that asserts `--touch`
+on a button or input (login submit, editor close, chooser, theme toggle,
+dialog Cancel/Back/Done, mint, history tab, metadata input) moves to
+`--control`; the mobile project keeps `--touch` through the coarse token.
 
 Options:
 - (a) **Two tiers, tokenised.** `--control` = 36px page content on a fine
@@ -223,9 +233,7 @@ Decision: **(a)**. It matches DESIGN.md density (36 desktop, 44
 touch), keeps the login and dialog pins untouched, and collapses the 42px
 members select and the 36px `settings-input` into the same token.
 Migration: e2e density pins for page-content buttons read `--control` on
-the desktop project the way row pins read `--row` (`flows/matrix.spec.ts:435`
-chooser and `flows/shell.spec.ts:506` theme toggle are page chrome and
-switch; login, editor close, dialog buttons stay on `--touch`).
+the desktop project the way row pins read `--row` (all of the pins listed under Constraints; the mobile project is unchanged).
 
 Migration risks to check on the real screens (no story renders them under
 the proposal yet): `.matrix__history-link` (a column-header control on

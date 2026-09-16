@@ -96,9 +96,10 @@ export const IsModalAndLabelled: Story = {
     await expect(dialog).toBeVisible();
     // Opened through showModal(): the platform's focus trap, inert page and top layer.
     await expect(dialog.matches(':modal')).toBe(true);
-    // Buttons render on the touch tier inside a dialog whatever the pointer.
+    // One control height everywhere: a dialog button is the page button.
     const revoke = canvas.getByRole('button', { name: 'Revoke connection' });
-    await expect(Math.round(revoke.getBoundingClientRect().height)).toBe(44);
+    const control = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--control'));
+    await expect(Math.round(revoke.getBoundingClientRect().height)).toBe(Math.round(control));
     // A synthetic Escape does not reach the platform's cancel path; dispatch
     // the event the platform would, and assert the handler is wired to it.
     dialog.dispatchEvent(new Event('cancel', { cancelable: true }));

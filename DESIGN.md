@@ -55,7 +55,7 @@ Copy: no em-dash anywhere in user-visible text; use a comma, colon, or full stop
 - **The 999px pill is reserved** for identity circles, count badges, and status dots of 12px or less. Matrix values are table content, not badges: the hover and focus box around a value is a control (4px). Labelled chips (problem counts, `current rN`, staging summaries) are badges (3px).
 - Hairline borders (1px) over shadows; shadows only on modal overlays (every modal family carries one: `.dialog`, `.ceremony`, `.matrix-editor`).
 - Density: matrix rows ~36px desktop, ~44px touch targets mobile.
-- **Control tiers (decided 2026-09-16):** `--control` 36px for buttons, inputs and selects in page content on a fine pointer; `--touch` 44px inside dialogs, ceremonies and the sign-in card on every pointer, and for everything on a coarse pointer; `--control-compact` 28px for quiet in-row actions. Choice controls: the input is the hit box (24px fine, 44px coarse), the drawn box 18px / 20px.
+- **Control height (decided 2026-09-16):** one token, no per-surface overrides. `--control` 36px for buttons, inputs and selects on a fine pointer, the 44px touch floor on a coarse pointer, dialogs and the sign-in card included; `--control-compact` 28px for quiet in-row actions. Choice controls: the input is the hit box (24px fine, 44px coarse), the drawn box 18px / 20px.
 - **Badge:** one vocabulary, 11px / 500 on the badge radius; tones neutral, danger (violation), changed (pending, slate), ok (a measured-good condition, accent hairline); `mono` for identifiers. Count pills stay the pill exception above.
 
 ## Motion

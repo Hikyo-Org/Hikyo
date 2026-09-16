@@ -11,13 +11,14 @@
 
 /* --- Tokens ----------------------------------------------------------------
 
-   Control height has two tiers, and the app already knew it: `.page--chrome
-   .btn` is 36px with a comment reserving 44px for dialogs, while everything
-   outside those pages fell back to the 44px touch floor on a desktop pointer.
-   - `--control`: page content on a fine pointer, 36px (DESIGN.md density);
-     the touch floor on a coarse pointer.
-   - `--touch`: decision surfaces (dialogs, the sign-in card, ceremonies) on
-     every pointer, and everything on a coarse pointer.
+   Control height is ONE token, everywhere. The app had two (`.page--chrome
+   .btn` at 36px, everything else at the 44px touch floor, dialogs kept at
+   44px on purpose); the audit's point was one control scale, and a
+   surface-dependent exception is the kind of split it removed (decided
+   2026-09-16: no per-surface height overrides).
+   - `--control`: buttons, inputs, selects on a fine pointer, 36px (DESIGN.md
+     density); the touch floor on a coarse pointer, which is where the 44px
+     guarantee lives.
    - `--control-compact`: in-row tertiary actions (`.btn--quiet`), 28px on a
      fine pointer, the floor on a coarse one.
 
@@ -133,9 +134,10 @@ h3,
 
 /* --- Buttons ----------------------------------------------------------------
 
-   Supersedes app.css `.btn` (min-height), `.page--chrome .btn`, `.btn--icon`,
-   `.btn--quiet`, and the `@media (pointer: coarse) .btn--quiet` bump.
-   Padding, radius, colours and weights are unchanged. */
+   Supersedes app.css `.btn` (min-height), `.page--chrome .btn`, the
+   `.page--chrome .ceremony .btn` / `.matrix-editor .btn` dialog exceptions,
+   `.btn--icon`, `.btn--quiet`, and the `@media (pointer: coarse) .btn--quiet`
+   bump. Padding, radius, colours and weights are unchanged. */
 .btn {
   min-height: var(--control);
   font-size: var(--fs-md);
@@ -192,21 +194,6 @@ h3,
    select and textarea had no such rule, so the three reacted differently. */
 .field :is(input, select, textarea):focus-visible {
   border-color: var(--accent);
-}
-
-/* --- Decision surfaces stay on the touch tier on every pointer ------------- */
-:is(dialog, .ceremony, .login__card, .matrix-editor) .btn {
-  min-height: var(--touch);
-}
-
-:is(dialog, .ceremony, .login__card, .matrix-editor) .btn--icon {
-  width: var(--touch);
-  min-width: var(--touch);
-}
-
-:is(dialog, .ceremony, .login__card)
-  :is(:where(input:not([type='checkbox']):not([type='radio'])), select) {
-  min-height: var(--touch);
 }
 
 /* --- Field hint and error ---------------------------------------------------
