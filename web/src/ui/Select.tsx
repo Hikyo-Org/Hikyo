@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 
+import { cx } from './cx.ts';
 import { Field, type FieldProps } from './Field.tsx';
 
 /**
@@ -7,13 +8,16 @@ import { Field, type FieldProps } from './Field.tsx';
  * the native control keeps keyboard and platform behaviour, so this stays a
  * migration swap rather than a rebuilt listbox. Options are the children.
  */
-type SelectProps = Omit<ComponentProps<'select'>, 'className'> & FieldProps;
+type SelectProps = Omit<ComponentProps<'select'>, 'className'> & FieldProps & {
+  /** Set the control in the value face (identifiers, keys, fingerprints). */
+  mono?: boolean;
+};
 
-export function Select({ label, hint, error, id, className, children, ...rest }: SelectProps) {
+export function Select({ label, hint, error, id, className, mono, children, ...rest }: SelectProps) {
   return (
     <Field label={label} hint={hint} error={error} id={id} className={className}>
       {(control) => (
-        <select {...rest} {...control}>
+        <select {...rest} {...control} className={cx(mono === true && 'mono')}>
           {children}
         </select>
       )}

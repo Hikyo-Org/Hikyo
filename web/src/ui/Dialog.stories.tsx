@@ -47,7 +47,7 @@ export const Wide: Story = {
     lede: 'Declared once; every environment carries a cell for it.',
     children: (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Input label="Name" className="mono" defaultValue="DATABASE_URL" hint="Uppercase, digits and underscores." />
+        <Input label="Name" mono defaultValue="DATABASE_URL" hint="Uppercase, digits and underscores." />
         <Select label="Type" defaultValue="secret">
           <option value="plain">Plain</option>
           <option value="secret">Secret</option>

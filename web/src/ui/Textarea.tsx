@@ -1,5 +1,6 @@
 import type { ComponentProps } from 'react';
 
+import { cx } from './cx.ts';
 import { Field, type FieldProps } from './Field.tsx';
 
 /**
@@ -8,12 +9,15 @@ import { Field, type FieldProps } from './Field.tsx';
  * control token as {@link Input} (two and a half rows by default, resizable
  * vertically), so a form of mixed controls lines up.
  */
-type TextareaProps = Omit<ComponentProps<'textarea'>, 'className'> & FieldProps;
+type TextareaProps = Omit<ComponentProps<'textarea'>, 'className'> & FieldProps & {
+  /** Set the control in the value face (identifiers, keys, fingerprints). */
+  mono?: boolean;
+};
 
-export function Textarea({ label, hint, error, id, className, ...rest }: TextareaProps) {
+export function Textarea({ label, hint, error, id, className, mono, ...rest }: TextareaProps) {
   return (
     <Field label={label} hint={hint} error={error} id={id} className={className}>
-      {(control) => <textarea {...rest} {...control} />}
+      {(control) => <textarea {...rest} {...control} className={cx(mono === true && 'mono')} />}
     </Field>
   );
 }

@@ -15,6 +15,18 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {};
 export const Password: Story = { args: { label: 'Password', type: 'password' } };
 export const Disabled: Story = { args: { disabled: true, defaultValue: 'locked' } };
+export const Mono: Story = { args: { label: 'Key name', mono: true, defaultValue: 'DATABASE_URL' } };
+
+// `mono` reaches the control, not the wrapper: the label and hint stay in the UI face.
+export const MonoTargetsTheControl: Story = {
+  args: { ...Mono.args, hint: 'Uppercase, digits and underscores.' },
+  play: async ({ canvas }) => {
+    const input = canvas.getByLabelText('Key name');
+    await expect(input).toHaveClass('mono');
+    await expect(getComputedStyle(input).fontFamily).toMatch(/Plex Mono/);
+    await expect(getComputedStyle(canvas.getByText(/underscores/)).fontFamily).not.toMatch(/Plex Mono/);
+  },
+};
 
 export const WithHint: Story = {
   args: { label: 'Remote URL', hint: 'The origin only; paths and query strings are refused.' },
