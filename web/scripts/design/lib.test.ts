@@ -4,6 +4,7 @@ import {
   collectDesignNodes,
   compareTokens,
   cssToPenVariables,
+  NODE_PATH,
   parsePenVariables,
   parseQueryOutput,
   parseTokensCss,
@@ -48,6 +49,18 @@ const penWith = (overrides: Record<string, PenVariable>) =>
     variables: { ...cssToPenVariables(parseTokensCss(css)), ...overrides },
   });
 
+describe('NODE_PATH', () => {
+  it.each(['Button/Primary', 'Members/Empty state'])('accepts %s', (node) => {
+    expect(NODE_PATH.test(node)).toBe(true);
+  });
+  it.each(['Button', 'Button/', '/Button', 'Button//Primary', 'Button /Primary', 'Button/Primary ', 'Button_Primary'])(
+    'rejects %s',
+    (node) => {
+      expect(NODE_PATH.test(node)).toBe(false);
+    },
+  );
+});
+
 describe('slugFor', () => {
   it('replaces slashes', () => {
     expect(slugFor('Button/Primary')).toBe('Button--Primary');
@@ -61,7 +74,7 @@ describe('collectDesignNodes', () => {
     expect(collectDesignNodes([a, b])).toEqual(['Badge/Danger', 'Button/Primary']);
   });
   it('rejects a malformed path', () => {
-    expect(() => collectDesignNodes([`design('Button')`])).toThrow(/Button/);
+    expect(() => collectDesignNodes([`design('Button')`])).toThrow(/must be Title\/Variant/);
   });
 });
 
@@ -128,10 +141,23 @@ describe('compareTokens', () => {
     }));
     expect(compareTokens(t, v)).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen, light)');
   });
+  it('reports both modes when both drift', () => {
+    const t = parseTokensCss(css);
+    const v = parsePenVariables(penWith({
+      '--radius-control': { type: 'number', value: [{ value: 5 }, { value: 6, theme: { Mode: 'Dark' } }] },
+    }));
+    const errors = compareTokens(t, v);
+    expect(errors).toHaveLength(2);
+    expect(errors).toContain('--radius-control: expected 4 (tokens.css), got 6 (hikyo.pen, dark)');
+    expect(errors).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen, light)');
+  });
   it('reports a type mismatch', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(penWith({ '--radius-control': { type: 'string', value: '4' } }));
-    expect(compareTokens(t, v)).toContain('--radius-control: expected type number (tokens.css), got string (hikyo.pen)');
+    const errors = compareTokens(t, v);
+    // Exactly one: the type mismatch stops the comparison instead of also reporting a value drift.
+    expect(errors).toHaveLength(1);
+    expect(errors).toContain('--radius-control: expected type number (tokens.css), got string (hikyo.pen)');
   });
   it('reports a variable that only exists in the pen', () => {
     const t = parseTokensCss(css);

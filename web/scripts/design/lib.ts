@@ -3,7 +3,7 @@
 import { formatHex, parse } from 'culori';
 import { z } from 'zod';
 
-export const NODE_PATH = /^[A-Za-z0-9][A-Za-z0-9 ]*(\/[A-Za-z0-9][A-Za-z0-9 ]*)+$/;
+export const NODE_PATH = /^[A-Za-z0-9]+( [A-Za-z0-9]+)*(\/[A-Za-z0-9]+( [A-Za-z0-9]+)*)+$/;
 
 /** Tokens that are derived (color-mix), motion, or font stacks: not mirrored in the design file. */
 export const MIRRORED_SKIP = new Set(['--ease', '--dur', '--font-ui', '--font-mono']);
@@ -21,7 +21,9 @@ export function collectDesignNodes(sources: string[]): string[] {
       const node = match[1];
       // The group is not optional, so this only ever satisfies the type checker.
       if (node === undefined) throw new Error('design(): regex matched without a capture group');
-      if (!NODE_PATH.test(node)) throw new Error(`design(): "${node}" is not a Title/Variant node path`);
+      if (!NODE_PATH.test(node)) {
+        throw new Error(`design(): "${node}" must be Title/Variant: letters, digits and single spaces, at least two segments`);
+      }
       found.add(node);
     }
   }
@@ -145,10 +147,13 @@ export function compareTokens(css: TokenSides, pen: PenSides): string[] {
       check('light', expectedLight, p.light);
     } else {
       const expected = kind === 'number' ? cssNumber(expectedDark) : expectedDark;
-      if (p.light !== expected || p.dark !== expected) {
-        // Dark first: when both modes differ the dark value is the canonical one to report.
-        const [mode, actual] = p.dark !== expected ? ['dark', p.dark] : ['light', p.light];
-        errors.push(`${name}: expected ${expected} (tokens.css), got ${actual} (hikyo.pen, ${mode})`);
+      // One message per drifting mode, like the colour branch: a mode that is right must not hide behind one that is wrong.
+      const modes: [string, string][] = [
+        ['dark', p.dark],
+        ['light', p.light],
+      ];
+      for (const [mode, actual] of modes) {
+        if (actual !== expected) errors.push(`${name}: expected ${expected} (tokens.css), got ${actual} (hikyo.pen, ${mode})`);
       }
     }
   }
