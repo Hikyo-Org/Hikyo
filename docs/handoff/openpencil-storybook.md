@@ -3,6 +3,7 @@
 Spec: docs/superpowers/specs/2026-09-16-openpencil-storybook-design.md
 Plan: docs/superpowers/plans/2026-09-16-openpencil-storybook.md
 ADR: docs/adr/design-tooling.md
+PR: https://github.com/Hikyo-Org/Hikyo/pull/758 (branch feat/openpencil-storybook)
 Skill: .claude/skills/design-loop/SKILL.md
 
 ## Done
