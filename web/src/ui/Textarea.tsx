@@ -1,6 +1,6 @@
-import { useId, type ComponentProps } from 'react';
+import type { ComponentProps } from 'react';
 
-import { cx } from './cx.ts';
+import { Field, type FieldProps } from './Field.tsx';
 
 /**
  * A labelled textarea. The `.field` wrapper + `<label>` + `<textarea>` the
@@ -8,15 +8,12 @@ import { cx } from './cx.ts';
  * control token as {@link Input} (two and a half rows by default, resizable
  * vertically), so a form of mixed controls lines up.
  */
-type TextareaProps = ComponentProps<'textarea'> & { label: string };
+type TextareaProps = Omit<ComponentProps<'textarea'>, 'className'> & FieldProps;
 
-export function Textarea({ label, id, className, ...rest }: TextareaProps) {
-  const generated = useId();
-  const textareaId = id ?? generated;
+export function Textarea({ label, hint, error, id, className, ...rest }: TextareaProps) {
   return (
-    <div className={cx('field', className)}>
-      <label htmlFor={textareaId}>{label}</label>
-      <textarea id={textareaId} {...rest} />
-    </div>
+    <Field label={label} hint={hint} error={error} id={id} className={className}>
+      {(control) => <textarea {...rest} {...control} />}
+    </Field>
   );
 }

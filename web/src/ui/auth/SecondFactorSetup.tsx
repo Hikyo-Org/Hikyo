@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 
+import { Alert } from '../Alert.tsx';
 import { Button } from '../Button.tsx';
 import { Checkbox } from '../Checkbox.tsx';
 import { Input } from '../Input.tsx';
@@ -53,15 +54,7 @@ export function SecondFactorSetup({
   const [stored, setStored] = useState(false);
   const anyBusy = busy !== null;
 
-  const alert =
-    error !== null ? (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>{error}</span>
-      </p>
-    ) : null;
+  const alert = error !== null ? <Alert>{error}</Alert> : null;
 
   if (step.kind === 'choose') {
     return (

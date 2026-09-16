@@ -516,3 +516,34 @@ label.chk {
   border-color: var(--accent);
   color: var(--tx);
 }
+
+/* --- Field hint and error -------------------------------------------------
+
+   The composed field (ui/Field.tsx): hint and error sit under the control at
+   caption size. The error carries the danger glyph and marks the control
+   invalid; the border echoes it, the words say it. Supersedes the
+   `.field__hint` rule in app.css (same values, moved beside its siblings). */
+.field__hint {
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+  max-width: 68ch;
+}
+
+.field__error {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-sm);
+  max-width: 68ch;
+}
+
+.field :is(input, select, textarea)[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.field :is(input, select, textarea)[aria-invalid='true']:focus-visible {
+  border-color: var(--danger);
+  outline-color: var(--danger);
+}

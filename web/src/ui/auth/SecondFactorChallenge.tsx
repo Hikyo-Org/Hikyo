@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 
+import { Alert } from '../Alert.tsx';
 import { Button } from '../Button.tsx';
 import { Input } from '../Input.tsx';
 
@@ -55,14 +56,7 @@ export function SecondFactorChallenge({
         disclosure need a second factor presented in this session.
       </p>
 
-      {error !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{error}</span>
-        </p>
-      ) : null}
+      {error !== null ? <Alert>{error}</Alert> : null}
 
       {totp ? (
         <>
