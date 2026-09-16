@@ -54,10 +54,25 @@ Skill: .claude/skills/design-loop/SKILL.md
   cannot be opened by the middleware until the user has opened the file once
   through the app's own dialog in that session. Normal checkouts under `~/code`
   are unaffected.
-- The app opens the page-less `hikyo.pen`, but names the implicit page after
-  the first frame (`Button/Secondary`). Follow-up: add a proper page wrapper to
-  `hikyo.pen` once the format's page shape is confirmed from a `.pen` fixture
-  that has pages. The OpenPencil repo has none today.
+- The `.pen` format in OpenPencil 0.14.0 has no page node and no pages array,
+  so a `.pen` document is always exactly one page.
+  `packages/pen/src/read.ts:497` creates one page named after
+  `children[0].name` and parents every root child to it; a `type: "page"` or
+  `type: "canvas"` wrapper falls through `mapNodeType` and is read as a frame;
+  a top-level `pages` array throws in
+  `collectComponentIds` ("nodes is not iterable"). Owner decision: keep one
+  file, `web/design/hikyo.pen`, and organise by node names `Title/Variant`;
+  the implicit page is named after the first frame (`Button/Secondary`) and
+  that is accepted. Page support, together with the missing `.pen` writer, is a
+  future upstream contribution to `packages/pen`, after open-pencil PR #708
+  lands. Trap for a future attempt: `openpencil pages` prints a wrapper frame's
+  name as the page name, so a wrapper looks like it worked. Verify with
+  `openpencil tree`, not `pages`.
+- Storybook dev with `-h 0.0.0.0` makes every `staticDirs` path 404, `/design`
+  included, so the Design panel loses its images. Verified against a control
+  run without the flag; the `storybook` script does not pass a host flag. LAN
+  device testing therefore uses localhost plus a TCP proxy. Worth an upstream
+  Storybook issue (10.6.0).
 - Exports render the design file's default mode, which is Dark, matching the
   app default. Light is only visible by switching the Mode in the app.
 - `Button/Icon` renders as an empty headless frame: no bundled font covers the

@@ -41,6 +41,12 @@ Either way:
   app, but that change only lands on disk once transcribed). Screens follow the
   same rule (`Members/Empty`). `design()` rejects anything else: letters,
   digits and single spaces, at least two segments.
+- Node names are the only structure. A `.pen` file in OpenPencil 0.14.0 has no
+  pages: the reader builds exactly one implicit page named after the first
+  frame in `children`. Do not add page wrappers. A `type: "page"` or
+  `type: "canvas"` node is read as a plain frame, and a top-level `pages` array
+  crashes the reader. Keep `Title/Variant` names and add new frames as siblings
+  under `children`.
 
 ## 2. Implement
 - `get_codegen_prompt`, then `get_jsx` for the node.

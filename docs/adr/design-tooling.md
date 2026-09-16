@@ -47,3 +47,9 @@ Operative once that spec's implementation merges.
   path). Decision: the JSON file stays the source of truth and the app is a
   viewer and inspection surface until a `.pen` writer ships upstream. Design
   edits are made in the JSON, or prototyped in the app and transcribed back.
+- `.pen` 0.14.0 also has no pages: the reader creates one implicit page named
+  after the first frame, so a wrapper node is read as a frame and a `pages`
+  array crashes it. Decision: a single file, `web/design/hikyo.pen`, organised
+  by node names `Title/Variant`. Real pages, plus the `.pen` writer they need
+  to round-trip, are an upstream follow-up in `packages/pen` once open-pencil
+  PR #708 lands.
