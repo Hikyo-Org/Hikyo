@@ -448,8 +448,9 @@ label.chk:has(input:disabled) {
    SAML panels each did this locally). Layouts: stack (default), wrap (a
    wrapping row), nowrap (one line, scrolls sideways), grid (N columns from
    `--choice-columns`, one column below 480px of container width). The chips
-   variant draws each row as a selectable chip on the compact tier; it
-   supersedes the `label.chip` checkbox markup in the adapter target form. */
+   variant draws each row as a selectable chip at the control height, so a
+   chip beside a button lines up (decided 2026-09-16); it supersedes the
+   `label.chip` checkbox markup in the adapter target form. */
 .choice-group {
   border: 0;
   margin: 0;
@@ -506,8 +507,8 @@ label.chk:has(input:disabled) {
 }
 
 .choice-group--chips .chk {
-  min-height: var(--control-compact);
-  padding: 0 10px 0 6px;
+  min-height: var(--control);
+  padding: 0 12px 0 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   background: var(--bg-panel);

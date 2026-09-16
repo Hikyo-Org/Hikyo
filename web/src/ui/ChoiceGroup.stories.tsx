@@ -120,13 +120,16 @@ export const NowrapScrolls: Story = {
   },
 };
 
-// A chip names its state twice: the box and the border.
+// A chip names its state twice: the box and the border. It stands at the
+// control height, so a chip beside a button lines up.
 export const ChipsMarkChecked: Story = {
   ...Chips,
   play: async ({ canvas }) => {
     const checked = canvas.getByRole('checkbox', { name: 'DATABASE_URL' });
     const chip = checked.closest('.chk');
     await expect(chip).not.toBeNull();
+    const control = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--control'));
+    await expect(Math.round(chip!.getBoundingClientRect().height)).toBe(Math.round(control));
     const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
     await expect(getComputedStyle(chip!).borderTopColor.replace(/\s+/g, '')).toBe(accent.replace(/\s+/g, ''));
   },
