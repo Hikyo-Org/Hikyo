@@ -68,6 +68,20 @@ Copy: no em-dash anywhere in user-visible text; use a comma, colon, or full stop
 - Group collapse is instant: matrix rows are virtualised, so there is no box to animate; the chevron rotates.
 - `prefers-reduced-motion`: transitions off.
 
+## Tokens
+
+`web/src/styles/tokens.css` is the single source of every design value; the design file (`web/design/hikyo.pen`) is seeded from it (`design:seed`) and checked against it (`design:check`), and Storybook's `ui/Tokens` page lists every token with its live value and rule. Atoms, routes and components consume tokens and never restate a value. `design:check` counts literal pixel sizes per stylesheet against `web/scripts/design/adherence-budget.json`, a ratchet that only goes down: the design system's own stylesheet is held at zero, app.css carries its legacy count until the migration series retires the rules. Hairlines (1px) and the 2px focus ring are constants, not drift.
+
+Families and rules:
+
+- **Surface, line, ink:** as listed under Color. State is never colour-only.
+- **Shape:** radius carries a role (containers 6, controls 4, badges 3); the pill is reserved.
+- **Type:** `--fs-xs/sm/md/lg/xl` (11/13/14/16/20) and `--fs-mono`; weights 400/500/700; only the eyebrow is uppercase.
+- **Control:** `--control` for every control's height, `--control-compact` for quiet in-row actions, `--badge-height` for badges; no surface overrides a height. `--hit-min` (24) and `--touch` (44) are the hit floors; `--chk-box` / `--chk-visual` size choice controls.
+- **Space:** `--space-1..6` (4/8/12/16/24/32) for every gap, padding and margin.
+- **Measure:** `--width-dialog` (520), `--width-dialog-wide` (760), `--measure` (68ch).
+- **Depth and motion:** `--overlay-shadow` on modal overlays only; `--z-chrome/sticky/drawer/overlay` are the only layers; `--ease`, `--dur`.
+
 ## Components
 
 - Environment controls: toggleable visibility in the table header, with protected state named in text.

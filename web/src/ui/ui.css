@@ -5,57 +5,13 @@
  * this file yet. Each block names the app.css rule it supersedes so the
  * migration is a move, not a rewrite (docs/handoff/storybook-ui-consistency.md
  * keeps the list and the approval state per block). Blocks override app.css
- * by cascade order until the migration deletes the superseded rules; on
- * migration the tokens below move into tokens.css and DESIGN.md is the source.
+ * by cascade order until the migration deletes the superseded rules.
  */
 
-/* --- Tokens ----------------------------------------------------------------
-
-   Control height is ONE token, everywhere. The app had two (`.page--chrome
-   .btn` at 36px, everything else at the 44px touch floor, dialogs kept at
-   44px on purpose); the audit's point was one control scale, and a
-   surface-dependent exception is the kind of split it removed (decided
-   2026-09-16: no per-surface height overrides).
-   - `--control`: buttons, inputs, selects on a fine pointer, 36px (DESIGN.md
-     density); the touch floor on a coarse pointer, which is where the 44px
-     guarantee lives.
-   - `--control-compact`: in-row tertiary actions (`.btn--quiet`), 28px on a
-     fine pointer, the floor on a coarse one.
-
-   Type scale (DESIGN.md, decided 2026-09-16; weight over size):
-   11 eyebrow and badge, 13 caption/label/lede/mono, 14 body, 16 h2, 20 h1.
-   Every other size the audit found (10, 12, 15, 17, 18, 19) folds into one
-   of these. Weights 400/500/700 only.
-
-   Choice controls: the input element is the hit box (24px on a fine pointer,
-   the WCAG 2.5.8 minimum; the touch floor on a coarse one) and the drawn
-   square is smaller (18px fine, 20px coarse), centred in it. */
-:root {
-  --control: 36px;
-  --control-compact: 28px;
-  --fs-xs: 11px;
-  --fs-sm: 13px;
-  --fs-md: 14px;
-  --fs-lg: 16px;
-  --fs-xl: 20px;
-  --fs-mono: 13px;
-  --tracking-eyebrow: 0.06em;
-  --chk-box: 24px;
-  --chk-visual: 18px;
-  --chk-gap: 6px;
-  --overlay-shadow: 0 14px 42px oklch(0 0 0 / 45%);
-}
-
-@media (pointer: coarse) {
-  :root {
-    --control: var(--touch);
-    --control-compact: var(--touch);
-    --chk-box: var(--touch);
-    --chk-visual: 20px;
-    /* The box already carries 12px of hit area past the drawn square. */
-    --chk-gap: 0px;
-  }
-}
+/* Tokens live in src/styles/tokens.css (the design system's single source,
+   mirrored into design/hikyo.pen by `design:seed`); this file only consumes
+   them. The adherence check (`design:check`) counts raw px sizes here and
+   holds this file at zero. */
 
 /* --- Type scale --------------------------------------------------------------
 
@@ -150,7 +106,7 @@ h3,
 
 .btn--quiet {
   min-height: var(--control-compact);
-  padding: 0 10px;
+  padding: 0 var(--space-2);
   font-size: var(--fs-sm);
 }
 
@@ -209,7 +165,7 @@ h3,
   :is(:where(input:not([type='checkbox']):not([type='radio']):not([type='range'])), select),
 :is(.settings-input, .settings-select) {
   min-height: var(--control);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--bg);
@@ -219,7 +175,7 @@ h3,
 
 :is(.field, .form, .settings-row, .change-approvals) textarea {
   min-height: calc(var(--control) * 2.5);
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--bg);
@@ -248,16 +204,16 @@ h3,
    border echoes it, the words say it. */
 .field__hint {
   margin: 0;
-  max-width: 68ch;
+  max-width: var(--measure);
 }
 
 .field__error {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   margin: 0;
   color: var(--danger);
   font-size: var(--fs-sm);
-  max-width: 68ch;
+  max-width: var(--measure);
 }
 
 .field :is(input, select, textarea)[aria-invalid='true'] {
@@ -461,27 +417,27 @@ label.chk:has(input:disabled) {
 
 .choice-group > legend {
   padding: 0;
-  margin-bottom: 6px;
+  margin-bottom: var(--space-1);
 }
 
 .choice-group__options {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .choice-group--wrap .choice-group__options {
   flex-direction: row;
   flex-wrap: wrap;
-  gap: 6px 16px;
+  gap: var(--space-2) var(--space-4);
 }
 
 .choice-group--nowrap .choice-group__options {
   flex-direction: row;
   flex-wrap: nowrap;
-  gap: 16px;
+  gap: var(--space-4);
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding-bottom: var(--space-1);
   scrollbar-gutter: stable;
 }
 
@@ -493,7 +449,7 @@ label.chk:has(input:disabled) {
 .choice-group--grid .choice-group__options {
   display: grid;
   grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr));
-  gap: 6px 16px;
+  gap: var(--space-2) var(--space-4);
 }
 
 @container (max-width: 480px) {
@@ -503,12 +459,12 @@ label.chk:has(input:disabled) {
 }
 
 .choice-group--chips .choice-group__options {
-  gap: 6px 8px;
+  gap: var(--space-2);
 }
 
 .choice-group--chips .chk {
   min-height: var(--control);
-  padding: 0 12px 0 8px;
+  padding: 0 var(--space-3) 0 var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   background: var(--bg-panel);
@@ -543,9 +499,9 @@ label.chk:has(input:disabled) {
 :is(.badge, .chip, .settings-tag) {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-height: 20px;
-  padding: 1px 6px;
+  gap: var(--space-1);
+  min-height: var(--badge-height);
+  padding: 1px var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   background: transparent;
@@ -610,13 +566,13 @@ label.chk:has(input:disabled) {
    route dialogs that still use them match until they migrate. DESIGN.md
    reserves shadows for modal overlays, so every family gets one. */
 .dialog {
-  width: min(520px, calc(100% - 32px));
-  max-height: min(90vh, 760px);
+  width: min(var(--width-dialog), calc(100% - var(--space-6)));
+  max-height: min(90vh, var(--width-dialog-wide));
   margin: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 20px;
+  gap: var(--space-3);
+  padding: var(--space-5);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg-panel);
@@ -625,7 +581,7 @@ label.chk:has(input:disabled) {
 }
 
 .dialog--wide {
-  width: min(760px, calc(100% - 32px));
+  width: min(var(--width-dialog-wide), calc(100% - var(--space-6)));
 }
 
 .dialog,
@@ -656,7 +612,7 @@ label.chk:has(input:disabled) {
   margin: 0;
   color: var(--tx-dim);
   font-size: var(--fs-sm);
-  max-width: 68ch;
+  max-width: var(--measure);
 }
 
 /* Action rows: 8px everywhere, page and dialog alike; primary last. */
@@ -664,7 +620,7 @@ label.chk:has(input:disabled) {
 .ceremony__actions,
 .matrix-editor__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   align-items: center;
 }
@@ -676,7 +632,7 @@ label.chk:has(input:disabled) {
    6, page sections 18). Two outliers fold in here; no new tokens, the
    existing values are the scale. */
 .card.panel {
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* --- Sign-in flow ------------------------------------------------------------
@@ -694,7 +650,7 @@ label.chk:has(input:disabled) {
 .login__actions {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .login__account {
@@ -711,7 +667,7 @@ label.chk:has(input:disabled) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .login__secret {

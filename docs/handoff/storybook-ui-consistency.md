@@ -28,6 +28,7 @@ stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 | Tabs atom, Glyph atom, compact in-row sizes, identity controls, login links, menu rows | built ("do all", 2026-09-16) | `ui/Tabs`, `ui/Glyph`, `ui.css` |
 | ChoiceGroup layouts, columns, chips; Checkbox/Radio mono | built (1B, 2026-09-16) | `ui/ChoiceGroup` AllStates |
 | Light-theme a11y run in CI | added (`test-storybook:light`, ci.yml storybook job) | |
+| Design system: one token file, spacing/measure/layer tokens, adherence check, Tokens page | built (decision A, 2026-09-16) | `src/styles/tokens.css`, `scripts/design/adherence*.ts`, `ui/Tokens` |
 | Migration into app routes | NOT STARTED (§5) | |
 
 ## 1. Audit
@@ -295,6 +296,27 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
   storybook job runs both. Verified that the light run really renders light
   (a probe story asserting `data-theme=light` passed under the env and
   failed without it).
+
+## 4e. Design system (decision A, 2026-09-16)
+
+- `src/styles/tokens.css` is the single source: the `ui.css` tokens moved in
+  (`--control`, `--control-compact`, `--badge-height`, `--hit-min`,
+  `--chk-*`, `--fs-*`, `--tracking-eyebrow`, `--overlay-shadow`) with the
+  coarse-pointer overrides, plus a 4-based spacing scale `--space-1..6`,
+  measures (`--width-dialog`, `--width-dialog-wide`, `--measure`) and named
+  layers `--z-chrome/sticky/drawer/overlay`. `design:seed` mirrors them into
+  `design/hikyo.pen` (50 variables); `design:check` proves no drift.
+- DESIGN.md "Tokens" states the rule per family.
+- `design:check` now also runs `scripts/design/adherence-check.ts`: it counts
+  literal px sizes on token-covered properties per stylesheet against
+  `scripts/design/adherence-budget.json`, a ratchet. `ui.css` is held at 0
+  (its 24 literals were converted); `app.css` starts at its measured count
+  (798) and the budget only goes down as #761/#762 retire rules. Hairlines
+  (1px) and the 2px ring are exempt. Unit-tested (`adherence.test.ts`).
+- `ui/Tokens` (Storybook) lists every token with its live value per theme and
+  the family rule, from `src/ui/tokens.ts`; its play test fails when a listed
+  token stops resolving.
+- Chips stand at `--control` (a chip beside a button lines up).
 
 ## 5. Migration into the app (next, outside the Storybook-only scope)
 
