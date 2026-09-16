@@ -465,9 +465,13 @@ export function useCreateProject(org: string) {
 /**
  * useCreateEnvironment writes one environment into a project.
  *
- * The invalidated key is `['environments', org, project]`, which is the single
- * key both this page's `useEnvironments` and the matrix's own read share, so a
- * created environment surfaces in the settings list AND the matrix at once.
+ * It invalidates the whole environment topology, exactly like rename, delete,
+ * reorder and clone: `['environments', org, project]` is the key this page's
+ * `useEnvironments` and the matrix's own read share, and the rest of the
+ * topology prefixes are just as stale after a create as after any other write.
+ * Returning the promise keeps the mutation in flight until the refetch lands,
+ * so the panel's shared busy gate still holds and a creation is never
+ * announced beside a list that does not hold it.
  */
 /**
  * The shared key every environment-topology mutation (create, rename, delete,
@@ -487,7 +491,7 @@ export function useCreateEnvironment(org: string, project: string) {
     mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: (input: { name: string }) =>
       parsed(createEnvironmentOp, { path: { org, project }, body: { name: input.name } }),
-    onSuccess: () => queries.invalidateQueries({ queryKey: environmentsKey(org, project) }),
+    onSuccess: () => invalidateEnvironmentTopology(queries, org, project),
   });
 }
 
@@ -531,12 +535,16 @@ export function useDeleteEnvironment(
     mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: (input: { environment: string }) =>
       ok(deleteEnvironmentOp, { path: { org, project, environment: input.environment } }),
-    // The list invalidation unmounts the deleted row. Run its durable parent
-    // feedback callback first; per-call callbacks are not guaranteed to
-    // survive that unmount.
+    // Announce only once the list no longer holds the deleted environment:
+    // "Environment X deleted." must not be readable beside a row still naming
+    // X, and a reader acting on that notice would be acting on a stale list.
+    // This is the order the other three topology writes already get for free
+    // (their per-call callbacks run after this hook-level promise resolves).
+    // The callback is hook-level exactly so it survives the unmount the
+    // invalidation causes; a per-call one would not.
     onSuccess: async () => {
-      onDeleted?.();
       await invalidateEnvironmentTopology(queries, org, project);
+      onDeleted?.();
     },
   });
 }

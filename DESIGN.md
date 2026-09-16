@@ -6,6 +6,10 @@ Living reference for the implemented web app and documentation-site design syste
 
 Dual theme, **dark default** (self-hosters at night, server closets, OLED phones), light fully supported and switchable; respect `prefers-color-scheme` when no explicit choice. Dark is desaturated graphite tinted toward the brand teal: never neon, never glow.
 
+## Design source
+
+Designs live in `web/design/hikyo.pen` (OpenPencil, JSON, committed). Its variables mirror `web/src/styles/tokens.css` name for name; `pnpm --dir web run design:check` fails the Storybook build on drift, and `design:seed` refreshes the file from the CSS. Not mirrored, because they have no design-file equivalent: `--ease`, `--dur`, `--font-ui`, `--font-mono`, and any `color-mix()` token (currently the `-soft` set). A story links to its node with `parameters.design = design('Title/Variant')`; the Storybook build renders that node into the Design panel and the pencil toolbar button opens it in the app. Decision record: the [design-tooling ADR](docs/adr/design-tooling.md).
+
 ## Color
 
 OKLCH throughout. Restrained strategy: tinted neutrals + one teal accent, state colors as a small fixed vocabulary.

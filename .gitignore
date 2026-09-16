@@ -61,6 +61,8 @@ web/.playwright/
 web/e2e/.auth/
 web/e2e/.runs/
 internal/webui/dist/
+web/design/exports/*
+!web/design/exports/.gitkeep
 .specs/
 
 # Accidental local build outputs (go build ./scripts/ci/analysis-shards-go, ./cmd/nightly)
