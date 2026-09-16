@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
+import { uuid } from '../lib/uuid.ts';
+
 /** Per-document ownership fence. Cross-tab notifications carry no credentials. */
 export const SESSION_CHANNEL = 'hikyo-root-auth';
 export const SESSION_MESSAGE = 'session-changed';
-const sender = crypto.randomUUID();
+const sender = uuid();
 const sessionMessage = z.object({ type: z.literal(SESSION_MESSAGE), sender: z.string() });
 const STORAGE_KEY = 'hikyo-session-change';
 
@@ -99,7 +101,7 @@ export function announceSessionChange(): void {
   }
   // Storage is a notification fallback, never an identity or bearer store.
   try {
-    window.localStorage.setItem(STORAGE_KEY, crypto.randomUUID());
+    window.localStorage.setItem(STORAGE_KEY, uuid());
   } catch {
     // BroadcastChannel and request-time cookie checks also work without storage.
   }

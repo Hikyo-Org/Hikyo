@@ -7,6 +7,7 @@ import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useTransport, useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import { rememberWorkspace, workspaceSession } from '../api/workspace.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { uuid } from '../lib/uuid.ts';
 import { Alert, Done, Panel } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -100,7 +101,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
   const choose = (action: 'apply' | 'mail-test') => {
     if (binding === null || candidate === null || stale) return;
     setDone(null); setFailure(null); setRevisionChosen(true);
-    const selected: Decision = { idempotencyKey: crypto.randomUUID(), label: action === 'apply' ? `Apply revision r${candidate}` : `Test email with revision r${candidate}`, intent: { action, owner_instance_id: status.owner_instance_id, revision: candidate, schema_version: binding.schema_version, expected_generation: status.generation, preview_token: '', to: action === 'mail-test' ? recipient.trim() : '', confirm_restored_credentials: action === 'apply' && recovering && confirmRestored } };
+    const selected: Decision = { idempotencyKey: uuid(), label: action === 'apply' ? `Apply revision r${candidate}` : `Test email with revision r${candidate}`, intent: { action, owner_instance_id: status.owner_instance_id, revision: candidate, schema_version: binding.schema_version, expected_generation: status.generation, preview_token: '', to: action === 'mail-test' ? recipient.trim() : '', confirm_restored_credentials: action === 'apply' && recovering && confirmRestored } };
     if (action === 'apply') void prepare(selected);
     else setDecision(selected);
   };
@@ -108,7 +109,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
     const job = status.job;
     if (binding === null || job?.state !== 'partial' || job.plan_digest === undefined || job.deployment_restore_pending || job.deployment_restored || stale) return;
     setDone(null); setFailure(null);
-    setDecision({ idempotencyKey: crypto.randomUUID(), label: 'Restore deployment', intent: { action: 'rollout-restore', owner_instance_id: status.owner_instance_id, revision: job.revision, schema_version: binding.schema_version, expected_generation: status.generation, plan_digest: job.plan_digest, preview_token: '', to: '', confirm_restored_credentials: false } });
+    setDecision({ idempotencyKey: uuid(), label: 'Restore deployment', intent: { action: 'rollout-restore', owner_instance_id: status.owner_instance_id, revision: job.revision, schema_version: binding.schema_version, expected_generation: status.generation, plan_digest: job.plan_digest, preview_token: '', to: '', confirm_restored_credentials: false } });
   };
   const execute = async (selected: Decision) => {
     const intent = selected.intent;
@@ -164,7 +165,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
           <button type="button" className="btn btn--primary" disabled={busy || stale} onClick={() => {
             const preview = actions.preview.data;
             if (preview === undefined) return;
-            setDecision({ label: 'Adopt this configuration', idempotencyKey: crypto.randomUUID(), intent: { action: 'adopt', owner_instance_id: preview.owner_instance_id, schema_version: preview.schema_version, expected_generation: 0n, revision: 0n, preview_token: preview.preview_token, to: '', confirm_restored_credentials: false } });
+            setDecision({ label: 'Adopt this configuration', idempotencyKey: uuid(), intent: { action: 'adopt', owner_instance_id: preview.owner_instance_id, schema_version: preview.schema_version, expected_generation: 0n, revision: 0n, preview_token: preview.preview_token, to: '', confirm_restored_credentials: false } });
           }}>Adopt previewed configuration</button>
         </div>}
       </> : <>
