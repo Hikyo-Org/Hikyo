@@ -18,10 +18,13 @@ Operative once that spec's implementation merges.
 4. **Stories link to designs by node name path** in `parameters.design`.
    Storybook renders the design next to the story from a CI-time headless
    export; nothing rendered is committed.
-5. **The design app's local RPC token never reaches a browser.** Any
-   Storybook feature that talks to the running app goes through a Vite dev
-   middleware; the static Storybook build has no such feature. This holds
-   because local dev servers bind `0.0.0.0` for LAN device testing.
+5. **The design app's local RPC token never reaches a browser.** In dev,
+   Storybook talks to the running app through a Vite middleware (interim);
+   in every build, "open in OpenPencil" is an `openpencil://open` link that
+   carries no authority beyond open + select. The scheme is contributed
+   upstream to open-pencil; the middleware is removed once a tagged release
+   ships it. This holds because local dev servers bind `0.0.0.0` for LAN
+   device testing.
 6. **Zero-telemetry stance is unchanged.** The headless export fetches fonts
    from Fontsource during a CI build; the server binary and the SPA still
    phone nowhere.

@@ -1,7 +1,7 @@
 # OpenPencil ↔ Storybook design loop — design
 
-Date: 2026-09-16. Status: approved in outline by Marc (option B), awaiting
-spec review, then implementation plan.
+Date: 2026-09-16. Status: approved by Marc (option B, then option b for the
+production open action). Next: implementation plan.
 
 ## Problem
 
@@ -107,19 +107,43 @@ export const Primary: Story = {
   scripts; no new workflow step.
 - `@open-pencil/cli@0.14.0` pinned in `web/package.json` devDependencies.
 
-### 3. "Open in OpenPencil" (dev only)
+### 3. "Open in OpenPencil" (dev and production)
 
-Goal: one click in Storybook opens the right design node in the running app.
+Goal: one click in Storybook opens the right design node in the running
+app, both from the local dev server and from the published
+hikyo.app/storybook. Decision 2026-09-16 (option b): a URL scheme is the
+production mechanism and is contributed upstream; the dev middleware is the
+interim mechanism and is deleted once a released OpenPencil carries the
+scheme.
 
 - **Browser side.** A manager-side addon (`web/.storybook/openpencil-addon.ts`,
-  registered via `managerEntries`) adds a toolbar button. On click it reads
-  the current story's `parameters.design.node` and does
-  `fetch('/__openpencil/open', { method: 'POST', body: { node } })`. The
-  addon file is appended in `main.ts` `managerEntries(entries, options)`
-  only when `options.configType === 'DEVELOPMENT'`; the static build on
-  hikyo.app/storybook has no button and no addon code.
-- **Server side.** A Vite middleware added through `viteFinal` in `main.ts`
-  handles `/__openpencil/open`:
+  registered via `managerEntries` in every build) adds a toolbar button.
+  On click it reads the current story's `parameters.design.node` and:
+  1. In a static build: navigates to
+     `openpencil://open?file=web/design/hikyo.pen&node=<name path>`. If the
+     scheme is not registered the browser does nothing; the button's tooltip
+     says "Needs OpenPencil ≥ <version> installed".
+  2. In the dev server (`configType === 'DEVELOPMENT'`, passed to the addon
+     as a manager global): `fetch('/__openpencil/open', { method: 'POST',
+     body: { node } })`, falling back to the scheme link on 404 (middleware
+     removed) so the switch-over needs no addon change.
+- **URL scheme (upstream contribution to open-pencil).** Separate PR in
+  `~/code/homelab/open-pencil`, tracked as its own task:
+  - `tauri-plugin-deep-link` registers `openpencil`. `RunEvent::Opened` and
+    the single-instance handler already funnel file URLs into
+    `queue_open_paths`; the scheme handler parses `open?file=…&node=…` and
+    reuses it.
+  - `file` is repo-relative. The app resolves it against open documents and
+    recent files by path suffix; on no match it shows the file picker once
+    and remembers the chosen root per suffix. Absolute paths are refused.
+  - After opening, the app selects the node by name path and zooms to fit.
+    Unknown node: document opens, status line says "node not found".
+  - No other command is exposed through the scheme. A link can open a file
+    the user has already opened or explicitly picks; it cannot read, write,
+    export, or run anything.
+- **Server side (interim).** A Vite middleware added through `viteFinal` in
+  `main.ts`, only when `configType === 'DEVELOPMENT'`, handles
+  `/__openpencil/open`:
   1. Reads the discovery file with `readDiscoveryFile()` from
      `@open-pencil/mcp/discovery`.
   2. Sends `open_file { path: web/design/hikyo.pen }` (idempotent, the app
@@ -127,13 +151,18 @@ Goal: one click in Storybook opens the right design node in the running app.
   3. Resolves the node ID with the `find_nodes` tool and sends
      `select_nodes` then `viewport_zoom_to_fit`.
   4. Returns 503 with a plain message when the app is not running.
+  Removal condition: the upstream scheme is in a tagged OpenPencil release
+  and the skill's minimum version is bumped to it. Tracked as a follow-up
+  issue opened in the implementation PR.
 - **Security invariant.** The bearer token never leaves the Node process.
   Dev servers on this machine bind `0.0.0.0` (see WORKSTYLE), so anything
   in the browser bundle is readable by the LAN. The middleware is the only
   reader of the discovery file; `OPENPENCIL_MCP_CORS_ORIGIN` is not set and
   the browser never talks to port 7600. The middleware accepts only POST,
   only from `Origin` matching the Storybook dev server's own origin, and
-  only the `node` field (Zod). It is not mounted in `storybook build`.
+  only the `node` field (Zod). It is not mounted in `storybook build`. The
+  URL scheme carries no token because it carries no authority: it can only
+  open and select.
 
 ### 4. Token bridge
 
@@ -181,8 +210,8 @@ HTML, `openpencil import story.html --css tokens.css`, then tidy in the app.
 
 - Missing `.pen` file, unresolved node, malformed `design` parameter, token
   drift: build fails with the offending story or token named.
-- App not running: the toolbar button shows the 503 message; nothing else
-  in Storybook depends on the app.
+- App not running: dev shows the 503 message; a static build click is a
+  browser no-op. Nothing else in Storybook depends on the app.
 - Fontsource unreachable in CI: export fails loud; do not fall back to a
   system font, a wrong-font design image is worse than no build.
 
@@ -203,6 +232,7 @@ HTML, `openpencil import story.html --css tokens.css`, then tidy in the app.
 - Reverse drift check (design vs rendered story pixels).
 - Sweeping existing stories into the design file.
 - Live embed of the design (no URL to embed).
+- Any scheme command beyond open + select.
 - Multi-file designs or per-story design files.
 
 ## Open questions for the review
