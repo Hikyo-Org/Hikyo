@@ -1,6 +1,7 @@
-// "Open in OpenPencil" toolbar button. Tries the dev middleware first; on
-// 404/405 (static build, or middleware removed after the upstream scheme
-// ships) it falls back to the openpencil:// link, which the OS routes to the app.
+// "Open in OpenPencil" toolbar button. Tries the dev middleware first; only a
+// 405 or a body that is not the middleware's `{ message }` (a static build, or
+// the middleware removed after the upstream scheme ships) falls back to the
+// openpencil:// link, which the OS routes to the app.
 // `React` must stay imported even though the app builds with the automatic JSX
 // runtime: Storybook's manager builder bundles this file with its own esbuild
 // config (`jsx: 'transform'`, `jsxFactory: 'React.createElement'`), so the JSX

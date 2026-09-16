@@ -20,16 +20,25 @@ for await (const f of glob('src/**/*.stories.{js,jsx,mjs,ts,tsx}', { cwd: here('
 const nodes = collectDesignNodes(await Promise.all(files.map((f) => readFile(f, 'utf8'))));
 await mkdir(OUT, { recursive: true });
 
+// `find` truncates at --limit, so a run that comes back full may have hidden a
+// duplicate past the cap and uniqueness can no longer be proven: that fails too.
+const LIMIT = 1000;
+
 const failures: string[] = [];
 for (const node of nodes) {
-  // `query` (XPath) throws in @open-pencil/cli 0.14.0 because fontoxpath is not shipped with it,
-  // so this uses `find`, whose --name is a case-insensitive substring: the exact filter below
-  // is what makes the match, and the duplicate count, correct.
-  const { stdout } = await run(CLI, ['find', PEN, '--name', node, '--limit', '1000', '--json']);
-  const matches = parseQueryOutput(stdout).filter((m) => m.name === node);
-  const match = matches[0];
-  if (matches.length !== 1 || match === undefined) {
-    failures.push(`${node}: ${matches.length === 0 ? 'not found' : `${matches.length} nodes share this name`} in hikyo.pen`);
+  // `query` (XPath) is unusable in @open-pencil/cli 0.14.0: its CJS default-export
+  // interop bug throws before the selector runs. So this uses `find`, whose --name
+  // is a case-insensitive substring: the exact filter below is what makes the
+  // match, and the duplicate count, correct.
+  const { stdout } = await run(CLI, ['find', PEN, '--name', node, '--limit', String(LIMIT), '--json']);
+  const found = parseQueryOutput(stdout);
+  if (found.length === LIMIT) {
+    failures.push(`${node}: find hit the ${LIMIT}-result cap, uniqueness cannot be proven`);
+    continue;
+  }
+  const [match, ...rest] = found.filter((m) => m.name === node);
+  if (match === undefined || rest.length > 0) {
+    failures.push(`${node}: ${match === undefined ? 'not found' : `${rest.length + 1} nodes share this name`} in hikyo.pen`);
     continue;
   }
   const out = resolve(OUT, `${slugFor(node)}.png`);
