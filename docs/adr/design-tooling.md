@@ -35,5 +35,7 @@ Operative once that spec's implementation merges.
   devDependencies.
 - The Storybook build gains a design export and token drift step; a story
   that points at a deleted design node fails the build.
-- Bootstrapping a design from an existing component is supported through
-  `openpencil import`; sweeping all existing stories is a separate decision.
+- Bootstrapping a design from an existing component is done by authoring the
+  frames in the app or by copying and renaming an existing node's JSON;
+  `openpencil import` is not usable under pnpm in `@open-pencil/cli` 0.14.0.
+  Sweeping all existing stories is a separate decision.

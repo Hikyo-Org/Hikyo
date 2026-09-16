@@ -6,9 +6,10 @@ description: Design an atom or screen in OpenPencil, implement it with a Storybo
 # Design loop (OpenPencil <-> Storybook)
 
 Source of truth for tokens: `web/src/styles/tokens.css`. Design file:
-`web/design/hikyo.pen` (JSON, committed). Both MCPs are installed:
-`open-pencil` (app must be running with the file open) and Storybook's
-`addon-mcp` (dev server on 6006).
+`web/design/hikyo.pen` (JSON, committed). Both MCPs are installed (`open-pencil` is a
+user-level MCP, not in the repo; `addon-mcp` is in `main.ts`): `open-pencil`
+needs the app running with the file open, `addon-mcp` needs the dev server on
+6006.
 
 ## 1. Design
 - `open_file` `web/design/hikyo.pen`. Never `new_document`.
@@ -32,8 +33,9 @@ Source of truth for tokens: `web/src/styles/tokens.css`. Design file:
 - `pnpm --dir web run design:export` (runs the token check first).
 - Open Storybook, compare the Design panel with the rendered story, flip the
   theme toolbar for light and dark.
-- The exported image is the design file's default (Light) mode while the app
-  defaults to dark; comparing dark against dark is a pending follow-up.
+- The exported image is the design file's default mode, which is Dark, the
+  same default as the app. Light is only visible by switching the Mode in the
+  app.
 - The pencil button in the toolbar opens the node in the app.
 
 ## 4. Ship
@@ -43,7 +45,8 @@ Source of truth for tokens: `web/src/styles/tokens.css`. Design file:
 Edit `tokens.css` and `DESIGN.md`, then `pnpm --dir web run design:seed`.
 Never edit variables in the app; the check compares hex for hex and fails the build.
 Not mirrored into the design file, so nothing can bind to them: `--ease`,
-`--dur`, `--font-ui`, `--font-mono`, and the `color-mix` derived `-soft` tokens.
+`--dur`, `--font-ui`, `--font-mono`, and any `color-mix()` token (currently
+the `-soft` set).
 
 ## Bootstrapping from an existing component
 Author the frames in the app (`create_shape` and friends over the

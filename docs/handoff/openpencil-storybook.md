@@ -8,13 +8,13 @@ Skill: .claude/skills/design-loop/SKILL.md
 ## Done
 
 - `web/design/hikyo.pen` seeded from `web/src/styles/tokens.css`. Scripts are
-  plain `.ts` under `web/scripts/design/` (`lib.ts`, `tokens-seed.ts`,
-  `tokens-check.ts`, `export.ts`), run by Node 26 directly; npm scripts
+  plain `.ts` under `web/scripts/design/` (`lib.ts`, `lib.test.ts`,
+  `tokens-seed.ts`, `tokens-check.ts`, `export.ts`), run by Node 26 directly; npm scripts
   `design:seed`, `design:check`, `design:export`, and both `storybook` and
   `build-storybook` run `design:export` first.
 - Drift check is hex against hex, no tolerance. Deliberately not mirrored:
-  `--ease`, `--dur`, `--font-ui`, `--font-mono`, and the `color-mix` derived
-  `-soft` tokens.
+  `--ease`, `--dur`, `--font-ui`, `--font-mono`, and any `color-mix()` token
+  (currently the `-soft` set).
 - `@storybook/addon-designs` panel fed by a headless CLI export at build time
   into `web/design/exports/`; its contents are gitignored (only `.gitkeep` is
   tracked) and the folder is served at `/design`.
@@ -37,11 +37,12 @@ Skill: .claude/skills/design-loop/SKILL.md
 
 ## Known limitations
 
-- Exports render the design file's default (Light) mode while the app defaults
-  to dark. Whether to change the file's default mode or export both is a
-  pending decision, deferred to review.
+- Exports render the design file's default mode, which is Dark, matching the
+  app default. Light is only visible by switching the Mode in the app.
 - `Button/Icon` renders as an empty headless frame: no bundled font covers the
-  moon glyph used in that variant.
+  moon glyph used in that variant. The app's real theme toggle is an SVG
+  (`.theme-icon__*` in `web/src/styles/app.css`), not a glyph, so the fix is to
+  give both the story and the design node that SVG. Issue: #757.
 - `openpencil import` is unusable under pnpm in `@open-pencil/cli` 0.14.0 (it
   reads the input with `Bun.file`). Bootstrapping a design means authoring the
   frames in the app or copying and renaming an existing node's JSON; the skill
@@ -63,5 +64,5 @@ Skill: .claude/skills/design-loop/SKILL.md
   `web/.storybook/openpencil-middleware.ts`, its test, and the `viteFinal`
   block in `web/.storybook/main.ts`, and drop `@open-pencil/mcp` from web
   devDependencies. Issue: #756.
-- The other 43 of 44 stories are unlinked by design; link them as they are
+- The remaining stories are unlinked by design; link them as they are
   touched.
