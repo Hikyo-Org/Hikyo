@@ -90,7 +90,7 @@ pnpm --dir clients/ts install --frozen-lockfile
 pnpm --dir web install --frozen-lockfile
 pnpm --dir web typecheck && pnpm --dir web test && pnpm --dir web build
 export NODE_OPTIONS=--dns-result-order=ipv4first
-# Seven ports per run (defaults 45789–45795); claim a free block per session.
+# Seven ports per run (defaults 28789-28794 below the ephemeral range, OIDC ports OS-assigned); claim a free block per session.
 HIKYO_E2E_PORT=45900 HIKYO_E2E_PORT_B=45901 HIKYO_E2E_PORT_TLS=45902 \
 HIKYO_E2E_PORT_OIDC=45903 HIKYO_E2E_PORT_OPERATIONAL=45904 \
 HIKYO_E2E_PORT_OPERATIONAL_B=45905 HIKYO_E2E_PORT_OIDC2=45906 \

@@ -60,8 +60,10 @@
 
    Supersedes the per-surface heading sizes the audit found (h1 at 18/19/20,
    h2 at 10/13/14/15/17/18, h3 at 14/16) and the 10px and 11px uppercase
-   labels. Case is left to the surface: `.panel h2` stays uppercase in
-   app.css until that is decided separately. */
+   labels. Panel titles are sentence case (decided 2026-09-16, 2a): the
+   uppercase-on-every-block treatment app.css gave `.panel h2` is the one the
+   prototype brief diagnosed as generated; only the eyebrow is uppercase.
+   Supersedes the `text-transform` in app.css `.panel h2`. */
 h1 {
   font-size: var(--fs-xl);
   font-weight: 700;
@@ -81,6 +83,9 @@ h3,
   font-size: var(--fs-md);
   font-weight: 700;
   line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--tx);
 }
 
 /* The eyebrow: a section marker above a block, never a heading size. The

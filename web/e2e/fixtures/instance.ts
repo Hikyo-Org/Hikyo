@@ -67,24 +67,36 @@ import { seedTenant, totpCode } from './seed.ts';
  * directory card owes a human.
  */
 
+/*
+ * ## Why the default ports sit below 32768
+ *
+ * Linux hands ephemeral (client-side and port-0) sockets out of 32768-60999.
+ * The former defaults, 45789-45795, were inside that range, so on a shared CI
+ * runner any transient socket (a CDP connection, the other instance's own
+ * outbound request, an OS-assigned IdP listener) could own 45790 at the moment
+ * the serving instance tried to bind it: "listen tcp 127.0.0.1:45790: bind:
+ * address already in use", one shard in run 35090397434. Defaults below the
+ * ephemeral floor cannot collide with anything the kernel assigns; the
+ * HIKYO_E2E_PORT* variables still override them for local parallel sessions.
+ */
 const HOST = 'localhost';
-const PORT = Number(process.env['HIKYO_E2E_PORT'] ?? 45789);
+const PORT = Number(process.env['HIKYO_E2E_PORT'] ?? 28789);
 export const BASE_URL = `http://${HOST}:${PORT}`;
 
 /** The serving instance: a different loopback NAME, hence a different origin. */
 export const HOST_B = '127.0.0.1';
-const PORT_B = Number(process.env['HIKYO_E2E_PORT_B'] ?? 45790);
+const PORT_B = Number(process.env['HIKYO_E2E_PORT_B'] ?? 28790);
 export const BASE_URL_B = `http://${HOST_B}:${PORT_B}`;
 
 /** The TLS front that exists only so `remote add` can be performed for real. */
-const PORT_TLS = Number(process.env['HIKYO_E2E_PORT_TLS'] ?? 45791);
+const PORT_TLS = Number(process.env['HIKYO_E2E_PORT_TLS'] ?? 28791);
 
 /** Browser-drivable fake provider. Let the OS avoid unrelated fixed-port collisions by default. */
 const PORT_OIDC = Number(process.env['HIKYO_E2E_PORT_OIDC'] ?? 0);
 
 /** Operational listeners stay loopback-only and isolated from both browser origins. */
-const PORT_OPERATIONAL = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL'] ?? 45793);
-const PORT_OPERATIONAL_B = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL_B'] ?? 45794);
+const PORT_OPERATIONAL = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL'] ?? 28793);
+const PORT_OPERATIONAL_B = Number(process.env['HIKYO_E2E_PORT_OPERATIONAL_B'] ?? 28794);
 export const OIDC_PROVIDER = { slug: 'e2e-oidc', displayName: 'E2E Identity Provider' };
 
 /**

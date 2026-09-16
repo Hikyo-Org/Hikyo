@@ -1,6 +1,6 @@
 # Storybook UI consistency: audit, proposal, and what needs approval
 
-Status: on PR #755. Approved: checkbox (1A), auth direction (2B strict, 3A), control tiers (4a), type scale (4b), badge (4c). Built in the same PR under decision "a" and still to be signed off: ChoiceGroup, Field hint/error, Alert, Dialog, the spacing fold, and the 24px fine-pointer hit box (§2). Scope per Marc (2026-09-16): Storybook only.
+Status: on PR #755. Approved: checkbox (1A), auth direction (2B strict, 3A), control tiers (4a), type scale (4b), badge (4c). Signed off 2026-09-16 (1a): ChoiceGroup, Field hint/error, Alert, Dialog, the spacing fold, the 24px fine-pointer hit box. Panel titles sentence case (2a). The e2e port race is fixed in this PR (3b, `web/e2e/fixtures/instance.ts` header). Scope per Marc (2026-09-16): Storybook only.
 Nothing under `web/src/routes`, `web/src/app` or `web/src/styles` changed;
 the app renders exactly as before. The work lives in `web/src/ui/**` and
 `web/.storybook/preview.tsx`, and migrates into the app with the rest of the
@@ -21,10 +21,10 @@ stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 | Control height tokens, Button, Input, Select, Textarea | APPROVED (4a), unscoped | `ui/Button`, `ui/Input`, `ui/Textarea` |
 | Type scale, eyebrow, captions | APPROVED (4b), unscoped | `ui/Typography` |
 | Badge (folds chip, settings-tag) | APPROVED (4c), unscoped | `ui/Badge` |
-| ChoiceGroup | built, NEEDS SIGN-OFF | `ui/ChoiceGroup` |
-| Field (hint, error), Alert | built, NEEDS SIGN-OFF | `ui/Input` WithHint/WithError/ErrorIsWired, `ui/Alert` |
-| Dialog (folds `.ceremony` and `.matrix-editor`) | built, audited, NEEDS SIGN-OFF | `ui/Dialog` |
-| Spacing | audited, two outliers folded, no new tokens, NEEDS SIGN-OFF | `ui.css` Spacing block |
+| ChoiceGroup | APPROVED (1a) | `ui/ChoiceGroup` |
+| Field (hint, error), Alert | APPROVED (1a) | `ui/Input` WithHint/WithError/ErrorIsWired, `ui/Alert` |
+| Dialog (folds `.ceremony` and `.matrix-editor`) | APPROVED (1a) | `ui/Dialog` |
+| Spacing | APPROVED (1a) | `ui.css` Spacing block |
 | Migration into app routes | NOT STARTED (§5) | |
 
 ## 1. Audit
@@ -241,8 +241,8 @@ keeps its own rule.
 h3, panel title / 16 h2 / 20 h1. Weights 400, 500 (eyebrow, badge), 700
 (headings). Eyebrow: uppercase, 0.06em tracking, `--tx-faint`. Folds the
 10px sidebar h2s (x32), the 15/17/18/19px headings and the 10/11px
-uppercase labels. Case is untouched: `.panel h2` stays uppercase as in
-app.css; DESIGN.md's "scale ratio >= 1.25" line is replaced by the fixed
+uppercase labels. Panel titles are sentence case (2a, replacing app.css's uppercase
+`.panel h2`; only the eyebrow is uppercase); DESIGN.md's "scale ratio >= 1.25" line is replaced by the fixed
 scale, which the 13/14/16 steps did not satisfy; making panel titles sentence case (the prototype brief's
 "uppercase eyebrow on every block" diagnosis) is a separate decision.
 
