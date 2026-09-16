@@ -13,7 +13,6 @@ import { z } from 'zod';
 
 const ADDON_ID = 'hikyo/openpencil';
 const reply = z.object({ message: z.string() });
-const MIN_APP_VERSION = '0.15.0';
 const PEN_FILE = 'web/design/hikyo.pen';
 
 function schemeUrl(node: string) {
@@ -48,7 +47,10 @@ function OpenButton() {
     }
   };
   return (
-    <IconButton title={`Open ${node} in OpenPencil (needs OpenPencil >= ${MIN_APP_VERSION} installed)`} onClick={onClick}>
+    <IconButton
+      title={`Open ${node} in OpenPencil (dev server only until the openpencil:// URL scheme ships in a released OpenPencil)`}
+      onClick={onClick}
+    >
       ✎
     </IconButton>
   );

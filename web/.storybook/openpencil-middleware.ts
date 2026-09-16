@@ -16,6 +16,9 @@ type Rpc = (info: DiscoveryInfo, command: string, args: Record<string, unknown>)
 type Send = (options: RequestOptions, payload: string) => Promise<{ status: number; body: string }>;
 
 const RPC_TIMEOUT_MS = 10_000;
+const NOT_RUNNING = 'OpenPencil is not running. Start the app, then click again.';
+/** A discovery file outlives the app that wrote it, so the connect attempt is the real liveness test. */
+const CONNECT_ERRORS = new Set(['ECONNREFUSED', 'ENOENT', 'ECONNRESET']);
 /** A node name is a few dozen bytes; anything larger is not a request this route serves. */
 const MAX_BODY_BYTES = 4096;
 
@@ -39,7 +42,7 @@ export async function openInOpenPencil(
   deps: { discovery: () => Promise<DiscoveryInfo | null>; rpc: Rpc; penPath: string },
 ): Promise<{ status: 200 | 404 | 503; message: string }> {
   const info = await deps.discovery();
-  if (!info) return { status: 503, message: 'OpenPencil is not running. Start the app, then click again.' };
+  if (!info) return { status: 503, message: NOT_RUNNING };
   await deps.rpc(info, 'open_file', { path: deps.penPath });
   // find_nodes matches names case-insensitively as a substring, so the exact
   // node still has to be picked out of the matches.
@@ -69,6 +72,9 @@ const sendOverHttp: Send = (options, payload) =>
 export function createRpc(send: Send = sendOverHttp): Rpc {
   return async (info, command, args) => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    // A token-less request against a server that wants one comes back as a bare
+    // 401; failing here names the real problem (a discovery file written wrong).
+    if (info.authRequired && !info.authToken) throw new Error('OpenPencil discovery file has no auth token');
     if (info.authToken) headers.Authorization = `Bearer ${info.authToken}`;
     const target = info.socketPath ? { socketPath: info.socketPath } : { host: '127.0.0.1', port: info.httpPort };
     const { status, body: text } = await send({ ...target, path: '/rpc', method: 'POST', headers }, JSON.stringify({ command, args }));
@@ -141,6 +147,10 @@ export function openPencilMiddleware(opts: {
       const result = await openInOpenPencil(parsed.data.node, { discovery, rpc, penPath: opts.penPath });
       send(result.status, result.message);
     } catch (error) {
+      // A stale discovery file (the app quit without removing it) surfaces as a
+      // connect error, which is the same situation as no discovery file at all.
+      const code = error instanceof Error && 'code' in error ? error.code : undefined;
+      if (typeof code === 'string' && CONNECT_ERRORS.has(code)) return send(503, NOT_RUNNING);
       send(502, error instanceof Error ? error.message : 'OpenPencil RPC failed');
     }
   };

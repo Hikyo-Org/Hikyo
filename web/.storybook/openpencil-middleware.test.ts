@@ -89,6 +89,15 @@ function authHeader(options: RequestOptions): unknown {
 
 const okResponse = { status: 200, body: JSON.stringify({ ok: true, result: { nodes: [{ id: 'T3Um0', name: 'Button/Primary' }] } }) };
 
+describe('createRpc', () => {
+  it('refuses to call a token-required server without a token', async () => {
+    const send = vi.fn(async () => okResponse);
+    const rpc = createRpc(send);
+    await expect(rpc({ ...info, authToken: null }, 'open_file', {})).rejects.toThrow(/discovery file has no auth token/);
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+
 describe('openPencilMiddleware', () => {
   it('sends the bearer token upstream and never back to the browser', async () => {
     const seen: RequestOptions[] = [];
@@ -164,6 +173,23 @@ describe('openPencilMiddleware', () => {
       },
     );
     expect(seen).toHaveLength(0);
+  });
+
+  it('503s when the discovery file is stale and the app refuses the connection', async () => {
+    await withMiddleware(
+      async () => {
+        throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:7600'), { code: 'ECONNREFUSED' });
+      },
+      async (url) => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { Origin: 'http://localhost:6006', 'Content-Type': 'application/json' },
+          body: JSON.stringify({ node: 'Button/Primary' }),
+        });
+        expect(res.status).toBe(503);
+        expect(await res.text()).toContain('OpenPencil is not running');
+      },
+    );
   });
 
   it('rejects a body that is not a node name', async () => {
