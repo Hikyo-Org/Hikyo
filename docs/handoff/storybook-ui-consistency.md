@@ -26,6 +26,7 @@ stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 | Dialog (folds `.ceremony` and `.matrix-editor`) | APPROVED (1a) | `ui/Dialog` |
 | Spacing | APPROVED (1a) | `ui.css` Spacing block |
 | Tabs atom, Glyph atom, compact in-row sizes, identity controls, login links, menu rows | built ("do all", 2026-09-16) | `ui/Tabs`, `ui/Glyph`, `ui.css` |
+| ChoiceGroup layouts, columns, chips; Checkbox/Radio mono | built (1B, 2026-09-16) | `ui/ChoiceGroup` AllStates |
 | Light-theme a11y run in CI | added (`test-storybook:light`, ci.yml storybook job) | |
 | Migration into app routes | NOT STARTED (§5) | |
 
@@ -284,6 +285,11 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
   leaked sizes. The box rules now match `input[type='checkbox']` and
   `input[type='radio']` anywhere; `.chk` keeps the row layout. Sweep after:
   zero off-size inputs (`web/.xreview/chk-sweep.mjs`, disposable).
+- ChoiceGroup layout (decided 2026-09-16, 1B): `layout` stack | wrap | nowrap
+  (one line, horizontal scroll), `columns` N (grid, one column under 480px of
+  container width), `variant="chips"` for dense key sets (supersedes the
+  `label.chip` checkbox markup in the adapter TargetForm), `Checkbox` and
+  `Radio` gain `mono`. Layout is a prop, never an array of rows.
 - Light theme in CI: `pnpm run test-storybook:light` sets `STORYBOOK_THEME`,
   which `preview.tsx` reads into the initial theme global; the ci.yml
   storybook job runs both. Verified that the light run really renders light

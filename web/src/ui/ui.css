@@ -442,13 +442,17 @@ label.chk:has(input:disabled) {
 /* --- ChoiceGroup: a labelled set of checkboxes or radios --------------------
 
    Resets the fieldset chrome to the plain `.field` box (the audit filter and
-   SAML panels each did this locally) and lays the rows out in a column, or a
-   wrapping row inline. The legend's type comes from the captions rule. */
+   SAML panels each did this locally). Layouts: stack (default), wrap (a
+   wrapping row), nowrap (one line, scrolls sideways), grid (N columns from
+   `--choice-columns`, one column below 480px of container width). The chips
+   variant draws each row as a selectable chip on the compact tier; it
+   supersedes the `label.chip` checkbox markup in the adapter target form. */
 .choice-group {
   border: 0;
   margin: 0;
   padding: 0;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .choice-group > legend {
@@ -462,10 +466,65 @@ label.chk:has(input:disabled) {
   gap: 6px;
 }
 
-.choice-group--inline .choice-group__options {
+.choice-group--wrap .choice-group__options {
   flex-direction: row;
   flex-wrap: wrap;
   gap: 6px 16px;
+}
+
+.choice-group--nowrap .choice-group__options {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-gutter: stable;
+}
+
+.choice-group--nowrap .chk {
+  flex: none;
+  white-space: nowrap;
+}
+
+.choice-group--grid .choice-group__options {
+  display: grid;
+  grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr));
+  gap: 6px 16px;
+}
+
+@container (max-width: 480px) {
+  .choice-group--grid .choice-group__options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.choice-group--chips .choice-group__options {
+  gap: 6px 8px;
+}
+
+.choice-group--chips .chk {
+  min-height: var(--control-compact);
+  padding: 0 10px 0 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-badge);
+  background: var(--bg-panel);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.choice-group--chips .chk:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-group--chips .chk label {
+  font-size: var(--fs-sm);
+}
+
+.chk label.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
 }
 
 /* --- Badges: one vocabulary --------------------------------------------------
