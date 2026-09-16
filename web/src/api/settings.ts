@@ -531,12 +531,16 @@ export function useDeleteEnvironment(
     mutationKey: environmentTopologyMutationKey(org, project),
     mutationFn: (input: { environment: string }) =>
       ok(deleteEnvironmentOp, { path: { org, project, environment: input.environment } }),
-    // The list invalidation unmounts the deleted row. Run its durable parent
-    // feedback callback first; per-call callbacks are not guaranteed to
-    // survive that unmount.
+    // Announce only once the list no longer holds the deleted environment:
+    // "Environment X deleted." must not be readable beside a row still naming
+    // X, and a reader acting on that notice would be acting on a stale list.
+    // This is the order the other three topology writes already get for free
+    // (their per-call callbacks run after this hook-level promise resolves).
+    // The callback is hook-level exactly so it survives the unmount the
+    // invalidation causes; a per-call one would not.
     onSuccess: async () => {
-      onDeleted?.();
       await invalidateEnvironmentTopology(queries, org, project);
+      onDeleted?.();
     },
   });
 }
