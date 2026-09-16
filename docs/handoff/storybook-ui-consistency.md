@@ -286,6 +286,12 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
 
 ## 5. Migration into the app (next, outside the Storybook-only scope)
 
+Decided 2026-09-16: #755 stays Storybook-only and merges as is; the
+migration is its own PR series. Tickets: #761 (layer 1, CSS and tokens
+into the app, e2e pins retargeted, preview checks with real content),
+#762 (layer 2, route markup onto the atoms, plus the route copy findings),
+#760 (backend enforcement of the second factor at sign-in, §3).
+
 Known risks on migration, to verify on the real screens: `.matrix__history-link` grows from 11.5px to 14px under the button rule; `.settings-tag` drops from 32px to 20px inside settings rows aligned to 36px inputs; `StepUpBanner` title is wrong for provider sessions; the browser-blue unclassed link on the overview page.
 
 Also superseded by `ui/`: `routes/Sections.tsx` `Alert` and `Done` (by
