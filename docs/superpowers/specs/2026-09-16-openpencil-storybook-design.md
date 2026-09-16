@@ -55,7 +55,7 @@ published `@open-pencil/cli@0.14.0` / `@open-pencil/mcp@0.14.0`.
 - `.pen` variables are named like CSS custom properties (`--primary`) with
   per-mode values (`theme: { Mode: 'Dark' }`). Colour strings parse through
   culori, so `oklch(...)` is accepted on input, but values are stored as sRGB
-  floats. Round-trip is lossy: a drift check must compare with tolerance.
+  floats. The check therefore compares hex against hex, not OKLCH.
 - `openpencil import page.html --css tokens.css -o out.pen` converts rendered
   HTML/CSS into editable layers. This is the cheap way to bootstrap a design
   from an existing story.
@@ -95,7 +95,7 @@ export const Primary: Story = {
 - `web/design/exports/` is gitignored except a `.gitkeep` (the directory
   must exist for `staticDirs`) and served through
   `staticDirs: [{ from: '../design/exports', to: '/design' }]`.
-- Script `web/scripts/design-export.mjs`:
+- Script `web/scripts/design/export.ts` (Node 26 runs TypeScript directly):
   1. Collects every story file's `parameters.design.node` (regex over
      `web/src/**/*.stories.tsx` is enough; a story index is not needed).
   2. Resolves each name path to a node ID with
@@ -173,14 +173,16 @@ scheme.
 
 - `web/design/hikyo.pen` carries one variable per custom property in
   `tokens.css`, same name, two modes `Light` and `Dark` matching
-  `[data-theme]`. Values are seeded once from the CSS via the MCP
-  (`create_variable`) in an agent session with the app running.
-- `web/scripts/design-tokens-check.mjs` runs `openpencil variables
-  web/design/hikyo.pen --json`, converts both sides to OKLCH with culori (a
-  transitive dep of the CLI; add it explicitly), and fails when any channel
-  differs by more than a fixed tolerance (L 0.005, C 0.005, H 1°) or a
-  token is missing on either side. Non-colour tokens (radius, sizes) must
-  match exactly.
+  `[data-theme]`. Values are seeded by `web/scripts/design/tokens-seed.ts`,
+  which writes the `variables` block of the `.pen` JSON from the CSS. No
+  app needed.
+- `web/scripts/design/tokens-check.ts` parses the `.pen` JSON directly
+  (Zod) and `tokens.css`, converts each CSS colour to sRGB hex with culori
+  exactly as the seed script does, and fails on any string mismatch or a
+  token missing on either side. Deterministic, no tolerance: the `.pen`
+  stores hex, so the neutrals' tiny chroma would make an OKLCH tolerance
+  either flaky or meaningless. Non-colour tokens (radius, sizes) must match
+  exactly. Fonts, motion, and `color-mix` derived tokens are not mirrored.
 - Wired into `pnpm run design:export` so the Storybook build fails on drift.
   Direction of fix is always CSS → design: edit the CSS, run `design:seed`.
 
