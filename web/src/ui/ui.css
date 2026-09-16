@@ -21,7 +21,7 @@
    - `--control-compact`: in-row tertiary actions (`.btn--quiet`), 28px on a
      fine pointer, the floor on a coarse one.
 
-   Type scale, ratio 1.25 from 12.8 (DESIGN.md: >= 1.25, weight over size):
+   Type scale (DESIGN.md, decided 2026-09-16; weight over size):
    11 eyebrow and badge, 13 caption/label/lede/mono, 14 body, 16 h2, 20 h1.
    Every other size the audit found (10, 12, 15, 17, 18, 19) folds into one
    of these. Weights 400/500/700 only.
@@ -256,7 +256,7 @@ h3,
   flex-direction: row;
   align-items: center;
   gap: var(--chk-gap);
-  min-height: 24px;
+  min-height: var(--chk-box);
 }
 
 /* The option text is body text, not a field caption: 14px, full ink, in

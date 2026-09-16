@@ -33,6 +33,15 @@ export const AuthenticatorOnly: Story = { args: { passkey: false } };
 
 export const PasskeyOnly: Story = { args: { totp: false } };
 
+/** The enrolled factor cannot be presented from this device: named, with the way out. */
+export const NoFactorPresentable: Story = {
+  args: { totp: false, passkey: false },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('alert')).toHaveTextContent(/cannot be presented/i);
+    await expect(canvas.queryByRole('button')).toBeNull();
+  },
+};
+
 export const CheckingCode: Story = { args: { busy: 'code' } };
 
 export const WaitingForPasskey: Story = { args: { busy: 'passkey' } };

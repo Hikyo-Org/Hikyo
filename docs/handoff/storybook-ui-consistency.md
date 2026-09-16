@@ -132,7 +132,8 @@ Migration deletes in app.css: `.chk` and `.chk input[type='checkbox']`
 (3273-3284), `.chk label` (3286-3288), the `(max-width: 800px)` checkbox
 bump (3314-3318), the checkbox lines of the `(pointer: coarse)` block
 (5031-5037), and the four local size rules (`.matrix__environment-picker
-input` 1880-1885, `.matrix-key-create__presence-modes input` 2491-2495,
+input` 1880-1885, whose selector list also covers `.matrix-editor__copy
+input`, which keeps the `.chk` treatment on migration, `.matrix-key-create__presence-modes input` 2491-2495,
 `.matrix-key-create__secret input` 2520-2524, `.audit__outcome-choice
 input` 5554-5556); and wraps the raw inputs in `InstanceConfig.tsx:178` and
 `Adapters.tsx:1161/1185/1607`.
@@ -241,7 +242,8 @@ h3, panel title / 16 h2 / 20 h1. Weights 400, 500 (eyebrow, badge), 700
 (headings). Eyebrow: uppercase, 0.06em tracking, `--tx-faint`. Folds the
 10px sidebar h2s (x32), the 15/17/18/19px headings and the 10/11px
 uppercase labels. Case is untouched: `.panel h2` stays uppercase as in
-app.css; making panel titles sentence case (the prototype brief's
+app.css; DESIGN.md's "scale ratio >= 1.25" line is replaced by the fixed
+scale, which the 13/14/16 steps did not satisfy; making panel titles sentence case (the prototype brief's
 "uppercase eyebrow on every block" diagnosis) is a separate decision.
 
 ### 4c. Badge

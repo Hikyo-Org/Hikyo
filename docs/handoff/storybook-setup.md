@@ -8,7 +8,7 @@ the story-authoring pass from `storybook skills setup`.
 
 - **Runner split.** Two named vitest projects in `web/vite.config.ts`: `unit`
   (browserless, the CI gate, `pnpm run test` = `vitest run --project unit`) and
-  `storybook` (chromium via `@vitest/browser-playwright`, opt-in —
+  `storybook` (chromium via `@vitest/browser-playwright`, opt-in,
   `pnpm run test-storybook` = `vitest run --project storybook`). The frozen
   `test` script and `scripts/ci/build-spa.sh` were left untouched; the SPA verify
   path is unchanged.
@@ -80,7 +80,7 @@ the story-authoring pass from `storybook skills setup`.
   it); the `Protected` play stops at enabling Publish rather than clicking, since
   clicking would open the ceremony and fetch. `MatrixRowEditor` calls
   `useWorkspaceContext` + `useTransport` and links via `generatePath`/`<Link>`,
-  so it needs `parameters.app` purely for the **QueryClientProvider + Router** —
+  so it needs `parameters.app` purely for the **QueryClientProvider + Router**,
   with an **empty `responses` table**, because a config key (classification
   `config`) never opens a reveal window; a secret-key story would add a
   reveal-window row. `MatrixCell`/`MatrixLegend` are internal (`function`, not
@@ -89,7 +89,7 @@ the story-authoring pass from `storybook skills setup`.
 - **`.storybook/preview.tsx`** imports the same five font/token/app CSS entries as
   `src/main.tsx`, in the same order. A **theme toolbar** (`globalTypes.theme`,
   light/dark) drives `data-theme` via a decorator; `initialGlobals.theme` is
-  `dark` (the app's CSS default), so a11y contrast and the vitest browser run —
+  `dark` (the app's CSS default), so a11y contrast and the vitest browser run,
   which never touches the toolbar, stay on the real default. **`tags:
   ['autodocs']`** at preview level gives every component a generated Docs page.
   Pure components need no providers; the real screens (the four flagship ones
@@ -115,7 +115,7 @@ the story-authoring pass from `storybook skills setup`.
   app-build artifact / chmod / viewport (stories are theme- and prop-driven).
   - **Governance.** The repo's `ci-job-registry.json` + `TestCIJobRegistry`
     (in `supply-chain-checks`) enforce two invariants: every ci.yml job must be
-    registered (completeness), and every registered job must be enforced —
+    registered (completeness), and every registered job must be enforced,
     directly (in `ci-required.needs`) or indirectly (a required job `needs:` it).
     There is no "registered-but-unenforced" state, so B1 ("standalone now,
     register later") was impossible. A *directly*-required new job also can't be
@@ -171,7 +171,7 @@ component for either would be churn.
 **Not migrated yet (deliberate):** no `src/routes/` consumer was touched, "fine
 tune before moving everything over". Swapping screens onto these primitives is
 the next, separate pass. `Shell.tsx`'s bespoke account menu (`useState` +
-`useEffect` outside-click/blur/Escape) is the prime `Menu` migration candidate —
+`useEffect` outside-click/blur/Escape) is the prime `Menu` migration candidate,
 but it anchors to the **right** of the trigger (sidebar), not below, so it needs
 a side variant (e.g. `position-area: right span-bottom`) rather than
 `.menu--pop`'s `bottom span-right`, and its rows include a `NavLink` that

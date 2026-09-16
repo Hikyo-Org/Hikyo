@@ -80,7 +80,7 @@ export const MustAcknowledge: Story = {
   },
 };
 
-/** Every variant on one page. Each is its own modal, so they stack in the top layer; use the docs frame. */
+/** Both sizes on one page. Each is its own modal, so the second one inerts the first; use the docs frame. */
 export const AllStates: Story = {
   render: (args) => (
     <>
