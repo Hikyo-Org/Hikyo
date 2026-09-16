@@ -19,9 +19,12 @@ Operative once that spec's implementation merges.
    Storybook renders the design next to the story from a CI-time headless
    export; nothing rendered is committed.
 5. **The design app's local RPC token never reaches a browser.** In dev,
-   Storybook talks to the running app through a Vite middleware (interim);
-   in every build, "open in OpenPencil" is an `openpencil://open` link that
-   carries no authority beyond open + select. The scheme is contributed
+   Storybook talks to the running app through a Vite middleware (interim).
+   The desktop app is reached by an `openpencil://open` link once that scheme
+   ships; the published Storybook's production fallback becomes the web app
+   link, `https://app.openpencil.dev/?file=<https url>&node=<name>` against the
+   raw `hikyo.pen`, once upstream PR #708's browser route ships. Neither link
+   carries any authority beyond open + select. The scheme is contributed
    upstream to open-pencil; the middleware is removed once a tagged release
    ships it. This holds because local dev servers bind `0.0.0.0` for LAN
    device testing.
