@@ -865,9 +865,14 @@ jobs:
       - name: Install (frozen lockfile)
         working-directory: web
         run: pnpm install --frozen-lockfile
-      - name: Storybook story tests
+      - name: Storybook story tests (dark, the default)
         working-directory: web
         run: pnpm run test-storybook
+      # The a11y gate reads rendered colours, so the light palette is a second
+      # run, not a second toolbar click nobody makes in CI.
+      - name: Storybook story tests (light)
+        working-directory: web
+        run: pnpm run test-storybook:light
 
   # The ui-tagged Go coverage the browser suite used to carry inline: the
   # release-shaped binary's govulncheck pass and the ui-tagged server/webui

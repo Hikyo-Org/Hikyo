@@ -1,17 +1,17 @@
 # Graph Report - t3code-2ccba3ca  (2026-09-16)
 
 ## Corpus Check
-- 2748 files · ~4,315,415 words
+- 2752 files · ~4,316,936 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 64 file(s) not represented in the graph (top: (none) 23, .example 8, .log 7)
 
 ## Summary
-- 36702 nodes · 102015 edges · 1436 communities (829 shown, 417 thin omitted)
-- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 9284 edges (avg confidence: 0.85)
+- 36730 nodes · 102053 edges · 1406 communities (807 shown, 409 thin omitted)
+- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 9286 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d22e17fe`
+- Built from commit: `0c5f094b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -30,50 +30,50 @@
 - InternalJSONResponse
 - NotFoundJSONResponse
 - time.Time
-- KeyDeclarationDetail.tsx
+- TxAuthorizer
 - TooManyRequestsJSONResponse
 - database/sql.NullString
-- matrix.ts
 - parsed
+- values.ts
 - scimActor
-- reissuedSessionResponse
+- notFoundOr
 - vitest
-- DecodeStrict
+- Hash
 - github.com/jackc/pgx/v5/pgtype.Timestamptz
 - 1.0/index.html
 - ConflictJSONResponse
 - MachineAccess.tsx
-- execRaw
+- scopeEnv
 - ForbiddenJSONResponse
 - Remotes.tsx
-- DB
+- DefaultPresenceRules
 - store.go
 - service/scan.go
 - IO
 - api/settings.ts
-- grantEventInput
+- service/grants.go
 - WrappedKey
 - scimContext
 - Shell.tsx
 - Scope
 - assertions.ts
 - docs/site/src/content/docs/docs/index.mdx
-- forEngines
+- reauth_e2e_test.go
 - access.ts
-- PinnedOperator
-- Zero
+- PinCiphertext
+- runBackupRestoreDrill
 - WithLock
-- Spec
-- Adapters
-- Rotation
-- newAuditEvent
-- New
-- TxAuthorizer
+- EventType
+- Write
+- HistoryDrawer.tsx
+- Zero
+- fullDraftFixture
+- Repos
 - store/scim.go
 - NewAdapterRuntime
 - Config
 - pgSelfConfigStorage
-- PrincipalID
+- installerFixture
 - io.Reader
 - NewState
 - docs/handoff/79-operator-floor.md
@@ -82,18 +82,18 @@
 - Queries
 - ts/package.json
 - testLogger
-- Queries
+- TxAuthorizer
 - compose.go
-- Status
+- Load
 - instance.ts
 - adapters.ts
 - os.File
-- adapterTargetResponse
+- runAdapter
 - Keyring
-- log/slog.Logger
-- PostgresTransaction
-- Hash
-- Identities
+- ClaimedLease
+- DecodeStrict
+- Development
+- PrincipalClass
 - remotefetch_test.go
 - digest
 - compose/doctor.go
@@ -102,13 +102,13 @@
 - ScimProvisioning.tsx
 - Digest
 - SignedCommand
-- Queries
+- stubAuth
 - Run
 - SnapshotBinding
-- adapter.go
-- .SAMLACS
-- Host
-- Admission
+- ConnectionRequest
+- TxAuthorizer
+- .runRuntime
+- MigrationManifest
 - Job
 - HikyoSecret
 - newHarness
@@ -117,122 +117,122 @@
 - Destination
 - Matrix.tsx
 - AuditFilter
-- import-state.ts
+- ImportWizard.tsx
 - NewClient
 - configrollout/kubernetes.go
 - Job
-- LedgerEntry
+- adapter.go
 - Dynamic
 - cli/update_test.go
 - Limiter
-- ScimServiceUnavailableApplicationScimPlusJSONResponse
+- Queries
 - server/audit.go
 - server/contract_test.go
-- sync.Mutex
+- Bundle
 - orgs
 - .Run
-- definitions_e2e_test.go
+- .FetchAs
 - fixedStamp
 - metrics.go
 - pggen/catalogue.sql.go
-- Client
+- forgejo/client.go
 - crypto/x509.Certificate
 - client/client.go
 - docs/operations/signed-nightlies.md
 - Doc
 - 1.0 pre-freeze decisions, #617
 - mock-api.ts
-- probeKeyring
+- LocalPrincipal
 - saml_providers.go
 - site/package.json
-- NewModuleLease
+- samlProviders.ts
 - import-sources.ts
 - Effect
 - Fixture
 - hikyo.ts
-- applyAutomaticRoute
+- runPreparedUnattended
 - ExtensionDecl
 - dynamic/dynamic.go
 - approvals.ts
 - NewArtifact
 - Queries
 - Queries
-- commonFlags
+- auth_artifact.go
 - docs/spec/self-configuration-proposal.md
 - testKeys
-- oidc_e2e_test.go
+- Auth
 - web/package.json
 - run
 - Prepare
 - App.tsx
 - SelfConfigBinding
-- Nightly
-- Read
+- disclose_test.go
+- IsNetwork
 - tools.go
 - runImport
 - sqlcontract.go
 - test-race-packages_test.sh
 - release.sh
-- encoding/json.RawMessage
+- sync.Mutex
 - .DeepCopyInto
 - importer/plan.go
 - handler_test.go
-- Operation
-- Workspace
+- authz/registry.go
+- Identity
 - registry.ts
 - env-matrix/index.html
 - database/sql/driver.Conn
-- Queries
+- Resolver
 - importer/plan_test.go
-- LocalPrincipal
+- DB
 - pggen/environments.sql.go
 - server/scim_wire.go
-- Reencrypt
+- authz/registry_test.go
 - api/openapi.yaml
 - Providers
 - SingletonTopologyChange
-- NewPublic
+- net/http.Handler
 - matrix.spec.ts
-- pgReadRepos
+- New
 - Hikyo remote MCP server: implementation research
-- Enrollment
+- selfConfigSession
 - githubactions/client_test.go
-- .ReadLive
+- spawn.go
 - quoteName
 - sqlite/00050_self_config.sql
-- runPreparedUnattended
+- os.FileInfo
 - gen/main.go
 - importer/vault.go
 - net/http.Client
 - sqlitegen/environments.sql.go
 - verify-native-packages.go
-- ReauthIntent
+- Operation
 - docs/adr/mcp-server.md
 - Config
 - docs/reports/1.0/mcp-ticket-audit.md
 - handler.go
-- Operations
+- githubactions/module_test.go
 - New
 - buildEligible
 - operations/unattended-container-upgrades.md
-- Grant
+- PrincipalID
 - ruleset_test.go
 - dependencies
 - app-chrome/index.html
-- DiscoverWithPolicy
+- federationhttp/client_test.go
 - operator/harness_test.go
 - ceremony.sh
 - settings.spec.ts
-- DrillUpgrade
+- AuthenticateArchive
 - docs/handoff/595-dynamic-secrets-webui.md
 - The mailer seam — primary-source research
 - properties
-- net/http/httptest.Server
-- LoadKeyring
+- TestOfficialGoClientInteroperability
+- .prepareGeneration
 - contract_external_test.go
 - New
 - cli/provider.go
-- io/fs.FS
+- UpgradeWindow
 - boundregistry_test.go
 - IdP
 - 4. GitHub (OAuth 2.0 only)
@@ -243,48 +243,48 @@
 - webauthnrp.go
 - lint_test.go
 - service/saml_test.go
-- PathKind
+- scimproto.go
 - Open
 - Audit.tsx
 - Queries
 - TotpReauthRequest
 - Decisions taken
-- Contract
+- WithNetwork
 - Handoff: #73 SCIM provisioning
 - CompileClassified
-- scimproto.go
+- Error
 - .reconcileActive
-- Federation
+- RuntimeEvidence
 - docs/release/acceptance-1.0.md
 - importer/artifacts.go
 - golang.org/x/tools/go/packages.Package
 - pggen/values.sql.go
 - sqlitegen/values.sql.go
 - Queries
-- tx.go
+- Host
 - wireUpdateJob
 - LoginFlow.stories.tsx
-- .Sync
+- .CompromiseRetireSamlSpKey
 - tools_test.go
-- Job
+- outbox_test.go
 - runCLIReauthHandoffTarget
 - site.ts
-- LoadConfig
-- .prepareBootstrap
+- sigs.k8s.io/controller-runtime/pkg/reconcile.Request
+- .PrivacyActivity
 - instance-admin.spec.ts
 - stable-workflow_test.sh
 - docs/release/floor-acceptance.md
 - doctorResults
-- MintServerCert
+- net.Conn
 - parity_test.go
 - machine-access.spec.ts
 - Evidence
-- messages.go
-- federationhttp/client_test.go
+- Select
+- Compare
 - NewPublicDialer
 - metrics_test.go
 - compilerOptions
-- .export
+- mcp-public-smoke/main_test.go
 - RunLive
 - check-doc-status.mjs
 - @storybook/react-vite
@@ -300,11 +300,11 @@
 - Queries
 - boundary_test.go
 - key
-- runDefinitionsVerb
+- exit.go
 - check-chart.sh script
 - design-directions/index.html
 - hikyosecret_types.go
-- RecoverySQLiteTransaction
+- selfConfigPostgres
 - deadline_internal_test.go
 - pggen/revisions.sql.go
 - sqlitegen/revisions.sql.go
@@ -319,12 +319,12 @@
 - sha256_file
 - validator.go
 - argmax_test.go
-- Capacity
+- FromCapacity
 - settled
 - Remotes
 - properties
 - dotenv/dotenv.go
-- passkey.ts
+- WebAuthnCredential
 - KeySource
 - service/budget_test.go
 - client.ts
@@ -336,7 +336,7 @@
 - storageMonitoring
 - playwright.go
 - testing.F
-- GenerateIdentity
+- seal
 - deploymentAdapterFixture
 - Budget
 - postgres/00020_multi_instance.sql
@@ -344,14 +344,14 @@
 - compose-demo.sh
 - .UpdateMyProfile
 - Handoff: #70 definitions Git flow — export / check / plan / apply
-- configureHA
+- boot
 - RetentionPolicy
 - topologyNodeIDs
 - operationsBuilder.ts
 - io.WriteCloser
 - floor.sh
-- BuildAuthnRequest
-- mcpserver/registry.go
+- requestSigningFixture
+- Register
 - postgres/00041_change_approvals.sql
 - sqlite/00020_multi_instance.sql
 - sqlite/00041_change_approvals.sql
@@ -361,19 +361,19 @@
 - mustCanonicalize
 - build.mjs
 - recordSAMLSPKeyEvent
-- CatalogueKey
+- ruleset.go
 - Retention
-- RecoveryDB
+- sigs.k8s.io/controller-runtime/pkg/client.Object
 - sqlite/00025_github_actions_adapter.sql
 - unattended
 - Blueprint — the reviewed design the remaining slices implement
 - compilerOptions
 - Handoff: #55 permission model, full — grants, role templates, protected environments
-- New
-- net/http.Handler
+- .RotateRootKey
+- missingCapabilityDiagnostic
 - .renderOffline
 - EncodeNameID
-- compileCanonical
+- definitions/bundle.go
 - pggen/folders.sql.go
 - sqlitegen/audit_retention.sql.go
 - sqlitegen/folders.sql.go
@@ -382,42 +382,42 @@
 - Handoff: #60 chrome surfaces — members, settings, account & security, instance administration
 - docs/reports/1.0/forgejo-acceptance.html
 - test-csp.mjs
-- protocol.go
+- DefaultConfig
 - 00011_audit_export_order.sql
 - postgres/00039_dynamic_secrets.sql
 - sqlite/00039_dynamic_secrets.sql
 - nightly-image_test.sh
 - cli/retention.go
-- .FetchAs
-- CheckProofSignatures
+- .Set
+- CheckDriverHandles
 - Fresh hierarchy initialization
-- CheckKeyName
+- names.go
 - TypeSpec
 - API
-- Backup
+- Glyph.stories.tsx
 - sqlitegen/catalogue.sql.go
 - Queries
-- refuse
+- Tabs.stories.tsx
 - LoginForm.stories.tsx
 - ClassifyError
 - enabled
 - image
-- ImportWizard
+- LoadConfig
 - upgrade-nightly.sh
 - history.spec.ts
-- Append
+- Declaration
 - client/index.ts
 - CheckPassword
 - declErr
 - postgres/00006_factors.sql
 - sqlite/00010_saml.sql
-- cors_test.go
+- Badge.stories.tsx
 - frozen-client.mjs
 - unattended-docker.sh
 - stable-ceremony.sh script
 - Textarea.stories.tsx
 - Handoff: #47 first slice — OpenAPI 3.1 API, CLI skeleton, bootstrap admin, local login
-- federationServer
+- formula_matrix_test.go
 - preparedFile
 - Issue #255 — closed workload-federation JWKS source
 - docs/handoff/62-oidc-federation-cursor.md
@@ -428,20 +428,20 @@
 - sqlite/00017_oidc_federation.sql
 - revision_pins
 - storagehealth/kubernetes_test.go
-- .HostSeedInputs
+- stamp_test.go
 - Handoff: #75 key rotation operations (five ops, crash-safe root rotation)
 - ops-floor/main.go
 - mcp-conformance/package.json
 - resolve-candidate.sh script
 - stable-ceremony_test.sh
 - precompress.mjs
-- ImportWizard.test.tsx
+- fakeLease
 - network
 - spec.go
 - docs/handoff/postgres-utc.md
 - docs/adr/github-adapter.md
 - site/tsconfig.json
-- sigs.k8s.io/controller-runtime/pkg/client.Object
+- .walkWorkloads
 - SuggestType
 - postgres/00005_authn.sql
 - postgres/00010_saml.sql
@@ -454,7 +454,7 @@
 - sqlite/00046_audit_retention.sql
 - unattended-kind.sh
 - publish-homebrew-cask_test.sh
-- NewTxToken
+- MergeEnv
 - recipientFingerprint
 - ParsePatch
 - Issue #221 — validated offline snapshot binding
@@ -467,20 +467,20 @@
 - Handoff: #67 Machine access UI
 - .PruneAudit
 - Preview automation: #721, #722, #723, #725, #730
-- Keyring
+- .pruneNightlyCache
 - postgres/00013_key_catalogue.sql
 - sqlite/00013_key_catalogue.sql
 - sqlite/00042_mcp_audit_origin.sql
 - .ListSelfConfigSeedInputsForReencrypt
-- members.spec.ts
+- committedDeploymentFixture
 - .ListSelfConfigSeedInputsForReencrypt
-- CallerActivity
+- cliReauth.ts
 - check-docs-live.sh
 - ops-floor.sh
 - start-dynamic-pg_test.sh
 - is_semver
 - verify-bundle-stable_test.sh
-- github.com/jackc/pgx/v5/pgconn.CommandTag
+- newPrincipalNames
 - Recoverable Compose publication
 - Monotonic cryptographic key handles
 - landing-opus-5/index.html
@@ -496,7 +496,7 @@
 - .GetAccountProfile
 - chart-kind.sh
 - report-fuzz-finding.sh script
-- FromCapacity
+- PruneHealth
 - badstore.go
 - CheckFreeze
 - #195 — OIDC disclosure reauthentication
@@ -518,7 +518,7 @@
 - Go 1.27 and dependency refresh handoff
 - Model Context Protocol
 - Product capability comparison table
-- net/netip.Addr
+- public_test.go
 - Encryption-at-Rest Architectures for Self-Hosted Secret Managers
 - PROTOTYPE — Hikyo machine access (ticket #31)
 - PROTOTYPE — Hikyo machine access (ticket #31)
@@ -532,7 +532,7 @@
 - PROTOTYPE — Hikyo version history & rollback (ticket #30)
 - PROTOTYPE — Hikyo social sign-in & open registration (ticket #587)
 - PROTOTYPE — Hikyo social sign-in & open registration (ticket #587)
-- Checkbox.stories.tsx
+- Dialog.stories.tsx
 - io/fs.FileInfo
 - Handoff — #57 Environment matrix UI + row editor + problems filter
 - Handoff — #59 History drawer + restore + pin lifecycle UI
@@ -542,17 +542,17 @@
 - sqlite/00008_webauthn.sql
 - environments_new
 - sqlite/00036_ha_coordination.sql
-- .TestMail
+- command
 - Web UI audit against the locked prototypes and DESIGN.md (2026-09-05)
-- values.oidc.test.ts
-- UpgradeCustodySource
-- .UpdateDeclaration
-- backup_snapshot_test.go
+- audit_invariants_test.go
+- ParseFilter
+- Presence
+- .RoundTrip
 - check-cache-policy_test.sh
 - ops-floor_test.sh
 - mcp-compose-preflight.sh
 - create-nightly-manifest.sh
-- scan_coverage_test.go
+- cloneWindows
 - upgradeSources
 - test-host-upgrade.sh
 - Metadata-first copy planning
@@ -708,14 +708,13 @@
 - mcp/compose.yaml
 - #196 — workload reveal-history under a pin
 - Issue #198 — native TLS and operational listener
-- Alert.stories.tsx
+- RecipientSetNeedsCeremony
 - dependencies
 - Handoff: #219 uniquely owned SQLite restore staging
 - Handoff: #253 WebAuthn test enrolment precondition
 - scripts
 - Handoff: #332 matrix row editor draft ownership
 - Handoff: #338 audit registry closed taxonomies
-- TestReplaceBinaryPublishesWhileAnotherProcessMapsTarget
 - Handoff: #343 SCIM positional grammar
 - Handoff: #431 release channels and administrator updates
 - Issue #446 — environment lifecycle UI
@@ -750,7 +749,6 @@
 - credential_authorities_new
 - scanning_dismissals
 - credential_authorities_new
-- Dialog.stories.tsx
 - docs/reports/1.0/upgrade-governance.html
 - OpenBao
 - SOPS + age
@@ -840,7 +838,7 @@
 - Doppler (closed SaaS — UX reference)
 - External Secrets Operator (ESO)
 - Hikyo — UI & Interaction Specification (synthesis, 2026-08-06)
-- runValues
+- Table
 - docs/handoff/347-saml-provider-update-owner.md
 - Cross-dialect key rotation invariants
 - docs/handoff/349-reauth-evidence.md
@@ -858,7 +856,7 @@
 - docs/handoff/367-retention-bounds-fields.md
 - docs/handoff/368-saml-ceremony.md
 - docs/handoff/369-session-oidc-provider.md
-- DynamicRepo
+- dynamicQueries
 - Execution roadmap: bounded 1.0 release, then additive product lanes
 - Issue #442 — stale deleted-key history filter
 - #445 — Project-delete redirect
@@ -892,8 +890,6 @@
 - Browser session epoch ownership
 - Storybook setup handoff
 - Hikyo — Product Requirements (synthesis, 2026-08-06)
-- AdapterRepo
-- WorkspaceApprove.test.tsx
 - docs/handoff/issue-453-matrix-invalidation-prefixes.md
 - Display-once clipboard boundary
 - docs/handoff/issue-459-auth-ceremony-busy-state.md
@@ -971,20 +967,11 @@
 - session-pg-cancel/00001_probe.sql
 - session-sqlite-cancel/00001_probe.sql
 - session-success/00001_probe.sql
-- RemoteReader
-- OrgReader
 - Queries
-- ProjectReader
-- VariableDescriptor
-- audit-styles.mjs
-- RevisionPinReader
-- .SelfConfig
+- VariableInventory
 - docs/handoff/v1-launch-blockers.md
-- .BackupState
 - docs/research/compose-delivery.md
 - docs/research/go-saml-libraries.md
-- .Retention
-- server/browser_test.go
 - analysis-shards
 - build-spa.sh
 - check-api-freeze_test.sh
@@ -1022,7 +1009,7 @@
 - Issue #619: slop audit remediation
 - Handoff: #61 machine identities — service accounts, tokens, display-once mint
 - Issue #78 handoff — docs site and governance artifacts
-- EventType
+- wireEntry
 - docs/research/k8s-delivery.md
 - docs/site/src/content/docs/docs/scim.mdx
 - docs/site/src/content/docs/docs/troubleshooting.mdx
@@ -1042,7 +1029,6 @@
 - Hikyo — Competitive Landscape Survey
 - ParseXML
 - floor-acceptance.sh
-- TestUpgradeBuildAuthorityRepo
 - Issue #197: release container SPA proof
 - web/e2e/session-epoch/harness.html
 - CSP-compatible initial theme
@@ -1123,15 +1109,13 @@
 - PRIVATE: consent remediation handoff
 - Handoff: system-scope refusals and the first administrator's missing grants
 - Locked prototype validation and machine readiness corrections
-- Snapshot
 - credential.go
-- Snapshot
 - ControlServer
 - k8s-e2e.sh
 - Local developer scripts
 - workflowActionPinErrors
 - no-egress.sh
-- ChoiceGroup.stories.tsx
+- Radio.stories.tsx
 - Multi-node application-tier high availability (#146). Requires an externally
 - #212 — Total HTTP error wire policy
 - Handoff: #223 transaction-local session completion
@@ -1157,12 +1141,8 @@
 - Landing page Safari performance investigation
 - TypeScript 7 upgrade handoff
 - gemini-audit-validation.md
-- testing.B
 - adapters
-- Bundle
-- durability_test.go
-- .ListPendingChangesForOwner
-- .ListPendingChangesForOwner
+- commitTopologyCandidate
 - preflight.sh
 - AGENTS.md
 - Issue #200 handoff: bootable Helm deployment
@@ -1236,9 +1216,6 @@
 - Supported local MCP provisioning
 - adapters
 - badnil.go
-- approverList
-- knownenv_test.go
-- .GetRevisionPinForWorkload
 - Input.stories.tsx
 - start-dynamic-pg.sh
 - docs/handoff/145-dr-hardening.md
@@ -1248,20 +1225,13 @@
 - docs/handoff/638-review/round-1.md
 - docs/handoff/638-review/round-2.md
 - docs/handoff/638-review/round-3.md
-- .GetRevisionPinForWorkload
 - docs/handoff/659-progress.md
 - failure
 - StampPair
-- ValueReader
 - docs/release/floor-bench.md
 - docs/reports/1.0/verification-gaps.html
-- checkDeclarationClassification
 - docs/superpowers/specs/2026-09-01-chrome-settings-invite-design.md
-- safeDetailErr
 - analysis-shards_test.sh
-- .ListRevisionKeyChanges
-- .ListRevisionKeyChanges
-- unknownSafeDetailError
 
 ## God Nodes (most connected - your core abstractions)
 1. `OrgID` - 747 edges
@@ -1278,14 +1248,14 @@
 ## Surprising Connections (you probably didn't know these)
 - `Surface()` --indirect_call--> `setValue()`  [INFERRED]
   web/src/api/sensitiveMutation.test.tsx → clients/ts/src/generated/sdk.gen.ts
+- `TestWriteAboutAndWelcomeExposeFullArtwork()` --calls--> `write()`  [INFERRED]
+  cmd/hikyo/main_test.go → scripts/release/embed-compatibility/main_test.go
 - `newAutomaticDiscoveryGraph()` --calls--> `write()`  [INFERRED]
   internal/app/automatic_discovery_test.go → scripts/release/embed-compatibility/main_test.go
+- `TestFailedRestoreDrillCleanupPreservesExistingTarget()` --calls--> `write()`  [INFERRED]
+  internal/app/backup_cleanup_test.go → scripts/release/embed-compatibility/main_test.go
 - `TestUpgradeCLISignsActualDrill()` --calls--> `write()`  [INFERRED]
   internal/app/backup_upgrade_cli_test.go → scripts/release/embed-compatibility/main_test.go
-- `TestRunProvesPublicProfileWithoutPersistingCredentials()` --calls--> `run()`  [INFERRED]
-  scripts/mcp-public-smoke/main_test.go → internal/importer/connector_test.go
-- `TestRunRefusesRedirectBeforeBearerCanReachDowngradedTarget()` --calls--> `run()`  [INFERRED]
-  scripts/mcp-public-smoke/main_test.go → internal/importer/connector_test.go
 
 ## Import Cycles
 - 3-file cycle: `web/e2e/fixtures/api.ts -> web/e2e/fixtures/instance.ts -> web/e2e/fixtures/seed.ts -> web/e2e/fixtures/api.ts`
@@ -1294,67 +1264,67 @@
 - **App chrome account ceremony explorations** — docs_site_public_prototypes_app_chrome_11_index_possession_factor_account_ceremony_prototype, docs_site_public_prototypes_app_chrome_12_index_redeemer_bound_invitation_prototype, docs_site_public_prototypes_app_chrome_13_index_individually_revocable_capability_prototype, docs_site_public_prototypes_app_chrome_14_index_organization_grant_blast_radius_prototype, docs_site_public_prototypes_app_chrome_15_index_display_once_recovery_prototype, docs_site_public_prototypes_app_chrome_16_index_grant_scope_consequence_prototype, docs_site_public_prototypes_app_chrome_17_index_delivery_only_invitation_email_prototype, docs_site_public_prototypes_app_chrome_18_index_atomic_grant_line_prototype, docs_site_public_prototypes_app_chrome_2_index_single_capability_grant_prototype, docs_site_public_prototypes_app_chrome_3_index_recovery_code_storage_acknowledgement_prototype, docs_site_public_prototypes_app_chrome_4_index_possession_only_security_change_prototype, docs_site_public_prototypes_app_chrome_5_index_hash_only_recovery_code_prototype, docs_site_public_prototypes_app_chrome_6_index_distinct_secret_disclosure_ceremony_prototype, docs_site_public_prototypes_app_chrome_7_index_multi_capability_template_prototype, docs_site_public_prototypes_app_chrome_8_index_absence_only_authorization_prototype, docs_site_public_prototypes_app_chrome_9_index_invitation_identity_boundary_prototype [EXTRACTED 1.00]
 - **Matrix authorization persona explorations** — docs_site_public_prototypes_env_matrix_26_index_explicit_cross_environment_copy_prototype, docs_site_public_prototypes_env_matrix_27_index_flat_peer_environment_prototype, docs_site_public_prototypes_env_matrix_28_index_copy_provenance_matrix_prototype, docs_site_public_prototypes_env_matrix_29_index_explicit_value_matrix_prototype, docs_site_public_prototypes_env_matrix_3_index_historical_inheritance_visibility_prototype, docs_site_public_prototypes_env_matrix_30_index_no_reveal_viewer_prototype, docs_site_public_prototypes_env_matrix_31_index_hidden_production_persona_prototype, docs_site_public_prototypes_env_matrix_4_index_environment_specific_reveal_prototype, docs_site_public_prototypes_env_matrix_5_index_read_versus_reveal_persona_prototype, docs_site_public_prototypes_env_matrix_6_index_protected_reveal_persona_prototype, docs_site_public_prototypes_env_matrix_7_index_tenant_fog_persona_prototype, docs_site_public_prototypes_env_matrix_8_index_matrix_role_simulator_prototype, docs_site_public_prototypes_env_matrix_9_index_fogged_environment_matrix_prototype, docs_site_public_prototypes_env_matrix_index_persistent_visible_matrix_filters [EXTRACTED 1.00]
 
-## Communities (1436 total, 417 thin omitted)
+## Communities (1406 total, 409 thin omitted)
 
 ### Community 0 - "net/http.ResponseWriter"
 Cohesion: 0.01
-Nodes (271): AdapterID, AdapterTargetID, AddAdapterTargetJSONRequestBody, AdoptAdapterTargetNamesJSONRequestBody, AddAdapterTargetRequestObject, AdoptAdapterTargetNamesRequestObject, ApplyDefinitionsPlanRequestObject, ApplyEnvTemplateRequestObject (+263 more)
+Nodes (249): AdapterID, AdapterTargetID, AddAdapterTargetJSONRequestBody, AdoptAdapterTargetNamesJSONRequestBody, AddAdapterTargetRequestObject, AdoptAdapterTargetNamesRequestObject, ApplyDefinitionsPlanRequestObject, ApplyEnvTemplateRequestObject (+241 more)
 
 ### Community 1 - "apigen.gen.go"
 Cohesion: 0.00
-Nodes (883): AdapterConflictEntry, AdapterTarget, Adapter, AdapterList, AdapterTeardown, AdoptAdapterTargetNamesResponseObject, ApprovalPolicy, ApprovalPolicyInput (+875 more)
+Nodes (808): AdapterMoveTarget, AdapterConflictEntry, AdapterTarget, AdapterTargetKey, Adapter, AdapterConflictArtifact, AdapterList, AdapterMove (+800 more)
 
 ### Community 2 - "Bearer"
 Cohesion: 0.00
-Nodes (557): AddRemoteJSONRequestBody, AddWorkspaceOriginJSONRequestBody, AdoptInstanceConfigJSONRequestBody, AddAdapterTargetResponseObject, AddRemoteRequestObject, AddRemoteResponseObject, AddWorkspaceOriginRequestObject, AddWorkspaceOriginResponseObject (+549 more)
+Nodes (574): AddRemoteJSONRequestBody, AddWorkspaceOriginJSONRequestBody, AdoptInstanceConfigJSONRequestBody, AddAdapterTargetResponseObject, AddRemoteRequestObject, AddRemoteResponseObject, AddWorkspaceOriginRequestObject, AddWorkspaceOriginResponseObject (+566 more)
 
 ### Community 3 - "generated/index.ts"
 Cohesion: 0.00
-Nodes (968): listIdentities(), listInstanceConnections(), passkeyLoginFinish(), revokeInstanceConnection(), settleLease(), AccountProfile, Acknowledgements, ActiveSession (+960 more)
+Nodes (966): removeWorkspaceOrigin(), revokeInstanceConnection(), AccountProfile, Acknowledgements, ActiveSession, Adapter, AdapterAdoptionRequest, AdapterChange (+958 more)
 
 ### Community 4 - "zod.gen.ts"
 Cohesion: 0.00
-Nodes (938): AdapterProvider, SamlProviderWarning, RFC-3339, RFC-7643, RFC-7644, zAccountProfile, zAcknowledgements, zActiveSession (+930 more)
+Nodes (942): AdapterProvider, SamlProviderWarning, RFC-3339, RFC-7643, RFC-7644, zAccountProfile, zAcknowledgements, zActiveSession (+934 more)
 
 ### Community 5 - "context.Context"
 Cohesion: 0.01
-Nodes (154): AccountProfile, readyChecker, LockoutRetention, observedPG, observedSQLite, RecoveryBatch, SelfConfigBinding, aliasHolder (+146 more)
+Nodes (219): AccountProfile, readyChecker, observedSQLite, PrincipalRef, SelfConfigBinding, fakeLocker, aliasHolder, holder (+211 more)
 
 ### Community 6 - "Proof"
 Cohesion: 0.01
-Nodes (220): AdapterConfigureFence, ApprovalApprover, ApprovalRequestState, proofKind, EnvironmentSettings, Proof, TxToken, Operation (+212 more)
+Nodes (202): ApprovalApprover, ApprovalRequestState, proofKind, EnvironmentSettings, Proof, TxToken, Operation, IncludesSelfConfig() (+194 more)
 
 ### Community 7 - "operations.gen.ts"
 Cohesion: 0.00
-Nodes (670): TDataShape, adoptInstanceConfigOp, applyEnvTemplateOp, applyInstanceConfigOp, applyInstanceTemplateOp, applyOrgTemplateOp, applyProjectTemplateOp, approveCliReauthOp (+662 more)
+Nodes (669): TDataShape, adoptInstanceConfigOp, applyInstanceConfigOp, approveWorkspaceHandoffOp, authMethodsOp, beginRecoveryOp, BodylessOperation, BodyOperation (+661 more)
 
 ### Community 8 - "sdk.gen.ts"
 Cohesion: 0.00
-Nodes (591): clearValue(), createFolder(), exportEnvAudit(), exportValues(), fetchDelivery(), getApprovalCeremony(), listOidcProviders(), listServiceAccounts() (+583 more)
+Nodes (593): clearValue(), createApprovalPolicy(), createFolder(), createKeyGroup(), deleteOrg(), enrolTotpStart(), exportValues(), getInstanceConfig() (+585 more)
 
 ### Community 9 - "testing.T"
 Cohesion: 0.01
-Nodes (378): TestReleaseAcceptanceLedgerReferences(), TestGrantOutcomeJSONRejectsUnknownValue(), TestGrantOutcomeZeroValueIsInvalid(), TestGeneratorPinIsTheAmendedVersion(), replaceContext, TestSIGHUPTriggersTLSReloadWithoutCancellingServeContext(), Collision, scriptedTTY (+370 more)
+Nodes (470): TestReleaseAcceptanceLedgerReferences(), TestGrantOutcomeJSONRejectsUnknownValue(), TestGrantOutcomeZeroValueIsInvalid(), TestGeneratorPinIsTheAmendedVersion(), replaceContext, TestSIGHUPTriggersTLSReloadWithoutCancellingServeContext(), testing.T, Host (+462 more)
 
 ### Community 10 - "Engine"
 Cohesion: 0.03
-Nodes (105): ReleaseCompatibilityRequest, embed.FS, GenerateReleaseCompatibility(), TestReleaseCompatibilityMatchesActualBothEngineSchemas(), BuildMigrationManifest(), Engine, MigrationManifest, Profile (+97 more)
+Nodes (114): reconciliationService, UpgradeDrillResult, Engine, roundTripFunc, embed.FS, io/fs.FS, TestAutomaticPrewriteRetryMeasuresRealSQLiteAndRestoreProof(), backupGateConfig() (+106 more)
 
 ### Community 11 - "InternalJSONResponse"
 Cohesion: 0.00
-Nodes (824): AuthMethodsRequestObject, AuthMethodsResponseObject, CreateOrgRequestObject, CreateOrgResponseObject, EnrolPasskeyFinishRequestObject, EnrolPasskeyFinishResponseObject, EnrolPasskeyStartRequestObject, EnrolPasskeyStartResponseObject (+816 more)
+Nodes (782): AuthMethodsRequestObject, AuthMethodsResponseObject, CreateOrgRequestObject, CreateOrgResponseObject, EnrolPasskeyFinishRequestObject, EnrolPasskeyFinishResponseObject, EnrolPasskeyStartRequestObject, EnrolPasskeyStartResponseObject (+774 more)
 
 ### Community 12 - "NotFoundJSONResponse"
 Cohesion: 0.00
 Nodes (253): AddAdapterTarget404JSONResponse, AddRemote404JSONResponse, AddWorkspaceOrigin404JSONResponse, AdoptAdapterTargetNames404JSONResponse, AdoptInstanceConfig404JSONResponse, ApplyDefinitionsPlan404JSONResponse, ApplyEnvTemplate404JSONResponse, ApplyInstanceConfig404JSONResponse (+245 more)
 
 ### Community 13 - "time.Time"
-Cohesion: 0.01
-Nodes (194): classifyRetryErr, retryAtTestError, fakeShared, AffectedCredential, cancelledClaimLease, fakeLease, Account, AccountProfile (+186 more)
-
-### Community 14 - "KeyDeclarationDetail.tsx"
 Cohesion: 0.03
-Nodes (101): listKeyGroupsOp, updateKeyMetadataOp, KeyDeclaration, KeyPresenceRules, KeyRule, ackBody(), Acknowledgeable, CatalogueAction (+93 more)
+Nodes (43): classifyRetryErr, retryAtTestError, fakeShared, AdapterConnection, MintCredentialResult, AffectedCredential, DeleteServiceAccountAggregateInput, NewCredentialAuthority (+35 more)
+
+### Community 14 - "TxAuthorizer"
+Cohesion: 0.02
+Nodes (14): RecoveryBatch, TOTPCredential, CredentialAuthority, Account, TxAuthorizer, ExternalIdentity, Identity, OIDCProvider (+6 more)
 
 ### Community 15 - "TooManyRequestsJSONResponse"
 Cohesion: 0.00
@@ -1362,31 +1332,31 @@ Nodes (242): TooManyRequestsJSONResponse, AddRemote429JSONResponse, AddWorkspace
 
 ### Community 16 - "database/sql.NullString"
 Cohesion: 0.01
-Nodes (253): fakeLocker, database/sql.NullInt64, database/sql.NullString, MethodValueWriter(), ReadsAreFine(), SecondWriter(), WriteDenial(), DecoyLockWriter() (+245 more)
+Nodes (215): database/sql.NullInt64, database/sql.NullString, MethodValueWriter(), ReadsAreFine(), SecondWriter(), WriteDenial(), AuditInstanceEvent, AuditTenantEvent (+207 more)
 
-### Community 17 - "matrix.ts"
-Cohesion: 0.01
-Nodes (280): clearValueOp, copyValuesOp, createKeyOp, createRevisionPinOp, deleteKeyOp, exportValuesOp, getEnvironmentSignalsOp, getKeyOp (+272 more)
-
-### Community 18 - "parsed"
+### Community 17 - "parsed"
 Cohesion: 0.02
-Nodes (209): localLoginOp, oidcStartOp, regenerateRecoveryCodesOp, samlStartOp, stepUpTotpOp, whoamiOp, WorkspaceHandoffTransaction, zAuthMethods (+201 more)
+Nodes (228): listKeyGroupsOp, updateKeyMetadataOp, watchProjectEventsOp, KeyDeclaration, KeyPresenceRules, KeyRule, AdvisoryConnectionState, AdvisoryEvent (+220 more)
+
+### Community 18 - "values.ts"
+Cohesion: 0.01
+Nodes (296): copyValuesOp, enrolPasskeyFinishOp, enrolTotpConfirmOp, listMyOrgsOp, listValuesOp, localLoginOp, oidcStartOp, regenerateRecoveryCodesOp (+288 more)
 
 ### Community 19 - "scimActor"
-Cohesion: 0.08
-Nodes (36): ScimBulkResponseObject, ScimDeleteGroupResponseObject, ScimDeleteUserResponseObject, ScimGetGroupResponseObject, ScimGetUserResponseObject, ScimListGroupsResponseObject, ScimListUsersResponseObject, ScimMeResponseObject (+28 more)
+Cohesion: 0.01
+Nodes (176): ScimBulkRequestObject, ScimBulkResponseObject, ScimCreateGroupRequestObject, ScimCreateGroupResponseObject, ScimCreateUserRequestObject, ScimCreateUserResponseObject, ScimDeleteGroupRequestObject, ScimDeleteGroupResponseObject (+168 more)
 
-### Community 20 - "reissuedSessionResponse"
-Cohesion: 0.23
-Nodes (4): LoginResult, Session, Principal, reissuedSessionResponse
+### Community 20 - "notFoundOr"
+Cohesion: 0.05
+Nodes (34): EnvironmentChain, ExternalIdentity, NewProvider, NewSAMLProvider, OIDCProvider, OIDCTransaction, ProviderUpdate, ReauthWindow (+26 more)
 
 ### Community 21 - "vitest"
 Cohesion: 0.02
-Nodes (149): AdapterTargetInput, zProjectList, react-router, vitest, decompressBrotli, decompressGzip, fixtures, run (+141 more)
+Nodes (145): AdapterTargetInput, react-router, vitest, decompressBrotli, decompressGzip, fixtures, run, script (+137 more)
 
-### Community 22 - "DecodeStrict"
+### Community 22 - "Hash"
 Cohesion: 0.02
-Nodes (132): DuplicateMemberError, UnknownFieldError, github.com/Hikyo-Org/hikyo/internal/releasetrust.SnapshotFloor, TestEmbeddedDeclarationRequiresExactAuthenticatedEnvelope(), ProductionTrust(), TestProductionTrustRequiresExactImmutableStamp(), DecodeStrict(), foldJSONMember() (+124 more)
+Nodes (154): github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1.Bundle, github.com/sigstore/sigstore/pkg/signature.Signer, testing.TB, TestAuthenticatedArchiveRequiresActualCompleteContainer(), newSignedEvidenceFixture(), TestEvidenceAuthenticatesExactBytesAndCurrentAuthority(), TestLegacyProposalNeverMasqueradesAsLiveLedger(), TestRotationRequiresPriorSignerAndExplicitBreakGlassMode() (+146 more)
 
 ### Community 23 - "github.com/jackc/pgx/v5/pgtype.Timestamptz"
 Cohesion: 0.01
@@ -1404,9 +1374,9 @@ Nodes (108): AddAdapterTarget409JSONResponse, AddRemote409JSONResponse, AddWorks
 Cohesion: 0.02
 Nodes (190): createDynamicProviderOp, createFederatedBindingOp, createServiceAccountOp, deleteDynamicProviderOp, deleteServiceAccountOp, getMachineRevealOp, listDynamicProvidersOp, listLeasesOp (+182 more)
 
-### Community 27 - "execRaw"
-Cohesion: 0.05
-Nodes (146): seedAdapterUpdateTarget(), TestAdapterUpdateTargetRoundTrip(), runAuditSuite(), TestAutomationPreviewLifecycle(), publishComposeValues(), seedComposeCatalogue(), deliveredByName(), deliverySvc() (+138 more)
+### Community 27 - "scopeEnv"
+Cohesion: 0.07
+Nodes (102): seedAdapterUpdateTarget(), TestAdapterUpdateTargetRoundTrip(), TestAuditExportDoesNotTruncateAboveThePageCap(), advancePinGeneration(), deliveredByName(), deliverySvc(), latestRevision(), principalGeneration() (+94 more)
 
 ### Community 28 - "ForbiddenJSONResponse"
 Cohesion: 0.01
@@ -1414,135 +1384,135 @@ Nodes (104): AddAdapterTarget403JSONResponse, AddRemote403JSONResponse, AddWorks
 
 ### Community 29 - "Remotes.tsx"
 Cohesion: 0.02
-Nodes (181): createClient(), createConfig(), addRemoteOp, addWorkspaceOriginOp, getMetaOp, listInstanceConnectionsOp, listMyOrgsOp, listMySessionsOp (+173 more)
+Nodes (182): createClient(), createConfig(), addRemoteOp, addWorkspaceOriginOp, listInstanceConnectionsOp, listMySessionsOp, listRemotesOp, listWorkspaceOriginsOp (+174 more)
 
-### Community 30 - "DB"
-Cohesion: 0.04
-Nodes (163): ApprovalRequestSummary, deliveryRetryResetProbe, grantSpec, publishOverlapProbe, scenario, sync.Once, admitConformanceFixture(), scenarioDefaultBudgetChargedEndToEnd() (+155 more)
+### Community 30 - "DefaultPresenceRules"
+Cohesion: 0.05
+Nodes (131): deliveryRetryResetProbe, grantSpec, publishOverlapProbe, scenario, sync.Once, admitConformanceFixture(), scenarioDefaultBudgetChargedEndToEnd(), scenarioSchemaRevisionNoopDoesNotCharge() (+123 more)
 
 ### Community 31 - "store.go"
-Cohesion: 0.03
-Nodes (115): Classification, AdapterConflictArtifact, AdapterFinding, AdapterMove, AdapterTeardownResult, poolHolder, github.com/jackc/pgx/v5/pgxpool.Config, github.com/jackc/pgx/v5/pgxpool.Conn (+107 more)
+Cohesion: 0.02
+Nodes (126): Classification, AdapterConfigureFence, AdapterConflictArtifact, AdapterFinding, AdapterMove, adapterRow, adapterRows, AdapterTeardownResult (+118 more)
 
 ### Community 32 - "service/scan.go"
-Cohesion: 0.05
-Nodes (68): AdditiveModificationError, detailErr, Environment, KeyGroup, NewTxAuthorizer(), Bundle, Key, Presence (+60 more)
+Cohesion: 0.06
+Nodes (69): reflect.Type, reflect.Value, ackTestKeyring(), BenchmarkAckSetMaximum(), ackSet, sampleBinding(), TestAckSetCrossSurfaceReplayRejected(), TestAckSetOpensEachPresentedTokenOnce() (+61 more)
 
 ### Community 33 - "IO"
-Cohesion: 0.04
-Nodes (195): AdapterTargetList, EnvironmentSettings, FederatedClaimPin, Grant, GrantList, GrantOrigin, InstanceConfigAdoptionPreview, InstanceConnectionList (+187 more)
+Cohesion: 0.05
+Nodes (143): InstanceConfigAdoptionPreview, ScimMapping, ScimMappingList, AuthArtifact, commonFlags, flag.FlagSet, github.com/Hikyo-Org/hikyo/api/apigen.Acknowledgements, resolveAccessScope() (+135 more)
 
 ### Community 34 - "api/settings.ts"
-Cohesion: 0.02
-Nodes (164): SamlMetadataSource, orgGrantsKey(), useOrgGrants(), useProjectEnvironments(), useSetDefinitionsSettings(), environmentTopologyQueryPrefixes(), conflictText(), invalidText() (+156 more)
+Cohesion: 0.03
+Nodes (133): getProjectRetentionOp, zEnvironmentSettings, zProjectList, zProjectRetentionPolicy, orgGrantsKey(), useOrgGrants(), useProjectEnvironments(), environmentTopologyQueryPrefixes() (+125 more)
 
-### Community 35 - "grantEventInput"
-Cohesion: 0.02
-Nodes (159): GrantOutcome, GrantOutcomeCreated(), GrantOutcomeOriginAdded(), GrantOutcomeUnchanged(), ParseGrantOutcome(), TestGrantOutcomeJSONIsClosed(), grantOutcomeValue, Atom (+151 more)
+### Community 35 - "service/grants.go"
+Cohesion: 0.04
+Nodes (101): GrantOutcome, GrantOutcomeCreated(), GrantOutcomeOriginAdded(), GrantOutcomeUnchanged(), ParseGrantOutcome(), TestGrantOutcomeJSONIsClosed(), grantOutcomeValue, capabilityFixture (+93 more)
 
 ### Community 36 - "WrappedKey"
-Cohesion: 0.02
-Nodes (71): lostRaceStore, memStore, SystemAuthority(), Purpose, WrappedKey, activeOf(), Retention, backupErrorClass() (+63 more)
+Cohesion: 0.03
+Nodes (60): lostRaceStore, memStore, SystemAuthority(), Purpose, WrappedKey, activeOf(), Retention, backupErrorClass() (+52 more)
 
 ### Community 37 - "scimContext"
-Cohesion: 0.04
-Nodes (58): SplitExtensionPath(), principalForAccount(), directoryReadEvent(), fold(), lockBindingRow(), markSCIMPhase(), markSCIMPhaseState(), cloneAttributes() (+50 more)
+Cohesion: 0.03
+Nodes (95): SCIMRetentionKey, Object, TxAuthorizer, CheckSubjectSource(), ProviderKind, SCIMAttention, SCIMCause, isCoreSchemaURN() (+87 more)
 
 ### Community 38 - "Shell.tsx"
 Cohesion: 0.02
-Nodes (120): getRetentionHealthOp, zRetentionHealth, @fontsource-variable/instrument-sans, diagnosticWarnings(), retentionBanner(), RetentionHealth, RetentionHealthAccess, retentionHealthKey (+112 more)
+Nodes (159): getRetentionHealthOp, reauthPasskeyFinishOp, reauthPasskeyStartOp, reauthTotpOp, zRetentionHealth, useRemotes(), diagnosticWarnings(), retentionBanner() (+151 more)
 
 ### Community 39 - "Scope"
-Cohesion: 0.03
-Nodes (62): ApprovalBypass, github.com/Hikyo-Org/hikyo/internal/service.AdapterMove, Scope, testDefinitionsPlan(), TestDefinitionBodyTransportPreservesTheDomainBound(), planViewOf(), bundleFromState(), bundlePresence() (+54 more)
+Cohesion: 0.02
+Nodes (150): ApprovalBypass, ApprovalRequestSummary, TestRedactTokens(), RedactTokens(), SanitizeFreeText(), Operation, CurrentState, Scope (+142 more)
 
 ### Community 40 - "assertions.ts"
 Cohesion: 0.11
-Nodes (35): @axe-core/playwright, ColourProp, Contrast, contrastRatio(), expectBoundaryContrast(), expectColourToken(), expectContrast(), expectDensity() (+27 more)
+Nodes (34): @axe-core/playwright, ColourProp, Contrast, contrastRatio(), expectBoundaryContrast(), expectColourToken(), expectContrast(), expectDensity() (+26 more)
 
 ### Community 41 - "docs/site/src/content/docs/docs/index.mdx"
 Cohesion: 0.03
 Nodes (68): Bounded-cardinality RED metrics, Local HA MCP production proof boundary, Separated upgrade packaging custody, Assemble a public stable bundle offline, Docker Compose, Kubernetes, Required public artifacts, docs/reports/1.0/mcp-production-proof.html (HTML) (+60 more)
 
-### Community 42 - "forEngines"
-Cohesion: 0.01
-Nodes (293): CallerActivity, github.com/descope/virtualwebauthn.Authenticator, github.com/descope/virtualwebauthn.AuthenticatorOptions, github.com/descope/virtualwebauthn.Credential, github.com/descope/virtualwebauthn.RelyingParty, strings.Builder, newAccessWireEnv(), runAccessWireQueryTrace() (+285 more)
+### Community 42 - "reauth_e2e_test.go"
+Cohesion: 0.05
+Nodes (100): github.com/descope/virtualwebauthn.Authenticator, github.com/descope/virtualwebauthn.AuthenticatorOptions, github.com/descope/virtualwebauthn.Credential, github.com/descope/virtualwebauthn.RelyingParty, runBrowserMutationFlow(), TestParameterizedExportConsentDoesNotDuplicateConfigDisclosure(), bootstrapFactorAdmin(), enrolTOTPAndStepUp() (+92 more)
 
 ### Community 43 - "access.ts"
 Cohesion: 0.04
-Nodes (89): createEnvGrantOp, GrantResult, zGrantList, BlastLine, blastRadius(), capabilitiesAt(), CAPABILITY_REGISTRY, CapabilityAtom (+81 more)
+Nodes (107): applyEnvTemplateOp, applyInstanceTemplateOp, applyOrgTemplateOp, applyProjectTemplateOp, createEnvGrantOp, createInstanceGrantOp, createOrgGrantOp, createProjectGrantOp (+99 more)
 
-### Community 44 - "PinnedOperator"
-Cohesion: 0.05
-Nodes (66): TrustContext, AuthorityKind, KeyTransition, LegacyInspection, LiveSource, Rotation, RotationSource, signedEvidenceFixture (+58 more)
+### Community 44 - "PinCiphertext"
+Cohesion: 0.04
+Nodes (91): TrustContext, AuthorityKind, contextReader, KeyTransition, LegacyInspection, LiveSource, Rotation, RotationSource (+83 more)
 
-### Community 45 - "Zero"
-Cohesion: 0.05
-Nodes (78): TestEscrowDispatchPreservesServerRootIdentity(), TestWriteAboutAndWelcomeExposeFullArtwork(), TestFailedRestoreDrillCleanupPreservesExistingTarget(), ensureDevRootKey(), TestDevelopmentRootRefusesSymlinkAndPreservesTarget(), RunUpgradeOperator(), TestUnattendedCredentialSealedRepeatedChildReads(), unattendedRootCredential() (+70 more)
+### Community 45 - "runBackupRestoreDrill"
+Cohesion: 0.04
+Nodes (91): TestEscrowDispatchPreservesServerRootIdentity(), TestFailedRestoreDrillCleanupPreservesExistingTarget(), RunRestore(), ensureDevRootKey(), TestDevelopmentRootRefusesSymlinkAndPreservesTarget(), RunEscrow(), TestEscrowLocalCLIRefusesUnstampedProductionBeforeDatabase(), TestUnattendedCredentialSealedRepeatedChildReads() (+83 more)
 
 ### Community 46 - "WithLock"
-Cohesion: 0.05
-Nodes (90): TestPreparationExportUsesLiveSessionWithoutRuntimeAdmission(), TestRuntimeSQLiteChildExclusion(), TestRuntimeTransactionPanicReleasesHostExclusion(), TestSQLiteRuntimeReaderBlocksOtherProcessAndRejectsAliases(), Operation, Session, State, healthy() (+82 more)
+Cohesion: 0.04
+Nodes (113): ReleaseCompatibilityRequest, database/sql/driver.Tx, database/sql/driver.TxOptions, GenerateReleaseCompatibility(), NewLegacyProposal(), TestPreparationExportUsesLiveSessionWithoutRuntimeAdmission(), historicalPreparedArchive(), Operation (+105 more)
 
-### Community 47 - "Spec"
-Cohesion: 0.11
-Nodes (31): mustSpec(), TestAdapterAuthorityAuditSchemasAreClosed(), TestAdapterCatalogueIsClosedAndLicensesExternalEffectPhases(), TestCLIReauthHandoffAuditSchemaIsClosed(), TestDeliveryFetchedRecordsAcknowledgedKeys(), TestRegistryForbiddenPayloadContent(), TestRegistryNoOutcomeShadow(), TestRegistryWellFormed() (+23 more)
+### Community 47 - "EventType"
+Cohesion: 0.13
+Nodes (27): mustSpec(), TestAdapterAuthorityAuditSchemasAreClosed(), TestAdapterCatalogueIsClosedAndLicensesExternalEffectPhases(), TestCLIReauthHandoffAuditSchemaIsClosed(), TestDeliveryFetchedRecordsAcknowledgedKeys(), TestRegistryForbiddenPayloadContent(), TestRegistryNoOutcomeShadow(), TestRegistryWellFormed() (+19 more)
 
-### Community 48 - "Adapters"
-Cohesion: 0.08
-Nodes (43): AdapterKeySelection, CredentialAAD(), ParseProvider(), NewEventID(), attachTargetKeys(), adapterCeremonyError(), adapterDestination(), adapterEnvironmentSet() (+35 more)
-
-### Community 49 - "Rotation"
-Cohesion: 0.20
-Nodes (10): Actor, Budget, DEKScope, Config, SeparatePostgresScratch(), DEKRotation, MasterKeyRotation, RootKeyRotation (+2 more)
-
-### Community 50 - "newAuditEvent"
+### Community 48 - "Write"
 Cohesion: 0.02
-Nodes (96): Assurance, github.com/Hikyo-Org/hikyo/internal/authz.Account, github.com/Hikyo-Org/hikyo/internal/authz.KDFParams, github.com/Hikyo-Org/hikyo/internal/authz.NewSAMLTransaction, github.com/Hikyo-Org/hikyo/internal/authz.OIDCProvider, github.com/Hikyo-Org/hikyo/internal/authz.OIDCTransaction, github.com/Hikyo-Org/hikyo/internal/authz.PasswordCredential, github.com/Hikyo-Org/hikyo/internal/authz.TOTPCredential (+88 more)
+Nodes (145): AdapterKeySelection, ClaimPin, github.com/Hikyo-Org/hikyo/internal/authz.CredentialPolicy, github.com/Hikyo-Org/hikyo/internal/authz.FederationIssuer, github.com/Hikyo-Org/hikyo/internal/authz.InstanceConnection, github.com/Hikyo-Org/hikyo/internal/authz.SessionSummary, github.com/Hikyo-Org/hikyo/internal/authz.WorkspaceHandoff, CredentialAAD() (+137 more)
 
-### Community 51 - "New"
+### Community 49 - "HistoryDrawer.tsx"
 Cohesion: 0.05
-Nodes (73): github.com/sigstore/sigstore/pkg/signature.Signer, testing.TB, StableMaterial, TestCanonicalOperatorKeyID(), TestHistoricalStableIsSeparateFromLatestAndCurrentRevocation(), TestSignedReleaseCandidatesKeepStableTrustProfile(), TestSnapshotRejectsRollbackEquivocationAndMutatedEvidence(), TestStableProvenanceRejectsAuthenticatedFalseClaims() (+65 more)
+Nodes (73): exportValuesOp, RetentionConsequence, zExportedValues, callerSafeRefusal(), historyRefusalText(), HistoryRevisionItem, RestoreResult, RevisionPinItem (+65 more)
 
-### Community 52 - "TxAuthorizer"
-Cohesion: 0.03
-Nodes (152): AuditPage, CLIReauthRedeemed, ImpactChange, ImpactEnvironment, TxAuthorizer, Identity, Resolution, CurrentState (+144 more)
+### Community 50 - "Zero"
+Cohesion: 0.02
+Nodes (84): CallerActivity, github.com/Hikyo-Org/hikyo/internal/authz.Account, github.com/Hikyo-Org/hikyo/internal/authz.KDFParams, github.com/Hikyo-Org/hikyo/internal/authz.PasswordCredential, github.com/Hikyo-Org/hikyo/internal/authz.TOTPCredential, github.com/Hikyo-Org/hikyo/internal/authz.WebAuthnCeremony, github.com/Hikyo-Org/hikyo/internal/authz.WebAuthnCredential, ownerRuntime (+76 more)
+
+### Community 51 - "fullDraftFixture"
+Cohesion: 0.31
+Nodes (11): fixtureReadJSON(), fixtureWrite(), TestHistoricalLegacyBundleNeedsNoWorkflowArtifacts(), TestHistoricalUsesCurrentAuthorizationWithoutRollingBack(), TestBinaryProvenanceAndChecksumSemantics(), chartArchive(), fullDraft(), fullDraftFixture() (+3 more)
+
+### Community 52 - "Repos"
+Cohesion: 0.02
+Nodes (197): CLIReauthRedeemed, ImpactChange, ImpactEnvironment, ImpactPreview, IsSelfConfig(), ProjectSealer, Keyring, aad() (+189 more)
 
 ### Community 53 - "store/scim.go"
-Cohesion: 0.07
-Nodes (41): ScimGroup, ScimUser, GetSCIMCredentialRow, NewSCIMCredential, SCIMBinding, SCIMCredential, SCIMGroup, SCIMMapping (+33 more)
+Cohesion: 0.09
+Nodes (33): ScimGroup, ScimUser, GetSCIMCredentialRow, SCIMCredential, SCIMGroup, SCIMUser, noRows(), pgCredential() (+25 more)
 
 ### Community 54 - "NewAdapterRuntime"
-Cohesion: 0.06
-Nodes (94): Module, ModuleFactory, adapterCLISession(), adapterKeyring(), adapterServiceDB(), Actor, Adapters, providerBlindTestModuleFactory() (+86 more)
+Cohesion: 0.04
+Nodes (114): adapterModuleFactory, providerConstructor, Module, TestProviderKindsAreClosedAndRejectUnknownValues(), ModuleFactory, ModuleLease, Provider, Module (+106 more)
 
 ### Community 55 - "Config"
-Cohesion: 0.07
-Nodes (45): enrolledRootSources, nextRootSources, rootKeySource, selectedRootKeySource, Datastore, PostgresStorage, UpgradeConfiguration, net/netip.Prefix (+37 more)
+Cohesion: 0.09
+Nodes (43): enrolledRootSources, nextRootSources, selectedRootKeySource, Datastore, PostgresStorage, UpgradeConfiguration, net/netip.Prefix, checkCandidateConfiguration() (+35 more)
 
 ### Community 56 - "pgSelfConfigStorage"
 Cohesion: 0.06
 Nodes (14): SelfConfigBinding, SelfConfigJob, SelfConfigNode, pgSelfConfigStorage, sqliteSelfConfigStorage, pgSelfConfigBinding(), pgSelfConfigJob(), pgSelfConfigNode() (+6 more)
 
-### Community 57 - "PrincipalID"
-Cohesion: 0.03
-Nodes (141): WorkloadPinState, Server, topologyOwnerFixtureCommit(), scenarioOrderAfterDeletion(), scenarioTenantChain(), SingletonTopology, EnvID, PrincipalID (+133 more)
+### Community 57 - "installerFixture"
+Cohesion: 0.14
+Nodes (33): TestSelfConfigDeploymentRestoreAllowsRepairThenAnotherRollout(), finalizeSelfConfigTestRoot(), Actor, SelfConfig, TestSelfConfigDeploymentConcurrentFinalizeInvalidatesPreparedRoot(), TestSelfConfigDeploymentRootPersistenceRequiresExactMFA(), TestSelfConfigRootFinalizationWaitsForRestoredRolloutRepair(), testSelfConfigDeploymentAuthorization() (+25 more)
 
 ### Community 58 - "io.Reader"
-Cohesion: 0.05
-Nodes (85): archive/tar.Reader, archive/tar.Writer, database/sql.DB, database/sql.Tx, io.Reader, Manifest(), assertOnlyMigrationSeeds(), copyMembersIn() (+77 more)
+Cohesion: 0.06
+Nodes (68): archive/tar.Reader, archive/tar.Writer, database/sql.DB, database/sql.Tx, io.Reader, io.ReadSeeker, backupRestorePlans(), restoreOrdinaryPostgres() (+60 more)
 
 ### Community 59 - "NewState"
-Cohesion: 0.09
-Nodes (25): Context, Env, Flags, PinFile, Resolved, SessionArtifact, TenantScope, TenantScopeKind (+17 more)
+Cohesion: 0.08
+Nodes (29): Context, Env, Flags, PinFile, Resolved, SessionArtifact, TenantScope, TenantScopeKind (+21 more)
 
 ### Community 60 - "docs/handoff/79-operator-floor.md"
 Cohesion: 0.22
 Nodes (5): Operator resource floor, Shipped operator resource acceptance, docs/reports/1.0/mcp-conformance-ci.html (HTML), Kubernetes, Process RSS versus cgroup memory
 
 ### Community 61 - "io.Writer"
-Cohesion: 0.05
-Nodes (87): recipientList, cliWizardHost, helpEntry, helpSection, readRolloutInstalled(), runConfigRollout(), runRolloutAuthorityStage(), stageRolloutAuthority() (+79 more)
+Cohesion: 0.03
+Nodes (107): recipientList, cliWizardHost, helpEntry, helpSection, readRolloutInstalled(), runConfigRollout(), runRolloutAuthorityStage(), stageRolloutAuthority() (+99 more)
 
 ### Community 62 - "Queries"
 Cohesion: 0.03
@@ -1557,68 +1527,68 @@ Cohesion: 0.08
 Nodes (22): description, devDependencies, @hey-api/openapi-ts, @types/node, typescript, @typescript/native, zod, @types/node (+14 more)
 
 ### Community 65 - "testLogger"
-Cohesion: 0.05
-Nodes (98): bootGuard, bootResourceRecord, bootResources, refusedOwnerInstaller, TestAdminCreateAdoptsRunningServerSeedInsteadOfCommandDefaults(), TestAdminCreateRequiresFreshServerSeed(), TestAdminAuthRefusesUnverifiedLegacySchema(), TestAdminAuthResourceOwnership() (+90 more)
+Cohesion: 0.06
+Nodes (84): bootResourceRecord, refusedOwnerInstaller, syncBuffer, TestAdminCreateAdoptsRunningServerSeedInsteadOfCommandDefaults(), TestAdminCreateRequiresFreshServerSeed(), TestAdminAuthRefusesUnverifiedLegacySchema(), TestAdminAuthResourceOwnership(), TestAdminAuthWarnsWhenRootRotationPending() (+76 more)
 
-### Community 66 - "Queries"
-Cohesion: 0.05
-Nodes (22): InstanceConnection, RemoteSnapshot, Queries, WorkspaceHandoff, WorkspaceOrigin, ApproveWorkspaceHandoffParams, ConsumeWorkspaceHandoffParams, CreateInstanceConnectionParams (+14 more)
+### Community 66 - "TxAuthorizer"
+Cohesion: 0.04
+Nodes (19): AffectedCredential, HandoffPurpose, CredentialPolicy, TxAuthorizer, Identity, MachineCredential, ServiceAccount, NewWorkspaceHandoff (+11 more)
 
 ### Community 67 - "compose.go"
 Cohesion: 0.06
 Nodes (58): DeliveredKey, composeStackOptions, RunSettings, SnapshotSettings, Target, allTargetKeyIDs(), composeRuntimeDir(), composeSlug() (+50 more)
 
-### Community 68 - "Status"
+### Community 68 - "Load"
 Cohesion: 0.03
-Nodes (94): automaticDiscoveryFixture, automaticReleasePreparer, automaticReleaseSource, automaticRoute, unattendedChildFixture, unattendedFixtureInstaller, builtUpdateChannel(), newAutomaticDiscoveryFixture() (+86 more)
+Nodes (121): SnapshotFloor, SafeName(), Snapshot, VerifiedRelease, Snapshot, RequireLatestStable(), PinnedTrust, Snapshot (+113 more)
 
 ### Community 69 - "instance.ts"
-Cohesion: 0.07
-Nodes (56): adminEnv(), adoptCookies(), api(), configureAndLinkOIDC(), Cookie, cookieHeader(), csrfToken(), enrolTotp() (+48 more)
+Cohesion: 0.06
+Nodes (69): addVirtualAuthenticator(), adminEnv(), adoptCookies(), api(), configureAndLinkOIDC(), Cookie, cookieHeader(), countDisclosureEvents() (+61 more)
 
 ### Community 70 - "adapters.ts"
 Cohesion: 0.02
-Nodes (143): addAdapterTargetOp, adoptAdapterTargetNamesOp, cancelAdapterMoveOp, createAdapterOp, deleteAdapterOp, listAdaptersOp, listKeysOp, pauseAdapterTargetOp (+135 more)
+Nodes (147): addAdapterTargetOp, adoptAdapterTargetNamesOp, cancelAdapterMoveOp, createAdapterOp, deleteAdapterOp, listAdaptersOp, listEnvironmentsOp, listKeysOp (+139 more)
 
 ### Community 71 - "os.File"
 Cohesion: 0.04
-Nodes (67): PublishPhase, Writer, os.DirEntry, os.File, os.Root, unattendedRootCredential(), openCiphertextSource(), openOwnedReadonly() (+59 more)
+Nodes (64): PublishPlan, Writer, os.DirEntry, os.File, os.Root, unattendedRootCredential(), unattendedRootCredential(), openCiphertextSource() (+56 more)
 
-### Community 72 - "adapterTargetResponse"
-Cohesion: 0.04
-Nodes (53): AdapterMoveTarget, AdapterTargetKey, AdapterConflictArtifact, AdapterKeySelection, AdapterMove, AdapterTarget, AdapterTargetInput, AdapterTargetKey (+45 more)
+### Community 72 - "runAdapter"
+Cohesion: 0.10
+Nodes (33): AdapterKeySelection, AdapterTargetInput, AdapterKeySelectionClassification, AdapterTargetInputVisibility, CreateAdapterRequest, UpdateAdapterTargetRequest, UpdateAdapterTargetRequestVisibility, adapterCredentialSource (+25 more)
 
 ### Community 73 - "Keyring"
 Cohesion: 0.03
-Nodes (63): dekEntry, header, keyHandle, masterSet, redactionSurface, redactor, swapHandle, versionSet (+55 more)
+Nodes (85): dekEntry, header, keyCaptureReader, keyHandle, KeyStore, masterSet, redactionSurface, redactor (+77 more)
 
-### Community 74 - "log/slog.Logger"
+### Community 74 - "ClaimedLease"
+Cohesion: 0.14
+Nodes (10): dynamicGaugeSource, Provider, dynamicRetryDelay(), Dynamic, dynamicClaimTime(), fenceRows(), ClaimedLease, DynamicRuntime (+2 more)
+
+### Community 75 - "DecodeStrict"
+Cohesion: 0.06
+Nodes (48): DuplicateMemberError, UnknownFieldError, encoding/json.Decoder, github.com/Hikyo-Org/hikyo/internal/releasetrust.SnapshotFloor, DecodeStrict(), foldJSONMember(), RejectDuplicateMembers(), unknownField() (+40 more)
+
+### Community 76 - "Development"
+Cohesion: 0.11
+Nodes (23): assemblyFixture, directories, options, crypto/ecdsa.PrivateKey, TestReleaseCompatibilityMatchesActualBothEngineSchemas(), Development(), VerifyDevelopment(), documents() (+15 more)
+
+### Community 77 - "PrincipalClass"
 Cohesion: 0.08
-Nodes (28): dynamicGaugeSource, dynamicWorker, Destination, log/slog.Logger, adminAuth(), adminAuthWithResources(), AdminUsage(), runAdminConfig() (+20 more)
-
-### Community 75 - "PostgresTransaction"
-Cohesion: 0.07
-Nodes (17): database/sql.Stmt, pgx.Row, pgx.Rows, pgx.Tx, pgx.TxOptions, DB, PostgresTransaction, SQLiteTransaction (+9 more)
-
-### Community 76 - "Hash"
-Cohesion: 0.04
-Nodes (89): assemblyFixture, directories, options, crypto/ecdsa.PrivateKey, Development(), VerifyDevelopment(), documents(), newPrivate() (+81 more)
-
-### Community 77 - "Identities"
-Cohesion: 0.12
-Nodes (23): ClaimPin, github.com/Hikyo-Org/hikyo/internal/authz.CredentialPolicy, github.com/Hikyo-Org/hikyo/internal/authz.ServiceAccount, coveredBy(), Reachable, ReachableFrom(), credentialKindOf(), expiringSoon() (+15 more)
+Nodes (45): MachineCredential, NewMachineCredential, NewServiceAccount, ServiceAccount, ServiceAccountCreation, ServiceAccountDeletion, Binding, templateSpec (+37 more)
 
 ### Community 78 - "remotefetch_test.go"
-Cohesion: 0.10
-Nodes (31): grantInstanceDirectory(), newInstance(), seedInstanceFixtures(), TestTwoInstancesDirectoryAndWorkspace(), TestZeroRemotesOriginateZeroConnections(), DefaultConfig(), Config, CanonicalRemoteURL() (+23 more)
+Cohesion: 0.16
+Nodes (22): CanonicalRemoteURL(), ClassifyError(), establishCONNECT(), Client, Config, New(), SPKIFingerprint(), Client (+14 more)
 
 ### Community 79 - "digest"
-Cohesion: 0.18
-Nodes (26): fixture, SourceDigest(), TestCancelPreparedAllowsDeploymentStatusOnlyUpdates(), TestCancelPreparedRejectsChangedBaseline(), TestBootstrapAliasesNeverCarrySourceContents(), digest(), NewKubernetes(), Change (+18 more)
+Cohesion: 0.09
+Nodes (46): fixture, Controller, crypto/ed25519.PrivateKey, SourceDigest(), TestCancelPreparedAllowsDeploymentStatusOnlyUpdates(), TestCancelPreparedRejectsChangedBaseline(), TestControllerCancelsInterruptedSubmitBookkeeping(), TestControllerCancelsUnseenSubmitWithoutMutatingTarget() (+38 more)
 
 ### Community 80 - "compose/doctor.go"
 Cohesion: 0.06
-Nodes (84): composeDoctorReport, composeFinding, ComposeService, DoctorInput, EnvFileRef, rawEnvFile, rawService, composeDoctorGather() (+76 more)
+Nodes (85): composeDoctorReport, composeFinding, ComposeService, DoctorInput, EnvFileRef, rawEnvFile, rawService, composeDoctorGather() (+77 more)
 
 ### Community 81 - "privacyEvent"
 Cohesion: 0.27
@@ -1626,139 +1596,139 @@ Nodes (8): github.com/Hikyo-Org/hikyo/internal/authz.PrivacyAccountView, github.
 
 ### Community 82 - "must"
 Cohesion: 0.07
-Nodes (51): k8s.io/apimachinery/pkg/runtime.Scheme, k8s.io/client-go/kubernetes.Clientset, k8s.io/client-go/rest.Config, sigs.k8s.io/controller-runtime/pkg/client.Client, nativeTLSFixture(), testNativeSecretTypes(), applyCRDs(), discardLog() (+43 more)
+Nodes (53): k8s.io/api/core/v1.ServiceAccount, k8s.io/apimachinery/pkg/runtime.Scheme, k8s.io/client-go/kubernetes.Clientset, k8s.io/client-go/rest.Config, sigs.k8s.io/controller-runtime/pkg/client.Client, sigs.k8s.io/controller-runtime.Request, nativeTLSFixture(), testNativeSecretTypes() (+45 more)
 
 ### Community 83 - "ScimProvisioning.tsx"
 Cohesion: 0.03
-Nodes (115): createScimBindingOp, createScimMappingOp, deleteOidcProviderOp, deleteScimBindingOp, deleteScimMappingOp, listOidcProvidersOp, listScimBindingsOp, listScimCredentialsOp (+107 more)
+Nodes (116): createScimBindingOp, createScimMappingOp, deleteOidcProviderOp, deleteScimBindingOp, deleteScimMappingOp, listOidcProvidersOp, listScimBindingsOp, listScimCredentialsOp (+108 more)
 
 ### Community 84 - "Digest"
 Cohesion: 0.03
-Nodes (89): automaticTestInspection, database/sql.Conn, inspectDataRecoveryPlan(), inspectBackupPlan(), ExistingHierarchyStore, VerifyExistingHierarchy(), Digest, Identity (+81 more)
+Nodes (91): automaticTestInspection, database/sql.Conn, databaseGate(), upgradeRequest(), ExistingHierarchyStore, VerifyExistingHierarchy(), Digest, Identity (+83 more)
 
 ### Community 85 - "SignedCommand"
 Cohesion: 0.05
-Nodes (28): bootDeploymentProbe, deploymentSourceProof, configurationTopology(), configureBootstrapDeployment(), bootstrapDeployment, readDeploymentFile(), readDeploymentSigner(), TestBootstrapDeploymentRefusesUninitializedHAEnrollmentBeforeReadingCustody() (+20 more)
+Nodes (51): bootDeploymentProbe, deploymentSourceProof, controllerJournal, crypto/ed25519.PublicKey, crypto.Signer, k8s.io/client-go/kubernetes.Interface, configurationTopology(), configureBootstrapDeployment() (+43 more)
 
-### Community 86 - "Queries"
-Cohesion: 0.07
-Nodes (16): SamlProvider, SamlSpKey, SamlTransaction, Queries, BindSessionToSAMLProviderParams, ConsumeSAMLTransactionParams, GuardSAMLProviderForMintParams, InsertSAMLProviderParams (+8 more)
+### Community 86 - "stubAuth"
+Cohesion: 0.05
+Nodes (18): LoginResult, ReauthResult, CLIReauthRedeemed, CLIReauthStart, ExternalIdentityView, OIDCStartResult, AccountProfile, Auth (+10 more)
 
 ### Community 87 - "Run"
-Cohesion: 0.03
-Nodes (98): syncBuffer, answeringTTY, fakeTTY, disappearingTTY, failingTTY, windowsTestReader, writeOnlyTTY, bytes.Buffer (+90 more)
+Cohesion: 0.04
+Nodes (84): fakeTTY, strings.Builder, TestDoctorGrammar(), TestHelpListsDoctor(), boolptr(), classptr(), definitionsTestIO(), exitName() (+76 more)
 
 ### Community 88 - "SnapshotBinding"
 Cohesion: 0.07
-Nodes (65): hwm, PublishPlan, rawAAD, SnapshotBindingDelivery, SnapshotBindingScope, saveSnapshot(), atomicWrite(), mustJSON() (+57 more)
+Nodes (66): hwm, rawAAD, SnapshotBindingDelivery, SnapshotBindingScope, loadLocalKeys(), loadOfflineSnapshot(), saveSnapshot(), atomicWrite() (+58 more)
 
-### Community 89 - "adapter.go"
-Cohesion: 0.05
-Nodes (26): Access, cursorModule, Disposition, RetryAtError, workerModule, stubProviderModule, Connection, Change (+18 more)
-
-### Community 90 - ".SAMLACS"
-Cohesion: 0.11
-Nodes (21): crypto.Signer, github.com/Hikyo-Org/hikyo/internal/authz.SAMLTransaction, equalVerifier(), evaluateSAMLAssurance(), LoginResult, Auth, SAMLStartResult, Auth (+13 more)
-
-### Community 91 - "Host"
+### Community 89 - "ConnectionRequest"
 Cohesion: 0.06
-Nodes (40): boundedOutput, command, ExportRequest, DefaultConfig(), Config, InitializeConfig(), LoadConfig(), ParseEnvironmentFile() (+32 more)
+Nodes (19): devFakeModule, devFakeProvider, devFakeStore, stubProviderModule, Connection, Config, Connection, ConnectionRequest (+11 more)
 
-### Community 92 - "Admission"
-Cohesion: 0.04
-Nodes (42): github.com/gofrs/flock.Flock, DB, pgx.Tx, State, Admission, Session, SQLiteGuard, checkInstanceEpoch() (+34 more)
+### Community 90 - "TxAuthorizer"
+Cohesion: 0.05
+Nodes (57): Assurance, Assurance, authorizationSpec, github.com/Hikyo-Org/hikyo/internal/authz.SAMLTransaction, github.com/Hikyo-Org/hikyo/internal/authz.ServiceAccount, ContractArtifactClass(), covers(), evaluate() (+49 more)
+
+### Community 91 - ".runRuntime"
+Cohesion: 0.16
+Nodes (12): Config, InitializeConfig(), LoadConfig(), ParseEnvironmentFile(), safePath(), within(), copyBinary(), trustedDirectory() (+4 more)
+
+### Community 92 - "MigrationManifest"
+Cohesion: 0.03
+Nodes (89): github.com/gofrs/flock.Flock, MigrationManifest, pgx.Tx, UpgradeExportRequest, Config, DB, DB, PreparationDB (+81 more)
 
 ### Community 93 - "Job"
-Cohesion: 0.05
-Nodes (42): DestinationKind, JobKind, adapterRow, adapterRows, adapterLoader, Connection, Job, Provider (+34 more)
+Cohesion: 0.11
+Nodes (23): DestinationKind, JobKind, adapterLoader, configurationAdapterStore, Job, adapterEffectKey(), adapterJobScope(), attentionPG() (+15 more)
 
 ### Community 94 - "HikyoSecret"
 Cohesion: 0.09
 Nodes (30): k8s.io/apimachinery/pkg/apis/meta/v1.Condition, k8s.io/apimachinery/pkg/apis/meta/v1.ConditionStatus, k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta, k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta, k8s.io/apimachinery/pkg/apis/meta/v1.Time, k8s.io/apimachinery/pkg/apis/meta/v1.TypeMeta, sigs.k8s.io/controller-runtime.Result, dumpConds() (+22 more)
 
 ### Community 95 - "newHarness"
-Cohesion: 0.14
-Nodes (76): k8s.io/api/core/v1.ServiceAccount, k8s.io/apimachinery/pkg/apis/meta/v1.OwnerReference, configVal(), deliveryJSON(), hasEventReason(), makeBootstrapSecret(), makeCR(), makeInstance() (+68 more)
+Cohesion: 0.15
+Nodes (73): k8s.io/apimachinery/pkg/apis/meta/v1.OwnerReference, configVal(), deliveryJSON(), hasEventReason(), makeBootstrapSecret(), makeCR(), makeInstance(), makeOptedInDeployment() (+65 more)
 
 ### Community 96 - "Vault"
 Cohesion: 0.10
 Nodes (34): openAutomaticCustody(), RecipientOf(), CustodyWrapKey(), BindLocalEnrollment(), CreateLocal(), OpenLocal(), PrepareLocalEnrollment(), TestLocalCustodyRefusesWeakPermissionsAndInvalidRoot() (+26 more)
 
 ### Community 98 - "Destination"
-Cohesion: 0.07
-Nodes (23): fakeAPI, API, Client, DestinationIdentity, fakeAPI, mutationPacer, operation, rateLimitError (+15 more)
+Cohesion: 0.06
+Nodes (25): Client, fakeAPI, operation, API, Client, ClientConfig, DestinationIdentity, fakeAPI (+17 more)
 
 ### Community 99 - "Matrix.tsx"
-Cohesion: 0.02
-Nodes (150): useFolders(), useDefinitionsSettings(), historyHref(), assembleKeyImpact(), CreateKeyPresence, CreateKeyRule, CreateKeyType, matrixImpactReady() (+142 more)
+Cohesion: 0.03
+Nodes (108): historyHref(), CreateKeyPresence, CreateKeyRule, CreateKeyType, MatrixEnvironmentRow, MatrixKeyList, MatrixPendingDraft, MatrixSignalCell (+100 more)
 
 ### Community 100 - "AuditFilter"
-Cohesion: 0.17
-Nodes (19): ActorClass, Origin, AuditEvent, Outcome, FormatTime(), ParseTime(), writeLine(), auditEventFromPGInstance() (+11 more)
+Cohesion: 0.10
+Nodes (32): ActorClass, Origin, AuditEvent, Outcome, FormatTime(), ParseTime(), actorNameKeep(), auditExportOp() (+24 more)
 
-### Community 101 - "import-state.ts"
-Cohesion: 0.13
-Nodes (24): ValueOccurrence, cutExportPrefix(), DOUBLE_ESCAPES, EnvironmentPlan, indexOccurrences(), isBoolean(), isInteger(), isJSONObjectOrArray() (+16 more)
+### Community 101 - "ImportWizard.tsx"
+Cohesion: 0.05
+Nodes (66): KeyClassification, ValueOccurrence, ValueOccurrenceList, FileConnector, MAX_FILE_BYTES, cutExportPrefix(), DOUBLE_ESCAPES, EnvironmentPlan (+58 more)
 
 ### Community 102 - "NewClient"
-Cohesion: 0.06
-Nodes (46): Meta, ScanFinding, TrustBundle, TrustStore, Error, CheckRevision(), errorFromResponse(), exitForStatus() (+38 more)
+Cohesion: 0.10
+Nodes (23): Meta, TrustBundle, TrustStore, errorFromResponse(), exitForStatus(), Client, isLoopbackOrigin(), NewClient() (+15 more)
 
 ### Community 103 - "configrollout/kubernetes.go"
-Cohesion: 0.10
-Nodes (49): argDelta, Change, deploymentDelta, envDelta, Phase, Plan, planData, portDelta (+41 more)
+Cohesion: 0.07
+Nodes (64): argDelta, Change, deploymentDelta, envDelta, Phase, Plan, planData, portDelta (+56 more)
 
 ### Community 104 - "Job"
-Cohesion: 0.09
-Nodes (19): Phase, Job, Request, LoadConfig(), TestLoadConfigRefusesWritableOrAmbiguousPolicy(), auditUpdateControl, stubUpdates, updateControlStub (+11 more)
+Cohesion: 0.08
+Nodes (20): Capability, Phase, Job, Request, LoadConfig(), TestLoadConfigRefusesWritableOrAmbiguousPolicy(), auditUpdateControl, stubUpdates (+12 more)
 
-### Community 105 - "LedgerEntry"
-Cohesion: 0.10
-Nodes (39): Module, LedgerEntry, ManifestEntry, Outcome, Plan, renderWorkflow(), TestCompletionRequiresClosedOutcomeAndExplicitLedgerDisposition(), TestCredentialAADPreservesAdapterCredentialContract() (+31 more)
+### Community 105 - "adapter.go"
+Cohesion: 0.06
+Nodes (57): Access, Disposition, RetryAtError, Module, Module, Sealer, Change, Journal (+49 more)
 
 ### Community 106 - "Dynamic"
-Cohesion: 0.15
-Nodes (16): Kind, ParseKind(), chargeDefaultAtEntry(), Actor, Budget, Actor, Auth, Budget (+8 more)
+Cohesion: 0.08
+Nodes (31): Kind, ParseKind(), chargeDefaultAtEntry(), Actor, Budget, Actor, Auth, Budget (+23 more)
 
 ### Community 107 - "cli/update_test.go"
-Cohesion: 0.14
-Nodes (25): binaryUpdaterFunc, updateSourceFunc, updateState, updateTTY, State, NotifyUpdate(), promptAndApplyUpdate(), refreshReleaseSnapshot() (+17 more)
+Cohesion: 0.08
+Nodes (32): answeringTTY, binaryUpdaterFunc, updateSourceFunc, updateTTY, disappearingTTY, writeOnlyTTY, bytes.Buffer, TestMachineTokenChannels() (+24 more)
 
 ### Community 108 - "Limiter"
-Cohesion: 0.12
-Nodes (12): accountBackoff, blockedWindowStore, Config, SharedStore, subjectKey, backoffDelay(), bucketKey(), evictStale() (+4 more)
+Cohesion: 0.11
+Nodes (13): accountBackoff, blockedWindowStore, Config, SharedStore, subjectKey, stubAdmissionSnapshot, backoffDelay(), bucketKey() (+5 more)
 
-### Community 109 - "ScimServiceUnavailableApplicationScimPlusJSONResponse"
+### Community 109 - "Queries"
 Cohesion: 0.05
-Nodes (22): ScimResource, ScimBulk503ApplicationScimPlusJSONResponse, ScimCreateGroup503ApplicationScimPlusJSONResponse, ScimCreateUser503ApplicationScimPlusJSONResponse, ScimDeleteGroup503ApplicationScimPlusJSONResponse, ScimDeleteUser503ApplicationScimPlusJSONResponse, ScimGetGroup503ApplicationScimPlusJSONResponse, ScimGetUser503ApplicationScimPlusJSONResponse (+14 more)
+Nodes (19): Queries, SelfConfigBinding, SelfConfigJob, SelfConfigNode, SelfConfigRollout, CommitSelfConfigTargetParams, CountSelfConfigSeedDisagreementParams, CreateSelfConfigBindingParams (+11 more)
 
 ### Community 110 - "server/audit.go"
 Cohesion: 0.09
 Nodes (26): AuditEvent, AuditPage, ExportEnvAuditResponseObject, ExportOrgAuditResponseObject, ExportProjectAuditResponseObject, QueryEnvAuditResponseObject, QueryOrgAuditResponseObject, QueryProjectAuditResponseObject (+18 more)
 
 ### Community 111 - "server/contract_test.go"
-Cohesion: 0.11
-Nodes (49): TestAuditOutcomeParamsAreAClosedEnumAtTheContract(), TestListMyOrgsIsASelfProjection(), call(), callNoRedirect(), decodeError(), definitionsServer(), hierarchyRoutes(), hierarchyServer() (+41 more)
+Cohesion: 0.04
+Nodes (115): ValidateResponse(), net/http/httptest.Server, net/http.Response, sync.RWMutex, testing/fstest.MapFS, TestAuditOutcomeParamsAreAClosedEnumAtTheContract(), browserCaller(), browserLoginAuth() (+107 more)
 
-### Community 112 - "sync.Mutex"
-Cohesion: 0.03
-Nodes (52): applicationGeneration, configurationAdapterStore, drainingResponse, managedCertificate, managedHTTPServer, noOwnerActivation, operationalHealth, preparedEndpoints (+44 more)
+### Community 112 - "Bundle"
+Cohesion: 0.05
+Nodes (29): applicationGeneration, dynamicWorker, generationHAStatus, haStatus, noOwnerActivation, preparedOwnerActivation, runningGeneration, cancelOnEOFConn (+21 more)
 
 ### Community 113 - "orgs"
 Cohesion: 0.06
 Nodes (59): environments, grants, principals, projects, scim_attention, scim_attention_binding, scim_bindings, scim_bindings_org (+51 more)
 
 ### Community 114 - ".Run"
-Cohesion: 0.09
-Nodes (66): DeliveryResponse, ResumeAdapterTargetMoveRequestVisibility, TestAccessRejectsSparseHierarchyBeforeAuthentication(), TestAdapterCancelMoveRequiresOnlyExplicitMove(), TestAdapterCredentialSourcesNeverNeedArgv(), TestAdapterHelpAndParserExposeNoCredentialValueFlag(), TestAdapterMoveResumeBodiesAreExplicitAndCredentialIsWriteOnly(), TestAdapterTargetMutationOutputFollowsServiceResult() (+58 more)
+Cohesion: 0.12
+Nodes (56): DeliveryResponse, TestAccessRejectsSparseHierarchyBeforeAuthentication(), TestAutomationVerbsReachServerWithMachineCredential(), TestAdapterCreateCeremonyPrecedesSecretInputAndMutationDispatch(), TestAdapterTargetMutationCLIAPIParity(), TestAdapterTargetNarrowingSkipsCeremonyAndUsesSynchronousTargetResponse(), TestRedeemCLIReauthSilentlyReplacesStoredBearer(), TestRunCLIAdapterReauthBindsExactLoopbackStateAndSilentlyRotatesBearer() (+48 more)
 
-### Community 115 - "definitions_e2e_test.go"
-Cohesion: 0.14
-Nodes (56): assertRefusalUnchanged(), assertSafeContains(), assertSafeDetail(), captureDefinitionsState(), definitionKey(), definitionsAdditive(), definitionsConstituentAudit(), definitionsEnvironmentDeletion() (+48 more)
+### Community 115 - ".FetchAs"
+Cohesion: 0.07
+Nodes (41): Cursor, Occurrence, appendField(), EncodeCursor(), EncodeOccurrence(), Mode, Presence, NormalizeMode() (+33 more)
 
 ### Community 116 - "fixedStamp"
-Cohesion: 0.10
-Nodes (7): coordinationTx, fixedStamp(), parseStamp(), SelfConfigSeedInput, pgSelfConfigStorage, sqliteSelfConfigStorage, HANode
+Cohesion: 0.03
+Nodes (33): github.com/jackc/pgx/v5/pgconn.CommandTag, pgx.Row, pgx.Rows, pgx.Tx, pgx.Row, pgx.Rows, pgx.Tx, pgx.TxOptions (+25 more)
 
 ### Community 117 - "metrics.go"
 Cohesion: 0.05
@@ -1768,9 +1738,9 @@ Nodes (46): approvalMetricsSource, github.com/prometheus/client_golang/prometheu
 Cohesion: 0.05
 Nodes (33): Key, KeyGroup, KeyPresenceEnvironment, Queries, BumpProjectSchemaRevisionParams, ClearKeyGroupMembersParams, CountKeyGroupsParams, CountKeysParams (+25 more)
 
-### Community 119 - "Client"
-Cohesion: 0.08
-Nodes (22): API, Client, ClientConfig, operation, recordingNetworkDialer, ResponseError, staticNetworkResolver, canonicalOrigin() (+14 more)
+### Community 119 - "forgejo/client.go"
+Cohesion: 0.13
+Nodes (18): API, ClientConfig, recordingNetworkDialer, ResponseError, canonicalOrigin(), IsConflict(), IsNotFound(), NewClient() (+10 more)
 
 ### Community 120 - "crypto/x509.Certificate"
 Cohesion: 0.12
@@ -1785,8 +1755,8 @@ Cohesion: 0.04
 Nodes (41): Signed release prerequisites, Reviewed keyless stable publication, Activation boundary, Existing-database bridge activation, First production signing and shard-index repair, Implementation, Incident and accepted repair, Nightly signing regression repair (+33 more)
 
 ### Community 123 - "Doc"
-Cohesion: 0.08
-Nodes (35): checkOpenEnumRoundtrip(), T, TestDynamicProviderKindRemainsClosed(), TestPreFreezeOpenEnums(), CheckProfile(), walkSchemaRules(), TestSAMLACSAcceptsOnlyThePOSTBinding(), TestSAMLContractSurfaceIsLocked() (+27 more)
+Cohesion: 0.05
+Nodes (61): TestContractRouteSurfaceIsExhaustivelyPinned(), TestDirectoryListingFieldsArePinned(), TestLiveRouterSurfaceIsExhaustivelyPinned(), TestNoServerSideProxyEndpointExists(), TestPublicAndOperationalRouterPartitionsDoNotOverlap(), TestRemoteContractSurfaceIsPinned(), checkOpenEnumRoundtrip(), T (+53 more)
 
 ### Community 124 - "1.0 pre-freeze decisions, #617"
 Cohesion: 0.40
@@ -1796,25 +1766,25 @@ Nodes (5): 1.0 pre-freeze decisions, #617, Model Context Protocol, OpenID Connec
 Cohesion: 0.05
 Nodes (53): Key, zApplyTemplateRequest, zCreateGrantRequest, zCreateProjectRequest, zEstablishCredentialRequest, zInviteMemberRequest, zReclassifyKeyRequest, zRenameKeyRequest (+45 more)
 
-### Community 126 - "probeKeyring"
+### Community 126 - "LocalPrincipal"
 Cohesion: 0.03
-Nodes (131): database/sql/driver.Value, sync/atomic.Int64, RecordKeyVersion(), isolationAdmission(), isolationCustodyDirectory(), openIsolationFixture(), openIsolationFixtureWithRoot(), approvalAcceptanceFixture() (+123 more)
+Nodes (229): scenarioTenantChain(), RecordKeyVersion(), EnvID, newAccessWireEnv(), runAccessWireQueryTrace(), runAccessWireUniformity(), runProjectListingDoesNotReadSiblings(), runSessionClockResolutionReuse() (+221 more)
 
 ### Community 127 - "saml_providers.go"
 Cohesion: 0.11
-Nodes (33): encoding/xml.Name, github.com/Hikyo-Org/hikyo/internal/authz.SAMLProvider, parseSAMLCertificates(), assessSAMLMetadata(), certificateFingerprint(), decodeSAMLPolicy(), encodeSAMLPolicy(), equalOptionalString() (+25 more)
+Nodes (32): encoding/xml.Name, github.com/Hikyo-Org/hikyo/internal/authz.SAMLProvider, parseSAMLCertificates(), assessSAMLMetadata(), certificateFingerprint(), decodeSAMLPolicy(), encodeSAMLPolicy(), equalOptionalString() (+24 more)
 
 ### Community 128 - "site/package.json"
 Cohesion: 0.04
 Nodes (52): buildEnv, postHogConnectSources, postHogEnabled, postHogScriptSources, rehypePlugins, remarkPlugins, @fontsource/ibm-plex-mono, @playwright/test (+44 more)
 
-### Community 129 - "NewModuleLease"
-Cohesion: 0.11
-Nodes (21): adapterModuleFactory, devFakeModule, devFakeProvider, devFakeStore, providerConstructor, TestProviderKindsAreClosedAndRejectUnknownValues(), ModuleLease, Provider (+13 more)
+### Community 129 - "samlProviders.ts"
+Cohesion: 0.08
+Nodes (36): SamlMetadataSource, conflictText(), invalidText(), SAML_SLUG_PATTERN, SamlAction, samlFailureText(), SamlMetadataRefreshDraft, SamlProviderInputDraft (+28 more)
 
 ### Community 130 - "import-sources.ts"
-Cohesion: 0.11
-Nodes (37): asInteger(), Budget, byteLength(), canonicalJson(), canonicalSourcePath(), commonPathPrefix(), compareCodePoints(), decodeK8sData() (+29 more)
+Cohesion: 0.09
+Nodes (40): asInteger(), Budget, byteLength(), canonicalJson(), canonicalSourcePath(), commonPathPrefix(), compareCodePoints(), decodeK8sData() (+32 more)
 
 ### Community 131 - "Effect"
 Cohesion: 0.10
@@ -1828,25 +1798,25 @@ Nodes (6): Fixture, openssl(), IsolatedDatabaseForward, main(), Exercise actual 
 Cohesion: 0.19
 Nodes (27): cellLabel(), CellState, cellText(), claims, Classification, cli, cliRead, cliReferenceUrl (+19 more)
 
-### Community 134 - "applyAutomaticRoute"
-Cohesion: 0.09
-Nodes (35): automaticApplyHost, AutomaticHandoff, automaticInspection, automaticJournal, automaticProcessHost, automaticStore, automaticTestHost, applyAutomaticRoute() (+27 more)
+### Community 134 - "runPreparedUnattended"
+Cohesion: 0.04
+Nodes (88): automaticApplyHost, automaticDiscoveryFixture, AutomaticHandoff, automaticInspection, automaticJournal, automaticReleasePreparer, automaticReleaseSource, automaticRoute (+80 more)
 
 ### Community 135 - "ExtensionDecl"
-Cohesion: 0.22
-Nodes (13): attr(), Declares(), EnterpriseExtension(), ExtensionDecl, ResourceTypes(), schemaExtensionEntries(), Schemas(), SchemasFor() (+5 more)
+Cohesion: 0.23
+Nodes (14): attr(), Declares(), EnterpriseExtension(), ExtensionDecl, ListResponse(), ResourceTypes(), schemaExtensionEntries(), Schemas() (+6 more)
 
 ### Community 136 - "dynamic/dynamic.go"
-Cohesion: 0.10
-Nodes (35): GeneratePassword(), CreateRoleRequest, inAlphabet(), inRoleAlphabet(), RoleName(), FuzzValidators(), TestGeneratePasswordShape(), TestProviderInterfaceIsPinned() (+27 more)
+Cohesion: 0.07
+Nodes (40): newDynamicFactory(), GeneratePassword(), CreateRoleRequest, Factory, RoleStatus, inAlphabet(), inRoleAlphabet(), RoleName() (+32 more)
 
 ### Community 137 - "approvals.ts"
-Cohesion: 0.07
-Nodes (48): publishPendingChangesOp, ApprovalCeremonyBinding, approvalPoliciesKey(), ApprovalPolicy, ApprovalRequest, approvalRequestsKey(), ApproverSpec, fetchApprovalCeremony() (+40 more)
+Cohesion: 0.09
+Nodes (35): publishPendingChangesOp, ApprovalCeremonyBinding, approvalPoliciesKey(), ApprovalPolicy, ApprovalRequest, approvalRequestsKey(), ApproverSpec, fetchApprovalCeremony() (+27 more)
 
 ### Community 138 - "NewArtifact"
-Cohesion: 0.06
-Nodes (71): TestNextRootLiveSelectionKeepsRotationSeparate(), TestNextRootSeedRequiresExactEnrolledProjection(), newSelfConfig(), NewArtifact(), RandomBytes(), BurnDummyVerification(), derive(), DeriveVerifier() (+63 more)
+Cohesion: 0.05
+Nodes (79): decodeFile(), measureArgon(), measureBoot(), processRSS(), readInteger(), readText(), TestFloorBench(), NewArtifact() (+71 more)
 
 ### Community 139 - "Queries"
 Cohesion: 0.06
@@ -1856,49 +1826,49 @@ Nodes (28): ApprovalPolicy, ApprovalPolicyApprover, ApprovalPolicyBypasser, Appr
 Cohesion: 0.06
 Nodes (28): ApprovalPolicy, ApprovalPolicyApprover, ApprovalPolicyBypasser, ApprovalRequest, ApprovalVote, Queries, DeleteApprovalPolicyApproversParams, DeleteApprovalPolicyBypassersParams (+20 more)
 
-### Community 141 - "commonFlags"
-Cohesion: 0.15
-Nodes (17): AuthKind, AuthKinds, AuthOperation, authRuleRow, commonFlags, CredentialRef, HumanSession, MachineCredential (+9 more)
+### Community 141 - "auth_artifact.go"
+Cohesion: 0.08
+Nodes (31): AuthKind, AuthKinds, AuthOperation, authRuleRow, CredentialRef, HumanSession, MachineCredential, authKindsFor() (+23 more)
 
 ### Community 142 - "docs/spec/self-configuration-proposal.md"
 Cohesion: 0.05
 Nodes (34): Authority and behavior, Kubernetes, Runtime invariants, TOTP, Managed configuration apply and recovery, SAML, TOTP, WebAuthn (+26 more)
 
 ### Community 143 - "testKeys"
-Cohesion: 0.13
-Nodes (43): errProbe, Probe, CurrentStamps(), GenerationState(), NewWriter(), TargetStamp(), begin(), countOccur() (+35 more)
+Cohesion: 0.08
+Nodes (61): errProbe, Probe, composeStack, bindSnapshotDelivery(), TestComposeApplyPendingWriteFailureRemainsRetryVisible(), TestComposeApplyStateDetectsCommittedGenerationWithoutPendingMarker(), TestComposeRenderCursorFailureLeavesPublishedGenerationPendingApply(), TestComposeRenderSnapshotFailureLeavesPublishedGenerationUsable() (+53 more)
 
-### Community 144 - "oidc_e2e_test.go"
+### Community 144 - "Auth"
 Cohesion: 0.15
-Nodes (48): configureProvider(), driveIdP(), inviteOIDCIdentity(), isUnauth(), linkOn(), oidcAdmin(), oidcLogin(), oidcRefusedCount() (+40 more)
+Nodes (49): browserSessionCheck(), runBrowserFederationFlow(), configureProvider(), driveIdP(), inviteOIDCIdentity(), isUnauth(), linkOn(), oidcAdmin() (+41 more)
 
 ### Community 145 - "web/package.json"
-Cohesion: 0.07
-Nodes (28): happy-dom, storybook, @storybook/addon-a11y, @storybook/addon-docs, @storybook/addon-mcp, @storybook/addon-vitest, @tanstack/react-virtual, @vitejs/plugin-react (+20 more)
+Cohesion: 0.06
+Nodes (33): happy-dom, playwright, storybook, @storybook/addon-a11y, @storybook/addon-docs, @storybook/addon-mcp, @storybook/addon-vitest, @tanstack/react-virtual (+25 more)
 
 ### Community 146 - "run"
 Cohesion: 0.09
 Nodes (46): TestGlobalVerbosityKeepsVersionAndHelpContracts(), Code, Result, overDepthPath(), read(), run(), TestAliasBombFailsAtTheNamedBoundBeforeMaterializing(), TestBoundsFailLoudNamingTheBound() (+38 more)
 
 ### Community 147 - "Prepare"
-Cohesion: 0.03
-Nodes (87): ManagedOwnerPolicy, checkCandidateConfiguration(), checkCandidateConfigurationFromSources(), checkedCandidateConfiguration(), resolveCandidateConfiguration(), TestCandidateHealthValidatesSavedNodeBeforeRetiredBootstrap(), bootNodeConfiguration(), ParseManagedBootstrapSources() (+79 more)
+Cohesion: 0.04
+Nodes (75): ManagedOwnerPolicy, TestCandidateHealthValidatesSavedNodeBeforeRetiredBootstrap(), ParseManagedBootstrapSources(), TestManagedBootstrapSourcesAreAliasesOnly(), Config, parseDevelopmentOverrides(), Config, Config (+67 more)
 
 ### Community 148 - "App.tsx"
 Cohesion: 0.11
 Nodes (29): AccountSecurity, Adapters, anonymousSurfaces, Audit, ChangeApprovals, CLIReauth, ELEMENTS, EstablishCredential (+21 more)
 
 ### Community 149 - "SelfConfigBinding"
-Cohesion: 0.09
-Nodes (31): decodeRolloutCommand(), encodeRolloutCommand(), Actor, SelfConfig, SelfConfig, expireCommittedDelivery(), SelfConfig, TestDeploymentRenewalRejectsChangedDecisionAndStaleRow() (+23 more)
+Cohesion: 0.06
+Nodes (44): github.com/Hikyo-Org/hikyo/internal/authz.ReauthWindow, ReauthIntent, NewSelfConfigReauthIntent(), TestSelfConfigIntentCannotWiden(), TestSelfConfigReauthRequiresFreshSupportedFactorAndSingleUse(), validateSelfConfigFactor(), Actor, SelfConfigStatus (+36 more)
 
-### Community 150 - "Nightly"
-Cohesion: 0.14
-Nodes (21): github.com/sigstore/protobuf-specs/gen/pb-go/bundle/v1.Bundle, decimalID(), Artifact, NightlyMaterial, VerifiedRelease, Snapshot, VerifiedRelease, TestNightlyPlatformSelectionVerifiesExactNativeInventory() (+13 more)
+### Community 150 - "disclose_test.go"
+Cohesion: 0.07
+Nodes (35): failingTTY, scriptedTTY, windowsTestReader, windowsTestWriter, strings.Reader, NewTerminalSession(), mustTerminalSession(), scripted() (+27 more)
 
-### Community 151 - "Read"
-Cohesion: 0.05
-Nodes (48): TestRedactTokens(), RedactTokens(), SanitizeFreeText(), RedactTokens(), SanitizeFreeText(), Auth, checkFolderPath(), checkName() (+40 more)
+### Community 151 - "IsNetwork"
+Cohesion: 0.08
+Nodes (20): TxAuthorizer, Identity, TxAuthorizer, Identity, Operation, IsNetwork(), Actor, SelfConfigStatus (+12 more)
 
 ### Community 152 - "tools.go"
 Cohesion: 0.09
@@ -1906,11 +1876,11 @@ Nodes (47): beforeRevisionFrom(), encodedSize(), environmentPosition(), executeT
 
 ### Community 153 - "runImport"
 Cohesion: 0.08
-Nodes (37): nopTerminal, terminalPrompter, bufio.Reader, io.ReadWriter, TestImportNoTerminalIsAHardError(), TestImportOnTerminalEntersWizard(), TestTerminalPrompter(), TestValuesImportRefusesMismatchedManifestProject() (+29 more)
+Nodes (39): nopTerminal, terminalPrompter, bufio.Reader, io.ReadWriter, TestImportNoTerminalIsAHardError(), TestImportOnTerminalEntersWizard(), TestTerminalPrompter(), TestValuesImportRefusesMismatchedManifestProject() (+31 more)
 
 ### Community 154 - "sqlcontract.go"
-Cohesion: 0.12
-Nodes (37): go/ast.Expr, go/ast.Field, go/ast.SelectorExpr, go/ast.StructType, bindOrdinals(), compareQueryContracts(), compatibleParameterTypes(), compatibleResultTypes() (+29 more)
+Cohesion: 0.11
+Nodes (37): go/ast.Expr, go/ast.Field, go/ast.SelectorExpr, go/ast.StructType, TestCrossEngineQueryContractsAcceptDialectSpecificSQL(), bindOrdinals(), compareQueryContracts(), compatibleParameterTypes() (+29 more)
 
 ### Community 155 - "test-race-packages_test.sh"
 Cohesion: 0.09
@@ -1920,29 +1890,29 @@ Nodes (20): require_line(), check-trusted-ci-scripts_test.sh script, CORE_TEST_C
 Cohesion: 0.08
 Nodes (34): authorize_release_candidate(), check_release_candidate_hash(), is_digest(), is_full_sha(), package_file_name(), package_identity_for_name(), package_metadata_version(), package_native_arch() (+26 more)
 
-### Community 157 - "encoding/json.RawMessage"
-Cohesion: 0.11
-Nodes (33): encoding/json.RawMessage, IsCIIssuerType(), CheckBinding(), checkEventName(), checkTiming(), descend(), Cache, KeyState (+25 more)
+### Community 157 - "sync.Mutex"
+Cohesion: 0.07
+Nodes (47): callerActivityKey, callerActivityState, output, credentialState, serialPacer, crypto.PublicKey, encoding/json.RawMessage, github.com/go-jose/go-jose/v4.JSONWebKeySet (+39 more)
 
 ### Community 158 - ".DeepCopyInto"
 Cohesion: 0.06
 Nodes (15): k8s.io/apimachinery/pkg/runtime.Object, AuthRef, HikyoInstance, HikyoInstanceList, HikyoInstanceSpec, HikyoInstanceStatus, HikyoSecret, HikyoSecretList (+7 more)
 
 ### Community 159 - "importer/plan.go"
-Cohesion: 0.12
-Nodes (45): EnvInput, EnvPlan, keyDecision, mappedRecord, PlanInput, ProjectPlanInput, Record, mustPlan() (+37 more)
+Cohesion: 0.11
+Nodes (47): EnvInput, EnvPlan, keyDecision, mappedRecord, PlanInput, ProjectPlanInput, Record, mustPlan() (+39 more)
 
 ### Community 160 - "handler_test.go"
-Cohesion: 0.15
-Nodes (46): net/http/httptest.ResponseRecorder, In, TestOfficialGoClientInteroperability(), New(), decodeResponse(), Registry, modernBody(), request() (+38 more)
+Cohesion: 0.17
+Nodes (42): net/http/httptest.ResponseRecorder, New(), decodeResponse(), Registry, modernBody(), request(), serve(), strconvItoa() (+34 more)
 
-### Community 161 - "Operation"
-Cohesion: 0.04
-Nodes (81): Assurance, AuditMapping, authorizationSpec, FormulaPin, NetworkOperationPolicy, opSpec, Registry, SystemSite (+73 more)
+### Community 161 - "authz/registry.go"
+Cohesion: 0.12
+Nodes (21): Atom, AuditMapping, FormulaPin, NetworkOperationPolicy, opSpec, Registry, formulaName(), cloneSpec() (+13 more)
 
-### Community 162 - "Workspace"
-Cohesion: 0.04
-Nodes (62): github.com/Hikyo-Org/hikyo/internal/authz.CLIReauthHandoff, github.com/Hikyo-Org/hikyo/internal/authz.EnvironmentChain, github.com/Hikyo-Org/hikyo/internal/authz.InstanceConnection, github.com/Hikyo-Org/hikyo/internal/authz.SessionSummary, github.com/Hikyo-Org/hikyo/internal/authz.WorkspaceHandoff, base62(), checksum(), decodeBase62() (+54 more)
+### Community 162 - "Identity"
+Cohesion: 0.07
+Nodes (42): github.com/Hikyo-Org/hikyo/internal/authz.CLIReauthHandoff, github.com/Hikyo-Org/hikyo/internal/authz.EnvironmentChain, github.com/Hikyo-Org/hikyo/internal/authz.NewSAMLTransaction, Identity, recordCallerActivity(), Identity, TxAuthorizer, ArtifactVerifier() (+34 more)
 
 ### Community 163 - "registry.ts"
 Cohesion: 0.15
@@ -1956,145 +1926,145 @@ Nodes (25): On-demand matrix vocabulary legend, OpenID Connect, Exceptional-stat
 Cohesion: 0.07
 Nodes (26): database/sql/driver.Conn, database/sql/driver.ConnBeginTx, database/sql/driver.ConnPrepareContext, database/sql/driver.Driver, database/sql/driver.ExecerContext, database/sql/driver.NamedValue, database/sql/driver.QueryerContext, database/sql/driver.Result (+18 more)
 
-### Community 166 - "Queries"
+### Community 166 - "Resolver"
 Cohesion: 0.10
-Nodes (11): Queries, WebauthnCeremony, WebauthnCredential, AdvanceWebAuthnSignCountParams, ConsumeWebAuthnCeremonyParams, DeleteWebAuthnCredentialParams, DisableWebAuthnCredentialParams, GetAccountByWebAuthnUserHandleRow (+3 more)
+Nodes (17): Account, AccountProfile, CredentialAuthority, KDFParams, PasswordCredential, accountConstraint(), Resolver, SessionRow (+9 more)
 
 ### Community 167 - "importer/plan_test.go"
 Cohesion: 0.14
-Nodes (36): Encode(), PlaintextWarning(), declaredKey(), envFrom(), KeyState, Plan, Template, planFrom() (+28 more)
+Nodes (35): PlaintextWarning(), declaredKey(), envFrom(), KeyState, Plan, Template, planFrom(), state() (+27 more)
 
-### Community 168 - "LocalPrincipal"
-Cohesion: 0.03
-Nodes (172): runApprovalExpiryBatches(), runConcurrentApprovalVotes(), runArtifactClassAdmissionWire(), TestArtifactClassAdmissionWire(), envScope(), grantRows(), grantSvc(), held() (+164 more)
+### Community 168 - "DB"
+Cohesion: 0.04
+Nodes (151): execRealAdoption(), newForgejoLifecycleJournal(), queryRealAdoptionRow(), realLedger(), runForgejoRealLifecycle(), seedRealAdoptionDB(), TestForgejoRealLifecycle(), envScope() (+143 more)
 
 ### Community 169 - "pggen/environments.sql.go"
 Cohesion: 0.07
 Nodes (25): rawWrite(), stealAcrossTenants(), GetEnvironmentRow, Queries, CountEnvironmentsParams, CreateEnvironmentParams, DeleteEnvironmentParams, GetEnvironmentParametersParams (+17 more)
 
 ### Community 170 - "server/scim_wire.go"
-Cohesion: 0.13
-Nodes (25): ScimCreateGroupResponseObject, ScimCreateUserResponseObject, ScimPatchGroupResponseObject, ScimReplaceGroupResponseObject, ScimReplaceUserResponseObject, ErrInvalidValue(), scimCreateGroupRefusal(), scimCreateUserRefusal() (+17 more)
+Cohesion: 0.35
+Nodes (12): ErrInvalidValue(), scimPatchGroupCommands(), scimPatchUserCommands(), isInterpretedSCIMAttribute(), rawJSON(), scimAttribute(), scimDesiredDecodedGroup(), scimDesiredDecodedUser() (+4 more)
 
-### Community 171 - "Reencrypt"
-Cohesion: 0.14
-Nodes (14): fenceInstance(), fenceInstanceVersion(), fieldRows(), Budget, instanceColumnVersion(), valueRows(), versionedInstanceReseal(), pgRepos (+6 more)
+### Community 171 - "authz/registry_test.go"
+Cohesion: 0.17
+Nodes (31): newRegistry(), baseSpec(), rejects(), TestConstructorAcceptsBaseSpec(), TestConstructorAcceptsRealTable(), TestConstructorDeepClonesSpec(), TestConstructorRejectsAtomDeeperThanCapability(), TestConstructorRejectsAtomWithoutCapability() (+23 more)
 
 ### Community 172 - "api/openapi.yaml"
 Cohesion: 0.04
 Nodes (36): Bound OpenAPI 3.1 semantic profile, Canonical TOTP request, WebAuthn, Workspace handoff transaction, Release code versus external evidence, Extensible response enum compatibility, Activation-before-release sequencing, Internal acceptance versus public release (+28 more)
 
 ### Community 173 - "Providers"
-Cohesion: 0.19
-Nodes (10): Actor, ProviderInput, Providers, ProviderView, hasPossessionAMR(), providerSecretAAD(), providerView(), randToken() (+2 more)
+Cohesion: 0.11
+Nodes (21): github.com/Hikyo-Org/hikyo/internal/authz.OIDCProvider, github.com/Hikyo-Org/hikyo/internal/authz.OIDCTransaction, Claims, evaluateAssurance(), LoginResult, Auth, AuthMethodProvider, OIDCCallbackResult (+13 more)
 
 ### Community 174 - "SingletonTopologyChange"
 Cohesion: 0.19
-Nodes (8): Kubernetes, Plan, Target, topologyEnvironment(), validTopologyEnrollment(), SingletonTopologyChange, SelfConfigGeneration, topologyAssignment
+Nodes (9): Kubernetes, Plan, Target, topologyEnvironment(), validTopologyEnrollment(), SingletonTopology, SingletonTopologyChange, SelfConfigGeneration (+1 more)
 
-### Community 175 - "NewPublic"
-Cohesion: 0.09
-Nodes (27): GetRuntimeStatusRequestObject, GetRuntimeStatusResponseObject, RuntimeStatus, RuntimeStatusPhase, RuntimeStatusState, TestMetricsUseZeroWhenPruneNeverSucceeded(), mustContain(), TestMCPMetricsAndAccessLogsUseOnlyClosedLabels() (+19 more)
+### Community 175 - "net/http.Handler"
+Cohesion: 0.05
+Nodes (61): GetRuntimeStatusRequestObject, GetRuntimeStatusResponseObject, Handler(), HandlerFromMux(), HandlerFromMuxWithBaseURL(), HandlerWithOptions(), ServerInterface, chi.Router (+53 more)
 
 ### Community 176 - "matrix.spec.ts"
 Cohesion: 0.07
-Nodes (37): ApprovalPolicyInput, zApprovalPolicy, zApprovalPolicyList, zApprovalRequestList, zApprovalRequestSummary, zFederatedBinding, zInvitationResult, zKey (+29 more)
+Nodes (35): ApprovalPolicyInput, zApprovalPolicy, zApprovalPolicyList, zApprovalRequestList, zApprovalRequestSummary, zFederatedBinding, zInvitationResult, zKey (+27 more)
 
-### Community 177 - "pgReadRepos"
-Cohesion: 0.07
-Nodes (14): pgRepos, AdapterReader, EnvironmentReader, pgRepos, sqliteRepos, AuditReader, DefinitionsReader, DefinitionsRepo (+6 more)
+### Community 177 - "New"
+Cohesion: 0.02
+Nodes (132): observedPG, OrgIdentity, embeddedProof, SystemSite, github.com/Hikyo-Org/hikyo/internal/authz.PrincipalRef, github.com/Hikyo-Org/hikyo/internal/authz.RestoreState, NewTxAuthorizer(), mintTenant() (+124 more)
 
 ### Community 178 - "Hikyo remote MCP server: implementation research"
 Cohesion: 0.05
 Nodes (40): 10. Practical ticket sequence and acceptance criteria, 11. Primary-source ledger, 1. Executive answer, 2. Fit with Hikyo's current architecture, 3.1 Transport and lifecycle, 3.2 Discovery and capabilities, 3.3 Tools, 3.4 Resources (+32 more)
 
-### Community 179 - "Enrollment"
-Cohesion: 0.11
-Nodes (36): controllerJournal, Controller, crypto/ed25519.PrivateKey, crypto/ed25519.PublicKey, k8s.io/client-go/kubernetes.Interface, cloneEnrollment(), TestControllerCancelsInterruptedSubmitBookkeeping(), TestControllerCancelsUnseenSubmitWithoutMutatingTarget() (+28 more)
+### Community 179 - "selfConfigSession"
+Cohesion: 0.17
+Nodes (29): mailTestSeed(), TestSelfConfigTestMailChargesFivePerPrincipalPerHour(), TestSelfConfigTestMailRecordsOutcomeAfterActorRevocation(), TestSelfConfigOriginRecovery(), TestSelfConfigOriginReviewCannotCrossDecisionBoundary(), TestSelfConfigOriginReviewLoadsRetainedOriginWithoutActiveGraph(), TestSelfConfigOriginReviewUsesStillActiveRPAfterInstallationFailure(), TestSelfConfigIndependentOwnersKeepSeparateProjectsAndRuntime() (+21 more)
 
 ### Community 180 - "githubactions/client_test.go"
-Cohesion: 0.12
-Nodes (35): ClientConfig, recordingNetworkDialer, roundTripFunc, ProviderRetryAt(), NewClient(), Client, NewTestClient(), newTestClientAt() (+27 more)
+Cohesion: 0.11
+Nodes (38): recordingNetworkDialer, roundTripFunc, ProviderRetryAt(), acquireCredentialState(), evictCredentialStateForInsertLocked(), evictStaleCredentialStatesLocked(), NewClient(), Client (+30 more)
 
-### Community 181 - ".ReadLive"
-Cohesion: 0.10
-Nodes (30): github.com/hashicorp/vault/api/tokenhelper.ExternalTokenHelper, k8s.io/client-go/tools/clientcmd/api.ExecConfig, testing.M, k8sConnector, k8sSecret, LiveInput, subprocessSpec, TestSubprocessEnvironmentIsSanitizedAtTheSharedPath() (+22 more)
+### Community 181 - "spawn.go"
+Cohesion: 0.21
+Nodes (15): github.com/hashicorp/vault/api/tokenhelper.ExternalTokenHelper, testing.M, subprocessSpec, TestSubprocessEnvironmentIsSanitizedAtTheSharedPath(), encodeSubprocessSpec(), newSubprocessSpec(), replaceEnv(), RunInternalSubprocess() (+7 more)
 
 ### Community 182 - "quoteName"
-Cohesion: 0.15
-Nodes (26): mapAnotherOnce, Prompter, scriptHost, wizardEnv, WizardHost, quoteName(), classificationHint(), NamedEnv (+18 more)
+Cohesion: 0.13
+Nodes (31): mapAnotherOnce, Prompter, scriptHost, wizardEnv, WizardHost, quoteName(), TransformName(), targetName() (+23 more)
 
 ### Community 183 - "sqlite/00050_self_config.sql"
 Cohesion: 0.07
 Nodes (37): self_config_binding, self_config_jobs, self_config_jobs_generation, self_config_nodes, self_config_one_open_job, self_config_retention, self_config_rollout_sequences, self_config_rollouts (+29 more)
 
-### Community 184 - "runPreparedUnattended"
-Cohesion: 0.04
-Nodes (66): unattendedEnrollment, unattendedInstaller, unattendedProcessHost, unattendedRouteInstaller, unattendedScratchOwnership, UnattendedUpgradeOptions, contextReader, os/exec.Cmd (+58 more)
+### Community 184 - "os.FileInfo"
+Cohesion: 0.07
+Nodes (22): os.FileInfo, fsyncRootPath(), ownerOf(), fsyncRootPath(), ownerOf(), fileOwner(), runCommand(), requireSingleLink() (+14 more)
 
 ### Community 185 - "gen/main.go"
 Cohesion: 0.11
 Nodes (37): coverageState, genRule, literalAtom, literalPath, literalPosition, regexp/syntax.Regexp, clone(), TestImportRuleContract() (+29 more)
 
 ### Community 186 - "importer/vault.go"
-Cohesion: 0.10
-Nodes (34): github.com/hashicorp/vault/api/tokenhelper.TokenHelper, github.com/openbao/openbao/api/v2.Client, refusedRedirect, requestMeter, vaultCapture, vaultConnector, vaultTreeReader, newRequestMeter() (+26 more)
+Cohesion: 0.09
+Nodes (36): github.com/hashicorp/vault/api/tokenhelper.TokenHelper, github.com/openbao/openbao/api/v2.Client, cappedRoundTripper, refusedRedirect, requestMeter, vaultCapture, vaultConnector, vaultTreeReader (+28 more)
 
 ### Community 187 - "net/http.Client"
-Cohesion: 0.10
-Nodes (40): net/http.Client, ProductionToolNames(), bearerTransport, options, rawResponse, rpcResponse, main(), run() (+32 more)
+Cohesion: 0.23
+Nodes (19): net/http.Client, options, rawResponse, rpcResponse, decodeRPCResponse(), invoke(), invokeRaw(), main() (+11 more)
 
 ### Community 188 - "sqlitegen/environments.sql.go"
 Cohesion: 0.08
 Nodes (23): Queries, CountEnvironmentsParams, CreateEnvironmentParams, DeleteEnvironmentParams, GetEnvironmentParametersParams, GetEnvironmentParams, GetEnvironmentRow, GetEnvironmentSettingsParams (+15 more)
 
 ### Community 189 - "verify-native-packages.go"
-Cohesion: 0.15
-Nodes (36): identity, payload, tarInspection, allowedPayloadDirectory(), cleanArchivePath(), finishPayload(), firstForbiddenRPMHook(), forbiddenRPMScriptTags() (+28 more)
+Cohesion: 0.11
+Nodes (42): pgx.Conn, TestExportPostgresManifestUsesCopySnapshotDuringMigration(), pgx.TraceQueryEndData, pgx.TraceQueryStartData, identity, payload, tarInspection, allowedPayloadDirectory() (+34 more)
 
-### Community 190 - "ReauthIntent"
-Cohesion: 0.06
-Nodes (47): ReauthPasskeyStartRequestObject, ReauthPasskeyStartResponseObject, StartCLIReauthRequestObject, StartCLIReauthResponseObject, github.com/Hikyo-Org/hikyo/internal/authz.ReauthWindow, selfConfigReauthIntent(), ReauthPurpose, TestWindowBindingKind() (+39 more)
+### Community 190 - "Operation"
+Cohesion: 0.07
+Nodes (48): StartCLIReauthRequestObject, StartCLIReauthResponseObject, Operation, Actor, Revisions, BudgetClassOf(), buildBudgetClassification(), ReauthPurpose (+40 more)
 
 ### Community 191 - "docs/adr/mcp-server.md"
 Cohesion: 0.12
 Nodes (14): Authentication and adapter boundary, Closed read-only MCP tool surface, Model Context Protocol, Delivered, Delivery and validation, Issue 627 handoff: MCP phase-1 ADR, Locked implementation order, Review anchors (+6 more)
 
 ### Community 192 - "Config"
-Cohesion: 0.05
-Nodes (79): reconciliationService, storeFixture, Engine, io.ReadSeeker, goose.Provider, storeConfig(), backupGateConfig(), backupPublicBundle() (+71 more)
+Cohesion: 0.09
+Nodes (40): goose.Provider, System, runAdapterEnvironmentChainRefusal(), TestAdapterEnvironmentChainRefusalPostgres(), TestAdapterEnvironmentChainRefusalSQLite(), TestGitHubAdapterSQLiteMigrationIsAtomicAndRetrySafe(), TestSQLiteAdapterTimestampMigrationNormalizesLexicalColumns(), testAuditScopeIndexes() (+32 more)
 
 ### Community 193 - "docs/reports/1.0/mcp-ticket-audit.md"
 Cohesion: 0.25
 Nodes (6): Model Context Protocol (HTML document), Model Context Protocol (Markdown document), PostgreSQL (Markdown document), Release judgment (Markdown document), Revised [#631](https://github.com/Hikyo-Org/Hikyo/issues/631) (Markdown document), Evidence-aligned public roadmap
 
 ### Community 194 - "handler.go"
-Cohesion: 0.12
-Nodes (25): net/http.Header, net.IPNet, parseCIDRs(), acceptsMCP(), baseMediaType(), copyHeaders(), decodeHeaderSentinel(), decodeOne() (+17 more)
-
-### Community 195 - "Operations"
 Cohesion: 0.13
-Nodes (22): TestContractRouteSurfaceIsExhaustivelyPinned(), TestDirectoryListingFieldsArePinned(), TestLiveRouterSurfaceIsExhaustivelyPinned(), TestNoServerSideProxyEndpointExists(), TestPublicAndOperationalRouterPartitionsDoNotOverlap(), TestRemoteContractSurfaceIsPinned(), Operations(), TestEveryOperationCarriesItsContractExtensions() (+14 more)
+Nodes (21): acceptsMCP(), baseMediaType(), copyHeaders(), decodeHeaderSentinel(), decodeOne(), Registry, markRateLimited(), markUnauthenticated() (+13 more)
+
+### Community 195 - "githubactions/module_test.go"
+Cohesion: 0.16
+Nodes (25): allow(), btoi(), newFakeJournal(), TestConnectionAutoCreatesMissingEnvironmentThenPinsBothIdentities(), TestConnectionDoesNotCreateMissingEnvironmentWithoutConsent(), TestConnectionIdentityMismatchNamesReconfigurationNotPermissions(), TestConnectionNamesEnvironmentAdministrationRemedies(), TestConnectionSurfacesCredentialExpirationMetadata() (+17 more)
 
 ### Community 196 - "New"
 Cohesion: 0.12
 Nodes (31): New(), Limiter, newFakeShared(), sharedLimiter(), testLogger(), TestSharedAccountBackoffIsInstanceWide(), TestSharedCounterErrorsFailClosed(), TestSharedIPBudgetIsInstanceWideAcrossNodes() (+23 more)
 
 ### Community 197 - "buildEligible"
-Cohesion: 0.16
-Nodes (25): os.FileMode, EligibleCursor(), CursorBinding, CursorState, LoadCursor(), SaveCursor(), baseBinding(), buildEligible() (+17 more)
+Cohesion: 0.10
+Nodes (36): os.FileMode, EligibleCursor(), CursorBinding, CursorState, LoadCursor(), SaveCursor(), baseBinding(), buildEligible() (+28 more)
 
 ### Community 198 - "operations/unattended-container-upgrades.md"
 Cohesion: 0.18
 Nodes (9): Container replacement custody proof, Kubernetes, Model Context Protocol, Upgrade implementation, User authorization and scope, Docker Compose, Docker with SQLite, Enrollment and authority (+1 more)
 
-### Community 199 - "Grant"
-Cohesion: 0.10
-Nodes (14): GrantOriginRow, GrantRow, OrgIdentity, TxAuthorizer, Identity, Operation, Grant, IsNetwork() (+6 more)
+### Community 199 - "PrincipalID"
+Cohesion: 0.04
+Nodes (43): CLIReauthHandoff, CredentialPolicy, EnvironmentSettings, GrantLine, GrantOriginRow, GrantRow, LockoutRetention, NewCLIReauthHandoff (+35 more)
 
 ### Community 200 - "ruleset_test.go"
-Cohesion: 0.10
-Nodes (32): RuleFixtures, genRule, TestPiBenchArtifact(), All(), flipLast(), Hik(), repeat(), Static() (+24 more)
+Cohesion: 0.09
+Nodes (35): RuleFixtures, genRule, testing.B, TestPiBenchArtifact(), All(), flipLast(), Hik(), repeat() (+27 more)
 
 ### Community 201 - "dependencies"
 Cohesion: 0.06
@@ -2104,9 +2074,9 @@ Nodes (36): dependencies, astro, @astrojs/markdown-remark, @astrojs/mdx, @astroj
 Cohesion: 0.08
 Nodes (18): Possession-factor account ceremony prototype, Redeemer-bound invitation prototype, Individually revocable capability prototype, Organization grant blast-radius prototype, Display-once recovery prototype, Grant scope consequence prototype, Delivery-only invitation email prototype, Atomic grant-line prototype (+10 more)
 
-### Community 203 - "DiscoverWithPolicy"
-Cohesion: 0.12
-Nodes (17): github.com/coreos/go-oidc/v3/oidc.Provider, golang.org/x/oauth2.Config, sync/atomic.Int32, bufferResponse(), Policy, transport, NewClient(), ValidateURL() (+9 more)
+### Community 203 - "federationhttp/client_test.go"
+Cohesion: 0.08
+Nodes (31): dialFunc, finalEOFBody, resolverFunc, github.com/coreos/go-oidc/v3/oidc.Provider, golang.org/x/oauth2.Config, sync/atomic.Int32, bufferResponse(), Policy (+23 more)
 
 ### Community 204 - "operator/harness_test.go"
 Cohesion: 0.08
@@ -2117,12 +2087,12 @@ Cohesion: 0.21
 Nodes (33): cleanup_ram(), confirm_exact(), decrypt_private_key(), dry_run_phase(), ensure_release_branch(), external_disk_id(), fail(), finish_ram() (+25 more)
 
 ### Community 206 - "settings.spec.ts"
-Cohesion: 0.09
-Nodes (22): zDefinitionsBundle, zDefinitionsSettings, zEnvironment, zEnvironmentSettings, zProjectRetentionPolicy, zRetentionPolicy, seed, SETTINGS_SURFACES (+14 more)
+Cohesion: 0.08
+Nodes (25): zDefinitionsBundle, zDefinitionsSettings, zProject, zRetentionPolicy, expectNoSeriousAxeViolations(), PasskeyCredential, PasskeyFixtures, test (+17 more)
 
-### Community 207 - "DrillUpgrade"
-Cohesion: 0.05
-Nodes (53): upgradeDrillFixture, UpgradeDrillRequest, UpgradeDrillResult, TestAutomaticPrewriteRetryMeasuresRealSQLiteAndRestoreProof(), authenticateDrillFixture(), pgx.Conn, terminateRecoveryOwner(), TestPostgresRestoreDestinationRefusesExpiredOwnerAndOccupiedTarget() (+45 more)
+### Community 207 - "AuthenticateArchive"
+Cohesion: 0.06
+Nodes (24): AuthenticateArchive(), AuthenticatedArchive, Receipt, Snapshot, matchAuthenticatedManifest(), Config, DB, DataRestoreDestination (+16 more)
 
 ### Community 208 - "docs/handoff/595-dynamic-secrets-webui.md"
 Cohesion: 0.29
@@ -2136,53 +2106,49 @@ Nodes (33): 1. Executive summary, 2.1 SMTP submission, 2.2 Provider HTTP APIs, a
 Cohesion: 0.06
 Nodes (34): type, type, type, type, type, type, type, type (+26 more)
 
-### Community 211 - "net/http/httptest.Server"
-Cohesion: 0.11
-Nodes (34): Transport, net/http/httptest.Server, net/http.Response, net/http.RoundTripper, testing/fstest.MapFS, cappedRoundTripper, countingServer(), doRequest() (+26 more)
-
-### Community 212 - "LoadKeyring"
-Cohesion: 0.09
-Nodes (45): keyCaptureReader, KeyStore, TestExistingProjectProjectionAuthenticatesScopeAndConsumesRoot(), InitializeFreshHierarchy(), TestProjectDEKHAFreshnessRevalidatesAfterCrossNodeRotation(), LoadKeyring(), newMemStore(), newRoot() (+37 more)
+### Community 212 - ".prepareGeneration"
+Cohesion: 0.16
+Nodes (20): storeFixture, net.IPNet, parseCIDRs(), backupJobs(), backupPolicy(), scheduleFixture(), TestBackupExportJobRecordsFailureLoudlyWithoutPlaintext(), TestBackupExportJobRunsOnceThenGatesOnTheInterval() (+12 more)
 
 ### Community 213 - "contract_external_test.go"
-Cohesion: 0.17
-Nodes (24): contractHTTP, environmentProtection, githubContractConfig, PublicKey, workflowHashes, IsStatus(), assertConnectionContract(), assertEmptyValueContract() (+16 more)
+Cohesion: 0.16
+Nodes (25): contractHTTP, environmentProtection, githubContractConfig, PublicKey, workflowHashes, IsStatus(), assertConnectionContract(), assertEmptyValueContract() (+17 more)
 
 ### Community 214 - "New"
 Cohesion: 0.10
 Nodes (22): Client, hostname(), invalid(), New(), TestAbsentConfigurationDisablesMail(), TestPreparationAcceptsValidConfigurationWithoutContactingRelay(), TestPreparationRejectsPartialAndUnsafeConfigurationWithoutValuesInErrors(), TestSendCancellationInterruptsSMTPGreeting() (+14 more)
 
 ### Community 215 - "cli/provider.go"
-Cohesion: 0.13
-Nodes (25): SamlProviderWarning, optionalBool, optionalString, providerSummary, providerSummaryList, stringList, finishSAMLMutation(), Client (+17 more)
+Cohesion: 0.12
+Nodes (27): SamlProviderWarning, optionalBool, optionalString, providerSummary, providerSummaryList, stringList, finishSAMLMutation(), Client (+19 more)
 
-### Community 216 - "io/fs.FS"
-Cohesion: 0.13
-Nodes (18): io/fs.FS, TestCSPConnectSrcAdmitsOnlyExactHTTPSOrigins(), TestCSPConnectSrcIsExtendedWithAClosedListNeverAWildcard(), addVary(), contentCodingQuality(), cspOrigin(), policyWithRemotes(), precompressedRepresentation() (+10 more)
+### Community 216 - "UpgradeWindow"
+Cohesion: 0.11
+Nodes (9): UpgradeWindow, NewUpgradeWindow(), TestUpgradeWindowRejectsInvalidTLSBeforeBinding(), TestUpgradeWindowTLSStatusReadinessAndSocketHandoff(), TestRuntimeStatusPublicContract(), RuntimeStatus, System, Assets() (+1 more)
 
 ### Community 217 - "boundregistry_test.go"
 Cohesion: 0.11
 Nodes (29): Bound, BoundID, BoundStatus, bound(), goHelper(), goTest(), TestBoundIDsAreStableSlugs(), TestBoundRegistryFixtureReferencesResolve() (+21 more)
 
 ### Community 218 - "IdP"
-Cohesion: 0.08
-Nodes (19): redirectFlags, crypto/rsa.PrivateKey, crypto/rsa.PublicKey, fatal(), main(), IdP, IdP, jwkOf() (+11 more)
+Cohesion: 0.09
+Nodes (18): redirectFlags, crypto/rsa.PrivateKey, crypto/rsa.PublicKey, fatal(), main(), IdP, jwkOf(), New() (+10 more)
 
 ### Community 219 - "4. GitHub (OAuth 2.0 only)"
 Cohesion: 0.06
 Nodes (32): 1. Executive summary, 2.1 Issuer and discovery, 2.2 Subject, 2.3 Verified email, `hd`, account types, 2.4 Login-only request parameters, 2.5 Redirect-URI and domain constraints, 2.6 Client secrets, 2.7 Brand rules (+24 more)
 
 ### Community 220 - "compose_cli_e2e_test.go"
-Cohesion: 0.11
-Nodes (41): assertNoPlaintextUnder(), assertRendered(), bootComposeRig(), composeNewRecordID(), composeOfflineRecord(), countOfflineFiles(), fakeDockerConfigFails(), fakeDockerEmptyServices() (+33 more)
+Cohesion: 0.07
+Nodes (57): openBootedIsolationFixture(), assertNoPlaintextUnder(), assertRendered(), bootComposeRig(), composeNewRecordID(), composeOfflineRecord(), countOfflineFiles(), fakeDockerConfigFails() (+49 more)
 
 ### Community 221 - "Encode"
-Cohesion: 0.15
-Nodes (25): readDefinitionsBundle(), TestWriteArtifactsEmitsCanonicalDefinitionsBundle(), CanonicalBundle, FuzzCanonicalBundleRoundTrip(), Bundle, sampleBundle(), stringRule(), TestCanonicalBundleReturnsDetachedModel() (+17 more)
+Cohesion: 0.11
+Nodes (36): readDefinitionsBundle(), TestWriteArtifactsEmitsCanonicalDefinitionsBundle(), detail(), CanonicalBundle, invalidDetail(), limitDetail(), FuzzCanonicalBundleRoundTrip(), Bundle (+28 more)
 
 ### Community 222 - ".verify"
-Cohesion: 0.11
-Nodes (12): SelfConfigBinding, SelfConfigJob, SelfConfigNode, selfConfigRepo, SelfConfigRollout, selfConfigRepo, SelfConfigJob, SelfConfigNode (+4 more)
+Cohesion: 0.07
+Nodes (23): VerifySelfConfigSnapshot(), Snapshot, pgSnapshots, sqliteSnapshots, Snapshot, SnapshotEntry, liveSnapshot(), revisionSnapshotFromPG() (+15 more)
 
 ### Community 223 - "Handoff: #71 multi-instance — directory tier + workspace tier"
 Cohesion: 0.08
@@ -2190,63 +2156,63 @@ Nodes (24): 1. The `AddWorkspaceOrigin` wart — FIXED, 2. The workspace session
 
 ### Community 224 - "webauthnrp.go"
 Cohesion: 0.11
-Nodes (20): github.com/go-webauthn/webauthn/protocol.AuthenticationExtensionsClientOutputs, github.com/go-webauthn/webauthn/protocol.AuthenticatorTransport, github.com/go-webauthn/webauthn/protocol.ParsedCredentialAssertionData, github.com/go-webauthn/webauthn/webauthn.Credential, github.com/go-webauthn/webauthn/webauthn.SessionData, github.com/go-webauthn/webauthn/webauthn.WebAuthn, assertionOf(), assertPresence() (+12 more)
+Nodes (21): github.com/go-webauthn/webauthn/protocol.AuthenticationExtensionsClientOutputs, github.com/go-webauthn/webauthn/protocol.AuthenticatorTransport, github.com/go-webauthn/webauthn/protocol.ParsedCredentialAssertionData, github.com/go-webauthn/webauthn/webauthn.Credential, github.com/go-webauthn/webauthn/webauthn.SessionData, github.com/go-webauthn/webauthn/webauthn.WebAuthn, assertionOf(), assertPresence() (+13 more)
 
 ### Community 225 - "lint_test.go"
 Cohesion: 0.09
-Nodes (33): TestInvariantAuditAppendOnly(), CheckAuditAppendOnly(), CheckDenialWriter(), CheckDenialWriterIn(), checkNoSyncCommitDowngrade(), MutatingQueries(), assertFindings(), fixtureLine() (+25 more)
+Nodes (35): TestInvariantAuditAppendOnly(), CheckAuditAppendOnly(), CheckDenialWriter(), CheckDenialWriterIn(), checkNoSyncCommitDowngrade(), MutatingQueries(), assertFindings(), fixtureLine() (+27 more)
 
 ### Community 226 - "service/saml_test.go"
-Cohesion: 0.11
-Nodes (25): publicMetadataRoundTripper, guardedMetadataTestServer(), TestSAMLAuditPayloadSurfacesExpiredPinnedCertificate(), TestSAMLCeremonyAuditDetailsPreserveRefusalContext(), testSAMLCertificate(), testSAMLCertificateAt(), TestSAMLEvaluateAssuranceUsesAcceptedContextSet(), TestSAMLMetadataGuardedNetworkSeamReturnsInjectedResponse() (+17 more)
+Cohesion: 0.07
+Nodes (35): staticNetworkResolver, staticNetworkResolver, net/http.Transport, net/netip.Addr, net/url.URL, publicMetadataRoundTripper, publicMetadataRoundTripper, guardedMetadataTestServer() (+27 more)
 
-### Community 227 - "PathKind"
+### Community 227 - "scimproto.go"
 Cohesion: 0.09
-Nodes (13): Group, User, Meta, GroupRef, matrixCell, Member, PatchActivePayload, PatchGroupObjectPayload (+5 more)
+Nodes (29): asciiLower(), classifyPath(), decodePatchPayload(), Group, Resource, User, isAttrName(), isGroupPatchAttribute() (+21 more)
 
 ### Community 228 - "Open"
 Cohesion: 0.03
-Nodes (97): scheduleFixture(), TestBackupExportJobRecordsFailureLoudlyWithoutPlaintext(), TestBackupExportJobRunsOnceThenGatesOnTheInterval(), TestBackupPruneJobRemovesOnlyAgedArchives(), TestBackupScheduledGuardsJobRegistration(), openSchedulerHAPostgres(), TestSchedulerHAThreeNodesOnePostgres(), waitForSingleLeader() (+89 more)
+Nodes (115): openSchedulerHAPostgres(), TestSchedulerHAThreeNodesOnePostgres(), waitForSingleLeader(), TestEscrowFileRequiresDistinctPrivateCustody(), GenerateRootKey(), openServiceFixture(), serviceFixtureRoot(), preparationDatabase() (+107 more)
 
 ### Community 229 - "Audit.tsx"
 Cohesion: 0.10
-Nodes (28): queryEnvAuditOp, queryOrgAuditOp, queryProjectAuditOp, zAuditPage, AUDIT_OUTCOMES, AuditCursor, AuditEvent, auditExportUrl() (+20 more)
+Nodes (29): queryEnvAuditOp, queryOrgAuditOp, queryProjectAuditOp, zAuditPage, AUDIT_OUTCOMES, AuditCursor, AuditEvent, auditExportUrl() (+21 more)
 
 ### Community 230 - "Queries"
 Cohesion: 0.09
 Nodes (13): MasterKey, Queries, Tier3Key, AssertActiveTier3VersionParams, DemoteActiveTier3ToRetiringParams, GetActiveTier3KeyParams, GetTier3VersionsParams, InsertMasterKeyParams (+5 more)
 
 ### Community 231 - "TotpReauthRequest"
-Cohesion: 0.06
-Nodes (15): ResumeAdapterMoveRequest, ResumeAdapterOriginMoveRequest, ResumeAdapterTargetMoveRequest, TotpAdapterReauthRequest, TotpAdapterReauthRequestOperation, TotpAdapterReauthRequestPurpose, TotpEnvironmentReauthRequest, TotpReauthRequest (+7 more)
+Cohesion: 0.05
+Nodes (16): ResumeAdapterMoveRequest, ResumeAdapterOriginMoveRequest, ResumeAdapterTargetMoveRequest, ResumeAdapterTargetMoveRequestVisibility, TotpAdapterReauthRequest, TotpAdapterReauthRequestOperation, TotpAdapterReauthRequestPurpose, TotpEnvironmentReauthRequest (+8 more)
 
 ### Community 232 - "Decisions taken"
 Cohesion: 0.07
 Nodes (27): #51 (publish pipeline / drafts / snapshots) — integrated, #68 — Import framework + file sources (K8s, SOPS, Infisical), #69 (live modes: kubeconfig, Vault HTTP; Vault/OpenBao entirely), #70 (`definitions plan|apply`), Any movement aborts the whole run, Bounds chosen (→ ops catalogue), Bundle format (new, minimal, versioned) — coordination point for #70, CLI (+19 more)
 
-### Community 233 - "Contract"
-Cohesion: 0.17
-Nodes (14): withOperation(), TestAdmitOperationConsumesTransportIndependentContract(), FromContext(), Contract, NewArtifactContract(), NewContract(), TestArtifactContractAllowsTransportOnlyOperation(), TestContractIsImmutableAndMovesThroughContext() (+6 more)
+### Community 233 - "WithNetwork"
+Cohesion: 0.18
+Nodes (15): withOperation(), TestAdmitOperationConsumesTransportIndependentContract(), FromContext(), Contract, NewArtifactContract(), NewContract(), TestArtifactContractAllowsTransportOnlyOperation(), TestContractIsImmutableAndMovesThroughContext() (+7 more)
 
 ### Community 234 - "Handoff: #73 SCIM provisioning"
 Cohesion: 0.07
 Nodes (27): Changes to #55's grant surface, Cross-model review, Declared deviations added in the R2 disposition round, Deviations from the ADR letter, stated, Discovery is closed by DECLARATION (R3), Disposition items (human), Fixed while here, not filed, Fixture -> criteria map (+19 more)
 
 ### Community 235 - "CompileClassified"
-Cohesion: 0.14
-Nodes (29): CompileClassified(), itoa(), manyMembers(), TestCanonicalDoesNotMutateItsInput(), TestCanonicalRoundTrip(), TestCompileClassified(), TestCompiledDeclarationIsImmutable(), TestCompiledValidationUsesConstructorClassification() (+21 more)
+Cohesion: 0.13
+Nodes (32): CompileClassified(), compileNormalized(), Classification, Compiled, itoa(), manyMembers(), TestCanonicalDoesNotMutateItsInput(), TestCanonicalRoundTrip() (+24 more)
 
-### Community 236 - "scimproto.go"
-Cohesion: 0.11
-Nodes (46): asciiLower(), AsError(), bad(), boundString(), boundStrings(), CheckMembers(), classifyPath(), Conflict() (+38 more)
+### Community 236 - "Error"
+Cohesion: 0.17
+Nodes (22): AsError(), bad(), boundString(), boundStrings(), CheckMembers(), Conflict(), DecodeGroup(), decodeObject() (+14 more)
 
 ### Community 237 - ".reconcileActive"
-Cohesion: 0.16
-Nodes (16): credential, k8s.io/api/core/v1.SecretType, k8s.io/client-go/tools/record.EventRecorder, sigs.k8s.io/controller-runtime/pkg/client.Reader, sigs.k8s.io/controller-runtime.Request, defaultClientFactory(), acknowledgedKeys(), effectiveProjection() (+8 more)
+Cohesion: 0.17
+Nodes (15): credential, k8s.io/api/core/v1.SecretType, k8s.io/client-go/tools/record.EventRecorder, sigs.k8s.io/controller-runtime/pkg/client.Reader, defaultClientFactory(), acknowledgedKeys(), effectiveProjection(), Config (+7 more)
 
-### Community 238 - "Federation"
-Cohesion: 0.09
-Nodes (25): github.com/Hikyo-Org/hikyo/internal/authz.FederationIssuer, BindingPredicate, IsIssuerType(), ParseCABundle(), checkIssuerCABundle(), checkIssuerRequest(), checkRefusedAudiences(), DecodeClaimPins() (+17 more)
+### Community 238 - "RuntimeEvidence"
+Cohesion: 0.13
+Nodes (9): automaticProcessHost, boundedOutput, ExportRequest, fileDigest(), Config, RuntimeEvidence, New(), validateUnit() (+1 more)
 
 ### Community 239 - "docs/release/acceptance-1.0.md"
 Cohesion: 0.05
@@ -2254,11 +2220,11 @@ Nodes (30): OpenID Connect, SAML, SCIM, WebUI operation parity registry, Canonic
 
 ### Community 240 - "importer/artifacts.go"
 Cohesion: 0.13
-Nodes (29): encoding/json.Decoder, ClassificationChoice, EnvironmentMapping, FolderMapping, KeyEnvironment, Manifest, ManifestOccurrence, PhaseCompletion (+21 more)
+Nodes (29): ClassificationChoice, EnvironmentMapping, FolderMapping, KeyEnvironment, Manifest, ManifestOccurrence, PhaseCompletion, Scope (+21 more)
 
 ### Community 241 - "golang.org/x/tools/go/packages.Package"
-Cohesion: 0.11
-Nodes (34): go/ast.CallExpr, go/token.Pos, go/types.Info, go/types.Type, golang.org/x/tools/go/packages.Package, TestInvariantAuditRedaction(), CheckFenceCompleteness(), fenceCall() (+26 more)
+Cohesion: 0.12
+Nodes (29): go/ast.CallExpr, go/types.Info, go/types.Signature, go/types.Type, golang.org/x/tools/go/packages.Package, TestInvariantAuditRedaction(), CheckFenceCompleteness(), fenceCall() (+21 more)
 
 ### Community 242 - "pggen/values.sql.go"
 Cohesion: 0.10
@@ -2272,49 +2238,45 @@ Nodes (15): Queries, ValueEntry, CountEnvironmentValuesParams, DeleteValueEntrie
 Cohesion: 0.09
 Nodes (13): MasterKey, Queries, Tier3Key, AssertActiveTier3VersionParams, DemoteActiveTier3ToRetiringParams, GetActiveTier3KeyParams, GetTier3VersionsParams, InsertMasterKeyParams (+5 more)
 
-### Community 245 - "tx.go"
-Cohesion: 0.17
-Nodes (23): flushOnce(), T, WriteFn, retryable(), retryLoop(), retryResult(), runPostgresTransaction(), serializationKey() (+15 more)
-
 ### Community 246 - "wireUpdateJob"
-Cohesion: 0.17
-Nodes (9): GetUpdateStatusRequestObject, GetUpdateStatusResponseObject, InstanceUpdateJob, InstanceUpdateBackend, InstanceUpdateJobPhase, InstanceUpdateJobState, UpdateStatus, UpdateStatusChannel (+1 more)
+Cohesion: 0.12
+Nodes (13): GetInstanceUpdateJobRequestObject, GetInstanceUpdateJobResponseObject, GetUpdateStatusRequestObject, GetUpdateStatusResponseObject, InstanceUpdateJob, GetInstanceUpdateJob200JSONResponse, InstanceUpdateBackend, InstanceUpdateJobPhase (+5 more)
 
 ### Community 247 - "LoginFlow.stories.tsx"
 Cohesion: 0.08
 Nodes (27): codesStep, totpStep, AuthenticatorCodeRefused, FlowStory, IdentityProvider, LoginFlow(), meta, PasskeyPasswordless (+19 more)
 
-### Community 248 - ".Sync"
-Cohesion: 0.18
-Nodes (12): Module, Sealer, Journal, canonicalOrigin(), addConflict(), definiteNonRate4xx(), destinationCapabilityError(), failureCompletion() (+4 more)
+### Community 248 - ".CompromiseRetireSamlSpKey"
+Cohesion: 0.11
+Nodes (13): CompromiseRetireSamlSpKeyRequestObject, CompromiseRetireSamlSpKeyResponseObject, ListSamlSpKeysRequestObject, ListSamlSpKeysResponseObject, RotateSamlSpKeyRequestObject, RotateSamlSpKeyResponseObject, SamlSpKey, SamlSpKeyList (+5 more)
 
 ### Community 249 - "tools_test.go"
-Cohesion: 0.29
-Nodes (24): bodyString(), callTool(), decode(), env(), envServices(), structuredContent(), TestCursorBoundToPageSize(), TestCursorBoundToScope() (+16 more)
+Cohesion: 0.27
+Nodes (26): bodyString(), callTool(), decode(), env(), envServices(), structuredContent(), TestCursorBoundToPageSize(), TestCursorBoundToScope() (+18 more)
 
-### Community 250 - "Job"
-Cohesion: 0.16
-Nodes (12): cursorLoader, leaseCheckingLoader, workerActivationLoader, workerJobStore, workerLoader, LoadedActivation, LoadedSync, Module (+4 more)
+### Community 250 - "outbox_test.go"
+Cohesion: 0.08
+Nodes (24): cursorLoader, cursorModule, leaseCheckingLoader, workerActivationLoader, workerJobStore, workerLoader, workerModule, LoadedActivation (+16 more)
 
 ### Community 251 - "runCLIReauthHandoffTarget"
-Cohesion: 0.15
-Nodes (24): RevealWindow, disclosure, net/url.Values, TestBrowserCommandPreservesHTTPHandoff(), TestBrowserCommandRejectsUnsafeTargets(), browserCommand(), exactCallbackQuery(), Client (+16 more)
+Cohesion: 0.10
+Nodes (29): RevealWindow, approverList, disclosure, net/url.Values, approvalDisclosure(), approvalPolicyTable(), approvalRequestTable(), Client (+21 more)
 
 ### Community 252 - "site.ts"
 Cohesion: 0.08
 Nodes (24): Docs(), Props, postHogEnabled, faviconUrl, manifestUrl, serviceWorkerScope, serviceWorkerUrl, touchIconUrl (+16 more)
 
-### Community 253 - "LoadConfig"
-Cohesion: 0.13
-Nodes (21): k8s.io/client-go/util/workqueue.TypedRateLimiter, sigs.k8s.io/controller-runtime/pkg/manager.Manager, Config, LoadConfig(), parseBoolDefault(), envFrom(), TestLoadConfigBadBool(), TestLoadConfigBadNativeSecretBool() (+13 more)
+### Community 253 - "sigs.k8s.io/controller-runtime/pkg/reconcile.Request"
+Cohesion: 0.11
+Nodes (15): k8s.io/client-go/util/workqueue.TypedRateLimiter, sigs.k8s.io/controller-runtime/pkg/manager.Manager, sigs.k8s.io/controller-runtime/pkg/reconcile.Request, Config, HikyoSecretReconciler, jitteredExponential(), NewManager(), Run() (+7 more)
 
-### Community 254 - ".prepareBootstrap"
-Cohesion: 0.22
-Nodes (11): rootSourceDelta, SecretSource, SourceProof, k8s.io/api/core/v1.SecretVolumeSource, databaseEnv(), Change, BootstrapChanges, Kubernetes (+3 more)
+### Community 254 - ".PrivacyActivity"
+Cohesion: 0.16
+Nodes (10): PrivacyAccountView, PrivacyActivity, PrivacySession, Resolver, R, pgPrivacyActivity(), privacyActivities(), sqlitePrivacyActivity() (+2 more)
 
 ### Community 255 - "instance-admin.spec.ts"
-Cohesion: 0.07
-Nodes (22): WorkspaceHandoffEstablishment, WorkspaceHandoffStepUp, zInstanceConfigStatus, zLoginResult, zSamlProviderMutationResult, zSamlSpKeyList, zScimMappingResult, zScimMintResult (+14 more)
+Cohesion: 0.08
+Nodes (21): WorkspaceHandoffEstablishment, WorkspaceHandoffStepUp, zInstanceConfigStatus, zSamlProviderMutationResult, zSamlSpKeyList, zScimMappingResult, zScimMintResult, zUpdateStatus (+13 more)
 
 ### Community 256 - "stable-workflow_test.sh"
 Cohesion: 0.10
@@ -2328,45 +2290,45 @@ Nodes (11): Separate recovery custody, Native operations floor, Native arm64 rel
 Cohesion: 0.18
 Nodes (21): BackupHealth, RetentionHealth, doctorEvidence, doctorFinding, doctorResult, TestDoctorPreservesAllOperationalDiagnosticCodes(), doctorAdapterFinding(), doctorBackupFindings() (+13 more)
 
-### Community 259 - "MintServerCert"
-Cohesion: 0.07
-Nodes (29): UpgradeWindow, runTLSStageMode(), crypto/tls.Certificate, math/big.Int, newManagedCertificate(), TestManagedCertificateExpiryMetricsAndExpiredPairRefusal(), TestManagedCertificateValidatesPairAndRetainsImmutableCertificate(), NewUpgradeWindow() (+21 more)
+### Community 259 - "net.Conn"
+Cohesion: 0.06
+Nodes (34): drainingResponse, managedCertificate, operationalHealth, preparedEndpoints, runtimeConnection, runtimeEndpoint, runtimeListener, runTLSStageMode() (+26 more)
 
 ### Community 260 - "parity_test.go"
 Cohesion: 0.19
 Nodes (24): describe(), generatedOperationName(), isSPARuntimeSource(), loadGeneratedExports(), loadOperations(), loadParity(), loadSPASource(), loadSurfaces() (+16 more)
 
 ### Community 261 - "machine-access.spec.ts"
-Cohesion: 0.10
-Nodes (14): zProject, zPublishResult, zReauthResult, zServiceAccount, countDisclosureEvents(), establishSession(), nextTotpCode(), readSeed() (+6 more)
+Cohesion: 0.12
+Nodes (11): zEnvironment, zServiceAccount, nextTotpCode(), readSeed(), authoriseAdapterCeremony(), COLOR_SCHEMES, seed, zDelivered (+3 more)
 
 ### Community 262 - "Evidence"
 Cohesion: 0.13
 Nodes (20): CPUFactor, Derating, Evidence, Operator, Provenance, Publish, Reencrypt, ScannerRun (+12 more)
 
-### Community 263 - "messages.go"
-Cohesion: 0.20
-Nodes (15): ServerInfo, UpdateInfo, VersionInfo, FullArtwork(), AboutMessage(), ServerReadyMessage(), TestDevelopmentVersionMessageStaysCompact(), TestServerReadyMessageShowsUserAndOperatorEndpoints() (+7 more)
+### Community 263 - "Select"
+Cohesion: 0.08
+Nodes (34): updateState, builtUpdateChannel(), TestWriteAboutAndWelcomeExposeFullArtwork(), ServerInfo, UpdateInfo, VersionInfo, State, runUpdate() (+26 more)
 
-### Community 264 - "federationhttp/client_test.go"
-Cohesion: 0.22
-Nodes (14): dialFunc, finalEOFBody, resolverFunc, clientForServer(), TestBufferedResponseRefusesCancellationAtSuccessfulEOF(), TestCancellationAtBodyEOFIsRefused(), TestCanonicalURLsAndExplicitDevelopment(), TestDeadlineClosesSlowHeaderAndBodyRequests() (+6 more)
+### Community 264 - "Compare"
+Cohesion: 0.19
+Nodes (15): DriftState, Classify(), Compare(), createNames(), Bundle, Diff, KindDiff, Resolution (+7 more)
 
 ### Community 265 - "NewPublicDialer"
-Cohesion: 0.14
-Nodes (19): crypto/x509.CertPool, net/http.Transport, net/url.URL, newClient(), newClient(), newWithDialer(), transport, Dialer (+11 more)
+Cohesion: 0.17
+Nodes (16): crypto/x509.CertPool, newClient(), newWithDialer(), transport, Client, Dialer, PublicDialer, Resolver (+8 more)
 
 ### Community 266 - "metrics_test.go"
-Cohesion: 0.29
-Nodes (7): metricFamily, stubAdmissionSnapshot, stubRetentionHealth, pinnedMetricRegistry(), scrapeOperationalMetrics(), TestMetricRegistryIsPinned(), TestMetricRegistryStaysWithinCardinalityBudget()
+Cohesion: 0.60
+Nodes (5): metricFamily, pinnedMetricRegistry(), scrapeOperationalMetrics(), TestMetricRegistryIsPinned(), TestMetricRegistryStaysWithinCardinalityBudget()
 
 ### Community 267 - "compilerOptions"
 Cohesion: 0.08
 Nodes (24): compilerOptions, allowImportingTsExtensions, isolatedModules, jsx, lib, module, moduleResolution, noEmit (+16 more)
 
-### Community 268 - ".export"
-Cohesion: 0.22
-Nodes (12): actorNameKeep(), auditExportOp(), auditQueryOp(), fillPage(), filterPage(), Budget, AuditPage, Audits (+4 more)
+### Community 268 - "mcp-public-smoke/main_test.go"
+Cohesion: 0.23
+Nodes (18): ProductionToolNames(), modernJSON(), modernResult(), populatedDefinitionsResult(), successfulDefinitionsResult(), TestDecodeRPCResponseRejectsNonCanonicalEnvelopes(), TestDuplicateMembersCannotHideTenantFacts(), TestModernPublicEnvelopeRejectsExtraFacts() (+10 more)
 
 ### Community 269 - "RunLive"
 Cohesion: 0.20
@@ -2378,19 +2340,19 @@ Nodes (23): capabilityImplementedSchema, capabilityOpenSchema, capabilityPartial
 
 ### Community 271 - "@storybook/react-vite"
 Cohesion: 0.02
-Nodes (118): dist, postHogBuilt, @storybook/react-vite, ScanFinding, Empty, event, Failed, Loading (+110 more)
+Nodes (83): @storybook/react-vite, FolderMove, FolderMoveOutcome, Call, ids, moves, ref, zFolderBody (+75 more)
 
 ### Community 272 - "properties"
 Cohesion: 0.12
 Nodes (23): additionalProperties, allOf, properties, required, type, additionalProperties, type, additionalProperties (+15 more)
 
 ### Community 273 - "Event"
-Cohesion: 0.13
-Nodes (23): Context, ctxKey, KindLookup, Actor, Event, Trail, ScopeClass(), TestScopeClass() (+15 more)
+Cohesion: 0.12
+Nodes (24): Context, ctxKey, KindLookup, Actor, Event, Trail, ScopeClass(), BuildRow() (+16 more)
 
 ### Community 274 - "sqlpredicate.go"
-Cohesion: 0.21
-Nodes (19): TestSQLPredicateAcceptsProvableShapes(), TestSQLPredicateCatchesViolations(), checkInsert(), checkQuery(), checkSet(), CheckSQLPredicates(), checkWhere(), CollectTables() (+11 more)
+Cohesion: 0.22
+Nodes (19): GrantWriters(), TestGrantLockCatchesLocklessWriter(), checkInsert(), checkQuery(), checkSet(), CheckSQLPredicates(), checkWhere(), CollectTables() (+11 more)
 
 ### Community 275 - "postgres/00024_adapter_outbox.sql"
 Cohesion: 0.19
@@ -2428,9 +2390,9 @@ Nodes (19): confinementViolation, ImportConfinement, pkg, allImports(), confinem
 Cohesion: 0.10
 Nodes (21): properties, required, type, minLength, type, minLength, not, pattern (+13 more)
 
-### Community 284 - "runDefinitionsVerb"
-Cohesion: 0.08
-Nodes (29): ApplyDefinitionsPlanResult, KeyDeclaration, KeyPresenceRules, UpdateKeyDeclarationRequest, Error, silentExit, asSilentExit(), definitionsApplyTable() (+21 more)
+### Community 284 - "exit.go"
+Cohesion: 0.22
+Nodes (4): Error, silentExit, Report(), TestFederationCAFlagsRefuseBeforeAuthentication()
 
 ### Community 285 - "check-chart.sh script"
 Cohesion: 0.46
@@ -2444,21 +2406,21 @@ Nodes (14): Console publish-blocked state prototype, Console project overview pr
 Cohesion: 0.15
 Nodes (18): AuthRef, HikyoSecretSpec, InstanceRef, LocalObjectRef, Mapping, Scope, Target, bindingDigest() (+10 more)
 
-### Community 288 - "RecoverySQLiteTransaction"
-Cohesion: 0.16
-Nodes (7): Engine, pgx.Row, pgx.Rows, pgx.Tx, pgx.TxOptions, RecoveryPostgresTransaction, RecoverySQLiteTransaction
+### Community 288 - "selfConfigPostgres"
+Cohesion: 0.28
+Nodes (16): Actor, SelfConfig, TestSelfConfigExistingInstanceAdoptionIsExplicitAndDurable(), TestSelfConfigHAAdoptionRejectsDifferentSeedsAtomically(), TestSelfConfigHostRecoveryNeedsQuiescenceAndRejectsNetwork(), TestSelfConfigNormalKeyRotationPreservesRuntimeSnapshots(), unmanagedSelfConfigFixture(), selfConfigPostgres() (+8 more)
 
 ### Community 289 - "deadline_internal_test.go"
 Cohesion: 0.16
 Nodes (20): doublingRefChain(), drainEvaluationSlots(), saturateEvaluationSlots(), TestEncodedSizeMeasuresTheWholeVerdict(), TestEvaluationConcurrencyIsBounded(), TestExpandedPathsSaturates(), TestJSONSchemaEvaluationFailsLoudOnTheDeadline(), TestJSONSchemaEvaluationFailsLoudWhenNotAdmitted() (+12 more)
 
 ### Community 290 - "pggen/revisions.sql.go"
-Cohesion: 0.04
-Nodes (37): Queries, SnapshotEntry, CountPendingChangeForCellParams, CountPendingChangesForProjectParams, CountRevisionPinsForProjectParams, DeletePendingChangeByIDParams, DeletePendingChangeForCellParams, DeletePendingChangesForEnvironmentParams (+29 more)
+Cohesion: 0.03
+Nodes (51): PendingChange, Queries, RevisionKeyChange, RevisionPin, Snapshot, SnapshotEntry, CountPendingChangeForCellParams, CountPendingChangesForProjectParams (+43 more)
 
 ### Community 291 - "sqlitegen/revisions.sql.go"
-Cohesion: 0.04
-Nodes (37): SnapshotEntry, Queries, CountPendingChangeForCellParams, CountPendingChangesForProjectParams, CountRevisionPinsForProjectParams, DeletePendingChangeByIDParams, DeletePendingChangeForCellParams, DeletePendingChangesForEnvironmentParams (+29 more)
+Cohesion: 0.03
+Nodes (51): PendingChange, RevisionKeyChange, RevisionPin, Snapshot, SnapshotEntry, Queries, CountPendingChangeForCellParams, CountPendingChangesForProjectParams (+43 more)
 
 ### Community 292 - "analysis-shards-go/main.go"
 Cohesion: 0.28
@@ -2477,16 +2439,16 @@ Cohesion: 0.32
 Nodes (18): newFakeJournal(), TestDispatchWindowVariableReplayUsesUpdateNotCreate(), TestFinishErrorsOverrideVariableConflictAndPruneProviderErrors(), TestOwnedMissingVariableConflictPreservesMissingCustody(), TestOwnedMissingVariableRetriesCreateOnly(), TestOwnedVariableDeletedAtProviderRetriesCreateUnderFreshEffect(), TestPlanAndTestConnectionGateEveryProviderRequest(), TestPostPrepareGateFailureFinishesWithoutProviderRequest() (+10 more)
 
 ### Community 296 - "decodeCursor"
-Cohesion: 0.21
-Nodes (17): cursorSealerFrom(), decodeCursor(), encodeCursor(), CursorSealer, publicErrorMessage(), TestContinuationDoesNotRenewExpiry(), TestCursorExpiryIsRejected(), TestCursorIsRejectedAtExactExpiry() (+9 more)
+Cohesion: 0.23
+Nodes (16): cursorSealerFrom(), decodeCursor(), encodeCursor(), CursorSealer, TestContinuationDoesNotRenewExpiry(), TestCursorExpiryIsRejected(), TestCursorIsRejectedAtExactExpiry(), withCursorSealer() (+8 more)
 
 ### Community 297 - "directions/index.html"
 Cohesion: 0.16
 Nodes (10): Bench compact matrix and inspector, Bench mobile project actions, Console single-environment phone matrix, Console mobile project stack, Bench comparison entry point, Ledger mobile environment tabs, Ledger responsive project rows, Phone-reviewed design alternatives (+2 more)
 
 ### Community 298 - "resolve"
-Cohesion: 0.08
-Nodes (38): CurrentKey, DriftState, entity, kindMatch, Ref, Rename, Classify(), Compare() (+30 more)
+Cohesion: 0.14
+Nodes (24): CurrentKey, entity, kindMatch, Ref, Rename, matchEntities(), diffKey(), Bundle (+16 more)
 
 ### Community 299 - "ci_job_registry_test.go"
 Cohesion: 0.19
@@ -2504,17 +2466,17 @@ Nodes (18): fixtureDefinition, Kind, packageMetadata, go/ast.BlockStmt, go/ast.F
 Cohesion: 0.15
 Nodes (15): escapeArg(), ExecSizePOSIX(), ExecSizeWindows(), ExecPreflight(), ExecPreflight(), TestDefaultArgMaxPositive(), TestEscapeArg(), TestExecPreflight() (+7 more)
 
-### Community 303 - "Capacity"
-Cohesion: 0.21
-Nodes (10): Read(), Read(), Capacity, capacityFromSummary(), KubernetesOptions, NewKubernetes(), newKubernetes(), opsDoctorReport (+2 more)
+### Community 303 - "FromCapacity"
+Cohesion: 0.16
+Nodes (13): Read(), Read(), FromCapacity(), Capacity, Health, TestCapacityIsNotFabricated(), capacityFromSummary(), KubernetesOptions (+5 more)
 
 ### Community 304 - "settled"
 Cohesion: 0.19
 Nodes (15): processMeasurement, main(), run(), serve(), settled(), TestSettledCannotAcceptStaleOrChangedRetainedData(), value(), positiveNumber() (+7 more)
 
 ### Community 305 - "Remotes"
-Cohesion: 0.07
-Nodes (33): sync.RWMutex, boundListing(), fillNotAttempted(), Outcome, Attempted, Client, Listing, Result (+25 more)
+Cohesion: 0.08
+Nodes (31): boundListing(), fillNotAttempted(), Outcome, Attempted, Client, Listing, Result, Target (+23 more)
 
 ### Community 306 - "properties"
 Cohesion: 0.11
@@ -2524,13 +2486,13 @@ Nodes (18): type, type, type, evidence, existingClaim, legacyWritersStopped, sta
 Cohesion: 0.20
 Nodes (15): Entry, Refusal, cutExportPrefix(), Encode(), needsQuoting(), onlyTrailingBlank(), Parse(), parseDoubleQuoted() (+7 more)
 
-### Community 308 - "passkey.ts"
-Cohesion: 0.16
-Nodes (16): addVirtualAuthenticator(), installPasskeyAuthenticator(), mintStorageState(), parseCredential(), persistSharedPasskey(), readPasskey(), refreshSharedSession(), refreshSharedSessionFromProbe() (+8 more)
+### Community 308 - "WebAuthnCredential"
+Cohesion: 0.22
+Nodes (6): WebAuthnCeremony, WebAuthnCredential, pgWebAuthnCeremony(), pgWebAuthnCredential(), sqliteWebAuthnCeremony(), sqliteWebAuthnCredential()
 
 ### Community 309 - "KeySource"
-Cohesion: 0.13
-Nodes (24): Binding, FederationIssuer, NewFederationIssuer, crypto.PublicKey, github.com/go-jose/go-jose/v4.JSONWebKeySet, IssuerType, JWKSMode, canonicalizeJWKS() (+16 more)
+Cohesion: 0.07
+Nodes (29): Binding, FederationIssuer, NewFederationIssuer, WorkloadPinState, TxAuthorizer, FederationIssuer, Identity, IssuerType (+21 more)
 
 ### Community 310 - "service/budget_test.go"
 Cohesion: 0.22
@@ -2538,27 +2500,27 @@ Nodes (15): Budget, newTestBudget(), principalKeys(), TestAuditExportChargesExpe
 
 ### Community 311 - "client.ts"
 Cohesion: 0.03
-Nodes (101): applyDefinitionsPlanOp, checkDefinitionsOp, createDefinitionsPlanOp, createFederationIssuerOp, deleteFederationIssuerOp, enrolPasskeyFinishOp, enrolTotpConfirmOp, getDefinitionsPlanOp (+93 more)
+Nodes (104): applyDefinitionsPlanOp, checkDefinitionsOp, createDefinitionsPlanOp, createFederationIssuerOp, deleteFederationIssuerOp, getDefinitionsPlanOp, getDefinitionsSettingsOp, getMetaOp (+96 more)
 
 ### Community 312 - "LoadRepo"
-Cohesion: 0.09
-Nodes (25): TestInvariant01ClassificationTotality(), TestInvariant02ProbeFixtureAxes(), TestInvariant06aFormulaPinning(), TestInvariant08PredicateConfinement(), TestInvariant09aDriverHandleConfinement(), TestInvariant09bTransactionResultsAreDetached(), TestInvariant09ForgeryGuard(), TestInvariant11SelfConfigGenericMintingDenied() (+17 more)
+Cohesion: 0.07
+Nodes (29): TestInvariant02ProbeFixtureAxes(), TestInvariant06aFormulaPinning(), TestInvariant06OperationRegistryCompleteness(), TestInvariant07ProofSignatures(), TestInvariant08PredicateConfinement(), TestInvariant09bTransactionResultsAreDetached(), TestInvariant09ForgeryGuard(), TestInvariant11SelfConfigGenericMintingDenied() (+21 more)
 
 ### Community 313 - "cx"
-Cohesion: 0.11
-Nodes (20): Badge(), BadgeProps, AllTones, Changed, Danger, meta, Mono, Neutral (+12 more)
+Cohesion: 0.10
+Nodes (22): ChoiceGroup(), AllStates, Checkboxes, Inline, LegendNamesTheGroup, meta, Radios, Story (+14 more)
 
 ### Community 314 - "check-mcp-deployment.sh"
 Cohesion: 0.12
 Nodes (15): fail(), HIKYO_COMPOSE_SUBNET, HIKYO_DB, HIKYO_EXTERNAL_ORIGIN, HIKYO_IMAGE, HIKYO_ROOT_KEY_FILE, HIKYO_TLS_CERT_FILE, HIKYO_TLS_KEY_FILE (+7 more)
 
 ### Community 315 - "custody"
-Cohesion: 0.17
-Nodes (13): custody, custodyApps, custodyClient, custodyCore, custodyDeployments, custodySecrets, k8s.io/apimachinery/pkg/apis/meta/v1.UpdateOptions, k8s.io/client-go/kubernetes/typed/apps/v1.AppsV1Interface (+5 more)
+Cohesion: 0.18
+Nodes (12): custody, custodyApps, custodyClient, custodyCore, custodyDeployments, custodySecrets, k8s.io/apimachinery/pkg/apis/meta/v1.UpdateOptions, k8s.io/client-go/kubernetes/typed/apps/v1.AppsV1Interface (+4 more)
 
 ### Community 316 - "resolveKeySelection"
-Cohesion: 0.21
-Nodes (12): AdapterTargetInput, Actor, AdapterKeySelection, Adapters, matchesAny(), resolveKeySelection(), contains(), indexOf() (+4 more)
+Cohesion: 0.19
+Nodes (13): AdapterTargetInput, keySelection(), Actor, AdapterKeySelection, Adapters, matchesAny(), resolveKeySelection(), contains() (+5 more)
 
 ### Community 317 - "storageMonitoring"
 Cohesion: 0.14
@@ -2570,15 +2532,15 @@ Nodes (15): playwrightBindings, tsToken, canStartRegex(), closesControlStatement
 
 ### Community 319 - "testing.F"
 Cohesion: 0.18
-Nodes (16): testing.F, FuzzOpen(), FuzzParseArtifact(), FuzzReadLP(), fuzzArtifactSeed(), FuzzParseManifest(), FuzzParseTemplate(), FuzzParseValuesFile() (+8 more)
+Nodes (17): testing.F, FuzzOpen(), FuzzParseArtifact(), FuzzReadLP(), FuzzReadRootKey(), fuzzArtifactSeed(), FuzzParseManifest(), FuzzParseTemplate() (+9 more)
 
-### Community 320 - "GenerateIdentity"
+### Community 320 - "seal"
 Cohesion: 0.08
-Nodes (47): failReader, roundTripFunc, filippo.io/age.Identity, filippo.io/age.Recipient, assertBackupDiagnostics(), TestBackupRestoreDiagnosticsLevels(), TestRestoreDiagnosticsAuthenticationFailureStopsBeforeTarget(), TestUpgradeDrillDiagnosticsLevels() (+39 more)
+Nodes (42): failReader, filippo.io/age.Identity, filippo.io/age.Recipient, decryptArchive(), checkStanzaExclusivity(), Encrypt(), ExtractTo(), FuzzExtractTo() (+34 more)
 
 ### Community 321 - "deploymentAdapterFixture"
-Cohesion: 0.21
-Nodes (18): k8s.io/client-go/kubernetes/fake.Clientset, TestCandidateHealthChecksEnrolledNextRootWithoutProvider(), TestNextRootPreparationRejectsUnavailableSources(), TestBootstrapDeploymentRenewalPreservesCommittedAuthorityAfterRestart(), deploymentAdapterFixture(), deploymentBundle(), deploymentIntent(), bootstrapDeployment (+10 more)
+Cohesion: 0.15
+Nodes (23): k8s.io/client-go/kubernetes/fake.Clientset, devRootKeyPath(), TestCandidateHealthChecksEnrolledNextRootWithoutProvider(), TestNextRootPreparationRejectsUnavailableSources(), TestNextRootSeedRequiresExactEnrolledProjection(), TestBootstrapDeploymentRenewalPreservesCommittedAuthorityAfterRestart(), deploymentAdapterFixture(), deploymentBundle() (+15 more)
 
 ### Community 322 - "Budget"
 Cohesion: 0.25
@@ -2604,9 +2566,9 @@ Nodes (10): AccountProfile, GetMyProfileRequestObject, GetMyProfileResponseObjec
 Cohesion: 0.10
 Nodes (19): ADR-touching scheduler widening, Authorization and audit, Canonical bundle library, CLI, Contract, Decisions taken, E2E, Folded main-CI repair (#63 compose-demo) (+11 more)
 
-### Community 328 - "configureHA"
-Cohesion: 0.14
-Nodes (10): generationHAStatus, haStatus, Kind, configureHA(), haReadinessProbe(), RootKeyFingerprint(), HAStats, DB (+2 more)
+### Community 328 - "boot"
+Cohesion: 0.06
+Nodes (41): bootGuard, bootResources, managedHTTPServer, requestTracker, rootKeySource, Kind, net/http.Server, adminAuthWithResources() (+33 more)
 
 ### Community 329 - "RetentionPolicy"
 Cohesion: 0.26
@@ -2628,13 +2590,13 @@ Nodes (7): windowsTerminal, io.ReadCloser, io.WriteCloser, preparedFile, newWind
 Cohesion: 0.29
 Nodes (5): CGO_ENABLED, GOARCH, GOMAXPROCS, GOOS, floor.sh script
 
-### Community 334 - "BuildAuthnRequest"
-Cohesion: 0.23
-Nodes (12): metadataKeyDescriptor(), TestParseMetadataRejectsAmbiguousEntityAndMissingRedirectEndpoint(), TestParseMetadataSelectsExactEntityAndSigningKeys(), TestParseMetadataVerifiesSignedDescriptorBeforeExtraction(), BuildAuthnRequest(), rawQueryValues(), requestSigningFixture(), TestBuildAuthnRequestBuildsSignedRedirectOverExactWireValues() (+4 more)
+### Community 334 - "requestSigningFixture"
+Cohesion: 0.31
+Nodes (8): metadataKeyDescriptor(), TestParseMetadataRejectsAmbiguousEntityAndMissingRedirectEndpoint(), TestParseMetadataSelectsExactEntityAndSigningKeys(), TestParseMetadataVerifiesSignedDescriptorBeforeExtraction(), rawQueryValues(), requestSigningFixture(), TestBuildAuthnRequestBuildsSignedRedirectOverExactWireValues(), TestBuildAuthnRequestBuildsUnsignedLoginRequest()
 
-### Community 335 - "mcpserver/registry.go"
-Cohesion: 0.18
-Nodes (12): github.com/google/jsonschema-go/jsonschema.ForOptions, github.com/modelcontextprotocol/go-sdk/mcp.Server, TestBearerFormattingAlwaysRedacts(), inputSchemaOptions(), newBearer(), AuditDisposition, Bearer, registration (+4 more)
+### Community 335 - "Register"
+Cohesion: 0.15
+Nodes (16): github.com/google/jsonschema-go/jsonschema.ForOptions, github.com/modelcontextprotocol/go-sdk/mcp.Server, In, publicErrorMessage(), TestBearerFormattingAlwaysRedacts(), Out, inputSchemaOptions(), newBearer() (+8 more)
 
 ### Community 336 - "postgres/00041_change_approvals.sql"
 Cohesion: 0.25
@@ -2661,8 +2623,8 @@ Cohesion: 0.10
 Nodes (20): devDependencies, @axe-core/playwright, happy-dom, playwright, @playwright/test, storybook, @storybook/addon-a11y, @storybook/addon-docs (+12 more)
 
 ### Community 342 - "mustCanonicalize"
-Cohesion: 0.41
-Nodes (16): mustCanonicalize(), rev(), Resolve(), bKey(), curKey(), Key, TestClassifyDrift(), TestResolveAdditiveModificationRefused() (+8 more)
+Cohesion: 0.38
+Nodes (17): mustCanonicalize(), rev(), stringRule(), Resolve(), bKey(), curKey(), Key, TestClassifyDrift() (+9 more)
 
 ### Community 343 - "build.mjs"
 Cohesion: 0.21
@@ -2672,17 +2634,17 @@ Nodes (12): css, decisionHTML(), escape(), groups, instrumentLicense, link(), ma
 Cohesion: 0.31
 Nodes (9): github.com/Hikyo-Org/hikyo/internal/authz.NewSAMLSPKey, github.com/Hikyo-Org/hikyo/internal/authz.SAMLSPKey, generatedSPKeyInput(), Actor, SAMLProviders, SAMLSPKeyView, recordSAMLSPKeyEvent(), samlSPKeyView() (+1 more)
 
-### Community 345 - "CatalogueKey"
-Cohesion: 0.05
-Nodes (90): ImpactPreview, IsSelfConfig(), closure(), hiddenInterface(), repositories(), asciiFold(), bytesAll(), Ruleset (+82 more)
+### Community 345 - "ruleset.go"
+Cohesion: 0.18
+Nodes (15): asciiFold(), bytesAll(), Finding, hasRuleID(), TestASCIIFoldPreservesUnicodePrefixOffsets(), TestGeneratedKeywordCoverageStates(), TestOrdinaryStripeContentUsesKeywordWindow(), TestStripeSpecialFoldCredentialsAreDetected() (+7 more)
 
 ### Community 346 - "Retention"
-Cohesion: 0.23
-Nodes (9): BackupHealth, Actor, PruneHealth, Retention, peakProjectStorage(), AdapterHealthCounts, mcpOperationalHealth, stubRetentionHealth (+1 more)
+Cohesion: 0.44
+Nodes (4): Actor, Retention, peakProjectStorage(), Diagnostics
 
-### Community 347 - "RecoveryDB"
-Cohesion: 0.19
-Nodes (17): assertExpiredRecovery(), NewPG(), NewSQLite(), NewHistoricalRecoveryPG(), NewHistoricalRecoverySQLite(), DB, RecoveryDB, PGTxReadRepos() (+9 more)
+### Community 347 - "sigs.k8s.io/controller-runtime/pkg/client.Object"
+Cohesion: 0.27
+Nodes (7): k8s.io/apimachinery/pkg/runtime.ApplyConfiguration, sigs.k8s.io/controller-runtime/pkg/client.Object, sigs.k8s.io/controller-runtime/pkg/client.Patch, sigs.k8s.io/controller-runtime/pkg/client.SubResourceWriter, opLabel(), recordingClient, recordingStatus
 
 ### Community 348 - "sqlite/00025_github_actions_adapter.sql"
 Cohesion: 0.22
@@ -2704,25 +2666,25 @@ Nodes (12): compilerOptions, allowImportingTsExtensions, lib, module, moduleReso
 Cohesion: 0.11
 Nodes (18): CLI, Cross-model review, Deviations from the ADR letter, stated, Disposition items (human), Fixed during orchestrator verification (not by this agent), Handoff: #55 permission model, full — grants, role templates, protected environments, Invariant → test map, Pickup notes (+10 more)
 
-### Community 353 - "New"
-Cohesion: 0.09
-Nodes (14): sqliteRepos, pgRepos, sqliteRepos, sqliteRepos, sqliteRepos, sqliteRepos, sqliteRepos, Queries (+6 more)
-
-### Community 354 - "net/http.Handler"
+### Community 353 - ".RotateRootKey"
 Cohesion: 0.13
-Nodes (17): Handler(), HandlerFromMux(), HandlerFromMuxWithBaseURL(), HandlerWithOptions(), ServerInterface, chi.Router, github.com/modelcontextprotocol/go-sdk/mcp.CallToolRequest, github.com/modelcontextprotocol/go-sdk/mcp.CallToolResult (+9 more)
+Nodes (10): RotateMasterKeyRequestObject, RotateMasterKeyResponseObject, RotateRootKeyRequestObject, RotateRootKeyResponseObject, RootKeyRotation, RootKeyRotationPhase, RotateMasterKey200JSONResponse, RotateRootKey200JSONResponse (+2 more)
+
+### Community 354 - "missingCapabilityDiagnostic"
+Cohesion: 0.23
+Nodes (10): github.com/modelcontextprotocol/go-sdk/mcp.CallToolRequest, github.com/modelcontextprotocol/go-sdk/mcp.CallToolResult, diagnosticResult(), Registry, missingCapabilityDiagnostic(), RegisterConformanceDiagnostics(), resultOnlyDiagnostic(), allowDiscovery (+2 more)
 
 ### Community 355 - ".renderOffline"
-Cohesion: 0.09
-Nodes (44): RenderOmission, RenderOmissionKind, RenderRefusalKind, RenderRowState, RenderTarget, RenderTargetPlan, composeStack, TestComposeApplyPendingWriteFailureRemainsRetryVisible() (+36 more)
+Cohesion: 0.08
+Nodes (45): PublishPhase, RenderOmission, RenderOmissionKind, RenderRefusalKind, RenderRowState, RenderTarget, RenderTargetPlan, appendOfflineRecords() (+37 more)
 
 ### Community 356 - "EncodeNameID"
 Cohesion: 0.36
 Nodes (8): appendField(), appendOptionalField(), appendPresentField(), EncodeNameID(), NameID, TestEncodeNameIDIsInjectiveAcrossFieldsAndPresence(), TestEncodeNameIDRefusesEmptyValue(), TestEncodeNameIDUsesSpecifiedWireEncoding()
 
-### Community 357 - "compileCanonical"
-Cohesion: 0.26
-Nodes (12): detail(), invalidDetail(), limitDetail(), compileCanonical(), Bundle, CompiledBundle, Presence, hasIDs() (+4 more)
+### Community 357 - "definitions/bundle.go"
+Cohesion: 0.17
+Nodes (7): AdditiveModificationError, detailErr, Environment, KeyGroup, Bundle, Key, Presence
 
 ### Community 358 - "pggen/folders.sql.go"
 Cohesion: 0.22
@@ -2738,7 +2700,7 @@ Nodes (7): Folder, Queries, CreateFolderParams, DeleteFolderParams, GetFolderPar
 
 ### Community 361 - "time.Duration"
 Cohesion: 0.07
-Nodes (25): ActivationLoader, ActivationStore, JobStore, Loader, ScheduledJob, Scheduler, sigs.k8s.io/controller-runtime/pkg/reconcile.Request, time.Duration (+17 more)
+Nodes (29): ActivationLoader, ActivationStore, JobStore, Loader, ScheduledJob, Scheduler, UpgradeDrillRequest, time.Duration (+21 more)
 
 ### Community 362 - "params.gen.ts"
 Cohesion: 0.21
@@ -2756,9 +2718,9 @@ Nodes (6): Provider transport cleanup, Explicit fixture trust admission, Postgre
 Cohesion: 0.21
 Nodes (8): dist, findCspMetas(), INERT_SCRIPT_TYPES, isGovernedInlineScript(), parseAttrs(), PRE_META_ALLOWED, scriptBodies(), textNodeRanges()
 
-### Community 366 - "protocol.go"
-Cohesion: 0.18
-Nodes (7): decodeJSON(), Job, Request, Capability, Control, Client, protocolError
+### Community 366 - "DefaultConfig"
+Cohesion: 0.22
+Nodes (13): DefaultConfig(), emptyControlGroup(), noOpenDatabaseDescriptors(), standardProperties(), TestCgroupProofIncludesDescendants(), TestConfigRejectsAuthorityAndEndpointInjection(), TestEnvironmentIsDataNeverShellCode(), TestRuntimeCommandCannotSelectArbitraryExecutable() (+5 more)
 
 ### Community 367 - "00011_audit_export_order.sql"
 Cohesion: 0.26
@@ -2780,33 +2742,33 @@ Nodes (11): COMMIT, FIXTURE, GITHUB_OUTPUT, IMAGE_DIGEST, not_promoted(), PATH, 
 Cohesion: 0.21
 Nodes (12): RetentionPolicy, SetProjectRetentionRequest, RetentionPolicyMode, boundedRetention(), TestOrgRetentionRequestModes(), TestProjectRetentionRequestModes(), optionalDuration(), optionalInt() (+4 more)
 
-### Community 372 - ".FetchAs"
-Cohesion: 0.03
-Nodes (99): Cursor, Occurrence, appendField(), EncodeCursor(), EncodeOccurrence(), Mode, Presence, Row (+91 more)
+### Community 372 - ".Set"
+Cohesion: 0.04
+Nodes (76): Row, TestEscapedReferencesRemainLiteral(), TestPatternCacheRemainsBoundedAndConcurrent(), CheckDeclaration(), CheckName(), CheckReferences(), CheckSupplied(), compiledPattern() (+68 more)
 
-### Community 373 - "CheckProofSignatures"
-Cohesion: 0.27
-Nodes (9): go/types.Named, go/types.Signature, TestInvariant07ProofSignatures(), TestProofSignaturesCatchesViolations(), TestProofSignaturesRepo(), bundleResults(), CheckProofSignatures(), isNamed() (+1 more)
+### Community 373 - "CheckDriverHandles"
+Cohesion: 0.23
+Nodes (11): go/token.Pos, go/types.Named, TestInvariant09aDriverHandleConfinement(), permittedGuardedTransaction(), permittedHandlePosition(), permittedRawConstructor(), TestRawDriverAuthorityIsExactFileScoped(), CheckDriverHandles() (+3 more)
 
 ### Community 374 - "Fresh hierarchy initialization"
 Cohesion: 0.50
 Nodes (4): Atomic first-start key initialization, Fresh hierarchy initialization, PostgreSQL, SQLite
 
-### Community 375 - "CheckKeyName"
-Cohesion: 0.17
-Nodes (14): NearMiss, Rename, TransformKind, checkUTF8(), editDistanceWithin(), NearMisses(), TransformName(), targetName() (+6 more)
+### Community 375 - "names.go"
+Cohesion: 0.24
+Nodes (10): NearMiss, Rename, TransformKind, canonicalJSON(), checkUTF8(), editDistanceWithin(), Budget, NearMisses() (+2 more)
 
 ### Community 376 - "TypeSpec"
-Cohesion: 0.18
-Nodes (21): FieldKind, RetentionClass, adapterLifecycleEvent(), TypeSpec, Outcome, hierarchyEvent(), hierarchyFailureEvent(), merged() (+13 more)
+Cohesion: 0.16
+Nodes (23): FieldKind, RetentionClass, adapterLifecycleEvent(), TypeSpec, Outcome, hierarchyEvent(), hierarchyFailureEvent(), merged() (+15 more)
 
 ### Community 377 - "API"
-Cohesion: 0.03
-Nodes (59): BeginRecoveryRequestObject, BeginRecoveryResponseObject, EnrolTotpStartRequestObject, EnrolTotpStartResponseObject, EstablishCredentialRequestObject, EstablishCredentialResponseObject, GetMetaRequestObject, GetMetaResponseObject (+51 more)
+Cohesion: 0.02
+Nodes (108): Assurance, BeginRecoveryRequestObject, BeginRecoveryResponseObject, EnrolTotpConfirmRequestObject, EnrolTotpConfirmResponseObject, EnrolTotpStartRequestObject, EnrolTotpStartResponseObject, EstablishCredentialRequestObject (+100 more)
 
-### Community 378 - "Backup"
-Cohesion: 0.27
-Nodes (5): DirectoryAncestry(), Backup, ExportResult, archiveWriter, ExportTrigger
+### Community 378 - "Glyph.stories.tsx"
+Cohesion: 0.18
+Nodes (11): Glyph(), GlyphName, GlyphProps, PATHS, AllStates, Decorative, DecorativeIsHidden, meta (+3 more)
 
 ### Community 379 - "sqlitegen/catalogue.sql.go"
 Cohesion: 0.05
@@ -2816,13 +2778,13 @@ Nodes (34): Key, KeyGroup, KeyPresenceEnvironment, Queries, BumpProjectSchemaRev
 Cohesion: 0.24
 Nodes (5): Queries, DeleteScanningDismissalsForKeyParams, DeleteScanningDismissalsForProjectParams, GetScanningDismissalParams, InsertScanningDismissalParams
 
-### Community 381 - "refuse"
-Cohesion: 0.30
-Nodes (4): JsonNumber, JsonParser, parseJsonLossless(), refuse()
+### Community 381 - "Tabs.stories.tsx"
+Cohesion: 0.18
+Nodes (10): Default, KeyboardMovesAndSelects, meta, SecondSelected, Section, sections, Story, TabItem (+2 more)
 
 ### Community 382 - "LoginForm.stories.tsx"
-Cohesion: 0.15
-Nodes (12): LoginForm(), SignInProvider, ContactingProvider, LocalOnly, meta, PasswordAndPasskey, providers, Refused (+4 more)
+Cohesion: 0.09
+Nodes (21): zAuthMethodProvider, Alert(), AllStates, Danger, Done, meta, RolesMatchTone, Story (+13 more)
 
 ### Community 383 - "ClassifyError"
 Cohesion: 0.29
@@ -2836,21 +2798,21 @@ Nodes (19): type, uniqueItems, type, properties, properties, additionalPropertie
 Cohesion: 0.20
 Nodes (10): pattern, type, properties, required, type, digest, image, repository (+2 more)
 
-### Community 386 - "ImportWizard"
-Cohesion: 0.20
-Nodes (13): asError(), declareFailureOutcome(), ImportWizard(), commitReset(), renderClassify(), renderCliGuidance(), renderDotenvSource(), renderFileSource() (+5 more)
+### Community 386 - "LoadConfig"
+Cohesion: 0.36
+Nodes (10): Config, LoadConfig(), parseBoolDefault(), envFrom(), TestLoadConfigBadBool(), TestLoadConfigBadNativeSecretBool(), TestLoadConfigDefaults(), TestLoadConfigMissingNamespaceIsHardError() (+2 more)
 
 ### Community 387 - "upgrade-nightly.sh"
 Cohesion: 0.83
 Nodes (3): download(), fail(), upgrade-nightly.sh script
 
 ### Community 388 - "history.spec.ts"
-Cohesion: 0.15
-Nodes (13): zExportValuesRequest, zPendingDraftList, zPublishRequest, zRevisionPinList, zRevisionPinReleaseResult, zValueCell, expectTouchTargets(), INTERACTIVE_ELEMENT_SELECTOR (+5 more)
+Cohesion: 0.06
+Nodes (32): zExportValuesRequest, zGrantResult, zPendingDraftList, zPublishRequest, zPublishResult, zReauthResult, zRevisionPinList, zRevisionPinReleaseResult (+24 more)
 
-### Community 389 - "Append"
-Cohesion: 0.19
-Nodes (17): appendOfflineRecords(), atomicWriteEnv(), writeFileFsync(), Append(), OfflineRecord, MarkFlushed(), NewRecordID(), Pending() (+9 more)
+### Community 389 - "Declaration"
+Cohesion: 0.35
+Nodes (10): Canonical(), cloneDeclaration(), clonePointer(), cloneRule(), Declaration, Rule, T, normalize() (+2 more)
 
 ### Community 390 - "client/index.ts"
 Cohesion: 0.04
@@ -2861,8 +2823,8 @@ Cohesion: 0.27
 Nodes (6): CheckPassword(), commonList(), TestCommonListIsAKnownPlaceholder(), TestPasswordPolicy(), uniqueRunes(), passwordPolicyError
 
 ### Community 392 - "declErr"
-Cohesion: 0.12
-Nodes (25): compiledRule, regexp.Regexp, mustCompile(), checkEnumMembers(), checkSchemes(), compileNormalized(), compilePattern(), compileRule() (+17 more)
+Cohesion: 0.10
+Nodes (27): compiledRule, regexp.Regexp, checkDeclarationClassification(), Classification, Declaration, valueLiteralKeyword(), checkEnumMembers(), checkNoDuplicateKeys() (+19 more)
 
 ### Community 393 - "postgres/00006_factors.sql"
 Cohesion: 0.29
@@ -2872,9 +2834,9 @@ Nodes (9): credential_authorities_new, reauth_windows, recovery_codes, accounts,
 Cohesion: 0.29
 Nodes (9): external_identities, saml_providers, saml_providers_entity_enabled, saml_replay, saml_replay_expiry_idx, saml_sp_keys, saml_sp_keys_one_active, saml_transactions (+1 more)
 
-### Community 395 - "cors_test.go"
-Cohesion: 0.19
-Nodes (11): crossOriginAllowed(), API, corsHandler(), TestCORSEchoesExactlyOneAllowlistedOriginAndNeverCredentials(), TestCORSGivesANonAllowlistedOriginNoHeadersAtAll(), TestCORSSameOriginMutationSkipsAllowlistConsult(), TestVaryOriginIsSetOnEveryBranch(), workspaceCORS() (+3 more)
+### Community 395 - "Badge.stories.tsx"
+Cohesion: 0.18
+Nodes (10): Badge(), BadgeProps, AllTones, Changed, Danger, meta, Mono, Neutral (+2 more)
 
 ### Community 396 - "frozen-client.mjs"
 Cohesion: 0.20
@@ -2896,9 +2858,9 @@ Nodes (21): Field(), FieldControlProps, FieldProps, InputProps, Select(), Select
 Cohesion: 0.12
 Nodes (15): Acceptance criteria → evidence, Authentication (`internal/authz`, `internal/service`, `internal/store/authn`), CLI (`internal/cli`, `internal/disclose`), Cross-model review, Defects found and fixed while building, Deviations from the ADR letter — stated, for human disposition, Handoff: #47 first slice — OpenAPI 3.1 API, CLI skeleton, bootstrap admin, local login, Known-open, for disposition (+7 more)
 
-### Community 401 - "federationServer"
-Cohesion: 0.26
-Nodes (13): FederationService, federationServer(), rawDeliveryMembers(), TestBindingRouteRendersTheDiscriminatedPins(), TestDeliveryRouteCarriesTheProjectionAndValue(), TestDeliveryRouteIsIndistinguishableWhenUnauthorized(), TestDeliveryRouteRefusesWithoutAnArtifact(), TestDeliveryRouteRendersBothDispositions() (+5 more)
+### Community 401 - "formula_matrix_test.go"
+Cohesion: 0.35
+Nodes (10): authorizeAs(), planMatrix(), runFormulaMatrix(), runRevocationIsImmediate(), seedMatrixPrincipal(), sqlText(), TestMatrixCoversEveryProofMintingOperation(), TestMatrixPlannerRejectsUnfixtured() (+2 more)
 
 ### Community 402 - "preparedFile"
 Cohesion: 0.36
@@ -2940,9 +2902,9 @@ Nodes (8): revision_pins, revision_pins_project, revision_pins_snapshot, secret_
 Cohesion: 0.30
 Nodes (13): Kubernetes, KubernetesOptions, TestCapacityFromKubeletSummary(), TestCapacityFromKubeletSummaryMultiplePods(), testKubelet(), TestKubernetesReadAuthenticatedTLSAndFreshSamples(), TestKubernetesReadRefusesRedirectStatusAndOversize(), TestKubernetesReadTimeoutAndTLSVerification() (+5 more)
 
-### Community 412 - ".HostSeedInputs"
-Cohesion: 0.47
-Nodes (3): SelfConfigBinding, SelfConfigSeedInput, selfConfigRepo
+### Community 412 - "stamp_test.go"
+Cohesion: 0.44
+Nodes (9): StampKey(), mustStamp(), mustStampKey(), TestStampCanonicalInjective(), TestStampDeterministicAndShaped(), TestStampEmptyIsStable(), TestStampMovesOnValueChange(), TestStampPerTargetSeparation() (+1 more)
 
 ### Community 413 - "Handoff: #75 key rotation operations (five ops, crash-safe root rotation)"
 Cohesion: 0.12
@@ -2968,17 +2930,13 @@ Nodes (8): FIXTURE_LOG, FIXTURE_MODE, FIXTURE_SOURCE, HIKYO_RECOVERY_SIGNER, HIK
 Cohesion: 0.25
 Nodes (7): compressBrotli, compressGzip, compressibleExtensions, files, filesBelow(), root, written
 
-### Community 419 - "ImportWizard.test.tsx"
-Cohesion: 0.23
-Nodes (12): MAX_FILE_BYTES, button(), click(), createKey, environments, importValues, listOccurrences, pickDotenv() (+4 more)
-
 ### Community 420 - "network"
 Cohesion: 0.25
 Nodes (8): type, properties, required, type, allowPlaintextOrigin, network, trustedProxyCIDRs, type
 
 ### Community 421 - "spec.go"
-Cohesion: 0.06
-Nodes (40): TestAuthorizationOperationArtifactEligibilityDerivesFromEmbeddedContract(), TestCollectOperationsRejectsMissingOrEmptyArtifactEligibility(), TestOperationForDerivesArtifactEligibilityFromEmbeddedContract(), TestWorkloadRevealHistoryWireSurfaceStaysPinBound(), countingRouter, fixedRouter, TestMatchedOperationCarriesTheResolvedRow(), TestMatchRequestFailsLoudOnContractInvariantBreak() (+32 more)
+Cohesion: 0.07
+Nodes (35): TestAuthorizationOperationArtifactEligibilityDerivesFromEmbeddedContract(), TestCollectOperationsRejectsMissingOrEmptyArtifactEligibility(), TestOperationForDerivesArtifactEligibilityFromEmbeddedContract(), TestWorkloadRevealHistoryWireSurfaceStaysPinBound(), countingRouter, fixedRouter, TestMatchedOperationCarriesTheResolvedRow(), TestMatchRequestFailsLoudOnContractInvariantBreak() (+27 more)
 
 ### Community 422 - "docs/handoff/postgres-utc.md"
 Cohesion: 0.29
@@ -2992,13 +2950,13 @@ Nodes (21): Complete paginated provider inventory, GitHub Actions, OpenID Connec
 Cohesion: 0.25
 Nodes (7): compilerOptions, jsx, jsxImportSource, exclude, extends, include, astro/tsconfigs/strict
 
-### Community 425 - "sigs.k8s.io/controller-runtime/pkg/client.Object"
-Cohesion: 0.11
-Nodes (17): k8s.io/apimachinery/pkg/runtime.ApplyConfiguration, sigs.k8s.io/controller-runtime/pkg/client.Object, sigs.k8s.io/controller-runtime/pkg/client.ObjectList, sigs.k8s.io/controller-runtime/pkg/client.Patch, sigs.k8s.io/controller-runtime/pkg/client.SubResourceWriter, sigs.k8s.io/controller-runtime/pkg/handler.EventHandler, opLabel(), HikyoSecretReconciler (+9 more)
+### Community 425 - ".walkWorkloads"
+Cohesion: 0.16
+Nodes (12): sigs.k8s.io/controller-runtime/pkg/client.ObjectList, sigs.k8s.io/controller-runtime/pkg/handler.EventHandler, HikyoSecretReconciler, consumesTarget(), daemonSetProgressed(), deploymentProgressed(), HikyoSecretReconciler, podAnnotation() (+4 more)
 
 ### Community 426 - "SuggestType"
-Cohesion: 0.38
-Nodes (5): allSatisfy(), isJSONObjectOrArray(), SuggestType(), TestSuggestionIsAlwaysAcceptedByTheDeclaration(), TestSuggestType()
+Cohesion: 0.32
+Nodes (6): allSatisfy(), isJSONObjectOrArray(), mustCompile(), SuggestType(), TestSuggestionIsAlwaysAcceptedByTheDeclaration(), TestSuggestType()
 
 ### Community 427 - "postgres/00005_authn.sql"
 Cohesion: 0.39
@@ -3044,17 +3002,17 @@ Nodes (6): assert_ready(), KUBECONFIG, read_state(), replace(), seed_descriptor(
 Cohesion: 0.25
 Nodes (7): GH_BIN, GH_BRANCH_EXISTS, GH_CALLS, GH_RELEASE_DRAFT, GH_RELEASE_PRERELEASE, GH_RELEASE_TAG, publish-homebrew-cask_test.sh script
 
-### Community 438 - "NewTxToken"
-Cohesion: 0.33
-Nodes (12): embeddedProof, mintTenant(), TestSystemAuthorityRefusesUnregisteredSite(), TestSystemProofBoundToSiteOperationSet(), TestVerifyAcceptsAndReturnsResolvedChain(), TestVerifyRejectsEmbeddedInterfaceForgery(), TestVerifyRejectsEndedTransaction(), TestVerifyRejectsForeignTransaction() (+4 more)
+### Community 438 - "MergeEnv"
+Cohesion: 0.36
+Nodes (7): Collision, MergeEnv(), TestMergeEnvDifferingValueHardError(), TestMergeEnvFetchedWins(), TestMergeEnvNeverLeaksValues(), TestMergeEnvOverrideEscapeHatch(), TestMergeEnvSortedAppendAndStableOrder()
 
 ### Community 439 - "recipientFingerprint"
 Cohesion: 0.29
 Nodes (4): filippo.io/age.X25519Recipient, Options, Unlock, recipientFingerprint()
 
 ### Community 440 - "ParsePatch"
-Cohesion: 0.24
-Nodes (12): ParsePatch(), TestDecodeUserAcceptsStringifiedActive(), TestIdPStringsAreBounded(), TestNormalizeActiveTolerance(), TestPatchIsAtomicOnOneInvalidOperation(), TestPatchMatrixCells(), TestPatchMembersAreValidatedByParser(), TestPatchPathlessMalformedMemberKeepsInvalidSyntax() (+4 more)
+Cohesion: 0.22
+Nodes (14): DecodeUser(), NormalizeActive(), ParsePatch(), TestDecodeUserAcceptsStringifiedActive(), TestIdPStringsAreBounded(), TestNormalizeActiveTolerance(), TestPatchIsAtomicOnOneInvalidOperation(), TestPatchMatrixCells() (+6 more)
 
 ### Community 441 - "Issue #221 — validated offline snapshot binding"
 Cohesion: 0.33
@@ -3096,9 +3054,9 @@ Nodes (5): auditAccessTypes(), AuditRetentionPolicy, pgRetention, sqliteRetentio
 Cohesion: 0.13
 Nodes (12): #723 environment parameters, PR #731 review corrections, #725: native Kubernetes Secret types, Delivered behavior, Final review and merge authorization, Parameter boundaries, PR #731 review corrections, PR #731 review remediation (+4 more)
 
-### Community 451 - "Keyring"
-Cohesion: 0.20
-Nodes (4): Keyring, tag(), Keyring, Keyring
+### Community 451 - ".pruneNightlyCache"
+Cohesion: 0.36
+Nodes (3): generatedNightlyEntry(), Installer, retainedExecutable()
 
 ### Community 452 - "postgres/00013_key_catalogue.sql"
 Cohesion: 0.48
@@ -3116,17 +3074,17 @@ Nodes (6): audit_instance_events_mcp, audit_instance_events_pre_mcp, audit_tenan
 Cohesion: 0.38
 Nodes (4): Queries, ListSelfConfigSeedInputsForReencryptParams, ListSelfConfigSeedInputsForReencryptRow, ReencryptSelfConfigSeedInputParams
 
-### Community 456 - "members.spec.ts"
-Cohesion: 0.14
-Nodes (13): zScimBinding, zScimBindingList, zServiceAccountList, browserApi(), STORAGE_STATE, automationPrincipal(), ensureScimBinding(), revokeAll() (+5 more)
+### Community 456 - "committedDeploymentFixture"
+Cohesion: 0.39
+Nodes (7): TestCommittedDeploymentRenewsUnseenSubmitAndRestoreWithoutNewMFA(), TestDeploymentRenewalRejectsChangedDecisionAndStaleRow(), committedDeploymentFixture(), Actor, SelfConfig, partialDeploymentFixture(), TestSelfConfigDeploymentRestoreRequiresExactMFAAndJournalsBeforeSending()
 
 ### Community 457 - ".ListSelfConfigSeedInputsForReencrypt"
 Cohesion: 0.38
 Nodes (4): Queries, ListSelfConfigSeedInputsForReencryptParams, ListSelfConfigSeedInputsForReencryptRow, ReencryptSelfConfigSeedInputParams
 
-### Community 458 - "CallerActivity"
-Cohesion: 0.21
-Nodes (8): callerActivityKey, callerActivityState, CallerActivity, Identity, recordCallerActivity(), ResolvedCallerActivity(), CallerActivity, ResolvedCallerActivity()
+### Community 458 - "cliReauth.ts"
+Cohesion: 0.29
+Nodes (6): approveCliReauthOp, showCliReauthTransactionOp, CliReauthApproved, zCliReauthTransaction, cliReauthCallbackURL(), CliReauthTransaction
 
 ### Community 459 - "check-docs-live.sh"
 Cohesion: 0.52
@@ -3148,9 +3106,9 @@ Nodes (12): is_semver(), latest-stable-version.sh script, next-nightly-version.s
 Cohesion: 0.33
 Nodes (6): COSIGN_BIN, HIKYO_STABLE_VERIFIER, verify-bundle-stable_test.sh script, VERIFIER_ARGS, VERIFIER_STATUS, verify()
 
-### Community 464 - "github.com/jackc/pgx/v5/pgconn.CommandTag"
-Cohesion: 0.17
-Nodes (8): github.com/jackc/pgx/v5/pgconn.CommandTag, pgx.Row, pgx.Rows, pgx.Tx, GuardPGSingletonLease(), countingPGTx, singletonLease, singletonLeaseKey
+### Community 464 - "newPrincipalNames"
+Cohesion: 0.43
+Nodes (4): AuditPage, nameAuditActors(), newPrincipalNames(), principalNames
 
 ### Community 465 - "Recoverable Compose publication"
 Cohesion: 0.33
@@ -3212,9 +3170,9 @@ Nodes (4): chart_admin(), forwarded_get(), KUBECONFIG, chart-kind.sh script
 Cohesion: 0.47
 Nodes (4): report-fuzz-finding.sh script, run_reporter(), report-fuzz-finding_test.sh script, write_body()
 
-### Community 480 - "FromCapacity"
-Cohesion: 0.27
-Nodes (6): DiagnosticFinding, Retention, FromCapacity(), Health, TestCapacityIsNotFabricated(), DiagnosticHealth
+### Community 480 - "PruneHealth"
+Cohesion: 0.16
+Nodes (9): BackupHealth, stubRetentionHealth, DiagnosticFinding, Retention, PruneHealth, AdapterHealthCounts, mcpOperationalHealth, stubRetentionHealth (+1 more)
 
 ### Community 481 - "badstore.go"
 Cohesion: 0.40
@@ -3257,8 +3215,8 @@ Cohesion: 0.33
 Nodes (5): Contract, Handoff: #328 shared keyed boot prefix, Regression evidence, Review, Validation
 
 ### Community 491 - "Storybook UI consistency: audit, proposal, and what needs approval"
-Cohesion: 0.11
-Nodes (18): 1. Audit, 2. Approved: Checkbox and Radio (`ui.css`, unscoped), 3. Approved direction: sign-in flow (`ui/auth`), 4. Approved 2026-09-16 (4a, 4b, 4c all option a), 4a. Control height (Button, Input, Select, Textarea), 4b. Type scale, 4c. Badge, 5. Migration into the app (next, outside the Storybook-only scope) (+10 more)
+Cohesion: 0.10
+Nodes (19): 1. Audit, 2. Approved: Checkbox and Radio (`ui.css`, unscoped), 3. Approved direction: sign-in flow (`ui/auth`), 4. Approved 2026-09-16 (4a, 4b, 4c all option a), 4a. Control height (Button, Input, Select, Textarea), 4b. Type scale, 4c. Badge, 4d. Remaining consistency items ("do all", 2026-09-16) (+11 more)
 
 ### Community 492 - "Issue #373 — adapter query ownership"
 Cohesion: 0.33
@@ -3292,9 +3250,9 @@ Nodes (5): Deliberate holds, Delivered, Go 1.27 and dependency refresh handoff, 
 Cohesion: 0.40
 Nodes (5): Hikyo, Infisical, OpenBao, Phase, Product capability comparison table
 
-### Community 502 - "net/netip.Addr"
-Cohesion: 0.14
-Nodes (17): staticNetworkResolver, net/netip.Addr, TestIsNonPublicRejectsSpecialUseAddressFamilies(), TestPublicDialerAllowsExplicitCIDRAndPinsMappedAddress(), TestPublicDialerFailsClosedBeforeResolution(), TestPublicDialerFallsBackAcrossValidatedAddresses(), TestPublicDialerRefusesConnectionOpenedDuringCancellation(), TestPublicDialerRefusesPreCancelledContextBeforeResolution() (+9 more)
+### Community 502 - "public_test.go"
+Cohesion: 0.27
+Nodes (12): TestIsNonPublicRejectsSpecialUseAddressFamilies(), TestPublicDialerAllowsExplicitCIDRAndPinsMappedAddress(), TestPublicDialerFailsClosedBeforeResolution(), TestPublicDialerFallsBackAcrossValidatedAddresses(), TestPublicDialerRefusesConnectionOpenedDuringCancellation(), TestPublicDialerRefusesPreCancelledContextBeforeResolution(), TestPublicDialerRejectsInvalidAllowedCIDR(), TestPublicDialerRejectsMixedAnswersBeforeDial() (+4 more)
 
 ### Community 503 - "Encryption-at-Rest Architectures for Self-Hosted Secret Managers"
 Cohesion: 0.10
@@ -3348,9 +3306,9 @@ Nodes (5): Display-once credentials, PROTOTYPE — Hikyo social sign-in & open r
 Cohesion: 0.40
 Nodes (5): Display-once credentials, PROTOTYPE — Hikyo social sign-in & open registration (ticket #587), OpenID Connect, Staged sign-in method selection, TOTP
 
-### Community 516 - "Checkbox.stories.tsx"
-Cohesion: 0.17
-Nodes (11): Checkbox(), CheckboxProps, AllStates, Checked, Default, Disabled, HitBoxIsTheInput, LabelToggles (+3 more)
+### Community 516 - "Dialog.stories.tsx"
+Cohesion: 0.10
+Nodes (19): Checkbox(), CheckboxProps, AllStates, Checked, Default, Disabled, HitBoxIsTheInput, LabelToggles (+11 more)
 
 ### Community 517 - "io/fs.FileInfo"
 Cohesion: 0.40
@@ -3388,29 +3346,29 @@ Nodes (4): environments_new, folders, projects, TO
 Cohesion: 0.50
 Nodes (4): admission_counters, admission_counters_window, ha_nodes, singleton_leases
 
-### Community 526 - ".TestMail"
-Cohesion: 0.33
-Nodes (5): Actor, SelfConfig, selfConfigMailOutcome, SelfConfigMailTestRequest, SelfConfigMailTestResult
+### Community 526 - "command"
+Cohesion: 0.40
+Nodes (4): command, fileOwner(), runCommand(), runtimeCredential()
 
 ### Community 527 - "Web UI audit against the locked prototypes and DESIGN.md (2026-09-05)"
 Cohesion: 0.15
 Nodes (11): Issue #680: API support for audited UI behaviours, Kubernetes design follow-up, Resource contracts, Superseded and excluded requirements, Verification, API follow-up in #680, Decisions recorded in DESIGN.md, Fixed in this change (+3 more)
 
-### Community 528 - "values.oidc.test.ts"
-Cohesion: 0.22
-Nodes (4): popup, startedCeremony(), TestBroadcastChannel, TestPopup
+### Community 528 - "audit_invariants_test.go"
+Cohesion: 0.53
+Nodes (5): loadAuditExemptions(), tableBodies(), TestInvariantAuditCompleteness(), TestInvariantAuditFKException(), auditExemptions
 
-### Community 529 - "UpgradeCustodySource"
-Cohesion: 0.19
-Nodes (10): annotationFor(), Kubernetes, UpgradeCustodySource, checkUpgradeBootstrapRolloutAndRestore(), TestUpgradeBootstrapRolloutBindsCompleteTupleAndRestores(), TestUpgradeSourceEnrollmentRejectsArbitraryInputs(), upgradeSourceFixture(), upgradePath() (+2 more)
+### Community 529 - "ParseFilter"
+Cohesion: 0.40
+Nodes (5): Filter, ParseFilter(), TestFilterGrammarIsClosed(), TestFilterScanIsLengthPreserving(), FilterShape
 
-### Community 530 - ".UpdateDeclaration"
-Cohesion: 0.05
-Nodes (81): Presence, presenceChanged(), probeDeclarationUpdate(), probeKeySpec(), CheckGroupPresence(), CheckPresence(), checkPresenceShape(), Presence (+73 more)
+### Community 530 - "Presence"
+Cohesion: 0.23
+Nodes (13): Presence, presenceChanged(), CheckGroupPresence(), CheckPresence(), checkPresenceShape(), Presence, overlap(), TestGroupPresenceConflict() (+5 more)
 
-### Community 531 - "backup_snapshot_test.go"
-Cohesion: 0.29
-Nodes (5): pgx.Conn, pgx.TraceQueryEndData, pgx.TraceQueryStartData, schemaChangeTracer, snapshotQueryKey
+### Community 531 - ".RoundTrip"
+Cohesion: 0.50
+Nodes (3): bearerTransport, main(), run()
 
 ### Community 532 - "check-cache-policy_test.sh"
 Cohesion: 0.80
@@ -3427,10 +3385,6 @@ Nodes (4): fail(), require_owner_only_file(), require_regular_file(), mcp-compos
 ### Community 535 - "create-nightly-manifest.sh"
 Cohesion: 0.50
 Nodes (3): record(), create-nightly-manifest.sh script, create-nightly-manifest_test.sh script
-
-### Community 536 - "scan_coverage_test.go"
-Cohesion: 0.33
-Nodes (12): reflect.Type, reflect.Value, assertEachLeafScanned(), collectContentLeaves(), isContentLeafType(), leafSetContains(), rootLeaves(), TestBundleLeafCoverageMatrix() (+4 more)
 
 ### Community 537 - "upgradeSources"
 Cohesion: 0.50
@@ -3973,8 +3927,8 @@ Cohesion: 0.18
 Nodes (10): 1. Gate state and CI (verified), 2. Secrets and env management (verified empirically), 3. UI (Playwright, desktop 1200px + mobile 390px), 4. Onboarding and developer experience (verified), 5. Deferrals mined from handoffs/sessions (status after verification), 6. Options for disposition (investigate ≠ decide), 7. Review gate note, Cleanup performed (+2 more)
 
 ### Community 688 - "runScanningCanarySweep"
-Cohesion: 0.29
-Nodes (10): assertFindingKeysClosed(), assertNoCanary(), assertNoDisclosureKeysText(), assertRenderedFindingLine(), decodeJSONStream(), requireFinding(), runScanningCanarySweep(), TestScanningCanarySweep() (+2 more)
+Cohesion: 0.32
+Nodes (9): assertFindingKeysClosed(), assertNoCanary(), assertNoDisclosureKeysText(), assertRenderedFindingLine(), decodeJSONStream(), requireFinding(), runScanningCanarySweep(), sweepEnv (+1 more)
 
 ### Community 690 - "#196 — workload reveal-history under a pin"
 Cohesion: 0.33
@@ -3983,10 +3937,6 @@ Nodes (5): #196 — workload reveal-history under a pin, Outcome, Refusal order,
 ### Community 691 - "Issue #198 — native TLS and operational listener"
 Cohesion: 0.33
 Nodes (5): Deliberate timeout shape, Delivered contract, Issue #198 — native TLS and operational listener, Operational metrics, Packaging and docs
-
-### Community 692 - "Alert.stories.tsx"
-Cohesion: 0.29
-Nodes (6): AllStates, Danger, Done, meta, RolesMatchTone, Story
 
 ### Community 693 - "dependencies"
 Cohesion: 0.18
@@ -4001,8 +3951,8 @@ Cohesion: 0.33
 Nodes (5): Contract, Handoff: #253 WebAuthn test enrolment precondition, Regression evidence, Review, Validation
 
 ### Community 696 - "scripts"
-Cohesion: 0.18
-Nodes (11): scripts, build, build-storybook, dev, e2e, e2e:install, prototype, storybook (+3 more)
+Cohesion: 0.17
+Nodes (12): scripts, build, build-storybook, dev, e2e, e2e:install, prototype, storybook (+4 more)
 
 ### Community 697 - "Handoff: #332 matrix row editor draft ownership"
 Cohesion: 0.33
@@ -4011,10 +3961,6 @@ Nodes (5): Contract, Handoff: #332 matrix row editor draft ownership, Regression
 ### Community 698 - "Handoff: #338 audit registry closed taxonomies"
 Cohesion: 0.33
 Nodes (5): Contract, Handoff: #338 audit registry closed taxonomies, Regression evidence, Review, Validation
-
-### Community 699 - "TestReplaceBinaryPublishesWhileAnotherProcessMapsTarget"
-Cohesion: 0.33
-Nodes (9): CleanupPrevious(), cleanupPrevious(), moveFile(), previousPattern(), replaceBinary(), copyTestExecutable(), matches(), TestReplaceBinaryPublishesWhileAnotherProcessMapsTarget() (+1 more)
 
 ### Community 700 - "Handoff: #343 SCIM positional grammar"
 Cohesion: 0.33
@@ -4029,8 +3975,8 @@ Cohesion: 0.33
 Nodes (5): Contract, Issue #446 — environment lifecycle UI, Migration and generated outputs, Review disposition, Validation
 
 ### Community 703 - "SecondFactorSetup.tsx"
-Cohesion: 0.11
-Nodes (21): zAuthMethodProvider, Alert(), AuthenticatorCodeField(), Checking, Default, meta, Story, SubmitsTrimmedAndClears (+13 more)
+Cohesion: 0.12
+Nodes (18): AuthenticatorCodeField(), Checking, Default, meta, Story, SubmitsTrimmedAndClears, Button(), ButtonProps (+10 more)
 
 ### Community 704 - "Handoff: #216 validating registry constructor"
 Cohesion: 0.20
@@ -4055,10 +4001,6 @@ Nodes (10): 1. Environment model, 2. Schema/validation, 3. Versioning & audit, 4
 ### Community 724 - "HashiCorp Vault"
 Cohesion: 0.20
 Nodes (10): 1. Environment model, 2. Schema/validation, 3. Versioning & audit, 4. RBAC & reveal controls, 5. Delivery, 6. CLI ergonomics, 7. LICENSE PRECISION, 8. Architecture (+2 more)
-
-### Community 734 - "Dialog.stories.tsx"
-Cohesion: 0.19
-Nodes (10): Dialog(), AllStates, Decision, IsModalAndLabelled, meta, MustAcknowledge, Story, Wide (+2 more)
 
 ### Community 735 - "docs/reports/1.0/upgrade-governance.html"
 Cohesion: 0.33
@@ -4096,13 +4038,13 @@ Nodes (10): 1. Role, 2. Schema/validation, 3. Versioning/audit, 4. RBAC, 5. Deli
 Cohesion: 0.33
 Nodes (6): ADR-delegated UI deltas (carried by synthesis), Git-mode definitions state ([source-of-truth.md](../adr/source-of-truth.md)), Hikyo — UI & Interaction Specification (synthesis, 2026-08-06), Interaction invariants (restated), Key declaration & schema editing requirements, Reference prototypes (locked; frozen under `prototype/`)
 
-### Community 824 - "runValues"
-Cohesion: 0.09
-Nodes (33): ExportedValues, FetchParameters, TestExportConsentUsesSnapshotMetadata(), TestMachineTokenChannels(), tokenIO(), Client, machineExport(), TestParameterDeleteRejectsInvalidNameAndPattern() (+25 more)
+### Community 824 - "Table"
+Cohesion: 0.04
+Nodes (88): ApplyDefinitionsPlanResult, EnvironmentSettings, ExportedValues, Grant, GrantList, GrantOrigin, InstanceConnectionList, MachineCredential (+80 more)
 
-### Community 842 - "DynamicRepo"
-Cohesion: 0.40
-Nodes (3): pgRepos, sqliteRepos, DynamicRepo
+### Community 842 - "dynamicQueries"
+Cohesion: 0.14
+Nodes (13): DynamicLease, DynamicProviderRecord, pgRepos, sqliteRepos, scanDynamicLease(), scanDynamicProvider(), DynamicLeaseCreate, DynamicLeaseFinishMint (+5 more)
 
 ### Community 843 - "Execution roadmap: bounded 1.0 release, then additive product lanes"
 Cohesion: 0.22
@@ -4136,14 +4078,6 @@ Nodes (8): Before committing, One bug the pass caught, Primitives layer (`src/ui
 Cohesion: 0.22
 Nodes (9): Delivery overview, Explicitly not in this product's v1, Hikyo — Product Requirements (synthesis, 2026-08-06), One-liner, Problem & wedge, Product principles (settled; reopen only on serious contradiction), Scale envelope (v1 designed-for), Success criteria (+1 more)
 
-### Community 876 - "AdapterRepo"
-Cohesion: 0.40
-Nodes (3): pgRepos, sqliteRepos, AdapterRepo
-
-### Community 877 - "WorkspaceApprove.test.tsx"
-Cohesion: 0.22
-Nodes (5): ceremonies, fetcher, render(), roots, settle()
-
 ### Community 892 - "Automatic systemd nightly upgrades"
 Cohesion: 0.25
 Nodes (7): 2026-09-07 evening: live bootstrap findings, Automatic systemd nightly upgrades, Continuation on 2026-09-06 (second session), Durable state and interruption handling, Implementation map, Operator request and scope, Validation and delivery limits
@@ -4152,21 +4086,13 @@ Nodes (7): 2026-09-07 evening: live bootstrap findings, Automatic systemd nightl
 Cohesion: 0.25
 Nodes (7): Deliberate deviations (for human disposition), Handoff: #43 crypto core, Invariants covered (encryption ADR § CI-enforced), Pickup notes, Review trail, Verified empirically, What exists
 
-### Community 974 - "RemoteReader"
-Cohesion: 0.29
-Nodes (4): pgRepos, sqliteRepos, RemoteReader, RemoteRepo
-
 ### Community 976 - "Queries"
 Cohesion: 0.24
 Nodes (5): Queries, DeleteScanningDismissalsForKeyParams, DeleteScanningDismissalsForProjectParams, GetScanningDismissalParams, InsertScanningDismissalParams
 
-### Community 978 - "VariableDescriptor"
-Cohesion: 0.60
-Nodes (5): VariableActivation, VariableAudience, VariableDescriptor, VariableImport, VariableScope
-
-### Community 979 - "audit-styles.mjs"
-Cohesion: 0.33
-Nodes (5): playwright, agg, all, modes, routes
+### Community 978 - "VariableInventory"
+Cohesion: 0.19
+Nodes (15): VariableActivation, VariableAudience, VariableDescriptor, VariableImport, VariableScope, TestDevelopmentInventoryRequiresExistingDevelopmentContext(), TestVariableInventoryCannotBeMutatedByCallers(), TestVariableInventoryCoversEveryRecognizedEnvironmentKey() (+7 more)
 
 ### Community 982 - "docs/handoff/v1-launch-blockers.md"
 Cohesion: 0.40
@@ -4179,10 +4105,6 @@ Nodes (4): Docker Compose, GitHub Actions, Recommendation (ranked), systemd cred
 ### Community 985 - "docs/research/go-saml-libraries.md"
 Cohesion: 0.40
 Nodes (4): OpenID Connect, Option A — crewjam/saml, pinned fork, hardened config — best in-process option, Option B — gosaml2 + goxmldsig behind a cap/saml-style strict wrapper — most active, most footguns, SAML
-
-### Community 987 - "server/browser_test.go"
-Cohesion: 0.23
-Nodes (18): browserCaller(), browserLoginAuth(), cookieByName(), createsOrgs(), raw(), reissuedResult(), TestAStaleSessionCookieDoesNotBlockANewLogin(), TestAStaleSessionCookieLeavesTheRefusalToTheChokepoint() (+10 more)
 
 ### Community 1020 - "#568 — Member invitation: local-credential invite at org and instance scope (handoff)"
 Cohesion: 0.25
@@ -4204,9 +4126,9 @@ Nodes (7): Cross-cutting hardening picked up during review (campsite rule), Devi
 Cohesion: 0.25
 Nodes (7): Deployment verification after merge, External completion gates, Implemented outcome, Issue #78 handoff — docs site and governance artifacts, Policy artifacts, Repository state outside Git, Validation
 
-### Community 1025 - "EventType"
-Cohesion: 0.22
-Nodes (7): Cache, wireEntry, EventType, RegistryFacts, Operation, mustNewWireRegistry(), newWireRegistry()
+### Community 1025 - "wireEntry"
+Cohesion: 0.25
+Nodes (6): Cache, wireEntry, RegistryFacts, Operation, mustNewWireRegistry(), newWireRegistry()
 
 ### Community 1026 - "docs/research/k8s-delivery.md"
 Cohesion: 0.40
@@ -4280,10 +4202,6 @@ Nodes (5): github.com/beevik/etree.Document, ParseXML(), TestParseXMLAllowsDocum
 Cohesion: 0.29
 Nodes (5): CGO_ENABLED, GOARCH, GOMAXPROCS, GOOS, floor-acceptance.sh script
 
-### Community 1045 - "TestUpgradeBuildAuthorityRepo"
-Cohesion: 0.50
-Nodes (3): TestUpgradeBuildAuthorityRejectsAliasedFunctionCapture(), TestUpgradeBuildAuthorityRepo(), UpgradeBuildAuthority()
-
 ### Community 1046 - "Issue #197: release container SPA proof"
 Cohesion: 0.33
 Nodes (5): Contract, Files, Issue #197: release container SPA proof, State, Validation
@@ -4340,21 +4258,13 @@ Nodes (5): Deliberately not changed, Diagnosis (reproduced on a fresh HEAD build
 Cohesion: 0.33
 Nodes (5): Findings fixed in the worktree, Limits and follow-up, Locked prototype validation and machine readiness corrections, Reviewable result, Validation
 
-### Community 1291 - "Snapshot"
-Cohesion: 0.22
-Nodes (5): Snapshot, GetLatestSnapshotParams, GetSnapshotByRevisionParams, ListSnapshotsPageParams, ListSnapshotsParams
-
 ### Community 1292 - "credential.go"
 Cohesion: 0.40
 Nodes (3): bootstrapToken(), clientsetMinter, tokenMinter
 
-### Community 1293 - "Snapshot"
-Cohesion: 0.22
-Nodes (5): Snapshot, GetLatestSnapshotParams, GetSnapshotByRevisionParams, ListSnapshotsPageParams, ListSnapshotsParams
-
 ### Community 1294 - "ControlServer"
-Cohesion: 0.39
-Nodes (4): Journal, writeJSON(), writeProtocolError(), ControlServer
+Cohesion: 0.33
+Nodes (5): Journal, writeJSON(), writeProtocolError(), ControlServer, protocolError
 
 ### Community 1295 - "k8s-e2e.sh"
 Cohesion: 0.33
@@ -4372,9 +4282,9 @@ Nodes (4): check, TestWorkflowActionPins(), TestWorkflowActionPinsFixtures(), wo
 Cohesion: 0.40
 Nodes (3): HIKYO_DB, HIKYO_STATE_DIR, no-egress.sh script
 
-### Community 1299 - "ChoiceGroup.stories.tsx"
-Cohesion: 0.11
-Nodes (17): AllStates, Checkboxes, Inline, LegendNamesTheGroup, meta, Radios, Story, WithHint (+9 more)
+### Community 1299 - "Radio.stories.tsx"
+Cohesion: 0.25
+Nodes (7): AllStates, Checked, Default, Disabled, meta, Selects, Story
 
 ### Community 1300 - "Multi-node application-tier high availability (#146). Requires an externally"
 Cohesion: 0.40
@@ -4476,29 +4386,13 @@ Nodes (4): Changed, Compatibility finding, TypeScript 7 upgrade handoff, Verific
 Cohesion: 0.50
 Nodes (3): Changes and operational impact, Gemini audit validation, Validation boundaries
 
-### Community 1325 - "testing.B"
-Cohesion: 0.50
-Nodes (3): testing.B, BenchmarkScan(), BenchmarkAuthenticatedAPIRequests()
-
 ### Community 1326 - "adapters"
 Cohesion: 0.50
 Nodes (4): adapters, adapters_active_origin, principals, projects
 
-### Community 1327 - "Bundle"
-Cohesion: 0.13
-Nodes (6): Bundle, SelfConfig, SelfConfig, validateSelfConfigParticipants(), SelfConfigNode, selfConfigActive
-
-### Community 1328 - "durability_test.go"
-Cohesion: 0.29
-Nodes (4): pgx.Row, TestVerifyPGDurability(), fakeSettingRow, fakeSettings
-
-### Community 1329 - ".ListPendingChangesForOwner"
-Cohesion: 0.29
-Nodes (4): PendingChange, ListPendingChangesForOwnerInEnvironmentPageParams, ListPendingChangesForOwnerInEnvironmentParams, ListPendingChangesForOwnerParams
-
-### Community 1330 - ".ListPendingChangesForOwner"
-Cohesion: 0.29
-Nodes (4): PendingChange, ListPendingChangesForOwnerInEnvironmentPageParams, ListPendingChangesForOwnerInEnvironmentParams, ListPendingChangesForOwnerParams
+### Community 1327 - "commitTopologyCandidate"
+Cohesion: 0.33
+Nodes (12): commitTopologyCandidate(), Actor, SelfConfig, SelfConfigStatus, publishTopology(), replacementTopologyService(), TestSelfConfigSingletonTopologyFencesOldIdentityAcrossOrdinaryApply(), TestSelfConfigSingletonTopologyRestoreRequiresFreshRepair() (+4 more)
 
 ### Community 1331 - "preflight.sh"
 Cohesion: 0.70
@@ -4588,49 +4482,37 @@ Nodes (3): expect_accept(), expect_reject(), check-required-jobs_test.sh script
 Cohesion: 0.67
 Nodes (3): passesNil(), returnsNil(), take()
 
-### Community 1412 - ".GetRevisionPinForWorkload"
-Cohesion: 0.40
-Nodes (3): RevisionPin, GetRevisionPinForWorkloadParams, ListRevisionPinsParams
-
 ### Community 1413 - "Input.stories.tsx"
 Cohesion: 0.14
 Nodes (13): Input(), AllStates, Default, Disabled, ErrorIsWired, LabelIsWired, meta, Mono (+5 more)
 
-### Community 1422 - ".GetRevisionPinForWorkload"
-Cohesion: 0.40
-Nodes (3): RevisionPin, GetRevisionPinForWorkloadParams, ListRevisionPinsParams
-
 ### Community 1424 - "failure"
-Cohesion: 0.09
-Nodes (31): github.com/getsops/sops/v3/cmd/sops/formats.Format, Budget, Code, Connector, Error, infisicalConnector, infisicalEntry, Input (+23 more)
+Cohesion: 0.07
+Nodes (43): github.com/getsops/sops/v3/cmd/sops/formats.Format, k8s.io/client-go/tools/clientcmd/api.ExecConfig, Budget, Code, Connector, Error, infisicalConnector, infisicalEntry (+35 more)
 
 ### Community 1425 - "StampPair"
 Cohesion: 0.39
 Nodes (6): appendStampField(), canonicalStamp(), StampPair, Stamp(), dataEqual(), stampPairsFromData()
 
-### Community 1429 - "checkDeclarationClassification"
-Cohesion: 0.33
-Nodes (6): checkDeclarationClassification(), Classification, Declaration, valueLiteralKeyword(), checkNoDuplicateKeys(), strictJSON()
-
 ## Knowledge Gaps
-- **4133 isolated node(s):** `AddRemoteRequest`, `ApplyDefinitionsPlanRequest`, `ApproveWorkspaceHandoffRequest`, `CLIReauthApproveRequest`, `CLIReauthApproved` (+4128 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 7050 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **417 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4152 isolated node(s):** `AddRemoteRequest`, `ApplyDefinitionsPlanRequest`, `ApproveWorkspaceHandoffRequest`, `CLIReauthApproveRequest`, `CLIReauthApproved` (+4147 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 7070 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **409 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `serveSPA()` connect `io/fs.FS` to `net/http.ResponseWriter`, `InternalJSONResponse`, `context.Context`, `NewPublic`?**
+- **Why does `serveSPA()` connect `net/http.Handler` to `net/http.ResponseWriter`, `Engine`, `InternalJSONResponse`, `context.Context`?**
   _High betweenness centrality (0.051) - this node is a cross-community bridge._
-- **Why does `OrgID` connect `net/http.ResponseWriter` to `apigen.gen.go`, `Bearer`, `context.Context`, `ExtensionDecl`, `time.Time`, `.UpdateDeclaration`, `scimActor`, `SelfConfigBinding`, `Read`, `tools.go`, `execRaw`, `DB`, `Workspace`, `grantEventInput`, `WrappedKey`, `scimContext`, `Scope`, `LocalPrincipal`, `forEngines`, `server/scim_wire.go`, `PinnedOperator`, `runScanningCanarySweep`, `Adapters`, `newAuditEvent`, `TxAuthorizer`, `store/scim.go`, `service/budget_test.go`, `Config`, `PrincipalID`, `io.Writer`, `Budget`, `Grant`, `adapterTargetResponse`, `RetentionPolicy`, `log/slog.Logger`, `must`, `Retention`, `Job`, `badstore.go`, `server/audit.go`, `definitions_e2e_test.go`, `probeKeyring`?**
+- **Why does `OrgID` connect `net/http.ResponseWriter` to `apigen.gen.go`, `Bearer`, `Proof`, `scimActor`, `SelfConfigBinding`, `tools.go`, `scopeEnv`, `DefaultPresenceRules`, `Identity`, `service/grants.go`, `WrappedKey`, `scimContext`, `Scope`, `DB`, `PinCiphertext`, `commitTopologyCandidate`, `runScanningCanarySweep`, `New`, `Write`, `selfConfigSession`, `Repos`, `service/budget_test.go`, `installerFixture`, `io.Writer`, `Operation`, `Budget`, `PrincipalID`, `boot`, `committedDeploymentFixture`, `ClaimedLease`, `RetentionPolicy`, `PrincipalClass`, `must`, `.prepareGeneration`, `TxAuthorizer`, `Retention`, `Job`, `badstore.go`, `Dynamic`, `server/audit.go`, `LocalPrincipal`?**
   _High betweenness centrality (0.026) - this node is a cross-community bridge._
-- **Why does `@storybook/react-vite` connect `@storybook/react-vite` to `Checkbox.stories.tsx`, `Input.stories.tsx`, `KeyDeclarationDetail.tsx`, `Textarea.stories.tsx`, `QrCode.stories.tsx`, `web/package.json`, `parsed`, `SecondFactorChallenge.stories.tsx`, `ChoiceGroup.stories.tsx`, `vitest`, `Remotes.tsx`, `api/settings.ts`, `Shell.tsx`, `access.ts`, `Alert.stories.tsx`, `cx`, `SecondFactorSetup.tsx`, `adapters.ts`, `settings.spec.ts`, `Dialog.stories.tsx`, `Matrix.tsx`, `LoginFlow.stories.tsx`, `LoginForm.stories.tsx`?**
-  _High betweenness centrality (0.016) - this node is a cross-community bridge._
+- **Why does `@storybook/react-vite` connect `@storybook/react-vite` to `Dialog.stories.tsx`, `Input.stories.tsx`, `approvals.ts`, `Badge.stories.tsx`, `Textarea.stories.tsx`, `QrCode.stories.tsx`, `web/package.json`, `values.ts`, `SecondFactorChallenge.stories.tsx`, `Radio.stories.tsx`, `vitest`, `Remotes.tsx`, `api/settings.ts`, `Shell.tsx`, `access.ts`, `client.ts`, `cx`, `SecondFactorSetup.tsx`, `adapters.ts`, `settings.spec.ts`, `Matrix.tsx`, `LoginFlow.stories.tsx`, `Glyph.stories.tsx`, `Tabs.stories.tsx`, `LoginForm.stories.tsx`?**
+  _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **What connects `AddRemoteRequest`, `ApplyDefinitionsPlanRequest`, `ApproveWorkspaceHandoffRequest` to the rest of the system?**
-  _4133 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _4152 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `net/http.ResponseWriter` be split into smaller, more focused modules?**
-  _Cohesion score 0.006004653101843758 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.005789928057553957 - nodes in this community are weakly interconnected._
 - **Should `apigen.gen.go` be split into smaller, more focused modules?**
-  _Cohesion score 0.00208699232214577 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0025778580780151544 - nodes in this community are weakly interconnected._
 - **Should `Bearer` be split into smaller, more focused modules?**
-  _Cohesion score 0.003907641903122048 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.0038979033310813133 - nodes in this community are weakly interconnected._

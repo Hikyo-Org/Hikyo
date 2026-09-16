@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
     "test-storybook": "vitest run --project storybook",
+    "test-storybook:light": "STORYBOOK_THEME=light vitest run --project storybook",
     "e2e": "pnpm run build && playwright test --project=desktop && playwright test --project=mobile",
     "e2e:install": "playwright install --with-deps chromium",
     "storybook": "storybook dev -p 6006",

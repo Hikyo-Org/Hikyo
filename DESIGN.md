@@ -30,7 +30,7 @@ Each of the three state colours carries a tinted fill for the surface it names (
 
 Light: linen-tinted paper oklch(0.965 0.008 200), chrome and dense panels oklch(0.935 0.01 200), chrome hover oklch(0.895 0.012 200), panel boundaries oklch(0.82 0.014 210), hairlines and control boundaries oklch(0.64 0.012 210) (>=3:1 on the paper), structural chrome rules oklch(0.8388 0.00752 204.4), ink oklch(0.25 0.03 225), secondary oklch(0.44 0.02 220), tertiary oklch(0.46 0.02 218), same accent hue at oklch(0.45 0.085 210).
 
-State vocabulary (always paired with a glyph or text, never color-only):
+State vocabulary (always paired with a glyph or text, never color-only; glyphs are the monochrome inline SVG set in `web/src/ui/Glyph.tsx`, one em in the current colour, decided 2026-09-16, replacing the colour emoji for the lock and link marks):
 
 - explicit value: plain monospaced text; no decorative border
 - explicit absence: muted `· absent`
@@ -55,7 +55,7 @@ Copy: no em-dash anywhere in user-visible text; use a comma, colon, or full stop
 - **The 999px pill is reserved** for identity circles, count badges, and status dots of 12px or less. Matrix values are table content, not badges: the hover and focus box around a value is a control (4px). Labelled chips (problem counts, `current rN`, staging summaries) are badges (3px).
 - Hairline borders (1px) over shadows; shadows only on modal overlays (every modal family carries one: `.dialog`, `.ceremony`, `.matrix-editor`).
 - Density: matrix rows ~36px desktop, ~44px touch targets mobile.
-- **Control height (decided 2026-09-16):** one token, no per-surface overrides. `--control` 36px for buttons, inputs and selects on a fine pointer, the 44px touch floor on a coarse pointer, dialogs and the sign-in card included; `--control-compact` 28px for quiet in-row actions. Choice controls: the input is the hit box (24px fine, 44px coarse), the drawn box 18px / 20px.
+- **Control height (decided 2026-09-16):** one token, no per-surface overrides. `--control` 36px for buttons, inputs and selects on a fine pointer, the 44px touch floor on a coarse pointer, dialogs and the sign-in card included; `--control-compact` 28px for quiet in-row actions and icon-only quiet buttons. Tabs and menu rows are controls and take `--control`; no surface overrides a control's height. Choice controls: the input is the hit box (24px fine, 44px coarse), the drawn box 18px / 20px.
 - **Badge:** one vocabulary, 11px / 500 on the badge radius; tones neutral, danger (violation), changed (pending, slate), ok (a measured-good condition, accent hairline); `mono` for identifiers. Count pills stay the pill exception above.
 
 ## Motion

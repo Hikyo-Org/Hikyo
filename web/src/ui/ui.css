@@ -154,6 +154,50 @@ h3,
   font-size: var(--fs-sm);
 }
 
+/* Icon-only quiet: a square on the compact tier, for in-row actions such as
+   the capability revoke. */
+.btn--icon.btn--quiet {
+  width: var(--control-compact);
+  min-width: var(--control-compact);
+}
+
+/* Tabs and menu rows are controls too: the control token, not the touch
+   floor. Supersedes `.tab` and `.menu__item` min-heights in app.css. */
+.tab,
+.menu__item {
+  min-height: var(--control);
+}
+
+/* The last hand-rolled control sizes the audit found, folded onto the
+   tokens until their routes migrate to Button: the matrix add-key (27px,
+   11px), the capability revoke (26px), the history column link (11.5px), the
+   settings identity swatches (30px) and glyph (38px, under the touch floor on
+   a coarse pointer), and the sign-in card's quiet links (44px). */
+.matrix__add-key,
+.capability__revoke {
+  min-height: var(--control-compact);
+  font-size: var(--fs-sm);
+}
+
+.capability__revoke {
+  width: var(--control-compact);
+  min-width: var(--control-compact);
+}
+
+.matrix__history-link {
+  font-size: var(--fs-sm);
+}
+
+.identity-hue,
+.identity-glyph {
+  width: var(--control);
+  height: var(--control);
+}
+
+.login__links a {
+  min-height: var(--control);
+}
+
 /* --- Field controls ---------------------------------------------------------
 
    Supersedes `.field input`, `.field select` (heights), `.settings-input`,
@@ -463,6 +507,19 @@ label.chk:has(input:disabled) {
 .badge[data-state='ok'] {
   border-color: var(--accent);
   color: var(--tx);
+}
+
+/* --- Glyph -------------------------------------------------------------------
+
+   The state vocabulary as monochrome inline SVG (ui/Glyph.tsx): one em,
+   current colour, sits on the text baseline. Replaces the colour emoji the
+   routes used for the lock and link marks. */
+.glyph {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  fill: currentColor;
 }
 
 /* --- Alert tones --------------------------------------------------------------

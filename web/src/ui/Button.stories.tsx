@@ -44,6 +44,9 @@ export const AllVariants: Story = {
       <Button icon aria-label="Icon only">
         ☾
       </Button>
+      <Button icon variant="quiet" aria-label="Revoke">
+        ✕
+      </Button>
     </div>
   ),
 };

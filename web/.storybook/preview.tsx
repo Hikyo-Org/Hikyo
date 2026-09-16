@@ -12,9 +12,11 @@ import '../src/ui/ui.css'
 // The app delivers its theme through this attribute (see src/app/theme.ts). A
 // toolbar switch drives it so designers can flip light/dark; the initial global
 // is 'dark', the app's default, so a11y contrast checks and the vitest browser
-// run (which never touches the toolbar) stay on the real default.
+// run (which never touches the toolbar) stay on the real default. The vitest
+// run is repeated with STORYBOOK_THEME=light (`pnpm run test-storybook:light`)
+// so the a11y gate covers both palettes, not only the default.
 const preview: Preview = {
-  initialGlobals: { theme: 'dark' },
+  initialGlobals: { theme: import.meta.env['STORYBOOK_THEME'] === 'light' ? 'light' : 'dark' },
   globalTypes: {
     theme: {
       description: 'App theme',

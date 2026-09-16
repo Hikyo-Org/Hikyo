@@ -25,6 +25,8 @@ stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 | Field (hint, error), Alert | APPROVED (1a) | `ui/Input` WithHint/WithError/ErrorIsWired, `ui/Alert` |
 | Dialog (folds `.ceremony` and `.matrix-editor`) | APPROVED (1a) | `ui/Dialog` |
 | Spacing | APPROVED (1a) | `ui.css` Spacing block |
+| Tabs atom, Glyph atom, compact in-row sizes, identity controls, login links, menu rows | built ("do all", 2026-09-16) | `ui/Tabs`, `ui/Glyph`, `ui.css` |
+| Light-theme a11y run in CI | added (`test-storybook:light`, ci.yml storybook job) | |
 | Migration into app routes | NOT STARTED (§5) | |
 
 ## 1. Audit
@@ -260,6 +262,27 @@ One atom, 11px / 500 / badge radius / 1px 6px padding / 20px min-height,
 tones `neutral | danger | changed (warn alias) | ok`, `mono` modifier.
 `.chip` and `.settings-tag` fold in (their markup renders with the proposed
 rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
+
+## 4d. Remaining consistency items ("do all", 2026-09-16)
+
+- Tabs: `ui/Tabs` (APG keyboard model, `.tabs`/`.tab` markup) on `--control`;
+  supersedes app.css `.tab` min-height. MachineAccess migrates to it.
+- Menu rows: `.menu__item` on `--control` (was the touch floor).
+- In-row micro controls folded onto the tokens: `.matrix__add-key` and
+  `.capability__revoke` on `--control-compact` at caption size,
+  `.matrix__history-link` at caption size, `Button icon variant="quiet"` is
+  the atom they migrate to.
+- Identity controls: `.identity-hue` and `.identity-glyph` on `--control`
+  (the glyph was 38px on a coarse pointer, under the floor).
+- Sign-in quiet links: `.login__links a` on `--control`.
+- Glyph: `ui/Glyph` renders the state vocabulary as monochrome inline SVG in
+  the current colour; routes replace 🔒 (12 sites) and 🔗 (2) and the text
+  glyphs ✓ ✕ Δ ◌ ⋯ on migration. DESIGN.md updated.
+- Light theme in CI: `pnpm run test-storybook:light` sets `STORYBOOK_THEME`,
+  which `preview.tsx` reads into the initial theme global; the ci.yml
+  storybook job runs both. Verified that the light run really renders light
+  (a probe story asserting `data-theme=light` passed under the env and
+  failed without it).
 
 ## 5. Migration into the app (next, outside the Storybook-only scope)
 
