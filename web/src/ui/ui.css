@@ -547,3 +547,89 @@ label.chk {
   border-color: var(--danger);
   outline-color: var(--danger);
 }
+
+/* --- Dialog ----------------------------------------------------------------
+
+   One modal anatomy (ui/Dialog.tsx). Supersedes `.ceremony` and
+   `.matrix-editor` container rules, `.ceremony__title` (20px),
+   `.matrix-editor__head h2` (15px), `.ceremony__lede`, and the two action
+   rows (12px and 8px gaps). The legacy classes are restyled below so the
+   route dialogs that still use them match until they migrate. */
+.dialog {
+  width: min(520px, calc(100% - 32px));
+  max-height: min(90vh, 760px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-container);
+  background: var(--bg-panel);
+  color: var(--tx);
+  box-shadow: 0 14px 42px rgb(0 0 0 / 45%);
+  overflow: auto;
+}
+
+.dialog--wide {
+  width: min(760px, calc(100% - 32px));
+}
+
+.dialog::backdrop,
+.ceremony::backdrop,
+.matrix-editor::backdrop {
+  background: color-mix(in srgb, black 55%, transparent);
+}
+
+.dialog__title,
+.ceremony__title,
+.ceremony > h2,
+.matrix-editor__head h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.dialog__lede,
+.ceremony__lede,
+.matrix-editor__head p {
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+  max-width: 68ch;
+}
+
+/* Action rows: 8px everywhere, page and dialog alike; primary last. */
+.dialog__actions,
+.ceremony__actions,
+.matrix-editor__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.ceremony {
+  box-shadow: 0 14px 42px rgb(0 0 0 / 45%);
+}
+
+.dialog .btn,
+.dialog :is(input:not([type='checkbox']):not([type='radio']), select) {
+  min-height: var(--touch);
+}
+
+.dialog .btn--icon {
+  width: var(--touch);
+  min-width: var(--touch);
+}
+
+/* --- Spacing ----------------------------------------------------------------
+
+   The audit sampled padding and gaps on every route; the scale is already
+   4-based and mostly held (panels 16/18 with a 12px gap, forms 12, fields
+   6, page sections 18). Two outliers fold in here; no new tokens, the
+   existing values are the scale. */
+.card.panel {
+  gap: 12px;
+}

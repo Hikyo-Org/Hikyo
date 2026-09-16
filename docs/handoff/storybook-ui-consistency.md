@@ -20,8 +20,10 @@ is approved and unscoped; the comparison scaffold (Design toolbar,
 | Type scale, eyebrow, captions | APPROVED (4b), unscoped | `ui/Typography` |
 | Badge (folds chip, settings-tag) | APPROVED (4c), unscoped | `ui/Badge` |
 | ChoiceGroup | built, no current counterpart | `ui/ChoiceGroup` |
-| Field hint/error, Alert in `ui/` | NEXT SLICE (height token now decided) | |
-| Dialogs, overlays, spacing/gap sampling | NOT AUDITED yet (next slice) | |
+| Field (hint, error), Alert | built | `ui/Input` WithHint/WithError/ErrorIsWired, `ui/Alert` |
+| Dialog (folds `.ceremony` and `.matrix-editor`) | built, audited | `ui/Dialog` |
+| Spacing | audited, two outliers folded, no new tokens | `ui.css` Spacing block |
+| Migration into app routes | NOT STARTED (§5) | |
 
 ## 1. Audit
 
@@ -81,6 +83,25 @@ pointer:
   `shell.spec.ts:506`, `members.spec.ts:679/718/744`,
   `machine-access.spec.ts:673/800`, `history.spec.ts:296`,
   `settings.spec.ts:575`). Row density already switches token by project.
+
+### Dialogs (every dialog story, 1280 wide)
+
+Two families. `.ceremony` (520px): h2 20/700, lede 14px full ink, action
+row gap 12, no shadow. `.matrix-editor` (760px): h2 15/700, lede 13px dim,
+action row gap 8, shadow. Primary button position varies (first in some,
+last in others). DESIGN.md reserves shadows for modal overlays, so the
+shadowless ceremony is the one off the rule. `ConsequencesDialog` sits
+between at h2 16. `ui/Dialog` is the one anatomy: `narrow` 520 / `wide`
+760, title h2 on the scale (16/700), lede caption (13 dim), actions gap 8
+with the primary LAST, shadow on both. The legacy classes are restyled to
+match in `ui.css` so unmigrated route dialogs read the same.
+
+### Spacing (padding and gap on every route)
+
+Already 4-based and mostly held: panels 16/18 with gap 12, forms 12,
+fields 6, settings rows 10, page sections 18, action rows 8. Outliers:
+two panels at gap 8 and 11, ceremony actions at 12. Folded to 12 and 8;
+no new spacing tokens, the existing values are the scale.
 
 ### Prototypes (`web/prototype/directions/`)
 
@@ -219,6 +240,11 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
 
 ## 5. Migration into the app (next, outside the Storybook-only scope)
 
+Also superseded by `ui/`: `routes/Sections.tsx` `Alert` and `Done` (by
+`ui/Alert`), `routes/useModalDialog.ts` `useModalDialog` (by
+`ui/useModalDialog.ts`; `useFeedback` stays), `routes/AccountSecurity.tsx`
+`QrCode` (by `ui/auth/QrCode.tsx`).
+
 Move each `ui.css` block into app.css beside the rules it names as
 superseded and delete those; swap route markup to the `ui/` atoms; retarget
 the desktop density pins listed under 4a; fix the browser-blue link and the
@@ -235,7 +261,7 @@ pnpm exec vitest run --project storybook
 ```
 
 Last run (at the commit): typecheck clean; `node --run test` 985 passed;
-`node --run test-storybook` 52 files / 191 stories passed with the a11y
+`node --run test-storybook` 54 files / 202 stories passed with the a11y
 addon on `error`, every route story rendering under the approved
 `ui.css`; `node --run build` and `node --run build-storybook` both pass.
 The unit log prints `ECONNREFUSED :3000` noise from a test that probes a
