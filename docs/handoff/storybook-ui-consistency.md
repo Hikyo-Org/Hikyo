@@ -1,14 +1,16 @@
 # Storybook UI consistency: audit, proposal, and what needs approval
 
-Status: APPROVED (checkbox 1A, auth 2B strict and 3A, controls 4a, type 4b, badge 4c). Committed on `t3code/2ccba3ca`; composed slice next. Scope per Marc (2026-09-16): Storybook only.
+Status: on PR #755. Approved: checkbox (1A), auth direction (2B strict, 3A), control tiers (4a), type scale (4b), badge (4c). Built in the same PR under decision "a" and still to be signed off: ChoiceGroup, Field hint/error, Alert, Dialog, the spacing fold, and the 24px fine-pointer hit box (§2). Scope per Marc (2026-09-16): Storybook only.
 Nothing under `web/src/routes`, `web/src/app` or `web/src/styles` changed;
 the app renders exactly as before. The work lives in `web/src/ui/**` and
 `web/.storybook/preview.tsx`, and migrates into the app with the rest of the
 component move.
 
-Run: `cd web && pnpm storybook`, open `ui/`. Every block in `src/ui/ui.css`
-is approved and unscoped; the comparison scaffold (Design toolbar,
-`compare.tsx`, `CurrentVsProposed` stories) is removed.
+Run: `cd web && pnpm storybook`, open `ui/`. `src/ui/ui.css` is unscoped;
+the comparison scaffold (Design toolbar, `compare.tsx`, `CurrentVsProposed`
+stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
+(`main.ts`, `preview.tsx`, `withApp.tsx` comment cleanup), and
+`web/scripts/audit-styles.mjs`.
 
 ## Status by group
 
@@ -19,10 +21,10 @@ is approved and unscoped; the comparison scaffold (Design toolbar,
 | Control height tokens, Button, Input, Select, Textarea | APPROVED (4a), unscoped | `ui/Button`, `ui/Input`, `ui/Textarea` |
 | Type scale, eyebrow, captions | APPROVED (4b), unscoped | `ui/Typography` |
 | Badge (folds chip, settings-tag) | APPROVED (4c), unscoped | `ui/Badge` |
-| ChoiceGroup | built, no current counterpart | `ui/ChoiceGroup` |
-| Field (hint, error), Alert | built | `ui/Input` WithHint/WithError/ErrorIsWired, `ui/Alert` |
-| Dialog (folds `.ceremony` and `.matrix-editor`) | built, audited | `ui/Dialog` |
-| Spacing | audited, two outliers folded, no new tokens | `ui.css` Spacing block |
+| ChoiceGroup | built, NEEDS SIGN-OFF | `ui/ChoiceGroup` |
+| Field (hint, error), Alert | built, NEEDS SIGN-OFF | `ui/Input` WithHint/WithError/ErrorIsWired, `ui/Alert` |
+| Dialog (folds `.ceremony` and `.matrix-editor`) | built, audited, NEEDS SIGN-OFF | `ui/Dialog` |
+| Spacing | audited, two outliers folded, no new tokens, NEEDS SIGN-OFF | `ui.css` Spacing block |
 | Migration into app routes | NOT STARTED (§5) | |
 
 ## 1. Audit
@@ -68,7 +70,9 @@ pointer:
   uppercase bold, `.count` pill 10px, problem count 11px. Five vocabularies
   for one job.
 - **Links**: one unclassed `<a>` on the overview page in browser blue
-  (`rgb(158,158,255)`). Route bug; logged, not fixed here.
+  (`rgb(158,158,255)`). `ui.css` gives unclassed anchors body ink and an
+  underline (`:where()`, so classed links keep their rule); the route gets
+  it on migration.
 - Coarse pointer is consistent at 44px except `identity-glyph` at 38px
   (settings; touch floor candidate).
 
@@ -79,7 +83,7 @@ pointer:
   non-none `outline`. Hit box and ring stay on the input element.
 - Density pins read `--touch` on desktop for: login submit, editor close,
   environment chooser, theme toggle, dialog Cancel/Back/Done, machine-access
-  mint, history tab (`login.spec.ts:67`, `matrix.spec.ts:351/435/1021`,
+  mint, history tab (under `web/e2e/flows/`: `login.spec.ts:67`, `matrix.spec.ts:351/435/1021`,
   `shell.spec.ts:506`, `members.spec.ts:679/718/744`,
   `machine-access.spec.ts:673/800`, `history.spec.ts:296`,
   `settings.spec.ts:575`). Row density already switches token by project.
@@ -114,8 +118,9 @@ copy, next slice).
 
 ## 2. Approved: Checkbox and Radio (`ui.css`, unscoped)
 
-`appearance: none`; the input stays the hit box (18px fine, 44px coarse),
-the drawn box is a pseudo-element (18 / 20px) with the control radius,
+`appearance: none`; the input stays the hit box (24px fine, the WCAG 2.5.8
+minimum, raised from 18px after review; 44px coarse), the drawn box is a
+pseudo-element (18 / 20px, decision 1A) with the control radius,
 `--line` border, `--accent` fill, `--on-accent` masked check; focus ring
 pulled in with a negative `outline-offset`; hover (enabled only), disabled
 0.6, indeterminate (checkbox only), forced colours fall back to native. The
@@ -123,9 +128,14 @@ pulled in with a negative `outline-offset`; hover (enabled only), disabled
 shapes. `Radio` atom emits the same row. `ChoiceGroup` wraps rows in a
 fieldset with a legend.
 
-Migration deletes app.css:3271-3290, :3314-3317, :5031-5035, the four local
-size rules (:1880, :2492, :2521, :5552) and wraps the raw inputs in
-`InstanceConfig.tsx:178` and `Adapters.tsx:1161/1185/1607`.
+Migration deletes in app.css: `.chk` and `.chk input[type='checkbox']`
+(3273-3284), `.chk label` (3286-3288), the `(max-width: 800px)` checkbox
+bump (3314-3318), the checkbox lines of the `(pointer: coarse)` block
+(5031-5037), and the four local size rules (`.matrix__environment-picker
+input` 1880-1885, `.matrix-key-create__presence-modes input` 2491-2495,
+`.matrix-key-create__secret input` 2520-2524, `.audit__outcome-choice
+input` 5554-5556); and wraps the raw inputs in `InstanceConfig.tsx:178` and
+`Adapters.tsx:1161/1185/1607`.
 
 ## 3. Approved direction: sign-in flow (`ui/auth`)
 
@@ -211,9 +221,9 @@ Decision: **(a)**. It matches DESIGN.md density (36 desktop, 44
 touch), keeps the login and dialog pins untouched, and collapses the 42px
 members select and the 36px `settings-input` into the same token.
 Migration: e2e density pins for page-content buttons read `--control` on
-the desktop project the way row pins read `--row` (`matrix.spec.ts:435`
-chooser and `shell.spec.ts:506` theme toggle are page chrome and switch;
-login, editor close, dialog buttons stay on `--touch`).
+the desktop project the way row pins read `--row` (`flows/matrix.spec.ts:435`
+chooser and `flows/shell.spec.ts:506` theme toggle are page chrome and
+switch; login, editor close, dialog buttons stay on `--touch`).
 
 Migration risks to check on the real screens (no story renders them under
 the proposal yet): `.matrix__history-link` (a column-header control on
@@ -229,7 +239,9 @@ keeps its own rule.
 h3, panel title / 16 h2 / 20 h1. Weights 400, 500 (eyebrow, badge), 700
 (headings). Eyebrow: uppercase, 0.06em tracking, `--tx-faint`. Folds the
 10px sidebar h2s (x32), the 15/17/18/19px headings and the 10/11px
-uppercase labels. Decision: approve the scale, or name a level to change.
+uppercase labels. Case is untouched: `.panel h2` stays uppercase as in
+app.css; making panel titles sentence case (the prototype brief's
+"uppercase eyebrow on every block" diagnosis) is a separate decision.
 
 ### 4c. Badge
 
@@ -248,7 +260,8 @@ Also superseded by `ui/`: `routes/Sections.tsx` `Alert` and `Done` (by
 `QrCode` (by `ui/auth/QrCode.tsx`).
 
 Move each `ui.css` block into app.css beside the rules it names as
-superseded and delete those; swap route markup to the `ui/` atoms; retarget
+superseded and delete those; move the `:root` tokens in `ui.css` into
+`tokens.css`; swap route markup to the `ui/` atoms; retarget
 the desktop density pins listed under 4a; fix the browser-blue link and the
 `StepUpBanner` copy; wire `/login` to the challenge and setup gates once
 the backend in §3 exists.

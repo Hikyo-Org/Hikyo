@@ -43,9 +43,17 @@ export const AuthenticatorCodeRefused: Story = {
 export const RecoveryCodes: Story = { args: { step: codesStep } };
 
 // No skip on any step: the gate holds until a factor stands and the codes are
-// acknowledged.
+// acknowledged. All three steps are mounted so the assertion covers each.
 export const NoSkipOnAnyStep: Story = {
+  render: (args) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <SecondFactorSetup {...args} step={{ kind: 'choose' }} />
+      <SecondFactorSetup {...args} step={totpStep} />
+      <SecondFactorSetup {...args} step={codesStep} />
+    </div>
+  ),
   play: async ({ canvas }) => {
+    await expect(canvas.getAllByRole('heading', { level: 1 })).toHaveLength(3);
     await expect(canvas.queryByRole('button', { name: /skip|later|not now|without/i })).toBeNull();
     await expect(canvas.queryByRole('link')).toBeNull();
   },

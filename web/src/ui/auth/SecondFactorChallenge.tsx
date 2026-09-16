@@ -1,18 +1,15 @@
-import { useState, type FormEvent } from 'react';
-
 import { Alert } from '../Alert.tsx';
 import { Button } from '../Button.tsx';
-import { Input } from '../Input.tsx';
+import { AuthenticatorCodeField } from './AuthenticatorCodeField.tsx';
 
 /**
  * The second step of a PASSWORD sign-in when the account has a second factor
  * enrolled: an authenticator code, or a passkey assertion as the alternative.
  *
- * Never skippable (Marc, 2026-09-16): an enrolled factor is presented or the
- * sign-in does not complete. Today `localLoginOp` mints the session at
- * password assurance before this step, so the challenge is sequencing until
- * the backend work in docs/handoff/storybook-ui-consistency.md lands; the
- * surface is built for the enforced version and has no way past it.
+ * Never skippable (storybook-ui-consistency handoff, decision 2B): an
+ * enrolled factor is presented or the sign-in does not complete. The
+ * surface is built for the enforced version and has no way past it; the
+ * server-side enforcement it needs is specified in the same handoff, §3.
  *
  * Passkey sign-in and identity-provider sign-in never reach this step: the
  * first already carries multi-factor assurance, the second takes its
@@ -38,46 +35,30 @@ export function SecondFactorChallenge({
   onCode: (code: string) => void;
   onPasskey: () => void;
 }) {
-  const [code, setCode] = useState('');
   const anyBusy = busy !== null;
-
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    onCode(code.trim());
-    setCode('');
-  };
+  const alert = error !== null ? <Alert>{error}</Alert> : null;
 
   return (
-    <form className="login__card" onSubmit={onSubmit} noValidate>
-      <p className="login__step">Step 2 of 2</p>
+    <div className="login__card">
+      <p className="eyebrow">Step 2 of 2</p>
       <h1 className="login__title">Present your second factor</h1>
       <p className="login__account">
-        Password accepted for <strong>{username}</strong>. Instance settings, grants and secret
-        disclosure need a second factor presented in this session.
+        Password accepted for <strong>{username}</strong>. Sign-in completes once the second factor
+        enrolled on this account is presented.
       </p>
 
-      {error !== null ? <Alert>{error}</Alert> : null}
-
       {totp ? (
-        <>
-          <Input
-            className="login__code"
-            label="Authenticator code"
-            name="code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9]{6,10}"
-            required
-            autoFocus
-            disabled={anyBusy}
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-          />
-          <Button variant="primary" type="submit" disabled={anyBusy || code.trim() === ''}>
-            {busy === 'code' ? 'Checking…' : 'Present code'}
-          </Button>
-        </>
-      ) : null}
+        <AuthenticatorCodeField
+          submitLabel="Present code"
+          busy={busy === 'code' ? 'Checking…' : null}
+          disabled={anyBusy}
+          onSubmit={onCode}
+        >
+          {alert}
+        </AuthenticatorCodeField>
+      ) : (
+        alert
+      )}
 
       {totp && passkey ? (
         <p className="login__or" aria-hidden="true">
@@ -90,6 +71,13 @@ export function SecondFactorChallenge({
           {busy === 'passkey' ? 'Waiting for the passkey…' : 'Use a passkey'}
         </Button>
       ) : null}
-    </form>
+
+      {!totp && !passkey ? (
+        <Alert>
+          The factor enrolled on this account cannot be presented from this device. Sign in from the
+          device that holds it, or recover with a code from the sign-in page.
+        </Alert>
+      ) : null}
+    </div>
   );
 }

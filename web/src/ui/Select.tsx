@@ -1,6 +1,5 @@
 import type { ComponentProps } from 'react';
 
-import { cx } from './cx.ts';
 import { Field, type FieldProps } from './Field.tsx';
 
 /**
@@ -17,7 +16,7 @@ export function Select({ label, hint, error, id, className, mono, children, ...r
   return (
     <Field label={label} hint={hint} error={error} id={id} className={className}>
       {(control) => (
-        <select {...rest} {...control} className={cx(mono === true && 'mono')}>
+        <select {...rest} {...control} className={mono === true ? 'mono' : undefined}>
           {children}
         </select>
       )}

@@ -11,7 +11,8 @@ import { cx } from './cx.ts';
  * Variants carry a role, not a colour: `primary` is the one action a surface
  * leads with, `secondary` (default) every other action, `danger` a destructive
  * one (named in its text, colour only echoes), `quiet` a tertiary action that
- * sits inside a row or a panel header at 32px on a fine pointer.
+ * sits inside a row or a panel header on the compact tier (28px on a fine
+ * pointer, the touch floor on a coarse one).
  *
  * `type` is deliberately not defaulted: native pass-through keeps behaviour
  * identical to a raw <button> (submit inside a form, plain button elsewhere).

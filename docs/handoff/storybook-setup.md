@@ -153,11 +153,11 @@ side-by-side design review under the theme toolbar, plus one interaction `play`)
 
 | Component | Emits | Notes |
 |---|---|---|
-| `Button` | `btn` / `btn--primary` / `btn--icon` | `type` not defaulted (native pass-through); `icon` variant makes `aria-label` **required in the type** so the a11y gate can't be tripped by an unnamed icon button |
+| `Button` | `btn` / `btn--primary` / `btn--danger` / `btn--quiet` / `btn--icon` | `type` not defaulted (native pass-through); `icon` variant makes `aria-label` **required in the type** so the a11y gate can't be tripped by an unnamed icon button |
 | `Input` | `.field` + `<label>` + `<input>` | label required + wired via `useId`; `className` reaches the wrapper for `field--inline`/`field--readonly` |
-| `Checkbox` | `.field.chk` (input then label) | inherits `accent-color` + 44px touch floor; `type` locked to `checkbox` |
+| `Checkbox` | `.field.chk` (input then label) | box drawn by `src/ui/ui.css`, input stays the hit target (24px fine, 44px coarse); `type` locked to `checkbox` |
 | `Select` | `.field` + `<label>` + native `<select>` | options are children; native control keeps platform/keyboard behaviour |
-| `Badge` | `badge` / `badge--danger` / `badge--warn` | colour only echoes a state the child word already names |
+| `Badge` | `badge` / `badge--danger` / `badge--warn` / `badge--changed` / `badge--ok` (+ `mono`) | colour only echoes a state the child word already names |
 | `Menu` / `MenuItem` | `menu` / `menu--pop` / `menu__item` | native Popover API (`popover="auto"` + `popoverTarget`): top-layer stacking, light-dismiss, Escape, and an implicit anchor for free — no open/close state, no outside-click listener (unlike the account menu in `Shell.tsx`). `MenuItem` runs its `onClick` then `hidePopover()`s. `.menu--pop` anchors the panel under the trigger via `position-area`, `@supports`-guarded (below) |
 
 **Already components, not duplicated:** the toast (`src/app/notifications.tsx`

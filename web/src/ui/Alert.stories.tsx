@@ -16,6 +16,15 @@ type Story = StoryObj<typeof meta>;
 export const Danger: Story = {};
 export const Done: Story = { args: { tone: 'done', children: 'Grant revoked. The member keeps their other grants.' } };
 
+export const AllStates: Story = {
+  render: () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 480 }}>
+      <Alert>Refused: the remote answered with a certificate that does not match the pin.</Alert>
+      <Alert tone="done">Remote added. Its projects appear in the rail after the next refresh.</Alert>
+    </div>
+  ),
+};
+
 export const RolesMatchTone: Story = {
   render: () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 480 }}>

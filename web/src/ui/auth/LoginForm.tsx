@@ -1,10 +1,13 @@
+import { zAuthMethodProvider } from '@hikyo/zod';
 import { useState, type FormEvent, type ReactNode } from 'react';
+import type { z } from 'zod';
 
 import { Alert } from '../Alert.tsx';
 import { Button } from '../Button.tsx';
 import { Input } from '../Input.tsx';
 
-export type SignInProvider = { slug: string; display_name: string; kind: 'oidc' | 'saml' };
+/** One configured identity provider, as `GET /auth/methods` describes it. */
+export type SignInProvider = z.infer<typeof zAuthMethodProvider>;
 
 /** Which sign-in leg is in flight, so only ITS control shows the busy label. */
 export type SignInBusy = 'password' | 'passkey' | { provider: string } | null;

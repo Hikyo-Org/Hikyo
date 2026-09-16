@@ -26,16 +26,16 @@ export const Selects: Story = {
 };
 
 // Each row is its own group, so the states do not steal each other's check.
-const states = (prefix: string) => (
+const states = (
   <>
-    <Radio name={`${prefix}-a`} label="Unchecked" />
-    <Radio name={`${prefix}-b`} label="Checked" defaultChecked />
-    <Radio name={`${prefix}-c`} label="Disabled" disabled />
-    <Radio name={`${prefix}-d`} label="Disabled checked" defaultChecked disabled />
+    <Radio name="a" label="Unchecked" />
+    <Radio name="b" label="Checked" defaultChecked />
+    <Radio name="c" label="Disabled" disabled />
+    <Radio name="d" label="Disabled checked" defaultChecked disabled />
   </>
 );
 
 export const AllStates: Story = {
-  render: () => <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{states('all')}</div>,
+  render: () => <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{states}</div>,
 };
 

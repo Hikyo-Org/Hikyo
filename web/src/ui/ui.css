@@ -4,11 +4,236 @@
  * Loaded after app.css by .storybook/preview.tsx only; the app does not import
  * this file yet. Each block names the app.css rule it supersedes so the
  * migration is a move, not a rewrite (docs/handoff/storybook-ui-consistency.md
- * keeps the list). Every block here is approved; it overrides app.css by
- * cascade order until the migration deletes the superseded rules.
+ * keeps the list and the approval state per block). Blocks override app.css
+ * by cascade order until the migration deletes the superseded rules; on
+ * migration the tokens below move into tokens.css and DESIGN.md is the source.
  */
 
-/* --- Choice controls: checkbox and radio ---------------------------------
+/* --- Tokens ----------------------------------------------------------------
+
+   Control height has two tiers, and the app already knew it: `.page--chrome
+   .btn` is 36px with a comment reserving 44px for dialogs, while everything
+   outside those pages fell back to the 44px touch floor on a desktop pointer.
+   - `--control`: page content on a fine pointer, 36px (DESIGN.md density);
+     the touch floor on a coarse pointer.
+   - `--touch`: decision surfaces (dialogs, the sign-in card, ceremonies) on
+     every pointer, and everything on a coarse pointer.
+   - `--control-compact`: in-row tertiary actions (`.btn--quiet`), 28px on a
+     fine pointer, the floor on a coarse one.
+
+   Type scale, ratio 1.25 from 12.8 (DESIGN.md: >= 1.25, weight over size):
+   11 eyebrow and badge, 13 caption/label/lede/mono, 14 body, 16 h2, 20 h1.
+   Every other size the audit found (10, 12, 15, 17, 18, 19) folds into one
+   of these. Weights 400/500/700 only.
+
+   Choice controls: the input element is the hit box (24px on a fine pointer,
+   the WCAG 2.5.8 minimum; the touch floor on a coarse one) and the drawn
+   square is smaller (18px fine, 20px coarse), centred in it. */
+:root {
+  --control: 36px;
+  --control-compact: 28px;
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-mono: 13px;
+  --tracking-eyebrow: 0.06em;
+  --chk-box: 24px;
+  --chk-visual: 18px;
+  --chk-gap: 6px;
+  --overlay-shadow: 0 14px 42px oklch(0 0 0 / 45%);
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control: var(--touch);
+    --control-compact: var(--touch);
+    --chk-box: var(--touch);
+    --chk-visual: 20px;
+    /* The box already carries 12px of hit area past the drawn square. */
+    --chk-gap: 0px;
+  }
+}
+
+/* --- Type scale --------------------------------------------------------------
+
+   Supersedes the per-surface heading sizes the audit found (h1 at 18/19/20,
+   h2 at 10/13/14/15/17/18, h3 at 14/16) and the 10px and 11px uppercase
+   labels. Case is left to the surface: `.panel h2` stays uppercase in
+   app.css until that is decided separately. */
+h1 {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+h3,
+.panel h2,
+.settings-panel h2 {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+/* The eyebrow: a section marker above a block, never a heading size. The
+   sidebar's 10px bold h2s, the members grants header and inspector labels,
+   and the settings 11px bold labels all become this. */
+.eyebrow,
+.sidebar__section h2,
+.sidebar__version-label,
+.page--members .grants th,
+.page--members .inspect label,
+.page--members .capability__origin,
+.context-sidebar__org small {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--tx-faint);
+}
+
+/* Captions: field labels, legends, ledes, hints. 13px, secondary ink, 400.
+   Supersedes `.field label` and `.field__hint` in app.css (same values,
+   gathered with their siblings). */
+.field > label,
+.field__label,
+.choice-group > legend,
+.page__lede,
+.field__hint,
+.settings-note {
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--tx-dim);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* An unstyled anchor took the browser's blue on the overview page. Anchors
+   without a class are body ink, underlined; `:where()` keeps this below any
+   classed rule (`.login__links a`, `.sidebar__link`) so those are untouched. */
+:where(a:not([class])) {
+  color: var(--tx);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --- Buttons ----------------------------------------------------------------
+
+   Supersedes app.css `.btn` (min-height), `.page--chrome .btn`, `.btn--icon`,
+   `.btn--quiet`, and the `@media (pointer: coarse) .btn--quiet` bump.
+   Padding, radius, colours and weights are unchanged. */
+.btn {
+  min-height: var(--control);
+  font-size: var(--fs-md);
+}
+
+.btn--icon {
+  width: var(--control);
+  min-width: var(--control);
+}
+
+.btn--quiet {
+  min-height: var(--control-compact);
+  padding: 0 10px;
+  font-size: var(--fs-sm);
+}
+
+/* --- Field controls ---------------------------------------------------------
+
+   Supersedes `.field input`, `.field select` (heights), `.settings-input`,
+   `.settings-select`, `.change-approvals select|input|textarea`, and the
+   10px/12px padding that produced the 42px members select. One height, one
+   padding, one type size. `:where()` keeps the `:not([type])` chain at zero
+   specificity, so the rules after it win by order and by class as intended. */
+:is(.field, .form, .settings-row, .change-approvals)
+  :is(:where(input:not([type='checkbox']):not([type='radio']):not([type='range'])), select),
+:is(.settings-input, .settings-select) {
+  min-height: var(--control);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--tx);
+  font-size: var(--fs-md);
+}
+
+:is(.field, .form, .settings-row, .change-approvals) textarea {
+  min-height: calc(var(--control) * 2.5);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--tx);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* The value face on a control (`mono` prop on Input, Select, Textarea). */
+:is(input, select, textarea).mono {
+  font-size: var(--fs-mono);
+}
+
+/* One focus affordance on every control. Supersedes `.field input:focus-visible`;
+   select and textarea had no such rule, so the three reacted differently. */
+.field :is(input, select, textarea):focus-visible {
+  border-color: var(--accent);
+}
+
+/* --- Decision surfaces stay on the touch tier on every pointer ------------- */
+:is(dialog, .ceremony, .login__card, .matrix-editor) .btn {
+  min-height: var(--touch);
+}
+
+:is(dialog, .ceremony, .login__card, .matrix-editor) .btn--icon {
+  width: var(--touch);
+  min-width: var(--touch);
+}
+
+:is(dialog, .ceremony, .login__card)
+  :is(:where(input:not([type='checkbox']):not([type='radio'])), select) {
+  min-height: var(--touch);
+}
+
+/* --- Field hint and error ---------------------------------------------------
+
+   The composed field (ui/Field.tsx): hint and error sit under the control at
+   caption size (the hint's size and ink come from the captions rule above).
+   The error carries the danger glyph and marks the control invalid; the
+   border echoes it, the words say it. */
+.field__hint {
+  margin: 0;
+  max-width: 68ch;
+}
+
+.field__error {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-sm);
+  max-width: 68ch;
+}
+
+.field :is(input, select, textarea)[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.field :is(input, select, textarea)[aria-invalid='true']:focus-visible {
+  border-color: var(--danger);
+  outline-color: var(--danger);
+}
+
+/* --- Choice controls: checkbox and radio ------------------------------------
 
    Root cause of the oversized boxes (measured, see the handoff):
    - `.field input` gives EVERY input a 44px min-height, padding and a border;
@@ -23,23 +248,9 @@
    stays the hit target (the pinned e2e sweep measures the input's own box and
    reads the focus ring from the input's own outline), the visual is drawn on
    pseudo-elements at a size that suits 14px text, and the 44px floor applies
-   on a coarse pointer only, where DESIGN.md sets it. */
-
-:root {
-  --chk-box: 18px; /* the input's own box: hit target and keyboard focus */
-  --chk-visual: 18px; /* the drawn square, centred in the box */
-  --chk-gap: 8px;
-}
-
-@media (pointer: coarse) {
-  :root {
-    --chk-box: var(--touch);
-    --chk-visual: 20px;
-    /* The box already carries 12px of hit area past the drawn square. */
-    --chk-gap: 0px;
-  }
-}
-
+   on a coarse pointer only, where DESIGN.md sets it. Supersedes app.css
+   `.chk`, `.chk input[type='checkbox']`, the `(max-width: 800px)` and
+   `(pointer: coarse)` checkbox bumps, and the four local size rules. */
 .chk {
   display: flex;
   flex-direction: row;
@@ -48,19 +259,15 @@
   min-height: 24px;
 }
 
-label.chk,
-.chk > label {
-  cursor: pointer;
-}
-
-/* The option text is body text, not a field caption: 14px, full ink. This
-   also ends the 13px-vs-14px split between `.field.chk label` and bare
-   `label.chk`. */
+/* The option text is body text, not a field caption: 14px, full ink, in
+   both markup shapes (input + sibling label, and a label wrapping the input).
+   This also ends the 13px-vs-14px split between the two. */
 .chk label,
 label.chk {
   color: var(--tx);
-  font-size: 14px;
+  font-size: var(--fs-md);
   line-height: 1.5;
+  cursor: pointer;
 }
 
 .chk input[type='checkbox'],
@@ -78,7 +285,7 @@ label.chk {
   background: none;
   cursor: pointer;
   /* The global ring is offset 2px OUTSIDE the element. Pull it in so it hugs
-     the drawn box, not the (possibly 44px) hit box. */
+     the drawn box, not the hit box. */
   outline-offset: calc((var(--chk-visual) - var(--chk-box)) / 2 + 2px);
 }
 
@@ -116,6 +323,8 @@ label.chk {
   border-color: var(--tx-dim);
 }
 
+/* `:indeterminate` is checkbox-only here: a radio is indeterminate whenever
+   its group has no selection, which would fill every unchecked radio. */
 .chk input:checked::before,
 .chk input[type='checkbox']:indeterminate::before {
   border-color: var(--accent);
@@ -157,8 +366,7 @@ label.chk {
 }
 
 /* Disabled dims the whole row at the same 0.6 the button primitive uses, and
-   names the state with the cursor. Covers both markup shapes: input + sibling
-   label, and a label wrapping the input. */
+   names the state with the cursor. Covers both markup shapes. */
 .chk input:disabled,
 .chk input:disabled + label,
 label.chk:has(input:disabled) {
@@ -189,20 +397,11 @@ label.chk:has(input:disabled) {
   }
 }
 
-/* --- Field controls: the same focus affordance on every control -----------
+/* --- ChoiceGroup: a labelled set of checkboxes or radios --------------------
 
-   `.field input:focus-visible` turns the border accent; select and textarea
-   had no such rule, so the three controls reacted differently to focus. */
-.field select:focus-visible,
-.field textarea:focus-visible {
-  border-color: var(--accent);
-}
-
-/* --- ChoiceGroup: a labelled set of checkboxes or radios ------------------
-
-   New composed component, no current counterpart. Resets the fieldset chrome
-   to the plain `.field` box (the audit filter and SAML panels each did this
-   locally) and lays the rows out in a column, or a wrapping row inline. */
+   Resets the fieldset chrome to the plain `.field` box (the audit filter and
+   SAML panels each did this locally) and lays the rows out in a column, or a
+   wrapping row inline. The legend's type comes from the captions rule. */
 .choice-group {
   border: 0;
   margin: 0;
@@ -213,8 +412,6 @@ label.chk:has(input:disabled) {
 .choice-group > legend {
   padding: 0;
   margin-bottom: 6px;
-  color: var(--tx-dim);
-  font-size: 13px;
 }
 
 .choice-group__options {
@@ -229,256 +426,15 @@ label.chk:has(input:disabled) {
   gap: 6px 16px;
 }
 
-/* --- Sign-in flow: the second-factor step ---------------------------------
+/* --- Badges: one vocabulary --------------------------------------------------
 
-   Same card as the login page; the code input is the step-up banner's
-   (9ch, mono), so the two surfaces stay one vocabulary. */
-.login__step {
-  margin: 0;
-  color: var(--tx-faint);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.login__code input {
-  width: 100%;
-  font-family: var(--font-mono);
-  font-size: 16px;
-  letter-spacing: 0.2em;
-}
-
-.login__actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.login__account {
-  margin: 0;
-  color: var(--tx-dim);
-}
-
-.login__account strong {
-  color: var(--tx);
-  font-weight: 500;
-}
-
-.login__qr {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-}
-
-.login__secret {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  margin: 0;
-  color: var(--tx-dim);
-  font-size: 13px;
-}
-
-.login__secret code {
-  color: var(--tx);
-  letter-spacing: 0.08em;
-  overflow-wrap: anywhere;
-}
-
-/* =========================================================================
-   Control scale, type scale, badges (approved 2026-09-16: 4a, 4b, 4c).
-   ========================================================================= */
-
-/* --- Tokens ----------------------------------------------------------------
-
-   Control height has two tiers, and the app already knew it: `.page--chrome
-   .btn` is 36px with a comment reserving 44px for dialogs, while everything
-   outside those pages fell back to the 44px touch floor on a desktop pointer.
-   The proposal names the tiers:
-   - `--control`: page content on a fine pointer, 36px (DESIGN.md density);
-     the touch floor on a coarse pointer.
-   - `--touch`: decision surfaces (dialogs, the sign-in card, ceremonies) on
-     every pointer, and everything on a coarse pointer.
-   - `--control-compact`: in-row tertiary actions (`.btn--quiet`), 28px on a
-     fine pointer, the floor on a coarse one.
-
-   Type scale, ratio 1.25 from 12.8 (DESIGN.md: >= 1.25, weight over size):
-   11 eyebrow and badge, 13 caption/label/lede/mono, 14 body, 16 h2, 20 h1.
-   Every other size the audit found (10, 12, 15, 17, 18, 19) folds into one
-   of these. Weights 400/500/700 only. */
-:root {
-  --control: 36px;
-  --control-compact: 28px;
-  --fs-xs: 11px;
-  --fs-sm: 13px;
-  --fs-md: 14px;
-  --fs-lg: 16px;
-  --fs-xl: 20px;
-  --fs-mono: 13px;
-  --tracking-eyebrow: 0.06em;
-}
-
-@media (pointer: coarse) {
-  :root {
-    --control: var(--touch);
-    --control-compact: var(--touch);
-  }
-}
-
-/* --- Buttons: supersedes app.css `.btn` (min-height), `.page--chrome .btn`,
-   `.btn--icon`, `.btn--quiet`, and the `@media (pointer: coarse) .btn--quiet`
-   bump. Padding, radius, colours and weights are unchanged. */
-.btn {
-  min-height: var(--control);
-  font-size: var(--fs-md);
-}
-
-:is(dialog, .ceremony, .login__card, .matrix-editor) .btn {
-  min-height: var(--touch);
-}
-
-.btn--icon {
-  width: var(--control);
-  min-width: var(--control);
-}
-
-:is(dialog, .ceremony, .login__card, .matrix-editor) .btn--icon {
-  width: var(--touch);
-  min-width: var(--touch);
-}
-
-.btn--quiet {
-  min-height: var(--control-compact);
-  padding: 0 10px;
-  font-size: var(--fs-sm);
-}
-
-/* --- Field controls: supersedes `.field input`, `.field select` (heights),
-   `.settings-input`, `.settings-select`, `.change-approvals select|input|
-   textarea`, and the 10px/12px padding that produced the 42px members select.
-   One height, one padding, one type size; `.mono` keeps the mono size. */
-/* `:where()` keeps the `:not([type])` chain at zero specificity, so the
-   dialog exception and the `.mono` size below win as intended. */
-:is(.field, .form, .settings-row, .change-approvals)
-  :is(:where(input:not([type='checkbox']):not([type='radio']):not([type='range'])), select),
-:is(.settings-input, .settings-select) {
-  min-height: var(--control);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
-  font-size: var(--fs-md);
-}
-
-:is(.field, .form, .settings-row, .change-approvals) textarea {
-  min-height: calc(var(--control) * 2.5);
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
-  font-size: var(--fs-md);
-  line-height: 1.5;
-  resize: vertical;
-}
-
-:is(dialog, .ceremony, .login__card)
-  :is(:where(input:not([type='checkbox']):not([type='radio'])), select) {
-  min-height: var(--touch);
-}
-
-:is(input, select, textarea).mono {
-  font-size: var(--fs-mono);
-}
-
-:is(.field, .form, .settings-row) :is(input, select, textarea):focus-visible {
-  border-color: var(--accent);
-}
-
-/* --- Type scale: supersedes the per-surface heading sizes the audit found
-   (h1 at 18/19/20, h2 at 10/13/14/15/17/18, h3 at 14/16) and the 10px and
-   11px uppercase labels. */
-h1 {
-  font-size: var(--fs-xl);
-  font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -0.01em;
-}
-
-h2 {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-h3,
-.panel h2,
-.settings-panel h2 {
-  font-size: var(--fs-md);
-  font-weight: 700;
-  line-height: 1.4;
-  /* Sentence case: the uppercase-on-every-block treatment is the one the
-     prototype brief diagnosed as generated. Only the eyebrow is uppercase. */
-  text-transform: none;
-  letter-spacing: normal;
-  color: var(--tx);
-}
-
-/* The eyebrow: a section marker above a block, never a heading size. The
-   sidebar's 10px bold h2s, the members grants header and inspector labels,
-   and the settings 11px bold labels all become this. */
-.eyebrow,
-.sidebar__section h2,
-.sidebar__version-label,
-.page--members .grants th,
-.page--members .inspect label,
-.page--members .capability__origin,
-.context-sidebar__org small {
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  letter-spacing: var(--tracking-eyebrow);
-  text-transform: uppercase;
-  color: var(--tx-faint);
-}
-
-/* Captions: field labels, legends, ledes, hints. 13px, secondary ink, 400. */
-.field > label,
-.field__label,
-.choice-group > legend,
-.page__lede,
-.field__hint,
-.settings-note {
-  font-size: var(--fs-sm);
-  font-weight: 400;
-  color: var(--tx-dim);
-  text-transform: none;
-  letter-spacing: normal;
-}
-
-/* Choice labels stay body ink (set above with the checkbox block). */
-.chk label,
-label.chk {
-  font-size: var(--fs-md);
-  color: var(--tx);
-}
-
-/* An unstyled anchor took the browser's blue on the overview page. Anchors
-   without a class are body ink, underlined; `:where()` keeps this below any
-   classed rule (`.login__links a`, `.sidebar__link`) so those are untouched. */
-:where(a:not([class])) {
-  color: var(--tx);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-/* --- Badges: one vocabulary. Supersedes `.badge` (12px), `.chip` (26px,
-   11px), `.settings-tag` (32px, 10px uppercase bold), `.history__current`
-   and `.matrix__problem-count`. The `.count` pill (numeric counts <= 12px)
-   is the DESIGN.md exception and is left alone. */
+   Supersedes `.badge` (12px), `.chip` (26px, 11px), `.settings-tag` (32px,
+   10px uppercase bold), `.history__current` and `.matrix__problem-count`.
+   The `.count` pill (numeric counts <= 12px) is the DESIGN.md exception and
+   is left alone. Tones follow the DESIGN.md state vocabulary: danger for a
+   violation or refusal, changed (slate) for pending or drafted, `ok` for a
+   measured-good condition on the accent hairline `.badge[data-state='ok']`
+   already used in app.css. */
 :is(.badge, .chip, .settings-tag) {
   display: inline-flex;
   align-items: center;
@@ -517,44 +473,24 @@ label.chk {
   color: var(--tx);
 }
 
-/* --- Field hint and error -------------------------------------------------
+/* --- Alert tones --------------------------------------------------------------
 
-   The composed field (ui/Field.tsx): hint and error sit under the control at
-   caption size. The error carries the danger glyph and marks the control
-   invalid; the border echoes it, the words say it. Supersedes the
-   `.field__hint` rule in app.css (same values, moved beside its siblings). */
-.field__hint {
-  margin: 0;
-  color: var(--tx-dim);
-  font-size: var(--fs-sm);
-  max-width: 68ch;
+   `.alert__glyph` is danger-coloured in app.css, and the done tick inside
+   `.notice` inherited that, painting a confirmation in the colour DESIGN.md
+   reserves for violations (routes/Sections.tsx `Done` has the same bug).
+   The tick takes the accent. */
+.notice .alert__glyph {
+  color: var(--accent);
 }
 
-.field__error {
-  display: flex;
-  gap: 6px;
-  margin: 0;
-  color: var(--danger);
-  font-size: var(--fs-sm);
-  max-width: 68ch;
-}
-
-.field :is(input, select, textarea)[aria-invalid='true'] {
-  border-color: var(--danger);
-}
-
-.field :is(input, select, textarea)[aria-invalid='true']:focus-visible {
-  border-color: var(--danger);
-  outline-color: var(--danger);
-}
-
-/* --- Dialog ----------------------------------------------------------------
+/* --- Dialog -------------------------------------------------------------------
 
    One modal anatomy (ui/Dialog.tsx). Supersedes `.ceremony` and
    `.matrix-editor` container rules, `.ceremony__title` (20px),
    `.matrix-editor__head h2` (15px), `.ceremony__lede`, and the two action
-   rows (12px and 8px gaps). The legacy classes are restyled below so the
-   route dialogs that still use them match until they migrate. */
+   rows (12px and 8px gaps). The legacy classes are restyled here so the
+   route dialogs that still use them match until they migrate. DESIGN.md
+   reserves shadows for modal overlays, so every family gets one. */
 .dialog {
   width: min(520px, calc(100% - 32px));
   max-height: min(90vh, 760px);
@@ -567,7 +503,6 @@ label.chk {
   border-radius: var(--radius-container);
   background: var(--bg-panel);
   color: var(--tx);
-  box-shadow: 0 14px 42px rgb(0 0 0 / 45%);
   overflow: auto;
 }
 
@@ -575,10 +510,16 @@ label.chk {
   width: min(760px, calc(100% - 32px));
 }
 
+.dialog,
+.ceremony,
+.matrix-editor {
+  box-shadow: var(--overlay-shadow);
+}
+
 .dialog::backdrop,
 .ceremony::backdrop,
 .matrix-editor::backdrop {
-  background: color-mix(in srgb, black 55%, transparent);
+  background: oklch(0 0 0 / 55%);
 }
 
 .dialog__title,
@@ -610,21 +551,7 @@ label.chk {
   align-items: center;
 }
 
-.ceremony {
-  box-shadow: 0 14px 42px rgb(0 0 0 / 45%);
-}
-
-.dialog .btn,
-.dialog :is(input:not([type='checkbox']):not([type='radio']), select) {
-  min-height: var(--touch);
-}
-
-.dialog .btn--icon {
-  width: var(--touch);
-  min-width: var(--touch);
-}
-
-/* --- Spacing ----------------------------------------------------------------
+/* --- Spacing ------------------------------------------------------------------
 
    The audit sampled padding and gaps on every route; the scale is already
    4-based and mostly held (panels 16/18 with a 12px gap, forms 12, fields
@@ -634,12 +561,53 @@ label.chk {
   gap: 12px;
 }
 
-/* --- Alert tones ------------------------------------------------------------
+/* --- Sign-in flow ------------------------------------------------------------
 
-   `.alert__glyph` is danger-coloured in app.css, and the done tick inside
-   `.notice` inherited that, painting a confirmation in the colour DESIGN.md
-   reserves for violations (routes/Sections.tsx `Done` has the same bug).
-   The tick takes the accent. */
-.notice .alert__glyph {
-  color: var(--accent);
+   Same card as the login page. The code field is the step-up banner's
+   (mono, one-time-code), sized a step up so a six-digit code reads at a
+   glance; the step marker is the eyebrow. */
+.field.login__code input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  letter-spacing: 0.2em;
+}
+
+.login__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login__account {
+  margin: 0;
+  color: var(--tx-dim);
+}
+
+.login__account strong {
+  color: var(--tx);
+  font-weight: 500;
+}
+
+.login__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.login__secret {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.login__secret code {
+  color: var(--tx);
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
 }

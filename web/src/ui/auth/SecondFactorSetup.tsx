@@ -1,9 +1,9 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 
 import { Alert } from '../Alert.tsx';
 import { Button } from '../Button.tsx';
 import { Checkbox } from '../Checkbox.tsx';
-import { Input } from '../Input.tsx';
+import { AuthenticatorCodeField } from './AuthenticatorCodeField.tsx';
 import { QrCode } from './QrCode.tsx';
 
 /** Where the enrolment stands; the parent drives it from the API's answers. */
@@ -14,10 +14,10 @@ export type SetupStep =
 
 /**
  * The enrolment gate: a PASSWORD sign-in on an account with no second factor
- * lands here, and nothing else is reachable until a factor stands (Marc,
- * 2026-09-16: "limit user interaction until setup"). No skip control exists
- * by design; an instance that allows unenrolled accounts never shows this
- * step at all, that decision belongs to the flow, not to this surface.
+ * lands here, and nothing else is reachable until a factor stands
+ * (storybook-ui-consistency handoff, decision 2B). No skip control exists by
+ * design; an instance that allows unenrolled accounts never shows this step
+ * at all, that decision belongs to the flow, not to this surface.
  *
  * Three steps: pick a factor; for an authenticator, scan and confirm one
  * code (a passkey enrols in one gesture); then the recovery codes, shown once
@@ -25,8 +25,8 @@ export type SetupStep =
  *
  * Security note for the migration: this runs on a session that has JUST
  * presented a password, which is what lets it enrol at all ("a new credential
- * may never authorize its own enrolment", human-auth ADR). The backend work
- * it needs is listed in docs/handoff/storybook-ui-consistency.md.
+ * may never authorize its own enrolment", the human-auth ADR). The backend
+ * work it needs is listed in the storybook-ui-consistency handoff, §3.
  */
 export function SecondFactorSetup({
   username,
@@ -50,7 +50,6 @@ export function SecondFactorSetup({
   onConfirmCode: (code: string) => void;
   onDone: () => void;
 }) {
-  const [code, setCode] = useState('');
   const [stored, setStored] = useState(false);
   const anyBusy = busy !== null;
 
@@ -59,7 +58,7 @@ export function SecondFactorSetup({
   if (step.kind === 'choose') {
     return (
       <div className="login__card">
-        <p className="login__step">Step 2 of 3</p>
+        <p className="eyebrow">Step 2 of 3</p>
         <h1 className="login__title">Set up a second factor</h1>
         <p className="login__account">
           Password accepted for <strong>{username}</strong>. This instance requires a second factor
@@ -81,14 +80,9 @@ export function SecondFactorSetup({
   }
 
   if (step.kind === 'totp') {
-    const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      onConfirmCode(code.trim());
-      setCode('');
-    };
     return (
-      <form className="login__card" onSubmit={onSubmit} noValidate>
-        <p className="login__step">Step 2 of 3</p>
+      <div className="login__card">
+        <p className="eyebrow">Step 2 of 3</p>
         <h1 className="login__title">Scan, then confirm one code</h1>
         <p className="login__account">
           Add <strong>{username}</strong> to your authenticator app, then enter the code it shows.
@@ -100,29 +94,21 @@ export function SecondFactorSetup({
             <code>{step.secret}</code>
           </p>
         </div>
-        {alert}
-        <Input
-          className="login__code"
-          label="Authenticator code"
-          name="code"
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          pattern="[0-9]{6,10}"
-          required
+        <AuthenticatorCodeField
+          submitLabel="Confirm and enrol"
+          busy={busy === 'code' ? 'Checking…' : null}
           disabled={anyBusy}
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-        />
-        <Button variant="primary" type="submit" disabled={anyBusy || code.trim() === ''}>
-          {busy === 'code' ? 'Checking…' : 'Confirm and enrol'}
-        </Button>
-      </form>
+          onSubmit={onConfirmCode}
+        >
+          {alert}
+        </AuthenticatorCodeField>
+      </div>
     );
   }
 
   return (
     <div className="login__card">
-      <p className="login__step">Step 3 of 3</p>
+      <p className="eyebrow">Step 3 of 3</p>
       <h1 className="login__title">Store your recovery codes</h1>
       <p className="login__account">
         Shown once. They are stored as hashes, so nobody, including this instance, can show them to

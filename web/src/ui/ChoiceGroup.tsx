@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 
 import { cx } from './cx.ts';
 
@@ -21,10 +21,18 @@ export function ChoiceGroup({
   className?: string;
   children: ReactNode;
 }) {
+  const hintId = useId();
   return (
-    <fieldset className={cx('field', 'choice-group', inline === true && 'choice-group--inline', className)}>
+    <fieldset
+      className={cx('field', 'choice-group', inline === true && 'choice-group--inline', className)}
+      aria-describedby={hint !== undefined ? hintId : undefined}
+    >
       <legend>{legend}</legend>
-      {hint !== undefined ? <p className="field__hint">{hint}</p> : null}
+      {hint !== undefined ? (
+        <p className="field__hint" id={hintId}>
+          {hint}
+        </p>
+      ) : null}
       <div className="choice-group__options">{children}</div>
     </fieldset>
   );

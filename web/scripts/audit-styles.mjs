@@ -25,7 +25,6 @@ for (const [mode, opts] of modes) {
     try {
       await page.goto(APP + route, { waitUntil: 'load', timeout: 20000 });
       await page.waitForTimeout(2000);
-      // open every <details> and click nothing else
       const data = await page.evaluate(() => {
         const rows = [];
         const px = (v) => Math.round(parseFloat(v));
@@ -56,7 +55,7 @@ for (const [mode, opts] of modes) {
   await ctx.close();
 }
 await browser.close();
-writeFileSync('/tmp/audit/app-audit.json', JSON.stringify(all));
+if (process.env.AUDIT_JSON) writeFileSync(process.env.AUDIT_JSON, JSON.stringify(all));
 // aggregate
 const agg = {};
 for (const [k, rows] of Object.entries(all)) {

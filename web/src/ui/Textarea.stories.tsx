@@ -21,3 +21,14 @@ export const LabelIsWired: Story = {
     await expect(canvas.getByLabelText('Description')).toBeVisible();
   },
 };
+
+export const AllStates: Story = {
+  render: () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 360 }}>
+      <Textarea label="Description" placeholder="What this project is for" />
+      <Textarea label="Filled" defaultValue="Customer-facing API and its workers." hint="Shown on the projects list." />
+      <Textarea label="Refused" defaultValue="x" error="At least three characters." />
+      <Textarea label="Disabled" defaultValue="locked" disabled />
+    </div>
+  ),
+};

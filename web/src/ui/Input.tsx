@@ -1,6 +1,5 @@
 import type { ComponentProps } from 'react';
 
-import { cx } from './cx.ts';
 import { Field, type FieldProps } from './Field.tsx';
 
 /**
@@ -17,7 +16,7 @@ type InputProps = Omit<ComponentProps<'input'>, 'className'> & FieldProps & {
 export function Input({ label, hint, error, id, className, mono, ...rest }: InputProps) {
   return (
     <Field label={label} hint={hint} error={error} id={id} className={className}>
-      {(control) => <input {...rest} {...control} className={cx(mono === true && 'mono')} />}
+      {(control) => <input {...rest} {...control} className={mono === true ? 'mono' : undefined} />}
     </Field>
   );
 }

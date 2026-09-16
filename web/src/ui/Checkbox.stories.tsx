@@ -34,14 +34,15 @@ export const LabelToggles: Story = {
   },
 };
 
-// The hit target stays the input's own box: 18px on a fine pointer, the 44px
-// touch floor on a coarse one. The drawn square never exceeds 20px.
+// The hit target stays the input's own box: 24px on a fine pointer (WCAG
+// 2.5.8 minimum), the 44px touch floor on a coarse one. The drawn square never
+// exceeds 20px.
 export const HitBoxIsTheInput: Story = {
   play: async ({ canvas }) => {
     const box = canvas.getByRole('checkbox');
     const rect = box.getBoundingClientRect();
     const coarse = matchMedia('(pointer: coarse)').matches;
-    const want = coarse ? 44 : 18;
+    const want = coarse ? 44 : 24;
     await expect(Math.round(rect.width)).toBe(want);
     await expect(Math.round(rect.height)).toBe(want);
     const drawn = Number.parseFloat(getComputedStyle(box, '::before').width);

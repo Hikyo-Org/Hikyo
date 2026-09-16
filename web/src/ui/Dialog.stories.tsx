@@ -80,10 +80,22 @@ export const MustAcknowledge: Story = {
   },
 };
 
+/** Every variant on one page. Each is its own modal, so they stack in the top layer; use the docs frame. */
+export const AllStates: Story = {
+  render: (args) => (
+    <>
+      <Dialog {...args} />
+      <Dialog {...args} title="Wide" size="wide" />
+    </>
+  ),
+};
+
 export const IsModalAndLabelled: Story = {
   play: async ({ canvas, args }) => {
     const dialog = canvas.getByRole('dialog', { name: 'Revoke this connection?' });
     await expect(dialog).toBeVisible();
+    // Opened through showModal(): the platform's focus trap, inert page and top layer.
+    await expect(dialog.matches(':modal')).toBe(true);
     // Buttons render on the touch tier inside a dialog whatever the pointer.
     const revoke = canvas.getByRole('button', { name: 'Revoke connection' });
     await expect(Math.round(revoke.getBoundingClientRect().height)).toBe(44);

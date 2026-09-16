@@ -45,6 +45,26 @@ export const Radios: Story = {
   },
 };
 
+export const AllStates: Story = {
+  render: () => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <ChoiceGroup legend="Outcomes">
+        <Checkbox label="Allowed" defaultChecked />
+        <Checkbox label="Refused" />
+      </ChoiceGroup>
+      <ChoiceGroup legend="Outcomes, inline, with a hint" hint="Events outside the chosen outcomes are hidden." inline>
+        <Checkbox label="Allowed" defaultChecked />
+        <Checkbox label="Refused" />
+        <Checkbox label="Failed" disabled />
+      </ChoiceGroup>
+      <ChoiceGroup legend="Presence">
+        <Radio name="p" label="Optional" defaultChecked />
+        <Radio name="p" label="Required" />
+      </ChoiceGroup>
+    </div>
+  ),
+};
+
 // The legend names the whole set: a screen reader announces "Outcomes, group"
 // before the first row, which is what a fieldset is for.
 export const LegendNamesTheGroup: Story = {
