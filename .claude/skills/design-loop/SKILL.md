@@ -14,10 +14,12 @@ needs the app running with the file open, `addon-mcp` needs the dev server on
 ## 1. Design
 - `open_file` `web/design/hikyo.pen`. Never `new_document`.
 - Build the node with `create_shape` / `set_layout` / `set_text`. Bind every
-  fill, stroke, and radius to a variable with `bind_variable`; raw values are
-  a review finding.
+  fill, stroke, and radius to a variable with `bind_variable`, and any size
+  that has a token (`$--touch` for the 44 px touch target); raw values where a
+  token exists are a review finding.
 - Name it `Title/Variant` (`rename_node`) and make it a component
-  (`node_to_component`). Screens follow the same rule (`Members/Empty`).
+  (`node_to_component`, which sets `"reusable": true` on the frame; the Button
+  pilot frames carry that flag). Screens follow the same rule (`Members/Empty`).
   `design()` rejects anything else: letters, digits and single spaces, at
   least two segments.
 - `save_file` to the same path.

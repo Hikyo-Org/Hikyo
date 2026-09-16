@@ -24,8 +24,9 @@ Skill: .claude/skills/design-loop/SKILL.md
 - `export.ts` resolves names with `openpencil find --name` and an exact filter,
   because `query` (XPath) is broken under Node in `@open-pencil/cli` 0.14.0. It
   fails the build on not-found, ambiguous, or result-cap-hit.
-- Pencil toolbar button in `web/.storybook/openpencil-addon.tsx`
-  (`MIN_APP_VERSION = '0.15.0'`). It posts to the dev middleware and falls back
+- Pencil toolbar button in `web/.storybook/openpencil-addon.tsx`. Its tooltip
+  says dev-server-only, because the openpencil:// scheme is not in any released
+  OpenPencil yet. It posts to the dev middleware and falls back
   to `openpencil://open?file=web%2Fdesign%2Fhikyo.pen&node=...` only on a 405 or
   a reply that is not the middleware's `{ message }` shape.
 - Dev-only middleware `web/.storybook/openpencil-middleware.ts` with
@@ -59,8 +60,9 @@ Skill: .claude/skills/design-loop/SKILL.md
   origin/master 42225c6, reviewed clean) but is not pushed, forked, or PR'd:
   that is an owner decision. PR text is at
   `.superpowers/sdd/2026-09-16-openpencil-url-scheme/pr-body.md` (gitignored
-  workspace). Once it lands in a tagged OpenPencil release: bump
-  `MIN_APP_VERSION` in `web/.storybook/openpencil-addon.tsx`, delete
+  workspace). Once it lands in a tagged OpenPencil release: restore
+  the minimum-version tooltip with the real version in
+  `web/.storybook/openpencil-addon.tsx`, delete
   `web/.storybook/openpencil-middleware.ts`, its test, and the `viteFinal`
   block in `web/.storybook/main.ts`, and drop `@open-pencil/mcp` from web
   devDependencies. Issue: #756.
