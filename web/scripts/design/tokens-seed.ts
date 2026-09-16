@@ -27,10 +27,11 @@ try {
 }
 const doc: z.infer<typeof penShell> & { variables?: Record<string, PenVariable> } =
   existing === undefined
-    ? { version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] } }
+    ? { version: '2.8', children: [], themes: { Mode: ['Dark', 'Light'] } }
     : penShell.parse(JSON.parse(existing));
 const variables = cssToPenVariables(css);
-doc.themes = { ...doc.themes, Mode: ['Light', 'Dark'] };
+// Dark leads: the first mode is the document default, and the app defaults to dark.
+doc.themes = { ...doc.themes, Mode: ['Dark', 'Light'] };
 doc.variables = variables;
 await writeFile(PEN, `${JSON.stringify(doc, null, 2)}\n`);
 console.log(`hikyo.pen: ${Object.keys(variables).length} variables written from tokens.css`);

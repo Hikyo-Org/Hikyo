@@ -32,7 +32,7 @@ for (const node of nodes) {
   // match, and the duplicate count, correct.
   const { stdout } = await run(CLI, ['find', PEN, '--name', node, '--limit', String(LIMIT), '--json']);
   const found = parseQueryOutput(stdout);
-  if (found.length === LIMIT) {
+  if (found.length >= LIMIT) {
     failures.push(`${node}: find hit the ${LIMIT}-result cap, uniqueness cannot be proven`);
     continue;
   }

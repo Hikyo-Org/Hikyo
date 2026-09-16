@@ -98,9 +98,12 @@ export function parsePenVariables(penJson: string): PenSides {
       out.set(name, { type: v.type, light: String(v.value), dark: String(v.value) });
       continue;
     }
-    const light = v.value.find((e) => e.theme === undefined || e.theme.Mode === 'Light');
-    if (!light) throw new Error(`hikyo.pen: variable ${name} has no Light value`);
-    const dark = v.value.find((e) => e.theme?.Mode === 'Dark') ?? light;
+    // The untheme'd entry IS the default mode, and the default mode is Dark: the
+    // app's default theme is dark (DESIGN.md) and the headless renderer exports
+    // whichever mode is the default, so the design file has to agree.
+    const dark = v.value.find((e) => e.theme === undefined);
+    if (!dark) throw new Error(`hikyo.pen: variable ${name} has no default (Dark) value`);
+    const light = v.value.find((e) => e.theme?.Mode === 'Light') ?? dark;
     out.set(name, { type: v.type, light: String(light.value), dark: String(dark.value) });
   }
   return out;
@@ -172,7 +175,8 @@ export function cssToPenVariables(css: TokenSides): Record<string, PenVariable> 
     if (kind === 'color') {
       variables[name] = {
         type: 'color',
-        value: [{ value: cssHex(light) }, { value: cssHex(dark), theme: { Mode: 'Dark' } }],
+        // Dark first and untheme'd: it is the default mode (see parsePenVariables).
+        value: [{ value: cssHex(dark) }, { value: cssHex(light), theme: { Mode: 'Light' } }],
       };
     } else if (kind === 'number') {
       variables[name] = { type: 'number', value: Number(cssNumber(dark)) };

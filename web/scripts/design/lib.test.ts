@@ -30,11 +30,11 @@ const css = `
 const pen = JSON.stringify({
   version: '2.8',
   children: [],
-  themes: { Mode: ['Light', 'Dark'] },
+  themes: { Mode: ['Dark', 'Light'] },
   variables: {
     '--bg': {
       type: 'color',
-      value: [{ value: '#f4f4f2' }, { value: '#22272d', theme: { Mode: 'Dark' } }],
+      value: [{ value: '#22272d' }, { value: '#f4f4f2', theme: { Mode: 'Light' } }],
     },
     '--radius-control': { type: 'number', value: 4 },
   },
@@ -45,7 +45,7 @@ const penWith = (overrides: Record<string, PenVariable>) =>
   JSON.stringify({
     version: '2.8',
     children: [],
-    themes: { Mode: ['Light', 'Dark'] },
+    themes: { Mode: ['Dark', 'Light'] },
     variables: { ...cssToPenVariables(parseTokensCss(css)), ...overrides },
   });
 
@@ -110,7 +110,7 @@ describe('compareTokens', () => {
   it('is clean when pen mirrors css', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(JSON.stringify({
-      version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] },
+      version: '2.8', children: [], themes: { Mode: ['Dark', 'Light'] },
       variables: cssToPenVariables(t),
     }));
     expect(compareTokens(t, v)).toEqual([]);
@@ -123,13 +123,13 @@ describe('compareTokens', () => {
   });
   it('reports a missing token', () => {
     const t = parseTokensCss(css);
-    const v = parsePenVariables(JSON.stringify({ version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] }, variables: {} }));
+    const v = parsePenVariables(JSON.stringify({ version: '2.8', children: [], themes: { Mode: ['Dark', 'Light'] }, variables: {} }));
     expect(compareTokens(t, v)).toContain('--bg: missing in hikyo.pen');
   });
   it('reports a number mismatch exactly', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(JSON.stringify({
-      version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] },
+      version: '2.8', children: [], themes: { Mode: ['Dark', 'Light'] },
       variables: { ...cssToPenVariables(t), '--radius-control': { type: 'number', value: 5 } },
     }));
     expect(compareTokens(t, v)).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen, dark)');
@@ -137,14 +137,14 @@ describe('compareTokens', () => {
   it('names the light mode when only the light value differs', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(penWith({
-      '--radius-control': { type: 'number', value: [{ value: 5 }, { value: 4, theme: { Mode: 'Dark' } }] },
+      '--radius-control': { type: 'number', value: [{ value: 4 }, { value: 5, theme: { Mode: 'Light' } }] },
     }));
     expect(compareTokens(t, v)).toContain('--radius-control: expected 4 (tokens.css), got 5 (hikyo.pen, light)');
   });
   it('reports both modes when both drift', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(penWith({
-      '--radius-control': { type: 'number', value: [{ value: 5 }, { value: 6, theme: { Mode: 'Dark' } }] },
+      '--radius-control': { type: 'number', value: [{ value: 6 }, { value: 5, theme: { Mode: 'Light' } }] },
     }));
     const errors = compareTokens(t, v);
     expect(errors).toHaveLength(2);
@@ -171,11 +171,11 @@ describe('error paths', () => {
     const t = parseTokensCss(css.replace('oklch(0.19 0.012 220)', 'oklch(nope)'));
     expect(() => cssToPenVariables(t)).toThrow(/unparseable colour/);
   });
-  it('throws when a themed variable has no Light entry', () => {
+  it('throws when a themed variable has no default entry', () => {
     const json = JSON.stringify({
-      version: '2.8', children: [], themes: { Mode: ['Light', 'Dark'] },
+      version: '2.8', children: [], themes: { Mode: ['Dark', 'Light'] },
       variables: { '--bg': { type: 'color', value: [{ value: '#22272d', theme: { Mode: 'Dark' } }] } },
     });
-    expect(() => parsePenVariables(json)).toThrow(/--bg has no Light value/);
+    expect(() => parsePenVariables(json)).toThrow(/--bg has no default \(Dark\) value/);
   });
 });
