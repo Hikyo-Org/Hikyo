@@ -6,7 +6,7 @@ const meta = {
   component: Badge,
   tags: ['ai-generated'],
   args: { children: 'Active', tone: 'neutral' },
-  argTypes: { tone: { control: 'select', options: ['neutral', 'danger', 'warn', 'changed', 'ok'] } },
+  argTypes: { tone: { control: 'select', options: ['neutral', 'danger', 'changed', 'ok'] } },
 } satisfies Meta<typeof Badge>;
 
 export default meta;

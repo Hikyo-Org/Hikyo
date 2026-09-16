@@ -58,12 +58,11 @@
   --touch: 44px;
   --rail: 56px;
 
-  /* Control height, ONE token for buttons, inputs, selects, tabs, menu rows
-     and chips: no surface overrides it (decided 2026-09-16). Compact is the
-     in-row tertiary tier (quiet buttons, icon-only quiet). Both become the
-     touch floor on a coarse pointer, below. */
+  /* Control height, ONE token for every button (quiet included), input,
+     select, tab, menu row, summary, chip and control-shaped link: no surface
+     and no variant overrides it (decided 2026-09-16). The touch floor on a
+     coarse pointer, below. */
   --control: 36px;
-  --control-compact: 28px;
   /* Badges and chips-as-labels: the one height under the compact tier. */
   --badge-height: 20px;
 
@@ -170,7 +169,6 @@
 @media (pointer: coarse) {
   :root {
     --control: var(--touch);
-    --control-compact: var(--touch);
     --chk-box: var(--touch);
     --chk-visual: 20px;
     --chk-gap: 0px;

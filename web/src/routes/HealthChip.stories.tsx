@@ -36,10 +36,15 @@ const baseTarget: AdapterTarget = {
   conflicts: [],
 };
 
+// The target carries bigint revisions, which the docs page cannot serialise
+// into an args table ("Do not know how to serialize a BigInt"), so the status
+// is the arg and the fixture is built in render.
 const meta = {
   component: HealthChip,
   tags: ['ai-generated'],
   args: { target: baseTarget },
+  argTypes: { target: { control: false, table: { disable: true } } },
+  parameters: { docs: { source: { type: 'code' } }, controls: { disable: true } },
 } satisfies Meta<typeof HealthChip>;
 
 export default meta;

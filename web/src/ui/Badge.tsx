@@ -9,11 +9,11 @@ import { cx } from './cx.ts';
  * Tones map to the state vocabulary in DESIGN.md: `danger` for a violation or
  * refusal, `changed` for pending or drafted (slate, never red), `ok` for a
  * measured-good condition (accent hairline), `neutral` for everything else.
- * `warn` is kept as an alias of `changed` for the screens that use it. `mono`
- * sets the badge in the value face, for identifiers and revision numbers.
+ * `mono` sets the badge in the value face, for identifiers and revision
+ * numbers. Routes that emit `badge--warn` migrate to `changed`.
  */
 type BadgeProps = ComponentProps<'span'> & {
-  tone?: 'neutral' | 'danger' | 'warn' | 'changed' | 'ok';
+  tone?: 'neutral' | 'danger' | 'changed' | 'ok';
   mono?: boolean;
 };
 
@@ -23,7 +23,6 @@ export function Badge({ tone = 'neutral', mono, className, ...rest }: BadgeProps
       className={cx(
         'badge',
         tone === 'danger' && 'badge--danger',
-        tone === 'warn' && 'badge--warn',
         tone === 'changed' && 'badge--changed',
         tone === 'ok' && 'badge--ok',
         mono === true && 'mono',

@@ -40,9 +40,15 @@ h3,
   font-size: var(--fs-md);
   font-weight: 700;
   line-height: 1.4;
+  color: var(--tx);
+}
+
+/* No heading is uppercase; the eyebrow is the only uppercase text. Ties the
+   app.css per-surface `text-transform` rules (panel, publish sheet, editor
+   eyebrows) and wins by order. */
+:root :is(h1, h2, h3) {
   text-transform: none;
   letter-spacing: normal;
-  color: var(--tx);
 }
 
 /* The eyebrow: a section marker above a block, never a heading size. The
@@ -97,6 +103,9 @@ h3,
 .btn {
   min-height: var(--control);
   font-size: var(--fs-md);
+  /* A button is one line: a label that wraps grows the control past the
+     token (the members table's "Reset credential" at 41px). */
+  white-space: nowrap;
 }
 
 .btn--icon {
@@ -105,16 +114,9 @@ h3,
 }
 
 .btn--quiet {
-  min-height: var(--control-compact);
+  min-height: var(--control);
   padding: 0 var(--space-2);
   font-size: var(--fs-sm);
-}
-
-/* Icon-only quiet: a square on the compact tier, for in-row actions such as
-   the capability revoke. */
-.btn--icon.btn--quiet {
-  width: var(--control-compact);
-  min-width: var(--control-compact);
 }
 
 /* Tabs and menu rows are controls too: the control token, not the touch
@@ -131,13 +133,13 @@ h3,
    a coarse pointer), and the sign-in card's quiet links (44px). */
 .matrix__add-key,
 .capability__revoke {
-  min-height: var(--control-compact);
+  min-height: var(--control);
   font-size: var(--fs-sm);
 }
 
 .capability__revoke {
-  width: var(--control-compact);
-  min-width: var(--control-compact);
+  width: var(--control);
+  min-width: var(--control);
 }
 
 .matrix__history-link {
@@ -156,13 +158,17 @@ h3,
 
 /* --- Field controls ---------------------------------------------------------
 
-   Supersedes `.field input`, `.field select` (heights), `.settings-input`,
-   `.settings-select`, `.change-approvals select|input|textarea`, and the
-   10px/12px padding that produced the 42px members select. One height, one
-   padding, one type size. `:where()` keeps the `:not([type])` chain at zero
-   specificity, so the rules after it win by order and by class as intended. */
-:is(.field, .form, .settings-row, .change-approvals)
-  :is(:where(input:not([type='checkbox']):not([type='radio']):not([type='range'])), select),
+   EVERY text-like input, select and textarea, wherever it sits (the route
+   sweep found inputs outside `.field` in the key-create sheet, the step-up
+   banner and the folder dialog still at 44px). Supersedes `.field input`,
+   `.field select`, `.settings-input`, `.settings-select`, `.change-approvals
+   select|input|textarea`, `.stepup__form input`, `.catalogue-manage__create
+   input`, `.matrix-key-create__type select`, `.history-sheet input[type=date]`,
+   `.matrix-row-editor__fill textarea`, and the 10px/12px padding that produced
+   the 42px members select. The `:root` prefix gives the rule (0,2,1) so it
+   ties those and wins by order; `:where()` keeps the `:not([type])` chain at
+   zero so the `.mono` and dialog rules below still win by class. */
+:root :is(:where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file'])), select),
 :is(.settings-input, .settings-select) {
   min-height: var(--control);
   padding: 0 var(--space-3);
@@ -173,7 +179,7 @@ h3,
   font-size: var(--fs-md);
 }
 
-:is(.field, .form, .settings-row, .change-approvals) textarea {
+:root textarea {
   min-height: calc(var(--control) * 2.5);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--line);
@@ -194,6 +200,254 @@ h3,
    select and textarea had no such rule, so the three reacted differently. */
 .field :is(input, select, textarea):focus-visible {
   border-color: var(--accent);
+}
+
+/* --- Whole-app fold: every app.css rule still on the touch token or an
+   off-scale size (from the 230-story sweep, 2026-09-16). Grouped by the token
+   each moves to; `:root` gives (0,2,x) so they tie app.css's class rules and
+   win by order. On migration the app.css originals are retargeted and these
+   lists go. --- */
+
+/* Control height: control-shaped links, summaries, row and header controls. */
+:root :is(
+  .jump__link,
+  .sidebar__link,
+  .matrix__group-link,
+  .matrix__group-row button,
+  .matrix__history-link,
+  .matrix__legend-toggle.btn,
+  .matrix__publish-heading,
+  .matrix__publish-confirmation,
+  .matrix-editor__copy label,
+  .matrix-editor__schema summary,
+  .environment-lifecycle > summary,
+  .values__keyname,
+  .import-wizard__secret,
+  .import-wizard__source,
+  .change-approvals label,
+  .toast__action,
+  .toast__dismiss,
+  .explain__toggle,
+  .audit__row,
+  .skip
+) {
+  min-height: var(--control);
+}
+
+:root :is(.matrix-editor__close, .ceremony__stepup, .scan-block__locator, .sidebar__empty code) {
+  width: var(--control);
+  min-width: var(--control);
+  height: var(--control);
+  min-height: var(--control);
+  line-height: normal;
+}
+
+:root .matrix__legend-toggle.btn {
+  min-width: var(--control);
+}
+
+/* The matrix header row is a row: the row token, not the touch floor. The
+   sticky group-row offset reads the measured header height (`--gh`), so it
+   follows. */
+:root .matrix__table thead th {
+  height: var(--row);
+}
+
+/* Type: 12px and 11.5px captions, hints, metas and legends onto the caption
+   size; 10px marks onto the eyebrow size; 15px onto body; the 17/18/19px
+   headings onto the scale (h1 20, h2 16). */
+:root :is(
+  .values__countdown,
+  .settings-row__detail,
+  .scan-warn__locator,
+  .scan-warn__env,
+  .scan-block__locator,
+  .project-avatar,
+  .page--chrome .factor__meta,
+  .menu__label,
+  .matrix__table thead th,
+  .matrix__publish-protected,
+  .matrix__legend-body,
+  .matrix__legend-body dt,
+  .matrix__group-row button,
+  .matrix__filter,
+  .matrix__environment-picker legend,
+  .matrix-key-create__presence-hint,
+  .matrix-key-create__presence legend,
+  .matrix-key-create__constraints legend,
+  .matrix-key-create label,
+  .matrix-editor__show-typing,
+  .matrix-editor__schema summary,
+  .key-detail__rule-editor legend,
+  .key-detail__presence-editor legend,
+  .key-detail__presence-impact-title,
+  .key-detail__hint,
+  .journey__state,
+  .import-wizard__suggestion,
+  .import-wizard__source-hint,
+  .import-wizard__renames,
+  .import-wizard__invalid,
+  .import-wizard legend,
+  .history__meta,
+  .history__impact-heading,
+  .catalogue-manage__meta,
+  .audit__row-actor,
+  .audit__payload,
+  .audit__fact dt,
+  .adapters__failures,
+  .page--members .capability--compact,
+  .matrix__history-link,
+  .history__chips .count
+) {
+  font-size: var(--fs-sm);
+}
+
+:root :is(.instance-cli, .import-wizard__command, .matrix-cell, .matrix-cell__absent) {
+  font-size: var(--fs-mono);
+}
+
+:root :is(
+  .matrix__group-chevron,
+  .matrix-row-editor__row-head span,
+  .matrix-editor__eyebrow,
+  .matrix-cell__error,
+  .context-sidebar__org-avatar.avatar
+) {
+  font-size: var(--fs-xs);
+}
+
+:root .header__crumbs {
+  font-size: var(--fs-md);
+}
+
+:root :is(.page--chrome h1, .card h1) {
+  font-size: var(--fs-xl);
+}
+
+:root :is(.card h2, .key-detail__head h2, .history__title h2, .audit__detail-head h2, .adapters__adapter-head h2, .matrix__publish h2) {
+  font-size: var(--fs-lg);
+}
+
+:root :is(.identity-controls__preview, .identity-controls__preview--org) {
+  font-size: var(--fs-lg);
+}
+
+/* Any fieldset that is a field drops the browser's box; its legend is a
+   caption (the ChoiceGroup rule, applied to the route fieldsets too). */
+:root fieldset.field {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+:root fieldset.field > legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+}
+
+/* An inline number beside a choice (the credential lifetime) stays short so
+   the sentence around it holds one line. */
+.chk input[type='number'] {
+  width: 8ch;
+  flex: none;
+}
+
+/* Five rules app.css states with more specificity than the fold above. */
+:root .page--members .inspect select {
+  min-height: var(--control);
+  padding: 0 var(--space-3);
+  font-size: var(--fs-md);
+}
+
+:root :is(.sidebar__link, .environment-lifecycle > summary) {
+  padding-block: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* --- Alert and notice: glyph, text, one optional action -------------------
+
+   Text and action centre on one line and the action drops under the text when
+   the row is narrow; a multi-line message keeps the glyph on its first line.
+   Supersedes the flex defaults on `.alert`, `.notice` and `.retention-warning`
+   that left the text top-aligned beside a 36px button. */
+:root :is(.alert, .notice, .retention-warning) {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+:root :is(.alert, .notice, .retention-warning) > .alert__glyph {
+  align-self: flex-start;
+  line-height: 1.5;
+}
+
+:root :is(.alert, .notice, .retention-warning) > :is(.alert__text, span:not(.alert__glyph):not(.alert__action)) {
+  flex: 1 1 24ch;
+}
+
+:root :is(.alert, .notice, .retention-warning) > :is(.alert__action, .btn) {
+  margin-left: auto;
+}
+
+/* --- Publish sheet: rows align to the environment name ---------------------
+
+   The key rows and the ready/blocked state sit under the environment name,
+   not under its checkbox; the two full-width buttons become an action row.
+   Supersedes the padding in app.css `.matrix__publish-env` children. */
+:root .matrix__publish-env > :not(.matrix__publish-heading) {
+  margin-left: calc(var(--chk-box) + var(--space-2));
+  padding-left: 0;
+  list-style: none;
+}
+
+:root .matrix__publish {
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--space-2) var(--space-2);
+}
+
+:root .matrix__publish > :not(.btn) {
+  flex: 1 1 100%;
+}
+
+:root .matrix__publish > .btn {
+  flex: none;
+}
+
+/* --- Folder cleanup rows: a grid, so the inputs line up ----------------------
+
+   Checkbox, label, input as three columns; app.css lays them out as a wrapping
+   flex row, where the input starts wherever the label ends. */
+:root .catalogue-manage__row-main {
+  display: grid;
+  grid-template-columns: auto minmax(12ch, 18ch) minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+}
+
+/* A control with a trailing toggle (the password reveal): the input keeps the
+   whole width, the toggle sits inside its right edge at the control height. */
+.field__control {
+  position: relative;
+  display: flex;
+}
+
+.field__control > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: calc(var(--control) + var(--space-3));
+}
+
+.field__reveal {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--control);
+  border-color: transparent;
+  background: transparent;
 }
 
 /* --- Field hint and error ---------------------------------------------------

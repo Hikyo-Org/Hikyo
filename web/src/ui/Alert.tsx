@@ -10,14 +10,24 @@ import type { ReactNode } from 'react';
  * screen-reader user can miss and a keyboard user cannot return to.
  * Supersedes `Alert` and `Done` in routes/Sections.tsx.
  */
-export function Alert({ tone = 'danger', children }: { tone?: 'danger' | 'done'; children: ReactNode }) {
+export function Alert({
+  tone = 'danger',
+  action,
+  children,
+}: {
+  tone?: 'danger' | 'done';
+  /** One action that answers the message (retry, replace); sits at the end of the row, drops under it when narrow. */
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   const done = tone === 'done';
   return (
-    <p className={done ? 'notice' : 'alert'} role={done ? 'status' : 'alert'}>
+    <div className={done ? 'notice' : 'alert'} role={done ? 'status' : 'alert'}>
       <span className="alert__glyph" aria-hidden="true">
         {done ? '✓' : '!'}
       </span>
-      <span>{children}</span>
-    </p>
+      <span className="alert__text">{children}</span>
+      {action !== undefined ? <span className="alert__action">{action}</span> : null}
+    </div>
   );
 }

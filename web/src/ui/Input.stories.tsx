@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
+import { expect, userEvent } from 'storybook/test';
 
 import { Input } from './Input.tsx';
 
@@ -13,7 +13,17 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {};
-export const Password: Story = { args: { label: 'Password', type: 'password' } };
+export const Password: Story = { args: { label: 'Password', type: 'password', placeholder: '' } };
+export const PasswordRevealable: Story = {
+  args: { label: 'Password', type: 'password', placeholder: '', revealable: true, defaultValue: 'hunter2' },
+  play: async ({ canvas }) => {
+    const field = canvas.getByLabelText('Password');
+    await expect(field).toHaveAttribute('type', 'password');
+    await userEvent.click(canvas.getByRole('button', { name: 'Show password' }));
+    await expect(field).toHaveAttribute('type', 'text');
+    await expect(canvas.getByRole('button', { name: 'Hide password' })).toHaveAttribute('aria-pressed', 'true');
+  },
+};
 export const Disabled: Story = { args: { disabled: true, defaultValue: 'locked' } };
 export const Mono: Story = { args: { label: 'Key name', mono: true, defaultValue: 'DATABASE_URL' } };
 
@@ -63,7 +73,7 @@ export const AllStates: Story = {
   render: () => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 320 }}>
       <Input label="Username" placeholder="you@example.com" />
-      <Input label="Password" type="password" />
+      <Input label="Password" type="password" revealable defaultValue="hunter2" />
       <Input label="Remote URL" hint="The origin only; paths and query strings are refused." />
       <Input label="Fingerprint" defaultValue="sha256:ab12" error="That fingerprint does not match the certificate the remote presented." />
       <Input label="Disabled" defaultValue="locked" disabled />

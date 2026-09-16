@@ -59,7 +59,7 @@ Copy: no em-dash anywhere in user-visible text; use a comma, colon, or full stop
 - **The 999px pill is reserved** for identity circles, count badges, and status dots of 12px or less. Matrix values are table content, not badges: the hover and focus box around a value is a control (4px). Labelled chips (problem counts, `current rN`, staging summaries) are badges (3px).
 - Hairline borders (1px) over shadows; shadows only on modal overlays (every modal family carries one: `.dialog`, `.ceremony`, `.matrix-editor`).
 - Density: matrix rows ~36px desktop, ~44px touch targets mobile.
-- **Control height (decided 2026-09-16):** one token, no per-surface overrides. `--control` 36px for buttons, inputs and selects on a fine pointer, the 44px touch floor on a coarse pointer, dialogs and the sign-in card included; `--control-compact` 28px for quiet in-row actions and icon-only quiet buttons. Tabs and menu rows are controls and take `--control`; no surface overrides a control's height. Choice controls: the input is the hit box (24px fine, 44px coarse), the drawn box 18px / 20px.
+- **Control height (decided 2026-09-16):** one token, no per-surface overrides. `--control` 36px for buttons, inputs and selects on a fine pointer, the 44px touch floor on a coarse pointer, dialogs and the sign-in card included; Quiet buttons differ in weight and padding, never in height. Tabs, menu rows, summaries and control-shaped links are controls and take `--control`; no surface or variant overrides a control's height. Choice controls: the input is the hit box (24px fine, 44px coarse), the drawn box 18px / 20px.
 - **Badge:** one vocabulary, 11px / 500 on the badge radius; tones neutral, danger (violation), changed (pending, slate), ok (a measured-good condition, accent hairline); `mono` for identifiers. Count pills stay the pill exception above.
 
 ## Motion
@@ -77,7 +77,7 @@ Families and rules:
 - **Surface, line, ink:** as listed under Color. State is never colour-only.
 - **Shape:** radius carries a role (containers 6, controls 4, badges 3); the pill is reserved.
 - **Type:** `--fs-xs/sm/md/lg/xl` (11/13/14/16/20) and `--fs-mono`; weights 400/500/700; only the eyebrow is uppercase.
-- **Control:** `--control` for every control's height, `--control-compact` for quiet in-row actions, `--badge-height` for badges; no surface overrides a height. `--hit-min` (24) and `--touch` (44) are the hit floors; `--chk-box` / `--chk-visual` size choice controls.
+- **Control:** `--control` for every control's height, quiet buttons and control-shaped links included; `--badge-height` for badges; no surface or variant overrides a height. `--hit-min` (24) and `--touch` (44) are the hit floors; `--chk-box` / `--chk-visual` size choice controls.
 - **Space:** `--space-1..6` (4/8/12/16/24/32) for every gap, padding and margin.
 - **Measure:** `--width-dialog` (520), `--width-dialog-wide` (760), `--measure` (68ch).
 - **Depth and motion:** `--overlay-shadow` on modal overlays only; `--z-chrome/sticky/drawer/overlay` are the only layers; `--ease`, `--dur`.

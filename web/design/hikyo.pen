@@ -420,10 +420,6 @@
       "type": "number",
       "value": 36
     },
-    "--control-compact": {
-      "type": "number",
-      "value": 28
-    },
     "--badge-height": {
       "type": "number",
       "value": 20

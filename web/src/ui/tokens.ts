@@ -74,10 +74,9 @@ export const TOKEN_FAMILIES: readonly TokenFamily[] = [
   },
   {
     family: 'Control',
-    rule: 'One height for every control; no surface overrides it. Compact is the in-row tertiary tier. Both become the touch floor on a coarse pointer.',
+    rule: 'One height for every control, quiet buttons and control-shaped links included; no surface or variant overrides it. The touch floor on a coarse pointer.',
     tokens: [
-      { name: '--control', role: 'buttons, inputs, selects, tabs, menu rows, chips' },
-      { name: '--control-compact', role: 'quiet and icon-quiet buttons' },
+      { name: '--control', role: 'buttons (all variants), inputs, selects, tabs, menu rows, summaries, chips, control-shaped links' },
       { name: '--badge-height', role: 'badges' },
       { name: '--touch', role: 'the floor on a coarse pointer' },
       { name: '--hit-min', role: 'the floor on a fine pointer (WCAG 2.5.8)' },

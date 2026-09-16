@@ -318,6 +318,36 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
   token stops resolving.
 - Chips stand at `--control` (a chip beside a button lines up).
 
+## 4f. Live review pass (Marc in Storybook, 2026-09-16)
+
+Findings and fixes, all in `ui.css`, `.storybook/preview.tsx` or story files:
+- Sizes everywhere: a 232-story sweep (`.xreview/size-sweep.mjs`, controls,
+  type, radii against the tokens) found jump links, summaries, tabs, menu
+  rows, toast buttons, sidebar links, the matrix header row and ~60 rules at
+  12/11.5/10/15/17/18/19px. All folded onto the tokens in the "Whole-app
+  fold" block; sweep now reports zero. Every input, select and textarea
+  takes the control rule wherever it sits. `--control-compact` retired:
+  quiet buttons differ in weight and padding, never height (Revoke
+  credential vs Revoke connection had 28 next to 36). Buttons never wrap.
+- Docs pages: the docs theme and canvas background now use the app surface
+  tokens, so a sticky strip painted `--bg` (the jump index) no longer reads
+  as a dark bar with flush buttons.
+- Alert: `action` slot; glyph, text and action centre on one line and the
+  action drops under on narrow (ProviderDiscoveryAlert, the retention
+  "Replace with whole days" warning). Headings never uppercase.
+- Publish sheet: key rows and state align to the environment name; the two
+  full-width buttons became an action row (Close, then Publish).
+- Folder cleanup rows: checkbox, label, input as a grid so inputs line up.
+- Input `revealable` for password fields (show/hide, aria-pressed).
+- ProfileUpdateBadge story mounts the dot on an avatar; HealthChip stories
+  keep bigint fixtures out of the docs args table; Badge drops the `warn`
+  alias (`changed` is the tone).
+- Open, need a decision or a route change: MatrixRowEditor density
+  ("cramped"), publish sheet copy (what the rows mean), MintConnectionForm's
+  inline "Expires after [n] days" sentence (route markup), FleetUpdateNotice
+  "no updates" story (not a component, drop on migration), Dialog close X
+  (recommendation: no; Escape and the Cancel action are the two ways out).
+
 ## 5. Migration into the app (next, outside the Storybook-only scope)
 
 Decided 2026-09-16: #755 stays Storybook-only and merges as is; the
