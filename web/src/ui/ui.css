@@ -643,7 +643,7 @@ label.chk:has(input:disabled) {
 :root input:disabled::after,
 .chk input:disabled + label,
 label.chk:has(input:disabled) {
-  opacity: 0.6;
+  opacity: var(--opacity-disabled);
 }
 
 /* The OS owns the palette under forced colours; hand the box back to the
