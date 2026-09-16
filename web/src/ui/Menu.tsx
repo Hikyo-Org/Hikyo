@@ -5,7 +5,7 @@ import { cx } from './cx.ts';
 /**
  * An action / overflow menu built on the native Popover API. The trigger's
  * `popoverTarget` gives the panel an implicit anchor plus light-dismiss,
- * Escape-to-close, and top-layer stacking for free — no open/close state, no
+ * Escape-to-close, and top-layer stacking for free, no open/close state, no
  * outside-click listener (unlike the bespoke account menu in Shell.tsx). It
  * reuses the existing `.menu` / `.menu__item` classes; `.menu--pop` only swaps
  * the account menu's fixed corner offsets for anchor positioning.
@@ -42,7 +42,7 @@ export function Menu({
 
 /**
  * One row in a {@link Menu}. Runs its `onClick`, then closes the enclosing
- * popover — so a selection dismisses the menu the way a real action menu does.
+ * popover, so a selection dismisses the menu the way a real action menu does.
  */
 export function MenuItem({ className, onClick, ...rest }: ComponentProps<'button'>) {
   return (

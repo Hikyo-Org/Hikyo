@@ -28,7 +28,7 @@ export const Opens: Story = {
     // Top layer is render-only; the panel node stays in the story subtree.
     // Assert visibility (not just `:popover-open`): the panel inherits
     // `.menu { display: flex }`, so a closed popover must be re-hidden by
-    // `.menu--pop:not(:popover-open)` — `:popover-open` alone can't catch that.
+    // `.menu--pop:not(:popover-open)`, `:popover-open` alone can't catch that.
     const panel = canvasElement.querySelector('[popover]');
     await expect(panel).not.toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Row actions' }));
@@ -36,7 +36,7 @@ export const Opens: Story = {
   },
 };
 
-// Selecting a row runs its handler and dismisses the menu — the whole point of
+// Selecting a row runs its handler and dismisses the menu, the whole point of
 // the popover over the bespoke account-menu state machine.
 const onDelete = fn();
 export const Selects: Story = {

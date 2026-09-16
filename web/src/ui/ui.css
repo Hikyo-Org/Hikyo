@@ -1,0 +1,518 @@
+/*
+ * Atom styles authored in Storybook, ahead of the app.
+ *
+ * Loaded after app.css by .storybook/preview.tsx only; the app does not import
+ * this file yet. Each block names the app.css rule it supersedes so the
+ * migration is a move, not a rewrite (docs/handoff/storybook-ui-consistency.md
+ * keeps the list). Every block here is approved; it overrides app.css by
+ * cascade order until the migration deletes the superseded rules.
+ */
+
+/* --- Choice controls: checkbox and radio ---------------------------------
+
+   Root cause of the oversized boxes (measured, see the handoff):
+   - `.field input` gives EVERY input a 44px min-height, padding and a border;
+     the checkbox inside `.field.chk` inherits the min-height, so the atom is
+     24x44 on a desktop pointer and the row it sits in is 44px tall.
+   - `@media (max-width: 800px)` bumps the box to 44px by VIEWPORT WIDTH, so a
+     narrow desktop window (and Storybook's preview pane) gets phone sizing.
+   - four surfaces carry their own sizes (22/18/20px, `min-height: 0`), and the
+     bare ones fall back to the browser's 13px.
+
+   The fix separates the hit box from the drawn box. The input element itself
+   stays the hit target (the pinned e2e sweep measures the input's own box and
+   reads the focus ring from the input's own outline), the visual is drawn on
+   pseudo-elements at a size that suits 14px text, and the 44px floor applies
+   on a coarse pointer only, where DESIGN.md sets it. */
+
+:root {
+  --chk-box: 18px; /* the input's own box: hit target and keyboard focus */
+  --chk-visual: 18px; /* the drawn square, centred in the box */
+  --chk-gap: 8px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --chk-box: var(--touch);
+    --chk-visual: 20px;
+    /* The box already carries 12px of hit area past the drawn square. */
+    --chk-gap: 0px;
+  }
+}
+
+.chk {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--chk-gap);
+  min-height: 24px;
+}
+
+label.chk,
+.chk > label {
+  cursor: pointer;
+}
+
+/* The option text is body text, not a field caption: 14px, full ink. This
+   also ends the 13px-vs-14px split between `.field.chk label` and bare
+   `label.chk`. */
+.chk label,
+label.chk {
+  color: var(--tx);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.chk input[type='checkbox'],
+.chk input[type='radio'] {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--chk-box);
+  height: var(--chk-box);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  /* The global ring is offset 2px OUTSIDE the element. Pull it in so it hugs
+     the drawn box, not the (possibly 44px) hit box. */
+  outline-offset: calc((var(--chk-visual) - var(--chk-box)) / 2 + 2px);
+}
+
+.chk input[type='radio']:focus-visible {
+  border-radius: 50%;
+}
+
+/* ::before is the box, ::after the mark; both sit in the same grid cell. */
+.chk input[type='checkbox']::before,
+.chk input[type='radio']::before,
+.chk input[type='checkbox']::after,
+.chk input[type='radio']::after {
+  content: '';
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+}
+
+.chk input[type='checkbox']::before,
+.chk input[type='radio']::before {
+  width: var(--chk-visual);
+  height: var(--chk-visual);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+.chk input[type='radio']::before {
+  border-radius: 50%;
+}
+
+.chk input:not(:disabled):hover::before {
+  border-color: var(--tx-dim);
+}
+
+.chk input:checked::before,
+.chk input[type='checkbox']:indeterminate::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* The mark is a masked fill so it takes the theme's on-accent ink rather than
+   a colour baked into an SVG. */
+.chk input[type='checkbox']::after {
+  width: var(--chk-visual);
+  height: var(--chk-visual);
+  background: var(--on-accent);
+  mask: center / 72% no-repeat;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.chk input[type='checkbox']:checked::after {
+  opacity: 1;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3.2 3.2L13 5'/%3E%3C/svg%3E");
+}
+
+.chk input[type='checkbox']:indeterminate::after {
+  opacity: 1;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' d='M3.5 8h9'/%3E%3C/svg%3E");
+}
+
+.chk input[type='radio']::after {
+  width: calc(var(--chk-visual) * 0.45);
+  height: calc(var(--chk-visual) * 0.45);
+  border-radius: 50%;
+  background: var(--on-accent);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.chk input[type='radio']:checked::after {
+  opacity: 1;
+}
+
+/* Disabled dims the whole row at the same 0.6 the button primitive uses, and
+   names the state with the cursor. Covers both markup shapes: input + sibling
+   label, and a label wrapping the input. */
+.chk input:disabled,
+.chk input:disabled + label,
+label.chk:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.chk input:disabled::before,
+.chk input:disabled::after,
+.chk input:disabled + label,
+label.chk:has(input:disabled) {
+  opacity: 0.6;
+}
+
+/* The OS owns the palette under forced colours; hand the box back to the
+   platform so it is repainted with the system's check glyph. The hit box
+   sizes above still apply. */
+@media (forced-colors: active) {
+  .chk input[type='checkbox'],
+  .chk input[type='radio'] {
+    appearance: auto;
+  }
+
+  .chk input[type='checkbox']::before,
+  .chk input[type='radio']::before,
+  .chk input[type='checkbox']::after,
+  .chk input[type='radio']::after {
+    display: none;
+  }
+}
+
+/* --- Field controls: the same focus affordance on every control -----------
+
+   `.field input:focus-visible` turns the border accent; select and textarea
+   had no such rule, so the three controls reacted differently to focus. */
+.field select:focus-visible,
+.field textarea:focus-visible {
+  border-color: var(--accent);
+}
+
+/* --- ChoiceGroup: a labelled set of checkboxes or radios ------------------
+
+   New composed component, no current counterpart. Resets the fieldset chrome
+   to the plain `.field` box (the audit filter and SAML panels each did this
+   locally) and lays the rows out in a column, or a wrapping row inline. */
+.choice-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.choice-group > legend {
+  padding: 0;
+  margin-bottom: 6px;
+  color: var(--tx-dim);
+  font-size: 13px;
+}
+
+.choice-group__options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.choice-group--inline .choice-group__options {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+/* --- Sign-in flow: the second-factor step ---------------------------------
+
+   Same card as the login page; the code input is the step-up banner's
+   (9ch, mono), so the two surfaces stay one vocabulary. */
+.login__step {
+  margin: 0;
+  color: var(--tx-faint);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.login__code input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.2em;
+}
+
+.login__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.login__account {
+  margin: 0;
+  color: var(--tx-dim);
+}
+
+.login__account strong {
+  color: var(--tx);
+  font-weight: 500;
+}
+
+.login__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.login__secret {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: 13px;
+}
+
+.login__secret code {
+  color: var(--tx);
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
+}
+
+/* =========================================================================
+   Control scale, type scale, badges (approved 2026-09-16: 4a, 4b, 4c).
+   ========================================================================= */
+
+/* --- Tokens ----------------------------------------------------------------
+
+   Control height has two tiers, and the app already knew it: `.page--chrome
+   .btn` is 36px with a comment reserving 44px for dialogs, while everything
+   outside those pages fell back to the 44px touch floor on a desktop pointer.
+   The proposal names the tiers:
+   - `--control`: page content on a fine pointer, 36px (DESIGN.md density);
+     the touch floor on a coarse pointer.
+   - `--touch`: decision surfaces (dialogs, the sign-in card, ceremonies) on
+     every pointer, and everything on a coarse pointer.
+   - `--control-compact`: in-row tertiary actions (`.btn--quiet`), 28px on a
+     fine pointer, the floor on a coarse one.
+
+   Type scale, ratio 1.25 from 12.8 (DESIGN.md: >= 1.25, weight over size):
+   11 eyebrow and badge, 13 caption/label/lede/mono, 14 body, 16 h2, 20 h1.
+   Every other size the audit found (10, 12, 15, 17, 18, 19) folds into one
+   of these. Weights 400/500/700 only. */
+:root {
+  --control: 36px;
+  --control-compact: 28px;
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-mono: 13px;
+  --tracking-eyebrow: 0.06em;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control: var(--touch);
+    --control-compact: var(--touch);
+  }
+}
+
+/* --- Buttons: supersedes app.css `.btn` (min-height), `.page--chrome .btn`,
+   `.btn--icon`, `.btn--quiet`, and the `@media (pointer: coarse) .btn--quiet`
+   bump. Padding, radius, colours and weights are unchanged. */
+.btn {
+  min-height: var(--control);
+  font-size: var(--fs-md);
+}
+
+:is(dialog, .ceremony, .login__card, .matrix-editor) .btn {
+  min-height: var(--touch);
+}
+
+.btn--icon {
+  width: var(--control);
+  min-width: var(--control);
+}
+
+:is(dialog, .ceremony, .login__card, .matrix-editor) .btn--icon {
+  width: var(--touch);
+  min-width: var(--touch);
+}
+
+.btn--quiet {
+  min-height: var(--control-compact);
+  padding: 0 10px;
+  font-size: var(--fs-sm);
+}
+
+/* --- Field controls: supersedes `.field input`, `.field select` (heights),
+   `.settings-input`, `.settings-select`, `.change-approvals select|input|
+   textarea`, and the 10px/12px padding that produced the 42px members select.
+   One height, one padding, one type size; `.mono` keeps the mono size. */
+/* `:where()` keeps the `:not([type])` chain at zero specificity, so the
+   dialog exception and the `.mono` size below win as intended. */
+:is(.field, .form, .settings-row, .change-approvals)
+  :is(:where(input:not([type='checkbox']):not([type='radio']):not([type='range'])), select),
+:is(.settings-input, .settings-select) {
+  min-height: var(--control);
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--tx);
+  font-size: var(--fs-md);
+}
+
+:is(.field, .form, .settings-row, .change-approvals) textarea {
+  min-height: calc(var(--control) * 2.5);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--tx);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+:is(dialog, .ceremony, .login__card)
+  :is(:where(input:not([type='checkbox']):not([type='radio'])), select) {
+  min-height: var(--touch);
+}
+
+:is(input, select, textarea).mono {
+  font-size: var(--fs-mono);
+}
+
+:is(.field, .form, .settings-row) :is(input, select, textarea):focus-visible {
+  border-color: var(--accent);
+}
+
+/* --- Type scale: supersedes the per-surface heading sizes the audit found
+   (h1 at 18/19/20, h2 at 10/13/14/15/17/18, h3 at 14/16) and the 10px and
+   11px uppercase labels. */
+h1 {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+h3,
+.panel h2,
+.settings-panel h2 {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: 1.4;
+  /* Sentence case: the uppercase-on-every-block treatment is the one the
+     prototype brief diagnosed as generated. Only the eyebrow is uppercase. */
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--tx);
+}
+
+/* The eyebrow: a section marker above a block, never a heading size. The
+   sidebar's 10px bold h2s, the members grants header and inspector labels,
+   and the settings 11px bold labels all become this. */
+.eyebrow,
+.sidebar__section h2,
+.sidebar__version-label,
+.page--members .grants th,
+.page--members .inspect label,
+.page--members .capability__origin,
+.context-sidebar__org small {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--tx-faint);
+}
+
+/* Captions: field labels, legends, ledes, hints. 13px, secondary ink, 400. */
+.field > label,
+.field__label,
+.choice-group > legend,
+.page__lede,
+.field__hint,
+.settings-note {
+  font-size: var(--fs-sm);
+  font-weight: 400;
+  color: var(--tx-dim);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* Choice labels stay body ink (set above with the checkbox block). */
+.chk label,
+label.chk {
+  font-size: var(--fs-md);
+  color: var(--tx);
+}
+
+/* An unstyled anchor took the browser's blue on the overview page. Anchors
+   without a class are body ink, underlined; `:where()` keeps this below any
+   classed rule (`.login__links a`, `.sidebar__link`) so those are untouched. */
+:where(a:not([class])) {
+  color: var(--tx);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* --- Badges: one vocabulary. Supersedes `.badge` (12px), `.chip` (26px,
+   11px), `.settings-tag` (32px, 10px uppercase bold), `.history__current`
+   and `.matrix__problem-count`. The `.count` pill (numeric counts <= 12px)
+   is the DESIGN.md exception and is left alone. */
+:is(.badge, .chip, .settings-tag) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-badge);
+  background: transparent;
+  color: var(--tx-dim);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+:is(.badge, .chip, .settings-tag).mono {
+  font-family: var(--font-mono);
+}
+
+:is(.badge--danger, .settings-tag--danger) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.badge--warn,
+.badge--changed {
+  border-color: var(--changed);
+  color: var(--changed);
+}
+
+.badge--ok,
+.badge[data-state='ok'] {
+  border-color: var(--accent);
+  color: var(--tx);
+}
