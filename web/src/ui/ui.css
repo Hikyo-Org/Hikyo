@@ -284,9 +284,15 @@ h3,
    stays the hit target (the pinned e2e sweep measures the input's own box and
    reads the focus ring from the input's own outline), the visual is drawn on
    pseudo-elements at a size that suits 14px text, and the 44px floor applies
-   on a coarse pointer only, where DESIGN.md sets it. Supersedes app.css
-   `.chk`, `.chk input[type='checkbox']`, the `(max-width: 800px)` and
-   `(pointer: coarse)` checkbox bumps, and the four local size rules. */
+   on a coarse pointer only, where DESIGN.md sets it.
+
+   The box rules match EVERY checkbox and radio, not only those in a `.chk`
+   row: the route sweep found raw inputs in `label.chip` (TargetForm), the
+   audit filter, the adapter and folder dialogs and the key-create sheet
+   still on native or leaked sizes. `.chk` keeps only the row layout and the
+   label treatment. Supersedes app.css `.chk`, the checkbox rule under it,
+   the `(max-width: 800px)` and `(pointer: coarse)` checkbox bumps, and the
+   four local size rules. */
 .chk {
   display: flex;
   flex-direction: row;
@@ -306,8 +312,8 @@ label.chk {
   cursor: pointer;
 }
 
-.chk input[type='checkbox'],
-.chk input[type='radio'] {
+input[type='checkbox'],
+input[type='radio'] {
   appearance: none;
   flex: none;
   display: grid;
@@ -325,22 +331,22 @@ label.chk {
   outline-offset: calc((var(--chk-visual) - var(--chk-box)) / 2 + 2px);
 }
 
-.chk input[type='radio']:focus-visible {
+input[type='radio']:focus-visible {
   border-radius: 50%;
 }
 
 /* ::before is the box, ::after the mark; both sit in the same grid cell. */
-.chk input[type='checkbox']::before,
-.chk input[type='radio']::before,
-.chk input[type='checkbox']::after,
-.chk input[type='radio']::after {
+input[type='checkbox']::before,
+input[type='radio']::before,
+input[type='checkbox']::after,
+input[type='radio']::after {
   content: '';
   grid-area: 1 / 1;
   box-sizing: border-box;
 }
 
-.chk input[type='checkbox']::before,
-.chk input[type='radio']::before {
+input[type='checkbox']::before,
+input[type='radio']::before {
   width: var(--chk-visual);
   height: var(--chk-visual);
   border: 1px solid var(--line);
@@ -351,25 +357,25 @@ label.chk {
     border-color var(--dur) var(--ease);
 }
 
-.chk input[type='radio']::before {
+input[type='radio']::before {
   border-radius: 50%;
 }
 
-.chk input:not(:disabled):hover::before {
+input:not(:disabled):hover::before {
   border-color: var(--tx-dim);
 }
 
 /* `:indeterminate` is checkbox-only here: a radio is indeterminate whenever
    its group has no selection, which would fill every unchecked radio. */
-.chk input:checked::before,
-.chk input[type='checkbox']:indeterminate::before {
+input:checked::before,
+input[type='checkbox']:indeterminate::before {
   border-color: var(--accent);
   background: var(--accent);
 }
 
 /* The mark is a masked fill so it takes the theme's on-accent ink rather than
    a colour baked into an SVG. */
-.chk input[type='checkbox']::after {
+input[type='checkbox']::after {
   width: var(--chk-visual);
   height: var(--chk-visual);
   background: var(--on-accent);
@@ -378,17 +384,17 @@ label.chk {
   transition: opacity var(--dur) var(--ease);
 }
 
-.chk input[type='checkbox']:checked::after {
+input[type='checkbox']:checked::after {
   opacity: 1;
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3.2 3.2L13 5'/%3E%3C/svg%3E");
 }
 
-.chk input[type='checkbox']:indeterminate::after {
+input[type='checkbox']:indeterminate::after {
   opacity: 1;
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' d='M3.5 8h9'/%3E%3C/svg%3E");
 }
 
-.chk input[type='radio']::after {
+input[type='radio']::after {
   width: calc(var(--chk-visual) * 0.45);
   height: calc(var(--chk-visual) * 0.45);
   border-radius: 50%;
@@ -397,20 +403,20 @@ label.chk {
   transition: opacity var(--dur) var(--ease);
 }
 
-.chk input[type='radio']:checked::after {
+input[type='radio']:checked::after {
   opacity: 1;
 }
 
 /* Disabled dims the whole row at the same 0.6 the button primitive uses, and
    names the state with the cursor. Covers both markup shapes. */
-.chk input:disabled,
+input:disabled,
 .chk input:disabled + label,
 label.chk:has(input:disabled) {
   cursor: not-allowed;
 }
 
-.chk input:disabled::before,
-.chk input:disabled::after,
+input:disabled::before,
+input:disabled::after,
 .chk input:disabled + label,
 label.chk:has(input:disabled) {
   opacity: 0.6;
@@ -420,15 +426,15 @@ label.chk:has(input:disabled) {
    platform so it is repainted with the system's check glyph. The hit box
    sizes above still apply. */
 @media (forced-colors: active) {
-  .chk input[type='checkbox'],
-  .chk input[type='radio'] {
+  input[type='checkbox'],
+  input[type='radio'] {
     appearance: auto;
   }
 
-  .chk input[type='checkbox']::before,
-  .chk input[type='radio']::before,
-  .chk input[type='checkbox']::after,
-  .chk input[type='radio']::after {
+  input[type='checkbox']::before,
+  input[type='radio']::before,
+  input[type='checkbox']::after,
+  input[type='radio']::after {
     display: none;
   }
 }

@@ -278,6 +278,12 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
 - Glyph: `ui/Glyph` renders the state vocabulary as monochrome inline SVG in
   the current colour; routes replace 🔒 (12 sites) and 🔗 (2) and the text
   glyphs ✓ ✕ Δ ◌ ⋯ on migration. DESIGN.md updated.
+- Every checkbox and radio, not only `.chk` rows: a sweep of all 111 route
+  stories found raw inputs (`label.chip` in TargetForm, the audit filter,
+  the adapter and folder dialogs, the key-create sheet) still on native or
+  leaked sizes. The box rules now match `input[type='checkbox']` and
+  `input[type='radio']` anywhere; `.chk` keeps the row layout. Sweep after:
+  zero off-size inputs (`web/.xreview/chk-sweep.mjs`, disposable).
 - Light theme in CI: `pnpm run test-storybook:light` sets `STORYBOOK_THEME`,
   which `preview.tsx` reads into the initial theme global; the ci.yml
   storybook job runs both. Verified that the light run really renders light
