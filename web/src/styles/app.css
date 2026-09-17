@@ -1505,12 +1505,6 @@ select {
   gap: 8px;
 }
 
-.matrix__publish-heading input,
-.matrix__publish-confirmation input {
-  width: 20px;
-  height: 20px;
-}
-
 .matrix__publish-protected {
   color: var(--danger);
   font-size: 12px;
@@ -1801,13 +1795,6 @@ select {
 .matrix__environment-picker label:hover,
 .matrix-editor__copy label:hover {
   background: var(--bg-hover);
-}
-
-.matrix__environment-picker input,
-.matrix-editor__copy input {
-  width: 22px;
-  height: 22px;
-  accent-color: var(--accent);
 }
 
 .matrix__scroll {
@@ -2383,12 +2370,6 @@ select {
   gap: 6px;
 }
 
-.matrix-key-create__presence-modes input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-}
-
 .matrix-key-create__presence-hint {
   margin: 0;
   color: var(--tx-dim);
@@ -2410,12 +2391,6 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.matrix-key-create__secret input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--accent);
 }
 
 .matrix__empty-actions {
@@ -3135,7 +3110,6 @@ select {
   .kv__pair {
     grid-template-columns: minmax(0, 1fr);
   }
-
 }
 
 
@@ -4837,7 +4811,9 @@ select {
  * design foundations close the file. Their control-sized rules read
  * `--control`, which tokens.css raises on a coarse pointer, so they need no
  * partner here. `.settings-tag` left this list because the foundations size it
- * from `--badge-height`, which has no coarse override yet (#762).
+ * from `--badge-height`, which has no coarse override yet; the bridge rule below
+ * the banner keeps `button.settings-tag` on the touch floor until #762 renders
+ * it through Button.
  *
  * The desktop-pointer densities still declared in px above are not a waiver of
  * the 44px floor: `expectTouchTargets` enforces the floor only on a coarse
