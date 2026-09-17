@@ -2183,7 +2183,6 @@ function BindingDialog({
         </>
       }
     >
-
       {/* One native latch for the whole target: an issued request is for the
           form as submitted, so nothing here may change until it resolves,
           otherwise the success or failure sentence describes one account while
@@ -2376,7 +2375,7 @@ function BindingDialog({
  * are separate operator acts: `reveal` needs the live project opt-in, while
  * `reveal-history` additionally needs an active non-current workload pin.
  */
-function GrantDialog({
+export function GrantDialog({
   project,
   account,
   scope,
@@ -2412,8 +2411,17 @@ function GrantDialog({
           onClose();
         }
       }}
+      // GrantBody owns the action row, and it is not mounted when there is
+      // nothing to widen, so that branch would otherwise leave Escape as the
+      // only way out. Nothing to reorder: Close is the only button.
+      actions={
+        grantable ? undefined : (
+          <Button type="button" onClick={onClose}>
+            Close
+          </Button>
+        )
+      }
     >
-
       {!grantable ? (
         <p role="status">
           {machineReveal
@@ -2759,7 +2767,6 @@ function CreateAccountDialog({
         </>
       }
     >
-
       <fieldset className="machine__lock" disabled={busy}>
         <div className="field">
           <label htmlFor="create-account-name">Name</label>
@@ -2999,7 +3006,6 @@ function CreateProviderDialog({
         </>
       }
     >
-
       <fieldset className="machine__lock" disabled={busy}>
         <div className="field">
           <label htmlFor="create-provider-origin">Origin (host:port/dbname)</label>
@@ -3131,7 +3137,6 @@ function SetCredentialDialog({
         </>
       }
     >
-
       <fieldset className="machine__lock" disabled={busy}>
         <div className="field">
           <label htmlFor="set-credential-value">Admin credential</label>
@@ -3773,7 +3778,6 @@ function LeaseActionDialog({
         </>
       }
     >
-
       {action.verb === 'renew' ? (
         <fieldset className="machine__lock" disabled={busy}>
           <div className="field">
