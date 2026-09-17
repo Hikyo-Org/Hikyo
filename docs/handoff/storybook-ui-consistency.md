@@ -402,14 +402,24 @@ Findings and fixes, all in `ui.css`, `.storybook/preview.tsx` or story files:
   the overlay shadow. Screenshots at 1280 and 390 in both themes were taken
   from the same run (disposable, `web/.xreview/shots/`).
 
+- Known risk 1 measured (`.matrix__history-link` 11.5 to 13px): on the demo
+  project (3 environments) at 1280 wide the matrix header grows from 974 to
+  999px (each history button +9, the PROTECTED tag 65 to 74 at 11px), so the
+  table now scrolls 25px sideways at the default desktop viewport where it
+  used to fit; `+ Key` and the production history button sit at the clipped
+  edge. The well scrolls by design (a 50-key, N-environment matrix always
+  does) and it fits from 1305px. Fixing it without leaving the scale is
+  route copy (#762): "rev 12 · history" to "rev 12" plus the history glyph.
 - Known harness limit, not fixed here: a SINGLE `playwright test
   --project=<x>` invocation over every spec (what `pnpm e2e` does) fails the
   four `workspace.spec.ts` multi-instance tests at their first page load on
   instance B (`#connection-credentials` absent) after 12 to 16 minutes of
   run time; the same spec passes alone and in CI's group 2 shape
   (settings + history + workspace). Both projects were verified in CI's exact
-  four-group sharding, all eight green. Root cause not established (session
-  idle is 7 days; `AuthorityLifetime` is 15 minutes and is the lead).
+  four-group sharding, all eight green. Root cause not established; session
+  idle is 7 days so it is not expiry. Two hypotheses: cross-spec instance
+  pollution (the reason CI shards, see `e2e/global-setup.ts`), or a
+  time-based gate on instance B's assurance.
 
 ### Layer 2 (next, #762)
 
