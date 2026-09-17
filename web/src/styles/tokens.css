@@ -58,6 +58,73 @@
   --touch: 44px;
   --rail: 56px;
 
+  /* Control height, ONE token for every button (quiet included), input,
+     select, tab, menu row, summary, chip and control-shaped link: no surface
+     and no variant overrides it (decided 2026-09-16). The touch floor on a
+     coarse pointer, below. */
+  --control: 36px;
+  /* Badges and chips-as-labels: the one height under the compact tier. */
+  --badge-height: 20px;
+
+  /* Choice controls: the input is the hit box (the WCAG 2.5.8 minimum on a
+     fine pointer, the touch floor on a coarse one); the drawn square sits
+     inside it. */
+  --hit-min: 24px;
+  --chk-box: 24px;
+  --chk-visual: 18px;
+  --chk-gap: 6px;
+
+  /* Type scale (DESIGN.md): eyebrow and badge, caption, body, h2, h1, and
+     the value face. Weights 400/500/700 only; no other sizes. */
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 14px;
+  --fs-lg: 16px;
+  --fs-xl: 20px;
+  --fs-mono: 13px;
+  --tracking-eyebrow: 0.06em;
+
+  /* Spacing scale, 4-based. Gaps and paddings are one of these, never a
+     literal (the adherence check counts literals). */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* Measures: dialog widths and the prose line length. */
+  --width-dialog: 520px;
+  --width-dialog-wide: 760px;
+  --measure: 68ch;
+
+  /* Shadows only on modal overlays (DESIGN.md). */
+  --overlay-shadow: 0 14px 42px oklch(0 0 0 / 45%);
+
+  /* Focus: one ring on every control, never removed; the OS repaints it
+     under forced colours. Disabled: one opacity, named in the cursor too. */
+  --ring-width: 2px;
+  --ring-offset: 2px;
+  --ring-color: var(--accent);
+  --opacity-disabled: 0.6;
+
+  /* Line heights: headings tight, body loose; nothing in between. */
+  --lh-tight: 1.25;
+  --lh-heading: 1.3;
+  --lh-body: 1.5;
+
+  /* Icon box: glyphs are one em of the text they sit in; a standalone icon
+     control draws at this size inside its control box. */
+  --icon: 16px;
+
+  /* Layers, named so no surface invents a z-index: chrome (rail, sidebar,
+     sticky headers), sticky in-content bars, drawers, and the top-layer
+     fallbacks (overlays that cannot use the platform top layer). */
+  --z-chrome: 10;
+  --z-sticky: 20;
+  --z-drawer: 30;
+  --z-overlay: 40;
+
   /* Motion: ease-out-quart. */
   --ease: cubic-bezier(0.25, 1, 0.5, 1);
   --dur: 180ms;
@@ -110,6 +177,18 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
+}
+
+/* A coarse pointer raises every control and hit box to the touch floor; the
+   drawn checkbox square grows two pixels and its row gap goes to zero because
+   the hit box already carries the room. */
+@media (pointer: coarse) {
+  :root {
+    --control: var(--touch);
+    --chk-box: var(--touch);
+    --chk-visual: 20px;
+    --chk-gap: 0px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

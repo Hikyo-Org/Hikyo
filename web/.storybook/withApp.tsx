@@ -10,7 +10,7 @@ import { authenticatedIdentity } from '../src/testkit/identity.ts'
 /**
  * The story harness for real route screens. It is the Storybook analogue of the
  * test suite's `inShell` helper (see e.g. `Projects.test.tsx`): a router with an
- * outlet context, a retry-free query client, and — behind `globalThis.fetch` — a
+ * outlet context, a retry-free query client, and, behind `globalThis.fetch`, a
  * per-story table of canned API responses. Nothing here mocks a hook; screens
  * run their real data code against stubbed transport, exactly as in production.
  *
@@ -18,7 +18,7 @@ import { authenticatedIdentity } from '../src/testkit/identity.ts'
  * gets `outlet`; a screen that calls `useAuth` sets `auth: true` (which mounts
  * the real AuthProvider and answers its whoami from `identity`). Every API call
  * the screen makes must have a matching `responses` row, or the fetch stub
- * returns 404 and the screen's own error path shows — a missing route fails
+ * returns 404 and the screen's own error path shows, a missing route fails
  * loud rather than hanging.
  */
 
@@ -29,7 +29,7 @@ export type MockRoute = {
   readonly method?: string
   readonly status?: number
   readonly body?: unknown
-  /** Never settle — the screen's query stays pending, so its loading state is the story. */
+  /** Never settle, the screen's query stays pending, so its loading state is the story. */
   readonly pending?: boolean
 }
 
@@ -110,7 +110,7 @@ function router(routes: readonly MockRoute[]): typeof fetch {
  * mounts (its queries fire on mount, so a decorator effect would be too late),
  * and restore the real fetch afterwards. A whoami row is appended last for `auth`
  * screens so AuthProvider settles to the signed-in identity (a story's own
- * whoami row, matched first, still wins — Login supplies a 401).
+ * whoami row, matched first, still wins, Login supplies a 401).
  */
 export async function installAppFetch(context: {
   parameters: { app?: AppParameters }
@@ -148,7 +148,7 @@ function Shell({ app, children }: { app: AppParameters; children: ReactNode }) {
 
 /**
  * The query provider for non-auth screens. `useState` keeps one client across
- * re-renders — the theme toolbar re-runs every decorator on each switch, and a
+ * re-renders, the theme toolbar re-runs every decorator on each switch, and a
  * fresh client there would drop the cache and refetch mid-story. Uses the app's
  * own `makeQueryClient` defaults, so stories see production caching, not a copy.
  */

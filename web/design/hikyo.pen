@@ -415,6 +415,146 @@
     "--rail": {
       "type": "number",
       "value": 56
+    },
+    "--control": {
+      "type": "number",
+      "value": 36
+    },
+    "--badge-height": {
+      "type": "number",
+      "value": 20
+    },
+    "--hit-min": {
+      "type": "number",
+      "value": 24
+    },
+    "--chk-box": {
+      "type": "number",
+      "value": 24
+    },
+    "--chk-visual": {
+      "type": "number",
+      "value": 18
+    },
+    "--chk-gap": {
+      "type": "number",
+      "value": 6
+    },
+    "--fs-xs": {
+      "type": "number",
+      "value": 11
+    },
+    "--fs-sm": {
+      "type": "number",
+      "value": 13
+    },
+    "--fs-md": {
+      "type": "number",
+      "value": 14
+    },
+    "--fs-lg": {
+      "type": "number",
+      "value": 16
+    },
+    "--fs-xl": {
+      "type": "number",
+      "value": 20
+    },
+    "--fs-mono": {
+      "type": "number",
+      "value": 13
+    },
+    "--tracking-eyebrow": {
+      "type": "string",
+      "value": "0.06em"
+    },
+    "--space-1": {
+      "type": "number",
+      "value": 4
+    },
+    "--space-2": {
+      "type": "number",
+      "value": 8
+    },
+    "--space-3": {
+      "type": "number",
+      "value": 12
+    },
+    "--space-4": {
+      "type": "number",
+      "value": 16
+    },
+    "--space-5": {
+      "type": "number",
+      "value": 24
+    },
+    "--space-6": {
+      "type": "number",
+      "value": 32
+    },
+    "--width-dialog": {
+      "type": "number",
+      "value": 520
+    },
+    "--width-dialog-wide": {
+      "type": "number",
+      "value": 760
+    },
+    "--measure": {
+      "type": "string",
+      "value": "68ch"
+    },
+    "--overlay-shadow": {
+      "type": "string",
+      "value": "0 14px 42px oklch(0 0 0 / 45%)"
+    },
+    "--ring-width": {
+      "type": "number",
+      "value": 2
+    },
+    "--ring-offset": {
+      "type": "number",
+      "value": 2
+    },
+    "--ring-color": {
+      "type": "string",
+      "value": "var(--accent)"
+    },
+    "--opacity-disabled": {
+      "type": "string",
+      "value": "0.6"
+    },
+    "--lh-tight": {
+      "type": "string",
+      "value": "1.25"
+    },
+    "--lh-heading": {
+      "type": "string",
+      "value": "1.3"
+    },
+    "--lh-body": {
+      "type": "string",
+      "value": "1.5"
+    },
+    "--icon": {
+      "type": "number",
+      "value": 16
+    },
+    "--z-chrome": {
+      "type": "string",
+      "value": "10"
+    },
+    "--z-sticky": {
+      "type": "string",
+      "value": "20"
+    },
+    "--z-drawer": {
+      "type": "string",
+      "value": "30"
+    },
+    "--z-overlay": {
+      "type": "string",
+      "value": "40"
     }
   }
 }

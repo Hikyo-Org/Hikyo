@@ -7,6 +7,16 @@ type Props = Parameters<typeof ProfileUpdateBadge>[0];
 
 const meta = {
   component: ProfileUpdateBadge,
+  // The badge is a 10px dot pinned to the corner of the account avatar; alone
+  // it has no corner to pin to, so the story mounts it on one.
+  decorators: [
+    (Story) => (
+      <span className="avatar" style={{ position: 'relative' }} aria-hidden="true">
+        AL
+        <Story />
+      </span>
+    ),
+  ],
   tags: ['ai-generated'],
 } satisfies Meta<typeof ProfileUpdateBadge>;
 
