@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 
 import { useProjectEnvironments } from '../api/adapters.ts';
@@ -14,13 +14,19 @@ import {
 import { ApiError } from '../api/client.ts';
 import { useScopeNames } from '../api/scopeNames.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 
 /** The glyph before an outcome word, so the state is never colour-only. */
-function outcomeGlyph(outcome: AuditEvent['outcome']): string | null {
+function outcomeGlyph(outcome: AuditEvent['outcome']): ReactNode {
   switch (outcome) {
     case 'failure':
-      return '✕ ';
+      return <><Glyph name="cross" /> </>;
     case 'denied':
       return '⊘ ';
     case 'disconnected':
@@ -33,10 +39,10 @@ function outcomeGlyph(outcome: AuditEvent['outcome']): string | null {
 function Outcome({ outcome }: { readonly outcome: AuditEvent['outcome'] }) {
   const glyph = outcomeGlyph(outcome);
   return (
-    <span className={`chip audit__outcome audit__outcome--${outcome}`}>
+    <Badge className={`audit__outcome audit__outcome--${outcome}`}>
       {glyph === null ? null : <span aria-hidden="true">{glyph}</span>}
       {outcome}
-    </span>
+    </Badge>
   );
 }
 
@@ -108,9 +114,9 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
   const scannedEnd = trail.hasNextPage !== true;
   const emptyResult = trail.isSuccess && events.length === 0;
   const clearButton = (
-    <button type="button" className="btn btn--quiet" onClick={() => apply(emptyAuditFilter, '')}>
+    <Button type="button" variant="quiet" onClick={() => apply(emptyAuditFilter, '')}>
       Clear
-    </button>
+    </Button>
   );
 
   function apply(next: AuditFilter, nextEnvironment = environmentDraft) {
@@ -203,14 +209,14 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
                 placeholder="usr_…"
               />
               {selfId === '' ? null : (
-                <button
+                <Button
                   type="button"
-                  className="btn btn--quiet"
+                  variant="quiet"
                   onClick={() => set('actor', selfId)}
                   disabled={draft.actor === selfId}
                 >
                   Self
-                </button>
+                </Button>
               )}
             </div>
           </label>
@@ -232,22 +238,19 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
               placeholder="value.* — * wildcards"
             />
           </label>
-          <fieldset className="field audit__outcomes">
-            <legend className="field__label">Outcomes</legend>
-            {/* A set: check several to match any of them; none checked means any
-                outcome. Checkboxes, not a multi-select — three values read
-                cleaner and stay keyboard-reachable. */}
+          {/* A set: check several to match any of them; none checked means any
+              outcome. Checkboxes, not a multi-select: three values read
+              cleaner and stay keyboard-reachable. */}
+          <ChoiceGroup legend="Outcomes">
             {AUDIT_OUTCOMES.map((outcome) => (
-              <label key={outcome} className="audit__outcome-choice">
-                <input
-                  type="checkbox"
-                  checked={draft.outcomes.includes(outcome)}
-                  onChange={(event) => toggleOutcome(outcome, event.target.checked)}
-                />
-                {outcome}
-              </label>
+              <Checkbox
+                key={outcome}
+                label={outcome}
+                checked={draft.outcomes.includes(outcome)}
+                onChange={(event) => toggleOutcome(outcome, event.target.checked)}
+              />
             ))}
-          </fieldset>
+          </ChoiceGroup>
           <label className="field">
             <span className="field__label">Resource type</span>
             <input
@@ -273,9 +276,9 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           </label>
         </div>
         <div className="audit__filter-actions">
-          <button type="submit" className="btn btn--primary">
+          <Button type="submit" variant="primary">
             Apply filter
-          </button>
+          </Button>
           {/* Clear lives in ONE place: here while there are events, inside the
               empty state when the filter matched nothing. */}
           {emptyResult ? null : clearButton}
@@ -293,9 +296,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
         <Panel id="audit-events" title="Events">
           {trail.isPending ? <p role="status">Loading events…</p> : null}
           {trail.isError ? (
-            <p className="audit__empty alert" role="alert">
-              {refusalText(trail.error, scope)}
-            </p>
+            <Alert>{refusalText(trail.error, scope)}</Alert>
           ) : emptyResult ? (
             <div className="audit__empty" role="status">
               <p>
@@ -326,14 +327,14 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           )}
 
           {!scannedEnd && !trail.isError ? (
-            <button
+            <Button
               type="button"
-              className="btn audit__more"
+              className="audit__more"
               onClick={() => void trail.fetchNextPage()}
               disabled={trail.isFetchingNextPage}
             >
               {trail.isFetchingNextPage ? 'Scanning…' : 'Load more'}
-            </button>
+            </Button>
           ) : events.length > 0 ? (
             <p className="audit__end" role="status">
               End of the trail.
@@ -353,13 +354,14 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           <aside className="audit__detail card panel" id="audit-detail" tabIndex={-1} aria-label="Event detail">
             <div className="audit__detail-head">
               <h2 className="mono">{selected.type}</h2>
-              <button
+              <Button
                 type="button"
-                className="btn btn--quiet audit__detail-close"
+                variant="quiet"
+                className="audit__detail-close"
                 onClick={() => setSelected(null)}
               >
                 Close
-              </button>
+              </Button>
             </div>
             <dl className="audit__facts">
               <AuditFact label="Sequence" value={String(selected.seq)} />
@@ -390,15 +392,16 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
                     <span className="audit__fact-value">{selected.correlation_id}</span>{' '}
                     {/* Following the correlation id is how INTENT and its OUTCOME are
                         read together: it filters to exactly the events of one act. */}
-                    <button
+                    <Button
                       type="button"
-                      className="btn btn--quiet audit__correlate"
+                      variant="quiet"
+                      className="audit__correlate"
                       onClick={() =>
                         apply({ ...emptyAuditFilter, correlationId: selected.correlation_id ?? '' })
                       }
                     >
                       Show correlated events
-                    </button>
+                    </Button>
                   </dd>
                 </div>
               ) : null}

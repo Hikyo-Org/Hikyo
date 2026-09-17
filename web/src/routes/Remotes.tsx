@@ -52,8 +52,15 @@ import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Input } from '../ui/Input.tsx';
+import { Radio } from '../ui/Radio.tsx';
 import { useNavigationGuard } from './MachineAccess.tsx';
-import { useModalDialog } from './useModalDialog.ts';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
@@ -88,17 +95,12 @@ export function Remotes() {
         </p>
 
         {remotes.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              The remote directory could not be read. You may not hold{' '}
-              <span className="mono">instance-directory</span> on this instance. The operator
-              template does not include it; an instance member manager grants it under Instance
-              members, and the grant ends the current session.
-            </span>
-          </p>
+          <Alert>
+            The remote directory could not be read. You may not hold{' '}
+            <span className="mono">instance-directory</span> on this instance. The operator
+            template does not include it; an instance member manager grants it under Instance
+            members, and the grant ends the current session.
+          </Alert>
         ) : null}
 
         {remotes.isSuccess && remotes.data.items.length === 0 ? (
@@ -137,12 +139,11 @@ export function ThisInstance() {
       <p>The identity and directory this instance shares with connected instances.</p>
       {directory.isPending ? <p role="status">Loading this instance's directory…</p> : null}
       {directory.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{directory.error instanceof ApiError && directory.error.status === 403
+        <Alert>
+          {directory.error instanceof ApiError && directory.error.status === 403
             ? 'You do not hold instance-directory on this instance. Its directory is not available to you. The operator template does not include it; an instance member manager grants it under Instance members, and the grant ends the current session.'
-            : "This instance's directory could not be read. Reload to try again."}</span>
-        </p>
+            : "This instance's directory could not be read. Reload to try again."}
+        </Alert>
       ) : directory.data === undefined ? null : (
         <>
           <dl className="remote__facts">
@@ -246,35 +247,30 @@ export function RemoteCard({
         <h2 className="remote__name">{remote.name}</h2>
         {/* The state is TEXT first. The badge's colour is decoration on top of
             a sentence that already says everything. */}
-        <span className="badge" data-state={state}>
+        <Badge data-state={state}>
           {remoteStateText(state)}
-        </span>
+        </Badge>
       </div>
       <p className="mono remote__url">{remote.url}</p>
 
       {/* The badge already names the state; this line is the recovery. It is
           an alert only when there is something to do. */}
       {recovery === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            {recovery}
-            {/* A rejected credential is fixed on the PEER's own Connection
-                credentials section: link straight to it rather than describe
-                where it lives (AC#1). */}
-            {state === 'credential-rejected' ? (
-              <>
-                {' '}
-                <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
-                  Manage connection credentials on {origin}
-                </a>
-                .
-              </>
-            ) : null}
-          </span>
-        </p>
+        <Alert>
+          {recovery}
+          {/* A rejected credential is fixed on the PEER's own Connection
+              credentials section: link straight to it rather than describe
+              where it lives (AC#1). */}
+          {state === 'credential-rejected' ? (
+            <>
+              {' '}
+              <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
+                Manage connection credentials on {origin}
+              </a>
+              .
+            </>
+          ) : null}
+        </Alert>
       )}
       {staleness === null ? null : (
         <p className="remote__stale" role="status">
@@ -305,42 +301,24 @@ export function RemoteCard({
       )}
 
       {failure === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       )}
 
       {/* A duplicate identity's refusal is the recovery line above; the
           handoff's own failed phase would only repeat it. */}
       {live !== undefined || duplicateIdentity || handoff.phase.kind !== 'failed' ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{handoff.phase.message}</span>
-        </p>
+        <Alert>{handoff.phase.message}</Alert>
       )}
 
       {updateProbe?.error === null || updateProbe?.error === undefined ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>The remote update check failed. Reload or inspect the remote instance logs.</span>
-        </p>
+        <Alert>The remote update check failed. Reload or inspect the remote instance logs.</Alert>
       )}
 
       {ended && live === undefined ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            Workspace session ended: that instance revoked it, withdrew consent for this origin,
-            or became unreachable. Reconnect to continue.
-          </span>
-        </p>
+        <Alert>
+          Workspace session ended: that instance revoked it, withdrew consent for this origin,
+          or became unreachable. Reconnect to continue.
+        </Alert>
       ) : null}
 
       {live !== undefined && update?.available === true ? (
@@ -352,14 +330,14 @@ export function RemoteCard({
           {update.prerelease || update.channel !== 'stable' ? (
             <p>Prerelease builds are notification-only and cannot be remotely applied.</p>
           ) : update.apply_supported ? (
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               onClick={applyUpdate}
               disabled={requestUpdate.isPending || updateOutcome?.kind === 'running'}
             >
               {requestUpdate.isPending ? 'Submitting…' : `Update remote to ${update.latest_version}`}
-            </button>
+            </Button>
           ) : (
             <p>
               {update.apply_error ??
@@ -370,40 +348,37 @@ export function RemoteCard({
             <UpdateJobStatus jobID={updateJobID} job={updateJob.data} />
           )}
           {jobReadErrorVisible(updateJob.isError, updateJob.data) ? (
-            <p className="alert" role="alert">
-              The update job status could not be read. Inspect the remote instance logs before retrying.
-            </p>
+            <Alert>The update job status could not be read. Inspect the remote instance logs before retrying.</Alert>
           ) : null}
         </div>
       ) : null}
 
       <div className="remote__actions">
         {live === undefined ? (
-          <button
-            className="btn btn--primary"
+          <Button
+            variant="primary"
             type="button"
             onClick={handoffAction.onClick}
             disabled={handoffAction.disabled || duplicateIdentity}
           >
             {duplicateIdentity ? 'Open workspace' : handoffAction.label}
-          </button>
+          </Button>
         ) : null}
         {live === undefined ? null : (
           <>
             {/* A duplicate is not served even while a bearer is still held:
                 the open badge and picker go, Close stays so it can be dropped. */}
             {duplicateIdentity ? null : (
-              <span className="badge" role="status">
+              <Badge role="status">
                 Workspace open
-              </span>
+              </Badge>
             )}
-            <button className="btn" type="button" onClick={() => forgetWorkspace(origin)}>
+            <Button type="button" onClick={() => forgetWorkspace(origin)}>
               Close workspace
-            </button>
+            </Button>
           </>
         )}
-        <button
-          className="btn"
+        <Button
           type="button"
           onClick={() => {
             const next = globalThis.prompt('New display name', remote.name);
@@ -413,10 +388,10 @@ export function RemoteCard({
           }}
         >
           Rename
-        </button>
-        <button className="btn" type="button" onClick={() => remove.mutate(remote.name)}>
+        </Button>
+        <Button type="button" onClick={() => remove.mutate(remote.name)}>
           Remove
-        </button>
+        </Button>
       </div>
       {live === undefined || duplicateIdentity ? null : (
         <WorkspacePicker origin={origin} remoteName={remote.name} />
@@ -455,17 +430,12 @@ export function UpdateJobStatus({
   const outcome = job === undefined ? undefined : updateJobOutcome(job);
   if (outcome?.kind === 'failed') {
     return (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>
-          Update job <span className="mono">{jobID}</span> {job?.state}
-          {job?.phase === undefined ? '' : ` (${job.phase})`}
-          {outcome.failureCode === undefined ? '' : ` (${outcome.failureCode})`}. Inspect the
-          remote instance logs.
-        </span>
-      </p>
+      <Alert>
+        Update job <span className="mono">{jobID}</span> {job?.state}
+        {job?.phase === undefined ? '' : ` (${job.phase})`}
+        {outcome.failureCode === undefined ? '' : ` (${outcome.failureCode})`}. Inspect the
+        remote instance logs.
+      </Alert>
     );
   }
   return (
@@ -493,6 +463,10 @@ export function AddRemote() {
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    // Drop the last server refusal first: it answered a request this submit
+    // replaces, and it must not sit above a fresh field error.
+    add.reset();
 
     const trimmedURL = url.trim();
     const submittedOrigin = remoteOriginForSubmit(trimmedURL);
@@ -539,35 +513,27 @@ export function AddRemote() {
       </p>
       {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. The server refuses this identity even through another URL.</p>}
       <form className="form" onSubmit={onSubmit} noValidate>
-        {validationFailure !== null || add.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              {validationFailure ?? addFailureText(add.error)}
-            </span>
-          </p>
-        ) : null}
+        {/* Whole-form refusals only: a refusal that names the URL is rendered
+            under the URL control as its error. */}
+        {add.isError ? <Alert>{addFailureText(add.error)}</Alert> : null}
         <div className="field">
           <label htmlFor="remote-name">Name</label>
           <input id="remote-name" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
-        <div className="field">
-          <label htmlFor="remote-url">URL</label>
-          <input
-            id="remote-url"
-            type="url"
-            value={url}
-            onChange={(e) => {
-              setUrl(e.target.value);
-              setValidationFailure(null);
-            }}
-            placeholder="https://hikyo.example"
-            aria-invalid={validationFailure !== null}
-            required
-          />
-        </div>
+        {/* id kept: Remotes.test.tsx selects this control by `#remote-url`. */}
+        <Input
+          id="remote-url"
+          label="URL"
+          type="url"
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setValidationFailure(null);
+          }}
+          placeholder="https://hikyo.example"
+          error={validationFailure ?? undefined}
+          required
+        />
         <div className="field">
           <label htmlFor="remote-pin">Certificate fingerprint</label>
           <input id="remote-pin" value={pin} onChange={(e) => setPin(e.target.value)} required />
@@ -583,9 +549,9 @@ export function AddRemote() {
             required
           />
         </div>
-        <button className="btn btn--primary" type="submit" disabled={add.isPending}>
+        <Button variant="primary" type="submit" disabled={add.isPending}>
           {add.isPending ? 'Verifying…' : 'Add remote'}
-        </button>
+        </Button>
       </form>
     </section>
   );
@@ -619,15 +585,10 @@ function OriginAllowlist() {
       </p>
 
       {origins.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            The allowlist could not be read. It is gated on{' '}
-            <span className="mono">instance-config</span>.
-          </span>
-        </p>
+        <Alert>
+          The allowlist could not be read. It is gated on{' '}
+          <span className="mono">instance-config</span>.
+        </Alert>
       ) : null}
 
       {origins.isSuccess && origins.data.items.length === 0 ? (
@@ -638,14 +599,13 @@ function OriginAllowlist() {
         {(origins.data?.items ?? []).map((entry) => (
           <li key={entry.origin} className="origin">
             <span className="mono">{entry.origin}</span>
-            <button
-              className="btn"
+            <Button
               type="button"
               aria-label={`Remove ${entry.origin} and kill its workspace sessions`}
               onClick={() => remove.mutate(entry.origin)}
             >
               Remove
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
@@ -660,12 +620,7 @@ function OriginAllowlist() {
 
       <form className="form form--inline" onSubmit={onSubmit} noValidate>
         {add.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>That origin was refused. It must be a bare scheme, host and port.</span>
-          </p>
+          <Alert>That origin was refused. It must be a bare scheme, host and port.</Alert>
         ) : null}
         <div className="field">
           <label htmlFor="origin">Origin</label>
@@ -677,9 +632,9 @@ function OriginAllowlist() {
             required
           />
         </div>
-        <button className="btn btn--primary" type="submit" disabled={add.isPending}>
+        <Button variant="primary" type="submit" disabled={add.isPending}>
           Allow origin
-        </button>
+        </Button>
       </form>
     </section>
   );
@@ -718,15 +673,10 @@ export function ConnectionCredentials() {
       </p>
 
       {connections.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            The connection credentials could not be read. It is gated on{' '}
-            <span className="mono">instance-config</span>.
-          </span>
-        </p>
+        <Alert>
+          The connection credentials could not be read. It is gated on{' '}
+          <span className="mono">instance-config</span>.
+        </Alert>
       ) : null}
 
       {connections.isSuccess && items.length === 0 ? (
@@ -774,9 +724,9 @@ export function ConnectionRow({
       <div className="connection__head">
         <h3 className="connection__label">{connection.label}</h3>
         {/* State as text first; the badge colour is decoration on a word. */}
-        <span className="badge" data-state={state}>
+        <Badge data-state={state}>
           {state}
-        </span>
+        </Badge>
       </div>
       <p className="mono connection__prefix">{connection.prefix_hint}…</p>
       <dl className="connection__facts">
@@ -805,14 +755,13 @@ export function ConnectionRow({
       </dl>
       {revoked ? null : (
         <div className="connection__actions">
-          <button
-            className="btn"
+          <Button
             type="button"
             aria-label={`Revoke ${connection.label}`}
             onClick={onRevoke}
           >
             Revoke
-          </button>
+          </Button>
         </div>
       )}
     </li>
@@ -877,12 +826,7 @@ export function MintConnectionForm({
         instance cannot verify who holds the value.
       </p>
       {mint.error !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{mintFailureText(mint.error)}</span>
-        </p>
+        <Alert>{mintFailureText(mint.error)}</Alert>
       ) : null}
       <div className="field">
         <label htmlFor="connection-label">Label</label>
@@ -894,59 +838,50 @@ export function MintConnectionForm({
           required
         />
       </div>
-      <fieldset className="field">
-        <legend>Lifetime</legend>
-        <div className="chk">
-          <input
-            id="lifetime-default"
-            type="radio"
-            name="lifetime"
-            checked={choice === 'default'}
-            onChange={() => setChoice('default')}
-          />
-          <label htmlFor="lifetime-default">Instance default</label>
-        </div>
-        <div className="chk">
-          <input
-            id="lifetime-custom"
-            type="radio"
-            name="lifetime"
-            checked={choice === 'custom'}
-            onChange={() => setChoice('custom')}
-          />
-          <label htmlFor="lifetime-custom">Expires after</label>
-          <input
+      <ChoiceGroup legend="Lifetime">
+        <Radio
+          name="lifetime"
+          label="Instance default"
+          checked={choice === 'default'}
+          onChange={() => setChoice('default')}
+        />
+        <Radio
+          id="lifetime-custom"
+          name="lifetime"
+          label="Expires after"
+          checked={choice === 'custom'}
+          onChange={() => setChoice('custom')}
+        />
+        {/* The number reveals on its own line under the radio that asks for it,
+            instead of wrapping the sentence around the control. */}
+        {choice === 'custom' ? (
+          <Input
             id="lifetime-days"
+            className="mint__lifetime-days"
             type="number"
+            label="Days"
             min={1}
             value={days}
             onChange={(e) => setDays(e.target.value)}
-            disabled={choice !== 'custom'}
-            aria-invalid={customInvalid}
-            aria-label="Lifetime in days"
+            hint="Clamped to the instance ceiling."
+            error={customInvalid ? 'Enter a whole number of days, at least 1.' : undefined}
           />
-          <span>days (clamped to the instance ceiling)</span>
-        </div>
-        <div className="chk">
-          <input
-            id="lifetime-indefinite"
-            type="radio"
-            name="lifetime"
-            checked={choice === 'indefinite'}
-            onChange={() => setChoice('indefinite')}
-          />
-          <label htmlFor="lifetime-indefinite">
-            Never expires (only if this instance allows it)
-          </label>
-        </div>
-      </fieldset>
-      <button
-        className="btn btn--primary"
+        ) : null}
+        <Radio
+          id="lifetime-indefinite"
+          name="lifetime"
+          label="Never expires (only if this instance allows it)"
+          checked={choice === 'indefinite'}
+          onChange={() => setChoice('indefinite')}
+        />
+      </ChoiceGroup>
+      <Button
+        variant="primary"
         type="submit"
         disabled={mint.pending || label.trim() === '' || customInvalid}
       >
         {mint.pending ? 'Minting…' : 'Mint credential'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -966,7 +901,6 @@ export function ConnectionMintDialog({
   onClose: () => void;
 }) {
   const confirmation = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(confirmation);
   const [stored, setStored] = useState(false);
   const [heldBack, setHeldBack] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
@@ -983,33 +917,29 @@ export function ConnectionMintDialog({
   useNavigationGuard(!stored, dismiss);
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="connection-mint-title"
-      ref={dialog}
+    <Dialog
+      title="Connection credential minted, shown exactly once"
+      initialFocus={confirmation}
       onCancel={(event) => {
         event.preventDefault();
         dismiss();
       }}
+      actions={
+        <Button variant="primary" type="button" onClick={dismiss}>
+          Done
+        </Button>
+      }
     >
-      <h2 className="ceremony__title" id="connection-mint-title">
-        Connection credential minted, shown exactly once
-      </h2>
       <p className="ceremony__scope">
         For <strong>{minted.label}</strong>. Hand this value to that peer; it goes into its{' '}
         <strong>Add a remote</strong> form as the connection credential.
       </p>
       <p className="mono machine__token">{minted.value}</p>
       {minted.clamped ? (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            The instance lifetime ceiling shortened this credential. It expires earlier than asked
-            for, said now rather than discovered when it dies.
-          </span>
-        </p>
+        <Alert tone="warn">
+          The instance lifetime ceiling shortened this credential. It expires earlier than asked
+          for, said now rather than discovered when it dies.
+        </Alert>
       ) : null}
       <p className="ceremony__cap" role="status">
         <span className="alert__glyph" aria-hidden="true">
@@ -1020,8 +950,7 @@ export function ConnectionMintDialog({
           consuming instance now; if it is lost, revoke this credential and mint a fresh one.
         </span>
       </p>
-      <button
-        className="btn"
+      <Button
         type="button"
         onClick={async () => {
           const result = await writeClipboard(minted.value);
@@ -1033,44 +962,31 @@ export function ConnectionMintDialog({
         }}
       >
         Copy to clipboard
-      </button>
+      </Button>
       {copyStatus === null ? null : (
-        <p className="notice" role="status">
+        <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>
           <span>{copyStatus}</span>
         </p>
       )}
-      <div className="field chk">
-        <input
-          id="connection-stored"
-          type="checkbox"
-          ref={confirmation}
-          checked={stored}
-          onChange={(event) => {
-            setStored(event.target.checked);
-            if (event.target.checked) {
-              setHeldBack(false);
-            }
-          }}
-        />
-        <label htmlFor="connection-stored">I have stored this credential in its target instance.</label>
-      </div>
+      <Checkbox
+        id="connection-stored"
+        label="I have stored this credential in its target instance."
+        ref={confirmation}
+        checked={stored}
+        onChange={(event) => {
+          setStored(event.target.checked);
+          if (event.target.checked) {
+            setHeldBack(false);
+          }
+        }}
+      />
       {heldBack ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>Confirm you have stored it. There is no second look at this value.</span>
-        </p>
+        <Alert>Confirm you have stored it. There is no second look at this value.</Alert>
       ) : null}
-      <div className="ceremony__actions">
-        <button className="btn btn--primary" type="button" onClick={dismiss}>
-          Done
-        </button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1090,7 +1006,6 @@ export function RevokeConnectionDialog({
   onClose: () => void;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
-  const dialog = useModalDialog(cancel);
   const revoke = useRevokeConnection();
 
   const run = () => {
@@ -1098,20 +1013,36 @@ export function RevokeConnectionDialog({
   };
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="connection-revoke-title"
-      ref={dialog}
+    <Dialog
+      title={`Revoke ${connection.label}?`}
+      initialFocus={cancel}
       onCancel={(event) => {
         event.preventDefault();
         if (!revoke.isPending) {
           onClose();
         }
       }}
+      actions={
+        <>
+          <Button
+            type="button"
+            ref={cancel}
+            onClick={onClose}
+            disabled={revoke.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="button"
+            onClick={run}
+            disabled={revoke.isPending}
+          >
+            {revoke.isPending ? 'Revoking…' : 'Revoke credential'}
+          </Button>
+        </>
+      }
     >
-      <h2 className="ceremony__title" id="connection-revoke-title">
-        Revoke {connection.label}?
-      </h2>
       <p className="ceremony__scope">
         The credential and its principal are retired together. The peer holding it loses this
         instance&apos;s directory fetch at its <strong>next</strong> presentation; its card over
@@ -1119,33 +1050,9 @@ export function RevokeConnectionDialog({
         are <strong>unaffected</strong>: those follow the origin allowlist, not this credential.
       </p>
       {revoke.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{revokeFailureText(revoke.error)}</span>
-        </p>
+        <Alert>{revokeFailureText(revoke.error)}</Alert>
       ) : null}
-      <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
-          type="button"
-          onClick={run}
-          disabled={revoke.isPending}
-        >
-          {revoke.isPending ? 'Revoking…' : 'Revoke credential'}
-        </button>
-        <button
-          className="btn"
-          type="button"
-          ref={cancel}
-          onClick={onClose}
-          disabled={revoke.isPending}
-        >
-          Cancel
-        </button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1256,12 +1163,7 @@ function PickerBody({ remoteName }: { remoteName: string }) {
   }
   if (orgs.isError) {
     return (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>The remote&apos;s projects could not be read. Your grants over there may not cover them.</span>
-      </p>
+      <Alert>The remote&apos;s projects could not be read. Your grants over there may not cover them.</Alert>
     );
   }
   if (orgs.data.items.length === 0) {

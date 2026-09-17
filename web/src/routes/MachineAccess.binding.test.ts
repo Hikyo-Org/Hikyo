@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { MachineCredential } from '../api/identities.ts';
-import { carriedClaims, nextTab, presetForBinding, seedClaims, tabLabel } from './MachineAccess.tsx';
+import { carriedClaims, presetForBinding, seedClaims, tabLabel } from './MachineAccess.tsx';
 
 /**
  * The replace form's seeding. A replacement inherits the predecessor's platform
@@ -105,17 +105,6 @@ describe('tabLabel', () => {
   });
 });
 
-describe('nextTab', () => {
-  const tabs = ['a', 'b', 'c'];
-  it('roves with the arrows, wrapping, and jumps with Home and End', () => {
-    expect(nextTab(tabs, 'a', 'ArrowRight')).toBe('b');
-    expect(nextTab(tabs, 'c', 'ArrowRight')).toBe('a');
-    expect(nextTab(tabs, 'a', 'ArrowLeft')).toBe('c');
-    expect(nextTab(tabs, 'b', 'Home')).toBe('a');
-    expect(nextTab(tabs, 'b', 'End')).toBe('c');
-  });
-  it('ignores every other key', () => {
-    expect(nextTab(tabs, 'a', 'Enter')).toBeNull();
-    expect(nextTab(tabs, 'a', 'ArrowDown')).toBeNull();
-  });
-});
+// The tablist keyboard model moved to `ui/Tabs`, which owns arrows, Home and
+// End; `Tabs.stories.tsx` (`KeyboardMovesAndSelects`) exercises it. The route's
+// own `nextTab` went with the hand-rolled tablist.

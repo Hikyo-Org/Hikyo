@@ -24,12 +24,16 @@ import {
 } from '../api/settings.ts';
 import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
 import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
-import { Alert, ConsequencesDialog, Done, JumpIndex, Panel } from './Sections.tsx';
-import { useFeedback } from './useModalDialog.ts';
+import { ConsequencesDialog, JumpIndex, Panel } from './Sections.tsx';
+import { useFeedback } from './useFeedback.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
 
 const credentialPolicyKey = ['instance-credential-policy'] as const;
@@ -132,7 +136,7 @@ export function InstanceAdmin() {
       { id: 'instance-saml-sp-keys', label: 'SP signing keys' },
     ]} />
     {failure !== null ? <Alert>{failure}</Alert> : null}
-    {done !== null ? <Done>{done}</Done> : null}
+    {done !== null ? <Alert tone="done">{done}</Alert> : null}
 
     <Panel id="instance-orgs" title="Organisations">
       {orgs.isPending ? <p role="status">Loading organisations…</p> : null}
@@ -146,19 +150,19 @@ export function InstanceAdmin() {
             <span className="settings-row__detail">Organisation settings</span>
           </div>
           <span className="settings-row__spacer" />
-          <span className="settings-tag mono">{org.active ? 'active' : 'inactive'}</span>
+          <Badge mono>{org.active ? 'active' : 'inactive'}</Badge>
         </div>
       )) : null}
       {showCreate ? (
         <div className="settings-row">
           <div className="field settings-row__spacer"><label htmlFor={nameId}>New organisation name</label><input id={nameId} value={name} onChange={(event) => setName(event.target.value)} /></div>
-          <button type="button" className="btn btn--primary" aria-label="Create organisation" disabled={create.isPending || name.trim() === ''} onClick={() => create.mutate({ name: name.trim() }, {
+          <Button type="button" variant="primary" aria-label="Create organisation" disabled={create.isPending || name.trim() === ''} onClick={() => create.mutate({ name: name.trim() }, {
             onError: (error) => report(settingsOperationFailure('create-org', error)),
-          })}>Create organisation</button>
+          })}>Create organisation</Button>
         </div>
       ) : null}
       <div className="instance-create-row">
-        <button type="button" className="btn btn--primary" aria-label="Open create organisation form" onClick={() => setShowCreate((visible) => !visible)}>+ create organisation</button>
+        <Button type="button" variant="primary" aria-label="Open create organisation form" onClick={() => setShowCreate((visible) => !visible)}>+ create organisation</Button>
         <code className="instance-cli">$ hikyo org create</code>
       </div>
     </Panel>
@@ -207,7 +211,7 @@ export function InstanceAdmin() {
 function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType<typeof useCredentialPolicy>; onDone: (message: string) => void; onFailure: (error: unknown) => void }) {
   const update = useSetCredentialPolicy();
   const [editing, setEditing] = useState(false);
-  const finiteId = useId(); const liveId = useId(); const indefiniteId = useId();
+  const finiteId = useId(); const liveId = useId();
   const [finite, setFinite] = useState(''); const [live, setLive] = useState(''); const [indefinite, setIndefinite] = useState(false);
   type PolicyProposal = { readonly maxFiniteLifetimeSeconds: number; readonly allowIndefinite: boolean; readonly maxLiveCredentials: number };
   type PolicyPreview = { readonly result: Awaited<ReturnType<typeof update.mutateAsync>>; readonly proposal: PolicyProposal };
@@ -231,16 +235,16 @@ function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType
     {query.isSuccess ? <>
       <div className="settings-row">
         <div className="settings-row__copy"><span className="settings-row__title">Machine-credential ceiling</span><span className="settings-row__detail">authoritative instance policy; clamps every org value</span></div>
-        <span className="settings-row__spacer" /><code className="mono"><span title={`${String(query.data.max_finite_lifetime_seconds)}s`}>{humanDuration(query.data.max_finite_lifetime_seconds)}</span> · {String(query.data.max_live_credentials)} live max · {query.data.allow_indefinite ? 'indefinite allowed' : 'finite only'}</code><button type="button" className="btn" onClick={() => setEditing(true)}>edit</button>
+        <span className="settings-row__spacer" /><code className="mono"><span title={`${String(query.data.max_finite_lifetime_seconds)}s`}>{humanDuration(query.data.max_finite_lifetime_seconds)}</span> · {String(query.data.max_live_credentials)} live max · {query.data.allow_indefinite ? 'indefinite allowed' : 'finite only'}</code><Button type="button" onClick={() => setEditing(true)}>edit</Button>
       </div>
     </> : null}
     {editing ? <>
       {query.isSuccess ? <>
         <div className="field"><label htmlFor={finiteId}>Maximum finite lifetime (seconds)</label><input id={finiteId} inputMode="numeric" value={finite} onChange={(event) => { setPreview(null); setFinite(event.target.value); }} /></div>
         <div className="field"><label htmlFor={liveId}>Maximum live credentials per service account</label><input id={liveId} inputMode="numeric" value={live} onChange={(event) => { setPreview(null); setLive(event.target.value); }} /></div>
-        <div className="field chk"><input id={indefiniteId} type="checkbox" checked={indefinite} onChange={(event) => { setPreview(null); setIndefinite(event.target.checked); }} /><label htmlFor={indefiniteId}>Allow credentials with no expiry</label></div>
-        {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id}: {credential.reason}</li>)}</ul><button type="button" className="btn btn--danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</button></div>}
-        <div className="panel__actions"><button type="button" className="btn" onClick={() => setEditing(false)}>Cancel</button><button type="button" className="btn btn--primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</button></div>
+        <Checkbox label="Allow credentials with no expiry" checked={indefinite} onChange={(event) => { setPreview(null); setIndefinite(event.target.checked); }} />
+        {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id}: {credential.reason}</li>)}</ul><Button type="button" variant="danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</Button></div>}
+        <div className="panel__actions"><Button type="button" onClick={() => setEditing(false)}>Cancel</Button><Button type="button" variant="primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</Button></div>
       </> : null}
     </> : null}
   </Panel>;
@@ -268,7 +272,6 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
   const dek = useRotateDek();
   const reencrypt = useReencryptInstance();
   const root = useRotateRootKey();
-  const titleId = useId();
   const [ceremony, setCeremony] = useState<CryptoCeremony | null>(null);
   const [dialogFailure, setDialogFailure] = useState<string | null>(null);
   const open = (which: CryptoCeremony) => { setDialogFailure(null); setCeremony(which); };
@@ -282,31 +285,31 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Change-token key</span><span className="settings-row__detail">Rotating it invalidates every client cursor: the next fetch from every workload is a full one. No restart wave, no downtime.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-token-key</code>
-      <button type="button" className="btn" onClick={() => open('token')}>Rotate the change-token key</button>
+      <Button type="button" onClick={() => open('token')}>Rotate the change-token key</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Secret-scanning key</span><span className="settings-row__detail">Rotating it drops every scan dismissal in the same transaction; suppressed warns re-fire, because their fingerprints are no longer recomputable.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-scanning-key</code>
-      <button type="button" className="btn" onClick={() => open('scanning')}>Rotate the scanning key</button>
+      <Button type="button" onClick={() => open('scanning')}>Rotate the scanning key</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Master key</span><span className="settings-row__detail">Re-wraps every tier-3 key (all DEKs and the root token key) under a new master, then retires the old one. Refused while the root key is dual-wrapped; finalize the root rotation first.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-master-key</code>
-      <button type="button" className="btn" onClick={() => open('master')}>Rotate the master key</button>
+      <Button type="button" onClick={() => open('master')}>Rotate the master key</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Data-encryption key (instance)</span><span className="settings-row__detail">Appends a new instance DEK version. New writes seal under it immediately; existing ciphertext stays readable until you re-encrypt. A rotation is incomplete without the re-encryption below.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-dek --scope instance</code>
-      <button type="button" className="btn" onClick={() => open('dek-instance')}>Rotate the instance DEK</button>
+      <Button type="button" onClick={() => open('dek-instance')}>Rotate the instance DEK</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Instance re-encryption</span><span className="settings-row__detail">Walks every instance credential ciphertext onto the active DEK version and retires the superseded ones: the completion of an instance DEK rotation. Chunked and resumable: safe to re-run, and complete once it moves no rows.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo reencrypt</code>
-      <button type="button" className="btn" disabled={drain.running} onClick={drain.run}>{drain.running ? 'Re-encrypting…' : 'Re-encrypt the instance'}</button>
+      <Button type="button" disabled={drain.running} onClick={drain.run}>{drain.running ? 'Re-encrypting…' : 'Re-encrypt the instance'}</Button>
     </div>
     {drain.running ? <p role="status" className="field__hint">Re-encrypting… run {drain.runs}, {String(drain.total)} row{drain.total === 1n ? '' : 's'} moved so far. Safe to leave and resume later.</p> : null}
     {drain.failure === null ? null : <Alert>{drain.failure}</Alert>}
@@ -318,57 +321,57 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
       </div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-root-key</code>
       <div className="crypto-phases">
-        <button type="button" className="btn" onClick={() => open('root-prepare')}>Prepare</button>
-        <button type="button" className="btn" onClick={() => open('root-verify')}>Verify</button>
-        <button type="button" className="btn" onClick={() => open('root-finalize')}>Finalize</button>
+        <Button type="button" onClick={() => open('root-prepare')}>Prepare</Button>
+        <Button type="button" onClick={() => open('root-verify')}>Verify</Button>
+        <Button type="button" onClick={() => open('root-finalize')}>Finalize</Button>
       </div>
     </div>
 
     <p className="field__hint"><span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation, break-glass, host-file custody and startup-only key material are local host authority. They are deliberately absent from every network surface: CLI-at-the-box, not CLI-over-network.</p>
 
-    {ceremony === 'token' ? <ConsequencesDialog titleId={titleId} title="Rotate the change-token key?" confirmLabel="Rotate the key" busyLabel="Rotating the change-token key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'token' ? <ConsequencesDialog title="Rotate the change-token key?" confirmLabel="Rotate the key" busyLabel="Rotating the change-token key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       token.mutate(undefined, { onSuccess: (result) => { onDone(`The change-token key was rotated (version ${String(result.token_key_version)}). Every client cursor is invalid; the next fetch from each workload is a full one.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-token-key')) });
     }}>
       <p>Every conditional-fetch cursor in circulation stops matching. The next fetch from every workload is a full one, and nothing restarts. This cannot be undone by rotating back.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'scanning' ? <ConsequencesDialog titleId={titleId} title="Rotate the secret-scanning key?" confirmLabel="Rotate the key" busyLabel="Rotating the scanning key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'scanning' ? <ConsequencesDialog title="Rotate the secret-scanning key?" confirmLabel="Rotate the key" busyLabel="Rotating the scanning key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       scanning.mutate(undefined, { onSuccess: (result) => { onDone(`The secret-scanning key was rotated (version ${String(result.scanning_key_version)}). ${String(result.dismissals_dropped)} dismissal${result.dismissals_dropped === 1n ? ' was' : 's were'} dropped; their warns will re-fire.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-scanning-key')) });
     }}>
       <p>Every stored scan fingerprint becomes unrecomputable under the new key, so every dismissal is dropped in the same transaction and the warns they suppressed will fire again. This cannot be undone.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'master' ? <ConsequencesDialog titleId={titleId} title="Rotate the master key?" confirmLabel="Rotate the key" busyLabel="Rotating the master key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'master' ? <ConsequencesDialog title="Rotate the master key?" confirmLabel="Rotate the key" busyLabel="Rotating the master key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       master.mutate(undefined, { onSuccess: (result) => { onDone(`The master key was rotated (version ${String(result.key_version)}). Every tier-3 key is now wrapped under it.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-master-key')) });
     }}>
       <p>A new master key is generated, every tier-3 key is re-wrapped under it, and the old master is retired after a zero-reference check. This is refused while the root key is dual-wrapped; finalize the root rotation first.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'dek-instance' ? <ConsequencesDialog titleId={titleId} title="Rotate the instance DEK?" confirmLabel="Rotate the DEK" busyLabel="Rotating the instance DEK…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'dek-instance' ? <ConsequencesDialog title="Rotate the instance DEK?" confirmLabel="Rotate the DEK" busyLabel="Rotating the instance DEK…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       dek.mutate({ scope: 'instance' }, { onSuccess: (result) => { onDone(`The instance DEK was rotated (version ${String(result.key_version)}). New writes seal under it; existing ciphertext stays readable until you run the instance re-encryption to complete the rotation.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-dek')) });
     }}>
       <p>A new instance DEK version is appended. New writes seal under it immediately; existing ciphertext stays readable under the previous version until the instance re-encryption walks it forward. The rotation is incomplete until you run that re-encryption.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'root-prepare' ? <ConsequencesDialog titleId={titleId} title="Prepare the root-key rotation?" confirmLabel="Prepare" busyLabel="Preparing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'root-prepare' ? <ConsequencesDialog title="Prepare the root-key rotation?" confirmLabel="Prepare" busyLabel="Preparing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       root.mutate('prepare', { onSuccess: (result) => { onDone(`Root-key rotation prepared (epoch ${String(result.root_key_epoch)}). Install the new root at the primary source on the host, then run verify. The instance stays bootable under either root and warns on every start until finalize.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
     }}>
       <p>Prepare reads the new root from the server-side source and seals a second master wrapper. No key material crosses the wire. After this you must install the new root at the primary source on the host, then run verify. The instance stays bootable under either root until you finalize.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'root-verify' ? <ConsequencesDialog titleId={titleId} title="Verify the root-key rotation?" confirmLabel="Verify" busyLabel="Verifying the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'root-verify' ? <ConsequencesDialog title="Verify the root-key rotation?" confirmLabel="Verify" busyLabel="Verifying the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       root.mutate('verify', { onSuccess: (result) => { onDone(`Root-key rotation verified (epoch ${String(result.root_key_epoch)}). The primary source now unwraps the new root. Run finalize to retire the old wrapper.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
     }}>
       <p>Verify re-reads the primary source and confirms it now unwraps the new wrapper you sealed in prepare. Run this only after installing the new root at the primary source on the host. If it has not been installed yet, this phase is refused.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'root-finalize' ? <ConsequencesDialog titleId={titleId} title="Finalize the root-key rotation?" confirmLabel="Finalize" busyLabel="Finalizing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'root-finalize' ? <ConsequencesDialog title="Finalize the root-key rotation?" confirmLabel="Finalize" busyLabel="Finalizing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       root.mutate('finalize', { onSuccess: (result) => { onDone(`Root-key rotation finalized (epoch ${String(result.root_key_epoch)}). The old wrapper is retired and the startup warning clears.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
     }}>

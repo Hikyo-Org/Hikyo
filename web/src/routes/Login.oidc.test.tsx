@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
 
 import { Login } from './Login.tsx';
 
@@ -25,10 +25,34 @@ function mount(container: HTMLElement) {
   };
 }
 
-const mocks = vi.hoisted(() => ({
-  login: { mutate: vi.fn(), isPending: false, isError: false },
-  oidc: { mutate: vi.fn(), isPending: false, isError: false },
-  passkey: { mutate: vi.fn(), isPending: false, isError: false },
+/** One sign-in leg's hook surface, as the route consumes it. */
+type LegMock = {
+  mutate: Mock;
+  reset: Mock;
+  isPending: boolean;
+  isError: boolean;
+  error: Error | null;
+};
+type Mocks = {
+  login: LegMock;
+  oidc: LegMock;
+  passkey: LegMock;
+  methods: {
+    data: {
+      local_login_enabled: boolean;
+      providers: { kind: string; slug: string; display_name: string }[];
+    };
+    isError: boolean;
+    isPending: boolean;
+    refetch: Mock;
+  };
+  passkeysAvailable: boolean;
+};
+
+const mocks = vi.hoisted((): Mocks => ({
+  login: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
+  oidc: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
+  passkey: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
   methods: {
     data: {
       local_login_enabled: true,
@@ -49,7 +73,8 @@ vi.mock('../api/account.ts', () => ({
 }));
 
 vi.mock('../api/session.ts', () => ({
-  loginFailureText: () => 'Sign-in failed.',
+  // Echoes the cause so a test can tell WHICH leg's refusal reached the slot.
+  loginFailureText: (error?: Error | null) => error?.message ?? 'Sign-in failed.',
   useLogin: () => mocks.login,
   useOIDCLogin: () => mocks.oidc,
 }));
@@ -65,11 +90,20 @@ beforeEach(() => {
   mocks.oidc.mutate.mockReset();
   mocks.passkey.mutate.mockReset();
   mocks.methods.refetch.mockReset();
+  mocks.login.reset.mockReset();
+  mocks.oidc.reset.mockReset();
+  mocks.passkey.reset.mockReset();
+  mocks.login.error = null;
+  mocks.oidc.error = null;
+  mocks.passkey.error = null;
+  mocks.oidc.isError = false;
   mocks.login.isPending = false;
   mocks.oidc.isPending = false;
   mocks.passkey.isPending = false;
   mocks.methods.isError = false;
   mocks.methods.isPending = false;
+  mocks.login.isError = false;
+  mocks.passkey.isError = false;
   mocks.passkeysAvailable = false;
 });
 
@@ -200,5 +234,84 @@ it('shows and retries an identity-provider discovery failure', async () => {
   await act(async () => retry?.click());
   expect(mocks.methods.refetch).toHaveBeenCalledOnce();
 
+  await unmount();
+});
+
+// The card has ONE refusal slot, so the route picks which failure speaks:
+// the password leg first, then the passkey leg. Each keeps its own wording.
+it.each([
+  ['password', () => (mocks.login.isError = true), 'Sign-in failed.'],
+  ['passkey', () => (mocks.passkey.isError = true), 'Passkey failed.'],
+])('announces a %s refusal inside the card, in that leg’s own words', async (_leg, fail, text) => {
+  mocks.passkeysAvailable = true;
+  fail();
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+
+  await render();
+
+  const alert = container.querySelector('.login__card [role="alert"]');
+  expect(alert?.textContent).toContain(text);
+  await unmount();
+});
+
+// Ruled: the latest attempt owns the slot. A refusal that described an earlier
+// attempt must not outlive it, nor mask the failure the person is waiting on.
+it('replaces a stale password refusal with the provider refusal that followed it', async () => {
+  mocks.login.isError = true;
+  mocks.login.reset.mockImplementation(() => {
+    mocks.login.isError = false;
+  });
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  expect(container.textContent).toContain('Sign-in failed.');
+
+  mocks.oidc.mutate.mockImplementation(() => {
+    mocks.oidc.isError = true;
+    mocks.oidc.error = new Error('The identity provider refused.');
+  });
+  const corporate = [...container.querySelectorAll('button')].find(
+    (candidate) => candidate.textContent === 'Continue with Corporate IdP',
+  );
+  await act(async () => corporate?.click());
+  await render();
+
+  expect(mocks.login.reset).toHaveBeenCalled();
+  const alert = container.querySelector('.login__card [role="alert"]');
+  expect(alert?.textContent).toContain('The identity provider refused.');
+  expect(container.textContent).not.toContain('Sign-in failed.');
+  await unmount();
+});
+
+// The two provider protocols are separate legs of the SAME slot: a SAML
+// refusal must not sit in the card while an OIDC attempt runs. The SAML leg
+// here is the REAL useSensitiveMutation the route owns, driven into failure by
+// a rejecting transport, so this exercises the actual reset path.
+it('clears a SAML refusal when an OIDC attempt starts', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.reject(new Error('The identity provider refused.'))),
+  );
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+
+  const named = (text: string) =>
+    [...container.querySelectorAll('button')].find((button) => button.textContent === text);
+  await act(async () => named('Continue with SAML SSO')?.click());
+  for (let round = 0; round < 10; round += 1) await act(async () => Promise.resolve());
+  await render();
+  // The transport failure is worded by the SDK, not by this test; what matters
+  // is that the SAML leg put SOMETHING in the card's one refusal slot.
+  expect(container.querySelector('.login__card [role="alert"]')).not.toBeNull();
+
+  // The OIDC mutate leaves its own leg idle: whatever is in the slot after the
+  // click is what survived the attempt, and nothing should have.
+  await act(async () => named('Continue with Corporate IdP')?.click());
+  await render();
+
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith('strict');
+  expect(container.querySelector('.login__card [role="alert"]')).toBeNull();
   await unmount();
 });

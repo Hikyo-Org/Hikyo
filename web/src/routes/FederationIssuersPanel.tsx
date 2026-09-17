@@ -15,7 +15,10 @@ import {
   type FederationJwksMode,
 } from '../api/federationIssuers.ts';
 import { notifySuccess } from '../app/notifications.tsx';
-import { Alert, Done, Panel } from './Sections.tsx';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Textarea } from '../ui/Textarea.tsx';
+import { Panel } from './Sections.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
 const nondisclosed = (error: unknown) => error instanceof ApiError && error.status === 404;
@@ -95,7 +98,7 @@ export function FederationIssuersPanel() {
       </p>
 
       {failure !== null ? <Alert>{failure}</Alert> : null}
-      {done !== null ? <Done>{done}</Done> : null}
+      {done !== null ? <Alert tone="done">{done}</Alert> : null}
 
       {issuers.isPending ? <p role="status">Loading federation issuers…</p> : null}
       {secondFactor(issuers.error) ? (
@@ -136,9 +139,8 @@ export function FederationIssuersPanel() {
                   </span>
                 </div>
                 <div className="panel__actions">
-                  <button
+                  <Button
                     type="button"
-                    className="btn"
                     disabled={busy}
                     onClick={() => {
                       setFailure(null);
@@ -148,15 +150,14 @@ export function FederationIssuersPanel() {
                     }}
                   >
                     Edit
-                  </button>
+                  </Button>
                   {/* Neutral until the confirmation opens: the danger button
                       is the destructive act itself, shown only after this one
                       reveals it, the same reveal-then-danger shape every other
                       surface uses, which also keeps the low-contrast danger
                       treatment out of the always-rendered page. */}
-                  <button
+                  <Button
                     type="button"
-                    className="btn"
                     disabled={busy}
                     onClick={() => {
                       setFailure(null);
@@ -166,7 +167,7 @@ export function FederationIssuersPanel() {
                     }}
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
 
                 {confirmDelete?.id === issuer.id ? (
@@ -177,23 +178,22 @@ export function FederationIssuersPanel() {
                         : `${String(issuer.live_bindings)} binding${issuer.live_bindings === 1 ? '' : 's'}, live or revoked, name ${issuer.issuer}, so it cannot be deleted. That history is append-only: even a revoked binding still records what this issuer was trusted for, and erasing the issuer would erase what it trusted. Deletion is only ever available for an issuer that was never bound.`}
                     </p>
                     <div className="panel__actions">
-                      <button
+                      <Button
                         type="button"
-                        className="btn"
                         disabled={busy}
                         onClick={() => setConfirmDelete(null)}
                       >
                         {issuer.live_bindings === 0 ? 'Cancel' : 'Close'}
-                      </button>
+                      </Button>
                       {issuer.live_bindings === 0 ? (
-                        <button
+                        <Button
                           type="button"
-                          className="btn btn--danger"
+                          variant="danger"
                           disabled={busy}
                           onClick={() => doDelete(issuer)}
                         >
                           Delete issuer
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                   </div>
@@ -246,9 +246,9 @@ export function FederationIssuersPanel() {
 
       {issuers.isSuccess && editor !== 'create' ? (
         <div className="panel__actions">
-          <button
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={busy}
             onClick={() => {
               setFailure(null);
@@ -258,7 +258,7 @@ export function FederationIssuersPanel() {
             }}
           >
             Configure issuer
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -333,8 +333,6 @@ function IssuerForm({
   const issuerId = useId();
   const typeId = useId();
   const modeId = useId();
-  const jwksId = useId();
-  const audiencesId = useId();
 
   const [url, setUrl] = useState(issuer?.issuer ?? '');
   const [type, setType] = useState<FederationIssuerType>(issuer?.issuer_type ?? 'kubernetes');
@@ -427,47 +425,33 @@ function IssuerForm({
       </div>
 
       {mode === 'static' ? (
-        <div className="field">
-          <label htmlFor={jwksId}>JWKS document</label>
-          <textarea
-            id={jwksId}
-            className="mono"
-            rows={5}
-            value={staticJwks}
-            placeholder='{"keys":[…]}'
-            onChange={(event) => setStaticJwks(event.target.value)}
-          />
-          <p className="field__hint">
-            The key set this instance verifies against. It is never returned by any read, so it is
-            always entered here in full. There is no keep-the-old-document path, and there cannot be
-            one that silently retains a key set nobody rotates.
-          </p>
-        </div>
+        <Textarea
+          label="JWKS document"
+          mono
+          rows={5}
+          value={staticJwks}
+          placeholder='{"keys":[…]}'
+          onChange={(event) => setStaticJwks(event.target.value)}
+          hint="The key set this instance verifies against. It is never returned by any read, so it is always entered here in full. There is no keep-the-old-document path, and there cannot be one that silently retains a key set nobody rotates."
+        />
       ) : null}
 
-      <div className="field">
-        <label htmlFor={audiencesId}>Refused audiences, one per line</label>
-        <textarea
-          id={audiencesId}
-          className="mono"
-          rows={3}
-          value={audiences}
-          onChange={(event) => setAudiences(event.target.value)}
-        />
-        <p className="field__hint">
-          The issuer&apos;s default audiences, which no binding may name and no token may carry. At
-          least one is required: the default-audience rule turns on the instance knowing what the
-          default is, and it is not derivable.
-        </p>
-      </div>
+      <Textarea
+        label="Refused audiences, one per line"
+        mono
+        rows={3}
+        value={audiences}
+        onChange={(event) => setAudiences(event.target.value)}
+        hint="The issuer's default audiences, which no binding may name and no token may carry. At least one is required: the default-audience rule turns on the instance knowing what the default is, and it is not derivable."
+      />
 
       <div className="panel__actions">
-        <button type="button" className="btn" onClick={onCancel}>
+        <Button type="button" onClick={onCancel}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           onClick={() =>
             onSubmit({
               issuer: url,
@@ -479,7 +463,7 @@ function IssuerForm({
           }
         >
           {editing ? 'Save issuer' : 'Configure issuer'}
-        </button>
+        </Button>
       </div>
     </fieldset>
   );

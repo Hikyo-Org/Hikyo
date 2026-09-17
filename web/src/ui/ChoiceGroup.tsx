@@ -43,7 +43,11 @@ export function ChoiceGroup({
 }) {
   const hintId = useId();
   const grid = columns !== undefined && columns > 1;
-  const style = grid ? ({ '--choice-columns': String(columns) } as CSSProperties) : undefined;
+  // Typed, not cast: CSSProperties has no index signature for custom
+  // properties, so the shape is declared rather than asserted.
+  const style: (CSSProperties & Record<'--choice-columns', string>) | undefined = grid
+    ? { '--choice-columns': String(columns) }
+    : undefined;
   return (
     <fieldset
       className={cx(

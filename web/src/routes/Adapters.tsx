@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
 
@@ -48,7 +48,14 @@ import {
   runAdapterPasskeyCeremony,
   runAdapterTOTPCeremony,
 } from '../api/values.ts';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Input } from '../ui/Input.tsx';
+import { useFeedback } from './useFeedback.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 
 /**
@@ -172,12 +179,7 @@ function AdaptersPage() {
       </p>
 
       {feedback.failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{feedback.failure}</span>
-        </p>
+        <Alert>{feedback.failure}</Alert>
       ) : null}
       {feedback.done !== null ? (
         <p className="adapters__done" role="status">
@@ -188,9 +190,7 @@ function AdaptersPage() {
       <div className={`adapters__panes${selected !== '' || move !== '' ? ' adapters__panes--split' : ''}`}>
         <section className="adapters__list" aria-label="Adapters">
           {adapters.isError ? (
-            <p className="alert" role="alert">
-              {adapterRefusalText(adapters.error)}
-            </p>
+            <Alert>{adapterRefusalText(adapters.error)}</Alert>
           ) : null}
           {adapters.isSuccess && adapters.data.items.length === 0 ? (
             <p className="adapters__empty" role="status">
@@ -223,9 +223,9 @@ function AdaptersPage() {
             />
           ) : (
             <div className="panel__actions">
-              <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
+              <Button type="button" variant="primary" onClick={() => setCreating(true)}>
                 Add adapter
-              </button>
+              </Button>
             </div>
           )}
         </section>
@@ -273,11 +273,11 @@ type Feedback = ReturnType<typeof useFeedback>;
 
 export function HealthChip({ target }: { readonly target: AdapterTarget }) {
   return (
-    <span className={`chip adapters__health adapters__health--${target.sync_status}`}>
+    <Badge className={`adapters__health adapters__health--${target.sync_status}`}>
       <span className="adapters__health-glyph" aria-hidden="true" />
       {healthLabel(target.sync_status)}
       {target.drift_attention ? ' · needs attention' : ''}
-    </span>
+    </Badge>
   );
 }
 
@@ -320,10 +320,10 @@ function AdapterPanel({
       <div className="adapters__adapter-head">
         <h2>{adapter.provider === 'forgejo' ? 'Forgejo' : adapter.provider === 'github-actions' ? 'GitHub Actions' : adapter.provider}</h2>
         <span className="adapters__origin mono">{adapter.origin}</span>
-        <span className="chip">
+        <Badge>
           {adapter.credential_present ? 'credential set' : 'credential absent'}
-        </span>
-        {adapter.state === 'moving' ? <span className="chip">moving</span> : null}
+        </Badge>
+        {adapter.state === 'moving' ? <Badge>moving</Badge> : null}
       </div>
       {adapter.targets.length === 0 ? (
         <p className="adapters__empty">This adapter has no targets.</p>
@@ -409,28 +409,27 @@ function AdapterPanel({
         />
       ) : (
         <div className="panel__actions">
-          <button type="button" className="btn" disabled={busy} onClick={() => setAdding(true)}>
+          <Button type="button" disabled={busy} onClick={() => setAdding(true)}>
             Add target
-          </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => setEditing('origin')}>
+          </Button>
+          <Button type="button" disabled={busy} onClick={() => setEditing('origin')}>
             Change origin
-          </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => setEditing('credential')}>
+          </Button>
+          <Button type="button" disabled={busy} onClick={() => setEditing('credential')}>
             Replace credential
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn"
             disabled={busy || !adapter.credential_present}
             onClick={() => setRevoking(true)}
           >
             Revoke credential
-          </button>
+          </Button>
           {/* Neutral trigger: the destructive styling lives on the confirmation
               inside the dialog, never on the always-rendered panel. */}
-          <button type="button" className="btn" disabled={busy} onClick={() => setDeleting(true)}>
+          <Button type="button" disabled={busy} onClick={() => setDeleting(true)}>
             Delete adapter
-          </button>
+          </Button>
         </div>
       )}
 
@@ -533,18 +532,19 @@ function OriginMoveForm({
         />
       </label>
       {keepRemoteChoice ? (
-        <label className="field chk">
-          <input type="checkbox" checked={keepRemote} onChange={(event) => setKeepRemote(event.target.checked)} />
-          <span>Keep remote names at the old origin (release custody instead of scrubbing)</span>
-        </label>
+        <Checkbox
+          label="Keep remote names at the old origin (release custody instead of scrubbing)"
+          checked={keepRemote}
+          onChange={(event) => setKeepRemote(event.target.checked)}
+        />
       ) : null}
       <div className="panel__actions">
-        <button type="submit" className="btn btn--primary" disabled={busy || origin.trim() === '' || credential === ''}>
+        <Button type="submit" variant="primary" disabled={busy || origin.trim() === '' || credential === ''}>
           {busy ? 'Working…' : submitLabel}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -581,12 +581,12 @@ export function CredentialForm({
         />
       </label>
       <div className="panel__actions">
-        <button type="submit" className="btn btn--primary" disabled={busy || credential === ''}>
+        <Button type="submit" variant="primary" disabled={busy || credential === ''}>
           {busy ? 'Replacing…' : 'Replace'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -605,26 +605,23 @@ export function RevokeCredentialDialog({
   readonly onConfirm: () => void;
 }) {
   const first = useRef<HTMLButtonElement>(null);
-  const dialog = useModalDialog(first);
   return (
-    <dialog ref={dialog} className="ceremony adapters__remove" aria-labelledby="adapters-revoke-title" onCancel={onCancel}>
-      <h2 className="ceremony__title" id="adapters-revoke-title">
-        Revoke credential for {adapter.origin}
-      </h2>
-      <p className="ceremony__lede">
-        Hikyo destroys its outbound custody now. Every push stops until a credential is set again,
-        and a remote scrub may then be impossible: names Hikyo owns stay at the destination until
-        you clean them up by hand.
-      </p>
-      <div className="ceremony__actions">
-        <button ref={first} type="button" className="btn btn--danger" disabled={busy} onClick={onConfirm}>
-          {busy ? 'Revoking…' : 'Revoke credential'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-      </div>
-    </dialog>
+    <Dialog
+      title={`Revoke credential for ${adapter.origin}`}
+      lede="Hikyo destroys its outbound custody now. Every push stops until a credential is set again, and a remote scrub may then be impossible: names Hikyo owns stay at the destination until you clean them up by hand."
+      initialFocus={first}
+      onCancel={onCancel}
+      actions={
+        <>
+          <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button ref={first} type="button" variant="danger" disabled={busy} onClick={onConfirm}>
+            {busy ? 'Revoking…' : 'Revoke credential'}
+          </Button>
+        </>
+      }
+    />
   );
 }
 
@@ -644,17 +641,33 @@ export function DeleteAdapterDialog({
   readonly onDecide: (decision: 'prune' | 'retain') => void;
 }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
   const [decision, setDecision] = useState<'prune' | 'retain' | null>(null);
   return (
-    <dialog ref={dialog} className="ceremony adapters__remove" aria-labelledby="adapters-delete-title" onCancel={onCancel}>
-      <h2 className="ceremony__title" id="adapters-delete-title">
-        Delete adapter {adapter.origin}
-      </h2>
-      <p className="ceremony__lede">
-        Every target under this adapter is torn down. Decide what happens to the names Hikyo owns
-        at each destination.
-      </p>
+    <Dialog
+      title={`Delete adapter ${adapter.origin}`}
+      lede="Every target under this adapter is torn down. Decide what happens to the names Hikyo owns at each destination."
+      initialFocus={first}
+      onCancel={onCancel}
+      actions={
+        <>
+          <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={busy || decision === null}
+            onClick={() => {
+              if (decision !== null) onDecide(decision);
+            }}
+          >
+            {busy ? 'Deleting…' : 'Delete adapter'}
+          </Button>
+        </>
+      }
+    >
+      {/* markup-check: rich label (each option leads with a <strong> verb), so
+          these rows cannot pass ui/Radio's `label: string`. */}
       <div className="adapters__decision" role="radiogroup" aria-label="Remote names">
         <label>
           <input
@@ -680,22 +693,7 @@ export function DeleteAdapterDialog({
           </span>
         </label>
       </div>
-      <div className="ceremony__actions">
-        <button
-          type="button"
-          className="btn btn--danger"
-          disabled={busy || decision === null}
-          onClick={() => {
-            if (decision !== null) onDecide(decision);
-          }}
-        >
-          {busy ? 'Deleting…' : 'Delete adapter'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -756,23 +754,21 @@ function MoveDetail({
     <aside className="panel adapters__detail" aria-label="Route move">
       <div className="adapters__adapter-head">
         <h2>Route move</h2>
-        <button type="button" className="btn btn--quiet" onClick={onClose}>
+        <Button type="button" variant="quiet" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       {move.isError ? (
-        <p className="alert" role="alert">
-          {adapterRefusalText(move.error)}
-        </p>
+        <Alert>{adapterRefusalText(move.error)}</Alert>
       ) : null}
       {data === undefined ? (
         <p role="status">Loading…</p>
       ) : (
         <>
-          <p className={`chip adapters__move-state adapters__move-state--${data.state}`} role="status">
+          <Badge className={`adapters__move-state adapters__move-state--${data.state}`} role="status">
             {data.state.replace('_', ' ')}
             {moveInFlight(data.state) ? ' · polling' : ''}
-          </p>
+          </Badge>
           <p className="field__hint">{moveStateText(data.state)}</p>
           <dl className="adapters__facts">
             <dt>Kind</dt>
@@ -818,12 +814,12 @@ function MoveDetail({
               />
             ) : (
               <div className="panel__actions">
-                <button type="button" className="btn btn--primary" disabled={busy} onClick={() => setResuming(true)}>
+                <Button type="button" variant="primary" disabled={busy} onClick={() => setResuming(true)}>
                   Resume with a new credential
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn btn--danger"
+                  variant="danger"
                   disabled={busy}
                   onClick={() =>
                     void (async () => {
@@ -838,7 +834,7 @@ function MoveDetail({
                   }
                 >
                   Cancel move
-                </button>
+                </Button>
               </div>
             )
           ) : null}
@@ -899,16 +895,14 @@ function CreateAdapterPanel({
           />
         </label>
         {provider === 'github-actions' ? <p className="field__hint">GitHub Enterprise Server: use https://HOST/api/v3. GHES support is best-effort; CI verifies github.com only.</p> : null}
-        <label className="field">
-          <span className="field__label">Credential</span>
-          <input
-            type="password"
-            value={credential}
-            onChange={(event) => setCredential(event.target.value)}
-            autoComplete="new-password"
-          />
-          <span className="field__hint">Write-only. It is sealed on save and never shown again.</span>
-        </label>
+        <Input
+          label="Credential"
+          type="password"
+          value={credential}
+          onChange={(event) => setCredential(event.target.value)}
+          autoComplete="new-password"
+          hint="Write-only. It is sealed on save and never shown again."
+        />
       </div>
       <TargetForm
         title="First target"
@@ -1002,6 +996,7 @@ export function TargetForm({
     initial?.selected_repository_ids.map(String).join(', ') ?? '',
   );
   const [repositoryIdsError, setRepositoryIdsError] = useState<string | null>(null);
+  const environmentCreateHintId = useId();
   const [keyIds, setKeyIds] = useState<ReadonlySet<string>>(
     () => new Set(initial?.keys.map((key) => key.key_id) ?? []),
   );
@@ -1127,24 +1122,24 @@ export function TargetForm({
           </label>
         )}
         {kind === 'organization' && visibility === 'selected' ? (
-          <label className="field">
-            <span className="field__label">Repository ids</span>
-            <input
-              className="mono"
-              inputMode="numeric"
-              value={repositoryIds}
-              disabled={lockRouting === true}
-              aria-invalid={repositoryIdsError !== null}
-              placeholder="123456, 789012"
-              onChange={(event) => {
-                setRepositoryIds(event.target.value);
-                setRepositoryIdsError(null);
-              }}
-            />
-            <span className="field__hint">
-              {repositoryIdsError ?? 'Comma-separated GitHub repository ids the organization secret is visible to.'}
-            </span>
-          </label>
+          <Input
+            label="Repository ids"
+            mono
+            inputMode="numeric"
+            value={repositoryIds}
+            disabled={lockRouting === true}
+            placeholder="123456, 789012"
+            onChange={(event) => {
+              setRepositoryIds(event.target.value);
+              setRepositoryIdsError(null);
+            }}
+            hint={
+              repositoryIdsError === null
+                ? 'Comma-separated GitHub repository ids the organization secret is visible to.'
+                : undefined
+            }
+            error={repositoryIdsError ?? undefined}
+          />
         ) : null}
         {kind === 'environment' ? (
           <label className="field">
@@ -1157,38 +1152,29 @@ export function TargetForm({
           </label>
         ) : null}
         {kind === 'environment' && lockRouting !== true ? (
-          <label className="field">
-            <span><input type="checkbox" checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} /> Create the GitHub environment if missing</span>
-            <span className="field__hint">Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</span>
-          </label>
+          <div className="field">
+            <Checkbox label="Create the GitHub environment if missing" aria-describedby={environmentCreateHintId} checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} />
+            <p className="field__hint" id={environmentCreateHintId}>Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</p>
+          </div>
         ) : null}
-        <label className="field">
-          <span className="field__label">Name prefix</span>
-          <input
-            value={prefix}
-            onChange={(event) => setPrefix(event.target.value)}
-            placeholder="PROD_"
-          />
-          <span className="field__hint">Applied to every name at the provider; applications keep canonical names.</span>
-          {normalisePrefix(prefix) !== prefix ? (
-            <span className="field__hint">Will be stored as {normalisePrefix(prefix)}</span>
-          ) : null}
-        </label>
+        <Input
+          label="Name prefix"
+          value={prefix}
+          onChange={(event) => setPrefix(event.target.value)}
+          placeholder="PROD_"
+          hint={
+            normalisePrefix(prefix) === prefix
+              ? 'Applied to every name at the provider; applications keep canonical names.'
+              : `Applied to every name at the provider; applications keep canonical names. Will be stored as ${normalisePrefix(prefix)}`
+          }
+        />
       </div>
-      <fieldset className="field">
-        <legend className="field__label">Keys</legend>
-        {keys.length === 0 ? <p className="adapters__empty">This project has no keys yet.</p> : null}
-        <ul className="adapters__keys" aria-label="Keys to include">
-          {keys.map((key) => (
-            <li key={key.id}>
-              <label className="chip">
-                <input type="checkbox" checked={keyIds.has(key.id)} onChange={() => toggle(key.id)} />{' '}
-                <span className="mono">{key.name}</span>
-              </label>
-            </li>
-          ))}
-        </ul>
-      </fieldset>
+      {keys.length === 0 ? <p className="adapters__empty">This project has no keys yet.</p> : null}
+      <ChoiceGroup legend="Keys" variant="chips" layout="wrap">
+        {keys.map((key) => (
+          <Checkbox key={key.id} mono label={key.name} checked={keyIds.has(key.id)} onChange={() => toggle(key.id)} />
+        ))}
+      </ChoiceGroup>
       <div className="adapters__form adapters__form--two">
         <label className="field">
           <span className="field__label">Include patterns</span>
@@ -1218,12 +1204,12 @@ export function TargetForm({
         a key created later is never added on its own.
       </p>
       <div className="panel__actions">
-        <button type="submit" className="btn btn--primary" disabled={busy}>
+        <Button type="submit" variant="primary" disabled={busy}>
           {busy ? 'Saving…' : 'Save'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -1286,14 +1272,12 @@ function TargetDetail({
     <aside className="panel adapters__detail" aria-label="Target detail">
       <div className="adapters__adapter-head">
         <h2>Target</h2>
-        <button type="button" className="btn btn--quiet" onClick={onClose}>
+        <Button type="button" variant="quiet" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       {detail.isError ? (
-        <p className="alert" role="alert">
-          {adapterRefusalText(detail.error)}
-        </p>
+        <Alert>{adapterRefusalText(detail.error)}</Alert>
       ) : null}
       {target === undefined ? (
         <p role="status">Loading…</p>
@@ -1366,17 +1350,17 @@ function TargetDetail({
           <h3>Keys</h3>
           <ul className="adapters__keys" aria-label="Member keys">
             {target.keys.map((key) => (
-              <li key={key.key_id} className="chip mono">
-                {key.name}
+              <li key={key.key_id}>
+                <Badge mono>{key.name}</Badge>
               </li>
             ))}
           </ul>
 
           <div className="panel__actions">
             {target.sync_status === 'paused' ? (
-              <button
+              <Button
                 type="button"
-                className="btn btn--primary"
+                variant="primary"
                 disabled={busy}
                 onClick={() =>
                   void (async () => {
@@ -1391,20 +1375,18 @@ function TargetDetail({
                 }
               >
                 Resume
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 type="button"
-                className="btn"
                 disabled={busy}
                 onClick={() => void act('Paused. Owned names stay at the destination.', () => pause.mutateAsync(target.id))}
               >
                 Pause
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               type="button"
-              className="btn"
               disabled={busy || target.sync_status === 'paused'}
               onClick={() =>
                 void act('Resync queued.', async () => {
@@ -1414,29 +1396,27 @@ function TargetDetail({
               }
             >
               Resync
-            </button>
-            <button type="button" className="btn" disabled={busy} onClick={() => setEditing((open) => !open)}>
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => setEditing((open) => !open)}>
               {editing ? 'Stop editing' : 'Edit keys'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn"
               disabled={busy}
               onClick={() => void act('Plan computed. Names only; no value was read.', () => plan.mutateAsync(target.id))}
             >
               Plan
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn"
               disabled={busy}
               onClick={() => void act('Connection probed. No value was read and nothing was written.', () => probe.mutateAsync(target.id))}
             >
               Test connection
-            </button>
-            <button type="button" className="btn btn--danger" disabled={busy} onClick={() => setRemoving(true)}>
+            </Button>
+            <Button type="button" variant="danger" disabled={busy} onClick={() => setRemoving(true)}>
               Remove
-            </button>
+            </Button>
           </div>
 
           {probe.data !== undefined ? <ConnectionFacts connection={probe.data} /> : null}
@@ -1564,9 +1544,11 @@ function PlanChanges({ plan }: { readonly plan: AdapterPlan }) {
       ) : (
         <ul className="adapters__keys" aria-label="Planned changes">
           {plan.changes.map((change) => (
-            <li key={`${change.surface}:${change.effective_name}`} className="chip mono">
-              {change.disposition} {change.surface} {change.effective_name}
-              {change.reason === undefined || change.reason === '' ? '' : ` (${change.reason})`}
+            <li key={`${change.surface}:${change.effective_name}`}>
+              <Badge mono>
+                {change.disposition} {change.surface} {change.effective_name}
+                {change.reason === undefined || change.reason === '' ? '' : ` (${change.reason})`}
+              </Badge>
             </li>
           ))}
         </ul>
@@ -1603,18 +1585,15 @@ function ConflictArtifact({
           const name = `${entry.surface}:${entry.effective_name}`;
           return (
             <li key={name} className="adapters__conflict">
-              <label>
-                <input type="checkbox" checked={ticked.has(name)} onChange={() => onToggle(name)} />{' '}
-                <span className="mono">{name}</span>
-              </label>
+              <Checkbox mono label={name} checked={ticked.has(name)} onChange={() => onToggle(name)} />
             </li>
           );
         })}
       </ul>
       <div className="panel__actions">
-        <button type="button" className="btn" disabled={busy || chosen.length === 0} onClick={() => onAdopt(chosen)}>
+        <Button type="button" disabled={busy || chosen.length === 0} onClick={() => onAdopt(chosen)}>
           Adopt {chosen.length} selected
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1636,14 +1615,33 @@ function RemoveDialog({
   readonly onDecide: (decision: 'prune' | 'retain') => void;
 }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
   const [decision, setDecision] = useState<'prune' | 'retain' | null>(null);
   return (
-    <dialog ref={dialog} className="ceremony adapters__remove" aria-labelledby="adapters-remove-title" onCancel={onCancel}>
-      <h2 className="ceremony__title" id="adapters-remove-title">
-        Remove target {destinationText(target)}
-      </h2>
-      <p className="ceremony__lede">Decide what happens to the names Hikyo owns at the destination.</p>
+    <Dialog
+      title={`Remove target ${destinationText(target)}`}
+      lede="Decide what happens to the names Hikyo owns at the destination."
+      initialFocus={first}
+      onCancel={onCancel}
+      actions={
+        <>
+          <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={busy || decision === null}
+            onClick={() => {
+              if (decision !== null) onDecide(decision);
+            }}
+          >
+            {busy ? 'Removing…' : 'Remove target'}
+          </Button>
+        </>
+      }
+    >
+      {/* markup-check: rich label (each option leads with a <strong> verb), so
+          these rows cannot pass ui/Radio's `label: string`. */}
       <div className="adapters__decision" role="radiogroup" aria-label="Remote names">
         <label>
           <input
@@ -1671,22 +1669,7 @@ function RemoveDialog({
           </span>
         </label>
       </div>
-      <div className="ceremony__actions">
-        <button
-          type="button"
-          className="btn btn--danger"
-          disabled={busy || decision === null}
-          onClick={() => {
-            if (decision !== null) onDecide(decision);
-          }}
-        >
-          {busy ? 'Removing…' : 'Remove target'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1709,7 +1692,7 @@ function AdapterCeremony({
   readonly onDone: () => void;
 }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
+  const formId = useId();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -1771,22 +1754,30 @@ function AdapterCeremony({
           : 'route';
 
   return (
-    <dialog ref={dialog} className="ceremony adapters__ceremony" aria-labelledby="adapters-ceremony-title" onCancel={cancel}>
-      <form onSubmit={(event) => void submit(event)}>
-        <h2 className="ceremony__title" id="adapters-ceremony-title">
-          Confirm it is you
-        </h2>
-        <p className="ceremony__lede">
+    <Dialog
+      title="Confirm it is you"
+      lede={
+        <>
           You are about to {verb} {ask.environmentIds.map(environmentName).join(', ')}. This decision is
           bound to exactly those environments and to this one act.
-        </p>
+        </>
+      }
+      initialFocus={first}
+      onCancel={cancel}
+      actions={
+        <>
+          <Button type="button" variant="quiet" onClick={cancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} variant="primary" disabled={busy || policy === null}>
+            {busy ? 'Authorising…' : 'Authorise'}
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} onSubmit={(event) => void submit(event)}>
         {failure !== null ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{failure}</span>
-          </p>
+          <Alert>{failure}</Alert>
         ) : null}
         {policy === null && failure === null ? <p role="status">Reading environment policy…</p> : null}
         {policy !== null && policy.sliding.length > 0 ? (
@@ -1808,15 +1799,7 @@ function AdapterCeremony({
             {policy.passkey.length === 1 ? 'takes' : 'take'} a passkey decision of its own.
           </p>
         ) : null}
-        <div className="ceremony__actions">
-          <button type="submit" className="btn btn--primary" disabled={busy || policy === null}>
-            {busy ? 'Authorising…' : 'Authorise'}
-          </button>
-          <button type="button" className="btn btn--quiet" onClick={cancel} disabled={busy}>
-            Cancel
-          </button>
-        </div>
       </form>
-    </dialog>
+    </Dialog>
   );
 }

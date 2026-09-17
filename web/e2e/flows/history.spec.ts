@@ -363,7 +363,14 @@ test.describe('revision history', () => {
     // r2 is the secret edit. Write-presence only, the marker and the
     // transition, never a value, a length or a comparison.
     const changes = drawer.locator('.history__changes');
-    await expect(changes).toContainText(`🔒 ${seed.history.secretKey}`);
+    await expect(changes).toContainText(seed.history.secretKey);
+    // The lock is the ui/Glyph SVG now, so assert the mark, not the emoji.
+    await expect(
+      changes
+        .locator('.history__change')
+        .filter({ hasText: seed.history.secretKey })
+        .locator('svg.glyph'),
+    ).toHaveCount(1);
     await expect(changes).toContainText('write-presence only');
     await expectNoFixtureSecret(drawer);
   });
@@ -413,7 +420,7 @@ test.describe('revision history', () => {
     await expect(list.getByRole('button')).toHaveCount(facts.secretKeyRevisions);
     await expectNoFixtureSecret(drawer);
 
-    await drawer.getByRole('button', { name: '✕ show every revision' }).click();
+    await drawer.getByRole('button', { name: 'show every revision' }).click();
     await expect(list.getByRole('button')).toHaveCount(facts.devRevisions);
     await expectNoFixtureSecret(drawer);
   });
@@ -967,7 +974,8 @@ test.describe('revision history', () => {
       await expect(drawer.locator('.notice')).toContainText('Pin created');
       await expectNoFixtureSecret(drawer);
       const drifted = drawer.locator('.history__pin').filter({ hasText: seed.history.spareWorkload });
-      await expect(drifted).toContainText('Δ schema drift');
+      await expect(drifted).toContainText('schema drift');
+      await expect(drifted.locator('.history__drift svg.glyph')).toHaveCount(1);
 
       // Clean up the override pin when the product classifier exposes it.
       await drifted.getByRole('button', { name: 'Release' }).click();

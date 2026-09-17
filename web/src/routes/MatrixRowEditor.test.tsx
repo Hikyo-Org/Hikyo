@@ -267,7 +267,7 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     return result;
   };
 
-  it('labels the dialog by its heading and closes only on a real backdrop click', async () => {
+  it('labels the dialog by its heading, and closes on Close and on a real backdrop click', async () => {
     const onClose = vi.fn();
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -297,31 +297,64 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     const heading = dialog.querySelector('h2');
     expect(heading?.id).toBeTruthy();
     expect(dialog.getAttribute('aria-labelledby')).toBe(heading?.id);
+    expect(heading?.textContent).toBe(keyRecord.name);
 
+    // The close X is gone with the shell; the Close action replaces it.
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => button(container, 'Close').click());
+    expect(onClose).toHaveBeenCalledOnce();
+
+    // And the backdrop, through the atom's opt-in `onBackdropClick`: a click on
+    // the dialog's own padding is NOT a walk away, one outside its box is.
     dialog.getBoundingClientRect = () =>
       ({ left: 100, top: 100, right: 300, bottom: 300, width: 200, height: 200, x: 100, y: 100, toJSON: () => ({}) });
-    await act(async () => {
-      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 150, clientY: 150 }));
-    });
-    expect(onClose).not.toHaveBeenCalled();
-    await act(async () => {
-      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 10, clientY: 10 }));
-    });
+    const at = (kind: 'mousedown' | 'click', clientX: number, clientY: number) =>
+      act(async () => {
+        dialog.dispatchEvent(new MouseEvent(kind, { bubbles: true, clientX, clientY }));
+      });
+    await at('mousedown', 150, 150);
+    await at('click', 150, 150);
     expect(onClose).toHaveBeenCalledOnce();
+    // A drag that starts in the editor and releases past its edge is a text
+    // selection: both ends have to land on the scrim before the edit is dropped.
+    await at('mousedown', 150, 150);
+    await at('click', 10, 10);
+    expect(onClose).toHaveBeenCalledOnce();
+    await at('mousedown', 10, 10);
+    await at('click', 10, 10);
+    expect(onClose).toHaveBeenCalledTimes(2);
     await act(async () => root.unmount());
   });
 
-  it('toggles edit-all with aria-expanded and offers the per-row clear only in the single view', async () => {
+  it('toggles edit-all through its label and offers the per-row clear only in the single view', async () => {
     const view = await renderEditor(keyRecord, twoRows);
     const clearButtons = () =>
       [...view.container.querySelectorAll('button')].filter((node) => node.textContent?.startsWith('Clear '));
     expect(clearButtons()).toHaveLength(1);
     const toggle = button(view.container, 'Edit all environments');
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    // The label carries the mode, so no ARIA state repeats it: the panel is
+    // always on screen (not a disclosure) and the name flips (not a toggle).
+    expect(toggle.getAttribute('aria-pressed')).toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBeNull();
+
+    // A mode switch, not a dialog action: the panel it changes exists, and it
+    // FOLLOWS the button in the document, so Tab after clicking walks into
+    // what changed.
+    const panel = view.container.querySelector('.matrix-row-editor__panel');
+    expect(panel).not.toBeNull();
+    expect(view.container.querySelector('.dialog__actions')?.contains(toggle)).toBe(false);
+    expect(panel === null ? 0 : toggle.compareDocumentPosition(panel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
     await act(async () => toggle.click());
     expect(clearButtons()).toHaveLength(0);
+    expect(panel?.querySelector('textarea#matrix-fill-all')).not.toBeNull();
+    // Same button, renamed: the label is the whole state, so the
+    // all-environments mode is announced by looking it up under the new name.
     const back = button(view.container, 'Back to development only');
-    expect(back.getAttribute('aria-expanded')).toBe('true');
+    expect(back).toBe(toggle);
+    expect(back.getAttribute('aria-pressed')).toBeNull();
     await act(async () => back.click());
     expect(clearButtons()).toHaveLength(1);
     await view.unmount();
@@ -350,14 +383,71 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     );
     const head = view.container.querySelector('.matrix-row-editor__row-head')?.textContent ?? '';
     expect(head).toContain('· absent');
-    expect(head).toContain('Δ pending clear');
-    expect(view.container.querySelector('.matrix-row-editor__row .alert')?.getAttribute('role')).toBe('status');
+    expect(head).toContain('pending clear');
+    expect(view.container.querySelector('.matrix-row-editor__row-head svg.glyph')).not.toBeNull();
     const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea[id^="matrix-edit-"]');
     if (textarea === null) throw new Error('textarea missing');
+
+    // A lone standing problem is the control's own error: announced, glyphed,
+    // and it marks the control invalid rather than floating above it.
+    const fieldError = () => view.container.querySelector('.matrix-row-editor__row .field__error');
+    expect(fieldError()?.getAttribute('role')).toBe('alert');
+    expect(fieldError()?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    expect(textarea.getAttribute('aria-invalid')).toBe('true');
+    expect(textarea.getAttribute('aria-describedby')).toBe(fieldError()?.id);
+
+    // Typing an invalid value hands the error slot to the live validation; the
+    // standing problem steps aside into the alert above the control, where it
+    // keeps the danger treatment a violation earns.
     await act(async () => typeInto(textarea, 'abc'));
-    const error = view.container.querySelector('.matrix-cell__error');
-    expect(error?.textContent).toBe('✕ Enter a boolean (true or false), or an integer at least 5.');
-    expect(error?.querySelector('[aria-hidden="true"]')?.textContent).toBe('✕ ');
+    expect(fieldError()?.textContent).toContain('Enter a boolean (true or false), or an integer at least 5.');
+    expect(fieldError()?.querySelector('.alert__glyph[aria-hidden="true"]')).not.toBeNull();
+    const standing = view.container.querySelector('.matrix-row-editor__row .alert');
+    expect(standing?.getAttribute('role')).toBe('alert');
+    expect(standing?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    await view.unmount();
+  });
+
+  it('drops the standing problem from the control once a valid replacement is typed', async () => {
+    const view = await renderEditor(
+      { ...keyRecord, declaration: { any_of: [{ type: 'boolean' }, { type: 'integer', min: 5n }] } },
+      [{ ...rows[0]!, cell: undefined, problems: [{ message: 'LOG_LEVEL is required in development but is absent.' }] }],
+    );
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea[id^="matrix-edit-"]');
+    if (textarea === null) throw new Error('textarea missing');
+    expect(textarea.getAttribute('aria-invalid')).toBe('true');
+
+    // The operator answers the problem: the control is about what was typed,
+    // and that is valid, so nothing here is invalid any more. The standing
+    // problem is still true of what is published, so it stays, above the
+    // control and out of its error slot.
+    await act(async () => typeInto(textarea, 'true'));
+    expect(textarea.getAttribute('aria-invalid')).toBeNull();
+    expect(textarea.getAttribute('aria-describedby')).toBeNull();
+    expect(view.container.querySelector('.matrix-row-editor__row .field__error')).toBeNull();
+    const standing = view.container.querySelector('.matrix-row-editor__row .alert');
+    expect(standing?.getAttribute('role')).toBe('alert');
+    expect(standing?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    await view.unmount();
+  });
+
+  it('opens the copy panel from a toggle beside it, not from the action row', async () => {
+    const view = await renderEditor(keyRecord, twoRows);
+    const toggle = button(view.container, 'Copy published development value to\u2026');
+    expect(view.container.querySelector('.dialog__actions')?.contains(toggle)).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    // Nothing to point at while it is closed: a dangling reference is worse
+    // than no attribute.
+    expect(toggle.getAttribute('aria-controls')).toBeNull();
+
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const panelId = toggle.getAttribute('aria-controls') ?? '';
+    const panel = view.container.querySelector(`#${panelId}`);
+    expect(panel?.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(panel === null ? 0 : toggle.compareDocumentPosition(panel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     await view.unmount();
   });
 

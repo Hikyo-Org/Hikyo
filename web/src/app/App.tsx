@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 
 import { NotFound, Overview } from '../routes/Placeholder.tsx';
 import { Shell } from '../routes/Shell.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import {
   allowsAnonymousSession,
   SURFACES,
@@ -161,12 +162,7 @@ export function App() {
   if (auth.failure !== null) {
     return <>
       <main className="login">
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>Reconnecting to the server automatically.</span>
-        </p>
+        <Alert>Reconnecting to the server automatically.</Alert>
       </main>
       <ToastViewport />
     </>;

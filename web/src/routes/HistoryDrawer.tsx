@@ -33,6 +33,12 @@ import {
 import type { EnvRef, MatrixRef } from '../api/keys.ts';
 import type { EnvironmentList, ValueCell } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   defaultPinExpiry,
@@ -66,7 +72,6 @@ import {
   type RevisionActionGate,
 } from './history-state.ts';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
-import { useModalDialog } from './useModalDialog.ts';
 import { RevisionDiffDialog } from './RevisionDiff.tsx';
 
 type Environment = EnvironmentList['items'][number];
@@ -105,8 +110,8 @@ const zPinComparisonValues = zExportedValues.superRefine((values, context) => {
  *    actor and its changed keys, gains a `payload collected` tag, and loses
  *    restore and pin with the stamped policy named. Nothing is reconstructed.
  *  - **Secrets are write-presence only.** The changed-key list says added /
- *    edited / removed and marks the key 🔒. No value, no length, no digest, no
- *    comparison status reaches this surface for a secret, ever.
+ *    edited / removed and marks the key as secret. No value, no length, no
+ *    digest, no comparison status reaches this surface for a secret, ever.
  *  - **Restore is not a privileged path.** It stages ordinary drafts; the
  *    matrix's own draft dots appear and the ordinary publish sheet commits
  *    them, carrying the preview token that binds them.
@@ -277,9 +282,9 @@ export function HistoryDrawer({
   }, [mobileDetail, selected?.revision]);
 
   // A pointer-down outside the drawer closes it back to the matrix, the same way
-  // the ✕ Close link and Escape do. Guarded on an open dialog: the restore/pin/
+  // the Close link and Escape do. Guarded on an open dialog: the restore/pin/
   // release sheets are native `<dialog>`s rendered as SIBLINGS of the drawer, so
-  // a click inside one lands outside the aside — the guard keeps that from also
+  // a click inside one lands outside the aside, and the guard keeps that from also
   // collapsing the drawer, leaving each sheet its own dismissal.
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {
@@ -532,12 +537,12 @@ export function HistoryDrawer({
               <span aria-hidden="true">↺ </span>
               Revision history
             </h2>
-            <span className="history__current count">{`current r${String(currentRevision)}`}</span>
+            <Badge>{`current r${String(currentRevision)}`}</Badge>
             {protectedEnvironmentIds.includes(environment.id) ? (
               <span className="history__protected">PROTECTED</span>
             ) : null}
             <Link id="history-close" className="btn history__close" to={matrixPath} aria-label="Close revision history">
-              ✕ Close
+              <Glyph name="cross" /> Close
             </Link>
           </div>
 
@@ -550,10 +555,10 @@ export function HistoryDrawer({
           */}
           <div className="history__tabs">
             {environments.map((candidate) => (
-              <button
+              <Button
                 key={candidate.id}
                 type="button"
-                className="btn history__tab"
+                className="history__tab"
                 aria-pressed={candidate.id === environment.id}
                 onClick={() => {
                   const next = new URLSearchParams(params);
@@ -564,7 +569,7 @@ export function HistoryDrawer({
                 }}
               >
                 {candidate.name}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -601,39 +606,27 @@ export function HistoryDrawer({
                 <span aria-hidden="true">⚠ </span>
                 {`filter active: history of ${keyDisplay?.label ?? keyFilter}, showing ${String(filtered.length)} of ${String(revisions.length)} revisions`}
               </span>
-              <button type="button" className="btn" onClick={() => setParam('key', null)}>
-                ✕ show every revision
-              </button>
+              <Button type="button" onClick={() => setParam('key', null)}>
+                <Glyph name="cross" /> show every revision
+              </Button>
             </p>
           )}
         </div>
 
         {outcome === null ? null : (
-          <p className="notice" role="status">
-            <span aria-hidden="true">✓</span>
-            <span>{outcome}</span>
-          </p>
+          <Alert tone="done">{outcome}</Alert>
         )}
         {refusal === null && guard.error === null ? null : (
-          <p id="history-drawer-refusal" className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{refusal ?? guard.error}</span>
-          </p>
+          <Alert>{refusal ?? guard.error}</Alert>
         )}
         {retention.isError ? (
-          <p id="history-retention-error" className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>Retention policy could not be read. Pin release consequences still come from the server.</span>
-          </p>
+          <Alert>Retention policy could not be read. Pin release consequences still come from the server.</Alert>
         ) : null}
 
         {history.isPending ? (
           <p role="status">Loading revision history…</p>
         ) : history.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>The revision history could not be read. Reload to try again.</span>
-          </p>
+          <Alert>The revision history could not be read. Reload to try again.</Alert>
         ) : filtered.length === 0 ? (
           <p className="history__empty" role="status">
             {keyFilter === null
@@ -647,11 +640,11 @@ export function HistoryDrawer({
                 const pinnedHere = pinRows.filter((pin) => pin.revision === entry.revision);
                 return (
                   <li key={String(entry.revision)}>
-                    <button
+                    <Button
                       data-history-revision={String(entry.revision)}
                       ref={entry.revision === selected?.revision ? selectedRow : undefined}
                       type="button"
-                      className="btn history__row"
+                      className="history__row"
                       aria-current={entry.revision === selected?.revision}
                       onClick={() => {
                         setParam('rev', String(entry.revision));
@@ -672,24 +665,24 @@ export function HistoryDrawer({
                         <span className="history__tag history__tag--collected">payload collected</span>
                       )}
                       <span className="history__age">{relativeAge(entry.publishedAt, now)}</span>
-                    </button>
+                    </Button>
                   </li>
                 );
               })}
             </ol>
 
             <div className="history__detail">
-              <button
+              <Button
                 id="history-detail-back"
                 type="button"
-                className="btn history__back"
+                className="history__back"
                 onClick={() => {
                   setMobileDetail(false);
                   requestAnimationFrame(() => selectedRow.current?.focus());
                 }}
               >
                 ← All revisions
-              </button>
+              </Button>
               {selected === undefined || selectedGate === null ? null : (
                 <RevisionDetail
                   environmentName={environment.name}
@@ -1019,10 +1012,7 @@ function RevisionDetail({
         </p>
       )}
       {detail.isError ? (
-        <p id="history-detail-error" className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{revisionDetailRefusal(detail.error, revision.revision)}</span>
-        </p>
+        <Alert>{revisionDetailRefusal(detail.error, revision.revision)}</Alert>
       ) : null}
 
       <h4>{`Changed keys (${String(revision.changedKeys.length)})`}</h4>
@@ -1031,54 +1021,52 @@ function RevisionDetail({
           const secret = secretByKeyId.get(changed.keyId) === true;
           return (
             <li key={changed.keyId}>
-              <button
+              <Button
                 type="button"
-                className="btn history__change mono"
+                className="history__change mono"
                 aria-pressed={keyFilter === changed.keyId}
                 onClick={() => onFilterKey(changed.keyId)}
               >
-                {secret ? <span aria-hidden="true">🔒 </span> : null}
+                {secret ? <><Glyph name="lock" /> </> : null}
                 {changed.name}
-              </button>
+              </Button>
               <span className="history__kind">{changed.change}</span>
               {secret ? <span className="history__presence">write-presence only</span> : null}
-              <button
+              <Button
                 type="button"
-                className="btn"
                 disabled={!gate.restore || !detail.isSuccess}
                 onClick={() => onRestore(revisionKeys, changed.keyId)}
               >
                 {`Restore ${changed.name}…`}
-              </button>
+              </Button>
             </li>
           );
         })}
       </ul>
 
       <div className="history__actions">
-        <button
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           disabled={!gate.restore || !detail.isSuccess}
           title={gate.restore ? undefined : gate.reason ?? undefined}
           onClick={() => onRestore(revisionKeys, null)}
         >
           {`Restore r${String(revision.revision)}…`}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn"
           disabled={!gate.pin || !detail.isSuccess}
           title={gate.pin ? undefined : gate.reason ?? undefined}
           onClick={() => onPin(revisionKeys)}
         >
           {`Pin r${String(revision.revision)}…`}
-        </button>
+        </Button>
       </div>
 
       <div className="history__actions">
-        <button className="btn" type="button" disabled={!revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}>Diff vs previous</button>
-        <button className="btn" type="button" disabled={!revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}>Diff vs current</button>
+        <Button type="button" disabled={!revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}>Diff vs previous</Button>
+        <Button type="button" disabled={!revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}>Diff vs current</Button>
       </div>
       {diffTarget !== null ? <RevisionDiffDialog key={`${env.environment}:${String(revision.revision)}:${String(diffTarget)}`} env={env} environmentName={environmentName} left={diffTarget < revision.revision ? diffTarget : revision.revision} right={diffTarget < revision.revision ? revision.revision : diffTarget} onClose={() => setDiffTarget(null)} /> : null}
 
@@ -1117,7 +1105,7 @@ function RevisionDetail({
                 <span className="history__pin-gap">{gap}</span>
                 {pin.schemaOverride ? (
                   <span className="history__drift" title="Pinned despite a current-schema failure, recorded as an explicit override. Pinned delivery is verbatim.">
-                    Δ schema drift
+                    <Glyph name="delta" /> schema drift
                   </span>
                 ) : null}
                 {/* The server's preview: this pin is the only thing holding the
@@ -1133,13 +1121,12 @@ function RevisionDetail({
                     </span>
                   </>
                 ) : null}
-                <button
+                <Button
                   type="button"
-                  className="btn"
                   onClick={() => onRelease(pin)}
                 >
                   Release
-                </button>
+                </Button>
               </li>
             );
           })}
@@ -1188,7 +1175,6 @@ function RestoreSheet({
   onPublish: () => void;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const groups: readonly HistoryImpactEnvironment[] =
     result === null
       ? []
@@ -1210,39 +1196,36 @@ function RestoreSheet({
   const summary = restorePreviewSummary(groups.flatMap((group) => group.changes));
 
   return (
-    <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>
-            {keyName === null
-              ? `Restore r${String(revision)} · ${environmentName}`
-              : `Restore ${keyName} from r${String(revision)} · ${environmentName}`}
-          </h2>
-          <p>
-            Stages drafts reproducing r{String(revision)}. Publishing them runs the normal
-            pipeline and re-validates against the CURRENT schema; history is never rewritten.
-          </p>
-        </div>
-        <button type="button" className="btn matrix-editor__close" aria-label="Close restore" onClick={onClose}>
-          ✕
-        </button>
-      </div>
-
+    <Dialog
+      title={
+        keyName === null
+          ? `Restore r${String(revision)} · ${environmentName}`
+          : `Restore ${keyName} from r${String(revision)} · ${environmentName}`
+      }
+      lede={
+        <>
+          Stages drafts reproducing r{String(revision)}. Publishing them runs the normal
+          pipeline and re-validates against the CURRENT schema; history is never rewritten.
+        </>
+      }
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
       {refusal === null ? null : (
-        <p id="history-restore-refusal" className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{refusal}</span>
-        </p>
+        <Alert>{refusal}</Alert>
       )}
 
       {result === null ? (
-        <div className="matrix-editor__actions">
-          <button type="button" className="btn btn--primary" disabled={busy} onClick={onStage}>
-            {busy ? 'Staging…' : `Stage the restore from r${String(revision)}`}
-          </button>
-          <button type="button" className="btn" onClick={onClose}>
+        <div className="dialog__actions">
+          <Button type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
+          <Button type="button" variant="primary" disabled={busy} onClick={onStage}>
+            {busy ? 'Staging…' : `Stage the restore from r${String(revision)}`}
+          </Button>
         </div>
       ) : (
         <>
@@ -1263,7 +1246,7 @@ function RestoreSheet({
                 {group.changes.map((change) => (
                   <li key={`${group.environmentId}:${change.keyId}`}>
                     <span className="mono">
-                      {change.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
+                      {change.classification === 'secret' ? <><Glyph name="lock" /> </> : null}
                       {change.name}
                     </span>
                     <span className="history__kind">{change.operation === 'set' ? 'set' : 'clear'}</span>
@@ -1287,15 +1270,17 @@ function RestoreSheet({
               </ul>
             </section>
           ))}
-          <p className="notice" role="status">
-            <span aria-hidden="true">✓</span>
-            <span>Drafts are staged; they are also visible on the matrix.</span>
-          </p>
-          <div className="matrix-editor__actions">
-            <button
+          <Alert tone="done">Drafts are staged; they are also visible on the matrix.</Alert>
+          {/* The row stays in the children: the gate sentence below explains a
+              disabled publish, so `actions` would put it after its own reason. */}
+          <div className="dialog__actions">
+            <Link id="history-restore-back" className="btn" to={matrixPath}>
+              Back to the matrix
+            </Link>
+            <Button
               id="history-restore-publish"
               type="button"
-              className="btn btn--primary"
+              variant="primary"
               disabled={publishBusy || result.changes.length === 0}
               aria-describedby={result.changes.length === 0 ? 'history-restore-no-drafts' : undefined}
               onClick={onPublish}
@@ -1303,10 +1288,7 @@ function RestoreSheet({
               {publishBusy
                 ? 'Publishing this restore…'
                 : restorePublishLabel(revision, groups)}
-            </button>
-            <Link id="history-restore-back" className="btn" to={matrixPath}>
-              Back to the matrix
-            </Link>
+            </Button>
           </div>
           {result.changes.length === 0 ? (
             <p id="history-restore-no-drafts" className="history__gate" role="status">
@@ -1315,7 +1297,7 @@ function RestoreSheet({
           ) : null}
         </>
       )}
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1369,32 +1351,24 @@ function PinSheet({
   onSubmit: () => void;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const chosen = workloads.find((workload) => workload.principalID === state.workloadPrincipalID);
   const plan = pinAction(chosen?.existingPin?.revision, revision);
   const moveMayCollect =
     plan.kind === 'move' && chosen?.existingPin?.releaseRetentionConsequence === 'collection_eligible';
 
   return (
-    <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>
-            <span aria-hidden="true">⚲ </span>
-            {`Pin r${String(revision)} · ${environmentName}`}
-          </h2>
-          <p>{`One pin per workload and environment. ${String(pinCount)} pinned in this environment; the project quota is 100 and expiry is mandatory.`}</p>
-        </div>
-        <button type="button" className="btn matrix-editor__close" aria-label="Close pin sheet" onClick={onClose}>
-          ✕
-        </button>
-      </div>
-
+    <Dialog
+      title={`Pin r${String(revision)} · ${environmentName}`}
+      lede={`One pin per workload and environment. ${String(pinCount)} pinned in this environment; the project quota is 100 and expiry is mandatory.`}
+      size="wide"
+      className="history-sheet"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
       {refusal === null ? null : (
-        <p id="history-pin-refusal" className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{refusal}</span>
-        </p>
+        <Alert>{refusal}</Alert>
       )}
 
       <div className="history__pin-what">
@@ -1473,17 +1447,11 @@ function PinSheet({
       />
 
       {state.offerOverride ? (
-        <label className="history__field history__override chk">
-          <input
-            type="checkbox"
-            checked={state.overrideSchema}
-            onChange={(event) => onChange({ overrideSchema: event.target.checked })}
-          />
-          <span>
-            Pin despite the current-schema failure above. Pinned delivery is verbatim, so this is
-            recorded as an explicit override and the pin is surfaced as drift afterwards.
-          </span>
-        </label>
+        <Checkbox
+          label="Pin despite the current-schema failure above. Pinned delivery is verbatim, so this is recorded as an explicit override and the pin is surfaced as drift afterwards."
+          checked={state.overrideSchema}
+          onChange={(event) => onChange({ overrideSchema: event.target.checked })}
+        />
       ) : null}
 
       <section className="history__comparison" aria-labelledby="history-pin-compare-heading">
@@ -1491,22 +1459,18 @@ function PinSheet({
           {`Compare r${String(revision)} to latest (reads r${String(revision)}'s config values)`}
         </h3>
         <p>Secret lines are write-presence from the lineage, never a value comparison.</p>
-        <button
+        <Button
           id="history-pin-compare"
           type="button"
-          className="btn"
           disabled={comparisonBusy}
           aria-expanded={comparison !== null}
           aria-controls="history-pin-compare-results"
           onClick={onCompare}
         >
           {comparisonBusy ? 'Comparing…' : 'Run comparison'}
-        </button>
+        </Button>
         {comparisonError === null ? null : (
-          <p id="history-pin-compare-error" className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{comparisonError}</span>
-          </p>
+          <Alert>{comparisonError}</Alert>
         )}
         {comparison === null ? null : (
           <div id="history-pin-compare-results" role="status" aria-live="polite">
@@ -1524,22 +1488,24 @@ function PinSheet({
         )}
       </section>
 
-      <div className="matrix-editor__actions">
-        <button
+      {/* The row stays in the children because the latest-revision sentence
+          below it is body copy, not part of the decision. */}
+      <div className="dialog__actions">
+        <Button type="button" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
           id="history-pin-submit"
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           disabled={busy || state.workloadPrincipalID === '' || state.expiresAt === ''}
           onClick={onSubmit}
         >
           {busy ? 'Pinning…' : moveMayCollect ? `${plan.label}, old values may be collected` : plan.label}
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
-          Cancel
-        </button>
+        </Button>
       </div>
       <p>{`Latest in ${environmentName} is r${String(currentRevision)}.`}</p>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1559,25 +1525,41 @@ function ReleaseSheet({
   onRelease: () => void;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const soleKeeper = pin.releaseRetentionConsequence === 'collection_eligible';
   const revision = String(pin.revision);
   return (
-    <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>Release pin</h2>
-          {soleKeeper ? (
-            <p>
-              {`This pin is the only thing keeping r${revision}'s values. Releasing it makes them collection-eligible: no diff by value, no restore, no reveal once collected.`}
-            </p>
-          ) : null}
-          <p>{`The server will report r${revision}'s retention consequence after release.`}</p>
-        </div>
-        <button type="button" className="btn matrix-editor__close" aria-label="Close release confirmation" onClick={onClose}>
-          ✕
-        </button>
-      </div>
+    <Dialog
+      title="Release pin"
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose}>
+            Keep the pin
+          </Button>
+          <Button
+            id="history-release-confirm"
+            type="button"
+            variant="danger"
+            disabled={busy}
+            onClick={onRelease}
+          >
+            {busy ? 'Releasing…' : soleKeeper ? `Release and allow collection of r${revision}` : 'Release pin'}
+          </Button>
+        </>
+      }
+    >
+      {/* Two ledes, so they stay in the children: the atom's `lede` is one
+          paragraph and a sole-keeper release has a consequence to state first. */}
+      {soleKeeper ? (
+        <p className="dialog__lede">
+          {`This pin is the only thing keeping r${revision}'s values. Releasing it makes them collection-eligible: no diff by value, no restore, no reveal once collected.`}
+        </p>
+      ) : null}
+      <p className="dialog__lede">{`The server will report r${revision}'s retention consequence after release.`}</p>
       <ul className="history__consequences">
         <li>{`${workloadName} resumes latest (r${String(currentRevision)}) on its next fetch.`}</li>
         <li>
@@ -1587,21 +1569,7 @@ function ReleaseSheet({
         </li>
         <li>The lineage entry stays in every case.</li>
       </ul>
-      <div className="matrix-editor__actions">
-        <button
-          id="history-release-confirm"
-          type="button"
-          className="btn btn--danger"
-          disabled={busy}
-          onClick={onRelease}
-        >
-          {busy ? 'Releasing…' : soleKeeper ? `Release and allow collection of r${revision}` : 'Release pin'}
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
-          Keep the pin
-        </button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 

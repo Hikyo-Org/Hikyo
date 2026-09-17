@@ -80,8 +80,26 @@ type Story = StoryObj<typeof meta>;
 // changed yet.
 export const Default: Story = {
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('textbox')).toHaveValue('published');
+    // Named, not just present: the value control is labelled through ui/Field.
+    await expect(canvas.getByRole('textbox', { name: 'development value' })).toHaveValue(
+      'published',
+    );
     await expect(canvas.getByRole('button', { name: /^Save/ })).toBeDisabled();
+  },
+};
+
+// The copy panel opens from a toggle that sits beside it and names it, not from
+// the action row: `aria-controls` resolves to the panel that appears.
+export const CopyDisclosure: Story = {
+  play: async ({ canvas }) => {
+    const toggle = canvas.getByRole('button', { name: 'Copy published development value to\u2026' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    const panelId = toggle.getAttribute('aria-controls') ?? '';
+    const panel = canvas.getByRole('group', { name: 'Copy independent published value to' });
+    await expect(panel.closest(`#${panelId}`)).not.toBeNull();
   },
 };
 

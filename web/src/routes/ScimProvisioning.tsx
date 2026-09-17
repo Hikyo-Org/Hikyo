@@ -39,8 +39,15 @@ import {
 } from '../api/scim.ts';
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { writeClipboard } from '../app/clipboard.ts';
-import { Alert, Done, Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Radio } from '../ui/Radio.tsx';
+import { Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { useFeedback } from './useFeedback.ts';
 import { useNavigationGuard } from './MachineAccess.tsx';
 import { gateSystemScope } from './SystemScope.tsx';
 
@@ -204,18 +211,18 @@ function BindingCard({
       <div className="scim-binding__head">
         <h3 className="scim-binding__slug">
           <span className="mono">{binding.provider_slug}</span>
-          <span className="badge" data-state={binding.provider_kind}>
+          <Badge data-state={binding.provider_kind}>
             {binding.provider_kind}
-          </span>
+          </Badge>
         </h3>
-        <button
+        <Button
           type="button"
-          className={selected ? 'btn btn--primary' : 'btn'}
+          variant={selected ? 'primary' : 'secondary'}
           aria-pressed={selected}
           onClick={onSelect}
         >
           {selected ? 'Administering' : 'Administer'}
-        </button>
+        </Button>
       </div>
       <dl className="scim-binding__facts">
         <dt>Issuer</dt>
@@ -250,9 +257,9 @@ function AttentionList({
     <ul className="scim-attention" aria-label={`${subjectPrefix}attention states`}>
       {attention.map((state, index) => (
         <li key={`${state.state}-${state.subject_ref}-${index}`} className="scim-attention__row">
-          <span className="badge" data-state={state.state}>
+          <Badge data-state={state.state}>
             {state.state.replace(/_/g, ' ')}
-          </span>
+          </Badge>
           <span className="scim-attention__fix">{state.remediation}</span>
         </li>
       ))}
@@ -327,30 +334,21 @@ function CreateBindingForm({ org }: { org: string }) {
     <form className="form" onSubmit={onSubmit} noValidate>
       <h3>Create a binding</h3>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
-      {feedback.done === null ? null : <Done>{feedback.done}</Done>}
-      <fieldset className="field">
-        <legend>Provider kind</legend>
-        <div className="chk">
-          <input
-            id="scim-kind-oidc"
-            type="radio"
-            name="scim-kind"
-            checked={providerKind === 'oidc'}
-            onChange={() => setProviderKind('oidc')}
-          />
-          <label htmlFor="scim-kind-oidc">OIDC</label>
-        </div>
-        <div className="chk">
-          <input
-            id="scim-kind-saml"
-            type="radio"
-            name="scim-kind"
-            checked={providerKind === 'saml'}
-            onChange={() => setProviderKind('saml')}
-          />
-          <label htmlFor="scim-kind-saml">SAML</label>
-        </div>
-      </fieldset>
+      {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
+      <ChoiceGroup legend="Provider kind">
+        <Radio
+          name="scim-kind"
+          label="OIDC"
+          checked={providerKind === 'oidc'}
+          onChange={() => setProviderKind('oidc')}
+        />
+        <Radio
+          name="scim-kind"
+          label="SAML"
+          checked={providerKind === 'saml'}
+          onChange={() => setProviderKind('saml')}
+        />
+      </ChoiceGroup>
       <div className="field">
         <label htmlFor="scim-provider-slug">Provider slug</label>
         <input
@@ -383,13 +381,13 @@ function CreateBindingForm({ org }: { org: string }) {
           required
         />
       </div>
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="submit"
         disabled={create.isPending || providerSlug.trim() === '' || subjectSource.trim() === ''}
       >
         {create.isPending ? 'Creating…' : 'Create binding'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -421,7 +419,7 @@ function MappingsSection({ org, binding }: { org: string; binding: ScimBinding }
       </p>
 
       {mappings.isError ? <Alert>{scimReadFailureText(mappings.error)}</Alert> : null}
-      {deleteOutcome === null ? null : <Done>{deleteOutcome}</Done>}
+      {deleteOutcome === null ? null : <Alert tone="done">{deleteOutcome}</Alert>}
 
       {mappings.isSuccess && rows.length === 0 ? (
         <p role="status">No mappings yet. Map a provisioned group to a template below.</p>
@@ -539,35 +537,35 @@ function MappingRow({
         <h3 className="scim-mapping__group">
           {groupName}
           {row.inert ? (
-            <span className="badge" data-state="inert">
+            <Badge data-state="inert">
               inert
-            </span>
+            </Badge>
           ) : null}
         </h3>
         <span className="mono scim-mapping__template">{row.template}</span>
       </div>
       <p className="scim-mapping__scope">{scopeLabel(row, names)}</p>
       {row.inert ? (
-        <p className="notice" role="status">
+        <Alert tone="warn">
           The provider group behind this row no longer exists. It grants nothing until it is edited
           or deleted; it is never removed automatically.
-        </p>
+        </Alert>
       ) : null}
       <ul className="scim-mapping__caps">
         {row.capabilities.map((capability) => (
           <li key={capability} className="capability">
             <span className="capability__name mono">{capability}</span>
             {(row.capability_origins ?? []).filter((origin) => origin.capability === capability).map((origin) => (
-              <span className="badge mono" key={`${origin.binding_id}:${origin.mapping_id}:${origin.group_id}`} title={`Binding ${origin.binding_id}, mapping ${origin.mapping_id}`}>
+              <Badge mono key={`${origin.binding_id}:${origin.mapping_id}:${origin.group_id}`} title={`Binding ${origin.binding_id}, mapping ${origin.mapping_id}`}>
                 {origin.kind}: {origin.group_id === row.group_id ? groupName : origin.group_id}
-              </span>
+              </Badge>
             ))}
           </li>
         ))}
       </ul>
 
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
-      {feedback.done === null ? null : <Done>{feedback.done}</Done>}
+      {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
       {result === null ? null : <MappingWarnings warnings={result.warnings} />}
 
       {editing ? (
@@ -587,11 +585,10 @@ function MappingRow({
             </select>
           </div>
           <div className="scim-mapping__actions">
-            <button className="btn btn--primary" type="submit" disabled={update.isPending}>
+            <Button variant="primary" type="submit" disabled={update.isPending}>
               {update.isPending ? 'Retargeting…' : 'Save template'}
-            </button>
-            <button
-              className="btn"
+            </Button>
+            <Button
               type="button"
               onClick={() => {
                 setEditing(false);
@@ -599,28 +596,27 @@ function MappingRow({
               }}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       ) : (
         <div className="scim-mapping__actions">
-          <button
-            className="btn"
+          <Button
             type="button"
             onClick={() => setEditing(true)}
             aria-label={`Retarget ${groupName}`}
           >
             Retarget
-          </button>
-          <button
-            className="btn btn--danger"
+          </Button>
+          <Button
+            variant="danger"
             type="button"
             disabled={remove.isPending}
             aria-label={`Delete mapping for ${groupName}`}
             onClick={onDelete}
           >
             {remove.isPending ? 'Deleting…' : 'Delete'}
-          </button>
+          </Button>
         </div>
       )}
     </li>
@@ -648,7 +644,7 @@ function MappingWarnings({ warnings }: { warnings: readonly ScimBlastWarning[] }
           key={`${warning.code}-${index}`}
           className={warning.severity === 'critical' ? 'alert' : 'notice'}
           role={warning.severity === 'critical' ? 'alert' : 'status'}
-        >
+        >{/* markup-check: list item, atom renders a div */}
           <span className="alert__glyph" aria-hidden="true">
             !
           </span>
@@ -711,7 +707,7 @@ function CreateMappingForm({ org, binding }: { org: string; binding: string }) {
         for you.
       </p>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
-      {feedback.done === null ? null : <Done>{feedback.done}</Done>}
+      {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
       {result === null ? null : <MappingWarnings warnings={result.warnings} />}
 
       {groups.isSuccess && groupItems.length === 0 ? (
@@ -776,13 +772,13 @@ function CreateMappingForm({ org, binding }: { org: string; binding: string }) {
         </select>
       </div>
 
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="submit"
         disabled={create.isPending || groupId === '' || !templateValid}
       >
         {create.isPending ? 'Mapping…' : 'Add mapping'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -851,9 +847,9 @@ function CredentialRow({
     <li className="scim-credential">
       <div className="scim-credential__head">
         <span className="mono scim-credential__id">{credential.id}</span>
-        <span className="badge" data-state={state}>
+        <Badge data-state={state}>
           {state}
-        </span>
+        </Badge>
       </div>
       <dl className="scim-credential__facts">
         <dt>Created</dt>
@@ -872,8 +868,8 @@ function CredentialRow({
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
       {revoked ? null : (
         <div className="scim-credential__actions">
-          <button
-            className="btn btn--danger"
+          <Button
+            variant="danger"
             type="button"
             disabled={revoke.isPending}
             aria-label={`Revoke credential ${credential.id}`}
@@ -883,7 +879,7 @@ function CredentialRow({
             }}
           >
             {revoke.isPending ? 'Revoking…' : 'Revoke'}
-          </button>
+          </Button>
           <p className="scim-credential__note">Revoking bites at the provider&apos;s next request.</p>
         </div>
       )}
@@ -941,24 +937,18 @@ function MintCredentialForm({
           required
         />
       </div>
-      <div className="field chk">
-        <input
-          id="scim-indefinite"
-          type="checkbox"
-          checked={indefinite}
-          onChange={(event) => setIndefinite(event.target.checked)}
-        />
-        <label htmlFor="scim-indefinite">
-          Never expires (refused unless this instance allows indefinite credentials)
-        </label>
-      </div>
-      <button
-        className="btn btn--primary"
+      <Checkbox
+        label="Never expires (refused unless this instance allows indefinite credentials)"
+        checked={indefinite}
+        onChange={(event) => setIndefinite(event.target.checked)}
+      />
+      <Button
+        variant="primary"
         type="submit"
         disabled={mint.pending || proof.trim() === ''}
       >
         {mint.pending ? 'Minting…' : 'Mint credential'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -977,7 +967,6 @@ function MintDialog({
   onClose: () => void;
 }) {
   const confirmation = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(confirmation);
   const [stored, setStored] = useState(false);
   const [heldBack, setHeldBack] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
@@ -993,28 +982,24 @@ function MintDialog({
   useNavigationGuard(!stored, dismiss);
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="scim-mint-title"
-      ref={dialog}
+    <Dialog
+      title="Provisioning credential minted, shown exactly once"
+      initialFocus={confirmation}
       onCancel={(event) => {
         event.preventDefault();
         dismiss();
       }}
+      actions={
+        <Button variant="primary" type="button" disabled={!stored} onClick={dismiss}>
+          Done
+        </Button>
+      }
     >
-      <h2 className="ceremony__title" id="scim-mint-title">
-        Provisioning credential minted, shown exactly once
-      </h2>
       {minted.rotated ? (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            This joined an already-live credential; that is overlap rotation. Update the identity
-            provider to this value, then revoke the old one.
-          </span>
-        </p>
+        <Alert tone="warn">
+          This joined an already-live credential; that is overlap rotation. Update the identity
+          provider to this value, then revoke the old one.
+        </Alert>
       ) : null}
       <p className="mono machine__token">{minted.token}</p>
       <p className="ceremony__cap" role="status">
@@ -1026,8 +1011,7 @@ function MintDialog({
           identity provider now; if it is lost, revoke this credential and mint a fresh one.
         </span>
       </p>
-      <button
-        className="btn"
+      <Button
         type="button"
         onClick={async () => {
           const result = await writeClipboard(minted.token);
@@ -1039,37 +1023,30 @@ function MintDialog({
         }}
       >
         Copy to clipboard
-      </button>
+      </Button>
       {copyStatus === null ? null : (
-        <p className="notice" role="status">
+        <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>
           <span>{copyStatus}</span>
         </p>
       )}
-      <div className="field chk">
-        <input
-          id="scim-stored"
-          type="checkbox"
-          ref={confirmation}
-          checked={stored}
-          onChange={(event) => {
-            setStored(event.target.checked);
-            if (event.target.checked) {
-              setHeldBack(false);
-            }
-          }}
-        />
-        <label htmlFor="scim-stored">I have configured this credential at the identity provider.</label>
-      </div>
+      <Checkbox
+        label="I have configured this credential at the identity provider."
+        ref={confirmation}
+        checked={stored}
+        onChange={(event) => {
+          setStored(event.target.checked);
+          if (event.target.checked) {
+            setHeldBack(false);
+          }
+        }}
+      />
       {heldBack ? (
         <Alert>Store the credential first. It cannot be shown again once this closes.</Alert>
       ) : null}
-      <button className="btn btn--primary" type="button" disabled={!stored} onClick={dismiss}>
-        Done
-      </button>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1148,17 +1125,17 @@ export function DirectoryUserRow({ user }: { user: ScimDirectoryUser }) {
       <div className="scim-directory-user__head">
         <span className="scim-directory-user__name">{user.user_name}</span>
         {user.active ? (
-          <span className="badge" data-state="active">
+          <Badge data-state="active">
             active
-          </span>
+          </Badge>
         ) : user.attention.some((item) => item.state === 'manual_grants_remain') ? (
-          <span className="badge" data-state="inactive">
+          <Badge data-state="inactive">
             <span aria-hidden="true">! </span>deprovisioned, manual grants remain
-          </span>
+          </Badge>
         ) : (
-          <span className="badge" data-state="inactive">
+          <Badge data-state="inactive">
             deprovisioned
-          </span>
+          </Badge>
         )}
       </div>
       <p className="scim-directory-user__groups">

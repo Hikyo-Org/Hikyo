@@ -264,9 +264,11 @@ describe('HistoryDrawer pin release flow', () => {
     await settle();
 
     expect(submit.disabled).toBe(true);
-    expect(container.querySelector('#history-pin-refusal')?.textContent).toContain(
-      'Invalid pin expiry date',
-    );
+    // The refusal is ui/Alert now, so it is found by its role rather than by an
+    // id on the markup; the pin sheet can show more than one alert at a time.
+    expect(
+      [...container.querySelectorAll('[role="alert"]')].map((node) => node.textContent).join(' '),
+    ).toContain('Invalid pin expiry date');
     expect(mocks.ceremonyRun).not.toHaveBeenCalled();
     expect(mocks.setPinMutate).not.toHaveBeenCalled();
   });
@@ -353,7 +355,9 @@ describe('HistoryDrawer head', () => {
   it('marks schema drift by its own class, not the sole-keeper warning', async () => {
     mocks.schemaOverride = true;
     const { container } = await renderForm(drawer());
-    expect(container.querySelector('.history__pin .history__drift')?.textContent).toBe('Δ schema drift');
+    const drift = container.querySelector('.history__pin .history__drift');
+    expect(drift?.textContent?.trim()).toBe('schema drift');
+    expect(drift?.querySelector('svg.glyph')).not.toBeNull();
     expect(container.querySelector('.history__pin .history__warn')).toBeNull();
   });
 

@@ -1030,7 +1030,7 @@ test.describe('deployment adapters', () => {
           const panel = page.getByRole('region', { name: `Adapter ${ADAPTER_ORIGIN}` });
           await expect(panel).toBeVisible();
           const origin = panel.locator('.adapters__origin');
-          const badge = panel.locator('.chip').first();
+          const badge = panel.locator('.badge').first();
           const addTarget = panel.getByRole('button', { name: 'Add target' });
           const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
 
@@ -1262,7 +1262,7 @@ test.describe('project audit', () => {
           const heading = page.getByRole('heading', { name: 'Project audit', level: 1 });
           const panel = page.locator('.panel').first();
           const op = page.locator('.audit__row-op').first();
-          const badge = page.locator('.chip').first();
+          const badge = page.locator('.audit__outcome').first();
           const apply = page.getByRole('button', { name: 'Apply filter' });
           const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
 

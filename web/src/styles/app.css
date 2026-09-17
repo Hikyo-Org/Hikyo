@@ -323,12 +323,13 @@ fieldset.field > legend {
 
 /* --- Badges: one vocabulary --------------------------------------------------
  *
- * Folds `.badge` (12px), `.chip` (26px, 11px) and `.settings-tag` (32px, 10px
- * uppercase bold) into one treatment. The `.count` pill (numeric counts) is the
+ * One treatment for every status badge (ui/Badge). It replaced the three the
+ * routes hand-wrote, `.badge` (12px), `.chip` (26px, 11px) and `.settings-tag`
+ * (32px, 10px uppercase bold); the `.count` pill (numeric counts) is the
  * DESIGN.md exception and is left alone. Tones follow the DESIGN.md state
  * vocabulary: danger for a violation or refusal, changed (slate) for pending or
  * drafted, `ok` on the accent hairline. */
-:is(.badge, .chip, .settings-tag) {
+.badge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -345,29 +346,23 @@ fieldset.field > legend {
   text-transform: none;
 }
 
-/* A badge that is a BUTTON is a control, not a label: the settings identity
-   tags, the environment chips and the Toggle switch render as `button.settings-tag`.
-   They keep the badge face and take the control height, so a chip beside a
-   button lines up and the coarse-pointer floor holds (decided 2026-09-16,
-   chips stand at `--control`). */
-button:is(.badge, .chip, .settings-tag),
-a:is(.badge, .chip, .settings-tag) {
-  min-height: var(--control);
-  padding: 0 var(--space-3);
-  cursor: pointer;
-}
-
-:is(.badge, .chip, .settings-tag).mono {
+.badge.mono {
   font-family: var(--font-mono);
 }
 
+/* The Members scope badge takes the settings hairline rather than the control
+   one. One class, and above the tone tiers, so a protected or org-wide scope
+   still wins its tone: same specificity, later rule. */
+.member-scope {
+  border-color: var(--panel-line);
+}
+
 /* Badge tiers ride beside the word that names the state; colour only echoes. */
-:is(.badge--danger, .settings-tag--danger) {
+.badge--danger {
   border-color: var(--danger);
   color: var(--danger);
 }
 
-.badge--warn,
 .badge--changed {
   border-color: var(--changed);
   color: var(--changed);
@@ -1695,10 +1690,15 @@ a:is(.badge, .chip, .settings-tag) {
   color: var(--bg);
 }
 
+/* The sheet is one wrapping row read in reverse, so the primary Publish sits
+   last in the DOM and first on screen; everything that is not a button takes a
+   full row of its own. */
 .matrix__publish {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--space-2);
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
@@ -1714,16 +1714,13 @@ a:is(.badge, .chip, .settings-tag) {
   color: var(--tx-dim);
 }
 
+/* The rows sit in the ChoiceGroup's own column gap, so a border-top here would
+   separate them twice over; one separator, and it is the space. */
 .matrix__publish-env {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3);
-  border-top: 1px solid var(--line);
-}
-
-.matrix__publish-env--blocked {
-  background: color-mix(in oklch, var(--bg), var(--danger) 8%);
 }
 
 .matrix__publish-heading {
@@ -1731,13 +1728,6 @@ a:is(.badge, .chip, .settings-tag) {
   align-items: center;
   gap: var(--space-2);
   min-height: var(--control);
-}
-
-.matrix__publish-protected {
-  color: var(--danger);
-  font-size: var(--fs-sm);
-  font-weight: 800;
-  letter-spacing: 0.04em;
 }
 
 .matrix__publish-revision {
@@ -1757,30 +1747,16 @@ a:is(.badge, .chip, .settings-tag) {
   gap: var(--space-4);
 }
 
-.matrix__publish-ready {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.matrix__publish-blocked {
-  color: var(--danger);
-  font-weight: 700;
-}
-/* --- Publish sheet: rows align to the environment name ---------------------
+/* --- Publish sheet: the key list aligns to the environment name -------------
  *
- * The key rows and the ready/blocked state sit under the environment name, not
- * under its checkbox; the two full-width buttons become an action row. */
-.matrix__publish-env > :not(.matrix__publish-heading) {
+ * Scoped to the list and the eyebrow that names it: those two are the block the
+ * environment owns. The readiness badge and the blocked alert are the row's own
+ * verdict and stay flush, so a state is never hidden in an indent. */
+.matrix__publish-env > ul,
+.matrix__publish-env > .eyebrow {
   margin-left: calc(var(--chk-box) + var(--space-2));
   padding-left: 0;
   list-style: none;
-}
-
-.matrix__publish {
-  flex-direction: row-reverse;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: var(--space-2) var(--space-2);
 }
 
 .matrix__publish > :not(.btn) {
@@ -1792,10 +1768,6 @@ a:is(.badge, .chip, .settings-tag) {
 }
 
 .matrix__publish-confirmation {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control);
   font-weight: 700;
 }
 
@@ -1856,17 +1828,13 @@ a:is(.badge, .chip, .settings-tag) {
   cursor: not-allowed;
 }
 
-.matrix__count,
-.matrix__problem-count {
+.matrix__count {
   width: max-content;
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--bg), var(--danger) 14%);
   color: var(--danger);
   font-size: var(--fs-xs);
-}
-
-.matrix__count {
-  padding: 2px 7px;
 }
 
 .matrix__surface {
@@ -2033,8 +2001,7 @@ a:is(.badge, .chip, .settings-tag) {
   font-size: var(--fs-sm);
 }
 
-.matrix__environment-picker label,
-.matrix-editor__copy label {
+.matrix__environment-picker label {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2044,8 +2011,17 @@ a:is(.badge, .chip, .settings-tag) {
   cursor: pointer;
 }
 
+/* The copy rows are ui/Checkbox, so `.chk` states the row; only the radius the
+   hover fill needs is this site's own. The pad is gone (2026-09-17): ui/Checkbox
+   makes the input and the label the hit targets, not the row box, so a padded
+   strip along the row would have offered a click that does nothing. The picker
+   above pads because there the padded element IS the label. */
+.matrix-editor__copy .chk {
+  border-radius: var(--radius-control);
+}
+
 .matrix__environment-picker label:hover,
-.matrix-editor__copy label:hover {
+.matrix-editor__copy .chk:hover {
   background: var(--bg-hover);
 }
 
@@ -2140,26 +2116,38 @@ a:is(.badge, .chip, .settings-tag) {
   background: var(--bg-panel);
 }
 
-.matrix__group-row button {
+/* The group heading's own control. Selected by its class, not by `button`:
+   the row also holds the `+ key` Button, and an element selector here would
+   outrank every `.btn` rule and repaint the atom. The group row now carries
+   that `+ key` beside the toggle (env-matrix 31), so the toggle shares the
+   row rather than owning its full width.
+
+   Sentence case at --fs-sm, not the eyebrow treatment (#755): this is a row
+   HEADING inside the matrix table, the same tier as `.matrix__table thead th`
+   (fs-sm / 500 / no transform) and the key row headers beside it, so it reads
+   at their size and case. The eyebrow is 11px uppercase for a marker ABOVE a
+   block, which a folder name in the table body is not; uppercasing it also
+   mangled folder paths, which are content. */
+.matrix__group-row .matrix__group-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
+  flex: 1;
+  width: auto;
+  min-width: 0;
   min-height: var(--control);
   padding: 7px 12px;
   border: 0;
   background: transparent;
   color: var(--accent);
   font-size: var(--fs-sm);
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-weight: 500;
+  letter-spacing: normal;
   text-align: left;
-  text-transform: uppercase;
+  text-transform: none;
   cursor: pointer;
 }
 
-/* The group row now carries a `+ key` beside its toggle (env-matrix 31), so the
-   toggle shares the row rather than owning its full width. */
 .matrix__group-row-inner {
   display: flex;
   align-items: center;
@@ -2167,33 +2155,14 @@ a:is(.badge, .chip, .settings-tag) {
   padding-right: var(--space-3);
 }
 
-.matrix__group-row .matrix__group-toggle {
-  width: auto;
-  flex: 1;
-  min-width: 0;
-}
-
-/* `+ key`: a dashed pill in the group's own hue, not the uppercased group text
-   the base selector would otherwise give it. */
+/* `+ key` is a plain quiet Button: the atom carries its box, type and hover.
+   What is left is the row's business only: where it sits, and the weight,
+   because `button` is `font: inherit` and the group heading is a <th>, so
+   without this the label would come out bold where every other quiet button
+   is 400. Same reason as `.matrix__history-link` below. */
 .matrix__group-row .matrix__add-key {
   flex: none;
-  width: auto;
-  min-height: var(--control);
-  padding: var(--space-1) var(--space-3);
-  border: 1px dashed var(--line);
-  /* Rounded rect, not a full pill, DESIGN.md reserves the pill for identity
-     circles and count badges (expectNoStrayPills). */
-  border-radius: var(--radius-control);
-  color: var(--tx-faint);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.matrix__group-row .matrix__add-key:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  font-weight: 400;
 }
 
 .matrix__group-chevron {
@@ -2202,27 +2171,18 @@ a:is(.badge, .chip, .settings-tag) {
   transition: transform var(--dur) var(--ease);
 }
 
-.matrix__group-row button[aria-expanded='false'] .matrix__group-chevron {
+.matrix__group-row .matrix__group-toggle[aria-expanded='false'] .matrix__group-chevron {
   transform: rotate(-90deg);
 }
 
-/* A count badge by role, but a rounded rect rather than the pill the shared
-   `.matrix__count` rule draws: it sits inline with uppercase group text. */
-.matrix__problem-count {
-  padding: 2px 8px;
-  border-radius: var(--radius-badge);
-  letter-spacing: 0;
-  text-transform: none;
-}
-
+/* The toggle is sentence case now, so the summary no longer has to undo a
+   transform or a tracking; it only steps the weight and ink down. */
 .matrix__group-summary {
   min-width: 0;
   overflow: hidden;
   color: var(--tx-dim);
   font-weight: 400;
-  letter-spacing: 0;
   text-overflow: ellipsis;
-  text-transform: none;
   white-space: nowrap;
 }
 
@@ -2362,63 +2322,23 @@ a:is(.badge, .chip, .settings-tag) {
   padding: 20px;
 }
 
-.matrix-editor {
-  width: min(var(--width-dialog-wide), calc(100% - var(--space-6)));
-  max-height: min(82vh, 760px);
-  margin: auto;
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-container);
-  background: var(--bg-panel);
-  color: var(--tx);
-  overflow: auto;
-}
-
-.matrix-editor form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.matrix-editor__head,
-.matrix-editor__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.matrix-editor__head {
-  justify-content: space-between;
-}
-
-.matrix-editor__head h2,
-.matrix-editor__head p,
-.matrix-editor__hint,
-.matrix-editor__copy p {
+.matrix-editor__hint {
   margin: 0;
-}
-
-.matrix-editor__head p,
-.matrix-editor__hint,
-.matrix-editor__copy p {
   color: var(--tx-dim);
   font-size: var(--fs-sm);
 }
 
-.matrix-editor__close {
-  width: var(--control);
-  padding: 0;
-  min-width: var(--control);
-  height: var(--control);
-  min-height: var(--control);
-  line-height: normal;
+/* Several standing problems on one row stay a list inside the notice; a single
+   one is the field's own error instead. */
+.matrix-row-editor__problems {
+  margin: 0;
+  padding-inline-start: var(--space-4);
 }
 
 .matrix-editor__provenance {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 20px;
+  gap: var(--space-2) var(--space-4);
   margin: 0;
   padding: var(--space-3);
   border: 1px solid var(--line);
@@ -2538,6 +2458,18 @@ a:is(.badge, .chip, .settings-tag) {
   flex: 1;
 }
 
+/* The row editor's in-body buttons (the copy disclosure and the edit-all mode
+   switch) are sized to their own label, not stretched to the dialog's column,
+   and what they open follows them on the form's own rhythm. */
+.matrix-row-editor__toggle {
+  align-self: flex-start;
+}
+
+.matrix-row-editor__panel {
+  display: grid;
+  gap: var(--space-3);
+}
+
 .matrix-row-editor__rows {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
@@ -2548,15 +2480,15 @@ a:is(.badge, .chip, .settings-tag) {
   border-color: var(--danger);
 }
 
-/* Declare-key modal (env-matrix 31). Field pairs stack tight; the modal itself
-   reuses .matrix-editor for shell, backdrop, actions, and copy fieldsets. */
+/* Declare-key modal (env-matrix 31). Field pairs stack tight; ui/Dialog is the
+   shell and the copy fieldsets are the rules below. */
 .matrix-key-create__field {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
-.matrix-key-create label {
+.matrix-key-create label:not(.chk label) {
   color: var(--tx-dim);
   font-size: var(--fs-sm);
 }
@@ -2586,7 +2518,7 @@ a:is(.badge, .chip, .settings-tag) {
   font-size: var(--fs-sm);
 }
 
-.matrix-key-create__constraints label {
+.matrix-key-create__constraints label:not(.chk label) {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -2626,12 +2558,6 @@ a:is(.badge, .chip, .settings-tag) {
   flex-wrap: wrap;
 }
 
-.matrix-key-create__presence-modes label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .matrix-key-create__presence-hint {
   margin: 0;
   color: var(--tx-dim);
@@ -2647,12 +2573,6 @@ a:is(.badge, .chip, .settings-tag) {
 
 .matrix-key-create__type select {
   min-width: 130px;
-}
-
-.matrix-key-create__secret {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
 .matrix__empty-actions {
@@ -2695,15 +2615,8 @@ a:is(.badge, .chip, .settings-tag) {
   font-size: var(--fs-xs);
 }
 
-/* Surface-1 secret-scanning warn dialog (#74). Reuses the matrix-editor shell;
-   these rules only lay out the finding list, which has no form to inherit the
-   editor's flex gap from. */
-.scan-warn {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
+/* Surface-1 secret-scanning warn dialog (#74). ui/Dialog lays the body out;
+   these rules only lay out the finding list. */
 .scan-warn__findings {
   display: flex;
   flex-direction: column;
@@ -2751,12 +2664,6 @@ a:is(.badge, .chip, .settings-tag) {
 /* Surface-2 secret-scanning block dialog (#183). Renders only the redacted
    findings a refusal carried; the danger accent marks it as a block, not the
    warn's advisory tone. */
-.scan-block {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
 .scan-block__findings {
   display: flex;
   flex-direction: column;
@@ -2843,7 +2750,13 @@ a:is(.badge, .chip, .settings-tag) {
     line-height: var(--touch);
   }
 
-        .matrix-editor {
+  /* The wide dialog's phone treatment. `.dialog--wide` shares the shell's
+     declarations rather than restating them: same metrics, and no second
+     literal against the adherence budget. It is doubled to `.dialog.dialog--wide`
+     because this block sits ABOVE the base `.dialog` rules and a media query
+     adds no specificity, so a single class would lose the cascade to them.
+     Narrow dialogs never had a phone override, so `.dialog` stays out of it. */
+  .dialog.dialog--wide {
     width: calc(100% - 20px);
     max-width: 760px;
     max-height: 88vh;
@@ -2861,7 +2774,7 @@ a:is(.badge, .chip, .settings-tag) {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .matrix-editor__actions > * {
+  .dialog--wide .dialog__actions > * {
     flex: 1 1 140px;
   }
 }
@@ -2948,11 +2861,6 @@ a:is(.badge, .chip, .settings-tag) {
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
-}
-
-.chip--armed {
-  border-color: var(--accent);
-  background: color-mix(in oklch, var(--bg-panel), var(--accent) 14%);
 }
 
 .values__bar {
@@ -3064,24 +2972,8 @@ a:is(.badge, .chip, .settings-tag) {
   color: var(--tx);
 }
 
-/* The ceremony modal (locked prototype #21, approach a).
- *
- * A native <dialog> in the top layer: the scrim is ::backdrop, so there is no
- * positioning wrapper and no z-index to lose an argument with. */
-
-.ceremony {
-  width: min(var(--width-dialog), 100%);
-  max-height: 90vh;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-container);
-  background: var(--bg-panel);
-  color: var(--tx);
-}
+/* The ceremony modal's CONTENT (locked prototype #21, approach a). The shell
+   is ui/Dialog; what is left here is what goes inside one. */
 
 .ceremony__scope {
   margin: 0;
@@ -3108,7 +3000,10 @@ a:is(.badge, .chip, .settings-tag) {
   background: color-mix(in oklch, var(--bg), var(--accent) 8%);
 }
 
-.ceremony > form {
+/* A form as the dialog's direct child is a column of fields. This beats
+   `.ceremony__totp` on flex-direction by specificity, which is how that form
+   has always rendered. */
+.dialog > form {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -3124,11 +3019,10 @@ a:is(.badge, .chip, .settings-tag) {
 }
 /* --- Dialog -------------------------------------------------------------------
  *
- * One modal anatomy (ui/Dialog.tsx). Folds `.ceremony__title` (20px),
+ * One modal anatomy (ui/Dialog.tsx). It folded `.ceremony__title` (20px),
  * `.matrix-editor__head h2` (15px), the ledes and the two action rows (12px and
- * 8px gaps). The legacy classes are restyled here so the route dialogs that
- * still use them match until they migrate. DESIGN.md reserves shadows for modal
- * overlays, so every family gets one. */
+ * 8px gaps); both legacy shells are gone and every route dialog is this one.
+ * DESIGN.md reserves shadows for modal overlays, so it gets one. */
 .dialog {
   width: min(var(--width-dialog), calc(100% - var(--space-6)));
   max-height: min(90vh, var(--width-dialog-wide));
@@ -3148,31 +3042,22 @@ a:is(.badge, .chip, .settings-tag) {
   width: min(var(--width-dialog-wide), calc(100% - var(--space-6)));
 }
 
-.dialog,
-.ceremony,
-.matrix-editor {
+.dialog {
   box-shadow: var(--overlay-shadow);
 }
 
-.dialog::backdrop,
-.ceremony::backdrop,
-.matrix-editor::backdrop {
+.dialog::backdrop {
   background: oklch(0 0 0 / 55%);
 }
 
-.dialog__title,
-.ceremony__title,
-.ceremony > h2,
-.matrix-editor__head h2 {
+.dialog__title {
   margin: 0;
   font-size: var(--fs-lg);
   font-weight: 700;
   line-height: var(--lh-heading);
 }
 
-.dialog__lede,
-.ceremony__lede,
-.matrix-editor__head p {
+.dialog__lede {
   margin: 0;
   color: var(--tx-dim);
   font-size: var(--fs-sm);
@@ -3180,9 +3065,7 @@ a:is(.badge, .chip, .settings-tag) {
 }
 
 /* Action rows: 8px everywhere, page and dialog alike; primary last. */
-.dialog__actions,
-.ceremony__actions,
-.matrix-editor__actions {
+.dialog__actions {
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
@@ -3258,9 +3141,7 @@ a:is(.badge, .chip, .settings-tag) {
 }
 
 /* The opt-in acknowledgement: a deliberate tick, never pre-checked. */
-.ceremony__ack {
-  display: flex;
-  gap: var(--space-2);
+.chk.ceremony__ack {
   align-items: flex-start;
   margin: var(--space-3) 0;
   max-width: 60ch;
@@ -3493,10 +3374,11 @@ label.chk {
   cursor: pointer;
 }
 
-/* An inline number beside a choice (the credential lifetime) stays short so
-   the sentence around it holds one line. */
-.chk input[type='number'] {
-  width: 8ch;
+/* The credential lifetime's revealed number stays short: a day count is at most
+   a few digits, and a full-width control would read as the form's main field.
+   It is no longer inline beside the radio, so this is the field, not a `.chk`. */
+.mint__lifetime-days input {
+  width: 12ch;
   flex: none;
 }
 
@@ -3936,14 +3818,6 @@ label.chk:has(input:disabled) {
   margin-left: auto;
 }
 
-.history__current {
-  padding: 2px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-badge);
-  color: var(--tx-dim);
-  font-size: var(--fs-xs);
-}
-
 .history__protected {
   padding: 2px 7px;
   border: 1px solid var(--danger);
@@ -4181,12 +4055,6 @@ label.chk:has(input:disabled) {
   font-size: var(--fs-sm);
 }
 
-.history-sheet {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
 .history__pin-what {
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -4209,12 +4077,6 @@ label.chk:has(input:disabled) {
 .history__field {
   color: var(--tx-dim);
   font-size: var(--fs-sm);
-}
-
-.history__override {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
 .history__comparison {
@@ -4384,12 +4246,11 @@ label.chk:has(input:disabled) {
   font-weight: 500;
 }
 
+/* The opener is `btn btn--quiet` now, so the quiet variant owns the box and
+   the type size and `.btn` the nowrap. Only the weight is the link's own: the
+   column's headings are bold and a link in that column is not a heading. */
 .matrix__history-link {
-  min-height: var(--control);
-  padding: 0 10px;
-  font-size: var(--fs-sm);
   font-weight: 400;
-  white-space: nowrap;
 }
 
 @media (min-width: 801px) {
@@ -4761,10 +4622,6 @@ label.chk:has(input:disabled) {
   width: 60px;
 }
 
-.settings-tag {
-  white-space: nowrap;
-}
-
 .environment-policy-control {
   display: contents;
 }
@@ -4827,11 +4684,6 @@ label.chk:has(input:disabled) {
 .page--chrome .settings-row__title--link {
   color: var(--tx);
   text-decoration: none;
-}
-
-.page--chrome .account-factor-status {
-  appearance: none;
-  background: transparent;
 }
 
 .page--chrome .panel--tight {
@@ -4946,22 +4798,6 @@ label.chk:has(input:disabled) {
   white-space: nowrap;
 }
 
-.page--members .chip {
-  /* Size, ink and padding come from the one badge rule; only the hairline
-     tone and the mono face are this surface's. */
-  border-color: var(--panel-line);
-  font-family: var(--font-mono);
-}
-
-.page--members .chip--protected {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.chip--wide {
-  border-color: var(--accent);
-}
-
 .capabilities {
   display: flex;
   flex-direction: column;
@@ -5069,27 +4905,6 @@ label.chk:has(input:disabled) {
   color: var(--danger);
 }
 
-.capability__revoke {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control);
-  min-width: var(--control);
-  min-height: var(--control);
-  margin: -6px -8px -6px -2px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-badge);
-  background: transparent;
-  color: var(--tx-dim);
-  cursor: pointer;
-}
-
-.capability__revoke:hover {
-  background: color-mix(in oklch, var(--bg-hover), var(--danger) 10%);
-  color: var(--danger);
-}
-
 .page--members .panel__actions {
   margin-top: 2px;
 }
@@ -5127,7 +4942,7 @@ label.chk:has(input:disabled) {
   border-radius: var(--radius-container);
   background: var(--bg);
   list-style: none;
-  /* No inner scroller: `.ceremony` is a scrolling flex column, and a second
+  /* No inner scroller: `.dialog` is a scrolling flex column, and a second
      scroll container inside one shrinks its siblings into each other, which
      on a phone put the mode fieldset on top of the checklist and made the
      rows unclickable while still passing every visibility check. */
@@ -5432,7 +5247,7 @@ label.chk:has(input:disabled) {
   }
 }
 
-/* #495 dotenv import wizard. Reuses the .matrix-editor dialog shell; these rules
+/* #495 dotenv import wizard. ui/Dialog is the shell; these rules
    only lay out the wizard's own review lists and per-key controls. */
 .import-wizard fieldset {
   display: flex;
@@ -5463,14 +5278,6 @@ label.chk:has(input:disabled) {
   font-size: var(--fs-sm);
 }
 
-.import-wizard__env,
-.import-wizard__secret {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--control);
-}
-
 .import-wizard__key {
   display: flex;
   flex-wrap: wrap;
@@ -5484,7 +5291,7 @@ label.chk:has(input:disabled) {
   font-weight: 500;
 }
 
-.import-wizard__key label {
+.import-wizard__key label:not(.chk label) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -5645,19 +5452,7 @@ label.chk:has(input:disabled) {
   margin: 0;
 }
 
-.settings-tag--on {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-/* #493 folder & key-group lifecycle dialog. Reuses .matrix-editor for the
-   dialog shell, backdrop, head, and close. */
-.catalogue-manage {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
+/* #493 folder & key-group lifecycle dialog. ui/Dialog is the shell. */
 .catalogue-manage__section {
   display: flex;
   flex-direction: column;
@@ -5688,7 +5483,12 @@ label.chk:has(input:disabled) {
   flex-direction: column;
 }
 
+/* The create forms took their column and gap from `.matrix-editor form`, which
+   outranked the shared rule above on specificity. That shell rule is gone, so
+   the column is stated here; the gap lands on the dialog's own 12px. */
 .catalogue-manage__create {
+  flex-direction: column;
+  gap: var(--space-3);
   flex-wrap: wrap;
   align-items: center;
 }
@@ -5766,26 +5566,6 @@ label.chk:has(input:disabled) {
 .field__inline input {
   flex: 1 1 auto;
   min-width: 0;
-}
-
-.audit__outcomes .field__label {
-  padding: 0;
-}
-
-.field.audit__outcomes {
-  gap: 6px;
-}
-
-.audit__outcome-choice {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  color: var(--tx);
-  font-size: var(--fs-sm);
-}
-
-.audit__outcomes .audit__outcome-choice + .audit__outcome-choice {
-  margin-top: 2px;
 }
 
 .audit__panes {
@@ -6047,7 +5827,7 @@ label.chk:has(input:disabled) {
   align-items: center;
 }
 
-.change-approvals label {
+.change-approvals label:not(.chk label) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -6294,7 +6074,6 @@ label.chk:has(input:disabled) {
 .definitions-bundle__body h3, .definitions-bundle__body h4 { margin: 0; }
 .definitions-bundle__body .remote__facts dd { overflow-wrap: anywhere; min-width: 0; }
 .definitions-bundle__body input[type="file"] { width: 100%; min-width: 0; max-width: 100%; }
-.definitions-bundle__delete { display: flex; align-items: center; gap: .75rem; min-height: var(--control); }
 
 /* The link glyph rides inline after the key; the sentence it stands for is a
    visually-hidden span in the markup. */
@@ -6364,12 +6143,7 @@ label.chk:has(input:disabled) {
 }
 
 .matrix-editor__show-typing {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   margin-top: var(--space-1);
-  color: var(--tx-dim);
-  font-size: var(--fs-sm);
 }
 
 .matrix__publish-group {

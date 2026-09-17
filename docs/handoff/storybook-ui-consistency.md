@@ -157,12 +157,14 @@ Rules locked 2026-09-16:
   and acknowledged. **No way past it** until a factor stands.
   Policy `allow-unenrolled`: the password is the whole ceremony.
 - Passkey sign-in: primary authentication with multi-factor assurance,
-  worded "Sign in with a passkey", never a second step.
+  worded "Use a passkey instead", never a second step.
 - Identity provider sign-in: assurance is the provider's (`acr`/`amr`
   policy); no local factor asked. `StepUpBanner` stays for such sessions
-  (3A) but its title "This session is password-only" is wrong for them;
-  the copy fix is deferred to migration because the route is outside the
+  (3A) but its title "This session is password-only" was wrong for them;
+  the copy fix was deferred to migration because the route is outside the
   Storybook-only scope.
+  Landed in this branch (#762, task 10): the title now reads "This session
+  has no second factor", and the story assertion moved with it.
 
 `ui/auth/LoginFlow` walks all of it with mocked transport (password
 `correct`, code `123456`); six play tests assert the sequencing.
@@ -428,7 +430,7 @@ Findings and fixes, all in `ui.css`, `.storybook/preview.tsx` or story files:
   pollution (the reason CI shards, see `e2e/global-setup.ts`), or a
   time-based gate on instance B's assurance.
 
-### Layer 2 (next, #762)
+### Layer 2 planned (#762)
 
 Decided 2026-09-16: #755 stays Storybook-only and merges as is; the
 migration is its own PR series. Tickets: #761 (layer 1, CSS and tokens
@@ -447,6 +449,46 @@ Swap route markup to the `ui/` atoms; fix the `StepUpBanner` copy; replace
 the emoji and text glyphs with `ui/Glyph`; wire `/login` to the challenge and
 setup gates once the backend in §3 exists. (The CSS move, the token move, the
 pin retarget and the browser-blue link are done, above.)
+
+### Layer 2 landed (#762, 2026-09-17)
+
+Done on `feat/762-route-markup-atoms`; the full account, with every commit,
+every atom extension and every site left raw, is
+[docs/handoff/762-route-markup-onto-ui-atoms.md](762-route-markup-onto-ui-atoms.md).
+
+- Route markup on the atoms: `ui/Button` (`04a91e41`, `94136552`, `6126e85b`,
+  `f5c12af0`), `ui/Alert` with `Sections.Alert` and `Sections.Done` deleted
+  (`40f06477`, `dc6f6e77`, `21c0576e`), `ui/Input` / `Select` / `Textarea`
+  (`fa9e7bdf`, `479f4aaf`, `b3785289`), `ui/Checkbox` / `Radio` / `ChoiceGroup`
+  (`3f071f6d`, `f91163ca`, `cec86a5f`), `ui/Dialog` and `ui/Tabs` with the
+  `.ceremony` and `.matrix-editor` shells and their CSS deleted (`f46009da`,
+  `024cbc2a`, `63c87019`, `7724b8d7`, `f183509a`, `90f1cfff`, `c08ad494`,
+  `1574ec90`, `646b5e78`), `ui/Badge` (`af7710e5`, `d9853eb3`).
+- Emoji and text glyphs replaced with `ui/Glyph`, and `AccountSecurity`'s QR
+  with `ui/auth/QrCode` (`0abcdae3`).
+- `StepUpBanner` copy fixed, plus two ledes that named a colour rather than the
+  page (`d00813e1`, `73d9093d`).
+- `/login` renders `ui/auth/LoginForm`, password in sensitive state
+  (`5b03bb9c`, `50bff042`, `a52737e9`).
+- The known risks above were carried through: `.matrix__history-link` and
+  `.settings-tag` are on the control scale (the settings tags are quiet buttons
+  with `aria-pressed`), the banner copy is fixed.
+- The migration is now gated: `design:check` runs
+  `web/scripts/design/markup-check.ts`, which fails the build when route markup
+  hand-writes an atom. `app.css` adherence budget ratcheted 284 to 266.
+
+Remaining after #762:
+
+- **#760**, backend enforcement of the second factor (§3). Until it lands,
+  `/login` cannot be wired to the challenge and setup gates; Storybook mocks
+  them.
+- **Sites raw by design**, each carrying a `markup-check:` comment the gate
+  reads: status paragraphs in an alert skin, the three `machine__policy`
+  paragraphs, rich labels the atoms' `label: string` cannot carry, a bare
+  labelless checkbox, a row whose `title` disambiguates it, the secret
+  textareas, and the non-button `.btn` anchors and `<summary>` elements.
+- **Preview verification** of the Task 11 design calls: see the checklist at
+  the end of the #762 handoff.
 
 ## 6. Verification
 

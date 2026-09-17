@@ -725,7 +725,7 @@ test.describe('pinned assertion set', () => {
 
       const heading = page.getByRole('heading', { name: 'Values', level: 1 });
       const well = page.locator('.card');
-      const chip = page.locator('.chip').first();
+      const chip = page.locator('.badge[role="status"]').first();
       const revealAll = page.getByRole('button', {
         name: 'Reveal every secret',
       });

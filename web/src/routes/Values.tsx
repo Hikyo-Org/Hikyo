@@ -19,6 +19,9 @@ import {
 import type { EnvRef } from '../api/keys.ts';
 import { useTransport } from '../api/transport.tsx';
 import { writeExpiringClipboard } from '../app/clipboard.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
@@ -438,25 +441,15 @@ export function Values() {
       </header>
 
       {values.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>The values could not be loaded. Reload to try again.</span>
-        </p>
+        <Alert>The values could not be loaded. Reload to try again.</Alert>
       ) : null}
 
       {refusal !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{refusal}</span>
-        </p>
+        <Alert>{refusal}</Alert>
       ) : null}
 
       {notice !== null ? (
-        <p className="notice" role="status">
+        <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>
@@ -471,14 +464,13 @@ export function Values() {
       </p>
 
       <div className="values__bar">
-        <button
-          className="btn"
+        <Button
           type="button"
           onClick={doRevealAll}
           disabled={secretsSet.length === 0 || guard?.can_reveal !== true}
         >
           Reveal every secret
-        </button>
+        </Button>
         <div className="field field--inline">
           <label htmlFor="publish-destination">Publish into</label>
           <select
@@ -496,14 +488,13 @@ export function Values() {
               ))}
           </select>
         </div>
-        <button
-          className="btn"
+        <Button
           type="button"
           onClick={doPublishInto}
           disabled={secretsSet.length === 0 || destination === ''}
         >
           Publish into environment
-        </button>
+        </Button>
       </div>
 
       <table className="values__table">
@@ -572,24 +563,22 @@ export function Values() {
                 </td>
                 <td className="values__actions">
                   {secret && cell.set && !writeOnly ? (
-                    <button
-                      className="btn"
+                    <Button
                       type="button"
                       onClick={() => doRevealOne(cell)}
                       aria-label={`Reveal ${cell.name}`}
                     >
                       Reveal
-                    </button>
+                    </Button>
                   ) : null}
                   {cell.set && (!secret || canReveal) ? (
-                    <button
-                      className="btn"
+                    <Button
                       type="button"
                       onClick={() => doCopy(cell)}
                       aria-label={secret ? `Copy ${cell.name} (audited disclosure)` : `Copy ${cell.name}`}
                     >
                       Copy
-                    </button>
+                    </Button>
                   ) : null}
                 </td>
                 {editing === cell.name ? (
@@ -648,20 +637,20 @@ export function Values() {
 function windowChip(state: RevealWindow, now: number) {
   if (!state.live) {
     return (
-      <span className="chip" role="status">
+      <Badge role="status">
         {state.totp_offered
           ? 'Locked · each disclosure asks first'
           : state.protected
             ? 'Protected · a passkey per disclosure'
             : 'Locked · a passkey per disclosure'}
-      </span>
+      </Badge>
     );
   }
   if (state.single_decision) {
     return (
-      <span className="chip chip--armed" role="status">
+      <Badge tone="ok" role="status">
         Authorised for one disclosure
-      </span>
+      </Badge>
     );
   }
   const seconds =
@@ -669,9 +658,9 @@ function windowChip(state: RevealWindow, now: number) {
       ? 0
       : Math.max(0, Math.ceil((new Date(state.expires_at).getTime() - now) / 1000));
   return (
-    <span className="chip chip--armed" role="status">
+    <Badge tone="ok" role="status">
       {`Reveal window · ${String(seconds)}s`}
-    </span>
+    </Badge>
   );
 }
 
@@ -728,9 +717,9 @@ function RowEditor({
           changes nothing.
         </p>
       ) : null}
-      <button className="btn btn--primary" type="submit" disabled={saving}>
+      <Button variant="primary" type="submit" disabled={saving}>
         {saving ? 'Saving…' : 'Save draft'}
-      </button>
+      </Button>
     </form>
   );
 }

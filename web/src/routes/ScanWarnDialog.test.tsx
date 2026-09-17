@@ -47,7 +47,9 @@ describe('ScanWarnDialog', () => {
     // The value itself never renders.
     expect(container.textContent).not.toContain('AKIA-looking-value');
     const labels = [...container.querySelectorAll('button')].map((node) => node.textContent);
-    expect(labels).toEqual(['✕', 'Keep as config', 'Reclassify API_KEY as secret']);
+    // The close X is gone (ui/Dialog); the dialog gained a Close action and
+    // the primary is last.
+    expect(labels).toEqual(['Keep as config', 'Close', 'Reclassify API_KEY as secret']);
     await act(async () => root.unmount());
   });
 });

@@ -33,9 +33,12 @@ import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import type { EnvironmentList } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { Alert, Done, TypedNameConfirm } from './Sections.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { TypedNameConfirm } from './Sections.tsx';
 
 type Environment = EnvironmentList['items'][number];
 
@@ -122,7 +125,7 @@ export function KeyDeclarationDetail({
   }, [openerRef, keyId]);
 
   // A pointer-down outside the panel closes it back to the matrix, the same way
-  // the ✕ Close link and Escape do, so a click anywhere on the matrix behind it
+  // the Close link and Escape do, so a click anywhere on the matrix behind it
   // dismisses without scrolling back up to the header. Guarded on an open dialog
   // exactly like the Escape handler: a modal (scan block, reclassify confirm)
   // owns the top layer and its own dismissal, and must not also collapse the
@@ -179,7 +182,7 @@ export function KeyDeclarationDetail({
           {key.data?.name ?? 'Key declaration'}
         </h2>
         <Link className="btn key-detail__close" to={matrixPath} aria-label="Close key declaration">
-          ✕ Close
+          <Glyph name="cross" /> Close
         </Link>
       </div>
 
@@ -276,7 +279,7 @@ function KeyDeclarationBody({
         <Fact term="Name" value={record.name} mono />
         <Fact
           term="Classification"
-          value={record.classification === 'secret' ? '🔒 secret' : 'config'}
+          value={record.classification === 'secret' ? 'secret' : 'config'}
         />
         <Fact term="Folder" value={record.folder_path === '' ? '(none)' : record.folder_path} mono />
         <Fact term="Linked keys" value={record.group_id === '' ? 'None' : record.group_id} mono />
@@ -296,17 +299,12 @@ function KeyDeclarationBody({
         />
       </dl>
       {record.deprecated && impactReady && impact.setEnvironmentIds.length > 0 ? (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            Deprecated with {String(impact.setEnvironmentIds.length)}{' '}
-            {impact.setEnvironmentIds.length === 1 ? 'live value' : 'live values'} across{' '}
-            {impact.setEnvironmentIds.map(environmentName).join(', ')}. Remove the values before
-            deleting the key.
-          </span>
-        </p>
+        <Alert tone="warn">
+          Deprecated with {String(impact.setEnvironmentIds.length)}{' '}
+          {impact.setEnvironmentIds.length === 1 ? 'live value' : 'live values'} across{' '}
+          {impact.setEnvironmentIds.map(environmentName).join(', ')}. Remove the values before
+          deleting the key.
+        </Alert>
       ) : null}
 
       <section className="key-detail__section" aria-labelledby="key-detail-rules">
@@ -628,11 +626,11 @@ function MetadataEditor({
       </label>
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Saved.</Done> : null}
+      {done ? <Alert tone="done">Saved.</Alert> : null}
 
-      <button type="submit" className="btn btn--primary" disabled={update.isPending || !dirty}>
+      <Button type="submit" variant="primary" disabled={update.isPending || !dirty}>
         {update.isPending ? 'Saving…' : 'Save declaration'}
-      </button>
+      </Button>
 
       {scanBlock === null ? null : (
         <ScanBlockDialog
@@ -764,11 +762,11 @@ function RenameKey({
       </label>
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Renamed.</Done> : null}
+      {done ? <Alert tone="done">Renamed.</Alert> : null}
 
-      <button type="submit" className="btn btn--primary" disabled={rename.isPending || !dirty}>
+      <Button type="submit" variant="primary" disabled={rename.isPending || !dirty}>
         {rename.isPending ? 'Renaming…' : 'Rename key'}
-      </button>
+      </Button>
 
       {scanBlock === null ? null : (
         <ScanBlockDialog
@@ -861,16 +859,18 @@ function ReclassifyKey({
       <h3 id="key-detail-reclassify">Reclassify</h3>
       <p>
         This key is classified{' '}
-        <strong>{record.classification === 'secret' ? '🔒 secret' : 'config'}</strong>.
+        <strong>
+          {record.classification === 'secret' ? <><Glyph name="lock" /> secret</> : 'config'}
+        </strong>.
       </p>
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {doneClassification === null ? null : (
-        <Done>
+        <Alert tone="done">
           {doneClassification === 'config'
             ? 'Reclassified as config.'
             : 'Reclassified as secret. Tightening cannot un-disclose earlier values. Rotate the value if it was ever shown.'}
-        </Done>
+        </Alert>
       )}
 
       {warnings.length === 0 ? null : (
@@ -890,9 +890,8 @@ function ReclassifyKey({
         </div>
       )}
 
-      <button
+      <Button
         type="button"
-        className="btn"
         // Fail closed in BOTH directions: tightening drops the key's config
         // dismissals, so its impact preview matters as much as a declassification's.
         disabled={reclassify.isPending || !impactReady}
@@ -902,7 +901,7 @@ function ReclassifyKey({
         }}
       >
         {declassify ? 'Reclassify as config…' : 'Reclassify as secret…'}
-      </button>
+      </Button>
 
       {confirming ? (
         <ConfirmDialog
@@ -1083,38 +1082,36 @@ function ConfirmDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   return (
-    <dialog className="matrix-editor" ref={dialog} aria-labelledby={titleId} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2 id={titleId}>{title}</h2>
-        </div>
-        <button
-          type="button"
-          className="btn matrix-editor__close"
-          aria-label="Close"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-      </div>
+    <Dialog
+      title={title}
+      size="wide"
+      // Escape is the platform's; the close it fires has to reach the caller or
+      // the panel would still believe the confirm is open.
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <>
+          {/* Never disabled: Escape closes this dialog even mid-flight, so a
+              mouse user is owed the same exit. It runs the same `onClose`. */}
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant={danger ? 'danger' : 'primary'}
+            disabled={busy || confirmDisabled}
+            onClick={onConfirm}
+          >
+            {busy ? 'Working…' : confirmLabel}
+          </Button>
+        </>
+      }
+    >
       {children}
-      <div className="matrix-editor__actions">
-        <button
-          type="button"
-          className={danger ? 'btn btn--danger' : 'btn btn--primary'}
-          disabled={busy || confirmDisabled}
-          onClick={onConfirm}
-        >
-          {busy ? 'Working…' : confirmLabel}
-        </button>
-        <button type="button" className="btn" disabled={busy} onClick={onClose}>
-          Cancel
-        </button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1312,9 +1309,9 @@ function toggleId(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {
 /**
  * Toggle is a pressed-state button, not a checkbox: a native checkbox cannot
  * meet the 44px coarse-pointer touch floor without distortion, and this panel
- * is asserted at a phone viewport. The on-state carries a ✓ so it never depends
- * on colour alone (DESIGN.md), and it reuses `.settings-tag`, which the touch
- * and focus gates already cover.
+ * is asserted at a phone viewport. The on-state carries a check mark so it
+ * never depends on colour alone (DESIGN.md), and it is a quiet ui/Button, which
+ * the touch and focus gates already cover.
  */
 function Toggle({
   label,
@@ -1328,16 +1325,16 @@ function Toggle({
   onChange: (on: boolean) => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
-      className={`settings-tag${on ? ' settings-tag--on' : ''}`}
+      variant="quiet"
       aria-pressed={on}
       disabled={disabled}
       onClick={() => onChange(!on)}
     >
-      {on ? '✓ ' : ''}
+      {on ? <><Glyph name="check" /> </> : null}
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -1516,14 +1513,14 @@ function DeclarationEditor({
               disabled={update.isPending}
               onChange={(next) => editAlternatives(alternatives.with(index, next))}
               action={
-                <button
+                <Button
                   type="button"
-                  className="btn btn--quiet"
+                  variant="quiet"
                   disabled={update.isPending || alternatives.length <= ANY_OF_MIN}
                   onClick={() => editAlternatives(alternatives.filter((_, at) => at !== index))}
                 >
                   Remove alternative
-                </button>
+                </Button>
               }
             />
           ))}
@@ -1548,14 +1545,13 @@ function DeclarationEditor({
                 ))}
               </select>
             </label>
-            <button
+            <Button
               type="button"
-              className="btn"
               disabled={update.isPending || alternatives.length >= ANY_OF_MAX}
               onClick={() => editAlternatives([...alternatives, ruleDraftFrom({ type: addKind })])}
             >
               Add alternative
-            </button>
+            </Button>
             {alternatives.length >= ANY_OF_MAX ? (
               <p className="field__hint">
                 Add is off: a declaration holds at most {String(ANY_OF_MAX)} alternatives.
@@ -1628,11 +1624,11 @@ function DeclarationEditor({
 
       {invalid === null ? null : <Alert>{invalid}</Alert>}
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Saved.</Done> : null}
+      {done ? <Alert tone="done">Saved.</Alert> : null}
 
-      <button type="submit" className="btn btn--primary" disabled={update.isPending}>
+      <Button type="submit" variant="primary" disabled={update.isPending}>
         {update.isPending ? 'Saving…' : 'Save value rules & presence'}
-      </button>
+      </Button>
 
       {scanBlock === null ? null : (
         <ScanBlockDialog
@@ -1899,7 +1895,7 @@ function GroupEditor({
       </label>
       {groups.isError ? <Alert>The project’s linked keys could not be read.</Alert> : null}
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Linked keys updated.</Done> : null}
+      {done ? <Alert tone="done">Linked keys updated.</Alert> : null}
     </section>
   );
 }

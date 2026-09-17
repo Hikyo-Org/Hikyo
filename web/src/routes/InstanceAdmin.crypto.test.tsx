@@ -64,7 +64,7 @@ function button(root: ParentNode, text: string): HTMLButtonElement {
 }
 
 function dialog(container: HTMLElement): HTMLElement {
-  const found = container.ownerDocument.querySelector('dialog.ceremony');
+  const found = container.ownerDocument.querySelector('dialog[open]');
   if (!(found instanceof HTMLElement)) {
     throw new Error('the ceremony dialog is missing');
   }

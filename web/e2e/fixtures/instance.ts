@@ -193,6 +193,18 @@ type Instance = {
   expectedExit?: boolean;
 };
 
+/**
+ * The half of an instance a raw authenticated call needs: where to send it, the
+ * host its cookies belong to, and the jar itself. Narrower than `Instance` so a
+ * WORKER, which never holds the setup process's child processes, can sign in
+ * against a running instance by URL alone.
+ */
+type Jar = {
+  base: string;
+  host: string;
+  cookies: Cookie[];
+};
+
 type Cookie = {
   name: string;
   value: string;
@@ -457,11 +469,11 @@ async function waitForManagedRuntime(instance: Instance, deadlineMs = 30_000): P
 }
 
 /** cookieHeader renders one instance's jar for a raw fetch. */
-function cookieHeader(instance: Instance): string {
+function cookieHeader(instance: Jar): string {
   return instance.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
 }
 
-function csrfToken(instance: Instance): string {
+function csrfToken(instance: Jar): string {
   const token = instance.cookies.find((cookie) => cookie.name === '__Host-hikyo-csrf')?.value;
   if (token === undefined || token === '') {
     throw new Error('the fixture instance has no CSRF cookie');
@@ -515,7 +527,7 @@ async function api(
  * jar replaced with that one cookie loses the synchronizer token, which then
  * fails the NEXT mutation with a refusal that looks nothing like its cause.
  */
-function adoptCookies(instance: Instance, resp: Response): void {
+function adoptCookies(instance: Jar, resp: Response): void {
   const reissued = parseSetCookie(resp.headers.getSetCookie(), instance.host);
   if (reissued.length === 0) {
     return;
@@ -545,7 +557,7 @@ function parseSetCookie(raw: string[], host: string): Cookie[] {
 }
 
 /** signIn mints a browser session the same way the SPA does. */
-async function signIn(instance: Instance): Promise<void> {
+async function signIn(instance: Jar): Promise<void> {
   const resp = await fetch(`${instance.base}/api/v1/auth/local/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -607,7 +619,7 @@ async function enrolTotp(instance: Instance): Promise<string> {
  * the code for NOW. That is deterministic, one request, no failed attempts to
  * feed the per-account backoff, at the cost of up to 30 seconds per ceremony.
  */
-async function presentTotp(instance: Instance, otpauth: string, path: string): Promise<void> {
+async function presentTotp(instance: Jar, otpauth: string, path: string): Promise<void> {
   const deadline = Date.now() + 3 * TOTP_PERIOD * 1000;
   let last = '';
   for (;;) {
@@ -1720,12 +1732,12 @@ export async function refreshSharedSessionFromProbe(
   throw new Error(`shared session probe answered ${String(status)}`);
 }
 
-function storageStateCookieHeader(): string {
+function storageStateCookieHeader(host: string): string {
   const cookies = zStorageState
     .parse(JSON.parse(readFileSync(STORAGE_STATE, 'utf8')))
-    .cookies.filter((cookie) => cookie.domain === HOST || cookie.domain === `.${HOST}`);
+    .cookies.filter((cookie) => cookie.domain === host || cookie.domain === `.${host}`);
   if (!cookies.some((cookie) => cookie.name === '__Host-hikyo')) {
-    throw new Error('the shared storage state has no viewing-instance session cookie');
+    throw new Error(`the shared storage state has no session cookie for ${host}`);
   }
   return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
 }
@@ -1741,11 +1753,48 @@ export async function refreshSharedSession(): Promise<void> {
   await refreshSharedSessionFromProbe(
     async () => {
       const response = await fetch(`${BASE_URL}/api/v1/me/sessions`, {
-        headers: { Cookie: storageStateCookieHeader() },
+        headers: { Cookie: storageStateCookieHeader(HOST) },
       });
       return response.status;
     },
     mintStorageState,
+  );
+}
+
+/**
+ * refreshServingSession repairs the SERVING half of the shared storage state.
+ *
+ * `refreshSharedSession` is the viewing instance's twin of this, and B needs
+ * one for the same reason A does: a step-up on B advances its session
+ * generation, the page that performed it gets the reissued cookie in its own
+ * jar, and the file keeps the disowned one. The next flow to open B arrives
+ * signed out, several tests away from the cause. The flow that steps up on B is
+ * instance-admin's independent-owner apply; the flow that pays for it is the
+ * workspace one, and on CI they are in different groups, so nothing but a whole
+ * local run ever sees it.
+ *
+ * Probing first keeps the common live-session case to one request; a non-auth
+ * status stays loud, and the re-mint signs in and steps up exactly as setup
+ * did, because every instance-scope surface on B is MFA-mandatory.
+ */
+export async function refreshServingSession(): Promise<void> {
+  await refreshSharedSessionFromProbe(
+    async () => {
+      const response = await fetch(`${BASE_URL_B}/api/v1/me/sessions`, {
+        headers: { Cookie: storageStateCookieHeader(HOST_B) },
+      });
+      return response.status;
+    },
+    async () => {
+      const jar: Jar = { base: BASE_URL_B, host: HOST_B, cookies: [] };
+      await signIn(jar);
+      await presentTotp(jar, readServing().otpauth, '/api/v1/auth/totp/step-up');
+      const state = zStorageState.parse(JSON.parse(readFileSync(STORAGE_STATE, 'utf8')));
+      const kept = state.cookies.filter(
+        (cookie) => cookie.domain !== HOST_B && cookie.domain !== `.${HOST_B}`,
+      );
+      writeFileSync(STORAGE_STATE, JSON.stringify({ ...state, cookies: [...kept, ...jar.cookies] }));
+    },
   );
 }
 

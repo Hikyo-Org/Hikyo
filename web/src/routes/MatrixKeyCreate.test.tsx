@@ -86,6 +86,18 @@ function radio(container: HTMLElement, name: string, value: string): HTMLInputEl
   return element;
 }
 
+/** The checkbox a label names, resolved through the label's `for`, so the test
+    asserts the accessible wiring rather than a class or a wrapper shape. */
+function checkboxNamed(container: HTMLElement, name: string): HTMLInputElement {
+  const label = [...container.querySelectorAll('label')].find((candidate) =>
+    candidate.textContent?.includes(name),
+  );
+  const control =
+    label === undefined ? null : container.ownerDocument.getElementById(label.htmlFor);
+  if (!(control instanceof HTMLInputElement)) throw new Error(`no checkbox named ${name}`);
+  return control;
+}
+
 function alertText(container: HTMLElement): string | null {
   return container.querySelector('.alert')?.textContent ?? null;
 }
@@ -185,18 +197,14 @@ describe('MatrixKeyCreate', () => {
 
   it('marks a secret declaration and hides the first value field', async () => {
     const view = await render();
-    const secret = view.container.querySelector<HTMLInputElement>('.matrix-key-create__secret input');
-    if (secret === null) throw new Error('no secret checkbox');
+    const secret = checkboxNamed(view.container, 'secret');
     await act(async () => secret.click());
     // A textarea (a password input flattens newlines), masked by class until
     // the operator opts to see what they type.
     const value = byLabel(view.container, 'matrix-create-value');
     expect(value.tagName).toBe('TEXTAREA');
     expect(value.classList.contains('matrix-editor__value--masked')).toBe(true);
-    const show = [...view.container.querySelectorAll('label')].find((label) =>
-      label.textContent?.includes('Show while typing'),
-    )?.querySelector('input');
-    if (show === null || show === undefined) throw new Error('no show-while-typing toggle');
+    const show = checkboxNamed(view.container, 'Show while typing');
     await act(async () => show.click());
     expect(value.classList.contains('matrix-editor__value--masked')).toBe(false);
     await fillNameAndSubmit(view.container, 'API_KEY');

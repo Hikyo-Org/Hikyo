@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
-import { useModalDialog } from '../routes/useModalDialog.ts';
+import { Dialog } from '../ui/Dialog.tsx';
 
 const runtimeStatus = z.discriminatedUnion('state', [
   z.object({ state: z.literal('ready'), phase: z.null() }),
@@ -121,8 +121,6 @@ export function RuntimeMaintenanceBoundary({ children, failure, refreshSession, 
 }
 
 function RuntimeInterruption({ status }: { status: DisplayStatus }) {
-  const heading = useRef<HTMLHeadingElement>(null);
-  const dialog = useModalDialog(heading);
   const title = status.state === 'maintenance' ? 'Hikyo is upgrading'
     : status.state === 'recovery-required' ? 'Recovery needs an operator'
     : 'Reconnecting to Hikyo';
@@ -131,10 +129,12 @@ function RuntimeInterruption({ status }: { status: DisplayStatus }) {
     : status.state === 'recovery-required'
       ? 'This instance could not complete its upgrade safely. An operator must recover it before editing can resume.'
       : 'This browser cannot reach its home instance. The cause is not yet confirmed.';
-  return <dialog ref={dialog} className="ceremony runtime-maintenance" aria-labelledby="runtime-maintenance-title"
-    aria-describedby="runtime-maintenance-detail" onCancel={(event) => event.preventDefault()}>
-    <h1 ref={heading} tabIndex={-1} id="runtime-maintenance-title" className="ceremony__title">{title}</h1>
-    <p id="runtime-maintenance-detail" className="ceremony__lede" role="status" aria-live="polite" aria-atomic="true">{detail}</p>
-    <p className="ceremony__lede">Editing is paused. This page will reconnect automatically. Unsaved changes are never submitted automatically.</p>
-  </dialog>;
+  // No actions: this interruption is not dismissable, and the preventDefault on
+  // cancel is what keeps Escape from closing it. Both paragraphs stay in the
+  // children rather than in `lede` because the live one carries the status role
+  // the phase announcements need.
+  return <Dialog title={title} onCancel={(event) => { event.preventDefault(); }}>
+    <p className="dialog__lede" role="status" aria-live="polite" aria-atomic="true">{detail}</p>
+    <p className="dialog__lede">Editing is paused. This page will reconnect automatically. Unsaved changes are never submitted automatically.</p>
+  </Dialog>;
 }

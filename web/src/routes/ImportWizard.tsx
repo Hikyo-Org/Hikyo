@@ -11,6 +11,10 @@ import {
   type ValueOccurrenceList,
 } from '../api/matrix.ts';
 import type { MatrixRef } from '../api/keys.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import type { KeyClassification } from '@hikyo/client';
 import {
   indexOccurrences,
@@ -22,8 +26,6 @@ import {
   type PrimitiveType,
 } from './import-state.ts';
 import { MAX_FILE_BYTES, parseSource, type FileConnector } from './import-sources.ts';
-import { Alert } from './Sections.tsx';
-import { useModalDialog } from './useModalDialog.ts';
 
 type WizardEnvironment = { readonly id: string; readonly name: string };
 
@@ -143,7 +145,6 @@ export function ImportWizard({
   gitManaged: boolean;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   // Two independent counters guard file reads, and they must not be conflated.
   // `readSeq` bumps when a selection STARTS: an earlier, slower `file.text()`
   // that resolves after a later selection is dropped, so the committed contents
@@ -440,40 +441,30 @@ export function ImportWizard({
   const heading = journeyHeading(journey);
 
   return (
-    <dialog
-      ref={dialog}
-      className="matrix-editor import-wizard"
-      onClose={onClose}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
+    <Dialog
+      title={heading}
+      lede="Reviewed on this device; values are sent only when you start the import."
+      size="wide"
+      className="import-wizard"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
       }}
+      onBackdropClick={onClose}
     >
-      <form method="dialog" onSubmit={(event) => event.preventDefault()}>
-        <div className="matrix-editor__head">
-          <div>
-            <p className="matrix-editor__eyebrow">
-              Import
-              {journey?.kind === 'cli'
-                ? ''
-                : ` · Step ${String(STEPS.indexOf(step) + 1)} of ${String(STEPS.length)}`}
-            </p>
-            <h2>{heading}</h2>
-            <p>Reviewed on this device; values are sent only when you start the import.</p>
-          </div>
-          <button
-            type="button"
-            className="btn matrix-editor__close"
-            aria-label="Close import"
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </div>
+      {/* Each step owns its own action row, and every row is the last thing in
+          the dialog, so they stay in the children rather than in `actions`. */}
+      <form onSubmit={(event) => event.preventDefault()}>
+        {/* The eyebrow follows the title now: the atom's h2 is always first. */}
+        <p className="matrix-editor__eyebrow">
+          Import
+          {journey?.kind === 'cli'
+            ? ''
+            : ` · Step ${String(STEPS.indexOf(step) + 1)} of ${String(STEPS.length)}`}
+        </p>
 
         {step !== 'pick' && journey?.kind !== 'cli' ? (
-          <p className="notice" role="note">
+          <p className="notice" role="note">{/* markup-check: note, not a live region */}
             <span aria-hidden="true">⚠</span>
             <span>
               The file is read in this browser and reviewed here. Its values are sent only when you
@@ -483,10 +474,7 @@ export function ImportWizard({
         ) : null}
 
         {error === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{error}</span>
-          </p>
+          <Alert>{error}</Alert>
         )}
 
         {step === 'pick'
@@ -499,7 +487,7 @@ export function ImportWizard({
                 ? renderReview()
                 : renderResult()}
       </form>
-    </dialog>
+    </Dialog>
   );
 
   function renderPick() {
@@ -510,22 +498,22 @@ export function ImportWizard({
           <ul className="import-wizard__sources" aria-label="Import sources">
             {JOURNEYS.map((option) => (
               <li key={option.id}>
-                <button
+                <Button
                   type="button"
-                  className="btn import-wizard__source"
+                  className="import-wizard__source"
                   onClick={() => chooseJourney(option.journey)}
                 >
                   <span className="import-wizard__source-label">{option.label}</span>
                   <span className="import-wizard__source-hint">{option.hint}</span>
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
         </fieldset>
-        <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={onClose}>
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -555,13 +543,13 @@ export function ImportWizard({
             <code>{guidance.command}</code>
           </pre>
         </fieldset>
-        <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('pick')}>
+        <footer className="dialog__actions">
+          <Button type="button" onClick={() => setStep('pick')}>
             Back
-          </button>
-          <button type="button" className="btn btn--primary" onClick={onClose}>
+          </Button>
+          <Button type="button" variant="primary" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -637,13 +625,10 @@ export function ImportWizard({
           )}
           {parseErrors.length === 0 ? null : (
             <>
-              <p className="alert" role="alert">
-                <span className="alert__glyph" aria-hidden="true">!</span>
-                <span>
-                  Fix these lines at the source and choose the file again. The import is
-                  all-or-nothing, so nothing is sent while any line is invalid.
-                </span>
-              </p>
+              <Alert>
+                Fix these lines at the source and choose the file again. The import is
+                all-or-nothing, so nothing is sent while any line is invalid.
+              </Alert>
               <ul className="import-wizard__invalid" aria-label="Invalid lines">
                 {parseErrors.map((invalid) => (
                   <li key={invalid.line}>{`Line ${String(invalid.line)}: ${invalid.reason}`}</li>
@@ -653,18 +638,21 @@ export function ImportWizard({
           )}
         </fieldset>
         {renderTargets()}
-        <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('pick')}>
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => setStep('pick')}>
             Back
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={!canContinue}
             onClick={beginReview}
           >
             {busy ? 'Reading…' : 'Review'}
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -739,10 +727,7 @@ export function ImportWizard({
             </p>
           ) : null}
           {source === null ? null : refusal !== null ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">!</span>
-              <span>{refusal}</span>
-            </p>
+            <Alert>{refusal}</Alert>
           ) : (
             <p className="import-wizard__summary" role="status">
               {`${fileName ?? 'file'}: ${String(source.entries.length)} value${source.entries.length === 1 ? '' : 's'} read` +
@@ -754,18 +739,21 @@ export function ImportWizard({
           )}
         </fieldset>
         {renderTargets()}
-        <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('pick')}>
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => setStep('pick')}>
             Back
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={!canContinue}
             onClick={beginReview}
           >
             {busy ? 'Reading…' : 'Review'}
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -776,14 +764,12 @@ export function ImportWizard({
       <fieldset>
         <legend>Target environments</legend>
         {environments.map((environment) => (
-          <label key={environment.id} className="import-wizard__env">
-            <input
-              type="checkbox"
-              checked={selected.has(environment.id)}
-              onChange={() => setSelected((current) => toggle(current, environment.id))}
-            />
-            {environment.name}
-          </label>
+          <Checkbox
+            key={environment.id}
+            label={environment.name}
+            checked={selected.has(environment.id)}
+            onChange={() => setSelected((current) => toggle(current, environment.id))}
+          />
         ))}
       </fieldset>
     );
@@ -795,14 +781,11 @@ export function ImportWizard({
         {gitManaged && newKeys.length > 0 ? (
           <>
             <Alert>{GIT_DEFINITIONS_NOTICE}</Alert>
-            <p className="notice" role="status">
-              <span aria-hidden="true">ℹ</span>
-              <span>
-                {`${String(newKeys.length)} new key${newKeys.length === 1 ? '' : 's'} ` +
-                  `(${newKeys.join(', ')}) cannot be declared here and will be skipped; already-declared keys still import. ` +
-                  'Declare the missing keys with definitions plan / definitions apply, then import again.'}
-              </span>
-            </p>
+            <Alert tone="info">
+              {`${String(newKeys.length)} new key${newKeys.length === 1 ? '' : 's'} ` +
+                `(${newKeys.join(', ')}) cannot be declared here and will be skipped; already-declared keys still import. ` +
+                'Declare the missing keys with definitions plan / definitions apply, then import again.'}
+            </Alert>
           </>
         ) : null}
 
@@ -840,21 +823,18 @@ export function ImportWizard({
                     {name}
                     {folder === '' ? null : <span className="import-wizard__key-folder">{` · ${folder}`}</span>}
                   </span>
-                  <label className="import-wizard__secret">
-                    <input
-                      type="checkbox"
-                      checked={declaration.classification === 'secret'}
-                      onChange={(event) =>
-                        setDeclarations((current) =>
-                          new Map(current).set(name, {
-                            ...declaration,
-                            classification: event.target.checked ? 'secret' : 'config',
-                          }),
-                        )
-                      }
-                    />
-                    secret
-                  </label>
+                  <Checkbox
+                    label="secret"
+                    checked={declaration.classification === 'secret'}
+                    onChange={(event) =>
+                      setDeclarations((current) =>
+                        new Map(current).set(name, {
+                          ...declaration,
+                          classification: event.target.checked ? 'secret' : 'config',
+                        }),
+                      )
+                    }
+                  />
                   <label>
                     Type
                     <select
@@ -886,13 +866,16 @@ export function ImportWizard({
           </fieldset>
         )}
 
-        <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('source')}>
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => setStep('source')}>
             Back
-          </button>
-          <button type="button" className="btn btn--primary" onClick={() => setStep('review')}>
+          </Button>
+          <Button type="button" variant="primary" onClick={() => setStep('review')}>
             Review changes
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -917,14 +900,12 @@ export function ImportWizard({
               written, or fix it at the source.
             </p>
             {trimOffenders.map((entry) => (
-              <label key={entry.key} className="import-wizard__env">
-                <input
-                  type="checkbox"
-                  checked={trimAcks.has(entry.key)}
-                  onChange={() => setTrimAcks((current) => toggle(current, entry.key))}
-                />
-                {entry.key}
-              </label>
+              <Checkbox
+                key={entry.key}
+                label={entry.key}
+                checked={trimAcks.has(entry.key)}
+                onChange={() => setTrimAcks((current) => toggle(current, entry.key))}
+              />
             ))}
           </fieldset>
         )}
@@ -953,20 +934,18 @@ export function ImportWizard({
                 <div className="import-wizard__collisions">
                   <span>Overwrite already-set values:</span>
                   {plan.collisions.map((name) => (
-                    <label key={name} className="import-wizard__env">
-                      <input
-                        type="checkbox"
-                        checked={(overwrite.get(environment.id) ?? new Set()).has(name)}
-                        onChange={() =>
-                          setOverwrite((current) => {
-                            const next = new Map(current);
-                            next.set(environment.id, toggle(current.get(environment.id) ?? new Set(), name));
-                            return next;
-                          })
-                        }
-                      />
-                      {name}
-                    </label>
+                    <Checkbox
+                      key={name}
+                      label={name}
+                      checked={(overwrite.get(environment.id) ?? new Set()).has(name)}
+                      onChange={() =>
+                        setOverwrite((current) => {
+                          const next = new Map(current);
+                          next.set(environment.id, toggle(current.get(environment.id) ?? new Set(), name));
+                          return next;
+                        })
+                      }
+                    />
                   ))}
                 </div>
               )}
@@ -974,18 +953,21 @@ export function ImportWizard({
           );
         })}
 
-        <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('classify')}>
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => setStep('classify')}>
             Back
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={!anySendable || !trimSettled || busy}
             onClick={runImport}
           >
             {busy ? 'Importing…' : 'Import'}
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -1019,10 +1001,10 @@ export function ImportWizard({
             </li>
           ))}
         </ul>
-        <footer className="matrix-editor__actions">
-          <button type="button" className="btn btn--primary" onClick={onClose}>
+        <footer className="dialog__actions">
+          <Button type="button" variant="primary" onClick={onClose}>
             Done
-          </button>
+          </Button>
         </footer>
       </>
     );

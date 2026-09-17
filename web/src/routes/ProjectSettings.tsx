@@ -40,10 +40,13 @@ import {
   type SettingsOperation,
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
-import { Alert, ConsequencesDialog, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
-import { useFeedback } from './useModalDialog.ts';
+import { ConsequencesDialog, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { useFeedback } from './useFeedback.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
@@ -95,8 +98,8 @@ export function ProjectSettings() {
     <div className="page page--chrome">
       <h1>Project settings · {current?.name ?? 'project'}</h1>
       <p className="page__lede">
-        Project identity and metadata. Access management is its own surface: one entry point, no
-        second permission editor here.
+        Rename this project, edit its metadata, and manage its environments; grants are edited
+        on the members surface.
       </p>
 
       <JumpIndex
@@ -118,7 +121,7 @@ export function ProjectSettings() {
         </Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       <Panel id="project-identity" title="Identity">
         <ChromeIdentityControls
@@ -335,7 +338,6 @@ function ProjectCryptoMaintenance({
 }) {
   const dek = useRotateDek();
   const reencrypt = useReencryptProject(org, project);
-  const titleId = useId();
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [dialogFailure, setDialogFailure] = useState<string | null>(null);
 
@@ -358,9 +360,9 @@ function ProjectCryptoMaintenance({
         </div>
         <span className="settings-row__spacer" />
         <code className="instance-cli">$ hikyo rotate-dek --scope project</code>
-        <button type="button" className="btn" disabled={disabled} onClick={() => { setDialogFailure(null); setConfirmRotate(true); }}>
+        <Button type="button" disabled={disabled} onClick={() => { setDialogFailure(null); setConfirmRotate(true); }}>
           Rotate the project DEK
-        </button>
+        </Button>
       </div>
       <div className="settings-row">
         <div className="settings-row__copy">
@@ -372,16 +374,15 @@ function ProjectCryptoMaintenance({
         </div>
         <span className="settings-row__spacer" />
         <code className="instance-cli">$ hikyo reencrypt --project</code>
-        <button type="button" className="btn" disabled={disabled || drain.running} onClick={drain.run}>
+        <Button type="button" disabled={disabled || drain.running} onClick={drain.run}>
           {drain.running ? 'Re-encrypting…' : 'Re-encrypt the project'}
-        </button>
+        </Button>
       </div>
       {drain.running ? <p role="status" className="field__hint">Re-encrypting… run {drain.runs}, {String(drain.total)} row{drain.total === 1n ? '' : 's'} moved so far. Safe to leave and resume later.</p> : null}
       {drain.failure === null ? null : <Alert>{drain.failure}</Alert>}
 
       {confirmRotate ? (
         <ConsequencesDialog
-          titleId={titleId}
           title="Rotate this project's DEK?"
           confirmLabel="Rotate the DEK"
           busyLabel="Rotating the project DEK…"
@@ -529,13 +530,13 @@ function NewEnvironment({
           disabled={disabled || topologyBusy}
           onChange={(event) => setName(event.target.value)}
         />
-        <button
+        <Button
           type="submit"
-          className="btn btn--primary"
+          variant="primary"
           disabled={disabled || topologyBusy || trimmed === ''}
         >
           Create
-        </button>
+        </Button>
       </form>
       {failure === null ? null : <Alert>{failure}</Alert>}
     </>
@@ -658,13 +659,12 @@ export function EnvironmentLifecycleActions({
           disabled={busy}
           onChange={(event) => setRenameName(event.target.value)}
         />
-        <button
+        <Button
           type="submit"
-          className="btn"
           disabled={busy || renameName.trim() === '' || renameName.trim() === environment.name}
         >
           Rename environment
-        </button>
+        </Button>
       </form>
       {failure?.scope === 'rename' ? <Alert>{failure.text}</Alert> : null}
 
@@ -676,24 +676,22 @@ export function EnvironmentLifecycleActions({
           </span>
         </div>
         <span className="settings-row__spacer" />
-        <button
+        <Button
           type="button"
-          className="btn"
           aria-label={`Move ${environment.name} up`}
           disabled={busy || index === 0}
           onClick={() => move(-1)}
         >
           Move up
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn"
           aria-label={`Move ${environment.name} down`}
           disabled={busy || index === environments.length - 1}
           onClick={() => move(1)}
         >
           Move down
-        </button>
+        </Button>
       </div>
       {failure?.scope === 'order' ? <Alert>{failure.text}</Alert> : null}
 
@@ -739,9 +737,9 @@ export function EnvironmentLifecycleActions({
           disabled={busy}
           onChange={(event) => setCloneName(event.target.value)}
         />
-        <button type="submit" className="btn" disabled={busy || cloneName.trim() === ''}>
+        <Button type="submit" disabled={busy || cloneName.trim() === ''}>
           Clone environment
-        </button>
+        </Button>
       </form>
       {failure?.scope === 'clone' ? <Alert>{failure.text}</Alert> : null}
 
@@ -811,9 +809,9 @@ function EnvironmentPolicy({
           const protectedFlag = ready && state.protected;
           return (
             <span className="environment-policy-control" key={environment.id}>
-              <button
+              <Button
                 type="button"
-                className={`settings-tag${protectedFlag ? ' settings-tag--danger' : ''}`}
+                variant="quiet"
                 disabled={!ready || save.isPending}
                 aria-pressed={protectedFlag}
                 onClick={() =>
@@ -835,8 +833,8 @@ function EnvironmentPolicy({
                   )
                 }
               >
-                {protectedFlag ? '🔒 ' : ''}{environment.name}
-              </button>
+                {protectedFlag ? <><Glyph name="lock" /> </> : null}{environment.name}
+              </Button>
               {state?.status === 'unreadable' ? (
                 <span role="status">This environment&apos;s policy could not be read.</span>
               ) : null}
