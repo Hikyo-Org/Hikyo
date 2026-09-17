@@ -218,22 +218,52 @@ Intended, and the reason the preview checks below exist:
 
 ## Preview verification (controller)
 
-Issue #761 items 4 and 5, plus the three items the tasks surfaced. To be filled
-in by the controller against a real instance.
+Run 2026-09-17 against the prototype mode (`pnpm run prototype`, mock API) at
+1280 and 390 wide, both themes, reading computed styles through the preview
+tooling. The mock seeds six keys, so the 50-key matrix check rests on the
+matrix e2e spec (desktop 182 passed) rather than a screenshot.
 
-- [ ] Dialogs opened from routes (not only from stories) read the one anatomy
-- [ ] A 50-key matrix at full width
-- [ ] The settings identity controls (hue range, glyph)
-- [ ] Phone layouts at 390px
-- [ ] Both themes, light and dark
-- [ ] `.matrix__history-link` size
-- [ ] `.settings-tag` 20px inside settings rows
-- [ ] Sidebar eyebrow 11px
-- [ ] The overview page's unclassed link (ink + underline, not browser blue)
-- [ ] Dialogs gain a shadow
-- [ ] The members capability row is 36px tall
-- [ ] `DefinitionsBundlePanel`'s file input renders native
-- [ ] `.chip--armed` / `.chip--wide` / `.settings-tag--on` lost their accent
-      emphasis (expected until #762)
-- [ ] `environment-lifecycle` summary shows its disclosure marker and centres
-      its text at 36px
+- [x] Dialogs opened from routes: members invite dialog (`.ceremony`) 520px,
+      shadow `0 14px 42px`, h2 16/700 sentence case, lede 13px dim, actions
+      gap 8px, buttons 36px
+- [x] Matrix: history link 36px / 13px (was 11.5px); thead th 37px on the row
+      token; add-key 36px / 13px; checkbox 24px with `appearance: none`;
+      environment chooser summary 36px; legend toggle 36px min-width 36px
+- [x] Settings identity controls: hue swatch 36x36, glyph 36x36; text inputs
+      36px (14px, mono 13px); selects 36px; section h2 16px sentence case
+- [x] 390px: no horizontal overflow, sidebar collapsed, controls 36px (fine
+      pointer; the coarse floor is the mobile e2e project's job: 126 passed)
+- [x] Light theme: bg `oklch(0.965 0.008 200)`, ink `oklch(0.25 0.03 225)`
+- [x] `.settings-tag` button 20px / 11px inside settings rows (fine pointer;
+      the coarse bridge rule keeps it at 44px on a phone)
+- [x] Sidebar eyebrow 11px / 500 / uppercase; h1 20/700; panel h2 16 sentence
+      case
+- [x] Overview "Choose a project" link: ink colour, underline (not browser
+      blue)
+- [x] Members capability row 44px (the row has its own padding; the revoke
+      control is 36x36 with no negative margins); chips 20px / 11px
+- [x] `environment-lifecycle` summary: `display: list-item`, `align-content:
+      center`, 36px, marker rendered (d58b3c4c)
+- [ ] `DefinitionsBundlePanel` file input (native picker): not reachable in
+      the mock; accepted by ruling, confirm on a real instance
+- [ ] `.chip--armed` / `.chip--wide` / `.settings-tag--on` emphasis: expected
+      loss until #762 maps them onto Badge tones; not seeded by the mock
+
+Observed and handed to #762: the invite dialog lists its primary button first
+(markup order, Dialog puts it last); `.matrix__group-row .matrix__group-toggle`
+stays uppercase at 13px (a #755 gap, not an eyebrow).
+
+## e2e (controller)
+
+Run on `cb88085c` from this worktree, on alternate port families so another
+session's suite on the default ports could not collide (`HIKYO_E2E_PORT*`):
+
+| project | specs | result |
+|---|---|---|
+| desktop (29789 family) | login, matrix, shell, members, machine-access, history, settings, reveal, scanning | 182 passed, 0 failed |
+| mobile (30789 family) | login, matrix, members, settings, machine-access | 126 passed, 0 failed |
+
+The two findings the first runs produced (the sidebar link's literal 38px pin
+and the quiet button's missing width floor on a coarse pointer) are fixed in
+cb88085c and described under "What the controller's e2e runs found". CI runs
+the complete suite on the pull request.
