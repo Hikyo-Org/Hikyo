@@ -261,7 +261,7 @@ export const UnenrolledAllowedByPolicy: FlowStory = {
 export const PasskeyPasswordless: FlowStory = {
   args: { scenario: 'passkey', policy: 'require-second-factor' },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole('button', { name: 'Sign in with a passkey' }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Use a passkey instead' }));
     await expect(await canvas.findByRole('heading', { name: 'Signed in' })).toBeVisible();
     await expect(canvas.getByText('webauthn, user-verified')).toBeVisible();
   },

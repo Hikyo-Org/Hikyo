@@ -60,6 +60,17 @@ export function Login() {
       : providerPending
         ? { provider: contacting ?? '' }
         : null;
+  // The card has one refusal slot, and the latest attempt is what the person
+  // is waiting on: starting a leg retires the other legs' refusals so a stale
+  // one cannot outlive the attempt it described, or mask a fresh failure.
+  const retireOtherLegs = (leg: 'password' | 'passkey' | 'provider') => {
+    if (leg !== 'password') login.reset();
+    if (leg !== 'passkey') passkey.reset();
+    if (leg !== 'provider') {
+      oidc.reset();
+      saml.reset();
+    }
+  };
   const error = login.isError
     ? loginFailureText(login.error)
     : passkey.isError
@@ -75,9 +86,16 @@ export function Login() {
         passkeys={passkeysAvailable()}
         busy={busy}
         error={error}
-        onPassword={(credentials) => login.mutate(credentials)}
-        onPasskey={() => passkey.mutate()}
+        onPassword={(credentials) => {
+          retireOtherLegs('password');
+          login.mutate(credentials);
+        }}
+        onPasskey={() => {
+          retireOtherLegs('passkey');
+          passkey.mutate();
+        }}
         onProvider={(slug) => {
+          retireOtherLegs('provider');
           setContacting(slug);
           const provider = providers.find((candidate) => candidate.slug === slug);
           if (provider?.kind === 'saml') saml.mutate(slug);
