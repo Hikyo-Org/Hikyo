@@ -51,7 +51,7 @@ Copy: no em-dash anywhere in user-visible text; use a comma, colon, or full stop
 - UI: Instrument Sans (400/500/700). Headings weight-contrast over size-inflation.
 - Keys & values: IBM Plex Mono, 12-13px, tabular feel.
 - Body line length ≤ 72ch.
-- **Scale (decided 2026-09-16, Storybook design pass, PR #755; replaces the earlier "ratio ≥ 1.25" rule, which the fixed sizes below supersede):** 11px eyebrow and badge (500, uppercase, 0.06em tracking, tertiary ink) · 13px captions: field labels, legends, ledes, hints, mono values · 14px body, h3 and panel titles (700, sentence case; only the eyebrow is uppercase) · 16px h2 (700) · 20px h1 (700). No other sizes. Tokens `--fs-xs/sm/md/lg/xl/mono` (in `web/src/ui/ui.css` until the migration moves them to `tokens.css`).
+- **Scale (decided 2026-09-16, Storybook design pass, PR #755; replaces the earlier "ratio ≥ 1.25" rule, which the fixed sizes below supersede):** 11px eyebrow and badge (500, uppercase, 0.06em tracking, tertiary ink) · 13px captions: field labels, legends, ledes, hints, mono values · 14px body, h3 and panel titles (700, sentence case; only the eyebrow is uppercase) · 16px h2 (700) · 20px h1 (700). No other sizes. Tokens `--fs-xs/sm/md/lg/xl/mono` (in `web/src/styles/tokens.css`).
 
 ## Shape & Space
 

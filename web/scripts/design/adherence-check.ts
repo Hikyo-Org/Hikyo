@@ -1,7 +1,6 @@
 // Fails the build when a stylesheet states more literal sizes than its
-// budget allows. The budget is a ratchet: it can only go down. ui.css (the
-// design system's own stylesheet) is held at zero; app.css carries its
-// legacy count until the migration series (#761, #762) retires the rules.
+// budget allows. The budget is a ratchet: it can only go down. app.css
+// carries its legacy count until #761 and #762 retire the rules.
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { z } from 'zod';
