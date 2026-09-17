@@ -90,6 +90,8 @@ import { runPasskeyCeremony, useEnvironments } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { TabPanel, Tabs, type TabItem } from '../ui/Tabs.tsx';
 import {
   type IsMintSubmitting,
   type MintBoundary,
@@ -98,7 +100,6 @@ import {
   type MoveMint,
   useMintLifecycle,
 } from './mintLifecycle.ts';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 /**
  * The machine-access surface (#67, locked prototype #31 iteration 3).
@@ -128,7 +129,8 @@ import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases';
 
-type Dialog =
+/** The route's one-at-a-time dialog selector (not the `ui/Dialog` atom). */
+type DialogState =
   | { kind: 'binding'; account: ServiceAccount; replaces?: MachineCredential }
   | { kind: 'grant'; account: ServiceAccount }
   | { kind: 'create' }
@@ -180,26 +182,6 @@ export function tabLabel(label: string, count: number | 'unknown' | null): strin
   return count === null ? label : `${label} (${count === 'unknown' ? 'unknown' : String(count)})`;
 }
 
-/** nextTab is the APG roving order for a horizontal tablist: arrows wrap, Home/End jump. */
-export function nextTab<T>(tabs: readonly T[], current: T, key: string): T | null {
-  const index = tabs.indexOf(current);
-  if (index < 0 || tabs.length === 0) {
-    return null;
-  }
-  switch (key) {
-    case 'ArrowRight':
-      return tabs[(index + 1) % tabs.length] ?? null;
-    case 'ArrowLeft':
-      return tabs[(index - 1 + tabs.length) % tabs.length] ?? null;
-    case 'Home':
-      return tabs[0] ?? null;
-    case 'End':
-      return tabs[tabs.length - 1] ?? null;
-    default:
-      return null;
-  }
-}
-
 /**
  * accountsRefusalText names the listing failure without inventing a cause.
  * A 403 or 404 is the permission answer (the system scope never reaches
@@ -247,7 +229,7 @@ function MachineAccessPage() {
 
   const [tab, setTab] = useState<Tab>('accounts');
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [leaseMintOpen, setLeaseMintOpen] = useState(false);
@@ -385,7 +367,10 @@ function MachineAccessPage() {
     leases: leases.isPending || leases.isError ? 'unknown' : leases.rows.length,
   };
   const unknownLeases = leases.rows.filter((row) => row.lease.state === 'unknown').length;
-  const tabRefs = useRef(new Map<Tab, HTMLButtonElement>());
+  const countedTabs: readonly TabItem<Tab>[] = TABS.map((entry) => ({
+    id: entry.id,
+    label: tabLabel(entry.label, tabCount[entry.id]),
+  }));
 
   const doRevoke = (account: ServiceAccount, credential: MachineCredential) => {
     setRefusal(null);
@@ -453,46 +438,15 @@ function MachineAccessPage() {
         <Alert tone="done">{notice}</Alert>
       ) : null}
 
-      {/* APG tabs: one tab stop, arrows move and select, Home/End jump. */}
-      <div
-        className="tabs"
-        role="tablist"
-        aria-label="Machine access sections"
-        onKeyDown={(event) => {
-          const target = nextTab(TABS.map((entry) => entry.id), tab, event.key);
-          if (target === null) {
-            return;
-          }
-          event.preventDefault();
-          setTab(target);
-          tabRefs.current.get(target)?.focus();
-        }}
-      >
-        {TABS.map((entry) => (
-          <button
-            key={entry.id}
-            ref={(node) => {
-              if (node === null) {
-                tabRefs.current.delete(entry.id);
-              } else {
-                tabRefs.current.set(entry.id, node);
-              }
-            }}
-            type="button"
-            role="tab"
-            id={`machine-tab-${entry.id}`}
-            className="tab"
-            aria-selected={tab === entry.id}
-            aria-controls="machine-panel"
-            tabIndex={tab === entry.id ? 0 : -1}
-            onClick={() => setTab(entry.id)}
-          >
-            {tabLabel(entry.label, tabCount[entry.id])}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        label="Machine access sections"
+        idPrefix="machine"
+        tabs={countedTabs}
+        selected={tab}
+        onSelect={setTab}
+      />
 
-      <div className="tabpanel" role="tabpanel" id="machine-panel" aria-labelledby={`machine-tab-${tab}`}>
+      <TabPanel idPrefix="machine" selected={tab}>
         {tab === 'accounts' ? (
           <>
             <PolicyStrip project={project} />
@@ -902,7 +856,7 @@ function MachineAccessPage() {
             ) : null}
           </>
         ) : null}
-      </div>
+      </TabPanel>
 
       {activeMintLifecycle.kind !== 'idle' ? (
         <MintDialog
@@ -1180,23 +1134,35 @@ function MachineRevealDialog({
   onConfirm: () => void;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const [acknowledged, setAcknowledged] = useState(false);
   return (
-    <dialog
-      ref={dialog}
-      className="ceremony"
-      aria-labelledby="machine-reveal-title"
-      onClose={onClose}
+    <Dialog
+      title={enable ? 'Enable machine secret delivery' : 'Withdraw machine secret delivery'}
       onCancel={(event) => {
-        if (busy) {
-          event.preventDefault();
+        // The element used to let the platform close it and reported that
+        // through `onClose`; the atom owns the element, so the same refusal
+        // while busy and the same dismissal otherwise are spelled here.
+        event.preventDefault();
+        if (!busy) {
+          onClose();
         }
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={onConfirm}
+            disabled={busy || (enable && !acknowledged)}
+          >
+            {enable ? 'Enable the opt-in' : 'Withdraw the opt-in'}
+          </Button>
+        </>
+      }
     >
-      <h2 className="ceremony__title" id="machine-reveal-title">
-        {enable ? 'Enable machine secret delivery' : 'Withdraw machine secret delivery'}
-      </h2>
       {enable ? (
         <>
           <p>
@@ -1229,20 +1195,7 @@ function MachineRevealDialog({
       {failure !== null ? (
         <Alert>{failure}</Alert>
       ) : null}
-      <div className="ceremony__actions">
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-        <Button
-          type="button"
-          variant="primary"
-          onClick={onConfirm}
-          disabled={busy || (enable && !acknowledged)}
-        >
-          {enable ? 'Enable the opt-in' : 'Withdraw the opt-in'}
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1791,7 +1744,6 @@ export function MintDialog({
   move: MoveMint;
   isSubmitting: IsMintSubmitting;
 }) {
-  const dialog = useModalDialog();
   const request = lifecycle.request;
   const refresh = useRefreshAccount({ org: request.org, project: request.project });
   const confirmation = useRef<HTMLInputElement>(null);
@@ -1862,21 +1814,45 @@ export function MintDialog({
   useNavigationGuard(busy || (disclosed !== null && !disclosed.stored), dismiss);
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="mint-title"
-      ref={dialog}
+    <Dialog
+      title={
+        disclosed === null
+          ? `${request.rotating ? 'Rotate' : 'Mint'} credential · ${request.accountName}`
+          : 'Credential minted, shown exactly once'
+      }
       onCancel={(event) => {
         // Escape must not be a way to lose a value nothing can return.
         event.preventDefault();
         dismiss();
       }}
+      actions={
+        disclosed === null ? (
+          <>
+            <Button type="button" onClick={dismiss} disabled={busy}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void run()}
+            >
+              {busy
+                ? 'Minting…'
+                : request.reach.length === 0
+                  ? 'Mint credential'
+                  : 'Use a passkey and mint'}
+            </Button>
+          </>
+        ) : (
+          <Button variant="primary" type="button" onClick={dismiss}>
+            Done
+          </Button>
+        )
+      }
     >
       {disclosed === null ? (
         <>
-          <h2 className="ceremony__title" id="mint-title">
-            {`${request.rotating ? 'Rotate' : 'Mint'} credential · ${request.accountName}`}
-          </h2>
           <p className="ceremony__stepup">
             <span className="alert__glyph" aria-hidden="true">
               ⚿
@@ -1894,7 +1870,7 @@ export function MintDialog({
               : `This account decrypts ${request.reach.map((r) => r.name).join(', ')}. Each takes its own passkey reauthentication before the value is minted.`}
           </p>
           {request.rotating ? (
-            <p className="ceremony__lede">
+            <p className="dialog__lede">
               The prior value is never returned. The predecessor keeps authenticating until you
               revoke it; rotation and revocation are separate, deliberate acts, so a mint that
               lands and a revoke that does not leaves two live credentials rather than none.
@@ -1903,29 +1879,9 @@ export function MintDialog({
           {failure !== null ? (
             <Alert>{failure}</Alert>
           ) : null}
-          <div className="ceremony__actions">
-            <Button
-              variant="primary"
-              type="button"
-              disabled={busy}
-              onClick={() => void run()}
-            >
-              {busy
-                ? 'Minting…'
-                : request.reach.length === 0
-                  ? 'Mint credential'
-                  : 'Use a passkey and mint'}
-            </Button>
-            <Button type="button" onClick={dismiss} disabled={busy}>
-              Cancel
-            </Button>
-          </div>
         </>
       ) : (
         <>
-          <h2 className="ceremony__title" id="mint-title">
-            Credential minted, shown exactly once
-          </h2>
           <p className="mono machine__token">{disclosed.result.value}</p>
           <p className="cred__meta">
             {disclosed.result.expires_at === null
@@ -1986,14 +1942,9 @@ export function MintDialog({
           {disclosed.heldBack ? (
             <Alert>Confirm you have stored it: there is no second look at this value.</Alert>
           ) : null}
-          <div className="ceremony__actions">
-            <Button variant="primary" type="button" onClick={dismiss}>
-              Done
-            </Button>
-          </div>
         </>
       )}
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -2042,7 +1993,6 @@ function BindingDialog({
   onClose: () => void;
   onCreated: (message: string) => void;
 }) {
-  const dialog = useModalDialog();
   const create = useCreateBinding(project);
   const refresh = useRefreshAccount(project);
   const replacing = replaces !== undefined;
@@ -2203,20 +2153,36 @@ function BindingDialog({
   useNavigationGuard(busy, () => {});
 
   return (
-    <dialog className="ceremony" aria-labelledby="binding-title" ref={dialog} onCancel={(e) => {
-      e.preventDefault();
-      if (!busy) {
-        onClose();
-      }
-    }}>
-      <h2 className="ceremony__title" id="binding-title">
-        {replacing ? 'Replace federated binding' : 'Add federated binding'}
-      </h2>
-      <p className="ceremony__lede">
-        {replacing
+    <Dialog
+      title={replacing ? 'Replace federated binding' : 'Add federated binding'}
+      lede={
+        replacing
           ? 'Bindings are immutable, so this replaces the predecessor: the server revokes it and inserts this successor in one transaction, with no gap with no binding and no overlap with two. The fields are seeded from the predecessor; change what the replacement should carry.'
-          : 'A byte-exact (issuer, subject) pair naming exactly one service account. The audience is mandatory and may not be the issuer’s default: a token minted for another consumer must not authenticate here.'}
-      </p>
+          : 'A byte-exact (issuer, subject) pair naming exactly one service account. The audience is mandatory and may not be the issuer’s default: a token minted for another consumer must not authenticate here.'
+      }
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!busy) {
+          onClose();
+        }
+      }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button variant="primary" type="button" disabled={busy} onClick={() => void submit()}>
+            {busy
+              ? replacing
+                ? 'Replacing…'
+                : 'Binding…'
+              : replacing
+                ? 'Replace this binding'
+                : 'Bind this identity'}
+          </Button>
+        </>
+      }
+    >
 
       {/* One native latch for the whole target: an issued request is for the
           form as submitted, so nothing here may change until it resolves,
@@ -2394,22 +2360,7 @@ function BindingDialog({
         external identities. Bindings are immutable and expire on the same terms as a bearer
         credential: renewal is a mint, never an edit.
       </p>
-
-      <div className="ceremony__actions">
-        <Button variant="primary" type="button" disabled={busy} onClick={() => void submit()}>
-          {busy
-            ? replacing
-              ? 'Replacing…'
-              : 'Binding…'
-            : replacing
-              ? 'Replace this binding'
-              : 'Bind this identity'}
-        </Button>
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -2443,28 +2394,25 @@ function GrantDialog({
   onClose: () => void;
   onGranted: (environment: string, result: GrantResult) => void;
 }) {
-  const dialog = useModalDialog();
   const grantable =
     grantableFor(scope, 'read', machineReveal).length > 0 ||
     grantableFor(scope, 'reveal', machineReveal).length > 0;
-  // The in-flight latch lives here because the <dialog>'s cancel event does,
+  // The in-flight latch lives here because the dialog's cancel event does,
   // while the mutation lives in GrantBody, a ref, because the gate needs the
   // truth at event time, not a render.
   const inFlight = useRef(false);
 
   return (
-    <dialog className="ceremony" aria-labelledby="grant-title" ref={dialog} onCancel={(e) => {
-      e.preventDefault();
-      if (!inFlight.current) {
-        onClose();
-      }
-    }}>
-      <h2 className="ceremony__title" id="grant-title">
-        {`Add environment grant · ${account.name}`}
-      </h2>
-      <p className="ceremony__lede">
-        Grants attach to the service account, never to a credential.
-      </p>
+    <Dialog
+      title={`Add environment grant · ${account.name}`}
+      lede="Grants attach to the service account, never to a credential."
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!inFlight.current) {
+          onClose();
+        }
+      }}
+    >
 
       {!grantable ? (
         <p role="status">
@@ -2484,7 +2432,7 @@ function GrantDialog({
           onGranted={onGranted}
         />
       )}
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -2710,7 +2658,13 @@ function GrantBody({
         <Alert>{failure}</Alert>
       ) : null}
 
-      <div className="ceremony__actions">
+      {/* This row belongs to GrantBody, which the dialog renders conditionally,
+          so it stays in the body and carries the atom's action class. Primary
+          last, as everywhere else. */}
+      <div className="dialog__actions">
+        <Button type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
         <Button
           variant="primary"
           type="button"
@@ -2718,9 +2672,6 @@ function GrantBody({
           onClick={() => void submit()}
         >
           {busy ? 'Granting…' : `Grant ${capability}`}
-        </Button>
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
         </Button>
       </div>
     </>
@@ -2745,7 +2696,6 @@ function CreateAccountDialog({
   onClose: () => void;
   onCreated: (name: string, kind: ServiceAccount['kind']) => void;
 }) {
-  const dialog = useModalDialog();
   const create = useCreateServiceAccount(project);
   const refresh = useRefreshServiceAccounts(project);
   const [name, setName] = useState('');
@@ -2784,25 +2734,31 @@ function CreateAccountDialog({
   useNavigationGuard(busy, () => {});
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="create-account-title"
-      ref={dialog}
+    <Dialog
+      title="Create service account"
+      lede="A machine principal this project owns. Its kind is fixed at creation: a workload delivers to a running process, an automation runs off-box on a schedule or in CI. A fresh account holds no grants and reaches nothing until one is added."
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) {
           onClose();
         }
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? 'Creating…' : 'Create service account'}
+          </Button>
+        </>
+      }
     >
-      <h2 className="ceremony__title" id="create-account-title">
-        Create service account
-      </h2>
-      <p className="ceremony__lede">
-        A machine principal this project owns. Its kind is fixed at creation: a workload delivers to
-        a running process, an automation runs off-box on a schedule or in CI. A fresh account holds
-        no grants and reaches nothing until one is added.
-      </p>
 
       <fieldset className="machine__lock" disabled={busy}>
         <div className="field">
@@ -2841,20 +2797,7 @@ function CreateAccountDialog({
         <Alert>{failure}</Alert>
       ) : null}
 
-      <div className="ceremony__actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          {busy ? 'Creating…' : 'Create service account'}
-        </Button>
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -2881,7 +2824,6 @@ function DeleteAccountDialog({
   onClose: () => void;
   onDeleted: (name: string) => void;
 }) {
-  const dialog = useModalDialog();
   const remove = useDeleteServiceAccount(project);
   const refreshAccounts = useRefreshServiceAccounts(project);
   const refreshGrants = useRefreshGrants(project);
@@ -2914,20 +2856,22 @@ function DeleteAccountDialog({
   const live = account.live_credentials;
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="delete-account-title"
-      ref={dialog}
+    <Dialog
+      title={`Delete service account · ${account.name}`}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) {
           onClose();
         }
       }}
+      actions={
+        <Button type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+      }
     >
-      <h2 className="ceremony__title" id="delete-account-title">
-        {`Delete service account · ${account.name}`}
-      </h2>
+      {/* The cap comes first, so the dim lede below it stays in the body
+          rather than moving above the sentence it qualifies. */}
       <p className="ceremony__cap" role="status">
         <span className="alert__glyph" aria-hidden="true">
           !
@@ -2936,7 +2880,7 @@ function DeleteAccountDialog({
           {`This deletes ${account.name} and everything attached to it in one act: ${String(live)} live credential${live === 1 ? '' : 's'} revoked, each stops authenticating at once, and every environment grant released. It does not cascade to anything else, and it cannot be undone.`}
         </span>
       </p>
-      <p className="ceremony__lede">
+      <p className="dialog__lede">
         Any bearer token or federated binding this account issued authenticates nothing the moment
         the delete lands. Distribute the replacement first if a workload still depends on it.
       </p>
@@ -2957,13 +2901,7 @@ function DeleteAccountDialog({
         busy={busy}
         onConfirm={() => void submit()}
       />
-
-      <div className="ceremony__actions">
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -2992,7 +2930,6 @@ function CreateProviderDialog({
   onClose: () => void;
   onCreated: (origin: string) => void;
 }) {
-  const dialog = useModalDialog();
   const refresh = useRefreshProviders(project);
   const [origin, setOrigin] = useState('');
   const [grantRole, setGrantRole] = useState('');
@@ -3030,26 +2967,38 @@ function CreateProviderDialog({
   useNavigationGuard(busy, () => {});
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="create-provider-title"
-      ref={dialog}
+    <Dialog
+      title="Configure dynamic-secret provider"
+      lede={
+        <>
+          PostgreSQL is the only provider kind. Hikyo connects over <code>verify-full</code> TLS and
+          mints each lease role <code>IN ROLE</code> the grant role, so the lease inherits exactly
+          the access you granted that parent. The admin credential is write-only: it is never
+          returned, and the server dials the origin with it before storing anything.
+        </>
+      }
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) {
           onClose();
         }
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? 'Configuring…' : 'Configure provider'}
+          </Button>
+        </>
+      }
     >
-      <h2 className="ceremony__title" id="create-provider-title">
-        Configure dynamic-secret provider
-      </h2>
-      <p className="ceremony__lede">
-        PostgreSQL is the only provider kind. Hikyo connects over <code>verify-full</code> TLS and
-        mints each lease role <code>IN ROLE</code> the grant role, so the lease inherits exactly the
-        access you granted that parent. The admin credential is write-only: it is never returned, and
-        the server dials the origin with it before storing anything.
-      </p>
 
       <fieldset className="machine__lock" disabled={busy}>
         <div className="field">
@@ -3107,20 +3056,7 @@ function CreateProviderDialog({
         <Alert>{failure}</Alert>
       ) : null}
 
-      <div className="ceremony__actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          {busy ? 'Configuring…' : 'Configure provider'}
-        </Button>
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -3140,7 +3076,6 @@ function SetCredentialDialog({
   onClose: () => void;
   onSet: (origin: string) => void;
 }) {
-  const dialog = useModalDialog();
   const refresh = useRefreshProviders(project);
   const [credential, setCredential] = useSensitiveState('');
   const [failure, setFailure] = useState<string | null>(null);
@@ -3171,24 +3106,31 @@ function SetCredentialDialog({
   useNavigationGuard(busy, () => {});
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="set-credential-title"
-      ref={dialog}
+    <Dialog
+      title={`${provider.credential_present ? 'Replace' : 'Set'} admin credential · ${provider.origin}`}
+      lede="Write-only: the credential is never read back. Hikyo dials the provider with it before storing it, so a failure here leaves the current credential in place."
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) {
           onClose();
         }
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? 'Saving…' : 'Save credential'}
+          </Button>
+        </>
+      }
     >
-      <h2 className="ceremony__title" id="set-credential-title">
-        {`${provider.credential_present ? 'Replace' : 'Set'} admin credential · ${provider.origin}`}
-      </h2>
-      <p className="ceremony__lede">
-        Write-only: the credential is never read back. Hikyo dials the provider with it before
-        storing it, so a failure here leaves the current credential in place.
-      </p>
 
       <fieldset className="machine__lock" disabled={busy}>
         <div className="field">
@@ -3213,20 +3155,7 @@ function SetCredentialDialog({
         <Alert>{failure}</Alert>
       ) : null}
 
-      <div className="ceremony__actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          {busy ? 'Saving…' : 'Save credential'}
-        </Button>
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -3249,7 +3178,6 @@ function RevokeCredentialDialog({
   onClose: () => void;
   onRevoked: (origin: string) => void;
 }) {
-  const dialog = useModalDialog();
   const revoke = useRevokeDynamicProviderCredential(project);
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -3270,20 +3198,30 @@ function RevokeCredentialDialog({
   useNavigationGuard(busy, () => {});
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="revoke-credential-title"
-      ref={dialog}
+    <Dialog
+      title={`Revoke admin credential · ${provider.origin}`}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) {
           onClose();
         }
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            {busy ? 'Revoking…' : 'Revoke credential'}
+          </Button>
+        </>
+      }
     >
-      <h2 className="ceremony__title" id="revoke-credential-title">
-        {`Revoke admin credential · ${provider.origin}`}
-      </h2>
       <p className="ceremony__cap" role="status">
         <span className="alert__glyph" aria-hidden="true">
           !
@@ -3299,20 +3237,7 @@ function RevokeCredentialDialog({
         <Alert>{failure}</Alert>
       ) : null}
 
-      <div className="ceremony__actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          {busy ? 'Revoking…' : 'Revoke credential'}
-        </Button>
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -3340,7 +3265,6 @@ function DeleteProviderDialog({
   onClose: () => void;
   onDeleted: (origin: string, revokedCount: number) => void;
 }) {
-  const dialog = useModalDialog();
   const remove = useDeleteDynamicProvider(project);
   const [revokeAll, setRevokeAll] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -3379,20 +3303,20 @@ function DeleteProviderDialog({
   useNavigationGuard(busy, () => {});
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="delete-provider-title"
-      ref={dialog}
+    <Dialog
+      title={`Delete provider · ${provider.origin}`}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) {
           onClose();
         }
       }}
+      actions={
+        <Button type="button" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+      }
     >
-      <h2 className="ceremony__title" id="delete-provider-title">
-        {`Delete provider · ${provider.origin}`}
-      </h2>
       <p className="ceremony__cap" role="status">
         <span className="alert__glyph" aria-hidden="true">
           !
@@ -3434,13 +3358,7 @@ function DeleteProviderDialog({
         busy={confirmDisabled}
         onConfirm={() => void submit()}
       />
-
-      <div className="ceremony__actions">
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -3474,7 +3392,6 @@ function LeaseMintDialog({
   nextRequestId: () => number;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const refreshLeases = useRefreshLeases(project);
   const confirmation = useRef<HTMLInputElement>(null);
   const [providerId, setProviderId] = useState(providers[0]?.id ?? '');
@@ -3574,20 +3491,36 @@ function LeaseMintDialog({
   useNavigationGuard(busy || (disclosed !== null && !disclosed.stored), dismiss);
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="lease-mint-title"
-      ref={dialog}
+    <Dialog
+      title={disclosed === null ? 'Mint dynamic-secret lease' : 'Lease minted, shown exactly once'}
       onCancel={(event) => {
         event.preventDefault();
         dismiss();
       }}
+      actions={
+        disclosed === null ? (
+          <>
+            <Button type="button" onClick={dismiss} disabled={busy}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              type="button"
+              disabled={busy}
+              onClick={() => void run()}
+            >
+              {busy ? 'Minting…' : 'Use a passkey and mint'}
+            </Button>
+          </>
+        ) : (
+          <Button variant="primary" type="button" onClick={dismiss}>
+            Done
+          </Button>
+        )
+      }
     >
       {disclosed === null ? (
         <>
-          <h2 className="ceremony__title" id="lease-mint-title">
-            Mint dynamic-secret lease
-          </h2>
           <p className="ceremony__stepup">
             <span className="alert__glyph" aria-hidden="true">
               ⚿
@@ -3662,25 +3595,9 @@ function LeaseMintDialog({
             <Alert>{failure}</Alert>
           ) : null}
 
-          <div className="ceremony__actions">
-            <Button
-              variant="primary"
-              type="button"
-              disabled={busy}
-              onClick={() => void run()}
-            >
-              {busy ? 'Minting…' : 'Use a passkey and mint'}
-            </Button>
-            <Button type="button" onClick={dismiss} disabled={busy}>
-              Cancel
-            </Button>
-          </div>
         </>
       ) : (
         <>
-          <h2 className="ceremony__title" id="lease-mint-title">
-            Lease minted, shown exactly once
-          </h2>
           <div className="field">
             <label htmlFor="lease-mint-username">Role name</label>
             <p className="mono machine__token" id="lease-mint-username">
@@ -3741,14 +3658,9 @@ function LeaseMintDialog({
           {disclosed.heldBack ? (
             <Alert>Confirm you have stored it: there is no second look at this password.</Alert>
           ) : null}
-          <div className="ceremony__actions">
-            <Button variant="primary" type="button" onClick={dismiss}>
-              Done
-            </Button>
-          </div>
         </>
       )}
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -3769,7 +3681,6 @@ function LeaseActionDialog({
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
-  const dialog = useModalDialog();
   const renew = useRenewLease(project);
   const revoke = useRevokeLease(project);
   const settle = useSettleLease(project);
@@ -3831,21 +3742,37 @@ function LeaseActionDialog({
         : 'This lease is in an ambiguous state. Settling re-triggers reconcile: the worker re-probes the provider and settles the lease to its true state.';
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="lease-action-title"
-      ref={dialog}
+    <Dialog
+      title={title}
+      lede={lede}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) {
           onClose();
         }
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="button"
+            disabled={busy}
+            onClick={() => void submit()}
+          >
+            {busy
+              ? 'Queuing…'
+              : action.verb === 'renew'
+                ? 'Queue renewal'
+                : action.verb === 'revoke'
+                  ? 'Queue revocation'
+                  : 'Queue reconcile'}
+          </Button>
+        </>
+      }
     >
-      <h2 className="ceremony__title" id="lease-action-title">
-        {title}
-      </h2>
-      <p className="ceremony__lede">{lede}</p>
 
       {action.verb === 'renew' ? (
         <fieldset className="machine__lock" disabled={busy}>
@@ -3870,25 +3797,6 @@ function LeaseActionDialog({
         <Alert>{failure}</Alert>
       ) : null}
 
-      <div className="ceremony__actions">
-        <Button
-          variant="primary"
-          type="button"
-          disabled={busy}
-          onClick={() => void submit()}
-        >
-          {busy
-            ? 'Queuing…'
-            : action.verb === 'renew'
-              ? 'Queue renewal'
-              : action.verb === 'revoke'
-                ? 'Queue revocation'
-                : 'Queue reconcile'}
-        </Button>
-        <Button type="button" onClick={onClose} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
