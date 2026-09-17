@@ -2820,11 +2820,13 @@ a:is(.badge, .chip, .settings-tag) {
   }
 
   /* The wide dialog's phone treatment. `.dialog--wide` shares the shell's
-     declaration rather than restating it: same metrics, and no second literal
-     against the adherence budget. Narrow dialogs never had a phone override,
-     so `.dialog` stays out of it. */
+     declarations rather than restating them: same metrics, and no second
+     literal against the adherence budget. It is doubled to `.dialog.dialog--wide`
+     because this block sits ABOVE the base `.dialog` rules and a media query
+     adds no specificity, so a single class would lose the cascade to them.
+     Narrow dialogs never had a phone override, so `.dialog` stays out of it. */
   .matrix-editor,
-  .dialog--wide {
+  .dialog.dialog--wide {
     width: calc(100% - 20px);
     max-width: 760px;
     max-height: 88vh;
