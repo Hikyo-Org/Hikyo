@@ -150,7 +150,10 @@ test.describe('environment matrix', () => {
 
       await page.getByRole('button', { name: /unpublished edit/ }).click();
       const repairedSheet = page.getByRole('region', { name: 'Publish drafts' });
-      await expect(repairedSheet.getByText('PROTECTED: confirms before publish')).toBeVisible();
+      // The marker is the word in a badge now, with its consequence beside it;
+      // scoped to the sheet because the row editor names the same word.
+      await expect(repairedSheet.getByText('PROTECTED', { exact: true })).toBeVisible();
+      await expect(repairedSheet.getByText('confirms before publish')).toBeVisible();
       const protectedConfirmation = repairedSheet.getByRole('checkbox', {
         name: 'I confirm publishing to protected production.',
       });

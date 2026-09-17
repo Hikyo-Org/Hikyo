@@ -259,7 +259,6 @@ export function MatrixRowEditor({
               className="matrix-row-editor__fill"
               label="Fill all environments"
               id="matrix-fill-all"
-              hint={secret ? 'Masked while typing unless you ask to see it.' : undefined}
             >
               {(control) => (
                 <div>

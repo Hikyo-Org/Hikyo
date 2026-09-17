@@ -80,7 +80,10 @@ type Story = StoryObj<typeof meta>;
 // changed yet.
 export const Default: Story = {
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('textbox')).toHaveValue('published');
+    // Named, not just present: the value control is labelled through ui/Field.
+    await expect(canvas.getByRole('textbox', { name: 'development value' })).toHaveValue(
+      'published',
+    );
     await expect(canvas.getByRole('button', { name: /^Save/ })).toBeDisabled();
   },
 };
