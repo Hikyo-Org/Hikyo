@@ -583,7 +583,7 @@ test.describe('project settings', () => {
           [persistedPolicy, 'borderTopColor', '--panel-line'],
         ],
         hairlines: [persistedPolicy],
-        density: [[page.locator('#project-metadata input').first(), '--touch']],
+        density: [[page.locator('#project-metadata input').first(), '--control']],
       });
 
       // project-settings remains capable of changing its own governance mode.
@@ -839,7 +839,7 @@ test.describe('settings flow visual contract', () => {
               [well, 'borderTopColor', '--panel-line'],
             ],
             hairlines: [well],
-            density: [[control, '--touch']],
+            density: [[control, '--control']],
           });
         } finally {
           await page.emulateMedia({ colorScheme: null });

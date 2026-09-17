@@ -8,7 +8,6 @@ import '@fontsource/ibm-plex-mono/400.css'
 import '@fontsource/ibm-plex-mono/500.css'
 import '../src/styles/tokens.css'
 import '../src/styles/app.css'
-import '../src/ui/ui.css'
 
 // The app delivers its theme through this attribute (see src/app/theme.ts). A
 // toolbar switch drives it so designers can flip light/dark; the initial global

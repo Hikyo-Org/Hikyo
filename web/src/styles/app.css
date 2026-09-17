@@ -31,8 +31,8 @@ body {
   background: var(--bg);
   color: var(--tx);
   font-family: var(--font-ui);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -40,15 +40,72 @@ code,
 kbd,
 .mono {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-mono);
 }
 
 /* Focus is never invisible and never removed. A two-tone ring survives both
    themes and forced-colors, where `outline` is repainted by the OS. */
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: var(--ring-width) solid var(--ring-color);
+  outline-offset: var(--ring-offset);
   border-radius: var(--radius-control);
+}
+
+/* --- Type scale (DESIGN.md 4b, decided 2026-09-16) -------------------------
+ *
+ * One scale for every heading: h1 20, h2 16, h3 and panel titles 14. The
+ * per-surface heading sizes the audit found (h1 at 18/19/20, h2 at
+ * 10/13/14/15/17/18, h3 at 14/16) are folded here rather than overridden.
+ * Panel titles are sentence case (2a): the uppercase-on-every-block treatment
+ * is gone, and the eyebrow below is the only uppercase text.
+ */
+h1 {
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  line-height: var(--lh-tight);
+}
+
+h2 {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: var(--lh-heading);
+}
+
+h3,
+.panel h2,
+.settings-panel h2 {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: var(--lh-body);
+  color: var(--tx);
+}
+
+/* The eyebrow: a section marker above a block, never a heading size. The
+   sidebar's 10px bold h2s, the members grants header and inspector labels,
+   and the settings 11px bold labels all become this. */
+.eyebrow,
+.sidebar__section h2,
+.context-sidebar > h2,
+.sidebar__version-label,
+.page--members .grants th,
+.page--members .inspect label,
+.page--members .capability__origin,
+.context-sidebar__org small {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--tx-faint);
+}
+
+/* An unstyled anchor took the browser's blue on the overview page. Anchors
+   without a class are body ink, underlined; `:where()` keeps this below any
+   classed rule (`.login__links a`, `.sidebar__link`) so those are untouched. */
+:where(a:not([class])) {
+  color: var(--tx);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 button,
@@ -64,15 +121,19 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: var(--touch);
-  padding: 0 16px;
+  gap: var(--space-2);
+  min-height: var(--control);
+  padding: 0 var(--space-4);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--bg-panel);
   color: var(--tx);
   cursor: pointer;
   transition: background var(--dur) var(--ease);
+  font-size: var(--fs-md);
+  /* A button is one line: a label that wraps grows the control past the token
+     (the members table's "Reset credential" at 41px). */
+  white-space: nowrap;
 }
 
 .btn:hover {
@@ -94,15 +155,16 @@ select {
    carry the attribute, a <label> standing in for a file input, for instance. */
 .btn[disabled],
 .btn--disabled {
-  opacity: 0.6;
+  opacity: var(--opacity-disabled);
   cursor: not-allowed;
 }
 
 /* A square control that holds a single glyph, the theme toggle. Keeps the
-   control radius and the touch floor the pinned set asserts. */
+   control radius and the one control height (the touch floor on a coarse
+   pointer, through the token). */
 .btn--icon {
-  width: var(--touch);
-  min-width: var(--touch);
+  width: var(--control);
+  min-width: var(--control);
   padding: 0;
 }
 
@@ -112,23 +174,67 @@ select {
   gap: 6px;
 }
 
-.field label,
-.field .field__label {
+/* Captions: field labels, legends, ledes, hints. 13px, secondary ink, 400. */
+.field > label,
+.field__label,
+.choice-group > legend,
+.page__lede,
+.field__hint,
+.settings-note {
+  font-size: var(--fs-sm);
+  font-weight: 400;
   color: var(--tx-dim);
-  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
 }
 
-.field input {
-  min-height: var(--touch);
-  padding: 0 12px;
+/* EVERY text-like input, select and textarea, wherever it sits: one control
+   height, one border, one focus affordance. The route sweep found inputs
+   outside `.field` (key-create sheet, step-up banner, folder dialog) still at
+   44px with their own padding. `:where()` keeps the `:not([type])` chain at
+   zero so the `.mono` and dialog rules below still win by class; `:is()` lifts
+   the whole selector to a type selector's weight. */
+:is(:where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file'])), select) {
+  min-height: var(--control);
+  padding: 0 var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--bg);
   color: var(--tx);
+  font-size: var(--fs-md);
 }
 
-.field input:focus-visible {
+textarea {
+  min-height: calc(var(--control) * 2.5);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  color: var(--tx);
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
+  resize: vertical;
+}
+
+/* The value face on a control (`mono` prop on Input, Select, Textarea). */
+:is(input, select, textarea).mono {
+  font-size: var(--fs-mono);
+}
+
+/* One focus affordance on every control. Select and textarea had no such rule,
+   so the three reacted differently. */
+.field :is(input, select, textarea):focus-visible {
   border-color: var(--accent);
+}
+
+/* The error marks the control invalid: the border echoes it, the words say it. */
+.field :is(input, select, textarea)[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.field :is(input, select, textarea)[aria-invalid='true']:focus-visible {
+  border-color: var(--danger);
+  outline-color: var(--danger);
 }
 
 /* A read-only field must not read as an editable one that simply hasn't been
@@ -139,7 +245,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .field__readonly-tag {
@@ -149,7 +255,7 @@ select {
   border-radius: var(--radius-badge);
   background: var(--bg-panel);
   color: var(--tx-faint);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -168,29 +274,109 @@ select {
 .field--readonly input:read-only:focus-visible {
   border-color: var(--line);
 }
+/* A control with a trailing toggle (the password reveal): the input keeps the
+   whole width, the toggle sits inside its right edge at the control height. */
+.field__control {
+  position: relative;
+  display: flex;
+}
 
-.badge {
-  display: inline-block;
-  padding: 1px 6px;
+.field__control > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: calc(var(--control) + var(--space-3));
+}
+
+.field__reveal {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--control);
+  border-color: transparent;
+  background: transparent;
+}
+
+/* The composed field (ui/Field.tsx): hint and error under the control at
+   caption size. The error carries the danger glyph. */
+.field__error {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-sm);
+  max-width: var(--measure);
+}
+
+/* Any fieldset that is a field drops the browser's box; its legend is a
+   caption (the ChoiceGroup rule, applied to the route fieldsets too). */
+fieldset.field {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+fieldset.field > legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+}
+
+/* --- Badges: one vocabulary --------------------------------------------------
+ *
+ * Folds `.badge` (12px), `.chip` (26px, 11px) and `.settings-tag` (32px, 10px
+ * uppercase bold) into one treatment. The `.count` pill (numeric counts) is the
+ * DESIGN.md exception and is left alone. Tones follow the DESIGN.md state
+ * vocabulary: danger for a violation or refusal, changed (slate) for pending or
+ * drafted, `ok` on the accent hairline. */
+:is(.badge, .chip, .settings-tag) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--badge-height);
+  padding: 1px var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
+  background: transparent;
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: var(--lh-heading);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* A badge that is a BUTTON is a control, not a label: the settings identity
+   tags, the environment chips and the Toggle switch render as `button.settings-tag`.
+   They keep the badge face and take the control height, so a chip beside a
+   button lines up and the coarse-pointer floor holds (decided 2026-09-16,
+   chips stand at `--control`). */
+button:is(.badge, .chip, .settings-tag),
+a:is(.badge, .chip, .settings-tag) {
+  min-height: var(--control);
+  padding: 0 var(--space-3);
+  cursor: pointer;
+}
+
+:is(.badge, .chip, .settings-tag).mono {
+  font-family: var(--font-mono);
 }
 
 /* Badge tiers ride beside the word that names the state; colour only echoes. */
-.badge--danger {
+:is(.badge--danger, .settings-tag--danger) {
   border-color: var(--danger);
   color: var(--danger);
 }
 
-.badge--warn {
+.badge--warn,
+.badge--changed {
   border-color: var(--changed);
   color: var(--changed);
 }
 
+.badge--ok,
 .badge[data-state='ok'] {
   border-color: var(--accent);
+  color: var(--tx);
 }
 
 .badge[data-state='unreachable'],
@@ -214,7 +400,7 @@ select {
   border: 1px solid var(--line);
   background: var(--bg-panel);
   color: var(--tx);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 500;
   cursor: pointer;
 }
@@ -398,15 +584,15 @@ select {
   display: grid;
   place-items: center;
   min-height: 100%;
-  padding: 24px;
+  padding: var(--space-5);
 }
 
 .login__card {
   width: min(100%, 380px);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 24px;
+  gap: var(--space-4);
+  padding: var(--space-5);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg-raise);
@@ -414,9 +600,8 @@ select {
 
 .login__title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--fs-xl);
   font-weight: 700;
-  letter-spacing: -0.01em;
 }
 
 .login__lede {
@@ -442,7 +627,7 @@ select {
 }
 
 .workspace-consent__scope dd {
-  margin: 4px 0 12px;
+  margin: var(--space-1) 0 var(--space-3);
 }
 
 .workspace-consent__scope ul {
@@ -454,7 +639,7 @@ select {
    border is what survives forced-colors. */
 .alert {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 12px;
   border: 1px solid var(--danger);
   border-radius: var(--radius-container);
@@ -473,13 +658,13 @@ select {
 .toast {
   position: fixed;
   inset: 16px 16px auto auto;
-  z-index: 30;
+  z-index: var(--z-drawer);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: start;
-  gap: 8px;
+  gap: var(--space-2);
   width: min(440px, calc(100vw - 32px));
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--danger);
   border-radius: var(--radius-container);
   color: var(--tx);
@@ -502,11 +687,11 @@ select {
 }
 
 .toast__action {
-  min-height: 32px;
+  min-height: var(--control);
   display: inline-flex;
   align-items: center;
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 500;
   white-space: nowrap;
 }
 
@@ -517,8 +702,8 @@ select {
 .toast__dismiss {
   display: grid;
   place-items: center;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: var(--control);
+  min-height: var(--control);
   margin: -6px -6px 0 0;
   border: 0;
   border-radius: var(--radius-control);
@@ -553,7 +738,7 @@ select {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 14px 0 12px;
   border-right: 1px solid var(--chrome-line);
   background: var(--bg-panel);
@@ -562,7 +747,7 @@ select {
 .rail__orgs {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -571,7 +756,7 @@ select {
 .rail__projects {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -579,12 +764,12 @@ select {
 
 .rail__divider {
   width: 26px;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   border-top: 1px solid var(--chrome-line);
 }
 
 .rail .avatar {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 
@@ -607,7 +792,7 @@ select {
   background: var(--bg);
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   cursor: pointer;
 }
@@ -667,7 +852,7 @@ select {
   position: relative;
   border-color: transparent;
   background: var(--bg);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 
@@ -723,18 +908,9 @@ select {
   flex-direction: column;
   gap: 2px;
   margin: auto 0 0;
-  padding: 16px 16px 0;
-  font-size: 11px;
+  padding: var(--space-4) var(--space-4) 0;
+  font-size: var(--fs-xs);
   color: var(--tx-faint);
-}
-
-/* The eyebrow NAMES the region, so it keeps --tx-faint; the version string is
-   content, so it reads at --tx-dim. */
-.sidebar__version-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
 }
 
 .sidebar__version .mono {
@@ -748,11 +924,6 @@ select {
 .sidebar__section h2 {
   margin: 0;
   padding: 16px 16px 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--tx-faint);
 }
 
 .sidebar__items {
@@ -782,18 +953,18 @@ select {
 .sidebar__link {
   display: flex;
   align-items: center;
-  min-height: 38px;
+  min-height: var(--control);
   width: 100%;
-  padding: 9px 13px;
+  padding: 0 13px;
   border-radius: 0;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 20px;
   text-decoration: none;
 }
 
 .sidebar__switcher {
-  gap: 8px;
+  gap: var(--space-2);
   background: transparent;
   font: inherit;
   text-align: left;
@@ -809,7 +980,7 @@ select {
   border-radius: var(--radius-pill);
   background: var(--bg);
   color: var(--tx);
-  font-size: 9px;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 
@@ -832,7 +1003,7 @@ select {
   color: var(--tx);
   background: var(--accent-soft);
   border-left-color: var(--accent);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .sidebar__link--disabled {
@@ -850,7 +1021,7 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 12px 16px 4px;
+  padding: var(--space-3) var(--space-4) var(--space-1);
   min-width: 0;
 }
 
@@ -869,13 +1040,12 @@ select {
 }
 
 .context-sidebar__org strong {
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 .context-sidebar__org small {
   color: var(--tx-faint);
   font-family: var(--font-mono);
-  font-size: 10px;
 }
 
 .context-sidebar__org-avatar.avatar {
@@ -883,7 +1053,7 @@ select {
   height: 28px;
   flex: none;
   border: 0;
-  font-size: 10px;
+  font-size: var(--fs-xs);
   font-weight: 700;
   cursor: default;
 }
@@ -892,13 +1062,7 @@ select {
   margin: 0;
   overflow: hidden;
   padding: 16px 16px 6px;
-  color: var(--tx-faint);
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -922,23 +1086,25 @@ select {
 }
 
 .context-sidebar .context-sidebar__group {
-  min-height: 38px;
-  padding: 9px 13px 9px 28px;
+  display: flex;
+  align-items: center;
+  min-height: var(--control);
+  padding: 0 13px 0 28px;
   border-radius: 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 20px;
 }
 
 .context-sidebar__group-count {
   color: var(--tx-faint);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
 }
 
 .context-sidebar .matrix__count {
   padding: 2px 8px;
-  font-size: 10px;
-  font-weight: 600;
+  font-size: var(--fs-xs);
+  font-weight: 500;
   line-height: 15px;
 }
 
@@ -952,9 +1118,9 @@ select {
 .header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   min-height: 61px;
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   /* The same structural rule the rail and the sidebar draw. Reaching for
      `--line` here made the header seam brighter than the rail seam in dark and
      darker in light, an inconsistency the prototype does not have, because it
@@ -965,11 +1131,11 @@ select {
 .header__crumbs {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: 500;
   list-style: none;
   min-width: 0;
   color: var(--tx-dim);
@@ -986,7 +1152,7 @@ select {
 .header__crumbs li {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -1006,7 +1172,7 @@ select {
   gap: 6px;
   min-width: 0;
   color: var(--tx-faint);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .header__identity a,
@@ -1014,19 +1180,22 @@ select {
   display: block;
   max-width: 240px;
   overflow: hidden;
-  padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   color: var(--tx);
-  font-size: 13px;
   text-decoration: none;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .header__identity select {
-  min-height: 36px;
   background: var(--bg);
+}
+
+.header__identity a {
+  padding-inline: var(--space-3);
+  line-height: var(--control);
+  font-size: var(--fs-sm);
 }
 
 .header__identity a:hover,
@@ -1057,8 +1226,8 @@ select {
 
 .retention-warning {
   display: flex;
-  gap: 8px;
-  margin: 12px 16px 0;
+  gap: var(--space-2);
+  margin: var(--space-3) var(--space-4) 0;
   padding: 10px 12px;
   border: 1px solid var(--danger);
   border-radius: var(--radius-container);
@@ -1086,7 +1255,7 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-4);
   padding: 10px 12px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-container);
@@ -1108,26 +1277,26 @@ select {
 
 /* The remote card's live project picker (#71). */
 .remote__picker {
-  margin-top: 12px;
+  margin-top: var(--space-3);
   border-top: 1px solid var(--line);
-  padding-top: 12px;
+  padding-top: var(--space-3);
 }
 
 .remote__picker h3 {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
 }
 
 .remote__picker-org {
-  margin-top: 8px;
+  margin-top: var(--space-2);
 }
 
 .remote__picker-org ul {
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 0;
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 .content {
@@ -1136,26 +1305,25 @@ select {
      pins BELOW the container's top padding, leaving a band under the header
      through which scrolled content shows. The surface's top breathing room is
      a margin on the scrolled child instead, so the pin sits flush. */
-  padding: 0 16px 24px;
+  padding: 0 var(--space-4) var(--space-5);
   overflow: auto;
 }
 
 .content > * {
-  margin-top: 24px;
+  margin-top: var(--space-5);
 }
 
 .card {
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg-panel);
-  padding: 16px;
+  padding: var(--space-4);
   max-width: 72ch;
 }
 
 .card h1,
 .card h2 {
-  margin: 0 0 8px;
-  font-size: 18px;
+  margin: 0 0 var(--space-2);
   font-weight: 700;
 }
 
@@ -1168,12 +1336,12 @@ select {
   position: absolute;
   left: calc(100% + 8px);
   bottom: 12px;
-  z-index: 10;
+  z-index: var(--z-chrome);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   min-width: 200px;
-  padding: 8px;
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg-panel);
@@ -1181,16 +1349,16 @@ select {
 }
 
 .menu__label {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .menu__item {
   display: flex;
   align-items: center;
-  min-height: var(--touch);
-  padding: 0 8px;
+  min-height: var(--control);
+  padding: 0 var(--space-2);
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
@@ -1219,7 +1387,7 @@ select {
 }
 
 /* `.menu` sets `display: flex`, and an author `display` beats the UA
-   `[popover]:not(:popover-open) { display: none }` on cascade origin — so the
+   `[popover]:not(:popover-open) { display: none }` on cascade origin, so the
    closed panel would otherwise stay laid out under the trigger. Re-hide it. */
 .menu--pop:not(:popover-open) {
   display: none;
@@ -1230,9 +1398,9 @@ select {
     position: absolute;
     position-area: bottom span-right;
     inset: auto;
-    /* Reset the UA popover `margin: auto` — auto margins re-centre the panel
+    /* Reset the UA popover `margin: auto`, auto margins re-centre the panel
        across the position-area region and undo the anchor tuck. */
-    margin: 4px 0 0;
+    margin: var(--space-1) 0 0;
   }
 }
 
@@ -1241,14 +1409,14 @@ select {
   position: absolute;
   left: -9999px;
   top: 8px;
-  z-index: 20;
+  z-index: var(--z-sticky);
   /* It is a control like any other once it is visible, so it carries the same
-     touch floor, found by the pinned set's sweep over every interactive
+     control token, found by the pinned set's sweep over every interactive
      element, which is the point of sweeping rather than listing. */
   display: inline-flex;
   align-items: center;
-  min-height: var(--touch);
-  padding: 8px 12px;
+  min-height: var(--control);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--accent);
   border-radius: var(--radius-control);
   background: var(--bg-panel);
@@ -1295,15 +1463,15 @@ select {
   }
 
   .header {
-    gap: 8px;
+    gap: var(--space-2);
     min-height: 61px;
-    padding: 8px 12px;
+    padding: var(--space-2) var(--space-3);
   }
 
   .sidebar {
     display: none;
     position: fixed;
-    z-index: 40;
+    z-index: var(--z-overlay);
     inset: 0 auto 0 0;
     width: min(300px, 80vw);
     height: 100dvh;
@@ -1335,7 +1503,7 @@ select {
 
   .nav-scrim {
     position: fixed;
-    z-index: 30;
+    z-index: var(--z-drawer);
     inset: 0 0 0 min(300px, 80vw);
     width: auto;
     height: 100%;
@@ -1359,7 +1527,6 @@ select {
 
   .header__crumbs {
     gap: 5px;
-    font-size: 12px;
   }
 
   .header__crumbs li {
@@ -1391,14 +1558,7 @@ select {
     flex: none;
   }
 
-  .sidebar__link,
-  .context-sidebar__group {
-    min-height: var(--touch);
-    padding-top: 12px;
-    padding-bottom: 12px;
-  }
-
-  .menu {
+    .menu {
     position: fixed;
     top: 60px;
     right: 12px;
@@ -1430,8 +1590,8 @@ select {
 .projects__list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 16px 0 0;
+  gap: var(--space-2);
+  margin: var(--space-4) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -1440,12 +1600,12 @@ select {
 .projects__list li > div {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .projects__list li {
   justify-content: space-between;
-  padding-block: 8px;
+  padding-block: var(--space-2);
   border-bottom: 1px solid var(--line);
 }
 
@@ -1464,7 +1624,7 @@ select {
 .matrix {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   min-width: 0;
   min-height: 0;
 }
@@ -1476,13 +1636,13 @@ select {
 .content > .matrix {
   height: 100%;
   margin-top: 0;
-  padding-top: 24px;
+  padding-top: var(--space-5);
 }
 
 .matrix__head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -1492,10 +1652,6 @@ select {
 .matrix__empty h2,
 .matrix__empty p {
   margin: 0;
-}
-
-.matrix__head h1 {
-  font-size: 20px;
 }
 
 .matrix__head p,
@@ -1510,9 +1666,9 @@ select {
 /* Legend reduces to a `?` icon (env-matrix 31); square it off like the app's
    other icon buttons rather than the wide text button it replaced. */
 .matrix__legend-toggle.btn {
-  min-width: var(--touch);
+  min-width: var(--control);
   padding: 0;
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 /* Drafts surface as a pill in the accent-for-change hue, and only once there is
@@ -1524,13 +1680,14 @@ select {
   border-radius: var(--radius-control);
   background: transparent;
   color: var(--changed);
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   white-space: nowrap;
   cursor: pointer;
   transition:
     background var(--dur) var(--ease),
     color var(--dur) var(--ease);
+  min-height: var(--control);
 }
 
 .matrix__drafts:hover {
@@ -1541,7 +1698,7 @@ select {
 .matrix__publish {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
@@ -1550,9 +1707,6 @@ select {
 
 .matrix__publish h2 {
   color: var(--tx-dim);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .matrix__publish > p {
@@ -1563,8 +1717,8 @@ select {
 .matrix__publish-env {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: var(--space-2);
+  padding: var(--space-3);
   border-top: 1px solid var(--line);
 }
 
@@ -1575,19 +1729,13 @@ select {
 .matrix__publish-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: var(--touch);
-}
-
-.matrix__publish-heading input,
-.matrix__publish-confirmation input {
-  width: 20px;
-  height: 20px;
+  gap: var(--space-2);
+  min-height: var(--control);
 }
 
 .matrix__publish-protected {
   color: var(--danger);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 800;
   letter-spacing: 0.04em;
 }
@@ -1599,14 +1747,14 @@ select {
 }
 
 .matrix__publish-env ul {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
   padding-inline-start: 20px;
 }
 
 .matrix__publish-env li {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .matrix__publish-ready {
@@ -1618,12 +1766,36 @@ select {
   color: var(--danger);
   font-weight: 700;
 }
+/* --- Publish sheet: rows align to the environment name ---------------------
+ *
+ * The key rows and the ready/blocked state sit under the environment name, not
+ * under its checkbox; the two full-width buttons become an action row. */
+.matrix__publish-env > :not(.matrix__publish-heading) {
+  margin-left: calc(var(--chk-box) + var(--space-2));
+  padding-left: 0;
+  list-style: none;
+}
+
+.matrix__publish {
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--space-2) var(--space-2);
+}
+
+.matrix__publish > :not(.btn) {
+  flex: 1 1 100%;
+}
+
+.matrix__publish > .btn {
+  flex: none;
+}
 
 .matrix__publish-confirmation {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: var(--touch);
+  gap: var(--space-2);
+  min-height: var(--control);
   font-weight: 700;
 }
 
@@ -1658,7 +1830,7 @@ select {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
-  min-height: var(--touch);
+  min-height: var(--control);
   padding: 6px 8px;
   border: 0;
   border-radius: var(--radius-control);
@@ -1690,7 +1862,7 @@ select {
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--bg), var(--danger) 14%);
   color: var(--danger);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .matrix__count {
@@ -1713,12 +1885,12 @@ select {
   align-items: center;
   gap: 10px;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--line);
   background: color-mix(in oklch, var(--bg), var(--danger) 8%);
   color: var(--tx);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 /* The legend is a popover off the head, the same disclosure shape as the
@@ -1749,7 +1921,7 @@ select {
   border-radius: var(--radius-container);
   background: var(--bg-panel);
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .matrix__legend-body dl {
@@ -1761,7 +1933,7 @@ select {
 
 .matrix__legend-body dt {
   color: var(--tx);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
   white-space: nowrap;
 }
 
@@ -1771,14 +1943,14 @@ select {
 }
 
 .matrix__legend-body p {
-  margin: 8px 0 0;
-  padding-top: 8px;
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-2);
   border-top: 1px solid var(--line);
   line-height: 1.5;
 }
 
 .matrix__environment-picker {
-  /* Not the containing block for its popover — .matrix__key-heading is, so the
+  /* Not the containing block for its popover, .matrix__key-heading is, so the
      fieldset anchors to the Key column's left edge instead of the button's. At
      narrow widths the button sits far right; anchoring there ran the popover
      (and its "PROTECTED" marker) off the right viewport edge (#743). */
@@ -1790,8 +1962,8 @@ select {
 .matrix__protected {
   color: var(--danger);
   font-family: var(--font-ui);
-  font-size: 9.5px;
-  font-weight: 600;
+  font-size: var(--fs-xs);
+  font-weight: 500;
   letter-spacing: 0.08em;
 }
 
@@ -1806,8 +1978,8 @@ select {
   display: block;
   color: var(--tx-dim);
   font-family: var(--font-ui);
-  font-size: 9.5px;
-  font-weight: 600;
+  font-size: var(--fs-xs);
+  font-weight: 500;
   letter-spacing: 0.04em;
 }
 
@@ -1821,7 +1993,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .matrix__key-heading > span {
@@ -1848,7 +2020,7 @@ select {
   min-width: 220px;
   max-width: calc(100vw - 24px);
   margin: 0;
-  padding: 8px;
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg-panel);
@@ -1856,9 +2028,9 @@ select {
 }
 
 .matrix__environment-picker legend {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .matrix__environment-picker label,
@@ -1866,8 +2038,8 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: var(--touch);
-  padding-inline: 8px;
+  min-height: var(--control);
+  padding-inline: var(--space-2);
   border-radius: var(--radius-control);
   cursor: pointer;
 }
@@ -1875,13 +2047,6 @@ select {
 .matrix__environment-picker label:hover,
 .matrix-editor__copy label:hover {
   background: var(--bg-hover);
-}
-
-.matrix__environment-picker input,
-.matrix-editor__copy input {
-  width: 22px;
-  height: 22px;
-  accent-color: var(--accent);
 }
 
 .matrix__scroll {
@@ -1929,10 +2094,10 @@ select {
   top: 0;
   z-index: 4;
   min-width: 190px;
-  height: var(--touch);
+  height: var(--row);
   background: var(--bg);
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
@@ -1963,13 +2128,13 @@ select {
 
 /* The group row sticks under the header, so it has to know how tall the header
    actually is. `--gh` is measured and written by the matrix (fractional, from
-   getBoundingClientRect) rather than assumed to be `--touch`: the header is a
-   minimum of 44px, not exactly 44px, and once the webfont loads a rounded guess
-   leaves either a seam or an overlap. The `- 1px` sits the row on the header's
+   getBoundingClientRect) rather than assumed to be `--row`: the header is a
+   minimum of one row, not exactly one row, and once the webfont loads a rounded
+   guess leaves either a seam or an overlap. The `- 1px` sits the row on the header's
    own bottom hairline instead of below it. */
 .matrix__group-row th {
   position: sticky;
-  top: calc(var(--gh, var(--touch)) - 1px);
+  top: calc(var(--gh, var(--row)) - 1px);
   z-index: 3;
   padding: 0;
   background: var(--bg-panel);
@@ -1980,12 +2145,12 @@ select {
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: var(--touch);
+  min-height: var(--control);
   padding: 7px 12px;
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 700;
   letter-spacing: 0.14em;
   text-align: left;
@@ -1999,7 +2164,7 @@ select {
   display: flex;
   align-items: center;
   width: 100%;
-  padding-right: 12px;
+  padding-right: var(--space-3);
 }
 
 .matrix__group-row .matrix__group-toggle {
@@ -2013,14 +2178,14 @@ select {
 .matrix__group-row .matrix__add-key {
   flex: none;
   width: auto;
-  min-height: 0;
-  padding: 4px 12px;
+  min-height: var(--control);
+  padding: var(--space-1) var(--space-3);
   border: 1px dashed var(--line);
   /* Rounded rect, not a full pill, DESIGN.md reserves the pill for identity
      circles and count badges (expectNoStrayPills). */
   border-radius: var(--radius-control);
   color: var(--tx-faint);
-  font-size: 11px;
+  font-size: var(--fs-sm);
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -2033,7 +2198,7 @@ select {
 
 .matrix__group-chevron {
   color: var(--tx-faint);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   transition: transform var(--dur) var(--ease);
 }
 
@@ -2087,7 +2252,7 @@ select {
   display: inline;
   margin-left: 6px;
   color: var(--tx-faint);
-  font-size: 9.5px;
+  font-size: var(--fs-xs);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -2104,7 +2269,7 @@ select {
   background: transparent;
   color: var(--tx);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-mono);
   cursor: pointer;
 }
 
@@ -2124,7 +2289,7 @@ select {
   content: '✎';
   margin-left: -1px;
   color: var(--tx-faint);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .matrix-cell:not(.matrix-cell--problem):hover::after {
@@ -2142,7 +2307,7 @@ select {
    for an unpublished draft, the words move to the tooltip and aria-label. */
 .matrix-cell__delta {
   color: var(--changed);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 700;
 }
 
@@ -2159,7 +2324,7 @@ select {
 
 .matrix-cell__other {
   color: var(--tx-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .matrix-cell--absent,
@@ -2184,21 +2349,21 @@ select {
   margin-block-start: 3px;
   color: var(--danger);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .matrix__empty {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--space-3);
   max-width: 440px;
   margin: 8vh auto;
   padding: 20px;
 }
 
 .matrix-editor {
-  width: min(760px, calc(100% - 32px));
+  width: min(var(--width-dialog-wide), calc(100% - var(--space-6)));
   max-height: min(82vh, 760px);
   margin: auto;
   padding: 20px;
@@ -2206,12 +2371,7 @@ select {
   border-radius: var(--radius-container);
   background: var(--bg-panel);
   color: var(--tx);
-  box-shadow: 0 14px 42px rgb(0 0 0 / 45%);
   overflow: auto;
-}
-
-.matrix-editor::backdrop {
-  background: color-mix(in srgb, black 55%, transparent);
 }
 
 .matrix-editor form {
@@ -2224,7 +2384,7 @@ select {
 .matrix-editor__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -2239,20 +2399,20 @@ select {
   margin: 0;
 }
 
-.matrix-editor__head h2 {
-  font-size: 15px;
-}
-
 .matrix-editor__head p,
 .matrix-editor__hint,
 .matrix-editor__copy p {
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .matrix-editor__close {
-  width: var(--touch);
+  width: var(--control);
   padding: 0;
+  min-width: var(--control);
+  height: var(--control);
+  min-height: var(--control);
+  line-height: normal;
 }
 
 .matrix-editor__provenance {
@@ -2260,7 +2420,7 @@ select {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 20px;
   margin: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
@@ -2269,7 +2429,7 @@ select {
 .matrix-editor__provenance div {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr);
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .matrix-editor__provenance dt {
@@ -2282,10 +2442,10 @@ select {
 }
 
 .matrix-editor__eyebrow {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -2298,10 +2458,10 @@ select {
 .matrix-editor__schema summary {
   display: flex;
   align-items: center;
-  min-height: var(--touch);
+  min-height: var(--control);
   color: var(--tx-dim);
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .matrix-editor__schema pre {
@@ -2313,7 +2473,7 @@ select {
   border-radius: var(--radius-container);
   background: var(--bg);
   color: var(--tx-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   white-space: pre-wrap;
 }
 
@@ -2321,7 +2481,7 @@ select {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0;
   padding: 10px;
   border-left: 2px solid var(--accent);
@@ -2336,10 +2496,8 @@ select {
 
 .matrix-editor__value {
   width: 100%;
-  min-height: 92px;
   max-block-size: 40vh;
   field-sizing: content;
-  padding: 10px 12px;
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
@@ -2350,7 +2508,7 @@ select {
 .matrix-editor__copy {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
   padding: 10px;
   border: 1px solid var(--line);
@@ -2361,8 +2519,8 @@ select {
 .matrix-row-editor__row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: var(--space-2);
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
@@ -2370,21 +2528,20 @@ select {
 
 .matrix-row-editor__fill > div {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 /* The fill control is a textarea wearing `.matrix-editor__value`; this only
    lets it share the row with its apply button. */
 .matrix-row-editor__fill textarea {
   min-width: 0;
-  min-height: var(--touch);
   flex: 1;
 }
 
 .matrix-row-editor__rows {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .matrix-row-editor__row--protected {
@@ -2396,25 +2553,12 @@ select {
 .matrix-key-create__field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .matrix-key-create label {
   color: var(--tx-dim);
-  font-size: 12px;
-}
-
-.matrix-key-create__field input,
-.matrix-key-create__field textarea,
-.matrix-key-create__constraints input,
-.matrix-key-create__constraints textarea,
-.matrix-key-create__type select {
-  min-height: var(--touch);
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
+  font-size: var(--fs-sm);
 }
 
 .matrix-key-create__field input,
@@ -2430,7 +2574,7 @@ select {
   flex-direction: column;
   gap: 10px;
   margin: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: color-mix(in srgb, var(--bg) 92%, transparent);
@@ -2439,18 +2583,18 @@ select {
 .matrix-key-create__constraints legend {
   padding: 0 6px;
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .matrix-key-create__constraints label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .matrix-key-create__constraint-row {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
@@ -2463,9 +2607,9 @@ select {
 .matrix-key-create__presence {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
 }
@@ -2473,7 +2617,7 @@ select {
 .matrix-key-create__presence legend {
   padding: 0 6px;
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .matrix-key-create__presence-modes {
@@ -2488,16 +2632,10 @@ select {
   gap: 6px;
 }
 
-.matrix-key-create__presence-modes input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-}
-
 .matrix-key-create__presence-hint {
   margin: 0;
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .matrix-key-create__type {
@@ -2514,20 +2652,14 @@ select {
 .matrix-key-create__secret {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.matrix-key-create__secret input {
-  width: 20px;
-  height: 20px;
-  accent-color: var(--accent);
+  gap: var(--space-2);
 }
 
 .matrix__empty-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  margin: 4px 0;
+  margin: var(--space-1) 0;
 }
 
 .matrix-row-editor__row-head {
@@ -2539,13 +2671,13 @@ select {
 
 .matrix-row-editor__row-head h3 {
   margin: 0 auto 0 0;
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 .matrix-row-editor__row-head span {
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .matrix-row-editor__row--protected .matrix-row-editor__row-head span:first-of-type {
@@ -2559,8 +2691,8 @@ select {
 
 .matrix-row-editor__row .matrix-editor__provenance {
   grid-template-columns: minmax(0, 1fr);
-  padding: 8px;
-  font-size: 11px;
+  padding: var(--space-2);
+  font-size: var(--fs-xs);
 }
 
 /* Surface-1 secret-scanning warn dialog (#74). Reuses the matrix-editor shell;
@@ -2575,7 +2707,7 @@ select {
 .scan-warn__findings {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2585,7 +2717,7 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -2601,19 +2733,19 @@ select {
 }
 
 .scan-warn__rule {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--tx);
 }
 
 .scan-warn__env {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--tx-dim);
 }
 
 .scan-warn__note {
   margin: 0;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 /* Surface-2 secret-scanning block dialog (#183). Renders only the redacted
@@ -2628,7 +2760,7 @@ select {
 .scan-block__findings {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2637,7 +2769,7 @@ select {
 .scan-block__finding {
   display: flex;
   align-items: baseline;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
@@ -2646,12 +2778,12 @@ select {
 }
 
 .scan-block__rule {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--tx);
 }
 
 .scan-block__locator {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--tx-dim);
 }
 
@@ -2663,11 +2795,11 @@ select {
   }
 
   .content > * {
-    margin-top: 16px;
+    margin-top: var(--space-4);
   }
 
   .content > .matrix {
-    padding-top: 16px;
+    padding-top: var(--space-4);
   }
 
   .panel {
@@ -2711,31 +2843,12 @@ select {
     line-height: var(--touch);
   }
 
-  /* env-matrix 31 added two matrix-head/group controls that opt out of a
-     touch-height base (`+ key` zeroes the group-row button floor; drafts is a
-     bare pill). Both need the 44px floor back on a phone, the add-key selector
-     matches the base's specificity so this later rule wins. */
-  .matrix__group-row .matrix__add-key {
-    min-height: var(--touch);
-  }
-
-  .matrix__drafts {
-    min-height: var(--touch);
-  }
-
-  .matrix__environment-picker input,
-  .matrix-editor__copy input,
-  .matrix__publish input {
-    width: var(--touch);
-    height: var(--touch);
-  }
-
-  .matrix-editor {
+        .matrix-editor {
     width: calc(100% - 20px);
     max-width: 760px;
     max-height: 88vh;
     margin: auto;
-    padding: 16px 12px;
+    padding: var(--space-4) var(--space-3);
     border-radius: var(--radius-container);
   }
 
@@ -2753,6 +2866,12 @@ select {
   }
 }
 
+/* The audit sampled padding and gaps on every route; the scale is already
+   4-based and mostly held. This outlier folds in; no new tokens. */
+.card.panel {
+  gap: var(--space-3);
+}
+
 /* --- Values, reveal ceremony (#58) ---------------------------------------
  *
  * Nothing here carries state by colour alone: the countdown is a number, the
@@ -2762,12 +2881,55 @@ select {
 
 .notice {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   color: var(--tx);
   background: var(--bg-panel);
+}
+/* --- Alert and notice: glyph, text, one optional action ---------------------
+ *
+ * Text and action centre on one line and the action drops under the text when
+ * the row is narrow; a multi-line message keeps the glyph on its first line.
+ * Supersedes the flex defaults that left the text top-aligned beside a button. */
+:is(.alert, .notice, .retention-warning) {
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+:is(.alert, .notice, .retention-warning) > .alert__glyph {
+  align-self: flex-start;
+  line-height: var(--lh-body);
+}
+
+:is(.alert, .notice, .retention-warning) > :is(.alert__text, span:not(.alert__glyph):not(.alert__action)) {
+  flex: 1 1 24ch;
+}
+
+:is(.alert, .notice, .retention-warning) > :is(.alert__action, .btn) {
+  margin-left: auto;
+}
+
+/* `.alert__glyph` is danger-coloured, and the done tick inside `.notice`
+   inherited that, painting a confirmation in the colour DESIGN.md reserves for
+   violations. The tick takes the accent. */
+.notice .alert__glyph {
+  color: var(--accent);
+}
+
+/* --- Glyph -------------------------------------------------------------------
+ *
+ * The state vocabulary as monochrome inline SVG (ui/Glyph.tsx): one em, current
+ * colour, sits on the text baseline. Replaces the colour emoji the routes used
+ * for the lock and link marks. */
+.glyph {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+  fill: currentColor;
 }
 
 .visually-hidden {
@@ -2784,20 +2946,8 @@ select {
 .values__head {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-badge);
-  color: var(--tx);
-  background: var(--bg-panel);
-  font-size: 13px;
 }
 
 .chip--armed {
@@ -2808,22 +2958,13 @@ select {
 .values__bar {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
-  margin: 16px 0;
+  margin: var(--space-4) 0;
 }
 
 .field--inline {
   min-width: 220px;
-}
-
-.field select {
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
 }
 
 .values__table {
@@ -2841,13 +2982,13 @@ select {
 
 .values__table thead th {
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
 .values__keyname {
-  min-height: var(--touch);
-  padding: 0 8px;
+  min-height: var(--control);
+  padding: 0 var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-control);
   background: none;
@@ -2873,7 +3014,7 @@ select {
 
 .values__absent {
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 /* Absence reads "· absent", the same glyph the matrix uses. */
@@ -2886,34 +3027,34 @@ select {
   border-radius: var(--radius-badge);
   padding: 1px 6px;
   color: var(--tx);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .values__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .values__editor {
-  padding-bottom: 12px;
+  padding-bottom: var(--space-3);
 }
 
 .row-editor {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
 .row-editor__hint {
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   flex-basis: 100%;
   margin: 0;
 }
 
 .values__audit h2 {
-  font-size: 14px;
+  font-size: var(--fs-md);
   color: var(--tx-dim);
 }
 
@@ -2929,12 +3070,12 @@ select {
  * positioning wrapper and no z-index to lose an argument with. */
 
 .ceremony {
-  width: min(520px, 100%);
+  width: min(var(--width-dialog), 100%);
   max-height: 90vh;
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
@@ -2942,16 +3083,6 @@ select {
   color: var(--tx);
 }
 
-.ceremony::backdrop {
-  background: color-mix(in srgb, black 55%, transparent);
-}
-
-.ceremony__title {
-  margin: 0;
-  font-size: 20px;
-}
-
-.ceremony__lede,
 .ceremony__scope {
   margin: 0;
   color: var(--tx);
@@ -2969,7 +3100,7 @@ select {
 
 .ceremony__cap {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--accent);
@@ -2977,25 +3108,85 @@ select {
   background: color-mix(in oklch, var(--bg), var(--accent) 8%);
 }
 
-.ceremony__actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
 .ceremony > form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .ceremony__totp {
   display: flex;
   align-items: flex-end;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   border-top: 1px solid var(--line);
-  padding-top: 12px;
+  padding-top: var(--space-3);
+}
+/* --- Dialog -------------------------------------------------------------------
+ *
+ * One modal anatomy (ui/Dialog.tsx). Folds `.ceremony__title` (20px),
+ * `.matrix-editor__head h2` (15px), the ledes and the two action rows (12px and
+ * 8px gaps). The legacy classes are restyled here so the route dialogs that
+ * still use them match until they migrate. DESIGN.md reserves shadows for modal
+ * overlays, so every family gets one. */
+.dialog {
+  width: min(var(--width-dialog), calc(100% - var(--space-6)));
+  max-height: min(90vh, var(--width-dialog-wide));
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-container);
+  background: var(--bg-panel);
+  color: var(--tx);
+  overflow: auto;
+}
+
+.dialog--wide {
+  width: min(var(--width-dialog-wide), calc(100% - var(--space-6)));
+}
+
+.dialog,
+.ceremony,
+.matrix-editor {
+  box-shadow: var(--overlay-shadow);
+}
+
+.dialog::backdrop,
+.ceremony::backdrop,
+.matrix-editor::backdrop {
+  background: oklch(0 0 0 / 55%);
+}
+
+.dialog__title,
+.ceremony__title,
+.ceremony > h2,
+.matrix-editor__head h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: var(--lh-heading);
+}
+
+.dialog__lede,
+.ceremony__lede,
+.matrix-editor__head p {
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+  max-width: var(--measure);
+}
+
+/* Action rows: 8px everywhere, page and dialog alike; primary last. */
+.dialog__actions,
+.ceremony__actions,
+.matrix-editor__actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 /* --- Machine access (#67, locked prototype #31 iteration 3) ---------------
@@ -3013,13 +3204,13 @@ select {
 .tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin: 16px 0;
+  gap: var(--space-1);
+  margin: var(--space-4) 0;
   border-bottom: 1px solid var(--line);
 }
 
 .tab {
-  min-height: var(--touch);
+  min-height: var(--control);
   padding: 0 14px;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -3042,7 +3233,7 @@ select {
 .machine__policy,
 .machine__lede,
 .machine__footnote {
-  margin: 12px 0;
+  margin: var(--space-3) 0;
 }
 
 .machine__lede,
@@ -3056,7 +3247,7 @@ select {
    states the current policy rather than in a settings page nobody reads first. */
 .machine__policy {
   display: flex;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-start;
   flex-wrap: wrap;
 }
@@ -3069,15 +3260,15 @@ select {
 /* The opt-in acknowledgement: a deliberate tick, never pre-checked. */
 .ceremony__ack {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-start;
-  margin: 12px 0;
+  margin: var(--space-3) 0;
   max-width: 60ch;
 }
 
 .machine__none {
   color: var(--tx-dim);
-  margin: 4px 0 12px;
+  margin: var(--space-1) 0 var(--space-3);
   max-width: 70ch;
 }
 
@@ -3105,21 +3296,19 @@ select {
 
 .machine__sub > td {
   background: var(--bg);
-  padding: 12px 8px 16px;
+  padding: var(--space-3) var(--space-2) var(--space-4);
 }
 
 .machine__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px 32px;
+  gap: var(--space-3) var(--space-6);
 }
 
 .machine__subhead {
   margin: 12px 0 6px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--tx-dim);
 }
 
@@ -3130,15 +3319,15 @@ select {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .cred {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding-bottom: 8px;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--line);
 }
 
@@ -3149,25 +3338,25 @@ select {
 .machine__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin: 12px 0 0;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
 }
 
 .machine__presets {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .machine__row-actions {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .machine__hint {
   color: var(--tx-dim);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .btn[aria-pressed='true'] {
@@ -3180,27 +3369,27 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
-  padding: 12px;
+  padding: var(--space-3);
 }
 
 .bindrow__head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin: 0 0 8px;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
 }
 
 .kv {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   margin: 0;
 }
 
 .kv__pair {
   display: grid;
   grid-template-columns: 140px minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .kv dt {
@@ -3222,14 +3411,14 @@ select {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   max-width: 90ch;
 }
 
 .journey__step {
   display: grid;
   grid-template-columns: 130px minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   padding-left: 10px;
   border-left: 2px solid var(--line);
 }
@@ -3245,7 +3434,7 @@ select {
 .journey__state {
   color: var(--tx-dim);
   text-transform: uppercase;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   letter-spacing: 0.06em;
 }
 
@@ -3260,7 +3449,7 @@ select {
 
 .machine__token {
   margin: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--accent);
   border-radius: var(--radius-control);
   background: var(--bg);
@@ -3268,28 +3457,266 @@ select {
   overflow-wrap: anywhere;
 }
 
-/* A checkbox is a control the pinned set sweeps like any other, so it carries
-   the touch floor on a phone rather than the browser's 13px default. */
+/* --- Choice controls: checkbox and radio ------------------------------------
+ *
+ * Root cause of the oversized boxes (measured, see the handoff): `.field input`
+ * gave EVERY input a 44px min-height, padding and a border, so a checkbox in
+ * `.field.chk` inherited it and the row was 44px tall on a desktop pointer; a
+ * `(max-width: 800px)` bump took every narrow window to phone sizing; and four
+ * surfaces carried their own 22/18/20px sizes while bare ones fell back to the
+ * browser's 13px.
+ *
+ * The fix separates the hit box from the drawn box. The input element itself
+ * stays the hit target (the pinned e2e sweep measures the input's own box and
+ * reads the focus ring from the input's own outline), the visual is drawn on
+ * pseudo-elements at a size that suits 14px text, and the 44px floor applies on
+ * a coarse pointer only, where DESIGN.md sets it. The box rules match EVERY
+ * checkbox and radio, not only those in a `.chk` row: the route sweep found raw
+ * inputs in `label.chip`, the audit filter, the adapter and folder dialogs and
+ * the key-create sheet still on native or leaked sizes. `.chk` keeps only the
+ * row layout and the label treatment. */
 .chk {
+  display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: var(--chk-gap);
+  min-height: var(--chk-box);
 }
 
-.chk input[type='checkbox'] {
-  width: 24px;
-  height: 24px;
-  flex: none;
-  accent-color: var(--accent);
-}
-
-.chk label {
+/* The option text is body text, not a field caption: 14px, full ink, in both
+   markup shapes (input + sibling label, and a label wrapping the input). */
+.chk label,
+label.chk {
   color: var(--tx);
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
+  cursor: pointer;
+}
+
+/* An inline number beside a choice (the credential lifetime) stays short so
+   the sentence around it holds one line. */
+.chk input[type='number'] {
+  width: 8ch;
+  flex: none;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--chk-box);
+  height: var(--chk-box);
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  /* The global ring is offset OUTSIDE the element. Pull it in so it hugs the
+     drawn box, not the hit box. */
+  outline-offset: calc((var(--chk-visual) - var(--chk-box)) / 2 + var(--ring-offset));
+}
+
+input[type='radio']:focus-visible {
+  border-radius: 50%;
+}
+
+/* ::before is the box, ::after the mark; both sit in the same grid cell. */
+input[type='checkbox']::before,
+input[type='radio']::before,
+input[type='checkbox']::after,
+input[type='radio']::after {
+  content: '';
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+}
+
+input[type='checkbox']::before,
+input[type='radio']::before {
+  width: var(--chk-visual);
+  height: var(--chk-visual);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--bg);
+  transition:
+    background var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+input[type='radio']::before {
+  border-radius: 50%;
+}
+
+input:not(:disabled):hover::before {
+  border-color: var(--tx-dim);
+}
+
+/* `:indeterminate` is checkbox-only here: a radio is indeterminate whenever its
+   group has no selection, which would fill every unchecked radio. */
+input:checked::before,
+input[type='checkbox']:indeterminate::before {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* The mark is a masked fill so it takes the theme's on-accent ink rather than a
+   colour baked into an SVG. */
+input[type='checkbox']::after {
+  width: var(--chk-visual);
+  height: var(--chk-visual);
+  background: var(--on-accent);
+  mask: center / 72% no-repeat;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+input[type='checkbox']:checked::after {
+  opacity: 1;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3.2 3.2L13 5'/%3E%3C/svg%3E");
+}
+
+input[type='checkbox']:indeterminate::after {
+  opacity: 1;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' d='M3.5 8h9'/%3E%3C/svg%3E");
+}
+
+input[type='radio']::after {
+  width: calc(var(--chk-visual) * 0.45);
+  height: calc(var(--chk-visual) * 0.45);
+  border-radius: 50%;
+  background: var(--on-accent);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+input[type='radio']:checked::after {
+  opacity: 1;
+}
+
+/* Disabled dims the whole row at the same 0.6 the button primitive uses, and
+   names the state with the cursor. Covers both markup shapes. */
+input:disabled,
+.chk input:disabled + label,
+label.chk:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+input:disabled::before,
+input:disabled::after,
+.chk input:disabled + label,
+label.chk:has(input:disabled) {
+  opacity: var(--opacity-disabled);
+}
+
+/* The OS owns the palette under forced colours; hand the box back to the
+   platform so it is repainted with the system's check glyph. The hit box sizes
+   above still apply. */
+@media (forced-colors: active) {
+  input[type='checkbox'],
+  input[type='radio'] {
+    appearance: auto;
+  }
+
+  input[type='checkbox']::before,
+  input[type='radio']::before,
+  input[type='checkbox']::after,
+  input[type='radio']::after {
+    display: none;
+  }
+}
+
+/* --- ChoiceGroup: a labelled set of checkboxes or radios --------------------
+ *
+ * Resets the fieldset chrome to the plain `.field` box (the audit filter and
+ * SAML panels each did this locally). Layouts: stack (default), wrap, nowrap
+ * (one line, scrolls sideways), grid (N columns from `--choice-columns`, one
+ * column below 480px of container width). The chips variant draws each row as a
+ * selectable chip at the control height, so a chip beside a button lines up. */
+.choice-group {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  container-type: inline-size;
+}
+
+.choice-group > legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+}
+
+.choice-group__options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.choice-group--wrap .choice-group__options {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+.choice-group--nowrap .choice-group__options {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: var(--space-4);
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+  scrollbar-gutter: stable;
+}
+
+.choice-group--nowrap .chk {
+  flex: none;
+  white-space: nowrap;
+}
+
+.choice-group--grid .choice-group__options {
+  display: grid;
+  grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
+}
+
+@container (max-width: 480px) {
+  .choice-group--grid .choice-group__options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.choice-group--chips .choice-group__options {
+  gap: var(--space-2);
+}
+
+.choice-group--chips .chk {
+  min-height: var(--control);
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-badge);
+  background: var(--bg-panel);
+  transition:
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.choice-group--chips .chk:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-group--chips .chk label {
+  font-size: var(--fs-sm);
+}
+
+.chk label.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono);
 }
 
 .ceremony__stepup {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--changed);
@@ -3311,12 +3738,7 @@ select {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .chk input[type='checkbox'] {
-    width: var(--touch);
-    height: var(--touch);
   }
-}
-
 
 /* --- Multi-instance (#71): remote directory cards, origin allowlist, and the
    active-session list. Same vocabulary as the rest of the shell: hairline
@@ -3328,11 +3750,11 @@ select {
 .connections,
 .remote__orgs {
   list-style: none;
-  margin: 12px 0 0;
+  margin: var(--space-3) 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* Hairline rows, not cards: the list's rule separates them, nothing fills them. */
@@ -3343,7 +3765,7 @@ select {
 
 .remote,
 .connection {
-  padding: 16px 0;
+  padding: var(--space-4) 0;
   border: 0;
   border-top: 1px solid var(--line);
 }
@@ -3357,25 +3779,25 @@ select {
 .connection__head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .remote__name,
 .connection__label {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--fs-lg);
 }
 
 .remote__url,
 .connection__prefix {
-  margin: 4px 0 8px;
+  margin: var(--space-1) 0 var(--space-2);
   color: var(--tx-dim);
   overflow-wrap: anywhere;
 }
 
 .remote__state,
 .remote__stale {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
   color: var(--tx-dim);
 }
 
@@ -3384,7 +3806,7 @@ select {
   display: grid;
   grid-template-columns: max-content 1fr;
   gap: 2px 12px;
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
 }
 
 .remote__facts dt,
@@ -3401,7 +3823,7 @@ select {
 .remote__orgs li {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 6px 0;
   border-top: 1px solid var(--line);
 }
@@ -3411,13 +3833,13 @@ select {
 }
 
 .remote__update {
-  margin: 12px 0;
-  padding: 12px 0 0;
+  margin: var(--space-3) 0;
+  padding: var(--space-3) 0 0;
   border-top: 1px solid var(--line);
 }
 
 .remote__update p {
-  margin: 0 0 8px;
+  margin: 0 0 var(--space-2);
 }
 
 .remote__update p:last-child {
@@ -3431,12 +3853,12 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .origin,
 .session {
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
@@ -3452,15 +3874,15 @@ select {
 }
 
 .session__detail {
-  margin: 8px 0;
+  margin: var(--space-2) 0;
   color: var(--tx-dim);
 }
 
 .form {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 12px;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
   max-width: 520px;
 }
 
@@ -3481,12 +3903,12 @@ select {
 .history {
   position: fixed;
   inset: 0 0 0 auto;
-  z-index: 40;
+  z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   width: min(640px, 100%);
-  padding: 16px;
+  padding: var(--space-4);
   border-left: 1px solid var(--line);
   background: var(--bg-panel);
   color: var(--tx);
@@ -3502,13 +3924,12 @@ select {
 .history__title {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .history__title h2 {
   margin: 0;
-  font-size: 17px;
 }
 
 .history__close {
@@ -3520,7 +3941,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   color: var(--tx-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .history__protected {
@@ -3528,13 +3949,13 @@ select {
   border: 1px solid var(--danger);
   border-radius: var(--radius-badge);
   color: var(--danger);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   letter-spacing: 0.04em;
 }
 
 .history__tabs {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -3547,11 +3968,11 @@ select {
 .history__empty {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   margin: 0;
   color: var(--tx-dim);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .history__retention,
@@ -3568,7 +3989,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   color: var(--tx);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .history__settings-pointer {
@@ -3578,7 +3999,7 @@ select {
 .history__panes {
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   min-height: 0;
 }
 
@@ -3598,7 +4019,7 @@ select {
   flex-wrap: wrap;
   padding: 0 10px;
   text-align: left;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .history__row[aria-current='true'] {
@@ -3609,7 +4030,7 @@ select {
 .history__age {
   margin-left: auto;
   color: var(--tx-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .history__tag {
@@ -3617,7 +4038,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   color: var(--tx-dim);
-  font-size: 10.5px;
+  font-size: var(--fs-xs);
 }
 
 .history__tag--collected {
@@ -3635,23 +4056,23 @@ select {
 .history__detail h3 {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   margin: 0;
 }
 
 .history__detail h4 {
-  margin: 12px 0 0;
-  font-size: 13px;
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-sm);
   color: var(--tx-dim);
 }
 
 .history__meta {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .history__meta dt {
@@ -3668,7 +4089,7 @@ select {
 .history__consequences {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -3678,7 +4099,7 @@ select {
   padding-left: 18px;
   list-style: disc;
   color: var(--tx-dim);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .history__changes li,
@@ -3686,13 +4107,13 @@ select {
 .history__impact li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .history__change {
@@ -3709,7 +4130,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   color: var(--tx-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .history__pin-gap {
@@ -3736,7 +4157,7 @@ select {
 
 .history__actions {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -3747,7 +4168,7 @@ select {
 
 .history__chips {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   margin: 0;
 }
@@ -3757,7 +4178,7 @@ select {
   border: 1px solid var(--line);
   border-radius: var(--radius-badge);
   color: var(--tx);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
 }
 
 .history-sheet {
@@ -3775,25 +4196,25 @@ select {
 
 .history__pin-what h3 {
   margin: 0 0 6px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .history__pin-what ul {
   margin: 0;
   padding-left: 18px;
   color: var(--tx-dim);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .history__field {
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .history__override {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .history__comparison {
@@ -3813,23 +4234,14 @@ select {
 }
 
 .history__comparison h3 {
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .history__comparison-lines {
   margin: 0;
   padding-left: 18px;
   color: var(--tx-dim);
-  font-size: 12.5px;
-}
-
-.history-sheet input[type='date'] {
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
+  font-size: var(--fs-sm);
 }
 
 .history-sheet select {
@@ -3845,12 +4257,12 @@ select {
 .key-detail {
   position: fixed;
   inset: 0 0 0 auto;
-  z-index: 40;
+  z-index: var(--z-overlay);
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   width: min(640px, 100%);
-  padding: 16px;
+  padding: var(--space-4);
   border-left: 1px solid var(--line);
   background: var(--bg-panel);
   color: var(--tx);
@@ -3860,14 +4272,13 @@ select {
 .key-detail__head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .key-detail__head h2 {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 17px;
 }
 
 .key-detail__close {
@@ -3882,7 +4293,7 @@ select {
 .key-detail__body {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
 }
 
 .key-detail__facts {
@@ -3894,12 +4305,12 @@ select {
 .key-detail__fact {
   display: grid;
   grid-template-columns: 140px 1fr;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .key-detail__fact dt {
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .key-detail__fact dd {
@@ -3911,14 +4322,14 @@ select {
 .key-detail__section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-top: 12px;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--line);
 }
 
 .key-detail__section h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 .key-detail__rule,
@@ -3928,7 +4339,7 @@ select {
 .key-detail__public-note {
   margin: 0;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   overflow-wrap: anywhere;
 }
 
@@ -3942,31 +4353,24 @@ select {
   margin: 0;
   padding-left: 18px;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .key-detail__editor {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding-top: 12px;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--line);
 }
 
 .key-detail__editor h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 .key-detail__editor textarea {
-  min-height: 88px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
   font: inherit;
-  resize: vertical;
 }
 
 .key-detail__editor textarea:focus-visible {
@@ -3981,9 +4385,9 @@ select {
 }
 
 .matrix__history-link {
-  min-height: var(--touch);
+  min-height: var(--control);
   padding: 0 10px;
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -4016,13 +4420,13 @@ select {
 .page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--space-4);
   max-width: 72ch;
 }
 
 .page h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--fs-xl);
   font-weight: 700;
 }
 
@@ -4039,7 +4443,7 @@ select {
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 8px 0;
+  padding: var(--space-2) 0;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
 }
@@ -4047,7 +4451,7 @@ select {
 .jump ul {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -4056,12 +4460,12 @@ select {
 .jump__link {
   display: inline-flex;
   align-items: center;
-  min-height: var(--touch);
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   color: var(--tx);
   text-decoration: none;
+  min-height: var(--control);
 }
 
 .jump__link:hover {
@@ -4071,7 +4475,7 @@ select {
 .panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   max-width: none;
   /* A jump-index anchor lands the panel at the scroller's top, where the
      pinned index sits, so offset the landing clear of it. Sized to the index
@@ -4082,16 +4486,11 @@ select {
 
 .panel h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--tx-dim);
 }
 
 .panel h3 {
-  margin: 4px 0 0;
-  font-size: 14px;
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-md);
   font-weight: 700;
 }
 
@@ -4117,20 +4516,20 @@ select {
 .panel__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .field__hint {
   margin: 0;
-  color: var(--tx-dim);
-  font-size: 13px;
-  max-width: 68ch;
+  max-width: var(--measure);
 }
 
 .btn--quiet {
-  min-height: 32px;
-  padding: 0 10px;
-  font-size: 13px;
+  /* A short label ("Self") must still be a square's worth of target. */
+  min-width: var(--control);
+  min-height: var(--control);
+  padding: 0 var(--space-2);
+  font-size: var(--fs-sm);
 }
 
 /* Finalized app-chrome settings measure and card treatment. */
@@ -4144,19 +4543,16 @@ select {
 }
 
 .content > .page--chrome {
-  margin-top: 32px;
+  margin-top: var(--space-6);
 }
 
 .page--chrome h1 {
-  font-size: 19px;
-  line-height: normal;
-  letter-spacing: -0.01em;
+  font-size: var(--fs-xl);
 }
 
 .page--chrome .page__lede {
   max-width: 64ch;
   margin-top: -12px;
-  font-size: 13px;
   line-height: 1.55;
 }
 
@@ -4171,25 +4567,15 @@ select {
 }
 
 .page--chrome .jump__link {
-  min-height: 36px;
-  padding: 7px 14px;
+  padding: 0 14px;
   border-color: var(--chrome-line);
   color: var(--tx-dim);
-  font-size: 12.5px;
 }
-
 
 .page--chrome .panel {
   padding: 16px 18px;
   border-color: var(--panel-line);
   background: var(--bg-panel);
-}
-
-.page--chrome .panel h2 {
-  color: var(--tx-faint);
-  font-size: 13px;
-  line-height: 15px;
-  letter-spacing: 0.05em;
 }
 
 .page--chrome .panel > .settings-row + .settings-row {
@@ -4198,11 +4584,12 @@ select {
 
 .page--chrome .settings-grid label,
 .page--chrome .identity-controls__range label {
-  color: var(--tx-dim);
+  /* The eyebrow, in the mono face the settings grid uses. */
+  color: var(--tx-faint);
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: var(--tracking-eyebrow);
   text-transform: uppercase;
 }
 
@@ -4235,14 +4622,14 @@ select {
 }
 
 .settings-row__title {
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: 500;
 }
 
 .settings-row__detail {
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .settings-row__spacer {
@@ -4251,8 +4638,6 @@ select {
 
 .settings-note {
   margin: 10px 0 0;
-  color: var(--tx-dim);
-  font-size: 12.5px;
   line-height: 1.55;
 }
 
@@ -4271,30 +4656,30 @@ select {
   height: 56px;
   border-radius: var(--radius-container);
   color: var(--tx-on-accent);
-  font-size: 19px;
+  font-size: var(--fs-lg);
   font-weight: 700;
 }
 
 .identity-controls__preview--org {
   border-radius: var(--radius-pill);
-  font-size: 17px;
+  font-size: var(--fs-lg);
 }
 
 .identity-controls__choices {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .identity-hues,
 .identity-glyphs {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .identity-hue {
-  width: 30px;
-  height: 30px;
+  width: var(--control);
+  height: var(--control);
   padding: 0;
   border: 2px solid transparent;
   border-radius: var(--radius-control);
@@ -4308,8 +4693,8 @@ select {
 .identity-glyph {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: var(--control);
+  height: var(--control);
   padding: 0;
   border: 1px solid var(--panel-line);
   border-radius: var(--radius-control);
@@ -4353,23 +4738,6 @@ select {
   box-shadow: 0 0 0 1px var(--line);
 }
 
-.field input.identity-hue-range {
-  min-height: 10px;
-  height: 10px;
-  padding: 0;
-  border: 0;
-  background: linear-gradient(
-    to right,
-    oklch(0.62 0.11 0),
-    oklch(0.62 0.11 60),
-    oklch(0.62 0.11 120),
-    oklch(0.62 0.11 180),
-    oklch(0.62 0.11 240),
-    oklch(0.62 0.11 300),
-    oklch(0.62 0.11 359)
-  );
-}
-
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -4384,21 +4752,9 @@ select {
   grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
 }
 
-.settings-select,
-.settings-input {
-  min-height: 36px;
-  padding: 7px 10px;
-  border: 1px solid var(--panel-line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
-  font-size: 13px;
-}
-
 .settings-input--compact {
   width: 130px;
   font-family: var(--font-mono);
-  font-size: 12.5px;
 }
 
 .settings-input--retention {
@@ -4406,26 +4762,11 @@ select {
 }
 
 .settings-tag {
-  min-height: 32px;
-  padding: 3px 9px;
-  border: 1px solid var(--panel-line);
-  border-radius: var(--radius-badge);
-  background: transparent;
-  color: var(--tx);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .environment-policy-control {
   display: contents;
-}
-
-.settings-tag--danger {
-  border-color: var(--danger);
-  color: var(--danger);
 }
 
 /* The number is the thing being over-ruled, so the number is what carries the
@@ -4461,7 +4802,7 @@ select {
 .instance-cli {
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-mono);
 }
 
 /* A display-once value (#568): selectable as one run, wraps anywhere so a long
@@ -4494,19 +4835,7 @@ select {
 }
 
 .page--chrome .panel--tight {
-  gap: 8px;
-}
-
-.page--chrome .btn {
-  min-height: 36px;
-}
-
-/* The 36px density belongs to the settings PAGE, not to an overlay opened over
-   it. A dialog is a decision surface with two or three buttons in it, and it
-   keeps the touch floor whatever page it happens to be a descendant of. */
-.page--chrome .ceremony .btn,
-.page--chrome .matrix-editor .btn {
-  min-height: var(--touch);
+  gap: var(--space-2);
 }
 
 .page--chrome #account-factors > h3:first-of-type {
@@ -4537,23 +4866,25 @@ select {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* Keep the native disclosure marker: `display: flex`/`block` on a summary drops
-   it in most browsers, so leave the default list-item display and only pad it
-   up to the touch target. */
+   it in most browsers, so leave the default list-item display; the line height
+   is the control height, which centres a one-line label in the control box
+   without vertical padding. */
 .environment-lifecycle > summary {
-  min-height: var(--touch);
-  padding: 10px 0;
+  min-height: var(--control);
+  line-height: var(--control);
+  padding: 0;
   cursor: pointer;
-  font-weight: 650;
+  font-weight: 500;
 }
 
 .page--chrome .factor__meta {
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 /* --- members ------------------------------------------------------------- */
@@ -4581,7 +4912,7 @@ select {
 
 .grants th {
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
@@ -4592,13 +4923,9 @@ select {
 }
 
 .page--members .grants th {
-  padding-top: 8px;
-  padding-bottom: 8px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
   line-height: 12px;
-  text-transform: uppercase;
 }
 
 .page--members .grants th:first-child {
@@ -4613,21 +4940,17 @@ select {
   display: block;
   max-width: 18ch;
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .page--members .chip {
-  min-height: 0;
-  padding: 2px 7px;
+  /* Size, ink and padding come from the one badge rule; only the hairline
+     tone and the mono face are this surface's. */
   border-color: var(--panel-line);
-  background: transparent;
-  color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.2;
 }
 
 .page--members .chip--protected {
@@ -4642,7 +4965,7 @@ select {
 .capabilities {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -4662,7 +4985,7 @@ select {
 .inspect {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .page--members .inspect {
@@ -4676,20 +4999,12 @@ select {
 }
 
 .page--members .inspect label {
-  color: var(--tx-dim);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
   line-height: normal;
-  text-transform: uppercase;
 }
 
 .page--members .inspect select {
   min-width: 160px;
-  min-height: 42px;
-  padding: 10px 12px;
   border-color: var(--panel-line);
-  font-size: 13.5px;
 }
 
 .page--members .inspect .field:nth-child(2) select {
@@ -4716,7 +5031,7 @@ select {
   border-color: var(--accent);
   background: color-mix(in oklch, transparent 90%, var(--accent));
   color: var(--tx);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 15.5px;
 }
 
@@ -4728,7 +5043,7 @@ select {
 .page--members .chrome-meta {
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 .page--members .capabilities {
@@ -4745,23 +5060,22 @@ select {
   padding: 3px 8px;
   border: 1px solid var(--panel-line);
   border-radius: var(--radius-badge);
-  font-size: 11.5px;
+  font-size: var(--fs-sm);
   line-height: 1;
 }
 
 .page--members .capability__origin {
   border-color: var(--danger);
   color: var(--danger);
-  font-size: 10px;
 }
 
 .capability__revoke {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  min-width: 26px;
-  min-height: 26px;
+  width: var(--control);
+  min-width: var(--control);
+  min-height: var(--control);
   margin: -6px -8px -6px -2px;
   padding: 0;
   border: 0;
@@ -4780,19 +5094,13 @@ select {
   margin-top: 2px;
 }
 
-.page--members .btn--primary {
-  min-height: 36px;
-  font-size: 13px;
-}
-
-
 /* --- the grant modal ----------------------------------------------------- */
 
 .grant-modal__mode {
   flex: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: var(--space-4);
   margin: 0;
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -4802,7 +5110,7 @@ select {
 .grant-modal__mode legend {
   padding: 0 6px;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .capgrid {
@@ -4814,7 +5122,7 @@ select {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 2px;
   margin: 0;
-  padding: 8px;
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
@@ -4830,19 +5138,15 @@ select {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 8px;
-}
-
-.capitem .chk {
-  display: flex;
+  gap: var(--space-2);
 }
 
 .explain__toggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: var(--control);
+  min-height: var(--control);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--bg-panel);
@@ -4863,13 +5167,13 @@ select {
   grid-column: 1 / -1;
   margin: 0 0 6px;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .blast__list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -4879,7 +5183,7 @@ select {
 .blast__list li {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
@@ -4904,7 +5208,7 @@ select {
 .retention__bounds {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .retention__bounds .field {
@@ -4920,7 +5224,7 @@ select {
 .danger-zone__hint {
   margin: 0;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .project-retention-list {
@@ -4930,7 +5234,7 @@ select {
 }
 
 .project-retention-list h3 {
-  margin: 4px 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 /* --- account & instance -------------------------------------------------- */
@@ -4950,7 +5254,7 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
@@ -4959,14 +5263,14 @@ select {
 .factor__meta {
   display: block;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .enrolment {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--accent);
   border-radius: var(--radius-container);
   background: var(--bg);
@@ -4987,7 +5291,7 @@ select {
   display: block;
   width: 176px;
   height: 176px;
-  padding: 8px;
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--qr-paper);
@@ -4997,14 +5301,14 @@ select {
 .codes {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .codes li {
-  padding: 8px;
+  padding: var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
@@ -5012,7 +5316,7 @@ select {
 }
 
 .policy-impact {
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--danger);
   border-radius: var(--radius-container);
   background: color-mix(in oklch, var(--bg), var(--danger) 8%);
@@ -5021,27 +5325,12 @@ select {
 .projects__actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
-/* A checkbox is an interactive element like any other, and the 44px floor is
-   not waived because the platform draws it small. Only on a coarse pointer:
-   a 44px checkbox beside 14px text is wrong with a mouse. */
+/* The choice controls take the floor through `--chk-box` in tokens.css, not
+   here. What is left is prose that becomes a control only on a phone. */
 @media (pointer: coarse) {
-  .chk input[type='checkbox'],
-  .chk input[type='radio'],
-  .field.chk input[type='checkbox'],
-  .audit__outcome-choice input[type='checkbox'] {
-    width: var(--touch);
-    height: var(--touch);
-  }
-
-  .explain__toggle,
-  .btn--quiet {
-    min-width: var(--touch);
-    min-height: var(--touch);
-  }
-
   /* The retention line's link to the owning settings panel is inline prose on
      a desktop; on a phone it is the only control in that block and has to
      clear the 44px floor on its own. */
@@ -5062,10 +5351,10 @@ select {
 .stepup {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 24px;
+  gap: var(--space-3) var(--space-5);
   align-items: flex-end;
-  margin: 0 0 16px;
-  padding: 12px 16px;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--changed);
   border-radius: var(--radius-container);
   background: var(--changed-soft);
@@ -5076,9 +5365,9 @@ select {
 }
 
 .stepup__title {
-  margin: 0 0 4px;
+  margin: 0 0 var(--space-1);
   color: var(--changed);
-  font-size: 1rem;
+  font-size: var(--fs-lg);
 }
 
 .stepup__lede {
@@ -5090,20 +5379,19 @@ select {
 .stepup__controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: flex-end;
 }
 
 .stepup__form {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-end;
 }
 
 .stepup__form input {
   width: 9ch;
-  min-height: var(--touch);
   font-family: var(--font-mono);
 }
 
@@ -5112,7 +5400,7 @@ select {
 }
 
 .login__or {
-  margin: 4px 0;
+  margin: var(--space-1) 0;
   text-align: center;
   color: var(--tx-dim);
 }
@@ -5128,61 +5416,19 @@ select {
 
 /* --- the mobile touch floor ----------------------------------------------
  *
- * LAST in the file, and that is load-bearing. A media query adds no
- * specificity, so `@media (max-width: 700px) { .settings-input { … } }` loses
- * to a plain `.settings-input { min-height: 36px }` declared further down , 
- * which is exactly how these controls stayed at their desktop density on a
- * phone while looking like they had been fixed.
- *
- * The 36px and 32px densities above are the DESIGN.md desktop-pointer scale,
- * not a waiver of the 44px floor: `expectTouchTargets` enforces the floor only
- * on a coarse pointer, and every one of those rules needs the partner below.
- * They were missing, and each failure masked the next, because the touch sweep
- * stops at its first offender.
+ * Every real control now reads `--control`, which tokens.css lifts to
+ * `--touch` on a coarse pointer, so the per-surface density bumps that used to
+ * live here are gone. What remains is prose: settings-row titles and details
+ * are often links, read as text and sized as text, which on a phone leaves a
+ * 20px tap target inside a 44px row. Growing the LINK rather than the row keeps
+ * the list's density and gives the target its floor.
  */
-@media (max-width: 700px) {
-  .page--chrome .jump__link,
-  .page--chrome .btn,
-  .settings-select,
-  .settings-input,
-  .settings-tag,
-  .page--members .inspect select {
-    min-height: var(--touch);
-  }
-
-  /* An icon-only control has to clear the floor on BOTH axes. The negative
-     margins keep the row's own height where it was, so growing the hit area
-     does not grow the list. */
-  .capability__revoke {
-    width: var(--touch);
-    min-width: var(--touch);
-    min-height: var(--touch);
-    margin-top: -12px;
-    margin-bottom: -12px;
-  }
-
-  /* A settings row's title and detail are often links, to the organisation
-     whose policy the row describes, to the project's own settings. They read as
-     text and are sized as text, which on a phone leaves a 20px tap target in
-     the middle of a 44px row. Growing the LINK rather than the row keeps the
-     list's density and gives the target its floor. */
+@media (pointer: coarse) {
   a.settings-row__title,
   a.settings-row__detail {
     display: inline-flex;
     align-items: center;
     min-height: var(--touch);
-  }
-
-  .sidebar__switcher,
-  .settings-row__title--link,
-  .settings-row__detail a,
-  .identity-hue {
-    min-height: var(--touch);
-  }
-
-  .identity-hue {
-    width: var(--touch);
-    height: var(--touch);
   }
 }
 
@@ -5191,9 +5437,9 @@ select {
 .import-wizard fieldset {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
 }
@@ -5201,20 +5447,20 @@ select {
 .import-wizard legend {
   padding: 0 6px;
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__summary {
   margin: 0;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__invalid {
   margin: 0;
   padding-inline-start: 18px;
   color: var(--danger);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__env,
@@ -5222,7 +5468,7 @@ select {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-height: var(--touch);
+  min-height: var(--control);
 }
 
 .import-wizard__key {
@@ -5230,12 +5476,12 @@ select {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding-block: 4px;
+  padding-block: var(--space-1);
 }
 
 .import-wizard__key-name {
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .import-wizard__key label {
@@ -5246,7 +5492,7 @@ select {
 
 .import-wizard__suggestion {
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__collisions {
@@ -5254,7 +5500,7 @@ select {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__results {
@@ -5264,7 +5510,7 @@ select {
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__error {
@@ -5274,7 +5520,7 @@ select {
 .import-wizard__sources {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -5286,26 +5532,26 @@ select {
   align-items: flex-start;
   gap: 2px;
   width: 100%;
-  min-height: var(--touch);
+  min-height: var(--control);
   padding: 10px 12px;
   text-align: start;
 }
 
 .import-wizard__source-label {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .import-wizard__source-hint {
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__slug {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
   margin-block-end: 8px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__renames {
@@ -5313,7 +5559,7 @@ select {
   padding-inline-start: 18px;
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .import-wizard__key-folder {
@@ -5322,13 +5568,13 @@ select {
 }
 
 .import-wizard__command {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   padding: 10px 12px;
   overflow-x: auto;
   border-radius: var(--radius-control);
   background: var(--bg-panel);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-mono);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -5340,16 +5586,16 @@ select {
   flex-direction: column;
   gap: 10px;
   margin: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--panel-line);
   border-radius: var(--radius-container);
 }
 
 .key-detail__rule-editor legend,
 .key-detail__presence-editor legend {
-  padding: 0 4px;
+  padding: 0 var(--space-1);
   color: var(--tx-faint);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -5369,22 +5615,22 @@ select {
 .key-detail__hint {
   margin: 0;
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .key-detail__presence-impact {
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
   background: var(--bg);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--tx-dim);
 }
 
 .key-detail__presence-impact-title {
   margin: 0 0 6px;
   color: var(--tx-faint);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -5420,19 +5666,19 @@ select {
 
 .catalogue-manage__section h3 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-md);
 }
 
 .catalogue-manage__empty {
   margin: 0;
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .catalogue-manage__list,
 .catalogue-manage__create {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -5453,26 +5699,22 @@ select {
   gap: 6px;
 }
 
+/* Checkbox, label, input as three columns, so the inputs line up; a wrapping
+   flex row started each input wherever its label ended. */
 .catalogue-manage__row-main {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: auto minmax(12ch, 18ch) minmax(0, 1fr);
+  gap: var(--space-2);
   align-items: center;
-  flex-wrap: wrap;
 }
 
 .catalogue-manage__row-main input,
 .catalogue-manage__create input {
   flex: 1 1 12ch;
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
 }
 
 .catalogue-manage__meta {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--tx-dim);
 }
 
@@ -5497,7 +5739,7 @@ select {
 .audit__filter {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .audit__filter-grid {
@@ -5509,7 +5751,7 @@ select {
 .audit__filter-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
@@ -5526,15 +5768,6 @@ select {
   min-width: 0;
 }
 
-/* The outcomes set is a fieldset, so reset the browser chrome to the plain
-   `.field` box and lay its checkboxes out in a wrapping row. */
-.audit__outcomes {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-}
-
 .audit__outcomes .field__label {
   padding: 0;
 }
@@ -5548,11 +5781,7 @@ select {
   gap: 6px;
   align-items: center;
   color: var(--tx);
-  font-size: 13px;
-}
-
-.audit__outcome-choice input {
-  min-height: 0;
+  font-size: var(--fs-sm);
 }
 
 .audit__outcomes .audit__outcome-choice + .audit__outcome-choice {
@@ -5562,7 +5791,7 @@ select {
 .audit__panes {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
   align-items: start;
   min-height: 0;
 }
@@ -5570,7 +5799,7 @@ select {
 .audit__list-pane {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -5588,7 +5817,7 @@ select {
 .audit__row {
   justify-content: flex-start;
   width: 100%;
-  gap: 8px;
+  gap: var(--space-2);
   flex-wrap: wrap;
   padding: 0 10px;
   border: 0;
@@ -5596,6 +5825,7 @@ select {
   border-radius: 0;
   background: transparent;
   text-align: left;
+  min-height: var(--control);
 }
 
 .audit__row:hover {
@@ -5614,13 +5844,13 @@ select {
 .audit__row-actor {
   color: var(--tx-dim);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .audit__row-when {
   margin-left: auto;
   color: var(--tx-dim);
-  font-size: 11px;
+  font-size: var(--fs-xs);
 }
 
 /* Negative outcomes tint the badge boundary only; the text stays --tx so the
@@ -5644,7 +5874,7 @@ select {
 .audit__detail {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   min-width: 0;
 }
 
@@ -5652,19 +5882,18 @@ select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .audit__detail-head h2 {
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 15px;
 }
 
 .audit__facts {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
-  gap: 4px 16px;
+  gap: var(--space-1) var(--space-4);
   margin: 0;
 }
 
@@ -5674,7 +5903,7 @@ select {
 
 .audit__fact dt {
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .audit__fact dd {
@@ -5684,13 +5913,13 @@ select {
 
 .audit__fact-value {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   overflow-wrap: anywhere;
 }
 
 .audit__payload-title {
-  margin: 4px 0 0;
-  font-size: 13px;
+  margin: var(--space-1) 0 0;
+  font-size: var(--fs-sm);
   color: var(--tx-dim);
 }
 
@@ -5702,7 +5931,7 @@ select {
   background: var(--bg-panel);
   color: var(--tx);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   overflow-x: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -5715,18 +5944,18 @@ select {
 }
 
 /* Secret-change approvals (#151). Layout only; interactive elements inherit the
-   design system's controls (44px targets, focus rings, state-by-text). */
+   design system's controls (the control token, focus rings, state-by-text). */
 .change-approvals {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--space-5);
   padding: var(--page-pad, 16px);
 }
 
 .change-approvals__section-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
   align-items: center;
   justify-content: space-between;
 }
@@ -5739,7 +5968,7 @@ select {
 .change-approvals__policies th,
 .change-approvals__policies td {
   text-align: left;
-  padding: 8px;
+  padding: var(--space-2);
   border-bottom: 1px solid var(--panel-line);
   vertical-align: top;
 }
@@ -5748,14 +5977,14 @@ select {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  margin-top: 16px;
-  padding: 16px;
+  margin-top: var(--space-4);
+  padding: var(--space-4);
 }
 
 .change-approvals__form-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .change-approvals__requests {
@@ -5764,13 +5993,13 @@ select {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .change-approvals__request {
   border: 1px solid var(--panel-line);
   border-radius: var(--radius-container);
-  padding: 12px;
+  padding: var(--space-3);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -5779,19 +6008,19 @@ select {
 .change-approvals__request-head {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: baseline;
   justify-content: space-between;
 }
 
 .change-approvals__request-state {
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .change-approvals__request-meta {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
 }
 
@@ -5807,40 +6036,22 @@ select {
 .change-approvals__request-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
 }
 
 .change-approvals__bypass {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: center;
-}
-
-/* Form controls in the approvals surface meet the touch floor the pinned set
-   asserts on mobile; the design system's bare `select`/`textarea` carry only
-   typography, so the surface sizes them like `.field input`. */
-.change-approvals select,
-.change-approvals input:not([type='checkbox']),
-.change-approvals textarea {
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg-panel);
-  color: var(--tx);
-}
-
-.change-approvals textarea {
-  padding: 8px 12px;
 }
 
 .change-approvals label {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: var(--touch);
+  gap: var(--space-2);
+  min-height: var(--control);
 }
 
 /* ---------------------------------------------------------------------------
@@ -5852,7 +6063,7 @@ select {
 .adapters__panes {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
 }
 
@@ -5874,27 +6085,24 @@ select {
 .adapters__adapter {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .adapters__adapter-head {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 8px 12px;
+  gap: var(--space-2) var(--space-3);
 }
 
 .adapters__adapter-head h2 {
   margin: 0;
-  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
   color: var(--tx-dim);
 }
 
 .adapters__origin {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--tx-dim);
 }
 
@@ -5904,17 +6112,17 @@ select {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .adapters__target {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 8px 12px;
+  gap: var(--space-2) var(--space-3);
   width: 100%;
-  min-height: 44px;
-  padding: 8px 12px;
+  min-height: var(--control);
+  padding: var(--space-2) var(--space-3);
   text-align: left;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
@@ -5989,7 +6197,7 @@ select {
 
 .adapters__facts dt {
   color: var(--tx-dim);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .adapters__facts dd {
@@ -6018,24 +6226,24 @@ select {
 .adapters__conflict {
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-height: 44px;
+  gap: var(--space-2);
+  min-height: var(--control);
 }
 
 .adapters__workflow {
   margin: 0;
-  padding: 12px;
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
   background: var(--bg-panel);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   overflow-x: auto;
 }
 
 .adapters__form {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 @media (min-width: 720px) {
@@ -6058,14 +6266,14 @@ select {
 .adapters__decision {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .adapters__decision label {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  min-height: 44px;
+  min-height: var(--control);
 }
 
 .adapters__empty {
@@ -6086,7 +6294,7 @@ select {
 .definitions-bundle__body h3, .definitions-bundle__body h4 { margin: 0; }
 .definitions-bundle__body .remote__facts dd { overflow-wrap: anywhere; min-width: 0; }
 .definitions-bundle__body input[type="file"] { width: 100%; min-width: 0; max-width: 100%; }
-.definitions-bundle__delete { display: flex; align-items: center; gap: .75rem; min-height: 44px; }
+.definitions-bundle__delete { display: flex; align-items: center; gap: .75rem; min-height: var(--control); }
 
 /* The link glyph rides inline after the key; the sentence it stands for is a
    visually-hidden span in the markup. */
@@ -6094,7 +6302,7 @@ select {
   display: inline;
   margin-left: 6px;
   color: var(--tx-faint);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 400;
   white-space: nowrap;
 }
@@ -6146,7 +6354,7 @@ select {
 .matrix-cell__absent {
   color: var(--tx-faint);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-mono);
 }
 
 /* Secret entry is a textarea so pasted newlines survive; masking comes from
@@ -6159,9 +6367,9 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: var(--space-1);
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .matrix__publish-group {
@@ -6171,23 +6379,23 @@ select {
 }
 
 .matrix__publish-group-name {
-  margin: 8px 0 4px;
+  margin: var(--space-2) 0 var(--space-1);
   color: var(--tx-faint);
-  font-size: 11px;
+  font-size: var(--fs-xs);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .scan-warn__locator {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--tx-dim);
 }
 
 .ceremony__window {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--tx-dim);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
 }
 
@@ -6206,9 +6414,9 @@ select {
 }
 
 .definitions-bundle__provenance {
-  margin: 8px 0 0;
+  margin: var(--space-2) 0 0;
   color: var(--tx-dim);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
 }
 
@@ -6225,7 +6433,7 @@ select {
 .history__impact-heading {
   margin: 10px 0 4px;
   color: var(--tx-dim);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 500;
 }
 
@@ -6264,13 +6472,13 @@ select {
   margin: 6px 0 0;
   padding-left: 18px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
 }
 
 .key-detail__alternatives {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -6280,8 +6488,8 @@ select {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
 .scim-mapping__caps li.capability {
@@ -6292,20 +6500,69 @@ select {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 18px;
-  margin: 16px 0 0;
-  font-size: 13px;
+  margin: var(--space-4) 0 0;
+  font-size: var(--fs-sm);
 }
 
 .login__links a {
   display: inline-flex;
   align-items: center;
-  min-height: var(--touch);
+  min-height: var(--control);
   color: var(--tx-dim);
 }
 
 .login__links a:hover,
 .login__links a:focus-visible {
   color: var(--accent);
+}
+/* --- Sign-in flow ------------------------------------------------------------
+ *
+ * Same card as the login page. The code field is the step-up banner's (mono,
+ * one-time-code), sized a step up so a six-digit code reads at a glance. */
+.field.login__code input {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  letter-spacing: 0.2em;
+}
+
+.login__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.login__account {
+  margin: 0;
+  color: var(--tx-dim);
+}
+
+.login__account strong {
+  color: var(--tx);
+  font-weight: 500;
+}
+
+.login__qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.login__secret {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  color: var(--tx-dim);
+  font-size: var(--fs-sm);
+}
+
+.login__secret code {
+  color: var(--tx);
+  letter-spacing: 0.08em;
+  overflow-wrap: anywhere;
 }
 
 /* Between the phone drawer and the full desktop header the crumbs and the
@@ -6325,15 +6582,14 @@ select {
 }
 
 /* Managed configuration uses existing settings surfaces in both themes. */
-.self-config-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-block: 20px; }
+.self-config-controls { display: flex; align-items: end; gap: var(--space-3); flex-wrap: wrap; margin-block: 20px; }
 .self-config-controls .field { flex: 1 1 240px; min-width: 0; }
-.self-config-notice { margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--panel-line); background: var(--bg-panel); color: var(--tx-dim); font-size: 13px; }
+.self-config-notice { margin: 0; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--panel-line); background: var(--bg-panel); color: var(--tx-dim); font-size: var(--fs-sm); }
 .self-config-notice strong { color: var(--tx); }
 .self-config-preview { margin-block-start: 20px; padding-block-start: 16px; border-top: 1px solid var(--panel-line); }
 .self-config-preview code, #configuration-owner code, #configuration-instances .settings-row__detail { overflow-wrap: anywhere; }
 @media (max-width: 640px) {
   .self-config-controls { align-items: stretch; }
-  .self-config-controls .btn { min-height: 44px; }
   #configuration-instances .settings-row { align-items: stretch; flex-wrap: wrap; }
 }
 

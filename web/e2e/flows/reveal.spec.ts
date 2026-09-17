@@ -413,7 +413,7 @@ test.describe('reveal ceremonies', () => {
       fonts: [[dialog.getByRole('heading', { level: 2 }), 'ui']],
       colours: [[dialog, 'backgroundColor', '--bg-panel']],
       hairlines: [dialog],
-      density: [[dialog.getByRole('button', { name: 'Use a passkey' }), '--touch']],
+      density: [[dialog.getByRole('button', { name: 'Use a passkey' }), '--control']],
     });
   });
 
@@ -446,7 +446,7 @@ test.describe('reveal ceremonies', () => {
       fonts: [[field, 'mono']],
       colours: [],
       hairlines: [],
-      density: [[field, '--touch']],
+      density: [[field, '--control']],
     });
   });
 
@@ -750,7 +750,7 @@ test.describe('pinned assertion set', () => {
           [well, 'borderTopColor', '--line'],
         ],
         hairlines: [well],
-        density: [[revealAll, '--touch']],
+        density: [[revealAll, '--control']],
       });
     });
   }

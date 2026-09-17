@@ -670,7 +670,7 @@ test.describe('machine access', () => {
             [well, 'borderTopColor', '--line'],
           ],
           hairlines: [well],
-          density: [[mint, '--touch']],
+          density: [[mint, '--control']],
         });
       } finally {
         await page.emulateMedia({ colorScheme: null });
@@ -797,7 +797,7 @@ test.describe('machine access', () => {
       fonts: [[dialog.locator('.machine__token'), 'mono']],
       colours: [[dialog, 'backgroundColor', '--bg-panel']],
       hairlines: [dialog],
-      density: [[dialog.getByRole('button', { name: 'Done' }), '--touch']],
+      density: [[dialog.getByRole('button', { name: 'Done' }), '--control']],
     });
 
     await dialog.getByRole('checkbox').check();

@@ -4,7 +4,7 @@ import { cx } from './cx.ts';
 
 /**
  * A labelled checkbox. Emits the `.field.chk` row (input then label) the screens
- * already hand-write. ui.css draws the box on pseudo-elements and keeps the
+ * already hand-write. app.css draws the box on pseudo-elements and keeps the
  * input itself as the hit target: 24px on a fine pointer, the 44px touch floor
  * the pinned set asserts on a coarse one. `type` is locked to `checkbox` after
  * the spread.

@@ -1,7 +1,7 @@
 // Fails the build when a stylesheet states more literal sizes than its
-// budget allows. The budget is a ratchet: it can only go down. ui.css (the
-// design system's own stylesheet) is held at zero; app.css carries its
-// legacy count until the migration series (#761, #762) retires the rules.
+// budget allows. The budget is a ratchet: it can only go down. app.css carries
+// its legacy count, lowered as the migration series (#761, #762) retires the
+// rules it still states in literals.
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { z } from 'zod';
@@ -22,7 +22,8 @@ for (const [file, budget] of Object.entries(budgets)) {
     for (const r of found.slice(0, 40)) console.error(`  ${file}:${r.line}  ${r.property}: ${r.value}`);
     if (found.length > 40) console.error(`  … ${found.length - 40} more`);
   } else if (found.length < budget) {
-    console.log(`${file}: ${found.length} literal sizes, budget ${budget}. Lower the budget in scripts/design/adherence-budget.json so it cannot creep back.`);
+    failed = true;
+    console.error(`${file}: ${found.length} literal sizes, budget ${budget}. Lower the budget in scripts/design/adherence-budget.json so it cannot creep back.`);
   } else {
     console.log(`${file}: ${found.length} literal sizes, at budget`);
   }
