@@ -6,7 +6,8 @@ the app renders exactly as before. The work lives in `web/src/ui/**` and
 `web/.storybook/preview.tsx`, and migrates into the app with the rest of the
 component move.
 
-Run: `cd web && pnpm storybook`, open `ui/`. `src/ui/ui.css` is unscoped;
+Run: `cd web && pnpm storybook`, open `ui/`. `src/ui/ui.css` was unscoped
+(#761 moved it into `src/styles/app.css` and deleted the file);
 the comparison scaffold (Design toolbar, `compare.tsx`, `CurrentVsProposed`
 stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 (`main.ts`, `preview.tsx`, `withApp.tsx` comment cleanup), and
@@ -99,7 +100,9 @@ pointer:
   alone). #761 retargeted all twenty to `--control`; on a coarse pointer
   `tokens.css` resolves `--control` to `--touch`, so the mobile project is
   unchanged.
-- The "five rules app.css states with more specificity" note (`ui.css:367`)
+- The "five rules app.css states with more specificity" note (now the
+  "Three rules app.css states with more specificity" comment in the design
+  foundations section of `web/src/styles/app.css`)
   resolves to **three** rules over three selectors: `.page--members .inspect
   select` (plus its `max-width: 700px` copy), `.sidebar__link`, and
   `.environment-lifecycle > summary`. The count of five was counting
@@ -133,7 +136,7 @@ hierarchy instead of identical outlined buttons (applied: `danger` and
 `quiet` variants), no ledes that restate the heading, counts over ids (route
 copy, next slice).
 
-## 2. Approved: Checkbox and Radio (`ui.css`, unscoped)
+## 2. Approved: Checkbox and Radio (unscoped; authored in `ui.css`, now in `app.css`)
 
 `appearance: none`; the input stays the hit box (24px fine, the WCAG 2.5.8
 minimum, raised from 18px after review; 44px coarse), the drawn box is a
@@ -322,9 +325,10 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
 - DESIGN.md "Tokens" states the rule per family.
 - `design:check` now also runs `scripts/design/adherence-check.ts`: it counts
   literal px sizes on token-covered properties per stylesheet against
-  `scripts/design/adherence-budget.json`, a ratchet. `ui.css` is held at 0
-  (its 24 literals were converted); `app.css` starts at its measured count
-  (798) and the budget only goes down as #761/#762 retire rules. Hairlines
+  `scripts/design/adherence-budget.json`, a ratchet. `ui.css` was held at 0
+  (its 24 literals were converted) and its key went with the file in #761;
+  `app.css` started at its measured count (798) and the budget only goes down
+  as #761/#762 retire rules (728 at the head of #761). Hairlines
   (1px) and the 2px ring are exempt. Unit-tested (`adherence.test.ts`).
 - `ui/Tokens` (Storybook) lists every token with its live value per theme and
   the family rule, from `src/ui/tokens.ts`; its play test fails when a listed
@@ -397,7 +401,7 @@ the full account.
   trailing section that restates it. (`d216d101`, `9df304f6`, `8dffd823`,
   `4063f417`, `e7956597`)
 - Pins retargeted: all twenty desktop density pins now read `--control`; the
-  dead `(max-width: 800px)` matrix checkbox bump is gone. (this task)
+  dead `(max-width: 800px)` matrix checkbox bump is gone. (`981e531b`)
 
 Layer 2 (#762) still open: route markup onto the `ui/` atoms, the badge fold
 (`.history__current`, `.matrix__problem-count` and the `chip--armed` /

@@ -1155,7 +1155,7 @@ select {
 }
 
 /* `.menu` sets `display: flex`, and an author `display` beats the UA
-   `[popover]:not(:popover-open) { display: none }` on cascade origin — so the
+   `[popover]:not(:popover-open) { display: none }` on cascade origin, so the
    closed panel would otherwise stay laid out under the trigger. Re-hide it. */
 .menu--pop:not(:popover-open) {
   display: none;
@@ -1166,7 +1166,7 @@ select {
     position: absolute;
     position-area: bottom span-right;
     inset: auto;
-    /* Reset the UA popover `margin: auto` — auto margins re-centre the panel
+    /* Reset the UA popover `margin: auto`. Auto margins re-centre the panel
        across the position-area region and undo the anchor tuck. */
     margin: 4px 0 0;
   }
@@ -1695,7 +1695,7 @@ select {
 }
 
 .matrix__environment-picker {
-  /* Not the containing block for its popover — .matrix__key-heading is, so the
+  /* Not the containing block for its popover: .matrix__key-heading is, so the
      fieldset anchors to the Key column's left edge instead of the button's. At
      narrow widths the button sits far right; anchoring there ran the popover
      (and its "PROTECTED" marker) off the right viewport edge (#743). */
@@ -6305,7 +6305,9 @@ h3,
   flex: none;
 }
 
-/* Five rules app.css states with more specificity than the fold above. */
+/* Three rules app.css states with more specificity than the fold above:
+   `.page--members .inspect select` (and its max-width 700px copy),
+   `.sidebar__link`, `.environment-lifecycle > summary`. */
 :root .page--members .inspect select {
   min-height: var(--control);
   padding: 0 var(--space-3);

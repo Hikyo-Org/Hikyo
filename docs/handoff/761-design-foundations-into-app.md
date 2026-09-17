@@ -51,7 +51,8 @@ equal-specificity win, so the move and the delete had to be atomic per block.
 | `c52d4f45` | plan note: the badge fold layer 1 leaves open falls to #762 |
 | `4063f417` | B10 choice controls, B15 dialogs, B4 the touch-height fold |
 | `e7956597` | the last four local checkbox and radio size rules |
-| this commit | the twenty e2e pins, the dead matrix checkbox bump, the handoffs |
+| `981e531b` | the twenty e2e pins, the dead matrix checkbox bump, the handoffs |
+| `FIXSHA` | review fixes: the stale "five rules" comment, ui.css tense in the handoffs, em-dashes in the touched files |
 
 ## What stayed, and why
 
@@ -85,7 +86,7 @@ One bridge rule was added rather than deleted: a coarse-pointer touch floor for
 `--badge-height` and the element is a button. The root fix is the `Button` swap
 in #762.
 
-Deleted this task: the `@media (max-width: 800px)` bump
+Deleted in `981e531b`: the `@media (max-width: 800px)` bump
 `.matrix__environment-picker input, .matrix-editor__copy input,
 .matrix__publish input { width/height: var(--touch) }`. Every input under those
 three containers is a checkbox (verified in `Matrix.tsx`, `MatrixKeyCreate.tsx`,
@@ -101,6 +102,8 @@ It was dead, and the foundations comment claimed it.
 |---|---|
 | `origin/main` | 798 (plus a `src/ui/ui.css: 0` key, now gone) |
 | after the type/button/field deletions (`d216d101`) | 762 |
+| after the cascade and comment corrections (`9df304f6`) | 759 |
+| after the alert/publish/badge deletions (`8dffd823`) | 744 |
 | after the choice/dialog/fold deletions (`4063f417`) | 736 |
 | after the last local size rules (`e7956597`) | 728 |
 | head of this branch | 728 |

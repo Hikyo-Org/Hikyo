@@ -595,7 +595,7 @@ test.describe('environment matrix', () => {
   test('keeps the matrix scroll inside its own well at a short viewport', async ({ page }) => {
     // Regression: a `min-height: 420px` floor on `.matrix__layout` applied
     // unconditionally forced the matrix to overflow into `.content` on short
-    // viewports, so the whole page column scrolled instead of the matrix — the
+    // viewports, so the whole page column scrolled instead of the matrix: the
     // "scroll the sidebar, not the matrix" report. The floor is load-bearing
     // above ~640px (it stops the flex column starving the well to 0 rows); the
     // bug was that it had no height gate. It is now `@media (min-height: 640px)`,
@@ -621,20 +621,20 @@ test.describe('environment matrix', () => {
 
     // Under an ungated 420px floor the well cannot shrink, so it balloons past
     // the viewport column (measured 419 vs a 197px column) and the table scrolls
-    // the whole page instead of the well — `wellHeight < columnHeight` fails.
+    // the whole page instead of the well, so `wellHeight < columnHeight` fails.
     // Below the 640px gate the floor is absent, the well fits the column and
     // owns the table's scroll.
     expect(scroll.wellHeight).toBeLessThan(scroll.columnHeight);
     expect(scroll.wellOverflow).toBeGreaterThan(0);
 
     // `.content` itself must not scroll: everything lives in the well. A second
-    // bug hid here — `.matrix__scroll` was unpositioned, so an absolute
+    // bug hid here: `.matrix__scroll` was unpositioned, so an absolute
     // `.visually-hidden` span in a virtualised cell resolved its containing block
     // against `.matrix__surface` above the well, escaped the overflow:auto clip,
     // and added ~287px of blank scroll to `.content`. `position: relative` on the
     // well clips it back in. (Closed legend/picker `<details>` bodies also lay out
     // but are paint- and scroll-contained by the closed details, so they never
-    // contributed — the earlier "popover overhang" reading was wrong.)
+    // contributed, the earlier "popover overhang" reading was wrong.)
     expect(scroll.contentOverflow).toBe(0);
   });
 });
