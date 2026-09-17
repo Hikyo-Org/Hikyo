@@ -27,7 +27,8 @@ Commits in `git log --oneline origin/main..HEAD` order (oldest first).
 | 9 | `/login` renders `ui/auth/LoginForm`; the password stays in sensitive state; every sign-in leg retires when an attempt starts | `5b03bb9c`, `50bff042`, `a52737e9` |
 | 10 | Route copy: the StepUpBanner title covers provider sessions, two ledes say what the page does rather than which colour it is | `d00813e1`, `73d9093d` |
 | 11 | The design calls: row editor on the dialog anatomy, publish sheet legend and eyebrow and badges, credential lifetime as a choice group with its own Days field | `d813489b`, `8d700073`, `3da0c246`, `1e7b9cb9`, `6b28299d`, `913b81ea` |
-| 12 | The `markup-check` gate, this handoff, section 5 closed | `f4ddb83c` and this one |
+| 11 fix | `Audit.tsx`'s pane refusal takes `ui/Alert`, the row editor's toggles sit beside the panels they open | `d4604925` |
+| 12 | The `markup-check` gate, this handoff, section 5 closed | `f4ddb83c`, `bc3bbc2f`, and this one |
 
 The `app.css` adherence budget ratcheted down through the series, 284 to 266,
 as each task's CSS was retired.
@@ -58,55 +59,56 @@ proved, not a convenience.
 
 ## Sites left raw, and why
 
-Every such site carries a `markup-check:` comment, which is what the gate reads.
-Grep: `grep -rn "markup-check" web/src/routes web/src/app`.
+Every such site carries a `markup-check:` comment, which is what the gate
+reads. Grep: `grep -rn "markup-check" web/src/routes web/src/app`. Cited by the
+comment's own words, since line numbers move.
 
-**Not an alert** (a status paragraph or an `role="note"` that borrows the alert
-or notice skin but is not a refusal): `Values.tsx:452`, `Sections.tsx:248`,
-`MachineAccess.tsx:431`, `:1928`, `:3650`, `Remotes.tsx:967`,
-`OrgSettings.tsx:235`, `ImportWizard.tsx:467`, `ScimProvisioning.tsx:647`
-(the severity-keyed `<li>`), `:1028`.
+**Not an alert** (a status paragraph, or a `role="note"`, that borrows the
+alert or notice skin but is not a refusal), marker `not an alert`:
+`Values.tsx`, `Sections.tsx`, `MachineAccess.tsx` (three of them, the reveal,
+the mint and the grant status lines), `Remotes.tsx`, `ImportWizard.tsx`,
+`ScimProvisioning.tsx` (the severity-keyed `<li>` and one status paragraph).
 
-**The `machine__policy` skin**: `MachineAccess.tsx:1058`, `:1068`, `:1088`. The
-three policy paragraphs combine `alert` or `notice` with a route class that
-restyles them; they are alerts, but not the atom's shape. Marked in this task.
+**The `machine__policy` skin**, marker `machine__policy skin`:
+`MachineAccess.tsx` x3. The policy paragraphs combine `alert` or `notice` with
+a route class that restyles them; they are alerts, but not the atom's shape.
 
-**Rich label, so the atom's `label: string` cannot carry it**:
-`Matrix.tsx:1089` (the PROTECTED marker is its own span, pushed right),
-`Adapters.tsx:669` and `:1643` (each option leads with a `<strong>` verb).
+**Inline refusal against a block atom**, marker `inline refusal, atom is
+block-level`: `OrgSettings.tsx`, a `<span className="alert" role="alert">`
+inside `.settings-row__copy`. It is a refusal, but `ui/Alert` renders a block
+div, which would break the row's inline copy. The issue's literal
+`className="alert"` grep over the routes is clean apart from this one span.
 
-**No visible label**: `FolderCleanupDialog.tsx:108`, a bare checkbox in a
-three-column grid whose name is the column beside it; it keeps its `aria-label`.
+**Rich label, so the atom's `label: string` cannot carry it**, marker `rich
+label`: `Matrix.tsx` (the PROTECTED marker is its own span, pushed right),
+`Adapters.tsx` x2 (each option leads with a `<strong>` verb).
 
-**An attribute the atom cannot pass through**: `ChangeApprovals.tsx:557`, whose
-row `title` disambiguates two people with the same display name
-(`ui/Checkbox` spreads rest onto the input, which would shrink the tooltip).
+**No visible label**, marker `no visible label`: `FolderCleanupDialog.tsx`, a
+bare checkbox in a three-column grid whose name is the column beside it; it
+keeps its `aria-label`.
 
-**A control the atom does not express**: `MatrixRowEditor.tsx:265` and `:347`,
-raw `<textarea>`s inside the atom's Field, because the secret face is
-`-webkit-text-security` on a textarea so pasted newlines survive.
-`Remotes.tsx` keeps one hand-written `.chk` row inside a ChoiceGroup for its
-inline number input.
+**An attribute the atom cannot pass through**, marker `the row's \`title\`
+disambiguates`: `ChangeApprovals.tsx`, whose row `title` separates two people
+with the same display name (`ui/Checkbox` spreads rest onto the input, which
+would shrink the tooltip to the box).
 
-**Control plus action plus hint**: `Members.tsx:1161`, a button between the
-control and its hint.
+**A control the atom does not express**, marker `a raw textarea inside the
+atom's field`: `MatrixRowEditor.tsx` x2. The secret face is
+`-webkit-text-security` on a textarea so pasted newlines survive, which no
+Input type expresses; Field still owns the label and the wiring.
 
 Not gated at all, by ruling: the 37 standalone `.field__hint` captions (they
 are captions, not fields) and the non-button `.btn` sites from Task 1
 (`<a>`, `<Link>`, `<summary>`), which are not buttons.
 
-## Open: one unmarked gate hit
+## The gate is green at HEAD
 
-`web/src/routes/Audit.tsx:298` is `<p className="audit__empty alert"
-role="alert">{refusalText(trail.error, scope)}</p>`, the events pane's error
-state. It is a refusal in an alert skin, so it is `ui/Alert` with
-`audit__empty` kept for the pane layout, not a ruled raw site. No task touched
-it: the Alert task's commits never opened `Audit.tsx`, so this is a miss rather
-than a decision. Task 12 was not allowed to edit routes beyond the three
-`machine__policy` markers, so the gate is red on this one line and
-`pnpm run design:check` exits 1 (and with it `design:export`, `storybook` and
-`build-storybook`). Converting that one element, or ruling it raw with a
-marker, turns the whole series green.
+`Audit.tsx`'s events-pane refusal (`<p className="audit__empty alert"
+role="alert">`) was the one site the gate caught that no task had ruled: the
+Alert task's commits never opened the file. Task 11's fix round converted it to
+`<Alert>` in `d4604925`, so `pnpm run design:check` passes on the branch, and
+with it `design:export`, `storybook` and `build-storybook`, which chain
+through it.
 
 ## Visual deltas the tasks accepted
 
@@ -181,11 +183,14 @@ class tokens, `type="checkbox"`, `type="radio"`, a single-line `<button>` with
 scan itself is `web/scripts/design/markup.ts`, pinned by
 `web/scripts/design/markup.test.ts`. Add a pattern when an atom lands.
 
-A site that stays raw by ruling carries a `markup-check:` comment. The comment
-allowlists its own line and the block it sits in (every following line until
-one is indented less than the comment), which is how a single ruling covers a
-radiogroup's two inputs. Any wording counts: the gate reads the marker, the
-reviewer reads the reason, and there is no allowlist hidden in the script.
+A site that stays raw by ruling carries a `markup-check:` comment, and the
+comment rules exactly one thing. On a line that also holds markup it rules that
+line. Alone on its line it rules the single element that starts on the next
+non-blank line, followed to that element's close, which is how one ruling
+covers a radiogroup's two inputs. It never reaches a sibling, and a marker at
+column 0 is itself a gate failure (it would rule a whole module). Any wording
+counts: the gate reads the marker, the reviewer reads the reason, and there is
+no allowlist hidden in the script.
 
 ## Preview verification (controller)
 

@@ -232,7 +232,7 @@ function ProjectRetentionList({
                   {state === undefined || state.status === 'pending' ? (
                     <span role="status">Loading effective bounds…</span>
                   ) : state.status === 'error' ? (
-                    <span className="alert" role="alert">{/* markup-check: not an alert */}
+                    <span className="alert" role="alert">{/* markup-check: inline refusal, atom is block-level */}
                       This project&apos;s retention policy could not be read.
                     </span>
                   ) : (

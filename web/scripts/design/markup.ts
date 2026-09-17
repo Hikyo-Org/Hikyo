@@ -4,20 +4,24 @@
 // emits. The banned list is the "Done when" of issue #762; add a pattern when
 // an atom lands.
 //
-// A site that stays raw by ruling carries a `markup-check:` comment. The
-// comment sits on the offending line, or on the opener of the element that
-// holds it, which can be a dozen lines above (a radiogroup's two inputs share
-// one ruling). So a marker covers itself and the block it sits in: every
-// following line until the first non-blank one indented less than the marker.
-// That over-reaches to the end of the enclosing block rather than the end of
-// the marked element, which is the price of not parsing JSX. The wording is
-// the reviewer's business, not this script's: any `markup-check:` allowlists,
-// so no allowlist hides in here.
+// A site that stays raw by ruling carries a `markup-check:` comment, and the
+// comment rules exactly one thing:
+//
+//   - on a line that also holds markup, it rules that line;
+//   - alone on its line (a `{/* */}`, `/* */` or `//` comment), it rules the
+//     single element that starts on the next non-blank line, through that
+//     element's close, which is how one ruling covers a radiogroup's two
+//     inputs.
+//
+// It never reaches a sibling: the element after the ruled one is checked
+// again. A marker at column 0 would rule a whole module, so it is itself a
+// failure. The wording is the reviewer's business, not this script's: any
+// `markup-check:` allowlists what it rules, so no allowlist hides in here.
 
 export type MarkupHit = { line: number; atom: string; text: string };
 
 /** A whole class token inside a className literal: `"notice machine__policy"` is a notice. */
-const cls = (name: string) => new RegExp(`className="(?:[^"]*\\s)?${name}(?:\\s[^"]*)?"`);
+const cls = (name: string) => new RegExp(`className="(?:[^"]*\\s)?${name}(?:[\\s-][^"]*)?"`);
 
 const BANNED: readonly { pattern: RegExp; atom: string }[] = [
   { pattern: cls('alert'), atom: 'ui/Alert' },
@@ -29,25 +33,74 @@ const BANNED: readonly { pattern: RegExp; atom: string }[] = [
   { pattern: /<button[^>]*className="btn/, atom: 'ui/Button' },
   { pattern: cls('ceremony'), atom: 'ui/Dialog' },
   { pattern: cls('matrix-editor'), atom: 'ui/Dialog' },
-  { pattern: /className="settings-tag/, atom: 'ui/Button variant="quiet"' },
-  { pattern: /className="chip/, atom: 'ui/Badge or ui/ChoiceGroup' },
+  { pattern: cls('settings-tag'), atom: 'ui/Button variant="quiet"' },
+  { pattern: cls('chip'), atom: 'ui/Badge or ui/ChoiceGroup' },
   { pattern: /[🔒🔗✓✕Δ◌⋯]/u, atom: 'ui/Glyph' },
 ];
 
 const MARKER = /markup-check:/;
+/** The marker owns the line: nothing but a comment opens it. */
+const ALONE = /^(?:\{\s*)?(?:\/\/|\/\*)/;
 const indent = (line: string) => line.length - line.trimStart().length;
+const count = (line: string, pattern: RegExp) => line.match(pattern)?.length ?? 0;
+
+/** Tags opened minus tags closed on one line, so an element can be followed to its end. */
+const depthDelta = (line: string) =>
+  count(line, /<[A-Za-z]/g) - count(line, /<\//g) - count(line, /\/>/g);
+
+type State =
+  | { kind: 'open' }
+  | { kind: 'comment'; line: boolean }
+  | { kind: 'awaiting' }
+  | { kind: 'element'; depth: number };
 
 export function scanMarkup(lines: readonly string[]): MarkupHit[] {
   const hits: MarkupHit[] = [];
-  // The indent of the open marker block, or null outside one.
-  let scope: number | null = null;
-  for (const [i, line] of lines.entries()) {
-    if (scope !== null && line.trim() !== '' && indent(line) < scope) scope = null;
-    if (MARKER.test(line)) scope = indent(line);
-    if (scope !== null) continue;
-    for (const { pattern, atom } of BANNED) {
-      if (pattern.test(line)) hits.push({ line: i + 1, atom, text: line.trim() });
+  let state: State = { kind: 'open' };
+  for (const [i, raw] of lines.entries()) {
+    const line = raw;
+    const hit = (atom: string) => hits.push({ line: i + 1, atom, text: line.trim() });
+
+    if (MARKER.test(line)) {
+      if (indent(line) === 0) {
+        hit('an indented marker: at column 0 it would rule the whole file');
+      }
+      const alone = ALONE.test(line.trim());
+      const openBlock = line.includes('/*') && !line.includes('*/');
+      state = alone
+        ? openBlock || line.trim().startsWith('//')
+          ? { kind: 'comment', line: !openBlock }
+          : { kind: 'awaiting' }
+        : { kind: 'open' };
+      continue;
     }
+
+    if (state.kind === 'comment') {
+      // A `//` run ends at the first line that does not continue it; a `/* */`
+      // block ends on its closing line.
+      if (state.line) {
+        if (line.trim().startsWith('//')) continue;
+        state = { kind: 'awaiting' };
+      } else {
+        if (line.includes('*/')) state = { kind: 'awaiting' };
+        continue;
+      }
+    }
+
+    if (state.kind === 'awaiting') {
+      if (line.trim() === '') continue;
+      const depth = depthDelta(line);
+      state = depth > 0 ? { kind: 'element', depth } : { kind: 'open' };
+      continue;
+    }
+
+    if (state.kind === 'element') {
+      const depth: number = state.depth + depthDelta(line);
+      state = depth > 0 ? { kind: 'element', depth } : { kind: 'open' };
+      continue;
+    }
+
+    for (const { pattern, atom } of BANNED) if (pattern.test(line)) hit(atom);
   }
   return hits;
 }
