@@ -2029,8 +2029,7 @@ a:is(.badge, .chip, .settings-tag) {
   font-size: var(--fs-sm);
 }
 
-.matrix__environment-picker label,
-.matrix-editor__copy .chk {
+.matrix__environment-picker label {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2038,6 +2037,13 @@ a:is(.badge, .chip, .settings-tag) {
   padding-inline: var(--space-2);
   border-radius: var(--radius-control);
   cursor: pointer;
+}
+
+/* The copy rows are ui/Checkbox, so `.chk` states the row; only the pad and the
+   radius the hover fill needs are this site's own. */
+.matrix-editor__copy .chk {
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-control);
 }
 
 .matrix__environment-picker label:hover,
@@ -2538,7 +2544,7 @@ a:is(.badge, .chip, .settings-tag) {
   gap: var(--space-1);
 }
 
-.matrix-key-create label {
+.matrix-key-create label:not(.chk label) {
   color: var(--tx-dim);
   font-size: var(--fs-sm);
 }
@@ -2568,7 +2574,7 @@ a:is(.badge, .chip, .settings-tag) {
   font-size: var(--fs-sm);
 }
 
-.matrix-key-create__constraints > label {
+.matrix-key-create__constraints label:not(.chk label) {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -3229,8 +3235,6 @@ a:is(.badge, .chip, .settings-tag) {
 
 /* The opt-in acknowledgement: a deliberate tick, never pre-checked. */
 .chk.ceremony__ack {
-  display: flex;
-  gap: var(--space-2);
   align-items: flex-start;
   margin: var(--space-3) 0;
   max-width: 60ch;
@@ -5418,7 +5422,7 @@ label.chk:has(input:disabled) {
   font-weight: 500;
 }
 
-.import-wizard__key label {
+.import-wizard__key label:not(.chk label) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -5702,14 +5706,6 @@ label.chk:has(input:disabled) {
   min-width: 0;
 }
 
-.audit__outcomes .field__label {
-  padding: 0;
-}
-
-.field.audit__outcomes {
-  gap: 6px;
-}
-
 .audit__panes {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -5969,7 +5965,7 @@ label.chk:has(input:disabled) {
   align-items: center;
 }
 
-.change-approvals label {
+.change-approvals label:not(.chk label) {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);

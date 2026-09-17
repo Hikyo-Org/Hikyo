@@ -197,8 +197,7 @@ describe('MatrixKeyCreate', () => {
 
   it('marks a secret declaration and hides the first value field', async () => {
     const view = await render();
-    const secret = view.container.querySelector<HTMLInputElement>('.matrix-key-create__secret input');
-    if (secret === null) throw new Error('no secret checkbox');
+    const secret = checkboxNamed(view.container, '🔒 secret');
     await act(async () => secret.click());
     // A textarea (a password input flattens newlines), masked by class until
     // the operator opts to see what they type.

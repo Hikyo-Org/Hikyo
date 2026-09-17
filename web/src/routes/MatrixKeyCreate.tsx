@@ -355,7 +355,6 @@ export function MatrixKeyCreate({
             ))}
           </select>
           <Checkbox
-            className="matrix-key-create__secret"
             label="🔒 secret"
             checked={secret}
             onChange={(event) => setSecret(event.target.checked)}
@@ -398,7 +397,6 @@ export function MatrixKeyCreate({
               />
             </label>
             <Checkbox
-              className="matrix-key-create__secret"
               label="allow empty value"
               checked={allowEmpty}
               onChange={(event) => setAllowEmpty(event.target.checked)}
