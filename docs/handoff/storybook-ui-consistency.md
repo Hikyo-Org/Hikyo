@@ -17,7 +17,7 @@ stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 
 | Group | Status | Where |
 |---|---|---|
-| Checkbox, Radio | APPROVED (1A), unscoped in `ui.css` | `ui/Checkbox`, `ui/Radio` |
+| Checkbox, Radio | APPROVED (1A), unscoped; the rules now live in `src/styles/app.css` | `ui/Checkbox`, `ui/Radio` |
 | Auth flow: challenge, enrolment gate | APPROVED direction (2B strict, 3A), built, backend spec below | `ui/auth/*` |
 | Control height tokens, Button, Input, Select, Textarea | APPROVED (4a), unscoped | `ui/Button`, `ui/Input`, `ui/Textarea` |
 | Type scale, eyebrow, captions | APPROVED (4b), unscoped | `ui/Typography` |
@@ -25,8 +25,8 @@ stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 | ChoiceGroup | APPROVED (1a) | `ui/ChoiceGroup` |
 | Field (hint, error), Alert | APPROVED (1a) | `ui/Input` WithHint/WithError/ErrorIsWired, `ui/Alert` |
 | Dialog (folds `.ceremony` and `.matrix-editor`) | APPROVED (1a) | `ui/Dialog` |
-| Spacing | APPROVED (1a) | `ui.css` Spacing block |
-| Tabs atom, Glyph atom, compact in-row sizes, identity controls, login links, menu rows | built ("do all", 2026-09-16) | `ui/Tabs`, `ui/Glyph`, `ui.css` |
+| Spacing | APPROVED (1a) | Spacing block in `src/styles/app.css` |
+| Tabs atom, Glyph atom, compact in-row sizes, identity controls, login links, menu rows | built ("do all", 2026-09-16) | `ui/Tabs`, `ui/Glyph`, `src/styles/app.css` |
 | ChoiceGroup layouts, columns, chips; Checkbox/Radio mono | built (1B, 2026-09-16) | `ui/ChoiceGroup` AllStates |
 | Light-theme a11y run in CI | added (`test-storybook:light`, ci.yml storybook job) | |
 | Design system: one token file, spacing/measure/layer tokens, adherence check, Tokens page | built (decision A, 2026-09-16) | `src/styles/tokens.css`, `scripts/design/adherence*.ts`, `ui/Tokens` |
@@ -75,9 +75,9 @@ pointer:
   uppercase bold, `.count` pill 10px, problem count 11px. Five vocabularies
   for one job.
 - **Links**: one unclassed `<a>` on the overview page in browser blue
-  (`rgb(158,158,255)`). `ui.css` gives unclassed anchors body ink and an
-  underline (`:where()`, so classed links keep their rule); the route gets
-  it on migration.
+  (`rgb(158,158,255)`). The design foundations in `web/src/styles/app.css`
+  give unclassed anchors body ink and an underline (`:where()`, so classed
+  links keep their rule); the route gets it on migration.
 - Coarse pointer is consistent at 44px except `identity-glyph` at 38px
   (settings; touch floor candidate).
 
@@ -100,13 +100,20 @@ pointer:
   alone). #761 retargeted all twenty to `--control`; on a coarse pointer
   `tokens.css` resolves `--control` to `--touch`, so the mobile project is
   unchanged.
-- The "five rules app.css states with more specificity" note (now the
-  "Three rules app.css states with more specificity" comment in the design
-  foundations section of `web/src/styles/app.css`)
-  resolves to **three** rules over three selectors: `.page--members .inspect
-  select` (plus its `max-width: 700px` copy), `.sidebar__link`, and
-  `.environment-lifecycle > summary`. The count of five was counting
-  selectors plus media copies.
+- The "five rules app.css states with more specificity" note is now a
+  three-rule block in the design-foundations section of
+  `web/src/styles/app.css`, and only one of the three is a specificity
+  override. `.page--members .inspect select` is stated at (0,2,1) by app.css
+  (plus a `max-width: 700px` copy), which outranks the (0,1,1) field-controls
+  foundation, so it has to be restated. `.sidebar__link` and
+  `.environment-lifecycle > summary` are not outranked: the control-height
+  list reaches (0,3,0) through `.matrix__legend-toggle.btn` inside its
+  `:is()`, so the height already lands. Those two rules exist only to zero
+  the block padding app.css gives them (`9px 13px` plus a `max-width: 800px`
+  copy on the link, `10px 0` on the summary) and to centre the text; they are
+  written separately so the summary never gets a `display`, which would drop
+  its disclosure marker. The count of five was counting selectors plus media
+  copies.
 
 ### Dialogs (every dialog story, 1280 wide)
 
@@ -118,7 +125,8 @@ shadowless ceremony is the one off the rule. `ConsequencesDialog` sits
 between at h2 16. `ui/Dialog` is the one anatomy: `narrow` 520 / `wide`
 760, title h2 on the scale (16/700), lede caption (13 dim), actions gap 8
 with the primary LAST, shadow on both. The legacy classes are restyled to
-match in `ui.css` so unmigrated route dialogs read the same.
+match in the design-foundations section of `web/src/styles/app.css` so
+unmigrated route dialogs read the same.
 
 ### Spacing (padding and gap on every route)
 

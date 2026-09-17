@@ -2582,7 +2582,7 @@ select {
   }
 
   /* `drafts` is a bare pill with no touch-height base of its own (env-matrix
-     31), so it needs the 44px floor back on a phone. */
+     31), so it needs the 44px floor back at narrow widths. */
   .matrix__drafts {
     min-height: var(--touch);
   }
@@ -4242,8 +4242,10 @@ select {
 }
 
 /* Keep the native disclosure marker: `display: flex`/`block` on a summary drops
-   it in most browsers, so leave the default list-item display and only pad it
-   out; the design foundations below own the control height. */
+   it in most browsers, so no rule in the live cascade sets `display` on this
+   summary. What survives here is the cursor and the weight: the design
+   foundations below override this `padding-block` to 0, own the control height
+   and centre the text on it with `align-content: center`, never a display. */
 .environment-lifecycle > summary {
   padding: 10px 0;
   cursor: pointer;
@@ -6305,19 +6307,40 @@ h3,
   flex: none;
 }
 
-/* Three rules app.css states with more specificity than the fold above:
-   `.page--members .inspect select` (and its max-width 700px copy),
-   `.sidebar__link`, `.environment-lifecycle > summary`. */
+/* Three rules the fold above cannot carry on its own, for two different
+   reasons.
+
+   Specificity: app.css states `.page--members .inspect select` at (0,2,1)
+   (plus a `max-width: 700px` copy around line 4819), which outranks the
+   (0,1,1) field-controls rule in the foundations, so the height has to be
+   restated here.
+
+   Padding, not specificity: `.sidebar__link` and `.environment-lifecycle >
+   summary` already take the control height from the control-height list
+   above, which reaches (0,3,0) through `.matrix__legend-toggle.btn` inside
+   its `:is()` and so already beats both. They are restated only to zero the
+   block padding app.css gives them (`padding: 9px 13px` on `.sidebar__link`,
+   with a `max-width: 800px` copy around line 1326, and `10px 0` on the
+   summary) and to centre the text on that height. */
 :root .page--members .inspect select {
   min-height: var(--control);
   padding: 0 var(--space-3);
   font-size: var(--fs-md);
 }
 
-:root :is(.sidebar__link, .environment-lifecycle > summary) {
+:root .sidebar__link {
   padding-block: 0;
   display: flex;
   align-items: center;
+}
+
+/* Split off from the link: a summary must keep the UA's `list-item` display
+   or Chrome draws no disclosure marker, so this rule never states `display`.
+   `align-content` centres the text on the control height in a block
+   container, which current Chromium, Firefox and Safari all honour. */
+:root .environment-lifecycle > summary {
+  padding-block: 0;
+  align-content: center;
 }
 
 /* --- Alert and notice: glyph, text, one optional action -------------------
@@ -6700,8 +6723,10 @@ label.chk:has(input:disabled) {
 
 /* --- Badges: one vocabulary --------------------------------------------------
 
-   Supersedes `.badge` (12px), `.chip` (26px, 11px), `.settings-tag` (32px,
-   10px uppercase bold), `.history__current` and `.matrix__problem-count`.
+   Supersedes `.badge` (12px), `.chip` (26px, 11px) and `.settings-tag` (32px,
+   10px uppercase bold). `.history__current` and `.matrix__problem-count` carry
+   no `.badge` class, so they keep their own rules; #762's markup swap folds
+   them in.
    The `.count` pill (numeric counts <= 12px) is the DESIGN.md exception and
    is left alone. Tones follow the DESIGN.md state vocabulary: danger for a
    violation or refusal, changed (slate) for pending or drafted, `ok` for a

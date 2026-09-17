@@ -12,11 +12,26 @@ Working map, with every line number verified against the tree at `dc8b8c41`:
 
 ## What moved
 
-`web/src/ui/ui.css` (952 lines) is gone. Lines 16 to 952, byte for byte, are
-appended to the end of `web/src/styles/app.css` under a provenance banner. No
-interleaving, no reordering: the foundations are last in the file, so within
-equal specificity they win by source order, which is exactly how they won when
-ui.css was a separate later stylesheet.
+`web/src/ui/ui.css` (952 lines) is gone. Lines 16 to 952 were appended byte for
+byte to the end of `web/src/styles/app.css` under a provenance banner at the
+move commit (`312251e9`). No interleaving, no reordering: the foundations are
+last in the file, so within equal specificity they win by source order, which is
+exactly how they won when ui.css was a separate later stylesheet.
+
+The body is no longer byte-identical to ui.css: five edits landed inside it
+after the move, each reviewed as an authorised change to the moved section.
+
+1. `.context-sidebar > h2` added to the eyebrow selector list.
+2. The "five rules app.css states with more specificity" comment rewritten
+   (twice: first to three rules, then to state the true reason each of the
+   three exists).
+3. The checkbox-block comment rewritten after the two `(max-width: 800px)`
+   checkbox bumps were deleted.
+4. A `@media (pointer: coarse) { button.settings-tag { min-height: var(--touch) } }`
+   bridge added, to be deleted with #762's markup swap.
+5. `:root :is(.sidebar__link, .environment-lifecycle > summary)` split into two
+   rules so the summary keeps the UA's `list-item` display (and therefore its
+   disclosure marker) and centres with `align-content` instead of flex.
 
 **No tokens moved.** The premise in the ticket was stale: ui.css declared no
 custom properties at all (every `:root` in it was a descendant combinator used
@@ -179,3 +194,5 @@ in by the controller against a real instance.
 - [ ] `DefinitionsBundlePanel`'s file input renders native
 - [ ] `.chip--armed` / `.chip--wide` / `.settings-tag--on` lost their accent
       emphasis (expected until #762)
+- [ ] `environment-lifecycle` summary shows its disclosure marker and centres
+      its text at 36px
