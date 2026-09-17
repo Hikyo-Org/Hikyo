@@ -71,7 +71,7 @@ test.describe('secret scanning warn dialog', () => {
       const warn = page.getByRole('dialog', { name: 'Possible secret in a config value' });
 
     // --- SS2: plant the credential; the save succeeds and the warn fires -----
-      await plantValue(page, cell, CANARY);
+      await plantValue(page, cell, keyName, CANARY);
 
       await expect(
         warn.getByRole('heading', { name: 'Possible secret in a config value' }),
@@ -101,7 +101,7 @@ test.describe('secret scanning warn dialog', () => {
       await expect(cell).toHaveAccessibleName(/draft set/);
 
     // --- SS2: a distinct offending value re-fires -----------------------------
-      await plantValue(page, cell, DISTINCT);
+      await plantValue(page, cell, keyName, DISTINCT);
       await expect(
         warn.getByRole('heading', { name: 'Possible secret in a config value' }),
       ).toBeVisible();
@@ -261,10 +261,14 @@ test.describe('secret scanning block dialog', () => {
 async function plantValue(
   page: import('@playwright/test').Page,
   cell: import('@playwright/test').Locator,
+  keyName: string,
   value: string,
 ): Promise<void> {
   await cell.click();
-  const editor = page.locator('dialog[open]');
+  // ui/Dialog labels the editor by its title, which is the key name. Naming it
+  // matters at the end: a save that fires a finding closes the editor and opens
+  // the warn in the SAME commit, so `dialog[open]` would never reach zero.
+  const editor = page.getByRole('dialog', { name: keyName, exact: true });
   await expect(editor).toBeVisible();
   await editor.getByLabel('development value').fill(value);
   const save = editor.getByRole('button', { name: /^Save \d+ draft/ });

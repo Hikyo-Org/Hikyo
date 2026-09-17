@@ -450,6 +450,7 @@ export function ImportWizard({
         event.preventDefault();
         onClose();
       }}
+      onBackdropClick={onClose}
     >
       {/* Each step owns its own action row, and every row is the last thing in
           the dialog, so they stay in the children rather than in `actions`. */}

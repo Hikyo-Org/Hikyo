@@ -5535,7 +5535,12 @@ label.chk:has(input:disabled) {
   flex-direction: column;
 }
 
+/* The create forms took their column and gap from `.matrix-editor form`, which
+   outranked the shared rule above on specificity. That shell rule is gone, so
+   the column is stated here; the gap lands on the dialog's own 12px. */
 .catalogue-manage__create {
+  flex-direction: column;
+  gap: var(--space-3);
   flex-wrap: wrap;
   align-items: center;
 }

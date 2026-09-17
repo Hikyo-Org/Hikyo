@@ -210,6 +210,7 @@ export function MatrixRowEditor({
           event.preventDefault();
           onClose();
         }}
+        onBackdropClick={onClose}
       >
         <form
           onSubmit={(event) => {

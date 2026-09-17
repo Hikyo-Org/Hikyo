@@ -23,6 +23,8 @@ import { useModalDialog } from './useModalDialog.ts';
  *
  * `onCancel` receives the platform's cancel (Escape); a dialog that must be
  * acknowledged before it closes calls `preventDefault()` there.
+ *
+ * `onBackdropClick` is the editors' third way out, opt-in per dialog.
  */
 export function Dialog({
   title,
@@ -30,6 +32,7 @@ export function Dialog({
   size = 'narrow',
   actions,
   onCancel,
+  onBackdropClick,
   initialFocus,
   className,
   children,
@@ -40,6 +43,13 @@ export function Dialog({
   /** The button row. Put the primary action last. */
   actions?: ReactNode;
   onCancel?: (event: SyntheticEvent<HTMLDialogElement>) => void;
+  /**
+   * Called when a click lands on the scrim. The dialog receives the click for
+   * its own PADDING as well as for the backdrop (`event.target` is the dialog
+   * either way), so a click inside the dialog's box never counts: aiming at a
+   * field and missing it by a few pixels must not discard the edit.
+   */
+  onBackdropClick?: () => void;
   initialFocus?: RefObject<HTMLElement | null>;
   className?: string;
   children?: ReactNode;
@@ -52,6 +62,22 @@ export function Dialog({
       className={cx('dialog', size === 'wide' && 'dialog--wide', className)}
       aria-labelledby={titleId}
       onCancel={onCancel}
+      onClick={
+        onBackdropClick === undefined
+          ? undefined
+          : (event) => {
+              if (event.target !== event.currentTarget) return;
+              const box = event.currentTarget.getBoundingClientRect();
+              if (
+                event.clientX < box.left ||
+                event.clientX > box.right ||
+                event.clientY < box.top ||
+                event.clientY > box.bottom
+              ) {
+                onBackdropClick();
+              }
+            }
+      }
     >
       <h2 className="dialog__title" id={titleId}>
         {title}

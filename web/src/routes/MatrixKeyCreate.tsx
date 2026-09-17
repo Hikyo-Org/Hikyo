@@ -269,6 +269,7 @@ export function MatrixKeyCreate({
         event.preventDefault();
         onClose();
       }}
+      onBackdropClick={onClose}
     >
       <form
         onSubmit={(event) => {
