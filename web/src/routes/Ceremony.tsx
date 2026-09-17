@@ -17,7 +17,7 @@ import {
 } from '../api/workspace.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 

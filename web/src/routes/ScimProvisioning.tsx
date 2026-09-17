@@ -45,7 +45,8 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
+import { useFeedback } from './useFeedback.ts';
 import { useNavigationGuard } from './MachineAccess.tsx';
 import { gateSystemScope } from './SystemScope.tsx';
 

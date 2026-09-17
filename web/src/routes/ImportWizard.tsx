@@ -25,7 +25,7 @@ import {
   type PrimitiveType,
 } from './import-state.ts';
 import { MAX_FILE_BYTES, parseSource, type FileConnector } from './import-sources.ts';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type WizardEnvironment = { readonly id: string; readonly name: string };
 

@@ -84,8 +84,8 @@ vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({ identity: { principal: { id: 'usr_current' } } }),
 }));
 
-vi.mock('./useModalDialog.ts', async (importActual) => {
-  const actual = await importActual<typeof import('./useModalDialog.ts')>();
+vi.mock('../ui/useModalDialog.ts', async (importActual) => {
+  const actual = await importActual<typeof import('../ui/useModalDialog.ts')>();
   return { ...actual, useModalDialog: () => ({ current: null }) };
 });
 

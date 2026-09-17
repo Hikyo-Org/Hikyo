@@ -37,7 +37,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
 

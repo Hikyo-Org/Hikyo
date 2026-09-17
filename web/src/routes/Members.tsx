@@ -59,7 +59,8 @@ import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
 import { Explain, JumpIndex, Panel } from './Sections.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
+import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 const prototypeDefaultPrincipal = 'prn_44444444-4444-4444-8444-444444444444';

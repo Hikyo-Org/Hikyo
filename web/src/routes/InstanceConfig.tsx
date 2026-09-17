@@ -12,7 +12,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Panel } from './Sections.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 export function InstanceConfig() {
   const query = useSelfConfig();

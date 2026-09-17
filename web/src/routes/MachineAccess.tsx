@@ -98,7 +98,7 @@ import {
   type MoveMint,
   useMintLifecycle,
 } from './mintLifecycle.ts';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 /**
  * The machine-access surface (#67, locked prototype #31 iteration 3).

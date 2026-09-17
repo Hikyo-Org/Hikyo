@@ -21,7 +21,7 @@ import { notifySuccess } from '../app/notifications.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
-import { useFeedback } from './useModalDialog.ts';
+import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 

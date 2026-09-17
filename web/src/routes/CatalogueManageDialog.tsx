@@ -21,7 +21,7 @@ import type { MatrixRef } from '../api/keys.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type ScanBlockState = {
   readonly findings: readonly RefusalFinding[];

@@ -15,7 +15,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Select } from '../ui/Select.tsx';
 import { DisplayOnceCopy } from './Sections.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 /**
  * The member invitation ceremony (#568): the human-auth ADR's one account-

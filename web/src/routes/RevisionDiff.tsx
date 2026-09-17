@@ -8,7 +8,7 @@ import { useAuth } from '../app/AuthProvider.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import { useCeremonyTask } from './useCeremonyTask.ts';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 export function RevisionDiffDialog({ env, environmentName, left, right, onClose }: {
   env: EnvRef; environmentName: string; left: bigint; right: bigint; onClose: () => void;

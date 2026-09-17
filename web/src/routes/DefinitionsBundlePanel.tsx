@@ -19,7 +19,7 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Props = { org: string; project: string; settings: DefinitionsSettings };
 

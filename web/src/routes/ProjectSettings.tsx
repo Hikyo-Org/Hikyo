@@ -45,7 +45,7 @@ import { Button } from '../ui/Button.tsx';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { ConsequencesDialog, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
-import { useFeedback } from './useModalDialog.ts';
+import { useFeedback } from './useFeedback.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';

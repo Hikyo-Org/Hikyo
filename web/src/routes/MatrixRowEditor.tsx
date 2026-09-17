@@ -36,7 +36,7 @@ import {
   type ProtectedPublishTarget,
 } from './useProtectedPublishCeremony.ts';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type MatrixKey = MatrixKeyList['items'][number];
 type Environment = EnvironmentList['items'][number];

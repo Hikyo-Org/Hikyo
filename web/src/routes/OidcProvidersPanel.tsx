@@ -18,7 +18,8 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
+import { useFeedback } from './useFeedback.ts';
 
 /**
  * OIDC provider administration (#499).

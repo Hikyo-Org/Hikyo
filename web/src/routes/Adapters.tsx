@@ -53,7 +53,8 @@ import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Input } from '../ui/Input.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
+import { useFeedback } from './useFeedback.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 
 /**

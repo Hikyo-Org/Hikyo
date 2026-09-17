@@ -3,7 +3,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
-import { useModalDialog } from '../routes/useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 const runtimeStatus = z.discriminatedUnion('state', [
   z.object({ state: z.literal('ready'), phase: z.null() }),

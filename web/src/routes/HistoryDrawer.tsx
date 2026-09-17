@@ -69,7 +69,7 @@ import {
   type RevisionActionGate,
 } from './history-state.ts';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 import { RevisionDiffDialog } from './RevisionDiff.tsx';
 
 type Environment = EnvironmentList['items'][number];

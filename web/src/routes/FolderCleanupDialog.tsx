@@ -4,7 +4,7 @@ import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Row = FolderProposal & { readonly include: boolean; readonly error: string | null };
 

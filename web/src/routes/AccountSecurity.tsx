@@ -27,7 +27,8 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { DisplayOnceCopy, JumpIndex, Panel } from './Sections.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
+import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 

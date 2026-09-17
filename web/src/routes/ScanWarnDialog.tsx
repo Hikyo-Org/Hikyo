@@ -3,7 +3,7 @@ import { useId, useState } from 'react';
 import type { ScanFinding } from '../api/matrix.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 /**
  * One config value that a save flagged as credential-shaped (#74, Surface 1).

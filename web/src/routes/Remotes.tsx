@@ -59,7 +59,7 @@ import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { useNavigationGuard } from './MachineAccess.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**

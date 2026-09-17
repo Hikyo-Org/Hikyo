@@ -32,7 +32,7 @@ import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
 import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
 import { ConsequencesDialog, JumpIndex, Panel } from './Sections.tsx';
-import { useFeedback } from './useModalDialog.ts';
+import { useFeedback } from './useFeedback.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
 
 const credentialPolicyKey = ['instance-credential-policy'] as const;

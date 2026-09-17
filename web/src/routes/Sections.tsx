@@ -3,7 +3,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { writeClipboard } from '../app/clipboard.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 /**
  * The sectioned-surface parts every chrome settings surface is built from

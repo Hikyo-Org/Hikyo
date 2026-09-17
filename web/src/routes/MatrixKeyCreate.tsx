@@ -9,7 +9,7 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
 import { isBackdropClick } from './MatrixRowEditor.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
 type PresenceMode = CreateKeyPresence['mode'];

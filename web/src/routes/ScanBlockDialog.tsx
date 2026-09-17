@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 
 /**
  * ScanBlockDialog is the Surface-2 block (#74 / #183, secret-scanning ADR §4).
