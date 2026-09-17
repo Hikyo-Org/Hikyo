@@ -17,6 +17,7 @@ import {
   runOIDCCeremony,
   runTOTPCeremony,
 } from '../api/values.ts';
+import { Button } from '../ui/Button.tsx';
 import { Login } from './Login.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
@@ -187,15 +188,15 @@ export function CLIReauth() {
               </div>
             ) : null}
             {approve.isError ? <p className="alert" role="alert"><span className="alert__glyph" aria-hidden="true">!</span><span>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</span></p> : null}
-            <button className="btn btn--primary" type="button" disabled={approve.isPending || (requiresTOTP && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
+            <Button variant="primary" type="button" disabled={approve.isPending || (requiresTOTP && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
               {approve.isPending ? 'Authorizing…' : 'Authorize CLI'}
-            </button>
+            </Button>
             {offersOIDC ? (
-              <button className="btn" type="button" disabled={approve.isPending} onClick={() => approve.mutate('oidc')}>
+              <Button type="button" disabled={approve.isPending} onClick={() => approve.mutate('oidc')}>
                 {approve.isPending ? 'Authorizing…' : `Re-authenticate with ${oidcProvider.display_name}`}
-              </button>
+              </Button>
             ) : null}
-            <button className="btn" type="button" onClick={() => globalThis.close()}>Cancel</button>
+            <Button type="button" onClick={() => globalThis.close()}>Cancel</Button>
           </>
         ) : null}
       </div>

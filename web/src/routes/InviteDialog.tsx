@@ -11,6 +11,7 @@ import {
   type Level,
 } from '../api/access.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Button } from '../ui/Button.tsx';
 import { Alert, DisplayOnceCopy } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -218,12 +219,12 @@ function InviteForm({
           </p>
         </div>
         <div className="ceremony__actions">
-          <button type="submit" className="btn btn--primary" disabled={pending} aria-busy={pending ? true : undefined}>
+          <Button type="submit" variant="primary" disabled={pending} aria-busy={pending ? true : undefined}>
             {pending ? 'Inviting…' : 'Invite'}
-          </button>
-          <button type="button" className="btn" disabled={pending} onClick={onCancel}>
+          </Button>
+          <Button type="button" disabled={pending} onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
     </dialog>
@@ -297,9 +298,9 @@ export function IssuedAuthorityDialog({
         $ hikyo account establish-credential --instance {origin} --as {handle}
       </code>
       <div className="ceremony__actions">
-        <button type="button" className="btn btn--primary" onClick={onClose}>
+        <Button type="button" variant="primary" onClick={onClose}>
           Close
-        </button>
+        </Button>
         <Link className="btn" to={surfaceById('establish-credential').path}>
           Open the establish page
         </Link>

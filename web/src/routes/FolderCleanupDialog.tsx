@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 
 import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
+import { Button } from '../ui/Button.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -80,9 +81,9 @@ export function FolderCleanupDialog({
             then move. Nothing changes until you do.
           </p>
         </div>
-        <button type="button" className="btn matrix-editor__close" aria-label="Close cleanup" onClick={onClose}>
+        <Button type="button" className="matrix-editor__close" aria-label="Close cleanup" onClick={onClose}>
           ✕
-        </button>
+        </Button>
       </div>
 
       {rows.length === 0 ? (
@@ -139,13 +140,13 @@ export function FolderCleanupDialog({
         {moved > 0 && rows.length > 0 ? (
           <span className="catalogue-manage__meta">{`Moved ${String(moved)} so far.`}</span>
         ) : null}
-        <button type="button" className="btn" disabled={busy} onClick={onClose}>
+        <Button type="button" disabled={busy} onClick={onClose}>
           {rows.length === 0 ? 'Close' : 'Cancel'}
-        </button>
+        </Button>
         {rows.length === 0 ? null : (
-          <button type="button" className="btn btn--primary" disabled={busy || moves.length === 0} onClick={apply}>
+          <Button type="button" variant="primary" disabled={busy || moves.length === 0} onClick={apply}>
             {busy ? 'Moving…' : `Move ${String(moves.length)} key(s)`}
-          </button>
+          </Button>
         )}
       </div>
     </dialog>

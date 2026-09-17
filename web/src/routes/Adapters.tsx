@@ -48,6 +48,7 @@ import {
   runAdapterPasskeyCeremony,
   runAdapterTOTPCeremony,
 } from '../api/values.ts';
+import { Button } from '../ui/Button.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 
@@ -223,9 +224,9 @@ function AdaptersPage() {
             />
           ) : (
             <div className="panel__actions">
-              <button type="button" className="btn btn--primary" onClick={() => setCreating(true)}>
+              <Button type="button" variant="primary" onClick={() => setCreating(true)}>
                 Add adapter
-              </button>
+              </Button>
             </div>
           )}
         </section>
@@ -409,28 +410,27 @@ function AdapterPanel({
         />
       ) : (
         <div className="panel__actions">
-          <button type="button" className="btn" disabled={busy} onClick={() => setAdding(true)}>
+          <Button type="button" disabled={busy} onClick={() => setAdding(true)}>
             Add target
-          </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => setEditing('origin')}>
+          </Button>
+          <Button type="button" disabled={busy} onClick={() => setEditing('origin')}>
             Change origin
-          </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => setEditing('credential')}>
+          </Button>
+          <Button type="button" disabled={busy} onClick={() => setEditing('credential')}>
             Replace credential
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn"
             disabled={busy || !adapter.credential_present}
             onClick={() => setRevoking(true)}
           >
             Revoke credential
-          </button>
+          </Button>
           {/* Neutral trigger: the destructive styling lives on the confirmation
               inside the dialog, never on the always-rendered panel. */}
-          <button type="button" className="btn" disabled={busy} onClick={() => setDeleting(true)}>
+          <Button type="button" disabled={busy} onClick={() => setDeleting(true)}>
             Delete adapter
-          </button>
+          </Button>
         </div>
       )}
 
@@ -539,12 +539,12 @@ function OriginMoveForm({
         </label>
       ) : null}
       <div className="panel__actions">
-        <button type="submit" className="btn btn--primary" disabled={busy || origin.trim() === '' || credential === ''}>
+        <Button type="submit" variant="primary" disabled={busy || origin.trim() === '' || credential === ''}>
           {busy ? 'Working…' : submitLabel}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -581,12 +581,12 @@ export function CredentialForm({
         />
       </label>
       <div className="panel__actions">
-        <button type="submit" className="btn btn--primary" disabled={busy || credential === ''}>
+        <Button type="submit" variant="primary" disabled={busy || credential === ''}>
           {busy ? 'Replacing…' : 'Replace'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -617,12 +617,12 @@ export function RevokeCredentialDialog({
         you clean them up by hand.
       </p>
       <div className="ceremony__actions">
-        <button ref={first} type="button" className="btn btn--danger" disabled={busy} onClick={onConfirm}>
+        <Button ref={first} type="button" variant="danger" disabled={busy} onClick={onConfirm}>
           {busy ? 'Revoking…' : 'Revoke credential'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -681,19 +681,19 @@ export function DeleteAdapterDialog({
         </label>
       </div>
       <div className="ceremony__actions">
-        <button
+        <Button
           type="button"
-          className="btn btn--danger"
+          variant="danger"
           disabled={busy || decision === null}
           onClick={() => {
             if (decision !== null) onDecide(decision);
           }}
         >
           {busy ? 'Deleting…' : 'Delete adapter'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -756,9 +756,9 @@ function MoveDetail({
     <aside className="panel adapters__detail" aria-label="Route move">
       <div className="adapters__adapter-head">
         <h2>Route move</h2>
-        <button type="button" className="btn btn--quiet" onClick={onClose}>
+        <Button type="button" variant="quiet" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       {move.isError ? (
         <p className="alert" role="alert">
@@ -818,12 +818,12 @@ function MoveDetail({
               />
             ) : (
               <div className="panel__actions">
-                <button type="button" className="btn btn--primary" disabled={busy} onClick={() => setResuming(true)}>
+                <Button type="button" variant="primary" disabled={busy} onClick={() => setResuming(true)}>
                   Resume with a new credential
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
-                  className="btn btn--danger"
+                  variant="danger"
                   disabled={busy}
                   onClick={() =>
                     void (async () => {
@@ -838,7 +838,7 @@ function MoveDetail({
                   }
                 >
                   Cancel move
-                </button>
+                </Button>
               </div>
             )
           ) : null}
@@ -1218,12 +1218,12 @@ export function TargetForm({
         a key created later is never added on its own.
       </p>
       <div className="panel__actions">
-        <button type="submit" className="btn btn--primary" disabled={busy}>
+        <Button type="submit" variant="primary" disabled={busy}>
           {busy ? 'Saving…' : 'Save'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -1286,9 +1286,9 @@ function TargetDetail({
     <aside className="panel adapters__detail" aria-label="Target detail">
       <div className="adapters__adapter-head">
         <h2>Target</h2>
-        <button type="button" className="btn btn--quiet" onClick={onClose}>
+        <Button type="button" variant="quiet" onClick={onClose}>
           Close
-        </button>
+        </Button>
       </div>
       {detail.isError ? (
         <p className="alert" role="alert">
@@ -1374,9 +1374,9 @@ function TargetDetail({
 
           <div className="panel__actions">
             {target.sync_status === 'paused' ? (
-              <button
+              <Button
                 type="button"
-                className="btn btn--primary"
+                variant="primary"
                 disabled={busy}
                 onClick={() =>
                   void (async () => {
@@ -1391,20 +1391,18 @@ function TargetDetail({
                 }
               >
                 Resume
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 type="button"
-                className="btn"
                 disabled={busy}
                 onClick={() => void act('Paused. Owned names stay at the destination.', () => pause.mutateAsync(target.id))}
               >
                 Pause
-              </button>
+              </Button>
             )}
-            <button
+            <Button
               type="button"
-              className="btn"
               disabled={busy || target.sync_status === 'paused'}
               onClick={() =>
                 void act('Resync queued.', async () => {
@@ -1414,29 +1412,27 @@ function TargetDetail({
               }
             >
               Resync
-            </button>
-            <button type="button" className="btn" disabled={busy} onClick={() => setEditing((open) => !open)}>
+            </Button>
+            <Button type="button" disabled={busy} onClick={() => setEditing((open) => !open)}>
               {editing ? 'Stop editing' : 'Edit keys'}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn"
               disabled={busy}
               onClick={() => void act('Plan computed. Names only; no value was read.', () => plan.mutateAsync(target.id))}
             >
               Plan
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="btn"
               disabled={busy}
               onClick={() => void act('Connection probed. No value was read and nothing was written.', () => probe.mutateAsync(target.id))}
             >
               Test connection
-            </button>
-            <button type="button" className="btn btn--danger" disabled={busy} onClick={() => setRemoving(true)}>
+            </Button>
+            <Button type="button" variant="danger" disabled={busy} onClick={() => setRemoving(true)}>
               Remove
-            </button>
+            </Button>
           </div>
 
           {probe.data !== undefined ? <ConnectionFacts connection={probe.data} /> : null}
@@ -1612,9 +1608,9 @@ function ConflictArtifact({
         })}
       </ul>
       <div className="panel__actions">
-        <button type="button" className="btn" disabled={busy || chosen.length === 0} onClick={() => onAdopt(chosen)}>
+        <Button type="button" disabled={busy || chosen.length === 0} onClick={() => onAdopt(chosen)}>
           Adopt {chosen.length} selected
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1672,19 +1668,19 @@ function RemoveDialog({
         </label>
       </div>
       <div className="ceremony__actions">
-        <button
+        <Button
           type="button"
-          className="btn btn--danger"
+          variant="danger"
           disabled={busy || decision === null}
           onClick={() => {
             if (decision !== null) onDecide(decision);
           }}
         >
           {busy ? 'Removing…' : 'Remove target'}
-        </button>
-        <button type="button" className="btn btn--quiet" onClick={onCancel} disabled={busy}>
+        </Button>
+        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -1809,12 +1805,12 @@ function AdapterCeremony({
           </p>
         ) : null}
         <div className="ceremony__actions">
-          <button type="submit" className="btn btn--primary" disabled={busy || policy === null}>
+          <Button type="submit" variant="primary" disabled={busy || policy === null}>
             {busy ? 'Authorising…' : 'Authorise'}
-          </button>
-          <button type="button" className="btn btn--quiet" onClick={cancel} disabled={busy}>
+          </Button>
+          <Button type="button" variant="quiet" onClick={cancel} disabled={busy}>
             Cancel
-          </button>
+          </Button>
         </div>
       </form>
     </dialog>

@@ -24,6 +24,7 @@ import {
 } from '../api/settings.ts';
 import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
+import { Button } from '../ui/Button.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
@@ -152,13 +153,13 @@ export function InstanceAdmin() {
       {showCreate ? (
         <div className="settings-row">
           <div className="field settings-row__spacer"><label htmlFor={nameId}>New organisation name</label><input id={nameId} value={name} onChange={(event) => setName(event.target.value)} /></div>
-          <button type="button" className="btn btn--primary" aria-label="Create organisation" disabled={create.isPending || name.trim() === ''} onClick={() => create.mutate({ name: name.trim() }, {
+          <Button type="button" variant="primary" aria-label="Create organisation" disabled={create.isPending || name.trim() === ''} onClick={() => create.mutate({ name: name.trim() }, {
             onError: (error) => report(settingsOperationFailure('create-org', error)),
-          })}>Create organisation</button>
+          })}>Create organisation</Button>
         </div>
       ) : null}
       <div className="instance-create-row">
-        <button type="button" className="btn btn--primary" aria-label="Open create organisation form" onClick={() => setShowCreate((visible) => !visible)}>+ create organisation</button>
+        <Button type="button" variant="primary" aria-label="Open create organisation form" onClick={() => setShowCreate((visible) => !visible)}>+ create organisation</Button>
         <code className="instance-cli">$ hikyo org create</code>
       </div>
     </Panel>
@@ -231,7 +232,7 @@ function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType
     {query.isSuccess ? <>
       <div className="settings-row">
         <div className="settings-row__copy"><span className="settings-row__title">Machine-credential ceiling</span><span className="settings-row__detail">authoritative instance policy; clamps every org value</span></div>
-        <span className="settings-row__spacer" /><code className="mono"><span title={`${String(query.data.max_finite_lifetime_seconds)}s`}>{humanDuration(query.data.max_finite_lifetime_seconds)}</span> · {String(query.data.max_live_credentials)} live max · {query.data.allow_indefinite ? 'indefinite allowed' : 'finite only'}</code><button type="button" className="btn" onClick={() => setEditing(true)}>edit</button>
+        <span className="settings-row__spacer" /><code className="mono"><span title={`${String(query.data.max_finite_lifetime_seconds)}s`}>{humanDuration(query.data.max_finite_lifetime_seconds)}</span> · {String(query.data.max_live_credentials)} live max · {query.data.allow_indefinite ? 'indefinite allowed' : 'finite only'}</code><Button type="button" onClick={() => setEditing(true)}>edit</Button>
       </div>
     </> : null}
     {editing ? <>
@@ -239,8 +240,8 @@ function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType
         <div className="field"><label htmlFor={finiteId}>Maximum finite lifetime (seconds)</label><input id={finiteId} inputMode="numeric" value={finite} onChange={(event) => { setPreview(null); setFinite(event.target.value); }} /></div>
         <div className="field"><label htmlFor={liveId}>Maximum live credentials per service account</label><input id={liveId} inputMode="numeric" value={live} onChange={(event) => { setPreview(null); setLive(event.target.value); }} /></div>
         <div className="field chk"><input id={indefiniteId} type="checkbox" checked={indefinite} onChange={(event) => { setPreview(null); setIndefinite(event.target.checked); }} /><label htmlFor={indefiniteId}>Allow credentials with no expiry</label></div>
-        {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id}: {credential.reason}</li>)}</ul><button type="button" className="btn btn--danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</button></div>}
-        <div className="panel__actions"><button type="button" className="btn" onClick={() => setEditing(false)}>Cancel</button><button type="button" className="btn btn--primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</button></div>
+        {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id}: {credential.reason}</li>)}</ul><Button type="button" variant="danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</Button></div>}
+        <div className="panel__actions"><Button type="button" onClick={() => setEditing(false)}>Cancel</Button><Button type="button" variant="primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</Button></div>
       </> : null}
     </> : null}
   </Panel>;
@@ -282,31 +283,31 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Change-token key</span><span className="settings-row__detail">Rotating it invalidates every client cursor: the next fetch from every workload is a full one. No restart wave, no downtime.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-token-key</code>
-      <button type="button" className="btn" onClick={() => open('token')}>Rotate the change-token key</button>
+      <Button type="button" onClick={() => open('token')}>Rotate the change-token key</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Secret-scanning key</span><span className="settings-row__detail">Rotating it drops every scan dismissal in the same transaction; suppressed warns re-fire, because their fingerprints are no longer recomputable.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-scanning-key</code>
-      <button type="button" className="btn" onClick={() => open('scanning')}>Rotate the scanning key</button>
+      <Button type="button" onClick={() => open('scanning')}>Rotate the scanning key</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Master key</span><span className="settings-row__detail">Re-wraps every tier-3 key (all DEKs and the root token key) under a new master, then retires the old one. Refused while the root key is dual-wrapped; finalize the root rotation first.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-master-key</code>
-      <button type="button" className="btn" onClick={() => open('master')}>Rotate the master key</button>
+      <Button type="button" onClick={() => open('master')}>Rotate the master key</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Data-encryption key (instance)</span><span className="settings-row__detail">Appends a new instance DEK version. New writes seal under it immediately; existing ciphertext stays readable until you re-encrypt. A rotation is incomplete without the re-encryption below.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-dek --scope instance</code>
-      <button type="button" className="btn" onClick={() => open('dek-instance')}>Rotate the instance DEK</button>
+      <Button type="button" onClick={() => open('dek-instance')}>Rotate the instance DEK</Button>
     </div>
 
     <div className="settings-row">
       <div className="settings-row__copy"><span className="settings-row__title">Instance re-encryption</span><span className="settings-row__detail">Walks every instance credential ciphertext onto the active DEK version and retires the superseded ones: the completion of an instance DEK rotation. Chunked and resumable: safe to re-run, and complete once it moves no rows.</span></div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo reencrypt</code>
-      <button type="button" className="btn" disabled={drain.running} onClick={drain.run}>{drain.running ? 'Re-encrypting…' : 'Re-encrypt the instance'}</button>
+      <Button type="button" disabled={drain.running} onClick={drain.run}>{drain.running ? 'Re-encrypting…' : 'Re-encrypt the instance'}</Button>
     </div>
     {drain.running ? <p role="status" className="field__hint">Re-encrypting… run {drain.runs}, {String(drain.total)} row{drain.total === 1n ? '' : 's'} moved so far. Safe to leave and resume later.</p> : null}
     {drain.failure === null ? null : <Alert>{drain.failure}</Alert>}
@@ -318,9 +319,9 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
       </div>
       <span className="settings-row__spacer" /><code className="instance-cli">$ hikyo rotate-root-key</code>
       <div className="crypto-phases">
-        <button type="button" className="btn" onClick={() => open('root-prepare')}>Prepare</button>
-        <button type="button" className="btn" onClick={() => open('root-verify')}>Verify</button>
-        <button type="button" className="btn" onClick={() => open('root-finalize')}>Finalize</button>
+        <Button type="button" onClick={() => open('root-prepare')}>Prepare</Button>
+        <Button type="button" onClick={() => open('root-verify')}>Verify</Button>
+        <Button type="button" onClick={() => open('root-finalize')}>Finalize</Button>
       </div>
     </div>
 

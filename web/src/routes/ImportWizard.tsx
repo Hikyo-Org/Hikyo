@@ -11,6 +11,7 @@ import {
   type ValueOccurrenceList,
 } from '../api/matrix.ts';
 import type { MatrixRef } from '../api/keys.ts';
+import { Button } from '../ui/Button.tsx';
 import type { KeyClassification } from '@hikyo/client';
 import {
   indexOccurrences,
@@ -462,14 +463,14 @@ export function ImportWizard({
             <h2>{heading}</h2>
             <p>Reviewed on this device; values are sent only when you start the import.</p>
           </div>
-          <button
+          <Button
             type="button"
-            className="btn matrix-editor__close"
+            className="matrix-editor__close"
             aria-label="Close import"
             onClick={onClose}
           >
             ✕
-          </button>
+          </Button>
         </div>
 
         {step !== 'pick' && journey?.kind !== 'cli' ? (
@@ -510,22 +511,22 @@ export function ImportWizard({
           <ul className="import-wizard__sources" aria-label="Import sources">
             {JOURNEYS.map((option) => (
               <li key={option.id}>
-                <button
+                <Button
                   type="button"
-                  className="btn import-wizard__source"
+                  className="import-wizard__source"
                   onClick={() => chooseJourney(option.journey)}
                 >
                   <span className="import-wizard__source-label">{option.label}</span>
                   <span className="import-wizard__source-hint">{option.hint}</span>
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
         </fieldset>
         <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={onClose}>
+          <Button type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -556,12 +557,12 @@ export function ImportWizard({
           </pre>
         </fieldset>
         <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('pick')}>
+          <Button type="button" onClick={() => setStep('pick')}>
             Back
-          </button>
-          <button type="button" className="btn btn--primary" onClick={onClose}>
+          </Button>
+          <Button type="button" variant="primary" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -654,17 +655,17 @@ export function ImportWizard({
         </fieldset>
         {renderTargets()}
         <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('pick')}>
+          <Button type="button" onClick={() => setStep('pick')}>
             Back
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={!canContinue}
             onClick={beginReview}
           >
             {busy ? 'Reading…' : 'Review'}
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -755,17 +756,17 @@ export function ImportWizard({
         </fieldset>
         {renderTargets()}
         <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('pick')}>
+          <Button type="button" onClick={() => setStep('pick')}>
             Back
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={!canContinue}
             onClick={beginReview}
           >
             {busy ? 'Reading…' : 'Review'}
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -887,12 +888,12 @@ export function ImportWizard({
         )}
 
         <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('source')}>
+          <Button type="button" onClick={() => setStep('source')}>
             Back
-          </button>
-          <button type="button" className="btn btn--primary" onClick={() => setStep('review')}>
+          </Button>
+          <Button type="button" variant="primary" onClick={() => setStep('review')}>
             Review changes
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -975,17 +976,17 @@ export function ImportWizard({
         })}
 
         <footer className="matrix-editor__actions">
-          <button type="button" className="btn" onClick={() => setStep('classify')}>
+          <Button type="button" onClick={() => setStep('classify')}>
             Back
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={!anySendable || !trimSettled || busy}
             onClick={runImport}
           >
             {busy ? 'Importing…' : 'Import'}
-          </button>
+          </Button>
         </footer>
       </>
     );
@@ -1020,9 +1021,9 @@ export function ImportWizard({
           ))}
         </ul>
         <footer className="matrix-editor__actions">
-          <button type="button" className="btn btn--primary" onClick={onClose}>
+          <Button type="button" variant="primary" onClick={onClose}>
             Done
-          </button>
+          </Button>
         </footer>
       </>
     );

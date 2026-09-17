@@ -15,6 +15,7 @@ import {
 } from '../api/approvals.ts';
 import { ApiError } from '../api/client.ts';
 import { useEnvironments } from '../api/settings.ts';
+import { Button } from '../ui/Button.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
@@ -207,9 +208,9 @@ export function ChangeApprovals() {
 
       <Panel id="ca-policies" title="Policies">
         <div className="change-approvals__section-head">
-          <button type="button" className="btn" onClick={() => openEditor(null)}>
+          <Button type="button" onClick={() => openEditor(null)}>
             New policy
-          </button>
+          </Button>
         </div>
         {policies.isLoading ? <p role="status">Loading policies…</p> : null}
         {policies.isError ? (
@@ -244,12 +245,12 @@ export function ChangeApprovals() {
                     <td>{Math.round(policy.request_ttl_seconds / 3600)}h</td>
                     <td>{policy.enabled ? 'enabled' : 'disabled'}</td>
                     <td>
-                      <button type="button" className="btn" onClick={() => openEditor(policy)}>
+                      <Button type="button" onClick={() => openEditor(policy)}>
                         Edit
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        className="btn btn--danger"
+                        variant="danger"
                         onClick={() =>
                           act(() =>
                             deletePolicy.mutate(policy.id, {
@@ -259,7 +260,7 @@ export function ChangeApprovals() {
                         }
                       >
                         Delete
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 );
@@ -356,12 +357,12 @@ export function ChangeApprovals() {
             </details>
 
             <div className="change-approvals__form-actions">
-              <button type="submit" className="btn btn--primary" disabled={savePolicy.isPending}>
+              <Button type="submit" variant="primary" disabled={savePolicy.isPending}>
                 {savePolicy.isPending ? 'Saving…' : 'Save policy'}
-              </button>
-              <button type="button" className="btn" onClick={() => setFormOpen(false)}>
+              </Button>
+              <Button type="button" onClick={() => setFormOpen(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}
@@ -524,21 +525,21 @@ function ApprovalRequestRow({
       </ul> : null}
       {active ? (
         <div className="change-approvals__request-actions">
-          <button type="button" className="btn" disabled={busy} onClick={() => onVote('approve')}>
+          <Button type="button" disabled={busy} onClick={() => onVote('approve')}>
             Approve
-          </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => onVote('reject')}>
+          </Button>
+          <Button type="button" disabled={busy} onClick={() => onVote('reject')}>
             Reject
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={busy || !quorumMet}
             onClick={onMerge}
             title={quorumMet ? '' : 'Waiting for the required approvals'}
           >
             Merge
-          </button>
+          </Button>
           <div className="change-approvals__bypass">
             <label htmlFor={`bypass-${request.id}`}>Bypass reason</label>
             <input
@@ -547,14 +548,14 @@ function ApprovalRequestRow({
               value={bypassReason}
               onChange={(event) => onBypassReasonChange(event.target.value)}
             />
-            <button
+            <Button
               type="button"
-              className="btn btn--danger"
+              variant="danger"
               disabled={busy || bypassReason.trim() === ''}
               onClick={onBypass}
             >
               Emergency bypass
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}

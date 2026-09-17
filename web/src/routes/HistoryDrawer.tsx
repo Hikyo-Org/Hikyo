@@ -33,6 +33,7 @@ import {
 import type { EnvRef, MatrixRef } from '../api/keys.ts';
 import type { EnvironmentList, ValueCell } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Button } from '../ui/Button.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   defaultPinExpiry,
@@ -550,10 +551,10 @@ export function HistoryDrawer({
           */}
           <div className="history__tabs">
             {environments.map((candidate) => (
-              <button
+              <Button
                 key={candidate.id}
                 type="button"
-                className="btn history__tab"
+                className="history__tab"
                 aria-pressed={candidate.id === environment.id}
                 onClick={() => {
                   const next = new URLSearchParams(params);
@@ -564,7 +565,7 @@ export function HistoryDrawer({
                 }}
               >
                 {candidate.name}
-              </button>
+              </Button>
             ))}
           </div>
 
@@ -601,9 +602,9 @@ export function HistoryDrawer({
                 <span aria-hidden="true">⚠ </span>
                 {`filter active: history of ${keyDisplay?.label ?? keyFilter}, showing ${String(filtered.length)} of ${String(revisions.length)} revisions`}
               </span>
-              <button type="button" className="btn" onClick={() => setParam('key', null)}>
+              <Button type="button" onClick={() => setParam('key', null)}>
                 ✕ show every revision
-              </button>
+              </Button>
             </p>
           )}
         </div>
@@ -647,11 +648,11 @@ export function HistoryDrawer({
                 const pinnedHere = pinRows.filter((pin) => pin.revision === entry.revision);
                 return (
                   <li key={String(entry.revision)}>
-                    <button
+                    <Button
                       data-history-revision={String(entry.revision)}
                       ref={entry.revision === selected?.revision ? selectedRow : undefined}
                       type="button"
-                      className="btn history__row"
+                      className="history__row"
                       aria-current={entry.revision === selected?.revision}
                       onClick={() => {
                         setParam('rev', String(entry.revision));
@@ -672,24 +673,24 @@ export function HistoryDrawer({
                         <span className="history__tag history__tag--collected">payload collected</span>
                       )}
                       <span className="history__age">{relativeAge(entry.publishedAt, now)}</span>
-                    </button>
+                    </Button>
                   </li>
                 );
               })}
             </ol>
 
             <div className="history__detail">
-              <button
+              <Button
                 id="history-detail-back"
                 type="button"
-                className="btn history__back"
+                className="history__back"
                 onClick={() => {
                   setMobileDetail(false);
                   requestAnimationFrame(() => selectedRow.current?.focus());
                 }}
               >
                 ← All revisions
-              </button>
+              </Button>
               {selected === undefined || selectedGate === null ? null : (
                 <RevisionDetail
                   environmentName={environment.name}
@@ -1031,54 +1032,52 @@ function RevisionDetail({
           const secret = secretByKeyId.get(changed.keyId) === true;
           return (
             <li key={changed.keyId}>
-              <button
+              <Button
                 type="button"
-                className="btn history__change mono"
+                className="history__change mono"
                 aria-pressed={keyFilter === changed.keyId}
                 onClick={() => onFilterKey(changed.keyId)}
               >
                 {secret ? <span aria-hidden="true">🔒 </span> : null}
                 {changed.name}
-              </button>
+              </Button>
               <span className="history__kind">{changed.change}</span>
               {secret ? <span className="history__presence">write-presence only</span> : null}
-              <button
+              <Button
                 type="button"
-                className="btn"
                 disabled={!gate.restore || !detail.isSuccess}
                 onClick={() => onRestore(revisionKeys, changed.keyId)}
               >
                 {`Restore ${changed.name}…`}
-              </button>
+              </Button>
             </li>
           );
         })}
       </ul>
 
       <div className="history__actions">
-        <button
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           disabled={!gate.restore || !detail.isSuccess}
           title={gate.restore ? undefined : gate.reason ?? undefined}
           onClick={() => onRestore(revisionKeys, null)}
         >
           {`Restore r${String(revision.revision)}…`}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn"
           disabled={!gate.pin || !detail.isSuccess}
           title={gate.pin ? undefined : gate.reason ?? undefined}
           onClick={() => onPin(revisionKeys)}
         >
           {`Pin r${String(revision.revision)}…`}
-        </button>
+        </Button>
       </div>
 
       <div className="history__actions">
-        <button className="btn" type="button" disabled={!revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}>Diff vs previous</button>
-        <button className="btn" type="button" disabled={!revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}>Diff vs current</button>
+        <Button type="button" disabled={!revision.payloadPresent || previous?.payloadPresent !== true} onClick={() => setDiffTarget(previous?.revision ?? null)}>Diff vs previous</Button>
+        <Button type="button" disabled={!revision.payloadPresent || revision.revision === currentRevision} onClick={() => setDiffTarget(currentRevision)}>Diff vs current</Button>
       </div>
       {diffTarget !== null ? <RevisionDiffDialog key={`${env.environment}:${String(revision.revision)}:${String(diffTarget)}`} env={env} environmentName={environmentName} left={diffTarget < revision.revision ? diffTarget : revision.revision} right={diffTarget < revision.revision ? revision.revision : diffTarget} onClose={() => setDiffTarget(null)} /> : null}
 
@@ -1133,13 +1132,12 @@ function RevisionDetail({
                     </span>
                   </>
                 ) : null}
-                <button
+                <Button
                   type="button"
-                  className="btn"
                   onClick={() => onRelease(pin)}
                 >
                   Release
-                </button>
+                </Button>
               </li>
             );
           })}
@@ -1223,9 +1221,9 @@ function RestoreSheet({
             pipeline and re-validates against the CURRENT schema; history is never rewritten.
           </p>
         </div>
-        <button type="button" className="btn matrix-editor__close" aria-label="Close restore" onClick={onClose}>
+        <Button type="button" className="matrix-editor__close" aria-label="Close restore" onClick={onClose}>
           ✕
-        </button>
+        </Button>
       </div>
 
       {refusal === null ? null : (
@@ -1237,12 +1235,12 @@ function RestoreSheet({
 
       {result === null ? (
         <div className="matrix-editor__actions">
-          <button type="button" className="btn btn--primary" disabled={busy} onClick={onStage}>
+          <Button type="button" variant="primary" disabled={busy} onClick={onStage}>
             {busy ? 'Staging…' : `Stage the restore from r${String(revision)}`}
-          </button>
-          <button type="button" className="btn" onClick={onClose}>
+          </Button>
+          <Button type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
       ) : (
         <>
@@ -1292,10 +1290,10 @@ function RestoreSheet({
             <span>Drafts are staged; they are also visible on the matrix.</span>
           </p>
           <div className="matrix-editor__actions">
-            <button
+            <Button
               id="history-restore-publish"
               type="button"
-              className="btn btn--primary"
+              variant="primary"
               disabled={publishBusy || result.changes.length === 0}
               aria-describedby={result.changes.length === 0 ? 'history-restore-no-drafts' : undefined}
               onClick={onPublish}
@@ -1303,7 +1301,7 @@ function RestoreSheet({
               {publishBusy
                 ? 'Publishing this restore…'
                 : restorePublishLabel(revision, groups)}
-            </button>
+            </Button>
             <Link id="history-restore-back" className="btn" to={matrixPath}>
               Back to the matrix
             </Link>
@@ -1385,9 +1383,9 @@ function PinSheet({
           </h2>
           <p>{`One pin per workload and environment. ${String(pinCount)} pinned in this environment; the project quota is 100 and expiry is mandatory.`}</p>
         </div>
-        <button type="button" className="btn matrix-editor__close" aria-label="Close pin sheet" onClick={onClose}>
+        <Button type="button" className="matrix-editor__close" aria-label="Close pin sheet" onClick={onClose}>
           ✕
-        </button>
+        </Button>
       </div>
 
       {refusal === null ? null : (
@@ -1491,17 +1489,16 @@ function PinSheet({
           {`Compare r${String(revision)} to latest (reads r${String(revision)}'s config values)`}
         </h3>
         <p>Secret lines are write-presence from the lineage, never a value comparison.</p>
-        <button
+        <Button
           id="history-pin-compare"
           type="button"
-          className="btn"
           disabled={comparisonBusy}
           aria-expanded={comparison !== null}
           aria-controls="history-pin-compare-results"
           onClick={onCompare}
         >
           {comparisonBusy ? 'Comparing…' : 'Run comparison'}
-        </button>
+        </Button>
         {comparisonError === null ? null : (
           <p id="history-pin-compare-error" className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">!</span>
@@ -1525,18 +1522,18 @@ function PinSheet({
       </section>
 
       <div className="matrix-editor__actions">
-        <button
+        <Button
           id="history-pin-submit"
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           disabled={busy || state.workloadPrincipalID === '' || state.expiresAt === ''}
           onClick={onSubmit}
         >
           {busy ? 'Pinning…' : moveMayCollect ? `${plan.label}, old values may be collected` : plan.label}
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
+        </Button>
+        <Button type="button" onClick={onClose}>
           Cancel
-        </button>
+        </Button>
       </div>
       <p>{`Latest in ${environmentName} is r${String(currentRevision)}.`}</p>
     </dialog>
@@ -1574,9 +1571,9 @@ function ReleaseSheet({
           ) : null}
           <p>{`The server will report r${revision}'s retention consequence after release.`}</p>
         </div>
-        <button type="button" className="btn matrix-editor__close" aria-label="Close release confirmation" onClick={onClose}>
+        <Button type="button" className="matrix-editor__close" aria-label="Close release confirmation" onClick={onClose}>
           ✕
-        </button>
+        </Button>
       </div>
       <ul className="history__consequences">
         <li>{`${workloadName} resumes latest (r${String(currentRevision)}) on its next fetch.`}</li>
@@ -1588,18 +1585,18 @@ function ReleaseSheet({
         <li>The lineage entry stays in every case.</li>
       </ul>
       <div className="matrix-editor__actions">
-        <button
+        <Button
           id="history-release-confirm"
           type="button"
-          className="btn btn--danger"
+          variant="danger"
           disabled={busy}
           onClick={onRelease}
         >
           {busy ? 'Releasing…' : soleKeeper ? `Release and allow collection of r${revision}` : 'Release pin'}
-        </button>
-        <button type="button" className="btn" onClick={onClose}>
+        </Button>
+        <Button type="button" onClick={onClose}>
           Keep the pin
-        </button>
+        </Button>
       </div>
     </dialog>
   );

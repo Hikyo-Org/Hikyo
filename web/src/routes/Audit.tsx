@@ -14,6 +14,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import { useScopeNames } from '../api/scopeNames.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { Button } from '../ui/Button.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 
 /** The glyph before an outcome word, so the state is never colour-only. */
@@ -108,9 +109,9 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
   const scannedEnd = trail.hasNextPage !== true;
   const emptyResult = trail.isSuccess && events.length === 0;
   const clearButton = (
-    <button type="button" className="btn btn--quiet" onClick={() => apply(emptyAuditFilter, '')}>
+    <Button type="button" variant="quiet" onClick={() => apply(emptyAuditFilter, '')}>
       Clear
-    </button>
+    </Button>
   );
 
   function apply(next: AuditFilter, nextEnvironment = environmentDraft) {
@@ -203,14 +204,14 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
                 placeholder="usr_…"
               />
               {selfId === '' ? null : (
-                <button
+                <Button
                   type="button"
-                  className="btn btn--quiet"
+                  variant="quiet"
                   onClick={() => set('actor', selfId)}
                   disabled={draft.actor === selfId}
                 >
                   Self
-                </button>
+                </Button>
               )}
             </div>
           </label>
@@ -273,9 +274,9 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           </label>
         </div>
         <div className="audit__filter-actions">
-          <button type="submit" className="btn btn--primary">
+          <Button type="submit" variant="primary">
             Apply filter
-          </button>
+          </Button>
           {/* Clear lives in ONE place: here while there are events, inside the
               empty state when the filter matched nothing. */}
           {emptyResult ? null : clearButton}
@@ -326,14 +327,14 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           )}
 
           {!scannedEnd && !trail.isError ? (
-            <button
+            <Button
               type="button"
-              className="btn audit__more"
+              className="audit__more"
               onClick={() => void trail.fetchNextPage()}
               disabled={trail.isFetchingNextPage}
             >
               {trail.isFetchingNextPage ? 'Scanning…' : 'Load more'}
-            </button>
+            </Button>
           ) : events.length > 0 ? (
             <p className="audit__end" role="status">
               End of the trail.
@@ -353,13 +354,14 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           <aside className="audit__detail card panel" id="audit-detail" tabIndex={-1} aria-label="Event detail">
             <div className="audit__detail-head">
               <h2 className="mono">{selected.type}</h2>
-              <button
+              <Button
                 type="button"
-                className="btn btn--quiet audit__detail-close"
+                variant="quiet"
+                className="audit__detail-close"
                 onClick={() => setSelected(null)}
               >
                 Close
-              </button>
+              </Button>
             </div>
             <dl className="audit__facts">
               <AuditFact label="Sequence" value={String(selected.seq)} />
@@ -390,15 +392,16 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
                     <span className="audit__fact-value">{selected.correlation_id}</span>{' '}
                     {/* Following the correlation id is how INTENT and its OUTCOME are
                         read together: it filters to exactly the events of one act. */}
-                    <button
+                    <Button
                       type="button"
-                      className="btn btn--quiet audit__correlate"
+                      variant="quiet"
+                      className="audit__correlate"
                       onClick={() =>
                         apply({ ...emptyAuditFilter, correlationId: selected.correlation_id ?? '' })
                       }
                     >
                       Show correlated events
-                    </button>
+                    </Button>
                   </dd>
                 </div>
               ) : null}

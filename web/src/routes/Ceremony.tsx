@@ -15,6 +15,7 @@ import {
   workspaceBearer,
   WorkspaceError,
 } from '../api/workspace.ts';
+import { Button } from '../ui/Button.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
@@ -294,23 +295,23 @@ export function Ceremony({
           )}
 
           <div className="ceremony__actions">
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               ref={first}
               onClick={onPasskey}
               disabled={busy}
             >
               {pending === 'passkey' ? 'Waiting for your passkey…' : 'Use a passkey'}
-            </button>
+            </Button>
             {offersOIDC ? (
-              <button className="btn" type="button" onClick={onOIDC} disabled={busy}>
+              <Button type="button" onClick={onOIDC} disabled={busy}>
                 {pending === 'oidc' ? 'Waiting for your identity provider…' : `Re-authenticate with ${oidcProvider.display_name}`}
-              </button>
+              </Button>
             ) : null}
-            <button className="btn" type="button" onClick={onCancel} disabled={busy}>
+            <Button type="button" onClick={onCancel} disabled={busy}>
               Cancel
-            </button>
+            </Button>
           </div>
 
           {request.window.totp_offered && !request.window.single_decision ? (
@@ -333,9 +334,9 @@ export function Ceremony({
                   onChange={(e) => setCode(e.target.value)}
                 />
               </div>
-              <button className="btn" type="submit" disabled={busy || code.length < 6}>
+              <Button type="submit" disabled={busy || code.length < 6}>
                 Authorise with a code
-              </button>
+              </Button>
             </form>
           ) : null}
         </>
@@ -433,18 +434,18 @@ export function WorkspaceStepUp({
         </p>
       )}
       <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           ref={firstRef}
           onClick={action.onClick}
           disabled={action.disabled}
         >
           {action.label}
-        </button>
-        <button className="btn" type="button" onClick={onCancel} disabled={authorising}>
+        </Button>
+        <Button type="button" onClick={onCancel} disabled={authorising}>
           Cancel
-        </button>
+        </Button>
       </div>
     </>
   );

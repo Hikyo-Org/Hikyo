@@ -18,6 +18,7 @@ import {
 } from '../api/catalogue.ts';
 import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
 import type { MatrixRef } from '../api/keys.ts';
+import { Button } from '../ui/Button.tsx';
 import { Alert, Done } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { useModalDialog } from './useModalDialog.ts';
@@ -70,14 +71,14 @@ export function CatalogueManageDialog({
           <h2>Folders &amp; linked keys</h2>
           <p>Folders organise keys by path. Linked keys enforce publishing and presence rules.</p>
         </div>
-        <button
+        <Button
           type="button"
-          className="btn matrix-editor__close"
+          className="matrix-editor__close"
           aria-label="Close folders and linked keys"
           onClick={onClose}
         >
           ✕
-        </button>
+        </Button>
       </div>
 
       {readOnly ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
@@ -186,9 +187,9 @@ function CreateFolder({ refData }: { refData: MatrixRef }) {
         disabled={create.isPending}
         onChange={(event) => setPath(event.currentTarget.value)}
       />
-      <button type="submit" className="btn btn--primary" disabled={create.isPending || trimmed === ''}>
+      <Button type="submit" variant="primary" disabled={create.isPending || trimmed === ''}>
         Add folder
-      </button>
+      </Button>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
       {write.done === null ? null : <Done>{write.done}</Done>}
       {write.scanBlock === null ? null : (
@@ -231,9 +232,8 @@ function FolderRow({
           disabled={readOnly || busy}
           onChange={(event) => setPath(event.currentTarget.value)}
         />
-        <button
+        <Button
           type="button"
-          className="btn"
           disabled={readOnly || busy || trimmed === '' || trimmed === folder.path}
           onClick={() =>
             write.run(
@@ -249,11 +249,11 @@ function FolderRow({
           }
         >
           Rename
-        </button>
+        </Button>
         {confirming ? (
-          <button
+          <Button
             type="button"
-            className="btn btn--danger"
+            variant="danger"
             disabled={busy}
             onClick={() => {
               setDeleteError(null);
@@ -263,16 +263,15 @@ function FolderRow({
             }}
           >
             Confirm delete
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
-            className="btn"
             disabled={readOnly || busy}
             onClick={() => setConfirming(true)}
           >
             Delete
-          </button>
+          </Button>
         )}
       </div>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
@@ -325,9 +324,9 @@ function CreateKeyGroup({ refData }: { refData: MatrixRef }) {
         disabled={create.isPending}
         onChange={(event) => setName(event.currentTarget.value)}
       />
-      <button type="submit" className="btn btn--primary" disabled={create.isPending || trimmed === ''}>
+      <Button type="submit" variant="primary" disabled={create.isPending || trimmed === ''}>
         Add linked-key set
-      </button>
+      </Button>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
       {write.done === null ? null : <Done>{write.done}</Done>}
       {write.scanBlock === null ? null : (
@@ -373,9 +372,8 @@ function GroupRow({
           {String(group.members.length)} {group.members.length === 1 ? 'key' : 'keys'}
           {group.inert ? <span className="catalogue-manage__inert"> · needs at least two keys</span> : null}
         </span>
-        <button
+        <Button
           type="button"
-          className="btn"
           disabled={readOnly || busy || trimmed === '' || trimmed === group.name}
           onClick={() =>
             write.run(
@@ -391,11 +389,11 @@ function GroupRow({
           }
         >
           Rename
-        </button>
+        </Button>
         {confirming ? (
-          <button
+          <Button
             type="button"
-            className="btn btn--danger"
+            variant="danger"
             disabled={busy}
             onClick={() => {
               setDeleteError(null);
@@ -405,16 +403,15 @@ function GroupRow({
             }}
           >
             Confirm delete
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
-            className="btn"
             disabled={readOnly || busy}
             onClick={() => setConfirming(true)}
           >
             Delete
-          </button>
+          </Button>
         )}
       </div>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}

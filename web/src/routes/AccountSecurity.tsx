@@ -23,6 +23,7 @@ import { useRevokeSession, useSessions, type ActiveSession } from '../api/remote
 import { useAuth } from '../app/AuthProvider.tsx';
 import { themeLabel, useThemeChoice, type ThemeChoice } from '../app/theme.ts';
 import { clearNotification, notifyFailure } from '../app/notifications.tsx';
+import { Button } from '../ui/Button.tsx';
 import { Alert, DisplayOnceCopy, Done, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
@@ -246,14 +247,13 @@ export function AccountSecurity() {
               enrolled
             </button>
           ) : (
-            <button
+            <Button
               type="button"
-              className="btn"
               disabled={totpStart.isPending || totpStatus.isPending}
               onClick={() => setProof({ kind: 'totp-start' })}
             >
               enrol
-            </button>
+            </Button>
           )}
         </div>
         {totpStatus.isError ? (
@@ -266,9 +266,9 @@ export function AccountSecurity() {
             <span className="settings-row__detail">signs you in, never authorises security changes</span>
           </div>
           <span className="settings-row__spacer" />
-          <button type="button" className="btn" disabled title="Password changes are not in the API contract">
+          <Button type="button" disabled title="Password changes are not in the API contract">
             change
-          </button>
+          </Button>
         </div>
 
         <div className="settings-row settings-row--compact">
@@ -279,15 +279,14 @@ export function AccountSecurity() {
             </span>
           </div>
           <span className="settings-row__spacer" />
-          <button
+          <Button
             type="button"
-            className="btn"
             aria-label="Add a passkey"
             disabled={enrolPasskey.isPending}
             onClick={() => setProof({ kind: 'add-passkey' })}
           >
             + add
-          </button>
+          </Button>
         </div>
 
         {totpEnrolmentInProgress ? (
@@ -320,9 +319,9 @@ export function AccountSecurity() {
               />
             </div>
             <div className="panel__actions">
-              <button
+              <Button
                 type="button"
-                className="btn btn--primary"
+                variant="primary"
                 disabled={totpConfirm.isPending || totpCode.length < 6}
                 onClick={() =>
                   totpConfirm.mutate(
@@ -340,7 +339,7 @@ export function AccountSecurity() {
                 }
               >
                 Confirm enrolment
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -351,12 +350,12 @@ export function AccountSecurity() {
           <div className="settings-row">
             <div className="settings-row__copy"><span className="settings-row__title">Recovery codes</span><span className="settings-row__detail">not generated yet</span></div>
             <span className="settings-row__spacer" />
-            <button type="button" className="btn" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>generate</button>
+            <Button type="button" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>generate</Button>
           </div>
           <div className="settings-row">
             <div className="settings-row__copy"><span className="settings-row__title">Passkey-only sign-in</span><span className="settings-row__detail">requires recovery codes + at least 2 passkeys</span></div>
             <span className="settings-row__spacer" />
-            <button type="button" className="btn" disabled>enable</button>
+            <Button type="button" disabled>enable</Button>
           </div>
           <p className="settings-note">Locked until preconditions are met: 2/2 passkeys · recovery codes ✗. Codes restore access; they never satisfy a disclosure reauth.</p>
         </> : <>
@@ -366,7 +365,7 @@ export function AccountSecurity() {
             the proof is a code from your authenticator where one stands, otherwise your password.
           </p>
           <div className="panel__actions">
-            <button type="button" className="btn" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>Replace recovery codes</button>
+            <Button type="button" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>Replace recovery codes</Button>
           </div>
           <p className="field__hint">Replacing them invalidates the previous batch atomically, and the new codes are displayed once.</p>
         </>}
@@ -408,8 +407,7 @@ export function AccountSecurity() {
                 <span className="mono session__id">{item.id}</span>
               </div>
               <p className="session__detail">{sessionDetail(item)}</p>
-              <button
-                className="btn"
+              <Button
                 type="button"
                 aria-label={`Revoke the ${item.artifact} session ${item.id}`}
                 onClick={() =>
@@ -421,7 +419,7 @@ export function AccountSecurity() {
                 disabled={revokeSession.isPending}
               >
                 Revoke
-              </button>
+              </Button>
             </li>
           )) : null}
         </ul>
@@ -440,15 +438,14 @@ export function AccountSecurity() {
           <div className="settings-row">
             <div className="settings-row__copy"><span className="settings-row__title">Link another identity</span><span className="settings-row__detail">explicit binding: an unknown identity at sign-in is never a login, email never links</span></div>
             <span className="settings-row__spacer" />
-            <button
+            <Button
               type="button"
-              className="btn"
               disabled={link.isPending || methods.data?.providers[0] === undefined}
               onClick={() => {
                 const provider = methods.data?.providers[0];
                 if (provider !== undefined && (provider.kind === 'oidc' || provider.kind === 'saml')) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
               }}
-            >link…</button>
+            >link…</Button>
           </div>
         </> : <>
         <p>
@@ -469,14 +466,13 @@ export function AccountSecurity() {
                   {new Date(identity.created_at).toLocaleDateString()}
                 </span>
               </div>
-              <button
+              <Button
                 type="button"
-                className="btn"
                 aria-label={`Unlink ${identity.issuer}`}
                 onClick={() => setProof({ kind: 'unlink', id: identity.id })}
               >
                 Unlink
-              </button>
+              </Button>
             </li>
           )) : null}
         </ul>
@@ -492,9 +488,8 @@ export function AccountSecurity() {
           <>
             <div className="panel__actions">
               {methods.data.providers.map((provider) => (
-                <button
+                <Button
                   type="button"
-                  className="btn"
                   key={provider.slug}
                   disabled={link.isPending || (provider.kind !== 'oidc' && provider.kind !== 'saml')}
                   onClick={() => {
@@ -507,7 +502,7 @@ export function AccountSecurity() {
                   }}
                 >
                   Link {provider.display_name}
-                </button>
+                </Button>
               ))}
             </div>
             <p className="field__hint">
@@ -654,12 +649,12 @@ function ProofDialog({
           />
         </div>
         <div className="ceremony__actions">
-          <button type="button" className="btn" onClick={onCancel}>
+          <Button type="button" onClick={onCancel}>
             Cancel
-          </button>
-          <button type="submit" className="btn btn--primary" disabled={value === ''}>
+          </Button>
+          <Button type="submit" variant="primary" disabled={value === ''}>
             Confirm
-          </button>
+          </Button>
         </div>
       </form>
     </dialog>
@@ -719,9 +714,9 @@ function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: 
         <label htmlFor={ackId}>I have stored these somewhere safe.</label>
       </div>
       <div className="ceremony__actions">
-        <button type="button" className="btn btn--primary" disabled={!stored} onClick={onClose}>
+        <Button type="button" variant="primary" disabled={!stored} onClick={onClose}>
           Done
-        </button>
+        </Button>
       </div>
     </dialog>
   );

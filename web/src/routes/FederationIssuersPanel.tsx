@@ -15,6 +15,7 @@ import {
   type FederationJwksMode,
 } from '../api/federationIssuers.ts';
 import { notifySuccess } from '../app/notifications.tsx';
+import { Button } from '../ui/Button.tsx';
 import { Alert, Done, Panel } from './Sections.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
@@ -136,9 +137,8 @@ export function FederationIssuersPanel() {
                   </span>
                 </div>
                 <div className="panel__actions">
-                  <button
+                  <Button
                     type="button"
-                    className="btn"
                     disabled={busy}
                     onClick={() => {
                       setFailure(null);
@@ -148,15 +148,14 @@ export function FederationIssuersPanel() {
                     }}
                   >
                     Edit
-                  </button>
+                  </Button>
                   {/* Neutral until the confirmation opens: the danger button
                       is the destructive act itself, shown only after this one
                       reveals it, the same reveal-then-danger shape every other
                       surface uses, which also keeps the low-contrast danger
                       treatment out of the always-rendered page. */}
-                  <button
+                  <Button
                     type="button"
-                    className="btn"
                     disabled={busy}
                     onClick={() => {
                       setFailure(null);
@@ -166,7 +165,7 @@ export function FederationIssuersPanel() {
                     }}
                   >
                     Delete
-                  </button>
+                  </Button>
                 </div>
 
                 {confirmDelete?.id === issuer.id ? (
@@ -177,23 +176,22 @@ export function FederationIssuersPanel() {
                         : `${String(issuer.live_bindings)} binding${issuer.live_bindings === 1 ? '' : 's'}, live or revoked, name ${issuer.issuer}, so it cannot be deleted. That history is append-only: even a revoked binding still records what this issuer was trusted for, and erasing the issuer would erase what it trusted. Deletion is only ever available for an issuer that was never bound.`}
                     </p>
                     <div className="panel__actions">
-                      <button
+                      <Button
                         type="button"
-                        className="btn"
                         disabled={busy}
                         onClick={() => setConfirmDelete(null)}
                       >
                         {issuer.live_bindings === 0 ? 'Cancel' : 'Close'}
-                      </button>
+                      </Button>
                       {issuer.live_bindings === 0 ? (
-                        <button
+                        <Button
                           type="button"
-                          className="btn btn--danger"
+                          variant="danger"
                           disabled={busy}
                           onClick={() => doDelete(issuer)}
                         >
                           Delete issuer
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                   </div>
@@ -246,9 +244,9 @@ export function FederationIssuersPanel() {
 
       {issuers.isSuccess && editor !== 'create' ? (
         <div className="panel__actions">
-          <button
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={busy}
             onClick={() => {
               setFailure(null);
@@ -258,7 +256,7 @@ export function FederationIssuersPanel() {
             }}
           >
             Configure issuer
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -462,12 +460,12 @@ function IssuerForm({
       </div>
 
       <div className="panel__actions">
-        <button type="button" className="btn" onClick={onCancel}>
+        <Button type="button" onClick={onCancel}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           onClick={() =>
             onSubmit({
               issuer: url,
@@ -479,7 +477,7 @@ function IssuerForm({
           }
         >
           {editing ? 'Save issuer' : 'Configure issuer'}
-        </button>
+        </Button>
       </div>
     </fieldset>
   );

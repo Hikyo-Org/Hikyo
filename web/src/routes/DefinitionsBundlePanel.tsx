@@ -14,6 +14,7 @@ import {
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { GIT_DEFINITIONS_NOTICE, type DefinitionsSettings } from '../api/definitions.ts';
 import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
+import { Button } from '../ui/Button.tsx';
 import { Alert, ConsequencesDialog, Done } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { useModalDialog } from './useModalDialog.ts';
@@ -46,9 +47,9 @@ export function DefinitionsBundlePanel({ org, project, settings }: Props) {
         ) : (
           <span>Open settings on the instance itself to download a bundle.</span>
         )}
-        <button className="btn" type="button" onClick={() => setOpen(true)}>
+        <Button type="button" onClick={() => setOpen(true)}>
           Check a bundle
-        </button>
+        </Button>
       </div>
       {open ? (
         <BundleDialog
@@ -208,14 +209,14 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           <h2 id={titleId}>Definitions bundle</h2>
           <p>Compare a file, review its immutable impact plan, then publish atomically.</p>
         </div>
-        <button
-          className="btn matrix-editor__close"
+        <Button
+          className="matrix-editor__close"
           type="button"
           aria-label="Close definitions bundle"
           onClick={onClose}
         >
           ✕
-        </button>
+        </Button>
       </div>
       <div className="definitions-bundle__body">
         {git ? (
@@ -245,22 +246,20 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           definitions. Files remain only in this open dialog.
         </p>
         <div className="panel__actions">
-          <button
-            className="btn"
+          <Button
             type="button"
             disabled={bundle === null || busy}
             onClick={() => void check()}
           >
             Check bundle
-          </button>
-          <button
-            className="btn"
+          </Button>
+          <Button
             type="button"
             disabled={checked === null || busy}
             onClick={() => void createPlan()}
           >
             Create impact plan
-          </button>
+          </Button>
         </div>
         {busy ? <p role="status">Checking the instance…</p> : null}
         {checked === null ? null : (
@@ -328,14 +327,14 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
                 I reviewed and allow the listed deletions.
               </label>
             ) : null}
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               disabled={busy || git || (plan.deletions_present && !allowDelete)}
               onClick={() => setConfirm(true)}
             >
               Review and apply
-            </button>
+            </Button>
           </section>
         )}
       </div>

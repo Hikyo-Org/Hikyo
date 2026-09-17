@@ -33,6 +33,7 @@ import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import type { EnvironmentList } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Button } from '../ui/Button.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { Alert, Done, TypedNameConfirm } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
@@ -630,9 +631,9 @@ function MetadataEditor({
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {done ? <Done>Saved.</Done> : null}
 
-      <button type="submit" className="btn btn--primary" disabled={update.isPending || !dirty}>
+      <Button type="submit" variant="primary" disabled={update.isPending || !dirty}>
         {update.isPending ? 'Saving…' : 'Save declaration'}
-      </button>
+      </Button>
 
       {scanBlock === null ? null : (
         <ScanBlockDialog
@@ -766,9 +767,9 @@ function RenameKey({
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {done ? <Done>Renamed.</Done> : null}
 
-      <button type="submit" className="btn btn--primary" disabled={rename.isPending || !dirty}>
+      <Button type="submit" variant="primary" disabled={rename.isPending || !dirty}>
         {rename.isPending ? 'Renaming…' : 'Rename key'}
-      </button>
+      </Button>
 
       {scanBlock === null ? null : (
         <ScanBlockDialog
@@ -890,9 +891,8 @@ function ReclassifyKey({
         </div>
       )}
 
-      <button
+      <Button
         type="button"
-        className="btn"
         // Fail closed in BOTH directions: tightening drops the key's config
         // dismissals, so its impact preview matters as much as a declassification's.
         disabled={reclassify.isPending || !impactReady}
@@ -902,7 +902,7 @@ function ReclassifyKey({
         }}
       >
         {declassify ? 'Reclassify as config…' : 'Reclassify as secret…'}
-      </button>
+      </Button>
 
       {confirming ? (
         <ConfirmDialog
@@ -1091,28 +1091,28 @@ function ConfirmDialog({
         <div>
           <h2 id={titleId}>{title}</h2>
         </div>
-        <button
+        <Button
           type="button"
-          className="btn matrix-editor__close"
+          className="matrix-editor__close"
           aria-label="Close"
           onClick={onClose}
         >
           ✕
-        </button>
+        </Button>
       </div>
       {children}
       <div className="matrix-editor__actions">
-        <button
+        <Button
           type="button"
-          className={danger ? 'btn btn--danger' : 'btn btn--primary'}
+          variant={danger ? 'danger' : 'primary'}
           disabled={busy || confirmDisabled}
           onClick={onConfirm}
         >
           {busy ? 'Working…' : confirmLabel}
-        </button>
-        <button type="button" className="btn" disabled={busy} onClick={onClose}>
+        </Button>
+        <Button type="button" disabled={busy} onClick={onClose}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -1516,14 +1516,14 @@ function DeclarationEditor({
               disabled={update.isPending}
               onChange={(next) => editAlternatives(alternatives.with(index, next))}
               action={
-                <button
+                <Button
                   type="button"
-                  className="btn btn--quiet"
+                  variant="quiet"
                   disabled={update.isPending || alternatives.length <= ANY_OF_MIN}
                   onClick={() => editAlternatives(alternatives.filter((_, at) => at !== index))}
                 >
                   Remove alternative
-                </button>
+                </Button>
               }
             />
           ))}
@@ -1548,14 +1548,13 @@ function DeclarationEditor({
                 ))}
               </select>
             </label>
-            <button
+            <Button
               type="button"
-              className="btn"
               disabled={update.isPending || alternatives.length >= ANY_OF_MAX}
               onClick={() => editAlternatives([...alternatives, ruleDraftFrom({ type: addKind })])}
             >
               Add alternative
-            </button>
+            </Button>
             {alternatives.length >= ANY_OF_MAX ? (
               <p className="field__hint">
                 Add is off: a declaration holds at most {String(ANY_OF_MAX)} alternatives.
@@ -1630,9 +1629,9 @@ function DeclarationEditor({
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {done ? <Done>Saved.</Done> : null}
 
-      <button type="submit" className="btn btn--primary" disabled={update.isPending}>
+      <Button type="submit" variant="primary" disabled={update.isPending}>
         {update.isPending ? 'Saving…' : 'Save value rules & presence'}
-      </button>
+      </Button>
 
       {scanBlock === null ? null : (
         <ScanBlockDialog
