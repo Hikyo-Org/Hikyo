@@ -135,12 +135,12 @@ git commit -s -m "refactor(web): delete the checkbox, dialog and touch-height ru
 ### Task 5: Retarget the desktop e2e density pins and correct the handoff
 
 **Files:**
-- Modify (18 pins, `'--touch'` to `'--control'`): `web/e2e/flows/login.spec.ts:67,96,140,182`; `matrix.spec.ts:351,435,1021`; `shell.spec.ts:506`; `members.spec.ts:679,718,744`; `machine-access.spec.ts:673,800`; `history.spec.ts:296`; `settings.spec.ts:586,842`; `reveal.spec.ts:416,449,753`; `scanning.spec.ts:157`.
+- Modify (20 pins, `'--touch'` to `'--control'`): `web/e2e/flows/login.spec.ts:67,96,140,182`; `matrix.spec.ts:351,435,1021`; `shell.spec.ts:506`; `members.spec.ts:679,718,744`; `machine-access.spec.ts:673,800`; `history.spec.ts:296`; `settings.spec.ts:586,842`; `reveal.spec.ts:416,449,753`; `scanning.spec.ts:157`.
 - Leave unchanged: the seven `testInfo.project.name === 'mobile' ? '--touch' : '--row'` lines (`members.spec.ts:614,938,1061`, `instance-admin.spec.ts:1082,1114`, `machine-access.spec.ts:1035,1267`) and every comment.
 - Modify: `docs/handoff/storybook-ui-consistency.md` "Constraints" list: `settings.spec.ts:575` is `:586`; add the six pins the list omits (`login.spec.ts:96/140/182`, `reveal.spec.ts:416/449/753`, `scanning.spec.ts:157`, `settings.spec.ts:842`); the "five rules app.css states with more specificity" note resolves to three rules (`.page--members .inspect select`, `.sidebar__link`, `.environment-lifecycle > summary`), say so. In §5 mark the layer-1 items (tokens, blocks moved, pins retargeted) done with this branch's commits; leave layer-2 items open for #762.
 - Create: `docs/handoff/761-design-foundations-into-app.md`: what moved, what was deleted per task, what stayed (the §3b survivors and why), the ratchet number before and after, the pin list, and the preview checks still owed (issue item 4 and 5) for the controller to fill in.
 
-- [ ] **Step 1: Edit the 18 pins**
+- [ ] **Step 1: Edit the 20 pins**
 
 `grep -n "'--touch'" web/e2e/flows/*.ts` afterwards must list exactly the seven conditional lines plus comments.
 
