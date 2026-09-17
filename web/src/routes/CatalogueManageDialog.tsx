@@ -20,8 +20,8 @@ import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitio
 import type { MatrixRef } from '../api/keys.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type ScanBlockState = {
   readonly findings: readonly RefusalFinding[];
@@ -58,28 +58,26 @@ export function CatalogueManageDialog({
   refData: MatrixRef;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const folders = useFolders(refData);
   const groups = useKeyGroups(refData);
   const definitions = useDefinitionsSettings(refData.org, refData.project);
   const readOnly = definitions.data?.definitions_source === 'git';
 
   return (
-    <dialog className="matrix-editor catalogue-manage" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>Folders &amp; linked keys</h2>
-          <p>Folders organise keys by path. Linked keys enforce publishing and presence rules.</p>
-        </div>
-        <Button
-          type="button"
-          className="matrix-editor__close"
-          aria-label="Close folders and linked keys"
-          onClick={onClose}
-        >
-          ✕
+    <Dialog
+      title="Folders & linked keys"
+      lede="Folders organise keys by path. Linked keys enforce publishing and presence rules."
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <Button type="button" onClick={onClose}>
+          Close
         </Button>
-      </div>
+      }
+    >
 
       {readOnly ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
 
@@ -118,7 +116,7 @@ export function CatalogueManageDialog({
         </ul>
         {readOnly ? null : <CreateKeyGroup refData={refData} />}
       </section>
-    </dialog>
+    </Dialog>
   );
 }
 

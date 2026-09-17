@@ -68,7 +68,7 @@ test.describe('secret scanning warn dialog', () => {
       const cell = page.getByRole('button', { name: new RegExp(`${keyName} in development:`) });
       await expect(cell).toBeVisible();
 
-      const warn = page.locator('dialog.scan-warn');
+      const warn = page.getByRole('dialog', { name: 'Possible secret in a config value' });
 
     // --- SS2: plant the credential; the save succeeds and the warn fires -----
       await plantValue(page, cell, CANARY);
@@ -209,7 +209,7 @@ test.describe('secret scanning block dialog', () => {
       const panel = page.locator('.key-detail');
       await expect(panel.getByRole('heading', { name: keyName, level: 2 })).toBeVisible();
 
-      const block = page.locator('dialog.scan-block');
+      const block = page.getByRole('dialog', { name: 'Declaration blocked by secret scanning' });
 
       // --- SS3: a credential-shaped description is refused, and the block dialog
       // states the exported-as-public consequence --------------------------------
@@ -264,7 +264,7 @@ async function plantValue(
   value: string,
 ): Promise<void> {
   await cell.click();
-  const editor = page.locator('dialog.matrix-row-editor');
+  const editor = page.locator('dialog[open]');
   await expect(editor).toBeVisible();
   await editor.getByLabel('development value').fill(value);
   const save = editor.getByRole('button', { name: /^Save \d+ draft/ });

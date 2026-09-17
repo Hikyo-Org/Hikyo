@@ -36,6 +36,7 @@ import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   defaultPinExpiry,
@@ -69,7 +70,6 @@ import {
   type RevisionActionGate,
 } from './history-state.ts';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 import { RevisionDiffDialog } from './RevisionDiff.tsx';
 
 type Environment = EnvironmentList['items'][number];
@@ -1173,7 +1173,6 @@ function RestoreSheet({
   onPublish: () => void;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const groups: readonly HistoryImpactEnvironment[] =
     result === null
       ? []
@@ -1195,35 +1194,35 @@ function RestoreSheet({
   const summary = restorePreviewSummary(groups.flatMap((group) => group.changes));
 
   return (
-    <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>
-            {keyName === null
-              ? `Restore r${String(revision)} · ${environmentName}`
-              : `Restore ${keyName} from r${String(revision)} · ${environmentName}`}
-          </h2>
-          <p>
-            Stages drafts reproducing r{String(revision)}. Publishing them runs the normal
-            pipeline and re-validates against the CURRENT schema; history is never rewritten.
-          </p>
-        </div>
-        <Button type="button" className="matrix-editor__close" aria-label="Close restore" onClick={onClose}>
-          ✕
-        </Button>
-      </div>
-
+    <Dialog
+      title={
+        keyName === null
+          ? `Restore r${String(revision)} · ${environmentName}`
+          : `Restore ${keyName} from r${String(revision)} · ${environmentName}`
+      }
+      lede={
+        <>
+          Stages drafts reproducing r{String(revision)}. Publishing them runs the normal
+          pipeline and re-validates against the CURRENT schema; history is never rewritten.
+        </>
+      }
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
       {refusal === null ? null : (
         <Alert>{refusal}</Alert>
       )}
 
       {result === null ? (
-        <div className="matrix-editor__actions">
-          <Button type="button" variant="primary" disabled={busy} onClick={onStage}>
-            {busy ? 'Staging…' : `Stage the restore from r${String(revision)}`}
-          </Button>
+        <div className="dialog__actions">
           <Button type="button" onClick={onClose}>
             Cancel
+          </Button>
+          <Button type="button" variant="primary" disabled={busy} onClick={onStage}>
+            {busy ? 'Staging…' : `Stage the restore from r${String(revision)}`}
           </Button>
         </div>
       ) : (
@@ -1270,7 +1269,12 @@ function RestoreSheet({
             </section>
           ))}
           <Alert tone="done">Drafts are staged; they are also visible on the matrix.</Alert>
-          <div className="matrix-editor__actions">
+          {/* The row stays in the children: the gate sentence below explains a
+              disabled publish, so `actions` would put it after its own reason. */}
+          <div className="dialog__actions">
+            <Link id="history-restore-back" className="btn" to={matrixPath}>
+              Back to the matrix
+            </Link>
             <Button
               id="history-restore-publish"
               type="button"
@@ -1283,9 +1287,6 @@ function RestoreSheet({
                 ? 'Publishing this restore…'
                 : restorePublishLabel(revision, groups)}
             </Button>
-            <Link id="history-restore-back" className="btn" to={matrixPath}>
-              Back to the matrix
-            </Link>
           </div>
           {result.changes.length === 0 ? (
             <p id="history-restore-no-drafts" className="history__gate" role="status">
@@ -1294,7 +1295,7 @@ function RestoreSheet({
           ) : null}
         </>
       )}
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1348,27 +1349,22 @@ function PinSheet({
   onSubmit: () => void;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const chosen = workloads.find((workload) => workload.principalID === state.workloadPrincipalID);
   const plan = pinAction(chosen?.existingPin?.revision, revision);
   const moveMayCollect =
     plan.kind === 'move' && chosen?.existingPin?.releaseRetentionConsequence === 'collection_eligible';
 
   return (
-    <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>
-            <span aria-hidden="true">⚲ </span>
-            {`Pin r${String(revision)} · ${environmentName}`}
-          </h2>
-          <p>{`One pin per workload and environment. ${String(pinCount)} pinned in this environment; the project quota is 100 and expiry is mandatory.`}</p>
-        </div>
-        <Button type="button" className="matrix-editor__close" aria-label="Close pin sheet" onClick={onClose}>
-          ✕
-        </Button>
-      </div>
-
+    <Dialog
+      title={`Pin r${String(revision)} · ${environmentName}`}
+      lede={`One pin per workload and environment. ${String(pinCount)} pinned in this environment; the project quota is 100 and expiry is mandatory.`}
+      size="wide"
+      className="history-sheet"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
       {refusal === null ? null : (
         <Alert>{refusal}</Alert>
       )}
@@ -1490,7 +1486,12 @@ function PinSheet({
         )}
       </section>
 
-      <div className="matrix-editor__actions">
+      {/* The row stays in the children because the latest-revision sentence
+          below it is body copy, not part of the decision. */}
+      <div className="dialog__actions">
+        <Button type="button" onClick={onClose}>
+          Cancel
+        </Button>
         <Button
           id="history-pin-submit"
           type="button"
@@ -1500,12 +1501,9 @@ function PinSheet({
         >
           {busy ? 'Pinning…' : moveMayCollect ? `${plan.label}, old values may be collected` : plan.label}
         </Button>
-        <Button type="button" onClick={onClose}>
-          Cancel
-        </Button>
       </div>
       <p>{`Latest in ${environmentName} is r${String(currentRevision)}.`}</p>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1525,25 +1523,41 @@ function ReleaseSheet({
   onRelease: () => void;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const soleKeeper = pin.releaseRetentionConsequence === 'collection_eligible';
   const revision = String(pin.revision);
   return (
-    <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>Release pin</h2>
-          {soleKeeper ? (
-            <p>
-              {`This pin is the only thing keeping r${revision}'s values. Releasing it makes them collection-eligible: no diff by value, no restore, no reveal once collected.`}
-            </p>
-          ) : null}
-          <p>{`The server will report r${revision}'s retention consequence after release.`}</p>
-        </div>
-        <Button type="button" className="matrix-editor__close" aria-label="Close release confirmation" onClick={onClose}>
-          ✕
-        </Button>
-      </div>
+    <Dialog
+      title="Release pin"
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <>
+          <Button type="button" onClick={onClose}>
+            Keep the pin
+          </Button>
+          <Button
+            id="history-release-confirm"
+            type="button"
+            variant="danger"
+            disabled={busy}
+            onClick={onRelease}
+          >
+            {busy ? 'Releasing…' : soleKeeper ? `Release and allow collection of r${revision}` : 'Release pin'}
+          </Button>
+        </>
+      }
+    >
+      {/* Two ledes, so they stay in the children: the atom's `lede` is one
+          paragraph and a sole-keeper release has a consequence to state first. */}
+      {soleKeeper ? (
+        <p className="dialog__lede">
+          {`This pin is the only thing keeping r${revision}'s values. Releasing it makes them collection-eligible: no diff by value, no restore, no reveal once collected.`}
+        </p>
+      ) : null}
+      <p className="dialog__lede">{`The server will report r${revision}'s retention consequence after release.`}</p>
       <ul className="history__consequences">
         <li>{`${workloadName} resumes latest (r${String(currentRevision)}) on its next fetch.`}</li>
         <li>
@@ -1553,21 +1567,7 @@ function ReleaseSheet({
         </li>
         <li>The lineage entry stays in every case.</li>
       </ul>
-      <div className="matrix-editor__actions">
-        <Button
-          id="history-release-confirm"
-          type="button"
-          variant="danger"
-          disabled={busy}
-          onClick={onRelease}
-        >
-          {busy ? 'Releasing…' : soleKeeper ? `Release and allow collection of r${revision}` : 'Release pin'}
-        </Button>
-        <Button type="button" onClick={onClose}>
-          Keep the pin
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 

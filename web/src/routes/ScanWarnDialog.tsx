@@ -1,9 +1,9 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 
 import type { ScanFinding } from '../api/matrix.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
+import { Dialog } from '../ui/Dialog.tsx';
 
 /**
  * One config value that a save flagged as credential-shaped (#74, Surface 1).
@@ -64,8 +64,6 @@ export function ScanWarnDialog({
   onReclassify: () => Promise<void>;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   const [rows, setRows] = useState<readonly ScanWarnItem[]>(items);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,24 +98,30 @@ export function ScanWarnDialog({
   };
 
   return (
-    <dialog className="matrix-editor scan-warn" ref={dialog} aria-labelledby={titleId} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2 id={titleId}>Possible secret in a config value</h2>
-          <p>
-            {`${keyName} is classified as config, so its value is stored without secret handling: no masking, no reveal ceremony. These saved values look like credentials.`}
-          </p>
-        </div>
-        <Button
-          type="button"
-          className="matrix-editor__close"
-          aria-label="Close scanning warning"
-          onClick={onClose}
-        >
-          ✕
-        </Button>
-      </div>
-
+    <Dialog
+      title="Possible secret in a config value"
+      lede={`${keyName} is classified as config, so its value is stored without secret handling: no masking, no reveal ceremony. These saved values look like credentials.`}
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <>
+          <Button type="button" disabled={busy !== null} onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            type="button"
+            variant="primary"
+            disabled={busy !== null}
+            onClick={reclassify}
+          >
+            {busy === 'reclassify' ? 'Reclassifying…' : `Reclassify ${keyName} as secret`}
+          </Button>
+        </>
+      }
+    >
       <ul className="scan-warn__findings">
         {rows.map((item) => (
           <li className="scan-warn__finding" key={rowKey(item)}>
@@ -147,17 +151,6 @@ export function ScanWarnDialog({
       {error === null ? null : (
         <Alert>{error}</Alert>
       )}
-
-      <div className="matrix-editor__actions">
-        <Button
-          type="button"
-          variant="primary"
-          disabled={busy !== null}
-          onClick={reclassify}
-        >
-          {busy === 'reclassify' ? 'Reclassifying…' : `Reclassify ${keyName} as secret`}
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }

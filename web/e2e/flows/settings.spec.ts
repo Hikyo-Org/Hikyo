@@ -335,7 +335,7 @@ test.describe('project settings', () => {
     await dialog.getByRole('button', { name: 'Review and apply' }).click();
     await page.getByRole('dialog', { name: 'Apply definitions and publish' }).getByRole('button', { name: 'Apply and publish' }).click();
     await expect(dialog.getByRole('status').filter({ hasText: 'Definitions applied at revision' })).toBeVisible();
-    await dialog.getByRole('button', { name: 'Close definitions bundle' }).click();
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(page.locator('#project-environments').getByText('bundle-preview', { exact: true })).toBeVisible();
     const environments = await browserApi(page, 'GET', `${base()}/environments`, zEnvironmentList);
     const created = environments.items.find((environment) => environment.name === 'bundle-preview');
@@ -361,7 +361,7 @@ test.describe('project settings', () => {
     await page.getByRole('dialog', { name: 'Apply definitions and publish' }).getByRole('button', { name: 'Apply and publish' }).click();
     await expect(dialog.getByRole('alert').filter({ hasText: 'publish on every affected environment' })).toBeVisible();
     await page.unroute(`**${base()}/definitions/plans/*/apply`);
-    await dialog.getByRole('button', { name: 'Close definitions bundle' }).click();
+    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
     try {
       await browserApi(page, 'PUT', `${base()}/definitions/settings`, zDefinitionsSettings, { definitions_source: 'git' });
       await page.reload();

@@ -17,7 +17,7 @@ import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
+import { Dialog } from '../ui/Dialog.tsx';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 
@@ -67,8 +67,6 @@ export function DefinitionsBundlePanel({ org, project, settings }: Props) {
 }
 
 function BundleDialog({ org, project, settings, onClose }: Props & { onClose: () => void }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   const fileId = useId();
   const fileInput = useRef<HTMLInputElement>(null);
   const transport = useTransport();
@@ -200,26 +198,20 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
   };
   const git = settings.definitions_source === 'git';
   return (
-    <dialog
-      className="matrix-editor definitions-bundle"
-      ref={dialog}
-      aria-labelledby={titleId}
-      onClose={onClose}
-    >
-      <div className="matrix-editor__head">
-        <div>
-          <h2 id={titleId}>Definitions bundle</h2>
-          <p>Compare a file, review its immutable impact plan, then publish atomically.</p>
-        </div>
-        <Button
-          className="matrix-editor__close"
-          type="button"
-          aria-label="Close definitions bundle"
-          onClick={onClose}
-        >
-          ✕
+    <Dialog
+      title="Definitions bundle"
+      lede="Compare a file, review its immutable impact plan, then publish atomically."
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <Button type="button" onClick={onClose}>
+          Close
         </Button>
-      </div>
+      }
+    >
       <div className="definitions-bundle__body">
         {git ? (
           <Alert>
@@ -371,7 +363,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           onClose={() => setScan(null)}
         />
       )}
-    </dialog>
+    </Dialog>
   );
 }
 

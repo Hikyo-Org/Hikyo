@@ -6,14 +6,13 @@ import { useTransport } from '../api/transport.tsx';
 import { fetchRevealWindow } from '../api/values.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import { useCeremonyTask } from './useCeremonyTask.ts';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 export function RevisionDiffDialog({ env, environmentName, left, right, onClose }: {
   env: EnvRef; environmentName: string; left: bigint; right: bigint; onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const transport = useTransport();
   const auth = useAuth();
   const { compare, reveal } = useRevisionDiff(env, left, right);
@@ -73,12 +72,16 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
   };
   const visible = disclosure !== null && now < disclosure.until ? disclosure.row : null;
   return <>
-    <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose} aria-labelledby="revision-diff-title">
-      <div className="matrix-editor__head">
-        <h2 id="revision-diff-title">{`Diff r${String(left)} → r${String(right)} · ${environmentName}`}</h2>
-        <Button type="button" onClick={onClose}>Close diff</Button>
-      </div>
-      <p>Secret rows show write-presence. Revealing one key discloses both retained values, requires current or historical reveal permission for each side, and is audited.</p>
+    <Dialog
+      title={`Diff r${String(left)} → r${String(right)} · ${environmentName}`}
+      lede="Secret rows show write-presence. Revealing one key discloses both retained values, requires current or historical reveal permission for each side, and is audited."
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={<Button type="button" onClick={onClose}>Close diff</Button>}
+    >
       {compare.isPending ? <p role="status">Reading revision diff…</p> : null}
       {compare.error !== null ? <p role="alert">{compare.error.message}</p> : null}
       {failure !== null ? <p role="alert">{failure}</p> : null}
@@ -98,7 +101,7 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
         })}
       </ul>
       {visible !== null ? <p role="status">Re-masks in {Math.ceil(((disclosure?.until ?? now) - now) / 1000)}s. Switching away masks immediately.</p> : null}
-    </dialog>
+    </Dialog>
     {ceremony.request !== null ? <Ceremony key={ceremony.requestKey} request={ceremony.request} onAuthorised={ceremony.onAuthorised} onCancel={ceremony.onCancel} /> : null}
   </>;
 }

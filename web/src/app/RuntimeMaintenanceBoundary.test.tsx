@@ -324,7 +324,13 @@ describe('runtime interruption', () => {
     expect(container.querySelector('[inert]')).not.toBeNull();
     expect(container.textContent).toContain('Creating a recovery backup');
     expect(container.querySelector('dialog')?.open).toBe(true);
-    expect(document.activeElement?.id).toBe('runtime-maintenance-title');
+    // The atom owns the title and its id, so the assertion is that the open
+    // dialog is LABELLED by the maintenance title rather than that focus sits
+    // on a heading the route no longer renders.
+    const open = container.querySelector('dialog[open]');
+    const title = open?.querySelector('h2');
+    expect(open?.getAttribute('aria-labelledby')).toBe(title?.id);
+    expect(title?.textContent).toBe('Hikyo is upgrading');
     const cancel = new Event('cancel', { cancelable: true });
     container.querySelector('dialog')?.dispatchEvent(cancel);
     expect(cancel.defaultPrevented).toBe(true);

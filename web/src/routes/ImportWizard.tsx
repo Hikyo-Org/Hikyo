@@ -14,6 +14,7 @@ import type { MatrixRef } from '../api/keys.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import type { KeyClassification } from '@hikyo/client';
 import {
   indexOccurrences,
@@ -25,7 +26,6 @@ import {
   type PrimitiveType,
 } from './import-state.ts';
 import { MAX_FILE_BYTES, parseSource, type FileConnector } from './import-sources.ts';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type WizardEnvironment = { readonly id: string; readonly name: string };
 
@@ -145,7 +145,6 @@ export function ImportWizard({
   gitManaged: boolean;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   // Two independent counters guard file reads, and they must not be conflated.
   // `readSeq` bumps when a selection STARTS: an earlier, slower `file.text()`
   // that resolves after a later selection is dropped, so the committed contents
@@ -442,37 +441,26 @@ export function ImportWizard({
   const heading = journeyHeading(journey);
 
   return (
-    <dialog
-      ref={dialog}
-      className="matrix-editor import-wizard"
-      onClose={onClose}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
+    <Dialog
+      title={heading}
+      lede="Reviewed on this device; values are sent only when you start the import."
+      size="wide"
+      className="import-wizard"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
       }}
     >
-      <form method="dialog" onSubmit={(event) => event.preventDefault()}>
-        <div className="matrix-editor__head">
-          <div>
-            <p className="matrix-editor__eyebrow">
-              Import
-              {journey?.kind === 'cli'
-                ? ''
-                : ` · Step ${String(STEPS.indexOf(step) + 1)} of ${String(STEPS.length)}`}
-            </p>
-            <h2>{heading}</h2>
-            <p>Reviewed on this device; values are sent only when you start the import.</p>
-          </div>
-          <Button
-            type="button"
-            className="matrix-editor__close"
-            aria-label="Close import"
-            onClick={onClose}
-          >
-            ✕
-          </Button>
-        </div>
+      {/* Each step owns its own action row, and every row is the last thing in
+          the dialog, so they stay in the children rather than in `actions`. */}
+      <form onSubmit={(event) => event.preventDefault()}>
+        {/* The eyebrow follows the title now: the atom's h2 is always first. */}
+        <p className="matrix-editor__eyebrow">
+          Import
+          {journey?.kind === 'cli'
+            ? ''
+            : ` · Step ${String(STEPS.indexOf(step) + 1)} of ${String(STEPS.length)}`}
+        </p>
 
         {step !== 'pick' && journey?.kind !== 'cli' ? (
           <p className="notice" role="note">{/* markup-check: not an alert */}
@@ -498,7 +486,7 @@ export function ImportWizard({
                 ? renderReview()
                 : renderResult()}
       </form>
-    </dialog>
+    </Dialog>
   );
 
   function renderPick() {
@@ -521,7 +509,7 @@ export function ImportWizard({
             ))}
           </ul>
         </fieldset>
-        <footer className="matrix-editor__actions">
+        <footer className="dialog__actions">
           <Button type="button" onClick={onClose}>
             Cancel
           </Button>
@@ -554,7 +542,7 @@ export function ImportWizard({
             <code>{guidance.command}</code>
           </pre>
         </fieldset>
-        <footer className="matrix-editor__actions">
+        <footer className="dialog__actions">
           <Button type="button" onClick={() => setStep('pick')}>
             Back
           </Button>
@@ -649,7 +637,10 @@ export function ImportWizard({
           )}
         </fieldset>
         {renderTargets()}
-        <footer className="matrix-editor__actions">
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="button" onClick={() => setStep('pick')}>
             Back
           </Button>
@@ -747,7 +738,10 @@ export function ImportWizard({
           )}
         </fieldset>
         {renderTargets()}
-        <footer className="matrix-editor__actions">
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="button" onClick={() => setStep('pick')}>
             Back
           </Button>
@@ -871,7 +865,10 @@ export function ImportWizard({
           </fieldset>
         )}
 
-        <footer className="matrix-editor__actions">
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="button" onClick={() => setStep('source')}>
             Back
           </Button>
@@ -955,7 +952,10 @@ export function ImportWizard({
           );
         })}
 
-        <footer className="matrix-editor__actions">
+        <footer className="dialog__actions">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="button" onClick={() => setStep('classify')}>
             Back
           </Button>
@@ -1000,7 +1000,7 @@ export function ImportWizard({
             </li>
           ))}
         </ul>
-        <footer className="matrix-editor__actions">
+        <footer className="dialog__actions">
           <Button type="button" variant="primary" onClick={onClose}>
             Done
           </Button>

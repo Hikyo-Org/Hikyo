@@ -3,8 +3,8 @@ import { useId, useState } from 'react';
 import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Row = FolderProposal & { readonly include: boolean; readonly error: string | null };
 
@@ -33,8 +33,6 @@ export function FolderCleanupDialog({
   onApply: (moves: readonly FolderMove[]) => Promise<readonly FolderMoveOutcome[]>;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   const listId = useId();
   const [rows, setRows] = useState<readonly Row[]>(() =>
     proposals.map((proposal) => ({ ...proposal, include: proposal.folder !== '', error: null })),
@@ -73,19 +71,30 @@ export function FolderCleanupDialog({
   };
 
   return (
-    <dialog className="matrix-editor catalogue-manage" ref={dialog} aria-labelledby={titleId} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2 id={titleId}>Cleanup: group keys into folders</h2>
-          <p>
-            Folders proposed from key names, for keys not in a folder yet. Edit or untick a row,
-            then move. Nothing changes until you do.
-          </p>
-        </div>
-        <Button type="button" className="matrix-editor__close" aria-label="Close cleanup" onClick={onClose}>
-          ✕
-        </Button>
-      </div>
+    <Dialog
+      title="Cleanup: group keys into folders"
+      lede="Folders proposed from key names, for keys not in a folder yet. Edit or untick a row, then move. Nothing changes until you do."
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <>
+          {moved > 0 && rows.length > 0 ? (
+            <span className="catalogue-manage__meta">{`Moved ${String(moved)} so far.`}</span>
+          ) : null}
+          <Button type="button" disabled={busy} onClick={onClose}>
+            {rows.length === 0 ? 'Close' : 'Cancel'}
+          </Button>
+          {rows.length === 0 ? null : (
+            <Button type="button" variant="primary" disabled={busy || moves.length === 0} onClick={apply}>
+              {busy ? 'Moving…' : `Move ${String(moves.length)} key(s)`}
+            </Button>
+          )}
+        </>
+      }
+    >
 
       {rows.length === 0 ? (
         <p className="catalogue-manage__empty">
@@ -134,19 +143,6 @@ export function FolderCleanupDialog({
         <Alert>{failure}</Alert>
       )}
 
-      <div className="matrix-editor__actions">
-        {moved > 0 && rows.length > 0 ? (
-          <span className="catalogue-manage__meta">{`Moved ${String(moved)} so far.`}</span>
-        ) : null}
-        <Button type="button" disabled={busy} onClick={onClose}>
-          {rows.length === 0 ? 'Close' : 'Cancel'}
-        </Button>
-        {rows.length === 0 ? null : (
-          <Button type="button" variant="primary" disabled={busy || moves.length === 0} onClick={apply}>
-            {busy ? 'Moving…' : `Move ${String(moves.length)} key(s)`}
-          </Button>
-        )}
-      </div>
-    </dialog>
+    </Dialog>
   );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { generatePath, Link } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
@@ -19,6 +19,7 @@ import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
   canClearMatrixCell,
@@ -36,7 +37,6 @@ import {
   type ProtectedPublishTarget,
 } from './useProtectedPublishCeremony.ts';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type MatrixKey = MatrixKeyList['items'][number];
 type Environment = EnvironmentList['items'][number];
@@ -58,22 +58,6 @@ type EditorRow = {
 export type MatrixEditorChange = MatrixDraftChange;
 
 const REMASK_MS = 10_000;
-
-/**
- * A native `<dialog>` receives the click for its own backdrop, but ALSO for its
- * padding: `event.target === dialog` is true for both. Only a click outside the
- * dialog's box is a "walk away".
- */
-export function isBackdropClick(event: MouseEvent<HTMLDialogElement>): boolean {
-  if (event.target !== event.currentTarget) return false;
-  const rect = event.currentTarget.getBoundingClientRect();
-  return (
-    event.clientX < rect.left ||
-    event.clientX > rect.right ||
-    event.clientY < rect.top ||
-    event.clientY > rect.bottom
-  );
-}
 
 /** Locked cell modal: one environment first, with explicit multi-environment editing. */
 export function MatrixRowEditor({
@@ -97,8 +81,6 @@ export function MatrixRowEditor({
   onApply: (changes: readonly MatrixEditorChange[]) => Promise<void>;
   onCopy: (destinations: readonly string[], confirmProtected: boolean) => void;
 }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   const initialDrafts = useMemo(
     () =>
       new Map(
@@ -220,17 +202,16 @@ export function MatrixRowEditor({
 
   return (
     <>
-      <dialog
-        className="matrix-editor matrix-row-editor"
-        ref={dialog}
-        aria-labelledby={titleId}
-        onClose={onClose}
-        onClick={(event) => {
-          if (isBackdropClick(event)) onClose();
+      <Dialog
+        title={keyRecord.name}
+        lede={keyRecord.description || 'Explicit value and provenance for this environment.'}
+        size="wide"
+        onCancel={(event) => {
+          event.preventDefault();
+          onClose();
         }}
       >
         <form
-          method="dialog"
           onSubmit={(event) => {
             event.preventDefault();
             if (changes.length === 0) return;
@@ -245,28 +226,11 @@ export function MatrixRowEditor({
               });
           }}
         >
-          <div className="matrix-editor__head">
-            <div>
-              <p className="matrix-editor__eyebrow">
-                {`${environment.name} · ${keyRecord.classification}`}
-              </p>
-              <h2 className="mono" id={titleId}>
-                {keyRecord.classification === 'secret' ? (
-                  <span aria-hidden="true">🔒 </span>
-                ) : null}
-                {keyRecord.name}
-              </h2>
-              <p>{keyRecord.description || 'Explicit value and provenance for this environment.'}</p>
-            </div>
-            <Button
-              type="button"
-              className="matrix-editor__close"
-              aria-label="Close row editor"
-              onClick={onClose}
-            >
-              ✕
-            </Button>
-          </div>
+          {/* The eyebrow follows the title now: the atom's h2 is always first,
+              and it already names the classification the lock glyph stood for. */}
+          <p className="matrix-editor__eyebrow">
+            {`${environment.name} · ${keyRecord.classification}`}
+          </p>
 
           {secret ? (
             <Checkbox
@@ -433,13 +397,11 @@ export function MatrixRowEditor({
             )}
           </p>
 
-          <div className="matrix-editor__actions">
-            <Button
-              type="submit"
-              variant="primary"
-              disabled={changes.length === 0 || busy || applying}
-            >
-              {busy || applying ? 'Saving drafts…' : `Save ${String(changes.length)} draft${changes.length === 1 ? '' : 's'}`}
+          <div className="dialog__actions">
+            {/* The close X is gone (ui/Dialog): Escape and this button are the
+                two ways out, and it leads the row the way Cancel does. */}
+            <Button type="button" onClick={onClose}>
+              Close
             </Button>
             {rows.length > 1 ? (
               <Button
@@ -498,6 +460,13 @@ export function MatrixRowEditor({
                 {`Copy published ${environment.name} value to…`}
               </Button>
             ) : null}
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={changes.length === 0 || busy || applying}
+            >
+              {busy || applying ? 'Saving drafts…' : `Save ${String(changes.length)} draft${changes.length === 1 ? '' : 's'}`}
+            </Button>
           </div>
 
           {copyOpen ? (
@@ -561,7 +530,7 @@ export function MatrixRowEditor({
             </details>
           </details>
         </form>
-      </dialog>
+      </Dialog>
       {protectedGuard.request === null ? null : (
         <Ceremony
           key={protectedGuard.requestKey}

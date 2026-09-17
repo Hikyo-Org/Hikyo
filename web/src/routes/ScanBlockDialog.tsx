@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
+import { Dialog } from '../ui/Dialog.tsx';
 
 /**
  * ScanBlockDialog is the Surface-2 block (#74 / #183, secret-scanning ADR §4).
@@ -38,7 +38,6 @@ export function ScanBlockDialog({
   onOverride: ((tokens: readonly string[]) => Promise<void>) | null;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -69,22 +68,17 @@ export function ScanBlockDialog({
   };
 
   return (
-    <dialog className="matrix-editor scan-block" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>{title}</h2>
-          <p>{intro}</p>
-        </div>
-        <Button
-          type="button"
-          className="matrix-editor__close"
-          aria-label="Close scanning block"
-          onClick={onClose}
-        >
-          ✕
-        </Button>
-      </div>
-
+    <Dialog
+      title={title}
+      lede={intro}
+      size="wide"
+      // Escape closes the native dialog on its own; without this the caller
+      // would still believe the block is open.
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
       <ul className="scan-block__findings">
         {findings.map((finding, index) => (
           <li className="scan-block__finding" key={`${finding.rule_id} ${finding.locator} ${String(index)}`}>
@@ -98,15 +92,17 @@ export function ScanBlockDialog({
         <Alert>{error}</Alert>
       )}
 
-      <div className="matrix-editor__actions">
+      {/* The row stays in the children because the hint below it explains what
+          acknowledging records; `actions` would put it after that sentence. */}
+      <div className="dialog__actions">
+        <Button type="button" disabled={busy} onClick={onClose}>
+          {overridable ? 'Cancel' : 'Close'}
+        </Button>
         {overridable ? (
           <Button type="button" variant="primary" disabled={busy} onClick={override}>
             {busy ? 'Acknowledging…' : 'Acknowledge and continue'}
           </Button>
         ) : null}
-        <Button type="button" disabled={busy} onClick={onClose}>
-          {overridable ? 'Cancel' : 'Close'}
-        </Button>
       </div>
 
       {overridable ? (
@@ -120,6 +116,6 @@ export function ScanBlockDialog({
           the key as a secret so it is handled as one.
         </p>
       )}
-    </dialog>
+    </Dialog>
   );
 }

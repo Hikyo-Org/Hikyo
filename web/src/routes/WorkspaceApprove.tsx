@@ -387,7 +387,7 @@ function StepUpReauth({
       {failure === null ? null : (
         <Alert>{failure}</Alert>
       )}
-      <div className="ceremony__actions">
+      <div className="dialog__actions">
         <Button variant="primary" type="button" onClick={onPasskey} disabled={working}>
           {working ? 'Working…' : 'Use a passkey'}
         </Button>

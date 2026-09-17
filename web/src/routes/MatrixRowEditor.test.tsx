@@ -267,7 +267,7 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     return result;
   };
 
-  it('labels the dialog by its heading and closes only on a real backdrop click', async () => {
+  it('labels the dialog by its heading and closes on the Close action', async () => {
     const onClose = vi.fn();
     const container = document.createElement('div');
     document.body.appendChild(container);
@@ -297,16 +297,13 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     const heading = dialog.querySelector('h2');
     expect(heading?.id).toBeTruthy();
     expect(dialog.getAttribute('aria-labelledby')).toBe(heading?.id);
+    expect(heading?.textContent).toBe(keyRecord.name);
 
-    dialog.getBoundingClientRect = () =>
-      ({ left: 100, top: 100, right: 300, bottom: 300, width: 200, height: 200, x: 100, y: 100, toJSON: () => ({}) });
-    await act(async () => {
-      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 150, clientY: 150 }));
-    });
+    // The close X and the backdrop click are gone with the shell (ui/Dialog:
+    // Escape and the Cancel action are the two ways out), so the Close action
+    // is what the caller hears from.
     expect(onClose).not.toHaveBeenCalled();
-    await act(async () => {
-      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 10, clientY: 10 }));
-    });
+    await act(async () => button(container, 'Close').click());
     expect(onClose).toHaveBeenCalledOnce();
     await act(async () => root.unmount());
   });

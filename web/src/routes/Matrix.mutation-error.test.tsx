@@ -171,7 +171,7 @@ describe('Matrix mutation refusal ownership', () => {
     const refusal = 'The server could not stage this value.';
     expect(alertsNamed(view.container, refusal)).toHaveLength(1);
 
-    await act(async () => buttonNamed(view.container, 'Close row editor').click());
+    await act(async () => buttonNamed(view.container, 'Close').click());
     expect(alertsNamed(view.container, refusal)).toHaveLength(0);
 
     await view.unmount();
@@ -187,7 +187,7 @@ describe('Matrix mutation refusal ownership', () => {
     if (textarea === null) throw new Error('matrix row editor textarea is missing');
     await act(async () => typeInto(textarea, 'debug'));
     await act(async () => buttonNamed(view.container, 'Save 1 draft').click());
-    await act(async () => buttonNamed(view.container, 'Close row editor').click());
+    await act(async () => buttonNamed(view.container, 'Close').click());
 
     pending.reject(new Error('stage rejected after close'));
     await settle();

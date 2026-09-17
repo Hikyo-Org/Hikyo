@@ -52,8 +52,8 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 import { useFeedback } from './useFeedback.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 
@@ -604,26 +604,23 @@ export function RevokeCredentialDialog({
   readonly onConfirm: () => void;
 }) {
   const first = useRef<HTMLButtonElement>(null);
-  const dialog = useModalDialog(first);
   return (
-    <dialog ref={dialog} className="ceremony adapters__remove" aria-labelledby="adapters-revoke-title" onCancel={onCancel}>
-      <h2 className="ceremony__title" id="adapters-revoke-title">
-        Revoke credential for {adapter.origin}
-      </h2>
-      <p className="ceremony__lede">
-        Hikyo destroys its outbound custody now. Every push stops until a credential is set again,
-        and a remote scrub may then be impossible: names Hikyo owns stay at the destination until
-        you clean them up by hand.
-      </p>
-      <div className="ceremony__actions">
-        <Button ref={first} type="button" variant="danger" disabled={busy} onClick={onConfirm}>
-          {busy ? 'Revoking…' : 'Revoke credential'}
-        </Button>
-        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    <Dialog
+      title={`Revoke credential for ${adapter.origin}`}
+      lede="Hikyo destroys its outbound custody now. Every push stops until a credential is set again, and a remote scrub may then be impossible: names Hikyo owns stay at the destination until you clean them up by hand."
+      initialFocus={first}
+      onCancel={onCancel}
+      actions={
+        <>
+          <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button ref={first} type="button" variant="danger" disabled={busy} onClick={onConfirm}>
+            {busy ? 'Revoking…' : 'Revoke credential'}
+          </Button>
+        </>
+      }
+    />
   );
 }
 
@@ -643,17 +640,31 @@ export function DeleteAdapterDialog({
   readonly onDecide: (decision: 'prune' | 'retain') => void;
 }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
   const [decision, setDecision] = useState<'prune' | 'retain' | null>(null);
   return (
-    <dialog ref={dialog} className="ceremony adapters__remove" aria-labelledby="adapters-delete-title" onCancel={onCancel}>
-      <h2 className="ceremony__title" id="adapters-delete-title">
-        Delete adapter {adapter.origin}
-      </h2>
-      <p className="ceremony__lede">
-        Every target under this adapter is torn down. Decide what happens to the names Hikyo owns
-        at each destination.
-      </p>
+    <Dialog
+      title={`Delete adapter ${adapter.origin}`}
+      lede="Every target under this adapter is torn down. Decide what happens to the names Hikyo owns at each destination."
+      initialFocus={first}
+      onCancel={onCancel}
+      actions={
+        <>
+          <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={busy || decision === null}
+            onClick={() => {
+              if (decision !== null) onDecide(decision);
+            }}
+          >
+            {busy ? 'Deleting…' : 'Delete adapter'}
+          </Button>
+        </>
+      }
+    >
       {/* markup-check: rich label (each option leads with a <strong> verb), so
           these rows cannot pass ui/Radio's `label: string`. */}
       <div className="adapters__decision" role="radiogroup" aria-label="Remote names">
@@ -681,22 +692,7 @@ export function DeleteAdapterDialog({
           </span>
         </label>
       </div>
-      <div className="ceremony__actions">
-        <Button
-          type="button"
-          variant="danger"
-          disabled={busy || decision === null}
-          onClick={() => {
-            if (decision !== null) onDecide(decision);
-          }}
-        >
-          {busy ? 'Deleting…' : 'Delete adapter'}
-        </Button>
-        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1616,14 +1612,31 @@ function RemoveDialog({
   readonly onDecide: (decision: 'prune' | 'retain') => void;
 }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
   const [decision, setDecision] = useState<'prune' | 'retain' | null>(null);
   return (
-    <dialog ref={dialog} className="ceremony adapters__remove" aria-labelledby="adapters-remove-title" onCancel={onCancel}>
-      <h2 className="ceremony__title" id="adapters-remove-title">
-        Remove target {destinationText(target)}
-      </h2>
-      <p className="ceremony__lede">Decide what happens to the names Hikyo owns at the destination.</p>
+    <Dialog
+      title={`Remove target ${destinationText(target)}`}
+      lede="Decide what happens to the names Hikyo owns at the destination."
+      initialFocus={first}
+      onCancel={onCancel}
+      actions={
+        <>
+          <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="danger"
+            disabled={busy || decision === null}
+            onClick={() => {
+              if (decision !== null) onDecide(decision);
+            }}
+          >
+            {busy ? 'Removing…' : 'Remove target'}
+          </Button>
+        </>
+      }
+    >
       {/* markup-check: rich label (each option leads with a <strong> verb), so
           these rows cannot pass ui/Radio's `label: string`. */}
       <div className="adapters__decision" role="radiogroup" aria-label="Remote names">
@@ -1653,22 +1666,7 @@ function RemoveDialog({
           </span>
         </label>
       </div>
-      <div className="ceremony__actions">
-        <Button
-          type="button"
-          variant="danger"
-          disabled={busy || decision === null}
-          onClick={() => {
-            if (decision !== null) onDecide(decision);
-          }}
-        >
-          {busy ? 'Removing…' : 'Remove target'}
-        </Button>
-        <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1691,7 +1689,7 @@ function AdapterCeremony({
   readonly onDone: () => void;
 }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
+  const formId = useId();
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -1753,15 +1751,28 @@ function AdapterCeremony({
           : 'route';
 
   return (
-    <dialog ref={dialog} className="ceremony adapters__ceremony" aria-labelledby="adapters-ceremony-title" onCancel={cancel}>
-      <form onSubmit={(event) => void submit(event)}>
-        <h2 className="ceremony__title" id="adapters-ceremony-title">
-          Confirm it is you
-        </h2>
-        <p className="ceremony__lede">
+    <Dialog
+      title="Confirm it is you"
+      lede={
+        <>
           You are about to {verb} {ask.environmentIds.map(environmentName).join(', ')}. This decision is
           bound to exactly those environments and to this one act.
-        </p>
+        </>
+      }
+      initialFocus={first}
+      onCancel={cancel}
+      actions={
+        <>
+          <Button type="button" variant="quiet" onClick={cancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} variant="primary" disabled={busy || policy === null}>
+            {busy ? 'Authorising…' : 'Authorise'}
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} onSubmit={(event) => void submit(event)}>
         {failure !== null ? (
           <Alert>{failure}</Alert>
         ) : null}
@@ -1785,15 +1796,7 @@ function AdapterCeremony({
             {policy.passkey.length === 1 ? 'takes' : 'take'} a passkey decision of its own.
           </p>
         ) : null}
-        <div className="ceremony__actions">
-          <Button type="submit" variant="primary" disabled={busy || policy === null}>
-            {busy ? 'Authorising…' : 'Authorise'}
-          </Button>
-          <Button type="button" variant="quiet" onClick={cancel} disabled={busy}>
-            Cancel
-          </Button>
-        </div>
       </form>
-    </dialog>
+    </Dialog>
   );
 }

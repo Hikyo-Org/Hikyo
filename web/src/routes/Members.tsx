@@ -39,6 +39,7 @@ import { runPasskeyCeremony } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { Select } from '../ui/Select.tsx';
 
@@ -57,7 +58,6 @@ function wideningEnvironment(error: unknown): string | null {
 }
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
 import { Explain, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
@@ -870,7 +870,6 @@ function GrantModal({
   onDone: (text: string) => void;
   projectContext: boolean;
 }) {
-  const dialog = useModalDialog();
   const [failure, setFailure] = useState<string | null>(null);
   const create = useCreateGrants();
   const applyTemplate = useApplyTemplate();
@@ -1017,24 +1016,36 @@ function GrantModal({
 
   if (stage === 'blast') {
     return (
-      <dialog
-        className="ceremony blast"
-        ref={dialog}
-        aria-labelledby="blast-title"
+      <Dialog
+        title="Organisation-scoped grant: check the blast radius"
+        lede={
+          <>
+            <strong>{principalName(draft.principal)}</strong> would get <span className="mono">{composed}</span> on{' '}
+            <strong>every project and environment in {orgName}</strong>, current and future. Grants
+            inherit automatically, with no further decision, and there are no deny rules, so there is
+            no per-project exception under an organisation grant.
+          </>
+        }
         onCancel={(event) => {
           event.preventDefault();
           if (!mutationPending) {
             onStage('none');
           }
         }}
+        actions={
+          <>
+            <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={mutationPending} onClick={() => onStage('grant')}>
+              Back, change scope
+            </Button>
+            <Button type="button" variant="danger" disabled={submitBlocked} onClick={perform}>
+              Grant at organisation scope
+            </Button>
+          </>
+        }
       >
-        <h2 id="blast-title">Organisation-scoped grant: check the blast radius</h2>
-        <p className="ceremony__lede">
-          <strong>{principalName(draft.principal)}</strong> would get <span className="mono">{composed}</span> on{' '}
-          <strong>every project and environment in {orgName}</strong>, current and future. Grants
-          inherit automatically, with no further decision, and there are no deny rules, so there is
-          no per-project exception under an organisation grant.
-        </p>
         {topologyPending ? (
           <p role="status" aria-live="polite">
             Loading every project, environment, and protection state before showing the blast radius…
@@ -1061,41 +1072,37 @@ function GrantModal({
           </span>
         </p>
         {failure !== null ? <Alert>{failure}</Alert> : null}
-        <div className="ceremony__actions">
-          <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>
-            Cancel
-          </Button>
-          <Button type="button" disabled={mutationPending} onClick={() => onStage('grant')}>
-            Back, change scope
-          </Button>
-          <Button type="button" variant="danger" disabled={submitBlocked} onClick={perform}>
-            Grant at organisation scope
-          </Button>
-        </div>
-      </dialog>
+      </Dialog>
     );
   }
 
   return (
-    <dialog
-      className="ceremony grant-modal"
-      ref={dialog}
-      aria-labelledby="grant-title"
+    <Dialog
+      title="New grant"
+      lede={
+        projectContext && prototypeMode ? (
+          <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>
+        ) : (
+          <>Pick any number of capabilities: each becomes its <strong>own revocable line</strong> at this scope, never a bundle. A role template does exactly this with a preset list.</>
+        )
+      }
       onCancel={(event) => {
         event.preventDefault();
         if (!mutationPending) {
           onStage('none');
         }
       }}
+      actions={
+        <>
+          <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" disabled={submitBlocked} onClick={submit}>
+            {mutationPending ? 'Granting…' : 'Grant'}
+          </Button>
+        </>
+      }
     >
-      <h2 id="grant-title">New grant</h2>
-      <p className="ceremony__lede">
-        {projectContext && prototypeMode ? (
-          <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>
-        ) : (
-          <>Pick any number of capabilities: each becomes its <strong>own revocable line</strong> at this scope, never a bundle. A role template does exactly this with a preset list.</>
-        )}
-      </p>
 
       {failure !== null ? <Alert>{failure}</Alert> : null}
       {topologyPending ? (
@@ -1264,14 +1271,6 @@ function GrantModal({
         ))}
       </Select>
 
-      <div className="ceremony__actions">
-        <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>
-          Cancel
-        </Button>
-        <Button type="button" variant="primary" disabled={submitBlocked} onClick={submit}>
-          {mutationPending ? 'Granting…' : 'Grant'}
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }

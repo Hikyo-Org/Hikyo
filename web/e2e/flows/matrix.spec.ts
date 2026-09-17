@@ -211,7 +211,7 @@ test.describe('environment matrix', () => {
       await expect(editor.getByLabel('development value')).not.toHaveValue(
         'identity-check-not-saved',
       );
-      await editor.getByRole('button', { name: 'Close row editor' }).click();
+      await editor.getByRole('button', { name: 'Close', exact: true }).click();
 
       // Three project reads plus four existing query families per environment.
       // Config cells do not need a secret-disclosure capability request.
@@ -301,7 +301,7 @@ test.describe('environment matrix', () => {
       await expect(revealed).toBeVisible();
       await expect(secretEditor.getByRole('status').filter({ hasText: `${secret} revealed` })).toHaveCount(1);
       await expect(revealed).toHaveCount(0, { timeout: 12_000 });
-      await secretEditor.getByRole('button', { name: 'Close row editor' }).click();
+      await secretEditor.getByRole('button', { name: 'Close', exact: true }).click();
 
       await page
         .getByRole('button', { name: new RegExp(`${secret} in production:`) })
@@ -348,7 +348,7 @@ test.describe('environment matrix', () => {
           [firstEditorRow, 'borderTopColor', '--line'],
         ],
         hairlines: [firstEditorRow],
-        density: [[editor.getByRole('button', { name: 'Close row editor' }), '--control']],
+        density: [[editor.getByRole('button', { name: 'Close', exact: true }), '--control']],
       });
 
       const value = `matrix-${testInfo.project.name}`;
@@ -376,7 +376,7 @@ test.describe('environment matrix', () => {
       await expect(reopened.getByLabel('development value')).toHaveValue(value);
       await reopened.getByRole('button', { name: 'Edit all environments' }).click();
       await expect(reopened.getByLabel('production value')).toHaveValue(`${value}-production`);
-      await reopened.getByRole('button', { name: 'Close row editor' }).click();
+      await reopened.getByRole('button', { name: 'Close', exact: true }).click();
 
       await page.reload();
 
@@ -825,7 +825,7 @@ test.describe('catalogue declaration detail', () => {
     page.on('pageerror', (error) => consoleLines.push(String(error)));
     await panel.getByLabel('Pattern (RE2, anchored)').fill(CANARY);
     await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
-    const block = page.locator('dialog.scan-block');
+    const block = page.getByRole('dialog', { name: 'Declaration blocked by secret scanning' });
     await expect(block).toBeVisible();
     await expect(block.getByText('aws-access-token')).toBeVisible();
     // SS4: the canary reaches neither the dialog markup nor the console.
@@ -879,7 +879,7 @@ test.describe('catalogue declaration detail', () => {
     const groupName = `catflow ${suffix}`;
     await page.goto(MATRIX_PATH);
     await page.getByRole('button', { name: 'Folders & linked keys' }).click();
-    const dialog = page.locator('dialog.catalogue-manage');
+    const dialog = page.getByRole('dialog', { name: 'Folders & linked keys' });
     await expect(dialog.getByRole('heading', { name: 'Folders & linked keys' })).toBeVisible();
 
     await dialog.getByLabel('New folder path').fill(folderPath);
@@ -930,7 +930,7 @@ test.describe('catalogue declaration detail', () => {
     try {
       await page.goto(MATRIX_PATH);
       await page.getByRole('button', { name: 'Cleanup', exact: true }).click();
-      const dialog = page.locator('dialog.catalogue-manage');
+      const dialog = page.getByRole('dialog', { name: 'Cleanup: group keys into folders' });
       await expect(dialog.getByRole('heading', { name: 'Cleanup: group keys into folders' })).toBeVisible();
       await expect(dialog.getByLabel(`Folder for TIDY_${suffix}_HOST`)).toHaveValue('Tidy');
       await expect(dialog.getByLabel(`Folder for TIDY_${suffix}_PORT`)).toHaveValue('Tidy');

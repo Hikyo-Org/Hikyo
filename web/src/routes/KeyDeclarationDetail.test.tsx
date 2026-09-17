@@ -414,7 +414,7 @@ describe('KeyDeclarationDetail', () => {
 
     // The block dialog opened, stating the exported-as-public consequence and
     // rendering only the redacted finding.
-    const dialog = view.container.querySelector('dialog.scan-block');
+    const dialog = view.container.querySelector('dialog[open]');
     expect(dialog).not.toBeNull();
     const dialogText = dialog?.textContent ?? '';
     expect(dialogText).toContain('exported to Git and treated as public');
@@ -464,7 +464,7 @@ describe('KeyDeclarationDetail', () => {
     if (save === undefined) throw new Error('save button missing');
     await act(async () => save.click());
 
-    const dialog = view.container.querySelector('dialog.scan-block');
+    const dialog = view.container.querySelector('dialog[open]');
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent ?? '').toContain('cannot be overridden');
     expect(
@@ -498,7 +498,7 @@ describe('KeyDeclarationDetail', () => {
     await act(async () => setTextarea(description, 'changed'));
     await act(async () => buttonBy(view.container, 'Save declaration').click());
 
-    expect(view.container.querySelector('dialog.scan-block')).toBeNull();
+    expect(view.container.querySelector('dialog[open]')).toBeNull();
     const text = textOf(view.container);
     expect(text).toContain(KEY_GONE_REFUSAL);
     expect(text).not.toContain('aws-access-key');
@@ -553,7 +553,7 @@ describe('KeyDeclarationDetail', () => {
     await act(async () => typeInto(nameInput, 'AKIAEXAMPLE'));
     await act(async () => buttonBy(view.container, 'Rename key').click());
 
-    const dialog = view.container.querySelector('dialog.scan-block');
+    const dialog = view.container.querySelector('dialog[open]');
     expect(dialog).not.toBeNull();
     expect(dialog?.textContent ?? '').toContain('aws-access-key');
     expect(dialog?.textContent ?? '').not.toContain('AKIAEXAMPLE');

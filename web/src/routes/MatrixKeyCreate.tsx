@@ -6,10 +6,9 @@ import type { EnvironmentList } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
-import { isBackdropClick } from './MatrixRowEditor.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
 type PresenceMode = CreateKeyPresence['mode'];
@@ -126,7 +125,6 @@ export function MatrixKeyCreate({
   onCreate: (payload: MatrixKeyCreatePayload) => Promise<void>;
 }) {
   const nameField = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(nameField);
   const [folder, setFolder] = useState(initialFolder ?? '');
   const [name, setName] = useState('');
   const [type, setType] = useState<CreateKeyType>('string');
@@ -261,39 +259,25 @@ export function MatrixKeyCreate({
     );
 
   return (
-    <dialog
-      className="matrix-editor matrix-key-create"
-      ref={dialog}
-      onClose={onClose}
-      onClick={(event) => {
-        if (isBackdropClick(event)) onClose();
+    <Dialog
+      title="New key"
+      lede="Each environment gets its own explicit value: nothing inherits. A new group name creates that group."
+      size="wide"
+      className="matrix-key-create"
+      initialFocus={nameField}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
       }}
     >
       <form
-        method="dialog"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
       >
-        <div className="matrix-editor__head">
-          <div>
-            <p className="matrix-editor__eyebrow">Declare key</p>
-            <h2>New key</h2>
-            <p>
-              Each environment gets its own explicit value: nothing inherits. A new group name
-              creates that group.
-            </p>
-          </div>
-          <Button
-            type="button"
-            className="matrix-editor__close"
-            aria-label="Close new key"
-            onClick={onClose}
-          >
-            ✕
-          </Button>
-        </div>
+        {/* The eyebrow follows the title now: the atom's h2 is always first. */}
+        <p className="matrix-editor__eyebrow">Declare key</p>
 
         {gitManaged ? (
           <Alert tone="info">{GIT_DEFINITIONS_NOTICE}</Alert>
@@ -565,19 +549,21 @@ export function MatrixKeyCreate({
           <Alert>{mutationError}</Alert>
         )}
 
-        <div className="matrix-editor__actions">
-          <Button type="submit" variant="primary" disabled={busy || applying || gitManaged}>
-            {busy || applying ? 'Declaring…' : 'Declare'}
-          </Button>
+        {/* The row stays in the form because the classification hint below it
+            explains the choice the form makes permanent. */}
+        <div className="dialog__actions">
           <Button type="button" onClick={onClose}>
             Cancel
+          </Button>
+          <Button type="submit" variant="primary" disabled={busy || applying || gitManaged}>
+            {busy || applying ? 'Declaring…' : 'Declare'}
           </Button>
         </div>
         <p className="matrix-editor__hint">
           <b>Secret</b> is permanent: values are hidden and reveal-gated everywhere.
         </p>
       </form>
-    </dialog>
+    </Dialog>
   );
 }
 
