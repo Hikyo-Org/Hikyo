@@ -64,7 +64,7 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
       [submit, 'color', '--on-accent'],
     ],
     hairlines: [card, username],
-    density: [[submit, '--touch']],
+    density: [[submit, '--control']],
   });
 }
 
@@ -93,7 +93,7 @@ async function expectOIDCDoneSurface(page: Page, theme: 'dark' | 'light') {
       [card, 'borderTopColor', '--line'],
     ],
     hairlines: [card],
-    density: [[close, '--touch']],
+    density: [[close, '--control']],
   });
 }
 
@@ -137,7 +137,7 @@ async function expectEstablishSurface(page: Page, theme: 'dark' | 'light') {
       [submit, 'color', '--on-accent'],
     ],
     hairlines: [card, authority],
-    density: [[submit, '--touch']],
+    density: [[submit, '--control']],
   });
 }
 
@@ -179,7 +179,7 @@ async function expectRecoverySurface(page: Page, theme: 'dark' | 'light') {
       [submit, 'color', '--on-accent'],
     ],
     hairlines: [card, username],
-    density: [[submit, '--touch']],
+    density: [[submit, '--control']],
   });
 }
 

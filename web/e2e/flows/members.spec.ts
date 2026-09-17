@@ -676,7 +676,7 @@ test.describe('members and grants', () => {
           fonts: [[dialog.getByRole('heading', { level: 2 }), 'ui']],
           colours: [[dialog, 'backgroundColor', '--bg-panel']],
           hairlines: [dialog, dialog.getByLabel('Username')],
-          density: [[dialog.getByRole('button', { name: 'Cancel' }), '--touch']],
+          density: [[dialog.getByRole('button', { name: 'Cancel' }), '--control']],
         });
 
         // Escape is a cancel, not a zombie: the dialog is gone and focus is
@@ -715,7 +715,7 @@ test.describe('members and grants', () => {
           fonts: [[composition.locator('.mono').first(), 'mono']],
           colours: [[composition, 'backgroundColor', '--bg-panel']],
           hairlines: [composition],
-          density: [[composition.getByRole('button', { name: 'Cancel' }), '--touch']],
+          density: [[composition.getByRole('button', { name: 'Cancel' }), '--control']],
         });
 
         await composition.getByRole('button', { name: 'Enter an ID for another principal' }).click();
@@ -741,7 +741,7 @@ test.describe('members and grants', () => {
           fonts: [[blast.locator('.mono').first(), 'mono']],
           colours: [[blast, 'backgroundColor', '--bg-panel']],
           hairlines: [blast, blastRow],
-          density: [[blast.getByRole('button', { name: 'Back, change scope' }), '--touch']],
+          density: [[blast.getByRole('button', { name: 'Back, change scope' }), '--control']],
         });
 
         await page.keyboard.press('Escape');

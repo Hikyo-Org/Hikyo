@@ -1,12 +1,13 @@
 # Storybook UI consistency: audit, proposal, and what needs approval
 
-Status: on PR #755. Approved: checkbox (1A), auth direction (2B strict, 3A), control tiers (4a), type scale (4b), badge (4c). Signed off 2026-09-16 (1a): ChoiceGroup, Field hint/error, Alert, Dialog, the spacing fold, the 24px fine-pointer hit box. Panel titles sentence case (2a). The e2e port race is fixed in this PR (3b, `web/e2e/fixtures/instance.ts` header). Scope per Marc (2026-09-16): Storybook only.
-Nothing under `web/src/routes`, `web/src/app` or `web/src/styles` changed;
-the app renders exactly as before. The work lives in `web/src/ui/**` and
-`web/.storybook/preview.tsx`, and migrates into the app with the rest of the
-component move.
+Layer 1 of the migration (#761) has landed: `src/ui/ui.css` no longer exists, every block folded into `src/styles/app.css` beside the rules it superseded. References to `ui.css` below are historical, from the state of PR #755.
 
-Run: `cd web && pnpm storybook`, open `ui/`. `src/ui/ui.css` is unscoped;
+Status: on PR #755. Approved: checkbox (1A), auth direction (2B strict, 3A), control tiers (4a), type scale (4b), badge (4c). Signed off 2026-09-16 (1a): ChoiceGroup, Field hint/error, Alert, Dialog, the spacing fold, the 24px fine-pointer hit box. Panel titles sentence case (2a). The e2e port race is fixed in this PR (3b, `web/e2e/fixtures/instance.ts` header). Scope per Marc (2026-09-16): #755 was Storybook only.
+Nothing under `web/src/routes`, `web/src/app` or `web/src/styles` changed in
+it; the work lived in `web/src/ui/**` and `web/.storybook/preview.tsx`. #761
+(2026-09-17) then moved the CSS into `web/src/styles/app.css`; see §5.
+
+Run: `cd web && pnpm storybook`, open `ui/`. `src/ui/ui.css` was unscoped;
 the comparison scaffold (Design toolbar, `compare.tsx`, `CurrentVsProposed`
 stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 (`main.ts`, `preview.tsx`, `withApp.tsx` comment cleanup), and
@@ -29,7 +30,8 @@ stories) is removed. The work lives in `web/src/ui/**`, `web/.storybook/`
 | ChoiceGroup layouts, columns, chips; Checkbox/Radio mono | built (1B, 2026-09-16) | `ui/ChoiceGroup` AllStates |
 | Light-theme a11y run in CI | added (`test-storybook:light`, ci.yml storybook job) | |
 | Design system: one token file, spacing/measure/layer tokens, adherence check, Tokens page | built (decision A, 2026-09-16) | `src/styles/tokens.css`, `scripts/design/adherence*.ts`, `ui/Tokens` |
-| Migration into app routes | NOT STARTED (§5) | |
+| Migration, layer 1: CSS and tokens into the app, e2e pins | DONE (#761, 2026-09-17, §5) | `src/styles/app.css`, `e2e/flows/*` |
+| Migration, layer 2: route markup onto the atoms | NOT STARTED (#762) | |
 
 ## 1. Audit
 
@@ -309,9 +311,11 @@ rules in the compare story). `.count` pill unchanged (DESIGN.md exception).
 - DESIGN.md "Tokens" states the rule per family.
 - `design:check` now also runs `scripts/design/adherence-check.ts`: it counts
   literal px sizes on token-covered properties per stylesheet against
-  `scripts/design/adherence-budget.json`, a ratchet. `ui.css` is held at 0
-  (its 24 literals were converted); `app.css` starts at its measured count
-  (798) and the budget only goes down as #761/#762 retire rules. Hairlines
+  `scripts/design/adherence-budget.json`, a ratchet. `ui.css` was held at 0
+  (its 24 literals were converted); `app.css` started at its measured count
+  (798), #761 took it to 284, and the budget only goes down as #762 retires
+  rules. Since #761 a count BELOW the budget also fails the check, so a
+  retired literal must lower the budget in the same change. Hairlines
   (1px) and the 2px ring are exempt. Unit-tested (`adherence.test.ts`).
 - `ui/Tokens` (Storybook) lists every token with its live value per theme and
   the family rule, from `src/ui/tokens.ts`; its play test fails when a listed
@@ -348,7 +352,66 @@ Findings and fixes, all in `ui.css`, `.storybook/preview.tsx` or story files:
   "no updates" story (not a component, drop on migration), Dialog close X
   (recommendation: no; Escape and the Cancel action are the two ways out).
 
-## 5. Migration into the app (next, outside the Storybook-only scope)
+## 5. Migration into the app
+
+### Layer 1 landed (#761, 2026-09-17)
+
+- Every `ui.css` block moved into `app.css` beside the rules it superseded;
+  those rules are deleted, the `:root` cascade prefixes and the "whole-app
+  fold" selector lists are gone (each listed selector's own app.css rule now
+  states the token). `ui.css` is deleted, `.storybook/preview.tsx` no longer
+  imports it, `main.tsx` is unchanged (`tokens.css` + `app.css`). The tokens
+  were already in `tokens.css` (4e); `--control-compact` had already been
+  retired (4f), so the issue text naming it was stale.
+- e2e: the 20 desktop density pins that asserted `--touch` on a button or
+  input (the 4a list plus login 96/140/182, scanning 157, settings 842,
+  reveal 416/449/753, all controls) read `--control`; the mobile project gets
+  44 through the coarse-pointer token. `shell.spec.ts` read the sidebar link
+  and group row at a literal 38px; both now read `--control`. Row pins are
+  unchanged.
+- Beyond the ui.css blocks, the same pass folded what the sweep and the
+  review found still off-scale in app.css: 21 literal font sizes (9 to 13.5px
+  and `1rem`) onto `--fs-*`, thirteen `font-weight: 600/650` onto 500 (the
+  scale has 400/500/700 only), `.page--chrome .jump__link` (12.5px, 7px
+  vertical padding), `.page--chrome .settings-grid label` (10.5px bold) onto
+  the eyebrow, `.page--members .chip` onto the badge rule, the sidebar group
+  row (38px) onto `--control`, a badge that is a `button` or `a` (the settings
+  identity tags, environment chips, the Toggle switch: `button.settings-tag`)
+  onto `--control` (the mobile touch sweep caught them at 20px; a label is a
+  badge, a control is a control), `.btn--quiet` given `min-width: --control`
+  (the audit "Self" filter was 41px wide on a phone), the settings-row link touch floor keyed on
+  `(pointer: coarse)` instead of viewport width, `h1` tracking normal (the
+  ui.css `:root :is(h1,h2,h3)` rule had won over its own `h1` rule, so
+  Storybook rendered normal tracking).
+- Deliberate differences from the Storybook render, all towards the stated
+  rule: `.change-approvals` controls 44 to 36 (ui.css lost that cascade);
+  `.page--chrome .panel h2` 13px faint to 14px ink; `.page--chrome .btn`
+  now lifts to 44 on a coarse pointer (Storybook left it at 36, a bug);
+  `.environment-lifecycle > summary` keeps `list-item` (native marker) and
+  centres its one-line label with `line-height: var(--control)` rather than
+  the `display: flex` ui.css used, which drops the marker.
+- Left as is: the `.count` family (`.matrix__count`, `.history__current`,
+  `.matrix__problem-count`, `.count__glyph`, 10px, the DESIGN.md exception);
+  `.matrix__group-row button` and `.matrix-editor__eyebrow` stay uppercase as
+  the approved stories rendered them; two `key-detail` legends stay 13px
+  uppercase for the same reason (route copy, #762).
+- Verified on the prototype (`web/scripts/audit-styles.mjs`, 20 routes, fine
+  and coarse): every button, input, select, tab and summary at 36 fine / 44
+  coarse; headings at 20/16/14 only; badges at 11/500 with no uppercase; the
+  overview page's unclassed anchor in body ink and underlined; dialogs carry
+  the overlay shadow. Screenshots at 1280 and 390 in both themes were taken
+  from the same run (disposable, `web/.xreview/shots/`).
+
+- Known harness limit, not fixed here: a SINGLE `playwright test
+  --project=<x>` invocation over every spec (what `pnpm e2e` does) fails the
+  four `workspace.spec.ts` multi-instance tests at their first page load on
+  instance B (`#connection-credentials` absent) after 12 to 16 minutes of
+  run time; the same spec passes alone and in CI's group 2 shape
+  (settings + history + workspace). Both projects were verified in CI's exact
+  four-group sharding, all eight green. Root cause not established (session
+  idle is 7 days; `AuthorityLifetime` is 15 minutes and is the lead).
+
+### Layer 2 (next, #762)
 
 Decided 2026-09-16: #755 stays Storybook-only and merges as is; the
 migration is its own PR series. Tickets: #761 (layer 1, CSS and tokens
@@ -363,12 +426,10 @@ Also superseded by `ui/`: `routes/Sections.tsx` `Alert` and `Done` (by
 `ui/useModalDialog.ts`; `useFeedback` stays), `routes/AccountSecurity.tsx`
 `QrCode` (by `ui/auth/QrCode.tsx`).
 
-Move each `ui.css` block into app.css beside the rules it names as
-superseded and delete those; move the `:root` tokens in `ui.css` into
-`tokens.css`; swap route markup to the `ui/` atoms; retarget
-the desktop density pins listed under 4a; fix the browser-blue link and the
-`StepUpBanner` copy; wire `/login` to the challenge and setup gates once
-the backend in §3 exists.
+Swap route markup to the `ui/` atoms; fix the `StepUpBanner` copy; replace
+the emoji and text glyphs with `ui/Glyph`; wire `/login` to the challenge and
+setup gates once the backend in §3 exists. (The CSS move, the token move, the
+pin retarget and the browser-blue link are done, above.)
 
 ## 6. Verification
 
