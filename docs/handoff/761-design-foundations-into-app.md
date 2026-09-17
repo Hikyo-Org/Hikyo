@@ -18,13 +18,15 @@ move commit (`312251e9`). No interleaving, no reordering: the foundations are
 last in the file, so within equal specificity they win by source order, which is
 exactly how they won when ui.css was a separate later stylesheet.
 
-The body is no longer byte-identical to ui.css: five edits landed inside it
+The body is no longer byte-identical to ui.css: seven edits landed inside it
 after the move, each reviewed as an authorised change to the moved section.
+Only two change a declaration (4 and 5); the rest are comments.
 
 1. `.context-sidebar > h2` added to the eyebrow selector list.
 2. The "five rules app.css states with more specificity" comment rewritten
-   (twice: first to three rules, then to state the true reason each of the
-   three exists).
+   three times: first to three rules, then to state the true reason each of
+   the three exists, then to correct the sidebar media copy from 800px to
+   700px.
 3. The checkbox-block comment rewritten after the two `(max-width: 800px)`
    checkbox bumps were deleted.
 4. A `@media (pointer: coarse) { button.settings-tag { min-height: var(--touch) } }`
@@ -32,6 +34,10 @@ after the move, each reviewed as an authorised change to the moved section.
 5. `:root :is(.sidebar__link, .environment-lifecycle > summary)` split into two
    rules so the summary keeps the UA's `list-item` display (and therefore its
    disclosure marker) and centres with `align-content` instead of flex.
+6. The badge-block header no longer claims to supersede `.history__current`
+   and `.matrix__problem-count`, which carry no `.badge`.
+7. The field-controls header corrected from (0,2,1) to the rule's real
+   (0,1,1).
 
 **No tokens moved.** The premise in the ticket was stale: ui.css declared no
 custom properties at all (every `:root` in it was a descendant combinator used

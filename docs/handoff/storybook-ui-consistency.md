@@ -109,7 +109,7 @@ pointer:
   `.environment-lifecycle > summary` are not outranked: the control-height
   list reaches (0,3,0) through `.matrix__legend-toggle.btn` inside its
   `:is()`, so the height already lands. Those two rules exist only to zero
-  the block padding app.css gives them (`9px 13px` plus a `max-width: 800px`
+  the block padding app.css gives them (`9px 13px` plus a `max-width: 700px`
   copy on the link, `10px 0` on the summary) and to centre the text; they are
   written separately so the summary never gets a `display`, which would drop
   its disclosure marker. The count of five was counting selectors plus media

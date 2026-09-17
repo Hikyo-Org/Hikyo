@@ -6119,9 +6119,12 @@ h3,
    select|input|textarea`, `.stepup__form input`, `.catalogue-manage__create
    input`, `.matrix-key-create__type select`, `.history-sheet input[type=date]`,
    `.matrix-row-editor__fill textarea`, and the 10px/12px padding that produced
-   the 42px members select. The `:root` prefix gives the rule (0,2,1) so it
-   ties those and wins by order; `:where()` keeps the `:not([type])` chain at
-   zero so the `.mono` and dialog rules below still win by class. */
+   the 42px members select. `:is(:where(...), select)` contributes only the
+   `select` type (0,0,1), so the `:root` prefix puts the rule at (0,1,1): high
+   enough to beat the bare-element rules it replaces, and enough to tie the
+   `.class element` ones (`.field input`, `.change-approvals select`), which it
+   then wins by order. `:where()` keeps the `:not([type])` chain at zero so the
+   `.mono` and dialog rules below still win by class. */
 :root :is(:where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file'])), select),
 :is(.settings-input, .settings-select) {
   min-height: var(--control);
@@ -6320,7 +6323,7 @@ h3,
    above, which reaches (0,3,0) through `.matrix__legend-toggle.btn` inside
    its `:is()` and so already beats both. They are restated only to zero the
    block padding app.css gives them (`padding: 9px 13px` on `.sidebar__link`,
-   with a `max-width: 800px` copy around line 1326, and `10px 0` on the
+   with a `max-width: 700px` copy around line 1326, and `10px 0` on the
    summary) and to centre the text on that height. */
 :root .page--members .inspect select {
   min-height: var(--control);
