@@ -421,6 +421,15 @@ Where the glyph was the ONLY content of a button (`⋯` menu, `✕` close), the 
 
 Delete the local `QrCode` function and its comment from `AccountSecurity.tsx`; `import { QrCode } from '../ui/auth/QrCode.tsx';` and keep the call site unchanged (same `value`/`title` props).
 
+- [ ] **Step 2b: Badges (carried from #761 Task 3)**
+
+Layer 1 deleted the `.chip--armed`, `.chip--wide`, `.settings-tag--on` and `.settings-tag--danger` rules (dead under the foundation badge block) and left `.history__current` and `.matrix__problem-count` styled by their own rules because their markup lacks `.badge`. Finish the fold here:
+- Every `<span className="chip ...">` / `<span className="badge ...">` / `.settings-tag` that is NOT a button becomes `<Badge tone={...}>`: `--danger` and `data-state="danger"` map to `tone="danger"`, `--on` / `ok` states to `tone="ok"`, `changed` / `warn` to `tone="changed"`, everything else `neutral`. The armed countdown chip (`chip--armed`) and the wide chip carry their state in TEXT already (verify; if a state was colour-only, add the word).
+- `.settings-tag` sites that are `<button>` elements (toggle tags) become `<Button variant="quiet" aria-pressed={on}>`; delete `.settings-tag*` rules from app.css when no site remains. This also restores the coarse-pointer touch floor the tag lost in layer 1.
+- `.history__current` and `.matrix__problem-count` become `<Badge tone="neutral">` / `<Badge tone="danger">`; delete their rules (both `.matrix__problem-count` definitions; split `.matrix__count` out of the shared list and keep it).
+- `.count` pill stays (DESIGN.md exception).
+Run `grep -rn 'className="chip\|className="badge\|settings-tag\|history__current\|matrix__problem-count' web/src/routes web/src/app | grep -v -e '\.test\.' -e '\.stories\.'` and expect no output.
+
 - [ ] **Step 3: Grep zero**
 
 Run: `grep -rn '🔒\|🔗\|✓\|✕\|Δ\|◌\|⋯' web/src/routes web/src/app | grep -v -e '\.test\.' -e '\.stories\.'`
