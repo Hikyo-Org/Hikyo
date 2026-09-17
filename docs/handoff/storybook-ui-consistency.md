@@ -402,6 +402,13 @@ Findings and fixes, all in `ui.css`, `.storybook/preview.tsx` or story files:
   the overlay shadow. Screenshots at 1280 and 390 in both themes were taken
   from the same run (disposable, `web/.xreview/shots/`).
 
+- Route dialogs: the members grant ceremony opened from the route measures
+  520 wide, shadow, title 16/700, actions 36 fine / 44 coarse (screenshot
+  taken). The matrix-editor family does not open under the prototype's mock
+  API, so it is covered by the e2e pins (row editor close, key sheet) and the
+  Storybook stories only. Not done: a 50-key matrix and a preview environment
+  with real content (the prototype seed has 6 keys and 3 environments; the
+  repo has no PR preview deploy).
 - Known risk 1 measured (`.matrix__history-link` 11.5 to 13px): on the demo
   project (3 environments) at 1280 wide the matrix header grows from 974 to
   999px (each history button +9, the PROTECTED tag 65 to 74 at 11px), so the
