@@ -218,14 +218,16 @@ export function AccountSecurity() {
               </span>
             </div>
             <span className="settings-row__spacer" />
-            <button
+            <Button
+              icon
+              variant="quiet"
               type="button"
               className="capability__revoke"
               aria-label={`Remove passkey ${passkey.label}`}
               onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id })}
             >
               ✕
-            </button>
+            </Button>
           </div>
         )) : null}
 
@@ -432,7 +434,7 @@ export function AccountSecurity() {
             <div className="settings-row" key={identity.id}>
               <div className="settings-row__copy"><span className="settings-row__title">git.example.com</span><span className="settings-row__detail">(issuer, subject) = (git.example.com, {identity.subject}) · linked 2026-06-02</span></div>
               <span className="settings-row__spacer" />
-              <button type="button" className="capability__revoke" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}>✕</button>
+              <Button icon variant="quiet" type="button" className="capability__revoke" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}>✕</Button>
             </div>
           ))}
           <div className="settings-row">
@@ -795,7 +797,7 @@ function PrototypeSessions({
         <span className="settings-row__spacer" />
         <span className="settings-tag">{presentation.badge}</span>
         {index === 0 ? null : (
-          <button type="button" className="capability__revoke" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}>✕</button>
+          <Button icon variant="quiet" type="button" className="capability__revoke" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}>✕</Button>
         )}
       </div>;
     })}

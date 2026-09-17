@@ -1148,8 +1148,9 @@ export function Matrix({
                             </span>
                           )}
                           {degraded !== undefined || revision === undefined ? null : (
+                            // Anchor, not Button: the class is what HistoryDrawer uses to find the opener.
                             <Link
-                              className="btn matrix__history-link"
+                              className="btn btn--quiet matrix__history-link"
                               data-history-environment={environment.id}
                               to={historyLink({ ...ref, env: environment.id })}
                               onClick={(event: MouseEvent<HTMLAnchorElement>) => {
@@ -1223,8 +1224,9 @@ export function Matrix({
                                   group. Hidden while collapsed to match the
                                   prototype, you open a group, then add to it. */}
                               {collapsed || declarationsLocked ? null : (
-                                <button
+                                <Button
                                   type="button"
+                                  variant="quiet"
                                   className="matrix__add-key"
                                   onClick={() => {
                                     setCreateError(null);
@@ -1233,7 +1235,7 @@ export function Matrix({
                                   }}
                                 >
                                   + Key
-                                </button>
+                                </Button>
                               )}
                             </div>
                           </th>

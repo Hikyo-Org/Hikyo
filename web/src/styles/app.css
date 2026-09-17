@@ -2140,11 +2140,18 @@ a:is(.badge, .chip, .settings-tag) {
   background: var(--bg-panel);
 }
 
-.matrix__group-row button {
+/* The group heading's own control. Selected by its class, not by `button`:
+   the row also holds the `+ key` Button, and an element selector here would
+   outrank every `.btn` rule and repaint the atom. The group row now carries
+   that `+ key` beside the toggle (env-matrix 31), so the toggle shares the
+   row rather than owning its full width. */
+.matrix__group-row .matrix__group-toggle {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
+  flex: 1;
+  width: auto;
+  min-width: 0;
   min-height: var(--control);
   padding: 7px 12px;
   border: 0;
@@ -2158,8 +2165,6 @@ a:is(.badge, .chip, .settings-tag) {
   cursor: pointer;
 }
 
-/* The group row now carries a `+ key` beside its toggle (env-matrix 31), so the
-   toggle shares the row rather than owning its full width. */
 .matrix__group-row-inner {
   display: flex;
   align-items: center;
@@ -2167,33 +2172,14 @@ a:is(.badge, .chip, .settings-tag) {
   padding-right: var(--space-3);
 }
 
-.matrix__group-row .matrix__group-toggle {
-  width: auto;
-  flex: 1;
-  min-width: 0;
-}
-
-/* `+ key`: a dashed pill in the group's own hue, not the uppercased group text
-   the base selector would otherwise give it. */
+/* `+ key` is a plain quiet Button: the atom carries its box, type and hover.
+   What is left is the row's business only: where it sits, and the weight,
+   because `button` is `font: inherit` and the group heading is a <th>, so
+   without this the label would come out bold where every other quiet button
+   is 400. Same reason as `.matrix__history-link` below. */
 .matrix__group-row .matrix__add-key {
   flex: none;
-  width: auto;
-  min-height: var(--control);
-  padding: var(--space-1) var(--space-3);
-  border: 1px dashed var(--line);
-  /* Rounded rect, not a full pill, DESIGN.md reserves the pill for identity
-     circles and count badges (expectNoStrayPills). */
-  border-radius: var(--radius-control);
-  color: var(--tx-faint);
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  letter-spacing: 0;
-  text-transform: none;
-}
-
-.matrix__group-row .matrix__add-key:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+  font-weight: 400;
 }
 
 .matrix__group-chevron {
@@ -2202,7 +2188,7 @@ a:is(.badge, .chip, .settings-tag) {
   transition: transform var(--dur) var(--ease);
 }
 
-.matrix__group-row button[aria-expanded='false'] .matrix__group-chevron {
+.matrix__group-row .matrix__group-toggle[aria-expanded='false'] .matrix__group-chevron {
   transform: rotate(-90deg);
 }
 
@@ -4384,12 +4370,11 @@ label.chk:has(input:disabled) {
   font-weight: 500;
 }
 
+/* The opener is `btn btn--quiet` now, so the quiet variant owns the box and
+   the type size and `.btn` the nowrap. Only the weight is the link's own: the
+   column's headings are bold and a link in that column is not a heading. */
 .matrix__history-link {
-  min-height: var(--control);
-  padding: 0 10px;
-  font-size: var(--fs-sm);
   font-weight: 400;
-  white-space: nowrap;
 }
 
 @media (min-width: 801px) {
@@ -5066,27 +5051,6 @@ label.chk:has(input:disabled) {
 
 .page--members .capability__origin {
   border-color: var(--danger);
-  color: var(--danger);
-}
-
-.capability__revoke {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control);
-  min-width: var(--control);
-  min-height: var(--control);
-  margin: -6px -8px -6px -2px;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-badge);
-  background: transparent;
-  color: var(--tx-dim);
-  cursor: pointer;
-}
-
-.capability__revoke:hover {
-  background: color-mix(in oklch, var(--bg-hover), var(--danger) 10%);
   color: var(--danger);
 }
 

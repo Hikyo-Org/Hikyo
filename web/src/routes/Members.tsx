@@ -479,18 +479,18 @@ export function Members({ scope }: { scope: MembersScope }) {
                                       ))}
                                   </>
                                 )}
-                              <button
+                              <Button
                                 type="button"
-                                className={compactPresentation
-                                  ? 'capability__revoke'
-                                  : 'btn btn--quiet'}
+                                variant="quiet"
+                                icon={compactPresentation}
+                                className={compactPresentation ? 'capability__revoke' : undefined}
                                 disabled={revoking}
                                 aria-busy={revoking ? true : undefined}
                                 aria-label={revokeLabel}
                                 onClick={() => onRevoke(grant)}
                               >
                                 {revokeText}
-                              </button>
+                              </Button>
                             </li>
                           );
                         })}
