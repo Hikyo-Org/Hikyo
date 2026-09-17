@@ -169,52 +169,25 @@ omission case.
 
 ## Corrections from implementation (2026-09-17, #767)
 
-Three source facts found while implementing corrected the text above. They are
-scrivener's corrections in the sense of [oss-mechanics.md](./oss-mechanics.md)
-(2026-08-06 precedent): no decision moves.
+Implementation surfaced five places where the locked text disagreed with
+source. Each is corrected in place above on 2026-09-17 (scrivener's
+corrections in the sense of [oss-mechanics.md](./oss-mechanics.md), 2026-08-06
+precedent; no decision moves), and listed here so a reader of the diff can
+find them:
 
-1. **No migration lands.** The audit event `type` column carries no database
-   CHECK constraint on either engine; the closed event-type enum is
-   `audit.Spec()` plus the isolation invariants (`TestInvariantAuditCompleteness`,
-   `TestInvariantAuditRegistryClosure`). `EventValueChangeValidated` is added to
-   the registry only. Decision 4's "closed-enum forward/rollback migration"
-   clause is therefore moot; the enum is registry-enforced.
-2. **`value.validate` derives `ReadOnly=false`.** Its only write is its own
-   audit event, but `StoreAuditTenantInsert` is not in `readOnlyStoreOps`, and
-   adding it there would be exactly the wrongful addition the review obligation
-   above warns against. Decision 4's "`policy.ReadOnly` may be true
-   (`value.validate`)" does not hold; both write-surface tools derive
-   `ReadOnly=false`, and their annotations (`ReadOnlyHint`, `IdempotentHint`
-   false, `DestructiveHint` true) follow mechanically. Conservative-wrong is
-   acceptable for a defense-in-depth hint.
-3. **"Secret entry stays out" is a path class, not a classification refusal.**
-   The stage tool maps 1:1 to `value.stage`, whose `edit@env` formula covers
-   secret and config keys alike (§ 2), and no MCP-layer refusal by key
-   classification is added (§ Protected environments, Alternatives). "Entry"
-   in the threat-model banner names the phase-1 path class: no dedicated
-   secret-input path, reveal, or publish is added.
-4. **Wire-safe refusals cross the transport.** A service refusal that
-   declares its own wire-safe detail (the `required_in`/`forbidden_in` vetoes,
-   the schema verdict, the pending cap) crosses `tools/call` verbatim, as it
-   does over REST; every other failure still collapses to the one safe error,
-   so an unauthorized target stays indistinguishable from a nonexistent one.
-   This widens phase-1's closed error policy for the read tools too, though no
-   read path returns such a detail today. Relatedly, § 3's "never the
-   proposed material" holds for the audit trail (counts and verdict only); the
-   `problems` text in a validate response may quote the caller's own config
-   proposal, exactly as the REST publish refusal does.
-5. **"Publish, which a machine credential cannot perform" is not what holds
-   the boundary.** `machineAllowlists[ClassAutomation]` admits `publish`
-   (`internal/domain/permission.go:234`), and publish's protected-environment
-   ceremony is skipped for a caller without a session
-   (`internal/service/publish.go`, `skipsCeremony`), which is what
-   [api-cli-surface.md](./api-cli-surface.md) admits for automation
-   `values publish` over CLI/HTTP (#730). An automation holding `publish` can
-   therefore publish over REST. What holds the MCP boundary is that no publish
-   tool is registered on the MCP surface at all; the sentences in § 2 and
-   § Protected environments that lean on "a machine credential cannot publish"
-   should be read as "publish is not reachable over MCP". Surfaced to the
-   owner for wording.
+1. No audit-type migration exists to extend; the event enum is registry-enforced
+   (§ Consequences).
+2. `value.validate` derives `ReadOnly=false`; both write-surface tools carry
+   non-read-only annotations (§ 4).
+3. Staging into a secret-classified key is `value.stage` and is in; only a
+   dedicated secret-input path stays out (§ 2, § Consequences, banners).
+4. Wire-safe service refusals (`SafeDetail`) cross `tools/call` verbatim, as
+   over REST; everything else collapses to the one safe error, so unauthorized
+   stays indistinguishable from nonexistent. § 3's "never the proposed
+   material" holds for the audit trail; a validate response's `problems` may
+   quote the caller's own config proposal, as the REST publish refusal does.
+5. An automation holding `publish` can publish over REST; the MCP boundary is
+   the absence of a publish tool (§ 2, § Protected environments).
 
 ## Alternatives considered
 
