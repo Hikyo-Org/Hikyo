@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 import { z } from 'zod';
 
@@ -51,6 +51,7 @@ import {
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Input } from '../ui/Input.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 import { gateSystemScope } from './SystemScope.tsx';
@@ -997,6 +998,7 @@ export function TargetForm({
     initial?.selected_repository_ids.map(String).join(', ') ?? '',
   );
   const [repositoryIdsError, setRepositoryIdsError] = useState<string | null>(null);
+  const environmentCreateHintId = useId();
   const [keyIds, setKeyIds] = useState<ReadonlySet<string>>(
     () => new Set(initial?.keys.map((key) => key.key_id) ?? []),
   );
@@ -1153,8 +1155,8 @@ export function TargetForm({
         ) : null}
         {kind === 'environment' && lockRouting !== true ? (
           <div className="field">
-            <Checkbox label="Create the GitHub environment if missing" checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} />
-            <p className="field__hint">Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</p>
+            <Checkbox label="Create the GitHub environment if missing" aria-describedby={environmentCreateHintId} checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} />
+            <p className="field__hint" id={environmentCreateHintId}>Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</p>
           </div>
         ) : null}
         <Input
@@ -1169,17 +1171,12 @@ export function TargetForm({
           }
         />
       </div>
-      <fieldset className="field">
-        <legend className="field__label">Keys</legend>
-        {keys.length === 0 ? <p className="adapters__empty">This project has no keys yet.</p> : null}
-        <ul className="adapters__keys" aria-label="Keys to include">
-          {keys.map((key) => (
-            <li key={key.id}>
-              <Checkbox className="chip" mono label={key.name} checked={keyIds.has(key.id)} onChange={() => toggle(key.id)} />
-            </li>
-          ))}
-        </ul>
-      </fieldset>
+      {keys.length === 0 ? <p className="adapters__empty">This project has no keys yet.</p> : null}
+      <ChoiceGroup legend="Keys" variant="chips" layout="wrap">
+        {keys.map((key) => (
+          <Checkbox key={key.id} mono label={key.name} checked={keyIds.has(key.id)} onChange={() => toggle(key.id)} />
+        ))}
+      </ChoiceGroup>
       <div className="adapters__form adapters__form--two">
         <label className="field">
           <span className="field__label">Include patterns</span>

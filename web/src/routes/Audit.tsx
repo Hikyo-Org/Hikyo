@@ -236,7 +236,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
             />
           </label>
           {/* A set: check several to match any of them; none checked means any
-              outcome. Checkboxes, not a multi-select — three values read
+              outcome. Checkboxes, not a multi-select: three values read
               cleaner and stay keyboard-reachable. */}
           <ChoiceGroup legend="Outcomes" className="audit__outcomes">
             {AUDIT_OUTCOMES.map((outcome) => (
