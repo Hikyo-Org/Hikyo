@@ -70,6 +70,8 @@ beforeEach(() => {
   mocks.passkey.isPending = false;
   mocks.methods.isError = false;
   mocks.methods.isPending = false;
+  mocks.login.isError = false;
+  mocks.passkey.isError = false;
   mocks.passkeysAvailable = false;
 });
 
@@ -200,5 +202,23 @@ it('shows and retries an identity-provider discovery failure', async () => {
   await act(async () => retry?.click());
   expect(mocks.methods.refetch).toHaveBeenCalledOnce();
 
+  await unmount();
+});
+
+// The card has ONE refusal slot, so the route picks which failure speaks:
+// the password leg first, then the passkey leg. Each keeps its own wording.
+it.each([
+  ['password', () => (mocks.login.isError = true), 'Sign-in failed.'],
+  ['passkey', () => (mocks.passkey.isError = true), 'Passkey failed.'],
+])('announces a %s refusal inside the card, in that leg’s own words', async (_leg, fail, text) => {
+  mocks.passkeysAvailable = true;
+  fail();
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+
+  await render();
+
+  const alert = container.querySelector('.login__card [role="alert"]');
+  expect(alert?.textContent).toContain(text);
   await unmount();
 });
