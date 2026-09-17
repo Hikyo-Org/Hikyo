@@ -2339,17 +2339,23 @@ fieldset.field > legend {
   padding: 20px;
 }
 
-.matrix-editor__hint,
-.matrix-editor__copy p {
+.matrix-editor__hint {
   margin: 0;
   color: var(--tx-dim);
   font-size: var(--fs-sm);
 }
 
+/* Several standing problems on one row stay a list inside the notice; a single
+   one is the field's own error instead. */
+.matrix-row-editor__problems {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}
+
 .matrix-editor__provenance {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 20px;
+  gap: var(--space-2) var(--space-4);
   margin: 0;
   padding: var(--space-3);
   border: 1px solid var(--line);

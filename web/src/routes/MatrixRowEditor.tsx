@@ -19,7 +19,9 @@ import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Field } from '../ui/Field.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
@@ -152,6 +154,9 @@ export function MatrixRowEditor({
     destinations,
     protectedEnvironmentIds,
   );
+  const copyDestinations = rows.filter(
+    (row) => row.environmentId !== environmentId && !row.degraded,
+  );
   const protectedDestinationNames = rows
     .filter(
       (row) =>
@@ -249,32 +254,44 @@ export function MatrixRowEditor({
             </p>
           ) : null}
 
-          {editAll ? <div className="matrix-row-editor__fill">
-            <label htmlFor="matrix-fill-all">Fill all environments</label>
-            <div>
-              <textarea
-                id="matrix-fill-all"
-                className={valueClass}
-                rows={2}
-                autoComplete="off"
-                value={fillAll}
-                placeholder={secret ? 'Write-only replacement' : 'Shared draft value'}
-                onChange={(event) => setFillAll(event.target.value)}
-              />
-              <Button
-                type="button"
-                disabled={fillAll === '' || busy || applying}
-                onClick={() => {
-                  setEdits(new Map<string, MatrixDraftEdit>(
-                    editableRows.map((row) => [row.environmentId, { op: 'set', value: fillAll }]),
-                  ));
-                  setFillAll('');
-                }}
-              >
-                Fill all
-              </Button>
-            </div>
-          </div> : null}
+          {editAll ? (
+            <Field
+              className="matrix-row-editor__fill"
+              label="Fill all environments"
+              id="matrix-fill-all"
+              hint={secret ? 'Masked while typing unless you ask to see it.' : undefined}
+            >
+              {(control) => (
+                <div>
+                  {/* markup-check: a raw textarea inside the atom's field, not an
+                      Input: the secret face is `-webkit-text-security` on a
+                      textarea so pasted newlines survive, which no Input type
+                      expresses. Field still owns the label and the wiring. */}
+                  <textarea
+                    {...control}
+                    className={valueClass}
+                    rows={2}
+                    autoComplete="off"
+                    value={fillAll}
+                    placeholder={secret ? 'Write-only replacement' : 'Shared draft value'}
+                    onChange={(event) => setFillAll(event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    disabled={fillAll === '' || busy || applying}
+                    onClick={() => {
+                      setEdits(new Map<string, MatrixDraftEdit>(
+                        editableRows.map((row) => [row.environmentId, { op: 'set', value: fillAll }]),
+                      ));
+                      setFillAll('');
+                    }}
+                  >
+                    Fill all
+                  </Button>
+                </div>
+              )}
+            </Field>
+          ) : null}
 
           <div className="matrix-row-editor__rows">
             {visibleRows.map((row) => {
@@ -283,6 +300,15 @@ export function MatrixRowEditor({
               const edit = edits.get(rowEnvironmentId);
               const clearing = edit?.op === 'unset';
               const liveValidation = validationByEnvironment.get(rowEnvironmentId) ?? null;
+              // One refusal fits the control's error slot. A live validation
+              // error owns it (it is about what is being typed); a lone standing
+              // problem takes it when nothing is being refused; several problems
+              // stay a list above the control, because a field error is one
+              // sentence, not an enumeration.
+              const messages = row.problems.map((problem) => problem.message);
+              const liveError = liveValidation?.level === 'error' ? liveValidation.message : undefined;
+              const loneProblem = liveError === undefined && messages.length === 1 ? messages[0] : undefined;
+              const listedProblems = loneProblem === undefined ? messages : [];
               return (
                 <section
                   className={`matrix-row-editor__row${row.protected ? ' matrix-row-editor__row--protected' : ''}`}
@@ -300,55 +326,62 @@ export function MatrixRowEditor({
                       </span>
                     )}
                   </div>
-                  {row.problems.map((problem) => (
-                    <p className="alert" role="status" key={problem.message}>
-                      <span className="alert__glyph" aria-hidden="true">!</span>
-                      <span>{problem.message}</span>
-                    </p>
-                  ))}
-                  <label htmlFor={`matrix-edit-${rowEnvironmentId}`}>
-                    {`${row.environment.name} value`}
-                  </label>
-                  <textarea
-                    id={`matrix-edit-${rowEnvironmentId}`}
-                    className={valueClass}
-                    rows={2}
-                    autoComplete="off"
-                    value={
-                      edit?.op === 'set'
-                        ? edit.value
-                        : clearing
-                          ? ''
-                          : initialDrafts.get(rowEnvironmentId) ?? ''
-                    }
-                    placeholder={
-                      keyRecord.classification === 'secret'
-                        ? publishedSet
-                          ? 'Write-only · replace current secret'
-                          : 'Write-only · set a new secret'
-                        : publishedSet
-                          ? 'Edit the explicit value'
-                          : 'Touch to stage an explicit value'
-                    }
-                    aria-invalid={liveValidation?.level === 'error' ? true : undefined /* markup-check: Task 11 */}
-                    aria-describedby={liveValidation === null ? undefined : `matrix-error-${rowEnvironmentId}`}
-                    onChange={(event) => {
-                      setEdits((current) => {
-                        const next = new Map(current);
-                        next.set(rowEnvironmentId, { op: 'set', value: event.target.value });
-                        return next;
-                      });
-                    }}
-                  />
-                  {liveValidation === null ? null : (
-                    <p
-                      className={liveValidation.level === 'error' ? 'matrix-cell__error' : 'matrix-editor__hint'}
-                      id={`matrix-error-${rowEnvironmentId}`}
-                    >
-                      {liveValidation.level === 'error' ? <><Glyph name="cross" /> </> : null}
-                      {liveValidation.message}
-                    </p>
+                  {listedProblems.length === 0 ? null : (
+                    <Alert tone="warn">
+                      <ul className="matrix-row-editor__problems">
+                        {listedProblems.map((message) => (
+                          <li key={message}>{message}</li>
+                        ))}
+                      </ul>
+                    </Alert>
                   )}
+                  <Field
+                    label={`${row.environment.name} value`}
+                    id={`matrix-edit-${rowEnvironmentId}`}
+                    hint={
+                      liveValidation !== null && liveValidation.level !== 'error'
+                        ? liveValidation.message
+                        : undefined
+                    }
+                    error={liveError ?? loneProblem}
+                  >
+                    {/* markup-check: a raw textarea inside the atom's field, not
+                        an Input: the secret face is `-webkit-text-security` on a
+                        textarea so pasted newlines survive, which no Input type
+                        expresses. Field owns the label, the hint, the error and
+                        the aria wiring the row used to hand-write. */}
+                    {(control) => (
+                      <textarea
+                        {...control}
+                        className={valueClass}
+                        rows={2}
+                        autoComplete="off"
+                        value={
+                          edit?.op === 'set'
+                            ? edit.value
+                            : clearing
+                              ? ''
+                              : initialDrafts.get(rowEnvironmentId) ?? ''
+                        }
+                        placeholder={
+                          keyRecord.classification === 'secret'
+                            ? publishedSet
+                              ? 'Write-only · replace current secret'
+                              : 'Write-only · set a new secret'
+                            : publishedSet
+                              ? 'Edit the explicit value'
+                              : 'Touch to stage an explicit value'
+                        }
+                        onChange={(event) => {
+                          setEdits((current) => {
+                            const next = new Map(current);
+                            next.set(rowEnvironmentId, { op: 'set', value: event.target.value });
+                            return next;
+                          });
+                        }}
+                      />
+                    )}
+                  </Field>
                   <dl className="matrix-editor__provenance">
                     <div>
                       <dt>Updated</dt>
@@ -402,6 +435,71 @@ export function MatrixRowEditor({
             )}
           </p>
 
+          {copyOpen ? (
+            <div className="matrix-editor__copy">
+              <ChoiceGroup
+                legend="Copy independent published value to"
+                columns={copyDestinations.length}
+                hint="Each copied value is independent; later source edits do not propagate."
+              >
+                {copyDestinations.map((row) => (
+                  <Checkbox
+                    key={row.environmentId}
+                    label={`${row.environment.name}${row.protected ? ' · protected' : ''}`}
+                    checked={destinations.includes(row.environmentId)}
+                    onChange={() => {
+                      setDestinations((current) =>
+                        current.includes(row.environmentId)
+                          ? current.filter((id) => id !== row.environmentId)
+                          : [...current, row.environmentId],
+                      );
+                      setProtectedCopyConfirmed(false);
+                    }}
+                  />
+                ))}
+              </ChoiceGroup>
+              {protectedConfirmationRequired ? (
+                <Checkbox
+                  label={`I confirm copying into protected ${protectedDestinationNames.join(', ')}.`}
+                  checked={protectedCopyConfirmed}
+                  onChange={(event) => setProtectedCopyConfirmed(event.target.checked)}
+                />
+              ) : null}
+              {protectedGuard.error === null ? null : (
+                <Alert>{protectedGuard.error}</Alert>
+              )}
+              <Button
+                type="button"
+                disabled={destinations.length === 0 || busy || applying || (protectedConfirmationRequired && !protectedCopyConfirmed)}
+                onClick={() => {
+                  void protectedGuard.run(
+                    protectedTargets(),
+                    () => onCopy(destinations, protectedConfirmationRequired),
+                    'The protected destination guard could not be read, so nothing was copied',
+                  );
+                }}
+              >
+                {`Copy to ${String(destinations.length)} environment${destinations.length === 1 ? '' : 's'}`}
+              </Button>
+            </div>
+          ) : null}
+
+          <details className="matrix-editor__schema">
+            <summary>Schema and presence rules</summary>
+            <p>{declarationSummary(keyRecord, rows)}</p>
+            <details>
+              <summary>Raw declaration</summary>
+              <pre className="mono">{JSON.stringify(
+                { declaration: keyRecord.declaration, presence: keyRecord.presence },
+                // Integer bounds arrive as bigint, which JSON.stringify refuses.
+                (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value),
+                2,
+              )}</pre>
+            </details>
+          </details>
+
+          {/* One action row, and it is last: everything the dialog asks for sits
+              above it, the way ui/Dialog's own anatomy reads. */}
           <div className="dialog__actions">
             {/* The close X is gone (ui/Dialog): Escape and this button are the
                 two ways out, and it leads the row the way Cancel does. */}
@@ -474,66 +572,6 @@ export function MatrixRowEditor({
             </Button>
           </div>
 
-          {copyOpen ? (
-            <fieldset className="matrix-editor__copy">
-              <legend>Copy independent published value to</legend>
-              {rows
-                .filter((row) => row.environmentId !== environmentId && !row.degraded)
-                .map((row) => (
-                  <Checkbox
-                    key={row.environmentId}
-                    label={`${row.environment.name}${row.protected ? ' · protected' : ''}`}
-                    checked={destinations.includes(row.environmentId)}
-                    onChange={() => {
-                      setDestinations((current) =>
-                        current.includes(row.environmentId)
-                          ? current.filter((id) => id !== row.environmentId)
-                          : [...current, row.environmentId],
-                      );
-                      setProtectedCopyConfirmed(false);
-                    }}
-                  />
-                ))}
-              {protectedConfirmationRequired ? (
-                <Checkbox
-                  label={`I confirm copying into protected ${protectedDestinationNames.join(', ')}.`}
-                  checked={protectedCopyConfirmed}
-                  onChange={(event) => setProtectedCopyConfirmed(event.target.checked)}
-                />
-              ) : null}
-              {protectedGuard.error === null ? null : (
-                <Alert>{protectedGuard.error}</Alert>
-              )}
-              <p>Each copied value is independent; later source edits do not propagate.</p>
-              <Button
-                type="button"
-                disabled={destinations.length === 0 || busy || applying || (protectedConfirmationRequired && !protectedCopyConfirmed)}
-                onClick={() => {
-                  void protectedGuard.run(
-                    protectedTargets(),
-                    () => onCopy(destinations, protectedConfirmationRequired),
-                    'The protected destination guard could not be read, so nothing was copied',
-                  );
-                }}
-              >
-                {`Copy to ${String(destinations.length)} environment${destinations.length === 1 ? '' : 's'}`}
-              </Button>
-            </fieldset>
-          ) : null}
-
-          <details className="matrix-editor__schema">
-            <summary>Schema and presence rules</summary>
-            <p>{declarationSummary(keyRecord, rows)}</p>
-            <details>
-              <summary>Raw declaration</summary>
-              <pre className="mono">{JSON.stringify(
-                { declaration: keyRecord.declaration, presence: keyRecord.presence },
-                // Integer bounds arrive as bigint, which JSON.stringify refuses.
-                (_key, value: unknown) => (typeof value === 'bigint' ? value.toString() : value),
-                2,
-              )}</pre>
-            </details>
-          </details>
         </form>
       </Dialog>
       {protectedGuard.request === null ? null : (

@@ -360,13 +360,25 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     expect(head).toContain('· absent');
     expect(head).toContain('pending clear');
     expect(view.container.querySelector('.matrix-row-editor__row-head svg.glyph')).not.toBeNull();
-    expect(view.container.querySelector('.matrix-row-editor__row .alert')?.getAttribute('role')).toBe('status');
     const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea[id^="matrix-edit-"]');
     if (textarea === null) throw new Error('textarea missing');
+
+    // A lone standing problem is the control's own error: announced, glyphed,
+    // and it marks the control invalid rather than floating above it.
+    const fieldError = () => view.container.querySelector('.matrix-row-editor__row .field__error');
+    expect(fieldError()?.getAttribute('role')).toBe('alert');
+    expect(fieldError()?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    expect(textarea.getAttribute('aria-invalid')).toBe('true');
+    expect(textarea.getAttribute('aria-describedby')).toBe(fieldError()?.id);
+
+    // Typing an invalid value hands the error slot to the live validation; the
+    // standing problem steps aside into the notice above the control.
     await act(async () => typeInto(textarea, 'abc'));
-    const error = view.container.querySelector('.matrix-cell__error');
-    expect(error?.textContent?.trim()).toBe('Enter a boolean (true or false), or an integer at least 5.');
-    expect(error?.querySelector('svg.glyph[aria-hidden="true"]')).not.toBeNull();
+    expect(fieldError()?.textContent).toContain('Enter a boolean (true or false), or an integer at least 5.');
+    expect(fieldError()?.querySelector('.alert__glyph[aria-hidden="true"]')).not.toBeNull();
+    const notice = view.container.querySelector('.matrix-row-editor__row .notice');
+    expect(notice?.getAttribute('role')).toBe('status');
+    expect(notice?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
     await view.unmount();
   });
 
