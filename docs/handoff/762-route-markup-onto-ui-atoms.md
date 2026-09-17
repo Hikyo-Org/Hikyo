@@ -230,21 +230,36 @@ a sibling the ruling never covered.
 
 ## Preview verification (controller)
 
-Local checks cannot see any of these. Fill in on the preview, 1280 and 390.
+Run 2026-09-17 on the prototype mode (`pnpm run prototype`, mock API) at 1280
+and 390, reading computed styles through the preview tooling, plus the e2e
+projects run locally on the final tip (desktop 236 passed, mobile 238 passed).
+Surfaces the mock cannot reach are covered by their stories and the reviewers'
+structural reads, and are marked so.
 
-- [ ] Row editor density: the dialog anatomy at 24px padding, the fields
-      through `ui/Field`, nothing cramped.
-- [ ] Publish sheet: legend, eyebrow and badge rows read as a hierarchy, and the
-      lede above the legend does not read as a duplicate.
-- [ ] Credential lifetime: the radio group reads as a group, the Days field on
-      its own line is wide enough at `8ch`.
-- [ ] Dialogs: 24px padding on the narrow family, and the wide family keeps its
-      phone treatment at 390.
-- [ ] Invite dialog: the primary action is last in the action row.
-- [ ] Revoke: 36x36 quiet icon buttons, no pull-in, aligned with their row.
-- [ ] Settings toggles: quiet buttons carrying `aria-pressed`, at control
-      height inside the settings rows.
-- [ ] `.field > label` contrast in the row editor (`--tx-dim`), which the e2e
-      contrast pin reads.
-- [ ] 390px: no horizontal scroll on the matrix, the dialogs or the settings
-      rows.
+- [x] Row editor density: `.dialog.dialog--wide` 760px, 24px padding, one
+      action row with the primary last, 12px between rows, the value field
+      through `ui/Field`; the two disclosure toggles sit above what they open.
+- [x] Publish sheet: not reachable in the mock (no drafts); the
+      `MatrixPublishSheet` story renders legend, "changes" eyebrow and the
+      ready/blocked badges; the lede keeps only the atomic-revision fact.
+- [x] Credential lifetime: not reachable in the mock (no remote); the
+      `ConnectionMintDialog` story renders the radio group and the Days field
+      on its own line at 12ch (widened from 8ch in the fix round).
+- [x] Dialogs: invite dialog 520px, 24px padding, shadow; the wide family keeps
+      the phone treatment (measured 580px / 792px cap / 16px 12px padding /
+      stretched buttons at 600px viewport).
+- [x] Invite dialog: Cancel then Invite (primary last), labelled by its title.
+- [x] Revoke: 36x36 `btn btn--quiet btn--icon`, margin 0, rows at 44px.
+- [x] Settings toggles: quiet buttons with `aria-pressed` (verified on the
+      code by the Task 8 reviewer; the mock has no toggleable tag on screen).
+- [x] `.field > label` contrast in the row editor: `--tx-dim` on `--bg`
+      computes to about 7:1 in both themes; the e2e contrast pin passes.
+- [x] 390px: no horizontal overflow on the matrix, dialogs or settings rows;
+      the coarse-pointer floors are the mobile e2e project's assertions.
+
+Accepted visual deltas carried from the tasks (all the atoms' approved
+rendering): alerts inside cards regain their declared ink and lose the
+paragraph margin; converted choice rows take the foundation's 24px box and
+6px gap; the `.matrix-editor__copy` rows lose their hover padding strip; the
+publish-sheet rows separate by gap, not border; `.chip--armed` keeps `ok`
+tone, the org-wide scope badge is neutral.
