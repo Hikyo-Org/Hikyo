@@ -1690,10 +1690,15 @@ fieldset.field > legend {
   color: var(--bg);
 }
 
+/* The sheet is one wrapping row read in reverse, so the primary Publish sits
+   last in the DOM and first on screen; everything that is not a button takes a
+   full row of its own. */
 .matrix__publish {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  flex-direction: row-reverse;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--space-2);
   padding: 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-container);
@@ -1749,13 +1754,6 @@ fieldset.field > legend {
   margin-left: calc(var(--chk-box) + var(--space-2));
   padding-left: 0;
   list-style: none;
-}
-
-.matrix__publish {
-  flex-direction: row-reverse;
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: var(--space-2) var(--space-2);
 }
 
 .matrix__publish > :not(.btn) {
