@@ -34,6 +34,7 @@ import type { EnvRef, MatrixRef } from '../api/keys.ts';
 import type { EnvironmentList, ValueCell } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -537,7 +538,7 @@ export function HistoryDrawer({
               <span aria-hidden="true">↺ </span>
               Revision history
             </h2>
-            <span className="history__current count">{`current r${String(currentRevision)}`}</span>
+            <Badge>{`current r${String(currentRevision)}`}</Badge>
             {protectedEnvironmentIds.includes(environment.id) ? (
               <span className="history__protected">PROTECTED</span>
             ) : null}

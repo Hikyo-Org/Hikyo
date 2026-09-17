@@ -365,7 +365,12 @@ test.describe('revision history', () => {
     const changes = drawer.locator('.history__changes');
     await expect(changes).toContainText(seed.history.secretKey);
     // The lock is the ui/Glyph SVG now, so assert the mark, not the emoji.
-    await expect(changes.locator('.history__change svg.glyph')).toHaveCount(1);
+    await expect(
+      changes
+        .locator('.history__change')
+        .filter({ hasText: seed.history.secretKey })
+        .locator('svg.glyph'),
+    ).toHaveCount(1);
     await expect(changes).toContainText('write-presence only');
     await expectNoFixtureSecret(drawer);
   });

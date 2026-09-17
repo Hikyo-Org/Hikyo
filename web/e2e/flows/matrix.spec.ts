@@ -1088,7 +1088,9 @@ test.describe('catalogue declaration lifecycle', () => {
         page,
         page.getByRole('status').filter({ hasText: 'Reclassified as secret.' }),
       );
-      await expect(panel).toContainText('secret');
+      await expect(
+        panel.locator('.key-detail__fact', { hasText: 'Classification' }).locator('dd'),
+      ).toHaveText('secret');
 
       // Delete behind the typed-name confirm, then land on the matrix with the
       // key route gone.

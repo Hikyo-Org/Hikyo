@@ -23,6 +23,7 @@ import { useAuth } from '../app/AuthProvider.tsx';
 import { themeLabel, useThemeChoice, type ThemeChoice } from '../app/theme.ts';
 import { clearNotification, notifyFailure } from '../app/notifications.tsx';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -241,16 +242,16 @@ export function AccountSecurity() {
           </div>
           <span className="settings-row__spacer" />
           {totpStatus.isSuccess && totpStatus.data.confirmed ? (
-            <button
+            <Button
               type="button"
-              className="settings-tag account-factor-status"
+              variant="quiet"
               aria-label="Remove the authenticator"
               disabled={totpRemove.isPending}
               title="Remove authenticator app"
               onClick={() => setProof({ kind: 'totp-remove' })}
             >
               enrolled
-            </button>
+            </Button>
           ) : (
             <Button
               type="button"
@@ -406,9 +407,9 @@ export function AccountSecurity() {
               <div className="session__head">
                 {/* The artifact type is text in a badge, never a colour: it is
                     the single most load-bearing fact in the row. */}
-                <span className="badge" data-artifact={item.artifact}>
+                <Badge data-artifact={item.artifact}>
                   {item.artifact}
-                </span>
+                </Badge>
                 <span className="mono session__id">{item.id}</span>
               </div>
               <p className="session__detail">{sessionDetail(item)}</p>
@@ -744,7 +745,7 @@ function PrototypeSessions({
           <span className="settings-row__detail">{presentation.detail}</span>
         </div>
         <span className="settings-row__spacer" />
-        <span className="settings-tag">{presentation.badge}</span>
+        <Badge>{presentation.badge}</Badge>
         {index === 0 ? null : (
           <Button icon variant="quiet" type="button" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}><Glyph name="cross" /></Button>
         )}

@@ -25,6 +25,7 @@ import {
 import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
@@ -149,7 +150,7 @@ export function InstanceAdmin() {
             <span className="settings-row__detail">Organisation settings</span>
           </div>
           <span className="settings-row__spacer" />
-          <span className="settings-tag mono">{org.active ? 'active' : 'inactive'}</span>
+          <Badge mono>{org.active ? 'active' : 'inactive'}</Badge>
         </div>
       )) : null}
       {showCreate ? (

@@ -88,6 +88,7 @@ import { useAuth } from '../app/AuthProvider.tsx';
 import { writeClipboard } from '../app/clipboard.ts';
 import { runPasskeyCeremony, useEnvironments } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -798,7 +799,7 @@ function MachineAccessPage() {
                       </td>
                       <td>
                         {state === 'unknown' ? (
-                          <span className="badge badge--warn">unknown, awaiting reconcile</span>
+                          <Badge tone="changed">unknown, awaiting reconcile</Badge>
                         ) : (
                           state
                         )}
@@ -1238,7 +1239,7 @@ function ExpandableRow({
           </button>
         </th>
         <td>
-          <span className="badge">{account.kind}</span>
+          <Badge>{account.kind}</Badge>
         </td>
         <td>
           {!scopeKnown ? (
@@ -1249,13 +1250,13 @@ function ExpandableRow({
             <span className="machine__chips">
               {reading.map((s) => (
                 <span className="machine__scope" key={s.id}>
-                  <span className="badge">{s.reveal ? `${s.name} ◆` : s.name}</span>
+                  <Badge>{s.reveal ? `${s.name} ◆` : s.name}</Badge>
                   {/* Origin chips per scope, as Members renders them: the one
                       thing that tells a break-glass grant from an ordinary one. */}
                   {s.origins.map((origin) => (
-                    <span className="badge mono" key={`${origin.kind}:${origin.subject}`}>
+                    <Badge mono key={`${origin.kind}:${origin.subject}`}>
                       {origin.kind}: {origin.subject}
-                    </span>
+                    </Badge>
                   ))}
                 </span>
               ))}
@@ -1267,7 +1268,7 @@ function ExpandableRow({
         <td className="col-secondary">{String(account.live_credentials)}</td>
         <td className="col-secondary">{lastUsed}</td>
         <td>
-          <span className="badge">
+          <Badge>
             {journey === null
               ? 'not applicable'
               : !scopeKnown
@@ -1275,7 +1276,7 @@ function ExpandableRow({
                 : outstanding === -1
                   ? 'complete'
                   : `step ${String(outstanding + 1)} of 5`}
-          </span>
+          </Badge>
         </td>
       </tr>
       {open ? (
@@ -1341,7 +1342,7 @@ function ExpansionBody({
               {bearers.map((credential) => (
                 <li className="cred" key={credential.id}>
                   <code className="mono">{`${credential.prefix_hint ?? 'unknown'}…`}</code>
-                  <span className="badge">bearer</span>
+                  <Badge>bearer</Badge>
                   <ExpiryBadge credential={credential} now={now} />
                   <span className="cred__meta">{lastUsedLabel(credential)}</span>
                   <Button
@@ -1525,7 +1526,7 @@ function BindingCard({
     <div className="bindrow" data-credential={credential.id}>
       <p className="bindrow__head">
         <code className="mono">{account.name}</code>
-        <span className="badge">federated</span>
+        <Badge>federated</Badge>
         <ExpiryBadge credential={credential} now={now} />
         <span className="cred__meta">
           matched byte-for-byte, no wildcards, no case folding; renewal is a mint
@@ -1572,9 +1573,9 @@ function BindingCard({
 function ExpiryBadge({ credential, now }: { credential: MachineCredential; now: Date }) {
   const expiry = expiryLabel(credential, now);
   return (
-    <span className={`badge${expiry.tier === 'none' ? '' : ` badge--${expiry.tier}`}`}>
+    <Badge tone={expiry.tier === 'danger' ? 'danger' : expiry.tier === 'warn' ? 'changed' : 'neutral'}>
       {expiry.text}
-    </span>
+    </Badge>
   );
 }
 

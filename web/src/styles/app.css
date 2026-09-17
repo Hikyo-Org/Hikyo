@@ -323,12 +323,13 @@ fieldset.field > legend {
 
 /* --- Badges: one vocabulary --------------------------------------------------
  *
- * Folds `.badge` (12px), `.chip` (26px, 11px) and `.settings-tag` (32px, 10px
- * uppercase bold) into one treatment. The `.count` pill (numeric counts) is the
+ * One treatment for every status badge (ui/Badge). It replaced the three the
+ * routes hand-wrote, `.badge` (12px), `.chip` (26px, 11px) and `.settings-tag`
+ * (32px, 10px uppercase bold); the `.count` pill (numeric counts) is the
  * DESIGN.md exception and is left alone. Tones follow the DESIGN.md state
  * vocabulary: danger for a violation or refusal, changed (slate) for pending or
  * drafted, `ok` on the accent hairline. */
-:is(.badge, .chip, .settings-tag) {
+.badge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -345,29 +346,23 @@ fieldset.field > legend {
   text-transform: none;
 }
 
-/* A badge that is a BUTTON is a control, not a label: the settings identity
-   tags, the environment chips and the Toggle switch render as `button.settings-tag`.
-   They keep the badge face and take the control height, so a chip beside a
-   button lines up and the coarse-pointer floor holds (decided 2026-09-16,
-   chips stand at `--control`). */
-button:is(.badge, .chip, .settings-tag),
-a:is(.badge, .chip, .settings-tag) {
-  min-height: var(--control);
-  padding: 0 var(--space-3);
-  cursor: pointer;
-}
-
-:is(.badge, .chip, .settings-tag).mono {
+.badge.mono {
   font-family: var(--font-mono);
 }
 
+/* The Members scope badge takes the settings hairline rather than the control
+   one. One class, and above the tone tiers, so a protected or org-wide scope
+   still wins its tone: same specificity, later rule. */
+.member-scope {
+  border-color: var(--panel-line);
+}
+
 /* Badge tiers ride beside the word that names the state; colour only echoes. */
-:is(.badge--danger, .settings-tag--danger) {
+.badge--danger {
   border-color: var(--danger);
   color: var(--danger);
 }
 
-.badge--warn,
 .badge--changed {
   border-color: var(--changed);
   color: var(--changed);
@@ -1852,17 +1847,13 @@ a:is(.badge, .chip, .settings-tag) {
   cursor: not-allowed;
 }
 
-.matrix__count,
-.matrix__problem-count {
+.matrix__count {
   width: max-content;
+  padding: 2px 7px;
   border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--bg), var(--danger) 14%);
   color: var(--danger);
   font-size: var(--fs-xs);
-}
-
-.matrix__count {
-  padding: 2px 7px;
 }
 
 .matrix__surface {
@@ -2194,14 +2185,6 @@ a:is(.badge, .chip, .settings-tag) {
   transform: rotate(-90deg);
 }
 
-/* A count badge by role, but a rounded rect rather than the pill the shared
-   `.matrix__count` rule draws: it sits inline with uppercase group text. */
-.matrix__problem-count {
-  padding: 2px 8px;
-  border-radius: var(--radius-badge);
-  letter-spacing: 0;
-  text-transform: none;
-}
 
 .matrix__group-summary {
   min-width: 0;
@@ -2873,10 +2856,6 @@ a:is(.badge, .chip, .settings-tag) {
   flex-wrap: wrap;
 }
 
-.chip--armed {
-  border-color: var(--accent);
-  background: color-mix(in oklch, var(--bg-panel), var(--accent) 14%);
-}
 
 .values__bar {
   display: flex;
@@ -3832,13 +3811,6 @@ label.chk:has(input:disabled) {
   margin-left: auto;
 }
 
-.history__current {
-  padding: 2px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-badge);
-  color: var(--tx-dim);
-  font-size: var(--fs-xs);
-}
 
 .history__protected {
   padding: 2px 7px;
@@ -4644,9 +4616,6 @@ label.chk:has(input:disabled) {
   width: 60px;
 }
 
-.settings-tag {
-  white-space: nowrap;
-}
 
 .environment-policy-control {
   display: contents;
@@ -4712,10 +4681,6 @@ label.chk:has(input:disabled) {
   text-decoration: none;
 }
 
-.page--chrome .account-factor-status {
-  appearance: none;
-  background: transparent;
-}
 
 .page--chrome .panel--tight {
   gap: var(--space-2);
@@ -4827,22 +4792,6 @@ label.chk:has(input:disabled) {
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.page--members .chip {
-  /* Size, ink and padding come from the one badge rule; only the hairline
-     tone and the mono face are this surface's. */
-  border-color: var(--panel-line);
-  font-family: var(--font-mono);
-}
-
-.page--members .chip--protected {
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
-.chip--wide {
-  border-color: var(--accent);
 }
 
 .capabilities {
@@ -5499,10 +5448,6 @@ label.chk:has(input:disabled) {
   margin: 0;
 }
 
-.settings-tag--on {
-  border-color: var(--accent);
-  color: var(--accent);
-}
 
 /* #493 folder & key-group lifecycle dialog. ui/Dialog is the shell. */
 .catalogue-manage__section {

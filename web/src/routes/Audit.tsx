@@ -14,6 +14,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import { useScopeNames } from '../api/scopeNames.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
@@ -37,10 +38,10 @@ function outcomeGlyph(outcome: AuditEvent['outcome']): ReactNode {
 function Outcome({ outcome }: { readonly outcome: AuditEvent['outcome'] }) {
   const glyph = outcomeGlyph(outcome);
   return (
-    <span className={`chip audit__outcome audit__outcome--${outcome}`}>
+    <Badge className={`audit__outcome audit__outcome--${outcome}`}>
       {glyph === null ? null : <span aria-hidden="true">{glyph}</span>}
       {outcome}
-    </span>
+    </Badge>
   );
 }
 

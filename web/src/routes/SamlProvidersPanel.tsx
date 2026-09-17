@@ -14,6 +14,7 @@ import {
   type SamlProviderInputDraft,
 } from '../api/samlProviders.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
@@ -120,8 +121,8 @@ export function SamlProvidersPanel() {
   );
 }
 
-function severityClass(severity: 'warning' | 'error'): string {
-  return severity === 'error' ? 'settings-tag settings-tag--danger' : 'settings-tag';
+function severityTone(severity: 'warning' | 'error'): 'danger' | 'changed' {
+  return severity === 'error' ? 'danger' : 'changed';
 }
 
 function ProviderRow({
@@ -171,14 +172,14 @@ function ProviderRow({
             role={warning.severity === 'error' ? 'alert' : 'status'}
             key={`${warning.code}:${warning.fingerprint ?? ''}`}
           >
-            <span className={severityClass(warning.severity)}>{warning.severity}</span> {warning.message}
+            <Badge tone={severityTone(warning.severity)}>{warning.severity}</Badge> {warning.message}
           </span>
         ))}
       </div>
       <span className="settings-row__spacer" />
-      <span className={provider.enabled ? 'settings-tag' : 'settings-tag settings-tag--danger'}>
+      <Badge tone={provider.enabled ? 'neutral' : 'danger'}>
         {provider.enabled ? 'enabled' : 'disabled'}
-      </span>
+      </Badge>
       <div className="panel__actions">
         <Button type="button" onClick={() => toggle('policy')}>Edit policy</Button>
         <Button type="button" onClick={() => toggle('refresh')}>Refresh metadata</Button>

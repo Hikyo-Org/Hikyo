@@ -37,6 +37,7 @@ import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -402,7 +403,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                       <span className="member-name" title={row.principal}>
                         {principalLabel(row.principal, lines)}
                       </span>
-                      {row.principal === me && !compactPresentation ? <span className="badge">you</span> : null}
+                      {row.principal === me && !compactPresentation ? <Badge>you</Badge> : null}
                       {/* Reset credential (#568): humans only (`mch_` is a
                           machine, which has no password), never yourself (a
                           reset revokes the target's sessions, this one
@@ -426,14 +427,14 @@ export function Members({ scope }: { scope: MembersScope }) {
                       ) : null}
                     </td>
                     <td>
-                      <span
-                        className={row.level === 'org'
-                          ? 'chip chip--wide'
-                          : protectedScope ? 'chip chip--protected' : 'chip'}
+                      <Badge
+                        mono
+                        className="member-scope"
+                        tone={row.level === 'org' ? 'ok' : protectedScope ? 'danger' : 'neutral'}
                         aria-label={protectedScope ? `${visibleScopeLabel}, protected` : undefined}
                       >
                         {visibleScopeLabel}
-                      </span>
+                      </Badge>
                     </td>
                     <td>
                       <ul className="capabilities">
@@ -460,12 +461,9 @@ export function Members({ scope }: { scope: MembersScope }) {
                                   that tells a break-glass grant from an ordinary
                                   one after an incident. */}
                               {!compactPresentation ? grant.origins.map((origin) => (
-                                  <span
-                                    className="badge"
-                                    key={`${origin.kind}:${origin.subject}`}
-                                  >
+                                  <Badge key={`${origin.kind}:${origin.subject}`}>
                                     {origin.kind}: {origin.subject}
-                                  </span>
+                                  </Badge>
                                 )) : (
                                   <>
                                     <span className="visually-hidden">
@@ -476,12 +474,12 @@ export function Members({ scope }: { scope: MembersScope }) {
                                     {grant.origins
                                       .filter((origin) => origin.kind !== 'manual')
                                       .map((origin) => (
-                                        <span
-                                          className="badge capability__origin"
+                                        <Badge
+                                          className="capability__origin"
                                           key={`${origin.kind}:${origin.subject}`}
                                         >
                                           ! {origin.kind}
-                                        </span>
+                                        </Badge>
                                       ))}
                                   </>
                                 )}

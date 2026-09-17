@@ -49,6 +49,7 @@ import {
   runAdapterTOTPCeremony,
 } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
@@ -272,11 +273,11 @@ type Feedback = ReturnType<typeof useFeedback>;
 
 export function HealthChip({ target }: { readonly target: AdapterTarget }) {
   return (
-    <span className={`chip adapters__health adapters__health--${target.sync_status}`}>
+    <Badge className={`adapters__health adapters__health--${target.sync_status}`}>
       <span className="adapters__health-glyph" aria-hidden="true" />
       {healthLabel(target.sync_status)}
       {target.drift_attention ? ' · needs attention' : ''}
-    </span>
+    </Badge>
   );
 }
 
@@ -319,10 +320,10 @@ function AdapterPanel({
       <div className="adapters__adapter-head">
         <h2>{adapter.provider === 'forgejo' ? 'Forgejo' : adapter.provider === 'github-actions' ? 'GitHub Actions' : adapter.provider}</h2>
         <span className="adapters__origin mono">{adapter.origin}</span>
-        <span className="chip">
+        <Badge>
           {adapter.credential_present ? 'credential set' : 'credential absent'}
-        </span>
-        {adapter.state === 'moving' ? <span className="chip">moving</span> : null}
+        </Badge>
+        {adapter.state === 'moving' ? <Badge>moving</Badge> : null}
       </div>
       {adapter.targets.length === 0 ? (
         <p className="adapters__empty">This adapter has no targets.</p>
@@ -764,10 +765,10 @@ function MoveDetail({
         <p role="status">Loading…</p>
       ) : (
         <>
-          <p className={`chip adapters__move-state adapters__move-state--${data.state}`} role="status">
+          <Badge className={`adapters__move-state adapters__move-state--${data.state}`} role="status">
             {data.state.replace('_', ' ')}
             {moveInFlight(data.state) ? ' · polling' : ''}
-          </p>
+          </Badge>
           <p className="field__hint">{moveStateText(data.state)}</p>
           <dl className="adapters__facts">
             <dt>Kind</dt>
@@ -1349,8 +1350,8 @@ function TargetDetail({
           <h3>Keys</h3>
           <ul className="adapters__keys" aria-label="Member keys">
             {target.keys.map((key) => (
-              <li key={key.key_id} className="chip mono">
-                {key.name}
+              <li key={key.key_id}>
+                <Badge mono>{key.name}</Badge>
               </li>
             ))}
           </ul>
@@ -1543,9 +1544,11 @@ function PlanChanges({ plan }: { readonly plan: AdapterPlan }) {
       ) : (
         <ul className="adapters__keys" aria-label="Planned changes">
           {plan.changes.map((change) => (
-            <li key={`${change.surface}:${change.effective_name}`} className="chip mono">
-              {change.disposition} {change.surface} {change.effective_name}
-              {change.reason === undefined || change.reason === '' ? '' : ` (${change.reason})`}
+            <li key={`${change.surface}:${change.effective_name}`}>
+              <Badge mono>
+                {change.disposition} {change.surface} {change.effective_name}
+                {change.reason === undefined || change.reason === '' ? '' : ` (${change.reason})`}
+              </Badge>
             </li>
           ))}
         </ul>

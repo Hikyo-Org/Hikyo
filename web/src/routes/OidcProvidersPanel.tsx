@@ -13,6 +13,7 @@ import {
   type OidcProviderField,
 } from '../api/oidcProviders.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
@@ -135,11 +136,9 @@ export function OidcProvidersPanel() {
                 </span>
               </div>
               <span className="settings-row__spacer" />
-              <span
-                className={`settings-tag mono${provider.enabled ? '' : ' settings-tag--danger'}`}
-              >
+              <Badge mono tone={provider.enabled ? 'neutral' : 'danger'}>
                 {provider.enabled ? 'enabled' : 'disabled'}
-              </span>
+              </Badge>
               <Button
                 type="button"
                 aria-label={`Reconfigure ${provider.display_name}`}

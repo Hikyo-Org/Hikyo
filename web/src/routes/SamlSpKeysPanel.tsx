@@ -11,6 +11,7 @@ import {
   type SamlAction,
 } from '../api/samlProviders.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
 
@@ -128,7 +129,7 @@ function SpKeyRow({
         <span className="settings-row__detail mono">created {new Date(spKey.created_at).toLocaleString()}</span>
       </div>
       <span className="settings-row__spacer" />
-      <span className={active ? 'settings-tag' : 'settings-tag settings-tag--danger'}>{spKey.state}</span>
+      <Badge tone={active ? 'neutral' : 'danger'}>{spKey.state}</Badge>
       <div className="panel__actions">
         {active ? (
           <Button

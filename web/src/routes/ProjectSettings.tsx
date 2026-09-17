@@ -809,9 +809,9 @@ function EnvironmentPolicy({
           const protectedFlag = ready && state.protected;
           return (
             <span className="environment-policy-control" key={environment.id}>
-              <button
+              <Button
                 type="button"
-                className={`settings-tag${protectedFlag ? ' settings-tag--danger' : ''}`}
+                variant="quiet"
                 disabled={!ready || save.isPending}
                 aria-pressed={protectedFlag}
                 onClick={() =>
@@ -834,7 +834,7 @@ function EnvironmentPolicy({
                 }
               >
                 {protectedFlag ? <><Glyph name="lock" /> </> : null}{environment.name}
-              </button>
+              </Button>
               {state?.status === 'unreadable' ? (
                 <span role="status">This environment&apos;s policy could not be read.</span>
               ) : null}

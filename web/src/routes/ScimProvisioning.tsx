@@ -40,6 +40,7 @@ import {
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
@@ -210,9 +211,9 @@ function BindingCard({
       <div className="scim-binding__head">
         <h3 className="scim-binding__slug">
           <span className="mono">{binding.provider_slug}</span>
-          <span className="badge" data-state={binding.provider_kind}>
+          <Badge data-state={binding.provider_kind}>
             {binding.provider_kind}
-          </span>
+          </Badge>
         </h3>
         <Button
           type="button"
@@ -256,9 +257,9 @@ function AttentionList({
     <ul className="scim-attention" aria-label={`${subjectPrefix}attention states`}>
       {attention.map((state, index) => (
         <li key={`${state.state}-${state.subject_ref}-${index}`} className="scim-attention__row">
-          <span className="badge" data-state={state.state}>
+          <Badge data-state={state.state}>
             {state.state.replace(/_/g, ' ')}
-          </span>
+          </Badge>
           <span className="scim-attention__fix">{state.remediation}</span>
         </li>
       ))}
@@ -536,9 +537,9 @@ function MappingRow({
         <h3 className="scim-mapping__group">
           {groupName}
           {row.inert ? (
-            <span className="badge" data-state="inert">
+            <Badge data-state="inert">
               inert
-            </span>
+            </Badge>
           ) : null}
         </h3>
         <span className="mono scim-mapping__template">{row.template}</span>
@@ -555,9 +556,9 @@ function MappingRow({
           <li key={capability} className="capability">
             <span className="capability__name mono">{capability}</span>
             {(row.capability_origins ?? []).filter((origin) => origin.capability === capability).map((origin) => (
-              <span className="badge mono" key={`${origin.binding_id}:${origin.mapping_id}:${origin.group_id}`} title={`Binding ${origin.binding_id}, mapping ${origin.mapping_id}`}>
+              <Badge mono key={`${origin.binding_id}:${origin.mapping_id}:${origin.group_id}`} title={`Binding ${origin.binding_id}, mapping ${origin.mapping_id}`}>
                 {origin.kind}: {origin.group_id === row.group_id ? groupName : origin.group_id}
-              </span>
+              </Badge>
             ))}
           </li>
         ))}
@@ -846,9 +847,9 @@ function CredentialRow({
     <li className="scim-credential">
       <div className="scim-credential__head">
         <span className="mono scim-credential__id">{credential.id}</span>
-        <span className="badge" data-state={state}>
+        <Badge data-state={state}>
           {state}
-        </span>
+        </Badge>
       </div>
       <dl className="scim-credential__facts">
         <dt>Created</dt>
@@ -1124,17 +1125,17 @@ export function DirectoryUserRow({ user }: { user: ScimDirectoryUser }) {
       <div className="scim-directory-user__head">
         <span className="scim-directory-user__name">{user.user_name}</span>
         {user.active ? (
-          <span className="badge" data-state="active">
+          <Badge data-state="active">
             active
-          </span>
+          </Badge>
         ) : user.attention.some((item) => item.state === 'manual_grants_remain') ? (
-          <span className="badge" data-state="inactive">
+          <Badge data-state="inactive">
             <span aria-hidden="true">! </span>deprovisioned, manual grants remain
-          </span>
+          </Badge>
         ) : (
-          <span className="badge" data-state="inactive">
+          <Badge data-state="inactive">
             deprovisioned
-          </span>
+          </Badge>
         )}
       </div>
       <p className="scim-directory-user__groups">

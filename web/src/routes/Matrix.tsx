@@ -45,6 +45,7 @@ import {
 } from './MatrixPublishSheet.tsx';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 import { ImportWizard } from './ImportWizard.tsx';
@@ -1202,9 +1203,9 @@ export function Matrix({
                                 <span>{group.name}</span>
                                 <span className="matrix__group-count">{String(group.keys.length)}</span>
                                 {count === 0 ? null : (
-                                  <span className="matrix__problem-count count">
+                                  <Badge tone="danger">
                                     {`! ${String(count)} problem${count === 1 ? '' : 's'}`}
-                                  </span>
+                                  </Badge>
                                 )}
                                 {collapsed ? (
                                   <span className="matrix__group-summary mono">

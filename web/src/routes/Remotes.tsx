@@ -53,6 +53,7 @@ import { writeClipboard } from '../app/clipboard.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
@@ -246,9 +247,9 @@ export function RemoteCard({
         <h2 className="remote__name">{remote.name}</h2>
         {/* The state is TEXT first. The badge's colour is decoration on top of
             a sentence that already says everything. */}
-        <span className="badge" data-state={state}>
+        <Badge data-state={state}>
           {remoteStateText(state)}
-        </span>
+        </Badge>
       </div>
       <p className="mono remote__url">{remote.url}</p>
 
@@ -368,9 +369,9 @@ export function RemoteCard({
             {/* A duplicate is not served even while a bearer is still held:
                 the open badge and picker go, Close stays so it can be dropped. */}
             {duplicateIdentity ? null : (
-              <span className="badge" role="status">
+              <Badge role="status">
                 Workspace open
-              </span>
+              </Badge>
             )}
             <Button type="button" onClick={() => forgetWorkspace(origin)}>
               Close workspace
@@ -723,9 +724,9 @@ export function ConnectionRow({
       <div className="connection__head">
         <h3 className="connection__label">{connection.label}</h3>
         {/* State as text first; the badge colour is decoration on a word. */}
-        <span className="badge" data-state={state}>
+        <Badge data-state={state}>
           {state}
-        </span>
+        </Badge>
       </div>
       <p className="mono connection__prefix">{connection.prefix_hint}…</p>
       <dl className="connection__facts">

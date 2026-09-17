@@ -1309,10 +1309,9 @@ function toggleId(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {
 /**
  * Toggle is a pressed-state button, not a checkbox: a native checkbox cannot
  * meet the 44px coarse-pointer touch floor without distortion, and this panel
- * is asserted at a phone viewport. The on-state carries a check mark so it never
- * depends
- * on colour alone (DESIGN.md), and it reuses `.settings-tag`, which the touch
- * and focus gates already cover.
+ * is asserted at a phone viewport. The on-state carries a check mark so it
+ * never depends on colour alone (DESIGN.md), and it is a quiet ui/Button, which
+ * the touch and focus gates already cover.
  */
 function Toggle({
   label,
@@ -1326,16 +1325,16 @@ function Toggle({
   onChange: (on: boolean) => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
-      className={`settings-tag${on ? ' settings-tag--on' : ''}`}
+      variant="quiet"
       aria-pressed={on}
       disabled={disabled}
       onClick={() => onChange(!on)}
     >
       {on ? <><Glyph name="check" /> </> : null}
       {label}
-    </button>
+    </Button>
   );
 }
 
