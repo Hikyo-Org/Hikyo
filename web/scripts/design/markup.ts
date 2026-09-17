@@ -21,9 +21,12 @@
 // Two limits worth knowing. Only double-quoted `className="..."` literals are
 // scanned, so a computed `className={...}` is invisible. And a ruled element
 // is followed by tag depth, which a generic type argument or a `<` comparison
-// inflates, so the ruling is also bounded by indentation: it ends at the first
-// non-blank line at or below the opener's own indent. That closing line is
-// still pattern-scanned, because it is a sibling the ruling never covered.
+// inflates, so the ruling is also bounded by indentation: once the opening tag
+// has closed, the ruling ends at the first non-blank line at or below the
+// opener's own indent. That closing line is still pattern-scanned, because it
+// is a sibling the ruling never covered. Before the opening tag closes, the
+// indent rule waits: a multi-line opener's own `>` sits at the opener's indent
+// and is part of the element, not the sibling after it.
 
 export type MarkupHit = { line: number; text: string } & (
   | { atom: string; note?: undefined }
@@ -52,6 +55,8 @@ const MARKER = /markup-check:/;
 /** The marker owns the line: nothing but a comment opens it. */
 const ALONE = /^(?:\{\s*)?(?:\/\/|\/\*)/;
 const indent = (line: string) => line.length - line.trimStart().length;
+/** The opening tag has closed on this line: an arrow function's `=>` is not that `>`. */
+const closesOpener = (line: string) => line.replace(/=>/g, '').includes('>');
 const count = (line: string, pattern: RegExp) => line.match(pattern)?.length ?? 0;
 
 /** Tags opened minus tags closed on one line, so an element can be followed to its end. */
@@ -62,7 +67,7 @@ type State =
   | { kind: 'open' }
   | { kind: 'comment'; line: boolean }
   | { kind: 'awaiting' }
-  | { kind: 'element'; depth: number; opener: number };
+  | { kind: 'element'; depth: number; opener: number; opened: boolean };
 
 export function scanMarkup(lines: readonly string[]): MarkupHit[] {
   const hits: MarkupHit[] = [];
@@ -104,7 +109,10 @@ export function scanMarkup(lines: readonly string[]): MarkupHit[] {
     if (state.kind === 'awaiting') {
       if (line.trim() === '') continue;
       const depth = depthDelta(line);
-      state = depth > 0 ? { kind: 'element', depth, opener: indent(line) } : { kind: 'open' };
+      state =
+        depth > 0
+          ? { kind: 'element', depth, opener: indent(line), opened: closesOpener(line) }
+          : { kind: 'open' };
       continue;
     }
 
@@ -116,11 +124,18 @@ export function scanMarkup(lines: readonly string[]): MarkupHit[] {
         state = { kind: 'open' };
         continue;
       }
+      // An opening tag split over lines closes at its own indent, so that `>`
+      // would read as the boundary below. It is the element's own line, not the
+      // sibling after it, so the indent rule waits for the opener to close.
+      if (!state.opened) {
+        state = { kind: 'element', depth, opener: state.opener, opened: closesOpener(line) };
+        continue;
+      }
       // Back at or below the opener's indent with tags still nominally open is
       // an inflated count, not a nesting: the element ended and THIS line is a
       // sibling, so it falls through to the patterns like any unruled line.
       if (line.trim() === '' || indent(line) > state.opener) {
-        state = { kind: 'element', depth, opener: state.opener };
+        state = { kind: 'element', depth, opener: state.opener, opened: true };
         continue;
       }
       state = { kind: 'open' };

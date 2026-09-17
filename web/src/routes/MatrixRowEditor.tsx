@@ -327,14 +327,20 @@ export function MatrixRowEditor({
                 const edit = edits.get(rowEnvironmentId);
                 const clearing = edit?.op === 'unset';
                 const liveValidation = validationByEnvironment.get(rowEnvironmentId) ?? null;
-                // One refusal fits the control's error slot. A live validation
-                // error owns it (it is about what is being typed); a lone standing
-                // problem takes it when nothing is being refused; several problems
-                // stay a list above the control, because a field error is one
-                // sentence, not an enumeration.
+                // One refusal fits the control's error slot, and the control is
+                // about what is being typed. So a live validation error owns the
+                // slot; a lone standing problem takes it only while the row is
+                // untouched, because once there is a local edit the published
+                // problem no longer describes the value in the box. Everything
+                // else stands above the control: several problems, because a
+                // field error is one sentence and not an enumeration, and a
+                // problem an edit has stepped past.
                 const messages = row.problems.map((problem) => problem.message);
                 const liveError = liveValidation?.level === 'error' ? liveValidation.message : undefined;
-                const loneProblem = liveError === undefined && messages.length === 1 ? messages[0] : undefined;
+                const loneProblem =
+                  liveError === undefined && edit === undefined && messages.length === 1
+                    ? messages[0]
+                    : undefined;
                 const listedProblems = loneProblem === undefined ? messages : [];
                 return (
                   <section
@@ -354,7 +360,10 @@ export function MatrixRowEditor({
                       )}
                     </div>
                     {listedProblems.length === 0 ? null : (
-                      <Alert tone="warn">
+                      // Required absence and declaration violations are
+                      // violations, not caveats, so they keep the danger tone
+                      // DESIGN.md reserves red for, wherever they are rendered.
+                      <Alert>
                         <ul className="matrix-row-editor__problems">
                           {listedProblems.map((message) => (
                             <li key={message}>{message}</li>

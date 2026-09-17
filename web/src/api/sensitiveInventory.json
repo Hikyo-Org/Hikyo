@@ -38,7 +38,7 @@
     "routes/InviteDialog.tsx": "86ae04c143071e9a25477f5985e0ef74ec6d0d7359541acdf5a10d071e998b3e",
     "routes/Login.tsx": "c4a4bb9155bb78543ddb7c4845f37b191d49c0000ee01a5465cce0dcfa266d2b",
     "routes/MachineAccess.tsx": "86a0220a7045cb53691ace9f8599f119b6973c34563b0870680fd75de58639cc",
-    "routes/MatrixRowEditor.tsx": "318c34c7e4bbe3964f30093b0af3927d2ffcf3119793bf53091f3adeeec5167b",
+    "routes/MatrixRowEditor.tsx": "34f44e5d3bdf822eeaf320d7c3ced413821a2ba90c12809587e2b3557c5c27a9",
     "routes/Members.tsx": "8e1eea3d40bae6fa7ef03c3a5f569c2a92cd7d869333218724518f6b3220aad8",
     "routes/OidcProvidersPanel.tsx": "3dc004daecffa3d7e89a50aa83d42e166d664924b6e309e7a5efcdb5970dbb1f",
     "routes/Remotes.tsx": "7eb6ecf24502ee1ad7655dff9762710570fc29bee230dd3c09f7e456dec3d60b",

@@ -70,6 +70,21 @@ describe('scanMarkup', () => {
     ]);
   });
 
+  it('keeps a multi-line opening tag inside the ruling, closing `>` and all', () => {
+    expect(scanMarkup(lines(`
+      {/* markup-check: rich label */}
+      <div
+        role="radiogroup"
+      >
+        <input type="radio" />
+        <input type="radio" />
+      </div>
+      <p className="chk">a sibling</p>
+    `))).toEqual([
+      { line: 9, atom: 'ui/Checkbox', text: '<p className="chk">a sibling</p>' },
+    ]);
+  });
+
   it('scans the line that ends a ruling by indent: it is a sibling, not the close', () => {
     expect(scanMarkup(lines(`
       {/* markup-check: rich label */}

@@ -397,13 +397,37 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     expect(textarea.getAttribute('aria-describedby')).toBe(fieldError()?.id);
 
     // Typing an invalid value hands the error slot to the live validation; the
-    // standing problem steps aside into the notice above the control.
+    // standing problem steps aside into the alert above the control, where it
+    // keeps the danger treatment a violation earns.
     await act(async () => typeInto(textarea, 'abc'));
     expect(fieldError()?.textContent).toContain('Enter a boolean (true or false), or an integer at least 5.');
     expect(fieldError()?.querySelector('.alert__glyph[aria-hidden="true"]')).not.toBeNull();
-    const notice = view.container.querySelector('.matrix-row-editor__row .notice');
-    expect(notice?.getAttribute('role')).toBe('status');
-    expect(notice?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    const standing = view.container.querySelector('.matrix-row-editor__row .alert');
+    expect(standing?.getAttribute('role')).toBe('alert');
+    expect(standing?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    await view.unmount();
+  });
+
+  it('drops the standing problem from the control once a valid replacement is typed', async () => {
+    const view = await renderEditor(
+      { ...keyRecord, declaration: { any_of: [{ type: 'boolean' }, { type: 'integer', min: 5n }] } },
+      [{ ...rows[0]!, cell: undefined, problems: [{ message: 'LOG_LEVEL is required in development but is absent.' }] }],
+    );
+    const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea[id^="matrix-edit-"]');
+    if (textarea === null) throw new Error('textarea missing');
+    expect(textarea.getAttribute('aria-invalid')).toBe('true');
+
+    // The operator answers the problem: the control is about what was typed,
+    // and that is valid, so nothing here is invalid any more. The standing
+    // problem is still true of what is published, so it stays, above the
+    // control and out of its error slot.
+    await act(async () => typeInto(textarea, 'true'));
+    expect(textarea.getAttribute('aria-invalid')).toBeNull();
+    expect(textarea.getAttribute('aria-describedby')).toBeNull();
+    expect(view.container.querySelector('.matrix-row-editor__row .field__error')).toBeNull();
+    const standing = view.container.querySelector('.matrix-row-editor__row .alert');
+    expect(standing?.getAttribute('role')).toBe('alert');
+    expect(standing?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
     await view.unmount();
   });
 
