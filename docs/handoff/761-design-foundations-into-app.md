@@ -52,7 +52,7 @@ equal-specificity win, so the move and the delete had to be atomic per block.
 | `4063f417` | B10 choice controls, B15 dialogs, B4 the touch-height fold |
 | `e7956597` | the last four local checkbox and radio size rules |
 | `981e531b` | the twenty e2e pins, the dead matrix checkbox bump, the handoffs |
-| `FIXSHA` | review fixes: the stale "five rules" comment, ui.css tense in the handoffs, em-dashes in the touched files |
+| `b7e57020` | review fixes: the stale "five rules" comment, ui.css tense in the handoffs, em-dashes in the touched files |
 
 ## What stayed, and why
 
