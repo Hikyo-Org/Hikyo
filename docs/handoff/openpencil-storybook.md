@@ -23,8 +23,10 @@ Skill: .claude/skills/design-loop/SKILL.md
   `web/.storybook/design.ts`: `Title/Variant`, letters, digits and single
   spaces, at least two segments.
 - `export.ts` resolves names with `openpencil find --name` and an exact filter,
-  because `query` (XPath) is broken under Node in `@open-pencil/cli` 0.14.0. It
-  fails the build on not-found, ambiguous, or result-cap-hit.
+  because `query` (XPath) is broken under Node. Still broken in
+  `@open-pencil/cli` 0.15.0: `openpencil query design/hikyo.pen "//*" --json`
+  answers `XPath error: evaluateXPathToNodes is not a function`. It fails the
+  build on not-found, ambiguous, or result-cap-hit.
 - Pencil toolbar button in `web/.storybook/openpencil-addon.tsx`. Its tooltip
   says dev-server-only, because the openpencil:// scheme is not in any released
   OpenPencil yet. It posts to the dev middleware and falls back
@@ -41,7 +43,7 @@ Skill: .claude/skills/design-loop/SKILL.md
 
 ## Known limitations
 
-- `.pen` is read-only in OpenPencil 0.14.0: `openpencil formats` reports
+- `.pen` is read-only in OpenPencil 0.15.0 as it was in 0.14.0: `openpencil formats` reports
   `pen: support: read`, and the app's `save_file` writes a `.fig` zip container
   even when given a `.pen` path. Owner decision: the JSON stays the source of
   truth and the app is a viewer. Design changes are made by editing
@@ -79,12 +81,24 @@ Skill: .claude/skills/design-loop/SKILL.md
   moon glyph used in that variant. The app's real theme toggle is an SVG
   (`.theme-icon__*` in `web/src/styles/app.css`), not a glyph, so the fix is to
   give both the story and the design node that SVG. Issue: #757.
-- `openpencil import` is unusable under pnpm in `@open-pencil/cli` 0.14.0 (it
-  reads the input with `Bun.file`). Bootstrapping a design means authoring the
-  frames in the app or copying and renaming an existing node's JSON; the skill
-  says so.
+- `openpencil import` ran into `Bun is not defined` under pnpm in
+  `@open-pencil/cli` 0.14.0; 0.15.0 fixed that ("Run `openpencil import` on Node
+  so npm-installed CLI users no longer encounter `Bun is not defined`", #575)
+  and it now converts an HTML file here. It is still not a bootstrapping route
+  for `hikyo.pen`: `-f` takes `fig` or `json`, where `json` is a DOM/CSS dump,
+  not a `.pen` document. Bootstrapping a design still means authoring the frames
+  in the app or copying and renaming an existing node's JSON; the skill says so.
 - `web/tsconfig.json` `include` was widened to `.storybook/**/*`; typecheck
   previously skipped that folder entirely.
+
+## Sidecar version match
+
+The Storybook middleware talks to the MCP sidecar the desktop app starts, so the
+sidecar has to match the app: `npm i -g @open-pencil/mcp@<app version>`. On a
+mismatch the sidecar dies, the discovery file it wrote stays behind, and the
+middleware reports the pencil button as "OpenPencil is not running". The web
+devDependency pin (`@open-pencil/mcp` 0.15.0) only supplies the `./discovery`
+reader in Node; it does not start or replace the global sidecar.
 
 ## Open
 

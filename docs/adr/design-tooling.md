@@ -40,9 +40,11 @@ Operative once that spec's implementation merges.
   that points at a deleted design node fails the build.
 - Bootstrapping a design from an existing component is done by authoring the
   frames in the app or by copying and renaming an existing node's JSON;
-  `openpencil import` is not usable under pnpm in `@open-pencil/cli` 0.14.0.
+  `openpencil import` was not usable under pnpm in `@open-pencil/cli` 0.14.0;
+  0.15.0 runs it on Node (#575), but it writes `.fig` or a DOM/CSS JSON dump,
+  never a `.pen`, so it is still not the bootstrapping route.
   Sweeping all existing stories is a separate decision.
-- `.pen` is read-only in OpenPencil 0.14.0 (`openpencil formats` reports
+- `.pen` is read-only in OpenPencil 0.15.0, unchanged from 0.14.0 (`openpencil formats` reports
   `pen: support: read`; `save_file` writes a `.fig` container even for a `.pen`
   path). Decision: the JSON file stays the source of truth and the app is a
   viewer and inspection surface until a `.pen` writer ships upstream. Design

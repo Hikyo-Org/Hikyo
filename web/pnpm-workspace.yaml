@@ -19,3 +19,16 @@ allowBuilds:
 # tree to the one version everything else already uses.
 overrides:
   playwright-core: 1.62.1
+# pnpm 11 refuses versions younger than its default minimum release age, and the
+# lockfile is re-verified against that policy on every install, so a same-day
+# release has to be named here or `pnpm install --frozen-lockfile` fails in CI.
+# `pnpm add` writes these entries; they can be dropped once the versions age out.
+minimumReleaseAgeExclude:
+  - '@open-pencil/cli@0.15.0'
+  - '@open-pencil/core@0.15.0'
+  - '@open-pencil/dom-css@0.15.0'
+  - '@open-pencil/fig@0.15.0'
+  - '@open-pencil/kiwi@0.15.0'
+  - '@open-pencil/mcp@0.15.0'
+  - '@open-pencil/pen@0.15.0'
+  - '@open-pencil/scene-graph@0.15.0'

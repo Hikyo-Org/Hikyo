@@ -13,7 +13,7 @@ needs the app running with the file open, `addon-mcp` needs the dev server on
 
 ## 1. Design
 
-`.pen` is read-only in OpenPencil 0.14.0: `openpencil formats` reports
+`.pen` is read-only in OpenPencil 0.15.0, as in 0.14.0: `openpencil formats` reports
 `pen: support: read`, and `save_file` writes a `.fig` zip container even when
 handed a `.pen` path. The app is a viewer and inspection surface; edits made
 inside it cannot be saved back as JSON. Never call `save_file` onto
@@ -78,9 +78,9 @@ the `-soft` set).
 Copy the JSON of an existing node in `hikyo.pen`, paste it as a sibling and
 rename it. Or author the frames in the app (`create_shape` and friends over the
 `open-pencil` MCP) and transcribe them back with `get_jsx` / `node_tree`, since
-the app cannot write `.pen`. `openpencil import` is not usable here:
-`@open-pencil/cli` 0.14.0 reads the input with `Bun.file`, which does not
-exist under Node, so it throws under pnpm.
+the app cannot write `.pen`. `openpencil import` is not usable here: it runs under Node since
+`@open-pencil/cli` 0.15.0 (#575), but its `-f` is `fig` or a DOM/CSS `json`
+dump, so it cannot produce or extend a `.pen`.
 
 ## Troubleshooting
 - **App shows as not connected to MCP.** The desktop app attaches to the MCP
