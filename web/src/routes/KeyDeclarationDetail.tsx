@@ -36,6 +36,7 @@ import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
 
@@ -124,7 +125,7 @@ export function KeyDeclarationDetail({
   }, [openerRef, keyId]);
 
   // A pointer-down outside the panel closes it back to the matrix, the same way
-  // the ✕ Close link and Escape do, so a click anywhere on the matrix behind it
+  // the Close link and Escape do, so a click anywhere on the matrix behind it
   // dismisses without scrolling back up to the header. Guarded on an open dialog
   // exactly like the Escape handler: a modal (scan block, reclassify confirm)
   // owns the top layer and its own dismissal, and must not also collapse the
@@ -181,7 +182,7 @@ export function KeyDeclarationDetail({
           {key.data?.name ?? 'Key declaration'}
         </h2>
         <Link className="btn key-detail__close" to={matrixPath} aria-label="Close key declaration">
-          ✕ Close
+          <Glyph name="cross" /> Close
         </Link>
       </div>
 
@@ -278,7 +279,7 @@ function KeyDeclarationBody({
         <Fact term="Name" value={record.name} mono />
         <Fact
           term="Classification"
-          value={record.classification === 'secret' ? '🔒 secret' : 'config'}
+          value={record.classification === 'secret' ? 'secret' : 'config'}
         />
         <Fact term="Folder" value={record.folder_path === '' ? '(none)' : record.folder_path} mono />
         <Fact term="Linked keys" value={record.group_id === '' ? 'None' : record.group_id} mono />
@@ -858,7 +859,9 @@ function ReclassifyKey({
       <h3 id="key-detail-reclassify">Reclassify</h3>
       <p>
         This key is classified{' '}
-        <strong>{record.classification === 'secret' ? '🔒 secret' : 'config'}</strong>.
+        <strong>
+          {record.classification === 'secret' ? <><Glyph name="lock" /> secret</> : 'config'}
+        </strong>.
       </p>
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
@@ -1306,7 +1309,8 @@ function toggleId(ids: ReadonlySet<string>, id: string): ReadonlySet<string> {
 /**
  * Toggle is a pressed-state button, not a checkbox: a native checkbox cannot
  * meet the 44px coarse-pointer touch floor without distortion, and this panel
- * is asserted at a phone viewport. The on-state carries a ✓ so it never depends
+ * is asserted at a phone viewport. The on-state carries a check mark so it never
+ * depends
  * on colour alone (DESIGN.md), and it reuses `.settings-tag`, which the touch
  * and focus gates already cover.
  */
@@ -1329,7 +1333,7 @@ function Toggle({
       disabled={disabled}
       onClick={() => onChange(!on)}
     >
-      {on ? '✓ ' : ''}
+      {on ? <><Glyph name="check" /> </> : null}
       {label}
     </button>
   );

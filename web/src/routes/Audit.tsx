@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 
 import { useProjectEnvironments } from '../api/adapters.ts';
@@ -17,13 +17,14 @@ import { useAuth } from '../app/AuthProvider.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 
 /** The glyph before an outcome word, so the state is never colour-only. */
-function outcomeGlyph(outcome: AuditEvent['outcome']): string | null {
+function outcomeGlyph(outcome: AuditEvent['outcome']): ReactNode {
   switch (outcome) {
     case 'failure':
-      return '✕ ';
+      return <><Glyph name="cross" /> </>;
     case 'denied':
       return '⊘ ';
     case 'disconnected':

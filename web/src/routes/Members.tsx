@@ -40,6 +40,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { Select } from '../ui/Select.tsx';
 
@@ -441,7 +442,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                             revoke.isPending && revoke.variables?.grant.id === grant.id;
                           const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${principalLabel(row.principal, lines)}`;
                           const revokeText = compactPresentation
-                            ? (revoking ? '…' : '✕')
+                            ? (revoking ? '…' : <Glyph name="cross" />)
                             : (revoking ? 'Revoking…' : 'Revoke');
                           return (
                             <li

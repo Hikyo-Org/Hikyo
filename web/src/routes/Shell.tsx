@@ -33,6 +33,7 @@ import { needsOrg, SURFACES, surfaceById, type Surface } from '../app/navigation
 import { notifyUpdate } from '../app/notifications.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import {
   CHROME_IDENTITY_EVENT,
   chromeIdentityMark,
@@ -436,7 +437,7 @@ export function Shell({ session }: { session: WhoAmI }) {
                     </span>
                     <span>{org.name}</span>
                     {org.id === activeOrgId ? (
-                      <span className="sidebar__switcher-check">✓</span>
+                      <span className="sidebar__switcher-check"><Glyph name="check" /></span>
                     ) : null}
                   </button>
                 </li>;

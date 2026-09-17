@@ -358,14 +358,15 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     );
     const head = view.container.querySelector('.matrix-row-editor__row-head')?.textContent ?? '';
     expect(head).toContain('· absent');
-    expect(head).toContain('Δ pending clear');
+    expect(head).toContain('pending clear');
+    expect(view.container.querySelector('.matrix-row-editor__row-head svg.glyph')).not.toBeNull();
     expect(view.container.querySelector('.matrix-row-editor__row .alert')?.getAttribute('role')).toBe('status');
     const textarea = view.container.querySelector<HTMLTextAreaElement>('textarea[id^="matrix-edit-"]');
     if (textarea === null) throw new Error('textarea missing');
     await act(async () => typeInto(textarea, 'abc'));
     const error = view.container.querySelector('.matrix-cell__error');
-    expect(error?.textContent).toBe('✕ Enter a boolean (true or false), or an integer at least 5.');
-    expect(error?.querySelector('[aria-hidden="true"]')?.textContent).toBe('✕ ');
+    expect(error?.textContent?.trim()).toBe('Enter a boolean (true or false), or an integer at least 5.');
+    expect(error?.querySelector('svg.glyph[aria-hidden="true"]')).not.toBeNull();
     await view.unmount();
   });
 

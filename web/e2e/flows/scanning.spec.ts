@@ -111,7 +111,7 @@ test.describe('secret scanning warn dialog', () => {
       await expect(warn).toHaveCount(0);
     // The key is now secret: the matrix re-fetches and the key row shows the
     // lock. That is reclassification completing, observed end to end.
-      await expect(page.locator('.matrix__key').filter({ hasText: keyName })).toContainText('🔒');
+      await expect(page.locator('.matrix__key').filter({ hasText: keyName }).locator('svg.glyph')).toHaveCount(1);
     } finally {
       await browserApi(
         page,

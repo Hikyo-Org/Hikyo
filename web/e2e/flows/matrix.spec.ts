@@ -137,7 +137,7 @@ test.describe('environment matrix', () => {
       await expect(bar).toBeVisible();
       await expect(bar).toContainText('filter active: problems');
 
-      await page.getByRole('button', { name: '✕ Show all keys' }).click();
+      await page.getByRole('button', { name: 'Show all keys' }).click();
       await expect(page.getByRole('rowheader', { name: /LOG_LEVEL/ })).toBeVisible();
 
       await publish.click();
@@ -1088,7 +1088,7 @@ test.describe('catalogue declaration lifecycle', () => {
         page,
         page.getByRole('status').filter({ hasText: 'Reclassified as secret.' }),
       );
-      await expect(panel).toContainText('🔒 secret');
+      await expect(panel).toContainText('secret');
 
       // Delete behind the typed-name confirm, then land on the matrix with the
       // key route gone.

@@ -91,6 +91,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { TabPanel, Tabs, type TabItem } from '../ui/Tabs.tsx';
 import {
   type IsMintSubmitting,
@@ -428,7 +429,7 @@ function MachineAccessPage() {
       {credentials.isPending && !credentials.isError && accounts.length > 0 ? (
         <p className="notice" role="status">{/* markup-check: not an alert */}
           <span className="alert__glyph" aria-hidden="true">
-            ⋯
+            <Glyph name="ellipsis" />
           </span>
           <span>Reading credentials…</span>
         </p>
@@ -2197,7 +2198,7 @@ function BindingDialog({
               aria-pressed={preset.id === entry.id}
               onClick={() => choose(entry)}
             >
-              {preset.id === entry.id ? <span aria-hidden="true">✓ </span> : null}
+              {preset.id === entry.id ? <><Glyph name="check" /> </> : null}
               {entry.label}
             </Button>
           ))}

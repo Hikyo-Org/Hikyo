@@ -42,6 +42,7 @@ import {
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { ConsequencesDialog, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
@@ -832,7 +833,7 @@ function EnvironmentPolicy({
                   )
                 }
               >
-                {protectedFlag ? '🔒 ' : ''}{environment.name}
+                {protectedFlag ? <><Glyph name="lock" /> </> : null}{environment.name}
               </button>
               {state?.status === 'unreadable' ? (
                 <span role="status">This environment&apos;s policy could not be read.</span>

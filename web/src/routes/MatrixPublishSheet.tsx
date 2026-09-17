@@ -4,6 +4,7 @@ import type { EnvironmentList } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   blockedPublishEnvironmentIds,
@@ -185,14 +186,14 @@ export function MatrixPublishSheet({
                 >
                   {bucket.group === undefined ? null : (
                     <li className="matrix__publish-group-name">
-                      <span aria-hidden="true">🔗 </span>
+                      <Glyph name="link" />{' '}
                       {`Linked keys: ${bucket.group.name}`}
                     </li>
                   )}
                   {bucket.entries.map((entry) => (
                     <li key={entry.versionId} className="mono">
                       <span>
-                        {entry.classification === 'secret' ? '🔒 ' : ''}
+                        {entry.classification === 'secret' ? <><Glyph name="lock" /> </> : null}
                         {entry.name}
                       </span>
                       <span>{publishPreview(entry)}</span>
@@ -205,7 +206,8 @@ export function MatrixPublishSheet({
               ))}
               {blocked ? (
                 <div className="matrix__publish-blocked" role="alert">
-                  {`✕ Publish blocked: ${environmentProblems
+                  <Glyph name="cross" />{' '}
+                  {`Publish blocked: ${environmentProblems
                     .map((problem) => `${problem.keyName} in ${environment.name}`)
                     .join('; ')}. This environment has violations or missing required keys.`}
                 </div>
@@ -213,7 +215,7 @@ export function MatrixPublishSheet({
                 <span className="matrix__publish-ready">
                   {entries.some((entry) => entry.validationDeferred === true)
                     ? 'Ready to publish; template schemas are checked with each fetch.'
-                    : '✓ ready'}
+                    : <><Glyph name="check" /> ready</>}
                 </span>
               )}
             </div>

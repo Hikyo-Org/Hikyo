@@ -1,6 +1,5 @@
-import qrcode from 'qrcode-generator';
 import { AccountProfile } from './AccountProfile.tsx';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
@@ -27,6 +26,8 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
+import { QrCode } from '../ui/auth/QrCode.tsx';
 import { DisplayOnceCopy, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 
@@ -228,7 +229,7 @@ export function AccountSecurity() {
               aria-label={`Remove passkey ${passkey.label}`}
               onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id })}
             >
-              ✕
+              <Glyph name="cross" />
             </Button>
           </div>
         )) : null}
@@ -436,7 +437,7 @@ export function AccountSecurity() {
             <div className="settings-row" key={identity.id}>
               <div className="settings-row__copy"><span className="settings-row__title">git.example.com</span><span className="settings-row__detail">(issuer, subject) = (git.example.com, {identity.subject}) · linked 2026-06-02</span></div>
               <span className="settings-row__spacer" />
-              <Button icon variant="quiet" type="button" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}>✕</Button>
+              <Button icon variant="quiet" type="button" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}><Glyph name="cross" /></Button>
             </div>
           ))}
           <div className="settings-row">
@@ -714,48 +715,6 @@ function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: 
   );
 }
 
-/**
- * QrCode renders `value` as a scannable QR built as inline SVG. It is inline
- * and not an `<img src="data:…">` because the CSP's `img-src 'self'` forbids
- * data-URL images. The modules are one `<path>`, painted black on white
- * regardless of theme, a scanner needs the contrast, and `forced-color-adjust`
- * keeps the OS from repainting it into an unscannable pair.
- */
-function QrCode({ value, title }: { value: string; title: string }) {
-  const { path, count } = useMemo(() => {
-    const qr = qrcode(0, 'M');
-    qr.addData(value);
-    qr.make();
-    const modules = qr.getModuleCount();
-    let d = '';
-    for (let row = 0; row < modules; row += 1) {
-      for (let col = 0; col < modules; col += 1) {
-        if (qr.isDark(row, col)) {
-          d += `M${String(col)} ${String(row)}h1v1h-1z`;
-        }
-      }
-    }
-    return { path: d, count: modules };
-  }, [value]);
-
-  const quiet = 4; // the spec's four-module quiet zone
-  const box = count + quiet * 2;
-  return (
-    <svg
-      className="totp-qr"
-      viewBox={`0 0 ${String(box)} ${String(box)}`}
-      width="176"
-      height="176"
-      role="img"
-      aria-label={title}
-      shapeRendering="crispEdges"
-    >
-      <rect width={box} height={box} fill="#ffffff" />
-      <path d={path} transform={`translate(${String(quiet)} ${String(quiet)})`} fill="#000000" />
-    </svg>
-  );
-}
-
 function PrototypeSessions({
   sessions,
   busy,
@@ -787,7 +746,7 @@ function PrototypeSessions({
         <span className="settings-row__spacer" />
         <span className="settings-tag">{presentation.badge}</span>
         {index === 0 ? null : (
-          <Button icon variant="quiet" type="button" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}>✕</Button>
+          <Button icon variant="quiet" type="button" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}><Glyph name="cross" /></Button>
         )}
       </div>;
     })}

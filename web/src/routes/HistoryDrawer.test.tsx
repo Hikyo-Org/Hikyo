@@ -355,7 +355,9 @@ describe('HistoryDrawer head', () => {
   it('marks schema drift by its own class, not the sole-keeper warning', async () => {
     mocks.schemaOverride = true;
     const { container } = await renderForm(drawer());
-    expect(container.querySelector('.history__pin .history__drift')?.textContent).toBe('Δ schema drift');
+    const drift = container.querySelector('.history__pin .history__drift');
+    expect(drift?.textContent?.trim()).toBe('schema drift');
+    expect(drift?.querySelector('svg.glyph')).not.toBeNull();
     expect(container.querySelector('.history__pin .history__warn')).toBeNull();
   });
 

@@ -54,7 +54,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   play: async ({ args, canvas }) => {
     args.onPublish.mockClear();
-    await expect(canvas.getByText('✓ ready')).toBeVisible();
+    await expect(canvas.getByText('ready')).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: /Publish selected/ }));
     await waitFor(() => expect(args.onPublish).toHaveBeenCalledWith(['env_a']));
   },
@@ -76,7 +76,7 @@ export const Blocked: Story = {
     ],
   },
   play: async ({ canvas }) => {
-    await expect(canvas.getByRole('alert')).toHaveTextContent('✕ Publish blocked: PORT in preview');
+    await expect(canvas.getByRole('alert')).toHaveTextContent('Publish blocked: PORT in preview');
     await expect(canvas.getByRole('button', { name: /Publish selected/ })).toBeDisabled();
   },
 };

@@ -37,6 +37,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   defaultPinExpiry,
@@ -108,7 +109,8 @@ const zPinComparisonValues = zExportedValues.superRefine((values, context) => {
  *    actor and its changed keys, gains a `payload collected` tag, and loses
  *    restore and pin with the stamped policy named. Nothing is reconstructed.
  *  - **Secrets are write-presence only.** The changed-key list says added /
- *    edited / removed and marks the key 🔒. No value, no length, no digest, no
+ *    edited / removed and marks the key as secret. No value, no length, no
+ *    digest, no
  *    comparison status reaches this surface for a secret, ever.
  *  - **Restore is not a privileged path.** It stages ordinary drafts; the
  *    matrix's own draft dots appear and the ordinary publish sheet commits
@@ -280,7 +282,7 @@ export function HistoryDrawer({
   }, [mobileDetail, selected?.revision]);
 
   // A pointer-down outside the drawer closes it back to the matrix, the same way
-  // the ✕ Close link and Escape do. Guarded on an open dialog: the restore/pin/
+  // the Close link and Escape do. Guarded on an open dialog: the restore/pin/
   // release sheets are native `<dialog>`s rendered as SIBLINGS of the drawer, so
   // a click inside one lands outside the aside — the guard keeps that from also
   // collapsing the drawer, leaving each sheet its own dismissal.
@@ -540,7 +542,7 @@ export function HistoryDrawer({
               <span className="history__protected">PROTECTED</span>
             ) : null}
             <Link id="history-close" className="btn history__close" to={matrixPath} aria-label="Close revision history">
-              ✕ Close
+              <Glyph name="cross" /> Close
             </Link>
           </div>
 
@@ -605,7 +607,7 @@ export function HistoryDrawer({
                 {`filter active: history of ${keyDisplay?.label ?? keyFilter}, showing ${String(filtered.length)} of ${String(revisions.length)} revisions`}
               </span>
               <Button type="button" onClick={() => setParam('key', null)}>
-                ✕ show every revision
+                <Glyph name="cross" /> show every revision
               </Button>
             </p>
           )}
@@ -1025,7 +1027,7 @@ function RevisionDetail({
                 aria-pressed={keyFilter === changed.keyId}
                 onClick={() => onFilterKey(changed.keyId)}
               >
-                {secret ? <span aria-hidden="true">🔒 </span> : null}
+                {secret ? <><Glyph name="lock" /> </> : null}
                 {changed.name}
               </Button>
               <span className="history__kind">{changed.change}</span>
@@ -1103,7 +1105,7 @@ function RevisionDetail({
                 <span className="history__pin-gap">{gap}</span>
                 {pin.schemaOverride ? (
                   <span className="history__drift" title="Pinned despite a current-schema failure, recorded as an explicit override. Pinned delivery is verbatim.">
-                    Δ schema drift
+                    <Glyph name="delta" /> schema drift
                   </span>
                 ) : null}
                 {/* The server's preview: this pin is the only thing holding the
@@ -1244,7 +1246,7 @@ function RestoreSheet({
                 {group.changes.map((change) => (
                   <li key={`${group.environmentId}:${change.keyId}`}>
                     <span className="mono">
-                      {change.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
+                      {change.classification === 'secret' ? <><Glyph name="lock" /> </> : null}
                       {change.name}
                     </span>
                     <span className="history__kind">{change.operation === 'set' ? 'set' : 'clear'}</span>

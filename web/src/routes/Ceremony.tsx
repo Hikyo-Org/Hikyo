@@ -18,6 +18,7 @@ import {
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
@@ -248,7 +249,7 @@ export function Ceremony({
           <li className="mono" key={key.id}>
             {key.classification === 'secret' ? (
               <>
-                <span aria-hidden="true">🔒 </span>
+                <Glyph name="lock" />{' '}
                 <span className="visually-hidden">secret </span>
               </>
             ) : null}

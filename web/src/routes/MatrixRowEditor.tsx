@@ -20,6 +20,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
   canClearMatrixCell,
@@ -293,7 +294,10 @@ export function MatrixRowEditor({
                     {row.protected ? <span>PROTECTED</span> : null}
                     <span>{publishedSet ? 'set' : '· absent'}</span>
                     {row.signal?.pending === undefined ? null : (
-                      <span>{`Δ pending ${row.signal.pending.operation === 'unset' ? 'clear' : 'set'}`}</span>
+                      <span>
+                        <Glyph name="delta" />{' '}
+                        {`pending ${row.signal.pending.operation === 'unset' ? 'clear' : 'set'}`}
+                      </span>
                     )}
                   </div>
                   {row.problems.map((problem) => (
@@ -341,7 +345,7 @@ export function MatrixRowEditor({
                       className={liveValidation.level === 'error' ? 'matrix-cell__error' : 'matrix-editor__hint'}
                       id={`matrix-error-${rowEnvironmentId}`}
                     >
-                      {liveValidation.level === 'error' ? <span aria-hidden="true">✕ </span> : null}
+                      {liveValidation.level === 'error' ? <><Glyph name="cross" /> </> : null}
                       {liveValidation.message}
                     </p>
                   )}

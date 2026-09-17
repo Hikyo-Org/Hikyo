@@ -28,7 +28,7 @@ it('shows deferred template validation before publishing', async () => {
   try {
     expect(view.container.textContent).toContain('Validated at fetch: invalid resolved config refuses delivery.');
     expect(view.container.textContent).toContain('template schemas are checked with each fetch');
-    expect(view.container.textContent).not.toContain('✓ ready');
+    expect(view.container.querySelector('.matrix__publish-ready')?.querySelector('svg.glyph')).toBeNull();
   } finally {
     await view.unmount();
   }

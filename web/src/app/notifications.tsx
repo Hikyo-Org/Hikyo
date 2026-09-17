@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from 'react';
 
+import { Glyph } from '../ui/Glyph.tsx';
+
 type Notification = {
   id: number;
   message: string;
@@ -85,7 +87,7 @@ export function ToastViewport() {
       {notification === null ? null : (
         <div key={notification.id} className={`toast toast--${notification.tone}`}>
           <span className="alert__glyph" aria-hidden="true">
-            {notification.tone === 'error' ? '!' : notification.tone === 'success' ? '✓' : '↑'}
+            {notification.tone === 'error' ? '!' : notification.tone === 'success' ? <Glyph name="check" /> : '↑'}
           </span>
           <span>{notification.message}</span>
           {notification.action === undefined ? null : (

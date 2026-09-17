@@ -46,6 +46,7 @@ import {
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 import { ImportWizard } from './ImportWizard.tsx';
 import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
@@ -915,7 +916,8 @@ export function Matrix({
             aria-controls={publishOpen ? 'matrix-publish' : undefined}
             onClick={() => setPublishOpen((open) => !open)}
           >
-            {`Δ ${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · Publish drafts`}
+            <Glyph name="delta" />{' '}
+            {`${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · Publish drafts`}
           </button>
         )}
         {/* #495: import a .env file. Value import is not git-gated, so the entry
@@ -1001,7 +1003,7 @@ export function Matrix({
             <div className="matrix__filter" role="status">
               <span>{`⚠ filter active: problems, showing ${String(filteredKeyIDs.size)} of ${String(keys.length)} keys`}</span>
               <Button type="button" onClick={() => setFilter('all')}>
-                ✕ Show all keys
+                <Glyph name="cross" /> Show all keys
               </Button>
             </div>
           ) : null}
@@ -1260,7 +1262,7 @@ export function Matrix({
                               keyDetailOpener.current = event.currentTarget;
                             }}
                           >
-                            {key.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
+                            {key.classification === 'secret' ? <><Glyph name="lock" /> </> : null}
                             {key.name}
                           </Link>
                           {linkedGroupName === null ? null : (
@@ -1268,7 +1270,7 @@ export function Matrix({
                               className="matrix__linked-keys"
                               title={`Linked keys: ${linkedGroupName}. Pending changes publish together; all linked keys must be set together in each environment.`}
                             >
-                              <span aria-hidden="true">🔗</span>
+                              <Glyph name="link" />
                               <span className="visually-hidden">{`Linked keys: ${linkedGroupName}`}</span>
                             </span>
                           )}
@@ -1603,16 +1605,18 @@ function MatrixCell({
   const requiredProblem = problems.find((problem) => problem.kind === 'required-absent');
   const validationProblem = problems.find((problem) => problem.kind === 'validation');
   let state = '· absent';
+  let stateGlyph: GlyphName | null = null;
   let stateClass = 'matrix-cell--absent';
   if (requiredProblem !== undefined) {
     state = '! required · absent';
     stateClass = 'matrix-cell--problem';
   } else if (validationProblem !== undefined) {
     // Name the offending value, not just the fact of one. Reading a column of
-    // "value problem" tells you where to click; reading `✕ ten` tells you what
-    // happened. `offendingValue` is absent for anything the caller may not
+    // "value problem" tells you where to click; reading `cross ten` tells you
+    // what happened. `offendingValue` is absent for anything the caller may not
     // read, so a secret stays a secret in its own failure.
-    state = `✕ ${offendingValue(cell, keyRecord) ?? 'value problem'}`;
+    stateGlyph = 'cross';
+    state = offendingValue(cell, keyRecord) ?? 'value problem';
     stateClass = 'matrix-cell--problem';
   } else if (cell?.set === true && keyRecord.classification === 'secret') {
     state = '••••••••';
@@ -1622,9 +1626,10 @@ function MatrixCell({
     stateClass = 'matrix-cell--set';
   }
   // env-matrix 31 fixes the changed/draft vocabulary to bare marks, not
-  // sentences: a set cell carries a `Δ` when it changed since publish and a
-  // draft dot when it holds an unpublished edit. The revision and the set/clear
-  // sense move to the mark's tooltip and the accessible label, off the row.
+  // sentences: a set cell carries a delta mark when it changed since publish
+  // and a draft dot when it holds an unpublished edit. The revision and the
+  // set/clear sense move to the mark's tooltip and the accessible label, off
+  // the row.
   const draftSense =
     signal?.pending === undefined
       ? null
@@ -1640,7 +1645,7 @@ function MatrixCell({
     invalidDraft ? 'your draft is invalid' : null,
     validationDeferred ? 'template schema validated at fetch' : null,
   ].filter((word): word is string => word !== null);
-  const label = `${keyRecord.name} in ${environment.name}: ${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
+  const label = `${keyRecord.name} in ${environment.name}: ${stateGlyph === null ? '' : 'problem, '}${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
 
   return (
     <>
@@ -1650,7 +1655,10 @@ function MatrixCell({
         aria-label={label}
         onClick={onOpen}
       >
-        <span className="matrix-cell__value">{state}</span>
+        <span className="matrix-cell__value">
+          {stateGlyph === null ? null : <><Glyph name={stateGlyph} /> </>}
+          {state}
+        </span>
         {draftSense === null ? null : <span className="visually-hidden">draft</span>}
         {changedRevision === undefined ? null : (
           <span
@@ -1658,7 +1666,7 @@ function MatrixCell({
             aria-hidden="true"
             title={`changed in r${String(changedRevision)}`}
           >
-            Δ
+            <Glyph name="delta" />
           </span>
         )}
         {draftSense === null ? null : (
@@ -1675,7 +1683,7 @@ function MatrixCell({
             aria-hidden="true"
             title="another editor has a draft here"
           >
-            ◌
+            <Glyph name="draft" />
           </span>
         ) : null}
       </button>
@@ -1691,7 +1699,8 @@ function MatrixCell({
  * MatrixLegend says what the cell vocabulary means.
  *
  * The matrix is dense on purpose, and density is bought with abbreviation: `·`,
- * `••••••••`, `Δ` and `✕` are all shorter than the sentences they replace. That
+ * `••••••••`, the delta and the cross are all shorter than the sentences they
+ * replace. That
  * trade is only honest if the expansion is one gesture away on the surface
  * itself, a reader who has to leave to find out what a glyph means has been
  * handed a puzzle, not a table.
@@ -1714,21 +1723,21 @@ function MatrixLegend() {
           <dt className="mono">value</dt>
           <dd>set in that environment: nothing inherits</dd>
           <dt className="mono">••••••••</dt>
-          <dd>a secret is set; 🔒 marks the key. Open the cell to reveal it, if permitted</dd>
+          <dd>a secret is set; <Glyph name="lock" label="lock" /> marks the key. Open the cell to reveal it, if permitted</dd>
           <dt className="mono">· absent</dt>
           <dd>not set here, so nothing is delivered</dd>
           <dt className="mono">! required · absent</dt>
           <dd>required in this environment and absent: publish is blocked</dd>
-          <dt className="mono">✕ value</dt>
+          <dt className="mono"><Glyph name="cross" label="cross" /> value</dt>
           <dd>the value is set but fails its declaration</dd>
-          <dt className="mono">Δ</dt>
+          <dt className="mono"><Glyph name="delta" label="delta" /></dt>
           <dd>changed since the last publish</dd>
           <dt>
             <span className="matrix-cell__draft-dot" aria-hidden="true" />
             <span className="visually-hidden">draft dot</span>
           </dt>
           <dd>an unpublished draft of your own</dd>
-          <dt className="mono">◌</dt>
+          <dt className="mono"><Glyph name="draft" label="another editor's draft" /></dt>
           <dd>another editor has a draft here</dd>
         </dl>
         <p>Choose any cell to inspect or edit it.</p>

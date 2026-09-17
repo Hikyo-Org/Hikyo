@@ -340,7 +340,7 @@ export function MatrixKeyCreate({
             ))}
           </select>
           <Checkbox
-            label="🔒 secret"
+            label="secret"
             checked={secret}
             onChange={(event) => setSecret(event.target.checked)}
           />
