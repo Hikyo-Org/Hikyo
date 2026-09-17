@@ -17,8 +17,17 @@
 // again. A marker at column 0 would rule a whole module, so it is itself a
 // failure. The wording is the reviewer's business, not this script's: any
 // `markup-check:` allowlists what it rules, so no allowlist hides in here.
+//
+// Two limits worth knowing. Only double-quoted `className="..."` literals are
+// scanned, so a computed `className={...}` is invisible. And a ruled element
+// is followed by tag depth, which a generic type argument or a `<` comparison
+// inflates, so the ruling is also bounded by indentation: it ends at the first
+// line back at the opener's own indent.
 
-export type MarkupHit = { line: number; atom: string; text: string };
+export type MarkupHit = { line: number; text: string } & (
+  | { atom: string; note?: undefined }
+  | { atom?: undefined; note: string }
+);
 
 /** A whole class token inside a className literal: `"notice machine__policy"` is a notice. */
 const cls = (name: string) => new RegExp(`className="(?:[^"]*\\s)?${name}(?:[\\s-][^"]*)?"`);
@@ -52,7 +61,7 @@ type State =
   | { kind: 'open' }
   | { kind: 'comment'; line: boolean }
   | { kind: 'awaiting' }
-  | { kind: 'element'; depth: number };
+  | { kind: 'element'; depth: number; opener: number };
 
 export function scanMarkup(lines: readonly string[]): MarkupHit[] {
   const hits: MarkupHit[] = [];
@@ -63,7 +72,11 @@ export function scanMarkup(lines: readonly string[]): MarkupHit[] {
 
     if (MARKER.test(line)) {
       if (indent(line) === 0) {
-        hit('an indented marker: at column 0 it would rule the whole file');
+        hits.push({
+          line: i + 1,
+          text: line.trim(),
+          note: 'a marker at column 0 rules the whole file; indent it with the element it rules',
+        });
       }
       const alone = ALONE.test(line.trim());
       const openBlock = line.includes('/*') && !line.includes('*/');
@@ -90,13 +103,16 @@ export function scanMarkup(lines: readonly string[]): MarkupHit[] {
     if (state.kind === 'awaiting') {
       if (line.trim() === '') continue;
       const depth = depthDelta(line);
-      state = depth > 0 ? { kind: 'element', depth } : { kind: 'open' };
+      state = depth > 0 ? { kind: 'element', depth, opener: indent(line) } : { kind: 'open' };
       continue;
     }
 
     if (state.kind === 'element') {
       const depth: number = state.depth + depthDelta(line);
-      state = depth > 0 ? { kind: 'element', depth } : { kind: 'open' };
+      // Back at the opener's indent is the closing tag: the element is over,
+      // whatever the tag count says.
+      const closed: boolean = depth <= 0 || (line.trim() !== '' && indent(line) <= state.opener);
+      state = closed ? { kind: 'open' } : { kind: 'element', depth, opener: state.opener };
       continue;
     }
 

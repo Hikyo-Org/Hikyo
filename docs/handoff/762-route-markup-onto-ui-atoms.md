@@ -59,9 +59,12 @@ proved, not a convenience.
 
 ## Sites left raw, and why
 
-Every such site carries a `markup-check:` comment, which is what the gate
-reads. Grep: `grep -rn "markup-check" web/src/routes web/src/app`. Cited by the
-comment's own words, since line numbers move.
+Every such site carries a `markup-check:` comment. Most of them feed the gate,
+which will not pass the site without one; three of them (the two
+`MatrixRowEditor` textareas and the `ScimProvisioning` `<li>`, whose class is
+computed) document the ruling for a reader, because the gate cannot see those
+sites at all. Grep: `grep -rn "markup-check" web/src/routes web/src/app`. Cited
+below by the comment's own words, since line numbers move.
 
 **Not an alert** (a status paragraph, or a `role="note"`, that borrows the
 alert or notice skin but is not a refusal), marker `not an alert`:
@@ -87,8 +90,8 @@ label`: `Matrix.tsx` (the PROTECTED marker is its own span, pushed right),
 bare checkbox in a three-column grid whose name is the column beside it; it
 keeps its `aria-label`.
 
-**An attribute the atom cannot pass through**, marker `the row's \`title\`
-disambiguates`: `ChangeApprovals.tsx`, whose row `title` separates two people
+**An attribute the atom cannot pass through**, marker ``the row's `title`
+disambiguates``: `ChangeApprovals.tsx`, whose row `title` separates two people
 with the same display name (`ui/Checkbox` spreads rest onto the input, which
 would shrink the tooltip to the box).
 
@@ -191,6 +194,13 @@ covers a radiogroup's two inputs. It never reaches a sibling, and a marker at
 column 0 is itself a gate failure (it would rule a whole module). Any wording
 counts: the gate reads the marker, the reviewer reads the reason, and there is
 no allowlist hidden in the script.
+
+Two limits worth knowing before trusting a green run. Only double-quoted
+`className="..."` literals are scanned, so a computed `className={...}` is
+invisible to every class pattern. And a ruled element is followed by tag depth,
+which a generic type argument or a `<` comparison inflates, so the ruling is
+also bounded by indentation: it ends at the first line back at the opener's own
+indent.
 
 ## Preview verification (controller)
 

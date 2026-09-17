@@ -18,7 +18,9 @@ for (const dir of ['routes', 'app']) {
     const path = join(entry.parentPath, name);
     for (const hit of scanMarkup((await readFile(path, 'utf8')).split('\n'))) {
       failed = true;
-      console.error(`${relative(web, path)}:${hit.line}: hand-written markup, use ${hit.atom}: ${hit.text}`);
+      const where = `${relative(web, path)}:${hit.line}`;
+      if (hit.atom === undefined) console.error(`${where}: ${hit.note}: ${hit.text}`);
+      else console.error(`${where}: hand-written markup, use ${hit.atom}: ${hit.text}`);
     }
   }
 }

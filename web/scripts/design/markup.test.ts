@@ -56,10 +56,28 @@ describe('scanMarkup', () => {
     `))).toEqual([]);
   });
 
+  it('ends a ruled element at its own indent, so a generic type cannot widen the ruling', () => {
+    expect(scanMarkup(lines(`
+      {/* markup-check: rich label */}
+      <div role="radiogroup">
+        <input type="radio" value={rows.map((r: Record<string, string>) => r.id)} />
+      </div>
+      <p className="chk">a sibling</p>
+      <p className="alert">another sibling</p>
+    `))).toEqual([
+      { line: 6, atom: 'ui/Checkbox', text: '<p className="chk">a sibling</p>' },
+      { line: 7, atom: 'ui/Alert', text: '<p className="alert">another sibling</p>' },
+    ]);
+  });
+
   it('reports a marker at column 0, which would rule the whole file', () => {
     expect(scanMarkup(lines(`// markup-check: everything below is fine, honest
 <input type="checkbox" />`))).toEqual([
-      { line: 1, atom: 'an indented marker: at column 0 it would rule the whole file', text: '// markup-check: everything below is fine, honest' },
+      {
+        line: 1,
+        note: 'a marker at column 0 rules the whole file; indent it with the element it rules',
+        text: '// markup-check: everything below is fine, honest',
+      },
     ]);
   });
 });
