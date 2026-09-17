@@ -474,7 +474,7 @@ export function ImportWizard({
         </div>
 
         {step !== 'pick' && journey?.kind !== 'cli' ? (
-          <p className="notice" role="note">
+          <p className="notice" role="note">{/* markup-check: not an alert */}
             <span aria-hidden="true">⚠</span>
             <span>
               The file is read in this browser and reviewed here. Its values are sent only when you
@@ -787,14 +787,11 @@ export function ImportWizard({
         {gitManaged && newKeys.length > 0 ? (
           <>
             <Alert>{GIT_DEFINITIONS_NOTICE}</Alert>
-            <p className="notice" role="status">
-              <span aria-hidden="true">ℹ</span>
-              <span>
-                {`${String(newKeys.length)} new key${newKeys.length === 1 ? '' : 's'} ` +
-                  `(${newKeys.join(', ')}) cannot be declared here and will be skipped; already-declared keys still import. ` +
-                  'Declare the missing keys with definitions plan / definitions apply, then import again.'}
-              </span>
-            </p>
+            <Alert tone="info">
+              {`${String(newKeys.length)} new key${newKeys.length === 1 ? '' : 's'} ` +
+                `(${newKeys.join(', ')}) cannot be declared here and will be skipped; already-declared keys still import. ` +
+                'Declare the missing keys with definitions plan / definitions apply, then import again.'}
+            </Alert>
           </>
         ) : null}
 

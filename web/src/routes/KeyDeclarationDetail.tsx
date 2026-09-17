@@ -298,17 +298,12 @@ function KeyDeclarationBody({
         />
       </dl>
       {record.deprecated && impactReady && impact.setEnvironmentIds.length > 0 ? (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            Deprecated with {String(impact.setEnvironmentIds.length)}{' '}
-            {impact.setEnvironmentIds.length === 1 ? 'live value' : 'live values'} across{' '}
-            {impact.setEnvironmentIds.map(environmentName).join(', ')}. Remove the values before
-            deleting the key.
-          </span>
-        </p>
+        <Alert tone="warn">
+          Deprecated with {String(impact.setEnvironmentIds.length)}{' '}
+          {impact.setEnvironmentIds.length === 1 ? 'live value' : 'live values'} across{' '}
+          {impact.setEnvironmentIds.map(environmentName).join(', ')}. Remove the values before
+          deleting the key.
+        </Alert>
       ) : null}
 
       <section className="key-detail__section" aria-labelledby="key-detail-rules">

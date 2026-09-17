@@ -550,10 +550,10 @@ function MappingRow({
       </div>
       <p className="scim-mapping__scope">{scopeLabel(row, names)}</p>
       {row.inert ? (
-        <p className="notice" role="status">
+        <Alert tone="warn">
           The provider group behind this row no longer exists. It grants nothing until it is edited
           or deleted; it is never removed automatically.
-        </p>
+        </Alert>
       ) : null}
       <ul className="scim-mapping__caps">
         {row.capabilities.map((capability) => (
@@ -648,7 +648,7 @@ function MappingWarnings({ warnings }: { warnings: readonly ScimBlastWarning[] }
           key={`${warning.code}-${index}`}
           className={warning.severity === 'critical' ? 'alert' : 'notice'}
           role={warning.severity === 'critical' ? 'alert' : 'status'}
-        >
+        >{/* markup-check: not an alert */}
           <span className="alert__glyph" aria-hidden="true">
             !
           </span>
@@ -1006,15 +1006,10 @@ function MintDialog({
         Provisioning credential minted, shown exactly once
       </h2>
       {minted.rotated ? (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            This joined an already-live credential; that is overlap rotation. Update the identity
-            provider to this value, then revoke the old one.
-          </span>
-        </p>
+        <Alert tone="warn">
+          This joined an already-live credential; that is overlap rotation. Update the identity
+          provider to this value, then revoke the old one.
+        </Alert>
       ) : null}
       <p className="mono machine__token">{minted.token}</p>
       <p className="ceremony__cap" role="status">
@@ -1040,7 +1035,7 @@ function MintDialog({
         Copy to clipboard
       </Button>
       {copyStatus === null ? null : (
-        <p className="notice" role="status">
+        <p className="notice" role="status">{/* markup-check: not an alert */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>

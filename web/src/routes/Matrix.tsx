@@ -958,24 +958,15 @@ export function Matrix({
       </div>
 
       {gitManaged ? (
-        <p className="notice" role="status">
-          <span aria-hidden="true">ℹ</span>
-          <span>{GIT_DEFINITIONS_NOTICE}</span>
-        </p>
+        <Alert tone="info">{GIT_DEFINITIONS_NOTICE}</Alert>
       ) : null}
 
       {notice === null ? null : (
-        <p className="notice" role="status">
-          <span aria-hidden="true">✓</span>
-          <span>{notice}</span>
-        </p>
+        <Alert tone="done">{notice}</Alert>
       )}
 
       {backgroundRefreshError ? (
-        <p className="alert" role="status">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>Live matrix refresh failed. Your loaded data and open edits are preserved; retrying automatically.</span>
-        </p>
+        <Alert tone="warn">Live matrix refresh failed. Your loaded data and open edits are preserved; retrying automatically.</Alert>
       ) : null}
 
       {publishOpen ? (

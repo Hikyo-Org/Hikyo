@@ -440,7 +440,7 @@ function MachineAccessPage() {
       ) : null}
 
       {credentials.isPending && !credentials.isError && accounts.length > 0 ? (
-        <p className="notice" role="status">
+        <p className="notice" role="status">{/* markup-check: not an alert */}
           <span className="alert__glyph" aria-hidden="true">
             ⋯
           </span>
@@ -1598,14 +1598,7 @@ function BindingCard({
         ))}
       </dl>
       {credential.reactivated_at === undefined ? null : (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            {`Quarantined since the restore on ${isoDay(credential.reactivated_at)}: this binding permanently refuses any token issued at or before that instant plus the accepted clock skew.`}
-          </span>
-        </p>
+        <Alert tone="warn">{`Quarantined since the restore on ${isoDay(credential.reactivated_at)}: this binding permanently refuses any token issued at or before that instant plus the accepted clock skew.`}</Alert>
       )}
       <div className="machine__actions">
         <Button
@@ -1944,15 +1937,10 @@ export function MintDialog({
                 : <>Expires <time dateTime={disclosed.result.expires_at}>{new Date(disclosed.result.expires_at).toLocaleString()}</time></>}
           </p>
           {disclosed.result.clamped ? (
-            <p className="notice" role="status">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>
-                The instance lifetime ceiling shortened this credential. It expires earlier than the
-                default asked for, said now rather than discovered when it dies.
-              </span>
-            </p>
+            <Alert tone="warn">
+              The instance lifetime ceiling shortened this credential. It expires earlier than the
+              default asked for, said now rather than discovered when it dies.
+            </Alert>
           ) : null}
           <p className="ceremony__cap" role="status">
             <span className="alert__glyph" aria-hidden="true">
@@ -1981,7 +1969,7 @@ export function MintDialog({
             Copy to clipboard
           </Button>
           {disclosed.copyStatus === null ? null : (
-            <p className="notice" role="status">
+            <p className="notice" role="status">{/* markup-check: not an alert */}
               <span className="alert__glyph" aria-hidden="true">
                 ⧉
               </span>
@@ -3724,12 +3712,7 @@ function LeaseMintDialog({
             </p>
           </div>
           {disclosed.result.expires_at !== undefined && disclosed.result.expires_at !== null ? (
-            <p className="notice" role="status">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>{`This lease expires ${isoDay(disclosed.result.expires_at)}. The provider may have shortened the lifetime you asked for.`}</span>
-            </p>
+            <Alert tone="warn">{`This lease expires ${isoDay(disclosed.result.expires_at)}. The provider may have shortened the lifetime you asked for.`}</Alert>
           ) : null}
           <p className="ceremony__cap" role="status">
             <span className="alert__glyph" aria-hidden="true">
@@ -3758,7 +3741,7 @@ function LeaseMintDialog({
             Copy password
           </Button>
           {disclosed.copyStatus === null ? null : (
-            <p className="notice" role="status">
+            <p className="notice" role="status">{/* markup-check: not an alert */}
               <span className="alert__glyph" aria-hidden="true">
                 ⧉
               </span>

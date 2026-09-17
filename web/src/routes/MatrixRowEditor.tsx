@@ -424,10 +424,10 @@ export function MatrixRowEditor({
             })}
           </div>
 
-          {applyError === null ? null : <p className="alert" role="alert">{applyError}</p>}
-          {mutationError === null ? null : <p className="alert" role="alert">{mutationError}</p>}
-          {disclosure.error === null ? null : <p className="alert" role="alert">{disclosure.error}</p>}
-          {disclosure.notice === null ? null : <p className="notice" role="status">{disclosure.notice}</p>}
+          {applyError === null ? null : <Alert>{applyError}</Alert>}
+          {mutationError === null ? null : <Alert>{mutationError}</Alert>}
+          {disclosure.error === null ? null : <Alert>{disclosure.error}</Alert>}
+          {disclosure.notice === null ? null : <Alert tone="done">{disclosure.notice}</Alert>}
           <p className="visually-hidden" role="status">
             {disclosure.announcement === null ? null : (
               <span key={disclosure.announcement.id}>{disclosure.announcement.message}</span>

@@ -264,9 +264,11 @@ describe('HistoryDrawer pin release flow', () => {
     await settle();
 
     expect(submit.disabled).toBe(true);
-    expect(container.querySelector('#history-pin-refusal')?.textContent).toContain(
-      'Invalid pin expiry date',
-    );
+    // The refusal is ui/Alert now, so it is found by its role rather than by an
+    // id on the markup; the pin sheet can show more than one alert at a time.
+    expect(
+      [...container.querySelectorAll('[role="alert"]')].map((node) => node.textContent).join(' '),
+    ).toContain('Invalid pin expiry date');
     expect(mocks.ceremonyRun).not.toHaveBeenCalled();
     expect(mocks.setPinMutate).not.toHaveBeenCalled();
   });

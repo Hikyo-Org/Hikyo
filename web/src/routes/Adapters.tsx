@@ -185,9 +185,7 @@ function AdaptersPage() {
       <div className={`adapters__panes${selected !== '' || move !== '' ? ' adapters__panes--split' : ''}`}>
         <section className="adapters__list" aria-label="Adapters">
           {adapters.isError ? (
-            <p className="alert" role="alert">
-              {adapterRefusalText(adapters.error)}
-            </p>
+            <Alert>{adapterRefusalText(adapters.error)}</Alert>
           ) : null}
           {adapters.isSuccess && adapters.data.items.length === 0 ? (
             <p className="adapters__empty" role="status">
@@ -757,9 +755,7 @@ function MoveDetail({
         </Button>
       </div>
       {move.isError ? (
-        <p className="alert" role="alert">
-          {adapterRefusalText(move.error)}
-        </p>
+        <Alert>{adapterRefusalText(move.error)}</Alert>
       ) : null}
       {data === undefined ? (
         <p role="status">Loading…</p>
@@ -1287,9 +1283,7 @@ function TargetDetail({
         </Button>
       </div>
       {detail.isError ? (
-        <p className="alert" role="alert">
-          {adapterRefusalText(detail.error)}
-        </p>
+        <Alert>{adapterRefusalText(detail.error)}</Alert>
       ) : null}
       {target === undefined ? (
         <p role="status">Loading…</p>

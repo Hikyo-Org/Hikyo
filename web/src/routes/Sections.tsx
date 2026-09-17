@@ -246,7 +246,7 @@ export function DisplayOnceCopy({ value, success }: { value: string; success: st
         </Button>
       </div>
       {status === null ? null : (
-        <p className="notice" role="status">
+        <p className="notice" role="status">{/* markup-check: not an alert */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>

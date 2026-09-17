@@ -343,9 +343,7 @@ export function RemoteCard({
             <UpdateJobStatus jobID={updateJobID} job={updateJob.data} />
           )}
           {jobReadErrorVisible(updateJob.isError, updateJob.data) ? (
-            <p className="alert" role="alert">
-              The update job status could not be read. Inspect the remote instance logs before retrying.
-            </p>
+            <Alert>The update job status could not be read. Inspect the remote instance logs before retrying.</Alert>
           ) : null}
         </div>
       ) : null}
@@ -941,15 +939,10 @@ export function ConnectionMintDialog({
       </p>
       <p className="mono machine__token">{minted.value}</p>
       {minted.clamped ? (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            The instance lifetime ceiling shortened this credential. It expires earlier than asked
-            for, said now rather than discovered when it dies.
-          </span>
-        </p>
+        <Alert tone="warn">
+          The instance lifetime ceiling shortened this credential. It expires earlier than asked
+          for, said now rather than discovered when it dies.
+        </Alert>
       ) : null}
       <p className="ceremony__cap" role="status">
         <span className="alert__glyph" aria-hidden="true">
@@ -974,7 +967,7 @@ export function ConnectionMintDialog({
         Copy to clipboard
       </Button>
       {copyStatus === null ? null : (
-        <p className="notice" role="status">
+        <p className="notice" role="status">{/* markup-check: not an alert */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>

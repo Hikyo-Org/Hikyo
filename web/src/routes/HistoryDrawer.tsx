@@ -611,22 +611,13 @@ export function HistoryDrawer({
         </div>
 
         {outcome === null ? null : (
-          <p className="notice" role="status">
-            <span aria-hidden="true">✓</span>
-            <span>{outcome}</span>
-          </p>
+          <Alert tone="done">{outcome}</Alert>
         )}
         {refusal === null && guard.error === null ? null : (
-          <p id="history-drawer-refusal" className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{refusal ?? guard.error}</span>
-          </p>
+          <Alert>{refusal ?? guard.error}</Alert>
         )}
         {retention.isError ? (
-          <p id="history-retention-error" className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>Retention policy could not be read. Pin release consequences still come from the server.</span>
-          </p>
+          <Alert>Retention policy could not be read. Pin release consequences still come from the server.</Alert>
         ) : null}
 
         {history.isPending ? (
@@ -1018,10 +1009,7 @@ function RevisionDetail({
         </p>
       )}
       {detail.isError ? (
-        <p id="history-detail-error" className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{revisionDetailRefusal(detail.error, revision.revision)}</span>
-        </p>
+        <Alert>{revisionDetailRefusal(detail.error, revision.revision)}</Alert>
       ) : null}
 
       <h4>{`Changed keys (${String(revision.changedKeys.length)})`}</h4>
@@ -1225,10 +1213,7 @@ function RestoreSheet({
       </div>
 
       {refusal === null ? null : (
-        <p id="history-restore-refusal" className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{refusal}</span>
-        </p>
+        <Alert>{refusal}</Alert>
       )}
 
       {result === null ? (
@@ -1283,10 +1268,7 @@ function RestoreSheet({
               </ul>
             </section>
           ))}
-          <p className="notice" role="status">
-            <span aria-hidden="true">✓</span>
-            <span>Drafts are staged; they are also visible on the matrix.</span>
-          </p>
+          <Alert tone="done">Drafts are staged; they are also visible on the matrix.</Alert>
           <div className="matrix-editor__actions">
             <Button
               id="history-restore-publish"
@@ -1387,10 +1369,7 @@ function PinSheet({
       </div>
 
       {refusal === null ? null : (
-        <p id="history-pin-refusal" className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{refusal}</span>
-        </p>
+        <Alert>{refusal}</Alert>
       )}
 
       <div className="history__pin-what">
@@ -1498,10 +1477,7 @@ function PinSheet({
           {comparisonBusy ? 'Comparing…' : 'Run comparison'}
         </Button>
         {comparisonError === null ? null : (
-          <p id="history-pin-compare-error" className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{comparisonError}</span>
-          </p>
+          <Alert>{comparisonError}</Alert>
         )}
         {comparison === null ? null : (
           <div id="history-pin-compare-results" role="status" aria-live="polite">

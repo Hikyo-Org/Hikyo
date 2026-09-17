@@ -294,10 +294,7 @@ export function MatrixKeyCreate({
         </div>
 
         {gitManaged ? (
-          <p className="notice" role="status">
-            <span aria-hidden="true">ℹ</span>
-            <span>{GIT_DEFINITIONS_NOTICE}</span>
-          </p>
+          <Alert tone="info">{GIT_DEFINITIONS_NOTICE}</Alert>
         ) : null}
 
         <div className="matrix-key-create__field">
@@ -338,10 +335,7 @@ export function MatrixKeyCreate({
             </p>
           )}
           {nearMiss === null ? null : (
-            <p className="notice" role="status">
-              <span aria-hidden="true">ℹ</span>
-              <span>{`Similar to existing key ${nearMiss}. Continue if this is intentional.`}</span>
-            </p>
+            <Alert tone="info">{`Similar to existing key ${nearMiss}. Continue if this is intentional.`}</Alert>
           )}
         </div>
 

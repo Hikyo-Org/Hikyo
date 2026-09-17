@@ -21,9 +21,11 @@ const TONES: Record<Tone, { className: string; role: AriaRole; glyph: string }> 
  * colour-only:
  * - `danger`: a refusal or failure; `.alert`, `role="alert"`, announced now.
  * - `done`: post-action confirmation; `.notice`, `role="status"`, polite.
- * - `warn`: a caveat on something that did happen (a lifetime the server
- *   shortened, a credential that joined a live one). `.notice` with the `!`
- *   glyph: it reads as a warning without claiming the act failed.
+ * - `warn`: a caveat that wants attention without being a refusal, whether it
+ *   is about something that did happen (a lifetime the server shortened, a
+ *   credential that joined a live one) or a state that has gone wrong on its
+ *   own (a mapping whose provider group no longer exists). `.notice` with the
+ *   `!` glyph: it reads as a warning without claiming an act failed.
  * - `info`: a standing fact about the surface (this project is git-managed).
  *   `.notice` with `ℹ`; nothing went wrong and nothing is asked.
  *
