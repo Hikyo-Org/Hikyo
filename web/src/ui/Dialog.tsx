@@ -28,6 +28,7 @@ import { useModalDialog } from './useModalDialog.ts';
  */
 export function Dialog({
   title,
+  mono,
   lede,
   size = 'narrow',
   actions,
@@ -38,6 +39,8 @@ export function Dialog({
   children,
 }: {
   title: string;
+  /** Sets the title in the value face, for a dialog named after an identifier. */
+  mono?: boolean;
   lede?: ReactNode;
   size?: 'narrow' | 'wide';
   /** The button row. Put the primary action last. */
@@ -79,7 +82,7 @@ export function Dialog({
             }
       }
     >
-      <h2 className="dialog__title" id={titleId}>
+      <h2 className={cx('dialog__title', mono === true && 'mono')} id={titleId}>
         {title}
       </h2>
       {lede !== undefined ? <p className="dialog__lede">{lede}</p> : null}

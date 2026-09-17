@@ -124,3 +124,13 @@ export const IsModalAndLabelled: Story = {
     await expect(args.onCancel).toHaveBeenCalled();
   },
 };
+
+/** A dialog named after an identifier: the value face reaches the title only. */
+export const MonoTitle: Story = {
+  args: { title: 'LOG_LEVEL', mono: true, lede: 'Explicit value and provenance for this environment.' },
+  play: async ({ canvas }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'LOG_LEVEL' });
+    await expect(canvas.getByRole('heading', { name: 'LOG_LEVEL' })).toHaveClass('mono');
+    await expect(dialog).not.toHaveClass('mono');
+  },
+};

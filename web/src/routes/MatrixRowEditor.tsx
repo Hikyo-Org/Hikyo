@@ -210,6 +210,7 @@ export function MatrixRowEditor({
     <>
       <Dialog
         title={keyRecord.name}
+        mono
         lede={keyRecord.description || 'Explicit value and provenance for this environment.'}
         size="wide"
         onCancel={(event) => {
