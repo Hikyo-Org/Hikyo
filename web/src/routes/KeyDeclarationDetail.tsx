@@ -1091,7 +1091,9 @@ function ConfirmDialog({
       }}
       actions={
         <>
-          <Button type="button" disabled={busy} onClick={onClose}>
+          {/* Never disabled: Escape closes this dialog even mid-flight, so a
+              mouse user is owed the same exit. It runs the same `onClose`. */}
+          <Button type="button" onClick={onClose}>
             Cancel
           </Button>
           <Button

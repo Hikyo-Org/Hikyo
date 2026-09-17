@@ -17,9 +17,9 @@ import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Props = { org: string; project: string; settings: DefinitionsSettings };
 

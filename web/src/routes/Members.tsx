@@ -57,9 +57,9 @@ function wideningEnvironment(error: unknown): string | null {
 }
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { useModalDialog } from '../ui/useModalDialog.ts';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
 import { Explain, JumpIndex, Panel } from './Sections.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';

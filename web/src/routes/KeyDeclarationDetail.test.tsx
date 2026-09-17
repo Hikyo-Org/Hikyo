@@ -155,11 +155,24 @@ function buttonBy(container: HTMLElement, text: string): HTMLButtonElement {
   return button;
 }
 
+/** The reclassification confirm: the OPEN dialog whose title is the ceremony's,
+ *  so a co-open ScanBlockDialog can never be picked by DOM order instead. */
+function confirmDialog(container: HTMLElement): HTMLElement {
+  const found = [...container.querySelectorAll('dialog[open]')].find(
+    (candidate) =>
+      candidate.querySelector('.dialog__title')?.textContent?.startsWith('Reclassify') === true,
+  );
+  if (!(found instanceof HTMLElement)) {
+    throw new Error('the reclassification confirm dialog is missing');
+  }
+  return found;
+}
+
 /** The confirm dialog's action button, matched EXACTLY so it is never confused
  *  with the section trigger whose label is a superset ("…config…"). */
 function dialogButton(container: HTMLElement, text: string): HTMLButtonElement {
-  const dialog = container.querySelector('dialog[open]');
-  const button = [...(dialog?.querySelectorAll('button') ?? [])].find(
+  const dialog = confirmDialog(container);
+  const button = [...dialog.querySelectorAll('button')].find(
     (candidate) => candidate.textContent === text,
   );
   if (button === undefined) throw new Error(`dialog button "${text}" missing`);
@@ -577,9 +590,7 @@ describe('KeyDeclarationDetail', () => {
     const view = await render({ setEnvironmentIds: ['env_b'], pendingEnvironmentIds: [] });
     await act(async () => buttonBy(view.container, 'Reclassify as config…').click());
 
-    const dialog = view.container.querySelector('dialog[open]');
-    expect(dialog).not.toBeNull();
-    const dialogText = dialog?.textContent ?? '';
+    const dialogText = confirmDialog(view.container).textContent ?? '';
     // The disclosure consequence and the second-factor requirement are stated.
     expect(dialogText).toContain('readable under ordinary config read');
     expect(dialogText).toContain('second-factor');
@@ -656,10 +667,10 @@ describe('KeyDeclarationDetail', () => {
 
     const view = await render();
     await act(async () => buttonBy(view.container, 'Reclassify as secret…').click());
-    const dialog = view.container.querySelector('dialog[open]');
-    expect(dialog?.textContent ?? '').toContain('dismissals are dropped');
+    const dialogText = confirmDialog(view.container).textContent ?? '';
+    expect(dialogText).toContain('dismissals are dropped');
     // Tightening does not disclose, so it names no second-factor requirement.
-    expect((dialog?.textContent ?? '').toLowerCase()).not.toContain('second-factor');
+    expect(dialogText.toLowerCase()).not.toContain('second-factor');
 
     await act(async () => dialogButton(view.container, 'Reclassify as secret').click());
     expect(textOf(view.container)).toContain('Reclassified as secret.');

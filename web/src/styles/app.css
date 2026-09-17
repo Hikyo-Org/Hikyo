@@ -2819,7 +2819,12 @@ a:is(.badge, .chip, .settings-tag) {
     line-height: var(--touch);
   }
 
-        .matrix-editor {
+  /* The wide dialog's phone treatment. `.dialog--wide` shares the shell's
+     declaration rather than restating it: same metrics, and no second literal
+     against the adherence budget. Narrow dialogs never had a phone override,
+     so `.dialog` stays out of it. */
+  .matrix-editor,
+  .dialog--wide {
     width: calc(100% - 20px);
     max-width: 760px;
     max-height: 88vh;
@@ -2837,7 +2842,8 @@ a:is(.badge, .chip, .settings-tag) {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .matrix-editor__actions > * {
+  .matrix-editor__actions > *,
+  .dialog--wide .dialog__actions > * {
     flex: 1 1 140px;
   }
 }

@@ -10,8 +10,8 @@ import { useLayoutEffect, useRef, type RefObject } from 'react';
  * unmount is what makes focus RESTORATION real: the platform returns focus to
  * the element focused before `showModal()` only when the dialog is closed.
  *
- * Moved here from routes/useModalDialog.ts for {@link Dialog}; the route copy
- * (which also carries `useFeedback`) stays until the migration.
+ * This is the app's only copy: {@link Dialog} builds on it and the routes that
+ * still own a raw `<dialog>` import it from here.
  */
 export function useModalDialog(
   initialFocus?: RefObject<HTMLElement | null>,
