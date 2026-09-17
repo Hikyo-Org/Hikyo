@@ -92,5 +92,6 @@ fresh brief from the six locked decisions above.
 
 ## Not done
 
-No implementation. Governance PR open as draft, blocked on the review above.
+No implementation. Governance PR [#766](https://github.com/Hikyo-Org/Hikyo/pull/766)
+open as draft, blocked on the review above.
 Not operative. Implementation tickets may be filed only after operative.
