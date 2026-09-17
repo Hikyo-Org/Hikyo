@@ -239,6 +239,14 @@ func validateDiscovery(result json.RawMessage) error {
 	return nil
 }
 
+// serverDescriptions is the closed set of discovery descriptions: the phase-1
+// read-only wording a deployed server may still advertise, and the wording
+// since the write surface (mcp-write ADR) could be installed.
+var serverDescriptions = map[string]bool{
+	"Read-only Hikyo configuration tools.": true,
+	"Hikyo configuration tools.":           true,
+}
+
 func validateCatalog(result json.RawMessage) error {
 	fields, err := profileResultFields(result, true)
 	if err != nil || len(fields) != 1 || fields["tools"] == nil {
@@ -503,7 +511,7 @@ func profileResultFields(result json.RawMessage, cacheable bool) (map[string]jso
 	}
 	if strictJSON(metadata["io.modelcontextprotocol/serverInfo"], &info) != nil ||
 		info.Name != "hikyo" || info.Title != "Hikyo" ||
-		info.Description != "Read-only Hikyo configuration tools." || info.Version == "" || len(info.Version) > 256 {
+		!serverDescriptions[info.Description] || info.Version == "" || len(info.Version) > 256 {
 		return nil, invalid
 	}
 	delete(fields, "_meta")
