@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -66,6 +67,79 @@ func TestRegistryRefusesInvalidDuplicateAndLateRows(t *testing.T) {
 			tc.edit(&spec)
 			if err := Register(NewRegistry(), spec, handler); err == nil {
 				t.Fatal("incomplete or drifted registry row accepted")
+			}
+		})
+	}
+}
+
+// TestRegistryGateKeysOffDeclaredToolClass is the mcp-write ADR § 4 gate: a
+// read tool must map to an audited-none read; a write-surface tool must map to
+// an events-emitting operation and is never audited:none; a declared
+// disposition that disagrees with the class is refused.
+func TestRegistryGateKeysOffDeclaredToolClass(t *testing.T) {
+	handler := func(context.Context, Bearer, echoInput) (echoOutput, error) { return echoOutput{}, nil }
+	readContract := testContract(t, "tool")
+	stageContract, err := operation.NewContract("mcp:tool", "value.stage", []string{"edit@environment"}, []string{operation.ArtifactMachineCredential})
+	if err != nil {
+		t.Fatal(err)
+	}
+	validateContract, err := operation.NewContract("mcp:tool", "value.validate", []string{"edit@environment"}, []string{operation.ArtifactMachineCredential})
+	if err != nil {
+		t.Fatal(err)
+	}
+	publishContract, err := operation.NewContract("mcp:tool", "value.publish", []string{"publish@environment"}, []string{operation.ArtifactMachineCredential})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name     string
+		class    ToolClass
+		audit    AuditDisposition
+		contract operation.Contract
+		want     string
+		readOnly bool
+	}{
+		{name: "read tool on audited-none read", class: ToolClassRead, audit: AuditDispositionNone, contract: readContract, readOnly: true},
+		{name: "undeclared class defaults to read", class: "", audit: AuditDispositionNone, contract: readContract, readOnly: true},
+		{name: "write-surface tool on events-emitting mutation", class: ToolClassWriteSurface, audit: AuditDispositionEvents, contract: stageContract},
+		{name: "write-surface tool on events-emitting validate", class: ToolClassWriteSurface, audit: AuditDispositionEvents, contract: validateContract},
+		{name: "write-surface tool on audited-none read", class: ToolClassWriteSurface, audit: AuditDispositionEvents, contract: readContract, want: "audited-none"},
+		{name: "read tool on events-emitting mutation", class: ToolClassRead, audit: AuditDispositionNone, contract: stageContract, want: "not an audited-none read"},
+		{name: "read tool declaring events", class: ToolClassRead, audit: AuditDispositionEvents, contract: readContract, want: "audited-none disposition"},
+		{name: "write-surface tool declaring audited-none", class: ToolClassWriteSurface, audit: AuditDispositionNone, contract: stageContract, want: "events disposition"},
+		{name: "unknown class", class: "mutating", audit: AuditDispositionEvents, contract: stageContract, want: "unsupported tool class"},
+		{name: "write-surface tool on an unadmitted mutation", class: ToolClassWriteSurface, audit: AuditDispositionEvents, contract: publishContract, want: "outside the admitted write operations"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := NewRegistry()
+			err := Register(registry, ToolSpec{
+				Name: "tool", Description: "Gate probe.", ServiceOperation: "service.Probe",
+				Contract: tc.contract, Class: tc.class, AuditDisposition: tc.audit, SecretPolicy: SecretPolicyNoSecretMaterial,
+			}, handler)
+			if tc.want != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("Register() error = %v, want %q", err, tc.want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			row := registry.Rows()[0]
+			if row.ReadOnly != tc.readOnly {
+				t.Fatalf("derived ReadOnly = %v, want %v", row.ReadOnly, tc.readOnly)
+			}
+			if row.AuditDisposition != tc.audit {
+				t.Fatalf("row audit = %q", row.AuditDisposition)
+			}
+			// Annotations derive from the registry policy: a mutating operation
+			// is neither read-only nor idempotent.
+			h := testHandler(t, registry)
+			response := decodeResponse(t, serve(t, h, request(http.MethodPost, "https://hikyo.example.com/mcp", "tools/list", "", modernBody(1, "tools/list", "", ""))))
+			tool := response["result"].(map[string]any)["tools"].([]any)[0].(map[string]any)
+			annotations := tool["annotations"].(map[string]any)
+			if annotations["readOnlyHint"] != tc.readOnly || annotations["idempotentHint"] != tc.readOnly || annotations["destructiveHint"] != !tc.readOnly {
+				t.Fatalf("annotations = %v, want derived from readOnly=%v", annotations, tc.readOnly)
 			}
 		})
 	}

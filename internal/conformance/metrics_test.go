@@ -48,7 +48,7 @@ func pinnedMetricRegistry() []metricFamily {
 	classes := []string{"auth", "hierarchy", "values", "revisions", "delivery", "scim", "admin", "other"}
 	statuses := []string{"2xx", "3xx", "4xx", "5xx", "other"}
 	mcpMethods := []string{"server/discover", "tools/list", "tools/call", "other"}
-	mcpTools := append([]string{"none"}, mcpserver.ProductionToolNames()...)
+	mcpTools := append([]string{"none"}, mcpserver.AllToolNames()...)
 	mcpTools = append(mcpTools, "other")
 	return []metricFamily{
 		{Name: "hikyo_last_prune_success_timestamp_seconds", MaxSeries: 1},
@@ -78,9 +78,9 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_http_request_errors_total", MaxSeries: 16, Labels: map[string][]string{"class": classes, "status": {"4xx", "5xx"}}},
 		{Name: "hikyo_http_requests_in_flight", MaxSeries: 1},
 		{Name: "hikyo_http_request_duration_seconds", MaxSeries: 72, Labels: map[string][]string{"class": classes, "le": {"0.005", "0.025", "0.1", "0.5", "1", "5", "+Inf"}}},
-		{Name: "hikyo_mcp_requests_total", MaxSeries: 140, Labels: map[string][]string{"method": mcpMethods, "tool": mcpTools, "status": statuses}},
+		{Name: "hikyo_mcp_requests_total", MaxSeries: 180, Labels: map[string][]string{"method": mcpMethods, "tool": mcpTools, "status": statuses}},
 		{Name: "hikyo_mcp_requests_in_flight", MaxSeries: 1},
-		{Name: "hikyo_mcp_request_duration_seconds", MaxSeries: 252, Labels: map[string][]string{"method": mcpMethods, "tool": mcpTools, "le": {"0.005", "0.025", "0.1", "0.5", "1", "5", "+Inf"}}},
+		{Name: "hikyo_mcp_request_duration_seconds", MaxSeries: 324, Labels: map[string][]string{"method": mcpMethods, "tool": mcpTools, "le": {"0.005", "0.025", "0.1", "0.5", "1", "5", "+Inf"}}},
 		{Name: "hikyo_admission_concurrency_limit", MaxSeries: 1},
 		{Name: "hikyo_admission_in_flight", MaxSeries: 1},
 		{Name: "hikyo_admission_queue_depth_limit", MaxSeries: 1},
@@ -108,7 +108,7 @@ func pinnedMetricRegistry() []metricFamily {
 func scrapeOperationalMetrics(t *testing.T) string {
 	t.Helper()
 	metrics := server.NewMetrics(stubAdmissionSnapshot{})
-	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.ProductionToolNames())
+	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
 	rec := httptest.NewRecorder()

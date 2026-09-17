@@ -40,9 +40,11 @@ const (
 	// ackTTL bounds a Surface-2 acknowledgement (ADR §4: short-lived, ~15 min).
 	// A Surface-1 keep-as-config token shares the bound.
 	ackTTL = 15 * time.Minute
-	// maxRequestFindings caps findings across one request (ADR §7): a request
+	// MaxRequestFindings caps findings across one request (ADR §7): a request
 	// exceeding it fails closed naming the cap, never a silent truncation.
-	maxRequestFindings = 100
+	// MaxRequestFindings is the per-request finding cap; the MCP write surface
+	// bounds its acknowledgement list to it.
+	MaxRequestFindings = 100
 
 	// ackAADTable and ackAADFieldTag domain-separate the sealed ack token from
 	// every other instance-field ciphertext. They are the owner_table/field_tag
@@ -75,9 +77,9 @@ const (
 )
 
 // errFindingCap is the fail-closed refusal when one request produces more than
-// maxRequestFindings findings (ADR §7). It names the cap and never truncates.
+// MaxRequestFindings findings (ADR §7). It names the cap and never truncates.
 var errFindingCap = fmt.Errorf("%w: scan produced more than %d findings; the request is refused rather than truncated",
-	domain.ErrInvalid, maxRequestFindings)
+	domain.ErrInvalid, MaxRequestFindings)
 
 // Finding is one redacted scan result surfaced to the writer, everywhere it
 // travels (wire, CLI, import output). It carries a rule id, the surface/ingress
@@ -383,7 +385,7 @@ func (a *ackSet) classifyRejections(kr *crypto.Keyring, findings []declFinding, 
 // surface findings and emit finding_warned, but carry no acknowledgement.
 //
 // total accumulates findings across a multi-item request; exceeding
-// maxRequestFindings fails the whole transaction closed (ADR §7).
+// MaxRequestFindings fails the whole transaction closed (ADR §7).
 func scanConfigValue(ctx context.Context, r store.Repos, p authz.Proof, kr *crypto.Keyring, rs *scanning.Ruleset,
 	scope domain.Scope, keyID, classification string, canonical []byte, surface string,
 	principal domain.PrincipalID, acks *ackSet, dismissable bool, total *int) ([]Finding, error) {
@@ -431,7 +433,7 @@ func scanConfigValue(ctx context.Context, r store.Repos, p authz.Proof, kr *cryp
 			}
 		}
 		*total++
-		if *total > maxRequestFindings {
+		if *total > MaxRequestFindings {
 			return nil, errFindingCap
 		}
 		if err := emitFindingWarned(ctx, r, p, principal, keyID, m.RuleID, surface); err != nil {
@@ -640,11 +642,33 @@ func scanBundleForCheck(ctx context.Context, rs *scanning.Ruleset, b definitions
 		}
 		for _, m := range matches {
 			total++
-			if total > maxRequestFindings {
+			if total > MaxRequestFindings {
 				return nil, errFindingCap
 			}
 			out = append(out, Finding{RuleID: m.RuleID, Surface: surfaceCheck, Locator: leaf.Locator})
 		}
+	}
+	return out, nil
+}
+
+// scanValueForValidate is the `value.validate` scan (mcp-write ADR § 1): the
+// Surface-1 rules over a proposed config value, surfaced without persisting
+// anything, without a dismissal lookup, and without minting a token. Validate
+// is a diagnostic, not an ingress, so no scanning.* event is emitted.
+func scanValueForValidate(ctx context.Context, rs *scanning.Ruleset, keyID, classification string, canonical []byte) ([]Finding, error) {
+	if rs == nil || classification != string(schema.Config) {
+		return nil, nil
+	}
+	matches, err := rs.Scan(ctx, canonical)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) > MaxRequestFindings {
+		return nil, errFindingCap
+	}
+	var out []Finding
+	for _, m := range matches {
+		out = append(out, Finding{RuleID: m.RuleID, Surface: surfaceValidate, Locator: keyID})
 	}
 	return out, nil
 }
@@ -742,7 +766,7 @@ func (d declScanResult) refuses() bool { return len(d.blocked) > 0 || len(d.reje
 // the current findings, and classifies each finding as overridden (valid token)
 // or blocked (none). It mints no events and performs no writes — the caller
 // shapes the outcome into the §7 transaction (refuse: block events alone;
-// accept: override events with the write). Exceeding maxRequestFindings fails
+// accept: override events with the write). Exceeding MaxRequestFindings fails
 // closed (ADR §7).
 // ingress is the audit ingress class (edit / plan / apply) this scan runs at; it
 // stamps each blocked finding's Surface and each override's ingress so the events
@@ -771,7 +795,7 @@ func scanDeclaration(ctx context.Context, kr *crypto.Keyring, rs *scanning.Rules
 				return declScanResult{}, fmt.Errorf("service: rule %q has no semantic digest", m.RuleID)
 			}
 			total++
-			if total > maxRequestFindings {
+			if total > MaxRequestFindings {
 				return declScanResult{}, errFindingCap
 			}
 			// Retained so a leftover token can be named against a current finding.

@@ -310,9 +310,9 @@ func TestAckSetRejectionPrecedenceAndInputOrder(t *testing.T) {
 func BenchmarkAckSetMaximum(b *testing.B) {
 	kr := ackTestKeyring(b)
 	now := time.Unix(1_700_000_100, 0)
-	tokens := make([]string, maxRequestFindings)
-	findings := make([]declFinding, maxRequestFindings)
-	for i := range maxRequestFindings {
+	tokens := make([]string, MaxRequestFindings)
+	findings := make([]declFinding, MaxRequestFindings)
+	for i := range MaxRequestFindings {
 		locator := fmt.Sprintf("locator-%03d", i)
 		digest := fmt.Sprintf("digest-%03d", i)
 		cSHA := contentDigest([]byte(fmt.Sprintf("content-%03d", i)))
@@ -438,14 +438,14 @@ func TestScanRejectionsNamedByClass(t *testing.T) {
 
 // TestFindingCapFailsClosed proves the per-request finding cap (ADR §7) fails
 // CLOSED naming the cap, never a silent truncation: a declaration with more than
-// maxRequestFindings offending leaves refuses the whole scan.
+// MaxRequestFindings offending leaves refuses the whole scan.
 func TestFindingCapFailsClosed(t *testing.T) {
 	kr := ackTestKeyring(t)
 	rs, err := scanning.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	leaves := make([]scanLeaf, maxRequestFindings+1)
+	leaves := make([]scanLeaf, MaxRequestFindings+1)
 	for i := range leaves {
 		leaves[i] = scanLeaf{Locator: locDeclPattern, Content: []byte("AKIAIOSFODNN7EXAMPLE")}
 	}

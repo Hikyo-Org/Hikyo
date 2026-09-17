@@ -53,14 +53,25 @@ func run() error {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || tools == nil || len(tools.Tools) != 5 {
-		return fmt.Errorf("five-tool catalog required")
+	readCount, allCount := len(mcpserver.ProductionToolNames()), len(mcpserver.AllToolNames())
+	if err != nil || tools == nil || (len(tools.Tools) != readCount && len(tools.Tools) != allCount) {
+		return fmt.Errorf("closed read or read-plus-write tool catalog required")
 	}
 	expected := make(map[string]bool)
 	for _, name := range mcpserver.ProductionToolNames() {
 		expected[name] = true
 	}
+	writeTools := make(map[string]bool)
+	for _, name := range mcpserver.WriteToolNames() {
+		writeTools[name] = true
+	}
 	for _, tool := range tools.Tools {
+		if writeTools[tool.Name] {
+			// The write surface is advertised only when the operator enabled it;
+			// this proof exercises the read tools and never stages into production.
+			delete(writeTools, tool.Name)
+			continue
+		}
 		if !expected[tool.Name] {
 			return fmt.Errorf("unexpected or duplicate production tool")
 		}

@@ -49,7 +49,10 @@ func (r selfConfigRepo) HostSeedInputs(ctx context.Context, p authz.Proof, at ti
 // MaxSelfConfigSeedInputBytes includes all bounded owner and node values,
 // worst-case JSON escaping, metadata and AEAD framing. Final project values
 // still obey their individual 64 KiB limits; this is encrypted transport only.
-const MaxSelfConfigSeedInputBytes = 16 << 20
+// Every owner catalogue key costs up to 6 x 64 KiB here (one escaped byte per
+// input byte), so the bound grows with the catalogue; the seed-envelope test
+// in internal/service pins that it still fits.
+const MaxSelfConfigSeedInputBytes = 32 << 20
 
 func (r selfConfigRepo) currentSeedInputs(ctx context.Context, localNodeID string, at time.Time) ([]SelfConfigSeedInput, error) {
 	if at.IsZero() {

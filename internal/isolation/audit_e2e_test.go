@@ -1114,6 +1114,11 @@ func runValueLifecycle(t *testing.T, db *store.DB, actor service.Actor, who doma
 	if err != nil {
 		t.Fatal(err)
 	}
+	// value.change_validated (mcp-write ADR): the audited non-mutating
+	// evaluation of a proposed change needs its real emitter behind it too.
+	if _, err := values.ValidateSet(ctx, actor, sourceScope, key.Name, "audited-material"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := revisions.PublishPlanned(ctx, actor, sourceScope, service.PublishRequest{VersionIDs: []string{staged.VersionID}}); err != nil {
 		t.Fatal(err)
 	}

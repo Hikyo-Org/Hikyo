@@ -53,6 +53,8 @@ services:
       HIKYO_EXTERNAL_ORIGIN: ${HIKYO_EXTERNAL_ORIGIN:?set the canonical HTTPS origin}
       HIKYO_MCP_ENABLED: "true"
       HIKYO_MCP_ALLOWED_ORIGINS: ""
+      # Stage-and-validate write tools stay off in the reference deployment.
+      # HIKYO_MCP_WRITE_ENABLED: "true"
       HIKYO_TRUSTED_PROXY_CIDRS: ${HIKYO_COMPOSE_SUBNET:?set a dedicated Compose network CIDR}
       HIKYO_UPGRADE_BUNDLE: /run/hikyo-upgrade/bundle
       HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY: /run/hikyo-upgrade/operator.pub

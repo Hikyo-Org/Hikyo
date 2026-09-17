@@ -129,6 +129,11 @@ type Config struct {
 	// list still permits non-browser clients that omit Origin.
 	MCPEnabled        bool
 	MCPAllowedOrigins []string
+	// MCPWriteEnabled installs the stage-and-validate write tools into the MCP
+	// registry (mcp-write ADR § 5). It is a second, independent flag: it
+	// requires MCPEnabled, defaults off, and controls availability only; the
+	// per-operation authorization formula and audit event stay the gate.
+	MCPWriteEnabled bool
 
 	// Root-key source descriptor — never the key material itself; the crypto
 	// package reads and validates it at boot. Only `hikyo server` consults it.
@@ -246,6 +251,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_TLS_KEY_FILE":                   true,
 	"HIKYO_EXTERNAL_ORIGIN":                true,
 	"HIKYO_MCP_ENABLED":                    true,
+	"HIKYO_MCP_WRITE_ENABLED":              true,
 	"HIKYO_MCP_ALLOWED_ORIGINS":            true,
 	"HIKYO_TRUSTED_PROXY_CIDRS":            true,
 	"HIKYO_ROOT_KEY_FILE":                  true,
@@ -569,6 +575,17 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		rawOrigins := strings.TrimSpace(getenv("HIKYO_MCP_ALLOWED_ORIGINS"))
 		if rawOrigins != "" && !cfg.MCPEnabled {
 			return nil, nil, errors.New("HIKYO_MCP_ALLOWED_ORIGINS requires HIKYO_MCP_ENABLED=true")
+		}
+		rawWrite := strings.TrimSpace(getenv("HIKYO_MCP_WRITE_ENABLED"))
+		if rawWrite != "" {
+			write, err := strconv.ParseBool(rawWrite)
+			if err != nil {
+				return nil, nil, fmt.Errorf("HIKYO_MCP_WRITE_ENABLED: %q is not a boolean", rawWrite)
+			}
+			if write && !cfg.MCPEnabled {
+				return nil, nil, errors.New("HIKYO_MCP_WRITE_ENABLED requires HIKYO_MCP_ENABLED=true")
+			}
+			cfg.MCPWriteEnabled = write
 		}
 		if cfg.MCPEnabled {
 			if origin.Scheme != "https" && (!cfg.Dev || !isLoopbackHost(origin.Hostname())) {

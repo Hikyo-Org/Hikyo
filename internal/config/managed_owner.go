@@ -34,6 +34,7 @@ func (c *Config) ManagedOwnerValues() map[string]string {
 		"HIKYO_AUDIT_SECURITY_RETAIN_DAYS": strconv.Itoa(c.AuditSecurityRetainDays),
 		"HIKYO_REAUTH_WINDOW_SECONDS":      strconv.FormatInt(int64(c.ReauthWindow/time.Second), 10),
 		"HIKYO_MCP_ENABLED":                strconv.FormatBool(c.MCPEnabled),
+		"HIKYO_MCP_WRITE_ENABLED":          strconv.FormatBool(c.MCPWriteEnabled),
 		"HIKYO_BACKUP_RTO_TARGET":          c.BackupRTOTarget.String(),
 	}
 	for key, value := range map[string]string{
@@ -158,6 +159,7 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	result.TrustedProxyCIDRs = slices.Clone(parsed.TrustedProxyCIDRs)
 	result.ExternalOrigin, result.DirectoryProxy = parsed.ExternalOrigin, parsed.DirectoryProxy
 	result.MCPEnabled, result.MCPAllowedOrigins = parsed.MCPEnabled, slices.Clone(parsed.MCPAllowedOrigins)
+	result.MCPWriteEnabled = parsed.MCPWriteEnabled
 	result.BackupRecipients = slices.Clone(parsed.BackupRecipients)
 	result.BackupInterval, result.BackupRPO = parsed.BackupInterval, parsed.BackupRPO
 	result.BackupRetainCount, result.BackupRetainDays = parsed.BackupRetainCount, parsed.BackupRetainDays

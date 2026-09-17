@@ -239,6 +239,14 @@ func validateDiscovery(result json.RawMessage) error {
 	return nil
 }
 
+// serverDescriptions is the closed set of discovery descriptions: the phase-1
+// read-only wording a deployed server may still advertise, and the wording
+// since the write surface (mcp-write ADR) could be installed.
+var serverDescriptions = map[string]bool{
+	"Read-only Hikyo configuration tools.": true,
+	"Hikyo configuration tools.":           true,
+}
+
 func validateCatalog(result json.RawMessage) error {
 	fields, err := profileResultFields(result, true)
 	if err != nil || len(fields) != 1 || fields["tools"] == nil {
@@ -256,10 +264,14 @@ func validateCatalog(result json.RawMessage) error {
 	for _, tool := range catalog.Tools {
 		got = append(got, tool.Name)
 	}
-	want := mcpserver.ProductionToolNames()
 	slices.Sort(got)
-	slices.Sort(want)
-	if !slices.Equal(got, want) {
+	// The read catalog alone (HIKYO_MCP_WRITE_ENABLED off) or the read catalog
+	// plus the closed write surface; nothing else, nothing partial.
+	readOnly := mcpserver.ProductionToolNames()
+	slices.Sort(readOnly)
+	withWrite := mcpserver.AllToolNames()
+	slices.Sort(withWrite)
+	if !slices.Equal(got, readOnly) && !slices.Equal(got, withWrite) {
 		return errors.New("server did not advertise the exact closed production tool catalog")
 	}
 	return nil
@@ -503,7 +515,7 @@ func profileResultFields(result json.RawMessage, cacheable bool) (map[string]jso
 	}
 	if strictJSON(metadata["io.modelcontextprotocol/serverInfo"], &info) != nil ||
 		info.Name != "hikyo" || info.Title != "Hikyo" ||
-		info.Description != "Read-only Hikyo configuration tools." || info.Version == "" || len(info.Version) > 256 {
+		!serverDescriptions[info.Description] || info.Version == "" || len(info.Version) > 256 {
 		return nil, invalid
 	}
 	delete(fields, "_meta")

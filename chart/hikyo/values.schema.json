@@ -177,6 +177,9 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "writeEnabled": {
+          "type": "boolean"
         }
       }
     },

@@ -58,6 +58,7 @@ public exposure:
 | --- | --- | --- |
 | `HIKYO_MCP_ENABLED` | `false` | Enables the stateless JSON `POST /mcp` endpoint. |
 | `HIKYO_MCP_ALLOWED_ORIGINS` | empty | Comma-separated, exact browser origins admitted at `/mcp`. Wildcards, `null`, paths, queries, fragments, and credentials are rejected. |
+| `HIKYO_MCP_WRITE_ENABLED` | `false` | Installs the `hikyo_stage_change` and `hikyo_validate_change` tools. Requires `HIKYO_MCP_ENABLED=true`. Grants no authority: each call needs an `edit` grant on the environment and is audited. Nothing publishes or delivers over MCP. |
 
 Production requires an HTTPS `HIKYO_EXTERNAL_ORIGIN`. Development permits
 plain HTTP only on a loopback origin. Requests without an `Origin` header are

@@ -44,6 +44,27 @@ The transport returns ordinary JSON, not an SSE session. Disable response
 buffering only if the proxy imposes a smaller body limit. Do not configure
 cookie affinity or MCP session stickiness.
 
+## Enable the write surface
+
+The endpoint is read-only by default. A second flag installs two more tools:
+
+```dotenv
+HIKYO_MCP_WRITE_ENABLED=true
+```
+
+| Tool | Operation | Grant | Effect |
+| --- | --- | --- | --- |
+| `hikyo_stage_change` | `value.stage` | `edit` on the environment | Stages one `set` or `unset` as the caller's own pending draft. Returns the version id and any secret-scanner findings. |
+| `hikyo_validate_change` | `value.validate` | `edit` on the environment | Reports what publish would refuse for a proposed `set` or `unset`, plus scanner findings. Stages nothing. |
+
+Both tools are audited with `origin=mcp`. Neither publishes or delivers: a
+staged draft is inert until a separate publish, and no MCP tool publishes.
+Whether the same identity may publish over the CLI or REST is decided by its
+grants there, unchanged by this flag. Secret reveal, publish, and every other
+mutation stay outside MCP. The flag requires `HIKYO_MCP_ENABLED=true`; with the flag off the write
+tools are not registered, so they appear in no `tools/list` and cannot be
+called.
+
 ## Helm
 
 The chart validates MCP settings and never accepts a client credential:
@@ -113,6 +134,19 @@ Use a dedicated automation identity for all five phase-1 tools. Its project-leve
 `read` grant covers project listings and does not grant secret reveal. Workload
 identities retain environment-only grant scope; an environment grant does not
 authorize the project listing tools.
+
+The write tools need a separate `edit` grant on each environment the identity
+may stage into. Keep it on its own identity so a read-only assistant never
+holds staging authority:
+
+```bash
+hikyo access grant add \
+  --org <org-id> \
+  --principal <machine-principal-id> \
+  --capability edit \
+  --project <project-id> \
+  --env <environment-id>
+```
 
 ```bash
 hikyo sa create --org <org-id> --project <project-id> \

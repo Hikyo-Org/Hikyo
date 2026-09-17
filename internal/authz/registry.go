@@ -203,7 +203,12 @@ const (
 	// Drafts, publishing and revisions (#51, revision-model ADR).
 	OpValueStage       Operation = "value.stage"
 	OpValuePendingList Operation = "value.pending-list"
-	OpValuePublish     Operation = "value.publish"
+	// `value.validate` evaluates a proposed change without staging it
+	// (mcp-write ADR § 1). It carries `edit@env`, the authority to make the
+	// change it validates, and it is audited: an authority-bearing action,
+	// not a pure read whose result the trail would duplicate.
+	OpValueValidate Operation = "value.validate"
+	OpValuePublish  Operation = "value.publish"
 	// The one bulk-disclosure verb and its two material halves. `values export`
 	// carries `read ∧ reveal` for CURRENT material and `read ∧ reveal-history`
 	// for historical material; a mixed export evaluates each formula over
@@ -2481,6 +2486,21 @@ var operationTable = map[Operation]opSpec{
 			StoreKeysAssertActiveDEKVersion: true,
 		},
 		events: []audit.EventType{audit.EventValueStaged, audit.EventScanningFindingWarned, audit.EventScanningFindingDismissed},
+	},
+	// `value.validate` runs the publish-time schema and presence checks and
+	// the Surface-1 scanner over a caller-supplied proposed change and reports
+	// the verdict; it stages nothing, mints no acknowledgement, and records no
+	// dismissal. Its only write is its own audit event, which is why it derives
+	// ReadOnly=false rather than being pinned read-only (mcp-write ADR).
+	OpValueValidate: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapEdit, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StoreCatalogueList: true, StoreCataloguePresenceList: true,
+			StoreEnvironmentParametersGet: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventValueChangeValidated},
 	},
 	// `publish` alone commits. It reaches everything a materialization touches
 	// because it IS the materialization: the published cells, the immutable

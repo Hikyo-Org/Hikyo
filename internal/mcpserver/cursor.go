@@ -62,9 +62,19 @@ func publicErrorMessage(err error) string {
 		return ErrResultItemTooLarge.Error()
 	case errors.Is(err, ErrInvalidArgument):
 		return ErrInvalidArgument.Error()
-	default:
-		return ""
 	}
+	// A service refusal that declares its own wire-safe detail (a schema or
+	// presence veto naming a key the caller already named, decided after
+	// authorization) crosses the transport verbatim, as it does over REST
+	// (server/errors.go). SafeDetail is therefore a contract: an implementer
+	// promises the text is decided post-authorization and names nothing the
+	// caller could not already read. An unauthorized or nonexistent target
+	// carries no detail and stays collapsed.
+	var detail interface{ SafeDetail() string }
+	if errors.As(err, &detail) {
+		return detail.SafeDetail()
+	}
+	return ""
 }
 
 type cursorSealerContextKey struct{}

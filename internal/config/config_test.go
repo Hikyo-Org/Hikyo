@@ -354,6 +354,23 @@ func TestMCPIsFeatureGatedAndRequiresItsPinnedPublicOriginProfile(t *testing.T) 
 	if !enabled.MCPEnabled {
 		t.Fatal("HIKYO_MCP_ENABLED=true did not enable MCP")
 	}
+	if enabled.MCPWriteEnabled {
+		t.Fatal("MCP write surface enabled without HIKYO_MCP_WRITE_ENABLED")
+	}
+	withWrite, _, err := Load("server", nil, env(append(base,
+		"HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com",
+		"HIKYO_MCP_ENABLED", "true",
+		"HIKYO_MCP_WRITE_ENABLED", "true",
+	)...), environFrom("HIKYO_MCP_ENABLED", "true", "HIKYO_MCP_WRITE_ENABLED", "true"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !withWrite.MCPWriteEnabled {
+		t.Fatal("HIKYO_MCP_WRITE_ENABLED=true did not enable the MCP write surface")
+	}
+	if withWrite.ManagedOwnerValues()["HIKYO_MCP_WRITE_ENABLED"] != "true" {
+		t.Fatal("managed owner export omits HIKYO_MCP_WRITE_ENABLED")
+	}
 	wantOrigins := []string{"https://assistant.example.com", "http://localhost:4310"}
 	if !slices.Equal(enabled.MCPAllowedOrigins, wantOrigins) {
 		t.Fatalf("MCPAllowedOrigins = %v, want %v", enabled.MCPAllowedOrigins, wantOrigins)
@@ -400,6 +417,21 @@ func TestMCPIsFeatureGatedAndRequiresItsPinnedPublicOriginProfile(t *testing.T) 
 				"HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com",
 				"HIKYO_MCP_ALLOWED_ORIGINS", "https://assistant.example.com"),
 			want: "HIKYO_MCP_ENABLED",
+		},
+		{
+			name: "malformed write enable",
+			env: append(base,
+				"HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com",
+				"HIKYO_MCP_ENABLED", "true",
+				"HIKYO_MCP_WRITE_ENABLED", "sometimes"),
+			want: "HIKYO_MCP_WRITE_ENABLED",
+		},
+		{
+			name: "write surface without the read transport",
+			env: append(base,
+				"HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com",
+				"HIKYO_MCP_WRITE_ENABLED", "true"),
+			want: "HIKYO_MCP_WRITE_ENABLED requires HIKYO_MCP_ENABLED=true",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

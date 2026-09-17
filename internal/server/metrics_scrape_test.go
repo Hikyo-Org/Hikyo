@@ -206,7 +206,7 @@ func TestMCPMetricsRecoverAndRecordPanicsWithoutLoggingPanicValue(t *testing.T) 
 	log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	handler := metrics.ObserveMCP(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		panic("Bearer tenant-secret-value")
-	}), log, mcpserver.ProductionToolNames())
+	}), log, mcpserver.AllToolNames())
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/mcp", nil)

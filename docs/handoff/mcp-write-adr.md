@@ -91,8 +91,100 @@ If a later reopen wants the review, `.xreview/mcp-write-adr-brief.txt` in the
 old review worktree is stale (pre-lock shape); write a fresh brief from the six
 locked decisions above.
 
+## Owner waiver and implementation (2026-09-17)
+
+Owner instruction "Continue without review" (recorded on #742). Implementation
+proceeds ahead of the SOUND verdict as a PR stacked on #766; the review is
+still owed before #766 is undrafted, and the ADR stays non-operative until it
+merges. Implementation ticket: [#767](https://github.com/Hikyo-Org/Hikyo/issues/767).
+
+What landed (see the ADR § Corrections for the three source facts):
+
+- `internal/mcpserver/registry.go`: `ToolClass` on `ToolSpec`, `AuditDispositionEvents`,
+  gate keyed off the class, `ReadOnly` and annotations derived from the authz
+  policy. Empty class is read (strictest default).
+- `internal/mcpserver/write_tools.go`: `hikyo_stage_change` (→ `Values.Set`/`Unset`,
+  `value.stage`) and `hikyo_validate_change` (→ `Values.ValidateSet`/`ValidateUnset`,
+  `value.validate`); `RegisterWriteTools`, `WriteToolNames`, `AllToolNames`.
+  Wire-safe `SafeDetail()` refusals cross verbatim (`cursor.go`); everything
+  else still collapses to the one safe error.
+- `internal/authz/registry.go`: `OpValueValidate` (`edit@env`, four store ops,
+  emits `value.change_validated`). `internal/audit/registry.go`: the event.
+- `internal/service/values_validate.go`, `scan.go`: the validate operation and
+  its non-persisting scan. `checkNotForbidden` now returns a wire-safe detail,
+  matching the `required_in` veto beside it.
+- `internal/service/mcp_admission.go`: admits the two operations.
+- `HIKYO_MCP_WRITE_ENABLED`: `config.go` (requires `HIKYO_MCP_ENABLED`),
+  `variables.go`, `managed_owner.go`, `runtimeconfig/catalogue.go`, boot log,
+  chart `mcp.writeEnabled` (+ helper refusal, CI check), docs
+  (`configuration.mdx`, `mcp.mdx`), regenerated `variable-inventory.json`.
+- `internal/app/generation.go`: registration-time exclusion; metrics label set
+  is the full catalog regardless of the flag (`conformance/metrics_test.go`
+  series pins raised accordingly).
+- Scripts: `mcp-public-smoke` accepts read-only or read+write catalog;
+  `mcp-production-client` never calls a write tool.
+- Pins updated: `isolation/testdata/operation_formulas.json`,
+  `service/budget_classification.go`.
+
+Cancellation (decision 6): the transport propagates request cancellation into
+the handler context (`TestCancellationReachesRegisteredOperation`), and
+`tx.WriteResult` commits only a completed attempt while `retryLoop` honours a
+cancelled context (`TestRetryLoopRespectsCancelledContext`), so a cancelled
+stage never commits a partial draft. No new mid-transaction cancel test was
+added; it would flake without proving more than those two.
+
+Tests: `mcpserver/registry_test.go` (gate matrix), `write_tools_test.go`
+(catalog, pinned rows, mapping, bounds, error policy),
+`isolation/mcp_write_e2e_test.go` (real datastore, both engines, canary,
+audit origin, denial), `config_test.go` (flag parse and refusal).
+
+## Same-provider review (Standards + Spec, 2026-09-17)
+
+Two parallel Claude sub-agents (code-review skill), explicitly NOT the
+cross-provider gate. Both returned CHANGES; every finding folded in:
+
+- Schema `maxLength` on `value` echoed the oversized proposal in the SDK's
+  validation error (reproduced with a canary). Removed; the service byte
+  budget bounds it and `TestSchemaRefusalsNeverEchoTheProposedValue` pins it.
+- Cancellation now proven end to end: `cancellingStager` cancels the request
+  context as the stage reaches the service; no draft and no `value.staged`
+  row survive (`TestMCPWriteSurfaceEndToEnd`).
+- Registry rows pin the real service pair (`Set/Unset`,
+  `ValidateSet/ValidateUnset`); read tools declare `ToolClassRead` explicitly;
+  shared `runChange` helper; `service.MaxRequestFindings` exported and reused;
+  SafeDetail contract documented; serverInfo no longer says read-only.
+- ADR § Corrections gained item 4 (wire-safe refusals cross the transport;
+  § 3 "never the proposed material" holds for the trail, not the response).
+- Fallout fixed: `MaxSelfConfigSeedInputBytes` raised to 32 MiB (the owner
+  catalogue grew by one key); `TestAuditCore` now exercises the
+  `value.change_validated` emitter.
+
+## Fresh adversarial code review, round 2 (2026-09-17, same provider)
+
+Owner: "skip adversarial review; do code review with fresh fable subagent."
+One fresh Claude sub-agent, adversarial brief, full diff of #768. CHANGES; all
+eleven findings folded in:
+
+- HIGH: validate evaluated the raw value while stage seals and publish
+  validates the normalized one (`"  8080 "` on an integer key disagreed).
+  Validate now normalizes once via `normalizeStoredValue`; e2e pins it.
+- HIGH: a non-string `value` hit the SDK type check, which echoes the
+  instance. `value` now carries no schema constraint at all; Go decoding
+  reports only the JSON kind; no-echo test covers array/object/number.
+- Registration allowlist: a write-surface tool may map only to `value.stage`
+  or `value.validate` (mirrors the admission switch), so an unadmitted
+  mutation is refused at registration, never registered-then-refused.
+- serverInfo description derives from whether write tools are registered.
+- Validate description no longer claims group all-or-none presence.
+- Docs and comments no longer say "a machine credential cannot publish".
+- Smoke and production-client catalog acceptance restored (lost in a rebase).
+- SafeDetail unit test uses the detail shape the real path emits;
+  cancellation test comment states exactly what it proves; compose reference
+  deployment carries a commented write-flag twin.
+
 ## Not done
 
-No implementation. Governance PR [#766](https://github.com/Hikyo-Org/Hikyo/pull/766)
-open as draft, blocked on the review above.
-Not operative. Implementation tickets may be filed only after operative.
+ADR text corrected in place for the five implementation findings (ADR
+§ Corrections). Governance PR [#766](https://github.com/Hikyo-Org/Hikyo/pull/766)
+merges first; the implementation PR [#768](https://github.com/Hikyo-Org/Hikyo/pull/768)
+is stacked on it. Human merge gate applies to both.

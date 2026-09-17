@@ -167,6 +167,28 @@ write path does not silently depend on its correctness. It is not a mechanically
 testable invariant, because the map's fail-closed default already covers the
 omission case.
 
+## Corrections from implementation (2026-09-17, #767)
+
+Implementation surfaced five places where the locked text disagreed with
+source. Each is corrected in place above on 2026-09-17 (scrivener's
+corrections in the sense of [oss-mechanics.md](./oss-mechanics.md), 2026-08-06
+precedent; no decision moves), and listed here so a reader of the diff can
+find them:
+
+1. No audit-type migration exists to extend; the event enum is registry-enforced
+   (§ Consequences).
+2. `value.validate` derives `ReadOnly=false`; both write-surface tools carry
+   non-read-only annotations (§ 4).
+3. Staging into a secret-classified key is `value.stage` and is in; only a
+   dedicated secret-input path stays out (§ 2, § Consequences, banners).
+4. Wire-safe service refusals (`SafeDetail`) cross `tools/call` verbatim, as
+   over REST; everything else collapses to the one safe error, so unauthorized
+   stays indistinguishable from nonexistent. § 3's "never the proposed
+   material" holds for the audit trail; a validate response's `problems` may
+   quote the caller's own config proposal, as the REST publish refusal does.
+5. An automation holding `publish` can publish over REST; the MCP boundary is
+   the absence of a publish tool (§ 2, § Protected environments).
+
 ## Alternatives considered
 
 - Single flag reused for read and write: rejected. It removes the accidental-

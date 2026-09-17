@@ -133,6 +133,7 @@ render_mode native-tls \
 	--set tls.existingSecret=fixture-tls
 render_mode mcp-enabled \
 	--set mcp.enabled=true \
+	--set mcp.writeEnabled=true \
 	--set 'mcp.allowedOrigins={https://assistant.example.com,http://localhost:6274}'
 render_mode populated-upgrade \
 	--set upgrade.evidence=true \
@@ -527,6 +528,13 @@ if mcp_env.get("HIKYO_MCP_ENABLED") != "true":
     fail(f"mcp-enabled: HIKYO_MCP_ENABLED = {mcp_env.get('HIKYO_MCP_ENABLED')}")
 if mcp_env.get("HIKYO_MCP_ALLOWED_ORIGINS") != "https://assistant.example.com,http://localhost:6274":
     fail(f"mcp-enabled: HIKYO_MCP_ALLOWED_ORIGINS = {mcp_env.get('HIKYO_MCP_ALLOWED_ORIGINS')}")
+if mcp_env.get("HIKYO_MCP_WRITE_ENABLED") != "true":
+    fail(f"mcp-enabled: HIKYO_MCP_WRITE_ENABLED = {mcp_env.get('HIKYO_MCP_WRITE_ENABLED')}")
+for mode_name, docs in (("cluster-wide", load(cluster_wide)), ("namespaced", load(namespaced))):
+    server = next(c for d in by(docs, "Deployment") for c in d["spec"]["template"]["spec"]["containers"] if c["name"] == "server")
+    env_names = {e["name"] for e in server.get("env", [])}
+    if env_names & {"HIKYO_MCP_ENABLED", "HIKYO_MCP_WRITE_ENABLED", "HIKYO_MCP_ALLOWED_ORIGINS"}:
+        fail(f"{mode_name}: MCP env present while mcp.enabled is false")
 
 print("Chart check: every RBAC rule set, TokenRequest scope, stamp-root grant, hardening, MCP config, args and the exact env allowlist asserted")
 PY
@@ -659,6 +667,16 @@ if helm template fixture "$chart" \
 	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
 	--set 'mcp.allowedOrigins={https://assistant.example.com}' >/dev/null 2>&1; then
 	fail 'chart accepted MCP browser origins while MCP is disabled'
+fi
+if helm template fixture "$chart" \
+	--set database.existingSecret=fixture \
+	--set rootKey.existingSecret=fixture-root-key \
+		--set upgrade.existingClaim=fixture-upgrade-public \
+		--set upgrade.stateExistingClaim=fixture-upgrade-state \
+	--set externalOrigin=https://hikyo.example.com \
+	--set 'network.trustedProxyCIDRs={10.42.0.0/16}' \
+	--set mcp.writeEnabled=true >/dev/null 2>&1; then
+	fail 'chart accepted the MCP write surface while MCP is disabled'
 fi
 if helm template fixture "$chart" \
 	--set database.existingSecret=fixture \

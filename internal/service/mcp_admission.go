@@ -31,7 +31,8 @@ func mcpCleanupContext(ctx context.Context) (context.Context, context.CancelFunc
 	return context.WithTimeout(context.WithoutCancel(ctx), mcpAdmissionCleanupTimeout)
 }
 
-// Acquire authorizes one closed MCP read operation, then atomically charges
+// Acquire authorizes one closed MCP operation (the phase-1 reads and the
+// mcp-write stage and validate operations), then atomically charges
 // its datastore-coordinated token bucket and claims 4/principal, 8/org, and
 // 64/instance capacity. Release is synchronous and safe to call once.
 func (s *MCPAdmission) Acquire(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope) (func() error, error) {
@@ -39,7 +40,8 @@ func (s *MCPAdmission) Acquire(ctx context.Context, actor Actor, op authz.Operat
 		return nil, errors.New("service: MCP admission unavailable")
 	}
 	switch op {
-	case authz.OpKeyList, authz.OpEnvList, authz.OpValueList, authz.OpValuePendingList, authz.OpRevisionList:
+	case authz.OpKeyList, authz.OpEnvList, authz.OpValueList, authz.OpValuePendingList, authz.OpRevisionList,
+		authz.OpValueStage, authz.OpValueValidate:
 	default:
 		return nil, fmt.Errorf("service: unsupported MCP admission operation %q", op)
 	}

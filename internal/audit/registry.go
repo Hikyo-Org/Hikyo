@@ -406,6 +406,11 @@ const (
 	// later revision.published names, so the two events chain without either
 	// carrying material.
 	EventValueStaged EventType = "value.staged"
+	// value.change_validated records a proposed change being evaluated
+	// against the current schema, presence rules, and scanner without being
+	// staged (mcp-write ADR § 1). It carries the verdict and counts, never
+	// the proposed material or the problem text.
+	EventValueChangeValidated EventType = "value.change_validated"
 	// revision.published records ONE environment advancing to a new revision.
 	// Every materialization emits it -- a selective publish, a declare, a copy,
 	// a clone, an environment's creation, and a semantic schema change's
@@ -1544,6 +1549,15 @@ var registry = map[EventType]TypeSpec{
 		"classification": {Kind: KindString, Required: true},
 		"operation":      {Kind: KindString, Required: true},
 		"version_id":     {Kind: KindString, Required: true},
+	}),
+	EventValueChangeValidated: hierarchyEvent(Schema{
+		"key_id":         {Kind: KindString, Required: true},
+		"name":           {Kind: KindFreeText, Required: true},
+		"classification": {Kind: KindString, Required: true},
+		"operation":      {Kind: KindString, Required: true, Enum: []string{"set", "unset"}},
+		"valid":          {Kind: KindBool, Required: true},
+		"problems":       {Kind: KindInt, Required: true},
+		"findings":       {Kind: KindInt, Required: true},
 	}),
 	EventRevisionPublished: hierarchyEvent(Schema{
 		"revision":        {Kind: KindInt, Required: true},

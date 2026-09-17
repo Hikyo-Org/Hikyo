@@ -241,6 +241,24 @@ func TestValidateCatalogRequiresExactProductionSet(t *testing.T) {
 	if validateCatalog(modernJSON(t, `{"tools":[{"name":"hikyo_list_definitions"}]}`, true)) == nil {
 		t.Fatal("partial catalog accepted")
 	}
+	withWrite := make([]map[string]string, 0)
+	for _, name := range mcpserver.AllToolNames() {
+		withWrite = append(withWrite, map[string]string{"name": name})
+	}
+	withWriteTools, err := json.Marshal(map[string]any{"tools": withWrite})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateCatalog(modernJSON(t, string(withWriteTools), true)); err != nil {
+		t.Fatalf("read plus write catalog refused: %v", err)
+	}
+	partialWriteTools, err := json.Marshal(map[string]any{"tools": withWrite[:len(withWrite)-1]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if validateCatalog(modernJSON(t, string(partialWriteTools), true)) == nil {
+		t.Fatal("partial write catalog accepted")
+	}
 	all := mcpserver.ProductionToolNames()
 	tools := make([]map[string]string, 0, len(all)+1)
 	for _, name := range all {

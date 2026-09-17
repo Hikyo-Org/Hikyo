@@ -136,7 +136,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDefinitionsSettingsGet, authz.OpDefinitionsSettingsSet,
 		// values (non-export, non-copy, non-import, non-publish): single-cell reads/writes
 		authz.OpValueRead, authz.OpValueList, authz.OpValueSet, authz.OpValueClear,
-		authz.OpValueStage, authz.OpValuePendingList, authz.OpRevealWindowRead,
+		authz.OpValueStage, authz.OpValueValidate, authz.OpValuePendingList, authz.OpRevealWindowRead,
 		// revisions / pins: paged reads and single-revision restores
 		authz.OpRevisionList, authz.OpRevisionShow, authz.OpRevisionSignals,
 		authz.OpRevisionRestore, authz.OpRevisionRestoreHistory, authz.OpRevisionRestoreCurrent,

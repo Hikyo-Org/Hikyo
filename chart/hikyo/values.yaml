@@ -105,6 +105,9 @@ mcp:
   # Exact browser origins accepted by the request-origin guard. Non-browser
   # clients omit Origin and do not need an entry.
   allowedOrigins: []
+  # Install the stage-and-validate write tools. Requires enabled=true. Grants
+  # no authority: every call still needs an edit grant and is audited.
+  writeEnabled: false
 
 tls:
   # Optional Secret containing tls.crt and tls.key. Configure this or trusted
