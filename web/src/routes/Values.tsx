@@ -19,6 +19,7 @@ import {
 import type { EnvRef } from '../api/keys.ts';
 import { useTransport } from '../api/transport.tsx';
 import { writeExpiringClipboard } from '../app/clipboard.ts';
+import { Button } from '../ui/Button.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
@@ -471,14 +472,13 @@ export function Values() {
       </p>
 
       <div className="values__bar">
-        <button
-          className="btn"
+        <Button
           type="button"
           onClick={doRevealAll}
           disabled={secretsSet.length === 0 || guard?.can_reveal !== true}
         >
           Reveal every secret
-        </button>
+        </Button>
         <div className="field field--inline">
           <label htmlFor="publish-destination">Publish into</label>
           <select
@@ -496,14 +496,13 @@ export function Values() {
               ))}
           </select>
         </div>
-        <button
-          className="btn"
+        <Button
           type="button"
           onClick={doPublishInto}
           disabled={secretsSet.length === 0 || destination === ''}
         >
           Publish into environment
-        </button>
+        </Button>
       </div>
 
       <table className="values__table">
@@ -572,24 +571,22 @@ export function Values() {
                 </td>
                 <td className="values__actions">
                   {secret && cell.set && !writeOnly ? (
-                    <button
-                      className="btn"
+                    <Button
                       type="button"
                       onClick={() => doRevealOne(cell)}
                       aria-label={`Reveal ${cell.name}`}
                     >
                       Reveal
-                    </button>
+                    </Button>
                   ) : null}
                   {cell.set && (!secret || canReveal) ? (
-                    <button
-                      className="btn"
+                    <Button
                       type="button"
                       onClick={() => doCopy(cell)}
                       aria-label={secret ? `Copy ${cell.name} (audited disclosure)` : `Copy ${cell.name}`}
                     >
                       Copy
-                    </button>
+                    </Button>
                   ) : null}
                 </td>
                 {editing === cell.name ? (
@@ -728,9 +725,9 @@ function RowEditor({
           changes nothing.
         </p>
       ) : null}
-      <button className="btn btn--primary" type="submit" disabled={saving}>
+      <Button variant="primary" type="submit" disabled={saving}>
         {saving ? 'Saving…' : 'Save draft'}
-      </button>
+      </Button>
     </form>
   );
 }

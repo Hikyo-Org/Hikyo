@@ -31,6 +31,7 @@ import { useWorkspaces } from '../api/workspace.ts';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { needsOrg, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
+import { Button } from '../ui/Button.tsx';
 import {
   CHROME_IDENTITY_EVENT,
   chromeIdentityMark,
@@ -398,14 +399,15 @@ export function Shell({ session }: { session: WhoAmI }) {
         data-open={navOpen}
         ref={sidebarRef}
       >
-        <button
+        <Button
           type="button"
-          className="btn btn--icon sidebar__close sidebar__mobile-only"
+          icon
+          className="sidebar__close sidebar__mobile-only"
           aria-label="Close navigation"
           onClick={dismissNavigation}
         >
           <span aria-hidden="true">×</span>
-        </button>
+        </Button>
         {items.length < 2 ? null : (
           <section
             className="sidebar__section sidebar__mobile-only sidebar__mobile-organisations"
@@ -539,16 +541,16 @@ export function Shell({ session }: { session: WhoAmI }) {
 
       <div className="main" inert={navOpen ? true : undefined}>
         <header className="header">
-          <button
+          <Button
             type="button"
-            className="btn nav-toggle"
+            className="nav-toggle"
             ref={navToggleRef}
             aria-expanded={navOpen}
             aria-controls="sidebar"
             onClick={() => setNavOpen((open) => !open)}
           >
             Menu
-          </button>
+          </Button>
           <ol className="header__crumbs" aria-label="Breadcrumb">
             {crumbs.map((crumb, index) => (
               <li
@@ -1039,16 +1041,16 @@ export function ThemeToggle() {
   const next: Theme = current === 'dark' ? 'light' : 'dark';
 
   return (
-    <button
+    <Button
       type="button"
-      className="btn btn--icon"
+      icon
       onClick={() => setChoice(next)}
       // The label states the ACTION, and the icon the current theme by shape, 
       // so the state survives forced-colors, where the fills are repainted.
       aria-label={`Switch to ${next} theme`}
     >
       <ThemeIcon dark={current === 'dark'} />
-    </button>
+    </Button>
   );
 }
 

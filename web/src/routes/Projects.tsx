@@ -3,6 +3,7 @@ import { generatePath, Link, useOutletContext } from 'react-router';
 
 import { createProjectRefusalText, useCreateProject, useProjects } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Button } from '../ui/Button.tsx';
 import { Alert, JumpIndex, Panel } from './Sections.tsx';
 import { useInSystemScope } from './SystemScope.tsx';
 
@@ -152,13 +153,13 @@ export function NewProjectForm({ org }: { readonly org: string }) {
           onChange={(event) => setName(event.target.value)}
         />
       </div>
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="submit"
         disabled={create.isPending || name.trim() === ''}
       >
         {create.isPending ? 'Creating…' : 'Create project'}
-      </button>
+      </Button>
     </form>
   );
 }

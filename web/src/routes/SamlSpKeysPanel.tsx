@@ -10,6 +10,7 @@ import {
   useSamlSpKeys,
   type SamlAction,
 } from '../api/samlProviders.ts';
+import { Button } from '../ui/Button.tsx';
 import { Alert, Done, Panel, TypedNameConfirm } from './Sections.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
@@ -69,9 +70,9 @@ export function SamlSpKeysPanel() {
         : null}
 
       <div className="panel__actions">
-        <button
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           disabled={rotate.isPending || !keys.isSuccess}
           onClick={() => {
             clear();
@@ -85,7 +86,7 @@ export function SamlSpKeysPanel() {
           }}
         >
           Rotate the active signing key
-        </button>
+        </Button>
         <code className="instance-cli">$ hikyo saml sp-key rotate</code>
       </div>
       <p className="field__hint">
@@ -129,27 +130,27 @@ function SpKeyRow({
       <span className={active ? 'settings-tag' : 'settings-tag settings-tag--danger'}>{spKey.state}</span>
       <div className="panel__actions">
         {active ? (
-          <button
+          <Button
             type="button"
-            className="btn btn--danger"
+            variant="danger"
             onClick={() => {
               onBusy();
               setMode((current) => (current === 'compromise' ? 'idle' : 'compromise'));
             }}
           >
             Compromise-retire
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
-            className="btn btn--danger"
+            variant="danger"
             onClick={() => {
               onBusy();
               setMode((current) => (current === 'retire' ? 'idle' : 'retire'));
             }}
           >
             Retire
-          </button>
+          </Button>
         )}
       </div>
 

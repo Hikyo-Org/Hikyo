@@ -52,6 +52,7 @@ import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Button } from '../ui/Button.tsx';
 import { useNavigationGuard } from './MachineAccess.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
@@ -352,14 +353,14 @@ export function RemoteCard({
           {update.prerelease || update.channel !== 'stable' ? (
             <p>Prerelease builds are notification-only and cannot be remotely applied.</p>
           ) : update.apply_supported ? (
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               onClick={applyUpdate}
               disabled={requestUpdate.isPending || updateOutcome?.kind === 'running'}
             >
               {requestUpdate.isPending ? 'Submitting…' : `Update remote to ${update.latest_version}`}
-            </button>
+            </Button>
           ) : (
             <p>
               {update.apply_error ??
@@ -379,14 +380,14 @@ export function RemoteCard({
 
       <div className="remote__actions">
         {live === undefined ? (
-          <button
-            className="btn btn--primary"
+          <Button
+            variant="primary"
             type="button"
             onClick={handoffAction.onClick}
             disabled={handoffAction.disabled || duplicateIdentity}
           >
             {duplicateIdentity ? 'Open workspace' : handoffAction.label}
-          </button>
+          </Button>
         ) : null}
         {live === undefined ? null : (
           <>
@@ -397,13 +398,12 @@ export function RemoteCard({
                 Workspace open
               </span>
             )}
-            <button className="btn" type="button" onClick={() => forgetWorkspace(origin)}>
+            <Button type="button" onClick={() => forgetWorkspace(origin)}>
               Close workspace
-            </button>
+            </Button>
           </>
         )}
-        <button
-          className="btn"
+        <Button
           type="button"
           onClick={() => {
             const next = globalThis.prompt('New display name', remote.name);
@@ -413,10 +413,10 @@ export function RemoteCard({
           }}
         >
           Rename
-        </button>
-        <button className="btn" type="button" onClick={() => remove.mutate(remote.name)}>
+        </Button>
+        <Button type="button" onClick={() => remove.mutate(remote.name)}>
           Remove
-        </button>
+        </Button>
       </div>
       {live === undefined || duplicateIdentity ? null : (
         <WorkspacePicker origin={origin} remoteName={remote.name} />
@@ -583,9 +583,9 @@ export function AddRemote() {
             required
           />
         </div>
-        <button className="btn btn--primary" type="submit" disabled={add.isPending}>
+        <Button variant="primary" type="submit" disabled={add.isPending}>
           {add.isPending ? 'Verifying…' : 'Add remote'}
-        </button>
+        </Button>
       </form>
     </section>
   );
@@ -638,14 +638,13 @@ function OriginAllowlist() {
         {(origins.data?.items ?? []).map((entry) => (
           <li key={entry.origin} className="origin">
             <span className="mono">{entry.origin}</span>
-            <button
-              className="btn"
+            <Button
               type="button"
               aria-label={`Remove ${entry.origin} and kill its workspace sessions`}
               onClick={() => remove.mutate(entry.origin)}
             >
               Remove
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
@@ -677,9 +676,9 @@ function OriginAllowlist() {
             required
           />
         </div>
-        <button className="btn btn--primary" type="submit" disabled={add.isPending}>
+        <Button variant="primary" type="submit" disabled={add.isPending}>
           Allow origin
-        </button>
+        </Button>
       </form>
     </section>
   );
@@ -805,14 +804,13 @@ export function ConnectionRow({
       </dl>
       {revoked ? null : (
         <div className="connection__actions">
-          <button
-            className="btn"
+          <Button
             type="button"
             aria-label={`Revoke ${connection.label}`}
             onClick={onRevoke}
           >
             Revoke
-          </button>
+          </Button>
         </div>
       )}
     </li>
@@ -940,13 +938,13 @@ export function MintConnectionForm({
           </label>
         </div>
       </fieldset>
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="submit"
         disabled={mint.pending || label.trim() === '' || customInvalid}
       >
         {mint.pending ? 'Minting…' : 'Mint credential'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -1020,8 +1018,7 @@ export function ConnectionMintDialog({
           consuming instance now; if it is lost, revoke this credential and mint a fresh one.
         </span>
       </p>
-      <button
-        className="btn"
+      <Button
         type="button"
         onClick={async () => {
           const result = await writeClipboard(minted.value);
@@ -1033,7 +1030,7 @@ export function ConnectionMintDialog({
         }}
       >
         Copy to clipboard
-      </button>
+      </Button>
       {copyStatus === null ? null : (
         <p className="notice" role="status">
           <span className="alert__glyph" aria-hidden="true">
@@ -1066,9 +1063,9 @@ export function ConnectionMintDialog({
         </p>
       ) : null}
       <div className="ceremony__actions">
-        <button className="btn btn--primary" type="button" onClick={dismiss}>
+        <Button variant="primary" type="button" onClick={dismiss}>
           Done
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -1127,23 +1124,22 @@ export function RevokeConnectionDialog({
         </p>
       ) : null}
       <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           onClick={run}
           disabled={revoke.isPending}
         >
           {revoke.isPending ? 'Revoking…' : 'Revoke credential'}
-        </button>
-        <button
-          className="btn"
+        </Button>
+        <Button
           type="button"
           ref={cancel}
           onClick={onClose}
           disabled={revoke.isPending}
         >
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );

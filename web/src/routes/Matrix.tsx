@@ -44,6 +44,7 @@ import {
   type MatrixPendingEntry,
 } from './MatrixPublishSheet.tsx';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
+import { Button } from '../ui/Button.tsx';
 import { ImportWizard } from './ImportWizard.tsx';
 import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
@@ -926,37 +927,38 @@ export function Matrix({
             stays available on a git-managed project; the wizard skips new keys
             there. Needs at least one environment to target. */}
         {environments.length > 0 && !systemManaged ? (
-          <button
+          <Button
             type="button"
-            className="btn matrix__import"
+            className="matrix__import"
             onClick={() => setImportOpen(true)}
           >
             Import
-          </button>
+          </Button>
         ) : null}
         {/* #493: folder & key-group lifecycle. Project-scoped organisation in its
             own dialog, reachable here and from the empty state. */}
-        {systemManaged ? null : <button type="button" className="btn matrix__manage" onClick={() => setManageOpen(true)}>
+        {systemManaged ? null : <Button type="button" className="matrix__manage" onClick={() => setManageOpen(true)}>
           Folders &amp; linked keys
-        </button>}
+        </Button>}
         {declarationsLocked || keys.every((key) => key.folder_path !== '') ? null : (
-          <button type="button" className="btn matrix__cleanup" onClick={() => setCleanupOpen(true)}>
+          <Button type="button" className="matrix__cleanup" onClick={() => setCleanupOpen(true)}>
             Cleanup
-          </button>
+          </Button>
         )}
         {/* env-matrix 31 / #492: the header's primary declare action. Git-managed
             projects disable it and say why, value actions still work. */}
         {environments.length > 0 && !declarationsLocked ? (
-          <button
+          <Button
             type="button"
-            className="btn btn--primary matrix__new-key"
+            variant="primary"
+            className="matrix__new-key"
             onClick={() => {
               setCreateError(null);
               setCreate({ folder: null });
             }}
           >
             + New key
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -1012,9 +1014,9 @@ export function Matrix({
           {filter === 'problems' ? (
             <div className="matrix__filter" role="status">
               <span>{`⚠ filter active: problems, showing ${String(filteredKeyIDs.size)} of ${String(keys.length)} keys`}</span>
-              <button type="button" className="btn" onClick={() => setFilter('all')}>
+              <Button type="button" onClick={() => setFilter('all')}>
                 ✕ Show all keys
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -1046,19 +1048,19 @@ export function Matrix({
                 <p role="status">{GIT_DEFINITIONS_NOTICE}</p>
               ) : (
                 <div className="matrix__empty-actions">
-                  <button
+                  <Button
                     type="button"
-                    className="btn btn--primary"
+                    variant="primary"
                     onClick={() => {
                       setCreateError(null);
                       setCreate({ folder: null });
                     }}
                   >
                     Declare first key
-                  </button>
-                  <button type="button" className="btn" onClick={() => setManageOpen(true)}>
+                  </Button>
+                  <Button type="button" onClick={() => setManageOpen(true)}>
                     Folders &amp; linked keys
-                  </button>
+                  </Button>
                 </div>
               )}
               <p>
@@ -1074,9 +1076,9 @@ export function Matrix({
             <div className="matrix__empty" role="status">
               <h2>No problems</h2>
               <p>Every readable environment satisfies its required values.</p>
-              <button type="button" className="btn btn--primary" onClick={() => setFilter('all')}>
+              <Button type="button" variant="primary" onClick={() => setFilter('all')}>
                 Show all keys
-              </button>
+              </Button>
             </div>
           ) : (
             <div className="matrix__scroll" ref={matrixScroll}>

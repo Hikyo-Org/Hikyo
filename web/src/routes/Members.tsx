@@ -36,6 +36,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
+import { Button } from '../ui/Button.tsx';
 
 /**
  * wideningEnvironment reads the environment a reauth-required grant refusal
@@ -406,16 +407,16 @@ export function Members({ scope }: { scope: MembersScope }) {
                       !row.principal.startsWith('mch_') &&
                       row.principal !== me &&
                       rows.findIndex((candidate) => candidate.principal === row.principal) === index ? (
-                        <button
+                        <Button
                           type="button"
-                          className="btn btn--quiet"
+                          variant="quiet"
                           disabled={resetPending !== null}
                           aria-busy={resetPending === row.principal ? true : undefined}
                           aria-label={`Reset credential for ${principalLabel(row.principal, lines)}`}
                           onClick={() => void onReset(row.principal)}
                         >
                           {resetPending === row.principal ? 'Resetting…' : 'Reset credential'}
-                        </button>
+                        </Button>
                       ) : null}
                     </td>
                     <td>
@@ -509,9 +510,9 @@ export function Members({ scope }: { scope: MembersScope }) {
           ) : topologyError ? (
             <Alert>The organisation topology could not be read completely. Reload before granting anything.</Alert>
           ) : null}
-          <button
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={!topologyReady}
             onClick={() => {
               feedback.clear();
@@ -523,21 +524,20 @@ export function Members({ scope }: { scope: MembersScope }) {
             }}
           >
             {compactPresentation ? '+ new grant' : 'New grant'}
-          </button>
+          </Button>
           {/* Invite (#568) lives at organisation and instance scope only: a
               project has no accounts of its own, and the org page is one
               click up from the project projection. */}
           {projectId === '' ? (
-            <button
+            <Button
               type="button"
-              className="btn"
               onClick={() => {
                 feedback.clear();
                 setModal('invite');
               }}
             >
               Invite
-            </button>
+            </Button>
           ) : null}
         </div>
         )}
@@ -1060,15 +1060,15 @@ function GrantModal({
         </p>
         {failure !== null ? <Alert>{failure}</Alert> : null}
         <div className="ceremony__actions">
-          <button type="button" className="btn" disabled={mutationPending} onClick={() => onStage('none')}>
+          <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>
             Cancel
-          </button>
-          <button type="button" className="btn" disabled={mutationPending} onClick={() => onStage('grant')}>
+          </Button>
+          <Button type="button" disabled={mutationPending} onClick={() => onStage('grant')}>
             Back, change scope
-          </button>
-          <button type="button" className="btn btn--danger" disabled={submitBlocked} onClick={perform}>
+          </Button>
+          <Button type="button" variant="danger" disabled={submitBlocked} onClick={perform}>
             Grant at organisation scope
-          </button>
+          </Button>
         </div>
       </dialog>
     );
@@ -1144,12 +1144,12 @@ function GrantModal({
                 ))}
               </select>
             )}
-            <button type="button" className="btn btn--quiet" onClick={() => {
+            <Button type="button" variant="quiet" onClick={() => {
               setEnterPrincipalId(!enterPrincipalId);
               onDraft({ ...draft, principal: '' });
             }}>
               {enterPrincipalId ? 'Choose an existing member' : 'Enter an ID for another principal'}
-            </button>
+            </Button>
             <p className="field__hint">
               {enterPrincipalId
                 ? 'Enter the exact ID of a person or service account outside this member list.'
@@ -1280,12 +1280,12 @@ function GrantModal({
       </div>
 
       <div className="ceremony__actions">
-        <button type="button" className="btn" disabled={mutationPending} onClick={() => onStage('none')}>
+        <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>
           Cancel
-        </button>
-        <button type="button" className="btn btn--primary" disabled={submitBlocked} onClick={submit}>
+        </Button>
+        <Button type="button" variant="primary" disabled={submitBlocked} onClick={submit}>
           {mutationPending ? 'Granting…' : 'Grant'}
-        </button>
+        </Button>
       </div>
     </dialog>
   );

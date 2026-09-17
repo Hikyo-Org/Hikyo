@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import type { CreateKeyPresence, CreateKeyRule, CreateKeyType } from '../api/matrix.ts';
 import type { EnvironmentList } from '../api/values.ts';
+import { Button } from '../ui/Button.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
 import { isBackdropClick } from './MatrixRowEditor.tsx';
 import { useModalDialog } from './useModalDialog.ts';
@@ -281,14 +282,14 @@ export function MatrixKeyCreate({
               creates that group.
             </p>
           </div>
-          <button
+          <Button
             type="button"
-            className="btn matrix-editor__close"
+            className="matrix-editor__close"
             aria-label="Close new key"
             onClick={onClose}
           >
             ✕
-          </button>
+          </Button>
         </div>
 
         {gitManaged ? (
@@ -587,12 +588,12 @@ export function MatrixKeyCreate({
         )}
 
         <div className="matrix-editor__actions">
-          <button type="submit" className="btn btn--primary" disabled={busy || applying || gitManaged}>
+          <Button type="submit" variant="primary" disabled={busy || applying || gitManaged}>
             {busy || applying ? 'Declaring…' : 'Declare'}
-          </button>
-          <button type="button" className="btn" onClick={onClose}>
+          </Button>
+          <Button type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
         </div>
         <p className="matrix-editor__hint">
           <b>Secret</b> is permanent: values are hidden and reveal-gated everywhere.

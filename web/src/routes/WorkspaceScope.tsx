@@ -14,6 +14,7 @@ import {
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
+import { Button } from '../ui/Button.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
@@ -227,14 +228,13 @@ function WorkspaceBanner({ origin }: { origin: string }) {
         do here appears in its audit trail under your name. Live updates from a remote instance
         arrive by polling.
       </span>
-      <button
-        className="btn"
+      <Button
         type="button"
         onClick={() => forgetWorkspace(origin)}
         aria-label={`Exit the workspace on ${origin}`}
       >
         Exit workspace
-      </button>
+      </Button>
     </div>
   );
 }
@@ -275,14 +275,14 @@ export function Reconnect({ origin, name }: { origin: string; name: string }) {
           <span>{handoff.phase.message}</span>
         </p>
       )}
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="button"
         onClick={action.onClick}
         disabled={action.disabled}
       >
         {action.label}
-      </button>
+      </Button>
     </div>
   );
 }

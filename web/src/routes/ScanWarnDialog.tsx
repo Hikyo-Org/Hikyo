@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 
 import type { ScanFinding } from '../api/matrix.ts';
+import { Button } from '../ui/Button.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 /**
@@ -106,14 +107,14 @@ export function ScanWarnDialog({
             {`${keyName} is classified as config, so its value is stored without secret handling: no masking, no reveal ceremony. These saved values look like credentials.`}
           </p>
         </div>
-        <button
+        <Button
           type="button"
-          className="btn matrix-editor__close"
+          className="matrix-editor__close"
           aria-label="Close scanning warning"
           onClick={onClose}
         >
           ✕
-        </button>
+        </Button>
       </div>
 
       <ul className="scan-warn__findings">
@@ -125,14 +126,13 @@ export function ScanWarnDialog({
               <span className="scan-warn__env">{item.environmentName}</span>
             </div>
             {item.finding.acknowledgement === undefined ? null : (
-              <button
+              <Button
                 type="button"
-                className="btn"
                 disabled={busy !== null}
                 onClick={() => dismiss(item)}
               >
                 {busy === rowKey(item) ? 'Keeping as config…' : 'Keep as config'}
-              </button>
+              </Button>
             )}
           </li>
         ))}
@@ -151,14 +151,14 @@ export function ScanWarnDialog({
       )}
 
       <div className="matrix-editor__actions">
-        <button
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           disabled={busy !== null}
           onClick={reclassify}
         >
           {busy === 'reclassify' ? 'Reclassifying…' : `Reclassify ${keyName} as secret`}
-        </button>
+        </Button>
       </div>
     </dialog>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { channelName } from '../api/workspace.ts';
+import { Button } from '../ui/Button.tsx';
 
 /**
  * The viewing instance's own callback page (registry surface
@@ -69,9 +70,9 @@ export function WorkspaceCallback() {
         )}
         {/* A browser may refuse to close a window this script did not open, so
             the human is given the control rather than left on a dead page. */}
-        <button className="btn" type="button" onClick={() => globalThis.close()}>
+        <Button type="button" onClick={() => globalThis.close()}>
           Close this window
-        </button>
+        </Button>
       </div>
     </main>
   );

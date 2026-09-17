@@ -12,6 +12,7 @@ import {
   type OidcProviderDraft,
   type OidcProviderField,
 } from '../api/oidcProviders.ts';
+import { Button } from '../ui/Button.tsx';
 import { Alert, Done, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
@@ -134,18 +135,17 @@ export function OidcProvidersPanel() {
               >
                 {provider.enabled ? 'enabled' : 'disabled'}
               </span>
-              <button
+              <Button
                 type="button"
-                className="btn"
                 aria-label={`Reconfigure ${provider.display_name}`}
                 disabled={refreshingAfterConflict}
                 onClick={() => openReconfigure(provider)}
               >
                 Reconfigure
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="btn btn--danger"
+                variant="danger"
                 aria-label={`Delete ${provider.display_name}`}
                 disabled={refreshingAfterConflict}
                 onClick={() => {
@@ -154,7 +154,7 @@ export function OidcProvidersPanel() {
                 }}
               >
                 Delete
-              </button>
+              </Button>
             </div>
           ))
         : null}
@@ -165,14 +165,14 @@ export function OidcProvidersPanel() {
 
       {providers.isSuccess && editor === null ? (
         <div className="panel__actions">
-          <button
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={refreshingAfterConflict}
             onClick={openCreate}
           >
             + add identity provider
-          </button>
+          </Button>
           <code className="instance-cli">$ hikyo oidc-provider put</code>
         </div>
       ) : null}
@@ -413,12 +413,12 @@ function ProviderEditor({
       ) : null}
 
       <div className="panel__actions">
-        <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+        <Button type="button" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
-        <button type="button" className="btn btn--primary" onClick={submit} disabled={busy}>
+        </Button>
+        <Button type="button" variant="primary" onClick={submit} disabled={busy}>
           {original === null ? 'Configure provider' : 'Save provider'}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -479,9 +479,9 @@ function DeleteProviderDialog({
         }
       />
       <div className="ceremony__actions">
-        <button type="button" className="btn" onClick={onCancel} disabled={del.isPending}>
+        <Button type="button" onClick={onCancel} disabled={del.isPending}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );

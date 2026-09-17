@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { announceSessionChange } from '../api/sessionEpoch.ts';
 import { oidcChannelName, takeOIDCReturn } from '../api/oidcChannel.ts';
+import { Button } from '../ui/Button.tsx';
 
 type Purpose = 'login' | 'link' | 'reauth';
 
@@ -100,9 +101,9 @@ export function OIDCDone() {
                 : 'Back'}
           </a>
         ) : (
-          <button className="btn" type="button" onClick={() => globalThis.close()}>
+          <Button type="button" onClick={() => globalThis.close()}>
             Close this window
-          </button>
+          </Button>
         )}
       </div>
     </main>

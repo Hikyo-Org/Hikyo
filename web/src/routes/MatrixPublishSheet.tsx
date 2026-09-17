@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import type { EnvironmentList } from '../api/values.ts';
+import { Button } from '../ui/Button.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   blockedPublishEnvironmentIds,
@@ -237,9 +238,9 @@ export function MatrixPublishSheet({
             <span>{protectedGuard.error}</span>
           </p>
         )}
-        <button
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           disabled={
             busy ||
             selectedEnvironmentIds.length === 0 ||
@@ -259,10 +260,10 @@ export function MatrixPublishSheet({
           {busy
             ? 'Publishing atomically…'
             : `Publish selected · ${String(selectedEntries.length)} draft${selectedEntries.length === 1 ? '' : 's'} · ${String(selectedEnvironmentIds.length)} environment${selectedEnvironmentIds.length === 1 ? '' : 's'}`}
-        </button>
-        <button type="button" className="btn" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Close
-        </button>
+        </Button>
         {mutationError === null ? null : (
           <p className="alert" role="alert">
             <span className="alert__glyph" aria-hidden="true">!</span>

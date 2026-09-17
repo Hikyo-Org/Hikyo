@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { parsed } from '../api/client.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ceremonyRefusalText, runPasskeyCeremony, runTOTPCeremony } from '../api/values.ts';
+import { Button } from '../ui/Button.tsx';
 import { Login } from './Login.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
@@ -296,17 +297,17 @@ export function WorkspaceApprove() {
           />
         ) : (
           <>
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               onClick={authorize}
               disabled={approve.isPending}
             >
               {approve.isPending ? 'Authorizing…' : 'Authorize'}
-            </button>
-            <button className="btn" type="button" onClick={() => globalThis.close()}>
+            </Button>
+            <Button type="button" onClick={() => globalThis.close()}>
               Cancel
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -401,12 +402,12 @@ function StepUpReauth({
         </p>
       )}
       <div className="ceremony__actions">
-        <button className="btn btn--primary" type="button" onClick={onPasskey} disabled={working}>
+        <Button variant="primary" type="button" onClick={onPasskey} disabled={working}>
           {working ? 'Working…' : 'Use a passkey'}
-        </button>
-        <button className="btn" type="button" onClick={() => globalThis.close()} disabled={working}>
+        </Button>
+        <Button type="button" onClick={() => globalThis.close()} disabled={working}>
           Cancel
-        </button>
+        </Button>
       </div>
       <form className="ceremony__totp" onSubmit={onCode}>
         <div className="field">
@@ -421,9 +422,9 @@ function StepUpReauth({
             onChange={(e) => setCode(e.target.value)}
           />
         </div>
-        <button className="btn" type="submit" disabled={working || code.length < 6}>
+        <Button type="submit" disabled={working || code.length < 6}>
           Authorise with a code
-        </button>
+        </Button>
       </form>
     </>
   );

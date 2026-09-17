@@ -1,6 +1,7 @@
 import { useId } from 'react';
 
 import type { RetentionDayState } from '../api/settings.ts';
+import { Button } from '../ui/Button.tsx';
 import { Alert } from './Sections.tsx';
 
 /** Shared whole-day and revision-bound controls for both retention editors. */
@@ -24,13 +25,12 @@ export function RetentionBoundsFields({
         <Alert>
           Current maximum age is exact ({age.seconds} seconds), not whole days. The day editor is
           disabled so that exact value cannot look absent.
-          <button
+          <Button
             type="button"
-            className="btn"
             onClick={() => onAgeChange({ kind: 'days', days: '' })}
           >
             Replace with whole days
-          </button>
+          </Button>
         </Alert>
       ) : null}
       {age.kind === 'absent' ? (

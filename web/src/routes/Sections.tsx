@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 
 import { writeClipboard } from '../app/clipboard.ts';
+import { Button } from '../ui/Button.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 /**
@@ -155,14 +156,14 @@ export function TypedNameConfirm({
           ? `The name matches. ${action} is now possible.`
           : `Type ${expect} exactly to enable ${action.toLowerCase()}.`}
       </p>
-      <button
+      <Button
         type="button"
-        className="btn btn--danger"
+        variant="danger"
         disabled={!armed || busy}
         onClick={onConfirm}
       >
         {action}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -214,12 +215,12 @@ export function ConsequencesDialog({
       {busy ? <p role="status">{busyLabel}</p> : null}
       {failure === null ? null : <Alert>{failure}</Alert>}
       <div className="ceremony__actions">
-        <button type="button" className="btn" onClick={onCancel} disabled={busy}>
+        <Button type="button" onClick={onCancel} disabled={busy}>
           Cancel
-        </button>
-        <button type="button" className="btn btn--danger" onClick={onConfirm} disabled={busy}>
+        </Button>
+        <Button type="button" variant="danger" onClick={onConfirm} disabled={busy}>
           {confirmLabel}
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -260,9 +261,8 @@ export function DisplayOnceCopy({ value, success }: { value: string; success: st
   return (
     <>
       <div className="panel__actions">
-        <button
+        <Button
           type="button"
-          className="btn"
           onClick={async () => {
             const result = await writeClipboard(value);
             setStatus(
@@ -273,7 +273,7 @@ export function DisplayOnceCopy({ value, success }: { value: string; success: st
           }}
         >
           Copy
-        </button>
+        </Button>
       </div>
       {status === null ? null : (
         <p className="notice" role="status">

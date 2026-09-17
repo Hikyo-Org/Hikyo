@@ -39,6 +39,7 @@ import {
 } from '../api/scim.ts';
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { writeClipboard } from '../app/clipboard.ts';
+import { Button } from '../ui/Button.tsx';
 import { Alert, Done, Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 import { useNavigationGuard } from './MachineAccess.tsx';
@@ -208,14 +209,14 @@ function BindingCard({
             {binding.provider_kind}
           </span>
         </h3>
-        <button
+        <Button
           type="button"
-          className={selected ? 'btn btn--primary' : 'btn'}
+          variant={selected ? 'primary' : 'secondary'}
           aria-pressed={selected}
           onClick={onSelect}
         >
           {selected ? 'Administering' : 'Administer'}
-        </button>
+        </Button>
       </div>
       <dl className="scim-binding__facts">
         <dt>Issuer</dt>
@@ -383,13 +384,13 @@ function CreateBindingForm({ org }: { org: string }) {
           required
         />
       </div>
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="submit"
         disabled={create.isPending || providerSlug.trim() === '' || subjectSource.trim() === ''}
       >
         {create.isPending ? 'Creating…' : 'Create binding'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -587,11 +588,10 @@ function MappingRow({
             </select>
           </div>
           <div className="scim-mapping__actions">
-            <button className="btn btn--primary" type="submit" disabled={update.isPending}>
+            <Button variant="primary" type="submit" disabled={update.isPending}>
               {update.isPending ? 'Retargeting…' : 'Save template'}
-            </button>
-            <button
-              className="btn"
+            </Button>
+            <Button
               type="button"
               onClick={() => {
                 setEditing(false);
@@ -599,28 +599,27 @@ function MappingRow({
               }}
             >
               Cancel
-            </button>
+            </Button>
           </div>
         </form>
       ) : (
         <div className="scim-mapping__actions">
-          <button
-            className="btn"
+          <Button
             type="button"
             onClick={() => setEditing(true)}
             aria-label={`Retarget ${groupName}`}
           >
             Retarget
-          </button>
-          <button
-            className="btn btn--danger"
+          </Button>
+          <Button
+            variant="danger"
             type="button"
             disabled={remove.isPending}
             aria-label={`Delete mapping for ${groupName}`}
             onClick={onDelete}
           >
             {remove.isPending ? 'Deleting…' : 'Delete'}
-          </button>
+          </Button>
         </div>
       )}
     </li>
@@ -776,13 +775,13 @@ function CreateMappingForm({ org, binding }: { org: string; binding: string }) {
         </select>
       </div>
 
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="submit"
         disabled={create.isPending || groupId === '' || !templateValid}
       >
         {create.isPending ? 'Mapping…' : 'Add mapping'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -872,8 +871,8 @@ function CredentialRow({
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
       {revoked ? null : (
         <div className="scim-credential__actions">
-          <button
-            className="btn btn--danger"
+          <Button
+            variant="danger"
             type="button"
             disabled={revoke.isPending}
             aria-label={`Revoke credential ${credential.id}`}
@@ -883,7 +882,7 @@ function CredentialRow({
             }}
           >
             {revoke.isPending ? 'Revoking…' : 'Revoke'}
-          </button>
+          </Button>
           <p className="scim-credential__note">Revoking bites at the provider&apos;s next request.</p>
         </div>
       )}
@@ -952,13 +951,13 @@ function MintCredentialForm({
           Never expires (refused unless this instance allows indefinite credentials)
         </label>
       </div>
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="submit"
         disabled={mint.pending || proof.trim() === ''}
       >
         {mint.pending ? 'Minting…' : 'Mint credential'}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -1026,8 +1025,7 @@ function MintDialog({
           identity provider now; if it is lost, revoke this credential and mint a fresh one.
         </span>
       </p>
-      <button
-        className="btn"
+      <Button
         type="button"
         onClick={async () => {
           const result = await writeClipboard(minted.token);
@@ -1039,7 +1037,7 @@ function MintDialog({
         }}
       >
         Copy to clipboard
-      </button>
+      </Button>
       {copyStatus === null ? null : (
         <p className="notice" role="status">
           <span className="alert__glyph" aria-hidden="true">
@@ -1066,9 +1064,9 @@ function MintDialog({
       {heldBack ? (
         <Alert>Store the credential first. It cannot be shown again once this closes.</Alert>
       ) : null}
-      <button className="btn btn--primary" type="button" disabled={!stored} onClick={dismiss}>
+      <Button variant="primary" type="button" disabled={!stored} onClick={dismiss}>
         Done
-      </button>
+      </Button>
     </dialog>
   );
 }

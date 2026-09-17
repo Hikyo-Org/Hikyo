@@ -30,6 +30,6 @@
     "routes/HistoryDrawer.tsx": "c95b01ad705603a91f7baf110b5d657ba888cd3ab24085be21ac806b1f4cc9dd",
     "routes/InstanceAdmin.tsx": "b867bde32a5395b79377e9f8298741d6f89937a4967f8eb05f0a5a5e27af9885",
     "routes/Login.tsx": "aa8ffa9f6fb1f5a01f8e5e90673cc065ccb8807df8d0752de08f91778870f10c",
-    "routes/WorkspaceApprove.tsx": "4f6ea36846de3fb108ba13f09aec62eaaabd7db91e8e142653ce6142ea5a4cb1"
+    "routes/WorkspaceApprove.tsx": "131f4b8dda17b9f347be9ee03fdcae579ae5cb90833f8ee83763666d6313e0c5"
   }
 }

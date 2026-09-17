@@ -16,6 +16,7 @@ import {
 } from '../api/values.ts';
 import { writeExpiringClipboard } from '../app/clipboard.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Button } from '../ui/Button.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
   canClearMatrixCell,
@@ -255,14 +256,14 @@ export function MatrixRowEditor({
               </h2>
               <p>{keyRecord.description || 'Explicit value and provenance for this environment.'}</p>
             </div>
-            <button
+            <Button
               type="button"
-              className="btn matrix-editor__close"
+              className="matrix-editor__close"
               aria-label="Close row editor"
               onClick={onClose}
             >
               ✕
-            </button>
+            </Button>
           </div>
 
           {secret ? (
@@ -294,9 +295,8 @@ export function MatrixRowEditor({
                 placeholder={secret ? 'Write-only replacement' : 'Shared draft value'}
                 onChange={(event) => setFillAll(event.target.value)}
               />
-              <button
+              <Button
                 type="button"
-                className="btn"
                 disabled={fillAll === '' || busy || applying}
                 onClick={() => {
                   setEdits(new Map<string, MatrixDraftEdit>(
@@ -306,7 +306,7 @@ export function MatrixRowEditor({
                 }}
               >
                 Fill all
-              </button>
+              </Button>
             </div>
           </div> : null}
 
@@ -401,9 +401,8 @@ export function MatrixRowEditor({
                     </p>
                   ) : null}
                   {editAll ? null : (
-                  <button
+                  <Button
                     type="button"
-                    className="btn"
                     disabled={busy || applying || (!clearing && !canClearMatrixCell(publishedSet, row.signal?.pending?.operation))}
                     onClick={() => {
                       setEdits((current) => {
@@ -417,7 +416,7 @@ export function MatrixRowEditor({
                     }}
                   >
                     {clearing ? 'Keep current state' : `Clear ${row.environment.name} to absent`}
-                  </button>
+                  </Button>
                   )}
                 </section>
               );
@@ -435,17 +434,16 @@ export function MatrixRowEditor({
           </p>
 
           <div className="matrix-editor__actions">
-            <button
+            <Button
               type="submit"
-              className="btn btn--primary"
+              variant="primary"
               disabled={changes.length === 0 || busy || applying}
             >
               {busy || applying ? 'Saving drafts…' : `Save ${String(changes.length)} draft${changes.length === 1 ? '' : 's'}`}
-            </button>
+            </Button>
             {rows.length > 1 ? (
-              <button
+              <Button
                 type="button"
-                className="btn"
                 aria-expanded={editAll}
                 onClick={() => {
                   if (editAll) {
@@ -462,17 +460,17 @@ export function MatrixRowEditor({
                 }}
               >
                 {editAll ? `Back to ${environment.name} only` : 'Edit all environments'}
-              </button>
+              </Button>
             ) : null}
             {sourceSet && secret && disclosure.canReveal ? (
-              <button type="button" className="btn" onClick={disclosure.reveal}>
+              <Button type="button" onClick={disclosure.reveal}>
                 {`Reveal ${keyRecord.name}`}
-              </button>
+              </Button>
             ) : null}
             {sourceSet && (!secret || disclosure.canReveal) ? (
-              <button type="button" className="btn" onClick={disclosure.copy}>
+              <Button type="button" onClick={disclosure.copy}>
                 {secret ? `Copy ${keyRecord.name} (audited disclosure)` : `Copy ${keyRecord.name}`}
-              </button>
+              </Button>
             ) : null}
             <Link className="btn" to={declarationHref} onClick={onClose}>
               Edit declaration
@@ -492,14 +490,13 @@ export function MatrixRowEditor({
               {`History for ${keyRecord.name}`}
             </Link>
             {keyRecord.classification === 'config' && sourceSet ? (
-              <button
+              <Button
                 type="button"
-                className="btn"
                 aria-expanded={copyOpen}
                 onClick={() => setCopyOpen((open) => !open)}
               >
                 {`Copy published ${environment.name} value to…`}
-              </button>
+              </Button>
             ) : null}
           </div>
 
@@ -542,9 +539,8 @@ export function MatrixRowEditor({
                 </p>
               )}
               <p>Each copied value is independent; later source edits do not propagate.</p>
-              <button
+              <Button
                 type="button"
-                className="btn"
                 disabled={destinations.length === 0 || busy || applying || (protectedConfirmationRequired && !protectedCopyConfirmed)}
                 onClick={() => {
                   void protectedGuard.run(
@@ -555,7 +551,7 @@ export function MatrixRowEditor({
                 }}
               >
                 {`Copy to ${String(destinations.length)} environment${destinations.length === 1 ? '' : 's'}`}
-              </button>
+              </Button>
             </fieldset>
           ) : null}
 

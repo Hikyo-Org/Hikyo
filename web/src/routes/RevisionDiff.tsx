@@ -5,6 +5,7 @@ import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useTransport } from '../api/transport.tsx';
 import { fetchRevealWindow } from '../api/values.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { Button } from '../ui/Button.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import { useCeremonyTask } from './useCeremonyTask.ts';
 import { useModalDialog } from './useModalDialog.ts';
@@ -75,7 +76,7 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
     <dialog className="matrix-editor history-sheet" ref={dialog} onClose={onClose} aria-labelledby="revision-diff-title">
       <div className="matrix-editor__head">
         <h2 id="revision-diff-title">{`Diff r${String(left)} → r${String(right)} · ${environmentName}`}</h2>
-        <button className="btn" type="button" onClick={onClose}>Close diff</button>
+        <Button type="button" onClick={onClose}>Close diff</Button>
       </div>
       <p>Secret rows show write-presence. Revealing one key discloses both retained values, requires current or historical reveal permission for each side, and is audited.</p>
       {compare.isPending ? <p role="status">Reading revision diff…</p> : null}
@@ -90,8 +91,8 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
             <span>{shown.status.replace('_', ' ')}</span>
             {shown.revealed ? <span className="mono">{shown.before ?? 'absent'}{' → '}{shown.after ?? 'absent'}</span> : <span>masked · write-presence only</span>}
             {row.classification === 'secret' ? visible?.key_id === row.key_id
-              ? <button type="button" className="btn" onClick={() => setDisclosure(null)}>Mask {row.name}</button>
-              : <button type="button" className="btn" disabled={reveal.isPending} onClick={() => void disclose(row)}>Reveal {row.name} in diff</button>
+              ? <Button type="button" onClick={() => setDisclosure(null)}>Mask {row.name}</Button>
+              : <Button type="button" disabled={reveal.isPending} onClick={() => void disclose(row)}>Reveal {row.name} in diff</Button>
               : null}
           </li>;
         })}

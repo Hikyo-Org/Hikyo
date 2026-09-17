@@ -87,6 +87,7 @@ import { useMachineReveal, useSetMachineReveal } from '../api/machineReveal.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { writeClipboard } from '../app/clipboard.ts';
 import { runPasskeyCeremony, useEnvironments } from '../api/values.ts';
+import { Button } from '../ui/Button.tsx';
 import {
   type IsMintSubmitting,
   type MintBoundary,
@@ -524,14 +525,14 @@ function MachineAccessPage() {
           <>
             <PolicyStrip project={project} />
             <p className="machine__actions">
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 disabled={!canAdminister}
                 onClick={() => setDialog({ kind: 'create' })}
               >
                 Create service account
-              </button>
+              </Button>
             </p>
             <table className="values__table machine__table">
               <caption className="visually-hidden">
@@ -621,8 +622,8 @@ function MachineAccessPage() {
             </p>
             {accounts.length > 0 ? (
               <p className="machine__actions">
-                <button
-                  className="btn btn--primary"
+                <Button
+                  variant="primary"
                   type="button"
                   disabled={!inputsReady}
                   onClick={() => {
@@ -633,7 +634,7 @@ function MachineAccessPage() {
                   }}
                 >
                   New binding
-                </button>
+                </Button>
               </p>
             ) : null}
             {credentials.isPending || credentials.isError ? (
@@ -690,8 +691,8 @@ function MachineAccessPage() {
               set or replaced, never read back. Every minted lease role inherits the grant role.
             </p>
             <p className="machine__actions">
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 disabled={!canAdministerProviders}
                 onClick={() => {
@@ -701,7 +702,7 @@ function MachineAccessPage() {
                 }}
               >
                 Configure provider
-              </button>
+              </Button>
             </p>
             <table className="values__table machine__table">
               <caption className="visually-hidden">
@@ -743,8 +744,7 @@ function MachineAccessPage() {
                     <td>
                       {provider.state === 'active' ? (
                         <span className="machine__row-actions">
-                          <button
-                            className="btn"
+                          <Button
                             type="button"
                             disabled={!canAdministerProviders}
                             onClick={() => {
@@ -756,10 +756,9 @@ function MachineAccessPage() {
                             {provider.credential_present
                               ? 'Replace credential'
                               : 'Set credential'}
-                          </button>
+                          </Button>
                           {provider.credential_present ? (
-                            <button
-                              className="btn"
+                            <Button
                               type="button"
                               disabled={!canAdministerProviders}
                               onClick={() => {
@@ -769,10 +768,9 @@ function MachineAccessPage() {
                               }}
                             >
                               Revoke credential
-                            </button>
+                            </Button>
                           ) : null}
-                          <button
-                            className="btn"
+                          <Button
                             type="button"
                             disabled={!canAdministerProviders}
                             onClick={() => {
@@ -782,7 +780,7 @@ function MachineAccessPage() {
                             }}
                           >
                             Delete
-                          </button>
+                          </Button>
                         </span>
                       ) : (
                         <span className="values__absent">none</span>
@@ -812,8 +810,8 @@ function MachineAccessPage() {
               are queued: the worker carries them out and the row moves when it does.
             </p>
             <p className="machine__actions">
-              <button
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 type="button"
                 disabled={!canMintLease}
                 onClick={() => {
@@ -823,7 +821,7 @@ function MachineAccessPage() {
                 }}
               >
                 Mint lease
-              </button>
+              </Button>
               {!canMintLease && providersQuery.isSuccess && mintableProviders.length === 0 ? (
                 <span className="machine__hint">
                   Configure a provider with a credential first: a lease is minted against one.
@@ -888,27 +886,25 @@ function MachineAccessPage() {
                         {liveSessionId !== null && (canRenew || canRevoke || canSettle) ? (
                           <span className="machine__row-actions">
                             {canRenew ? (
-                              <button className="btn" type="button" onClick={() => openAction('renew')}>
+                              <Button type="button" onClick={() => openAction('renew')}>
                                 Renew
-                              </button>
+                              </Button>
                             ) : null}
                             {canSettle ? (
-                              <button
-                                className="btn"
+                              <Button
                                 type="button"
                                 onClick={() => openAction('settle')}
                               >
                                 Settle
-                              </button>
+                              </Button>
                             ) : null}
                             {canRevoke ? (
-                              <button
-                                className="btn"
+                              <Button
                                 type="button"
                                 onClick={() => openAction('revoke')}
                               >
                                 Revoke
-                              </button>
+                              </Button>
                             ) : null}
                           </span>
                         ) : (
@@ -1173,15 +1169,15 @@ function PolicyStrip({ project }: { project: ProjectRef }) {
             ? 'Workload and automation principals may hold reveal; a workload may also hold reveal-history while pinned to a non-current revision. Either can deliver secret plaintext.'
             : 'Every workload delivery is configuration and secret presence only; the grant API refuses both machine disclosure capabilities until this is on.'}
         </span>
-        <button
+        <Button
           id="machine-policy-toggle"
           type="button"
-          className="btn machine__policy-toggle"
+          className="machine__policy-toggle"
           onClick={() => setConfirming(!enabled)}
           disabled={write.isPending}
         >
           {enabled ? 'Withdraw the opt-in…' : 'Enable the opt-in…'}
-        </button>
+        </Button>
       </p>
       {confirming !== null ? (
         <MachineRevealDialog
@@ -1270,17 +1266,17 @@ function MachineRevealDialog({
         </p>
       ) : null}
       <div className="ceremony__actions">
-        <button type="button" className="btn" onClick={onClose} disabled={busy}>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           onClick={onConfirm}
           disabled={busy || (enable && !acknowledged)}
         >
           {enable ? 'Enable the opt-in' : 'Withdraw the opt-in'}
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -1430,17 +1426,16 @@ function ExpansionBody({
                   <span className="badge">bearer</span>
                   <ExpiryBadge credential={credential} now={now} />
                   <span className="cred__meta">{lastUsedLabel(credential)}</span>
-                  <button
-                    className="btn"
+                  <Button
                     type="button"
                     disabled={!ready}
                     onClick={() => onMint(true)}
                   >
                     {`Rotate ${account.name}`}
-                  </button>
-                  <button className="btn" type="button" onClick={() => onRevoke(credential)}>
+                  </Button>
+                  <Button type="button" onClick={() => onRevoke(credential)}>
                     {`Revoke ${credential.prefix_hint ?? credential.id}`}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>
@@ -1481,28 +1476,28 @@ function ExpansionBody({
             </p>
           )}
           <div className="machine__actions">
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               disabled={!ready}
               onClick={() => onMint(false)}
             >
               {`Mint credential for ${account.name}`}
-            </button>
-            <button className="btn" type="button" disabled={!ready} onClick={onBind}>
+            </Button>
+            <Button type="button" disabled={!ready} onClick={onBind}>
               {`Add federated binding to ${account.name}`}
-            </button>
-            <button className="btn" type="button" disabled={!ready} onClick={onGrant}>
+            </Button>
+            <Button type="button" disabled={!ready} onClick={onGrant}>
               {`Add environment grant to ${account.name}`}
-            </button>
-            <button
-              className="btn btn--danger"
+            </Button>
+            <Button
+              variant="danger"
               type="button"
               disabled={!canDelete}
               onClick={onDelete}
             >
               {`Delete ${account.name}`}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -1568,8 +1563,8 @@ function JourneyActionButton({
   onGrant: () => void;
 }) {
   return (
-    <button
-      className="btn journey__action"
+    <Button
+      className="journey__action"
       type="button"
       disabled={action !== 'enable-opt-in' && !ready}
       onClick={() => {
@@ -1583,7 +1578,7 @@ function JourneyActionButton({
       }}
     >
       {journeyActionLabel(action)}
-    </button>
+    </Button>
   );
 }
 
@@ -1647,17 +1642,16 @@ function BindingCard({
         </p>
       )}
       <div className="machine__actions">
-        <button
-          className="btn"
+        <Button
           type="button"
           disabled={!ready}
           onClick={() => onReplace(credential)}
         >
           {`Replace binding on ${account.name}`}
-        </button>
-        <button className="btn" type="button" onClick={() => onRevoke(credential)}>
+        </Button>
+        <Button type="button" onClick={() => onRevoke(credential)}>
           {`Revoke binding on ${account.name}`}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -1958,8 +1952,8 @@ export function MintDialog({
             </p>
           ) : null}
           <div className="ceremony__actions">
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               disabled={busy}
               onClick={() => void run()}
@@ -1969,10 +1963,10 @@ export function MintDialog({
                 : request.reach.length === 0
                   ? 'Mint credential'
                   : 'Use a passkey and mint'}
-            </button>
-            <button className="btn" type="button" onClick={dismiss} disabled={busy}>
+            </Button>
+            <Button type="button" onClick={dismiss} disabled={busy}>
               Cancel
-            </button>
+            </Button>
           </div>
         </>
       ) : (
@@ -2009,8 +2003,7 @@ export function MintDialog({
               credential and mint a fresh one.
             </span>
           </p>
-          <button
-            className="btn"
+          <Button
             type="button"
             onClick={async () => {
               const result = await writeClipboard(disclosed.result.value);
@@ -2025,7 +2018,7 @@ export function MintDialog({
             }}
           >
             Copy to clipboard
-          </button>
+          </Button>
           {disclosed.copyStatus === null ? null : (
             <p className="notice" role="status">
               <span className="alert__glyph" aria-hidden="true">
@@ -2055,9 +2048,9 @@ export function MintDialog({
             </p>
           ) : null}
           <div className="ceremony__actions">
-            <button className="btn btn--primary" type="button" onClick={dismiss}>
+            <Button variant="primary" type="button" onClick={dismiss}>
               Done
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -2294,16 +2287,15 @@ function BindingDialog({
       {replacing ? null : (
         <div className="machine__presets">
           {FEDERATION_PRESETS.map((entry) => (
-            <button
+            <Button
               key={entry.id}
-              className="btn"
               type="button"
               aria-pressed={preset.id === entry.id}
               onClick={() => choose(entry)}
             >
               {preset.id === entry.id ? <span aria-hidden="true">✓ </span> : null}
               {entry.label}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -2482,7 +2474,7 @@ function BindingDialog({
       </p>
 
       <div className="ceremony__actions">
-        <button className="btn btn--primary" type="button" disabled={busy} onClick={() => void submit()}>
+        <Button variant="primary" type="button" disabled={busy} onClick={() => void submit()}>
           {busy
             ? replacing
               ? 'Replacing…'
@@ -2490,10 +2482,10 @@ function BindingDialog({
             : replacing
               ? 'Replace this binding'
               : 'Bind this identity'}
-        </button>
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -2807,17 +2799,17 @@ function GrantBody({
       ) : null}
 
       <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           disabled={busy || !submittable || !values.isSuccess}
           onClick={() => void submit()}
         >
           {busy ? 'Granting…' : `Grant ${capability}`}
-        </button>
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </>
   );
@@ -2943,17 +2935,17 @@ function CreateAccountDialog({
       ) : null}
 
       <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           disabled={busy}
           onClick={() => void submit()}
         >
           {busy ? 'Creating…' : 'Create service account'}
-        </button>
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -3065,9 +3057,9 @@ function DeleteAccountDialog({
       />
 
       <div className="ceremony__actions">
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -3219,17 +3211,17 @@ function CreateProviderDialog({
       ) : null}
 
       <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           disabled={busy}
           onClick={() => void submit()}
         >
           {busy ? 'Configuring…' : 'Configure provider'}
-        </button>
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -3330,17 +3322,17 @@ function SetCredentialDialog({
       ) : null}
 
       <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           disabled={busy}
           onClick={() => void submit()}
         >
           {busy ? 'Saving…' : 'Save credential'}
-        </button>
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -3421,17 +3413,17 @@ function RevokeCredentialDialog({
       ) : null}
 
       <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           disabled={busy}
           onClick={() => void submit()}
         >
           {busy ? 'Revoking…' : 'Revoke credential'}
-        </button>
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -3568,9 +3560,9 @@ function DeleteProviderDialog({
       />
 
       <div className="ceremony__actions">
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );
@@ -3805,17 +3797,17 @@ function LeaseMintDialog({
           ) : null}
 
           <div className="ceremony__actions">
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               disabled={busy}
               onClick={() => void run()}
             >
               {busy ? 'Minting…' : 'Use a passkey and mint'}
-            </button>
-            <button className="btn" type="button" onClick={dismiss} disabled={busy}>
+            </Button>
+            <Button type="button" onClick={dismiss} disabled={busy}>
               Cancel
-            </button>
+            </Button>
           </div>
         </>
       ) : (
@@ -3853,8 +3845,7 @@ function LeaseMintDialog({
               lease and mint a fresh one.
             </span>
           </p>
-          <button
-            className="btn"
+          <Button
             type="button"
             onClick={async () => {
               const result = await writeClipboard(disclosed.result.password);
@@ -3869,7 +3860,7 @@ function LeaseMintDialog({
             }}
           >
             Copy password
-          </button>
+          </Button>
           {disclosed.copyStatus === null ? null : (
             <p className="notice" role="status">
               <span className="alert__glyph" aria-hidden="true">
@@ -3901,9 +3892,9 @@ function LeaseMintDialog({
             </p>
           ) : null}
           <div className="ceremony__actions">
-            <button className="btn btn--primary" type="button" onClick={dismiss}>
+            <Button variant="primary" type="button" onClick={dismiss}>
               Done
-            </button>
+            </Button>
           </div>
         </>
       )}
@@ -4035,8 +4026,8 @@ function LeaseActionDialog({
       ) : null}
 
       <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           type="button"
           disabled={busy}
           onClick={() => void submit()}
@@ -4048,10 +4039,10 @@ function LeaseActionDialog({
               : action.verb === 'revoke'
                 ? 'Queue revocation'
                 : 'Queue reconcile'}
-        </button>
-        <button className="btn" type="button" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Cancel
-        </button>
+        </Button>
       </div>
     </dialog>
   );

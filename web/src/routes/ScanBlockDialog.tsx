@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { ApiError, type RefusalFinding } from '../api/client.ts';
+import { Button } from '../ui/Button.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 /**
@@ -73,14 +74,14 @@ export function ScanBlockDialog({
           <h2>{title}</h2>
           <p>{intro}</p>
         </div>
-        <button
+        <Button
           type="button"
-          className="btn matrix-editor__close"
+          className="matrix-editor__close"
           aria-label="Close scanning block"
           onClick={onClose}
         >
           ✕
-        </button>
+        </Button>
       </div>
 
       <ul className="scan-block__findings">
@@ -101,13 +102,13 @@ export function ScanBlockDialog({
 
       <div className="matrix-editor__actions">
         {overridable ? (
-          <button type="button" className="btn btn--primary" disabled={busy} onClick={override}>
+          <Button type="button" variant="primary" disabled={busy} onClick={override}>
             {busy ? 'Acknowledging…' : 'Acknowledge and continue'}
-          </button>
+          </Button>
         ) : null}
-        <button type="button" className="btn" disabled={busy} onClick={onClose}>
+        <Button type="button" disabled={busy} onClick={onClose}>
           {overridable ? 'Cancel' : 'Close'}
-        </button>
+        </Button>
       </div>
 
       {overridable ? (

@@ -1,3 +1,5 @@
+import { Button } from '../ui/Button.tsx';
+
 export function ProviderDiscoveryAlert({ onRetry }: { onRetry: () => void }) {
   return (
     <p className="alert" role="alert">
@@ -5,9 +7,9 @@ export function ProviderDiscoveryAlert({ onRetry }: { onRetry: () => void }) {
         !
       </span>
       <span>Identity provider options could not be loaded.</span>
-      <button className="btn" type="button" onClick={onRetry}>
+      <Button type="button" onClick={onRetry}>
         Retry identity providers
-      </button>
+      </Button>
     </p>
   );
 }

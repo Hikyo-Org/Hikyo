@@ -10,6 +10,7 @@ import {
   useStepUpPasskey,
   useStepUpTotp,
 } from '../api/stepup.ts';
+import { Button } from '../ui/Button.tsx';
 
 /**
  * StepUpBanner is the shell's second-factor affordance.
@@ -81,20 +82,19 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
               onChange={(event) => setCode(event.target.value)}
               disabled={busy}
             />
-            <button className="btn btn--primary" type="submit" disabled={busy || code.trim() === ''}>
+            <Button variant="primary" type="submit" disabled={busy || code.trim() === ''}>
               {stepUpTotp.isPending ? 'Checking…' : 'Present code'}
-            </button>
+            </Button>
           </form>
         ) : null}
         {hasPasskey ? (
-          <button
-            className="btn"
+          <Button
             type="button"
             onClick={() => stepUpPasskey.mutate()}
             disabled={busy}
           >
             {stepUpPasskey.isPending ? 'Waiting for the passkey…' : 'Use a passkey'}
-          </button>
+          </Button>
         ) : null}
       </div>
       {failure !== null ? (

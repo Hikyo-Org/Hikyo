@@ -13,6 +13,7 @@ import {
   type SamlAction,
   type SamlProviderInputDraft,
 } from '../api/samlProviders.ts';
+import { Button } from '../ui/Button.tsx';
 import { Alert, Done, Panel, TypedNameConfirm } from './Sections.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
@@ -99,9 +100,9 @@ export function SamlProvidersPanel() {
         />
       ) : (
         <div className="instance-create-row">
-          <button
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             aria-label="Configure a new SAML provider"
             onClick={() => {
               clear();
@@ -109,7 +110,7 @@ export function SamlProvidersPanel() {
             }}
           >
             + configure SAML provider
-          </button>
+          </Button>
           <code className="instance-cli">$ hikyo provider saml add</code>
         </div>
       )}
@@ -177,9 +178,9 @@ function ProviderRow({
         {provider.enabled ? 'enabled' : 'disabled'}
       </span>
       <div className="panel__actions">
-        <button type="button" className="btn" onClick={() => toggle('policy')}>Edit policy</button>
-        <button type="button" className="btn" onClick={() => toggle('refresh')}>Refresh metadata</button>
-        <button type="button" className="btn btn--danger" onClick={() => toggle('remove')}>Remove</button>
+        <Button type="button" onClick={() => toggle('policy')}>Edit policy</Button>
+        <Button type="button" onClick={() => toggle('refresh')}>Refresh metadata</Button>
+        <Button type="button" variant="danger" onClick={() => toggle('remove')}>Remove</Button>
       </div>
 
       {mode === 'policy' ? (
@@ -313,8 +314,8 @@ function ProviderPolicyForm({
         <label htmlFor={`${nameId}-enabled`}>Enabled (advertises for sign-in)</label>
       </div>
       <div className="panel__actions">
-        <button type="button" className="btn" onClick={onCancel}>Cancel</button>
-        <button type="button" className="btn btn--primary" disabled={patch.isPending} onClick={submit}>Save policy</button>
+        <Button type="button" onClick={onCancel}>Cancel</Button>
+        <Button type="button" variant="primary" disabled={patch.isPending} onClick={submit}>Save policy</Button>
       </div>
     </div>
   );
@@ -455,15 +456,15 @@ function RefreshMetadataForm({
         {/* Disabled while a request is in flight: cancel resets the mutation,
             and resetting a still-pending request would leave it to settle later
             with the document in cache. */}
-        <button type="button" className="btn" disabled={refresh.isPending} onClick={cancel}>Cancel</button>
+        <Button type="button" disabled={refresh.isPending} onClick={cancel}>Cancel</Button>
         {pending ? (
-          <button type="button" className="btn btn--danger" disabled={refresh.isPending} onClick={confirm}>
+          <Button type="button" variant="danger" disabled={refresh.isPending} onClick={confirm}>
             Confirm and apply the trust change
-          </button>
+          </Button>
         ) : (
-          <button type="button" className="btn btn--primary" disabled={refresh.isPending} onClick={preview}>
+          <Button type="button" variant="primary" disabled={refresh.isPending} onClick={preview}>
             {fileBacked ? 'Preview metadata change' : 'Fetch and preview metadata'}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -633,15 +634,15 @@ function ProviderCreateForm({
       {pending ? <MetadataDiff diff={pending.diff.diff} /> : null}
       <div className="panel__actions">
         {/* Disabled while a request is in flight: see RefreshMetadataForm. */}
-        <button type="button" className="btn" disabled={put.isPending} onClick={cancel}>Cancel</button>
+        <Button type="button" disabled={put.isPending} onClick={cancel}>Cancel</Button>
         {pending ? (
-          <button type="button" className="btn btn--danger" disabled={put.isPending} onClick={confirm}>
+          <Button type="button" variant="danger" disabled={put.isPending} onClick={confirm}>
             Confirm trust and configure provider
-          </button>
+          </Button>
         ) : (
-          <button type="button" className="btn btn--primary" disabled={put.isPending} onClick={preview}>
+          <Button type="button" variant="primary" disabled={put.isPending} onClick={preview}>
             Preview and configure
-          </button>
+          </Button>
         )}
       </div>
     </div>
