@@ -48,7 +48,7 @@ export const AuthenticatorCode: Story = {
   parameters: { app: { auth: true, responses: [totpConfirmed, noPasskeys] } },
   play: async ({ canvas }) => {
     await expect(
-      await canvas.findByRole('heading', { name: /this session is password-only/i }),
+      await canvas.findByRole('heading', { name: /this session has no second factor/i }),
     ).toBeVisible();
     await expect(canvas.getByLabelText(/authenticator code/i)).toBeVisible();
     await expect(canvas.getByRole('button', { name: /present code/i })).toBeDisabled();

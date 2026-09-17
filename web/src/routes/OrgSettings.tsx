@@ -73,8 +73,8 @@ export function OrgSettings() {
     <div className="page page--chrome">
       <h1>Organisation settings · {current?.name ?? 'organisation'}</h1>
       <p className="page__lede">
-        Organisation identity and lifecycle. Access lives on its own surface; the danger zone is
-        deliberately last.
+        Rename this organisation, set its retention policy, or delete it; grants are edited on
+        the members surface.
       </p>
 
       <JumpIndex

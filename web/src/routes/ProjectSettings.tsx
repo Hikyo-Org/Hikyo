@@ -98,8 +98,8 @@ export function ProjectSettings() {
     <div className="page page--chrome">
       <h1>Project settings · {current?.name ?? 'project'}</h1>
       <p className="page__lede">
-        Project identity and metadata. Access management is its own surface: one entry point, no
-        second permission editor here.
+        Rename this project, edit its metadata, and manage its environments; grants are edited
+        on the members surface.
       </p>
 
       <JumpIndex

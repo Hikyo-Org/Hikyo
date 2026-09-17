@@ -60,7 +60,7 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
     <section className="stepup" aria-labelledby="stepup-title">
       <div className="stepup__text">
         <h2 className="stepup__title" id="stepup-title">
-          This session is password-only
+          This session has no second factor
         </h2>
         <p className="stepup__lede">
           Instance settings, grants and secret disclosure need a second factor presented in
