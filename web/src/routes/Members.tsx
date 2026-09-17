@@ -430,7 +430,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                       <Badge
                         mono
                         className="member-scope"
-                        tone={row.level === 'org' ? 'ok' : protectedScope ? 'danger' : 'neutral'}
+                        tone={protectedScope ? 'danger' : 'neutral'}
                         aria-label={protectedScope ? `${visibleScopeLabel}, protected` : undefined}
                       >
                         {visibleScopeLabel}

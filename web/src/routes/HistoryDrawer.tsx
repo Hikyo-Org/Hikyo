@@ -111,8 +111,7 @@ const zPinComparisonValues = zExportedValues.superRefine((values, context) => {
  *    restore and pin with the stamped policy named. Nothing is reconstructed.
  *  - **Secrets are write-presence only.** The changed-key list says added /
  *    edited / removed and marks the key as secret. No value, no length, no
- *    digest, no
- *    comparison status reaches this surface for a secret, ever.
+ *    digest, no comparison status reaches this surface for a secret, ever.
  *  - **Restore is not a privileged path.** It stages ordinary drafts; the
  *    matrix's own draft dots appear and the ordinary publish sheet commits
  *    them, carrying the preview token that binds them.

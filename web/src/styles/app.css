@@ -2185,7 +2185,6 @@ fieldset.field > legend {
   transform: rotate(-90deg);
 }
 
-
 .matrix__group-summary {
   min-width: 0;
   overflow: hidden;
@@ -2855,7 +2854,6 @@ fieldset.field > legend {
   gap: var(--space-3);
   flex-wrap: wrap;
 }
-
 
 .values__bar {
   display: flex;
@@ -3811,7 +3809,6 @@ label.chk:has(input:disabled) {
   margin-left: auto;
 }
 
-
 .history__protected {
   padding: 2px 7px;
   border: 1px solid var(--danger);
@@ -4616,7 +4613,6 @@ label.chk:has(input:disabled) {
   width: 60px;
 }
 
-
 .environment-policy-control {
   display: contents;
 }
@@ -4680,7 +4676,6 @@ label.chk:has(input:disabled) {
   color: var(--tx);
   text-decoration: none;
 }
-
 
 .page--chrome .panel--tight {
   gap: var(--space-2);
@@ -5447,7 +5442,6 @@ label.chk:has(input:disabled) {
 .key-detail__presence-impact-note {
   margin: 0;
 }
-
 
 /* #493 folder & key-group lifecycle dialog. ui/Dialog is the shell. */
 .catalogue-manage__section {

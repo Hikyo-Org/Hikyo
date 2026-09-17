@@ -193,7 +193,7 @@ export function MatrixPublishSheet({
                   {bucket.entries.map((entry) => (
                     <li key={entry.versionId} className="mono">
                       <span>
-                        {entry.classification === 'secret' ? <><Glyph name="lock" /> </> : null}
+                        {entry.classification === 'secret' ? <><Glyph name="lock" label="secret" /> </> : null}
                         {entry.name}
                       </span>
                       <span>{publishPreview(entry)}</span>

@@ -1701,10 +1701,9 @@ function MatrixCell({
  *
  * The matrix is dense on purpose, and density is bought with abbreviation: `·`,
  * `••••••••`, the delta and the cross are all shorter than the sentences they
- * replace. That
- * trade is only honest if the expansion is one gesture away on the surface
- * itself, a reader who has to leave to find out what a glyph means has been
- * handed a puzzle, not a table.
+ * replace. That trade is only honest if the expansion is one gesture away on
+ * the surface itself, a reader who has to leave to find out what a glyph means
+ * has been handed a puzzle, not a table.
  *
  * A `<details>`, like the environment chooser beside it: the platform already
  * owns the disclosure, the escape key and the accessible name.
