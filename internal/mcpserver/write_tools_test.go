@@ -1,11 +1,9 @@
 package mcpserver
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -318,10 +316,13 @@ func TestReleaseFailureKeepsCommittedStageResult(t *testing.T) {
 	if err := RegisterWriteTools(registry, WriteServices{Admission: admission, Staging: values, Validation: values}); err != nil {
 		t.Fatal(err)
 	}
-	var logged bytes.Buffer
+	var notified []string
 	h, err := New(Options{
 		Registry: registry, ExternalOrigin: "https://hikyo.example.com", Version: "v-test",
-		CursorSealer: testCursorSealer, Log: slog.New(slog.NewTextHandler(&logged, nil)),
+		CursorSealer: testCursorSealer,
+		OnReleaseFailure: func(operation string, err error) {
+			notified = append(notified, operation+": "+err.Error())
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -330,11 +331,8 @@ func TestReleaseFailureKeepsCommittedStageResult(t *testing.T) {
 	if out["version_id"] != "pcv_1" || values.setCalls != 1 {
 		t.Fatalf("committed stage not reported: out=%v setCalls=%d", out, values.setCalls)
 	}
-	if !strings.Contains(logged.String(), "release failed") || !strings.Contains(logged.String(), "release boom") || !strings.Contains(logged.String(), "value.stage") {
-		t.Fatalf("release failure not logged: %q", logged.String())
-	}
-	if strings.Contains(logged.String(), "postgres://db") || strings.Contains(logged.String(), "Bearer") {
-		t.Fatalf("log carries request material: %q", logged.String())
+	if len(notified) != 1 || notified[0] != "value.stage: release boom" {
+		t.Fatalf("release failure not reported once with its operation: %v", notified)
 	}
 	// A failing call still fails, release error or not.
 	values.stageErr = domain.ErrUnauthorized
