@@ -151,8 +151,8 @@ func TestWriteRegistryRowsArePinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]struct{ serviceOp, authzOp string }{
-		ToolStageChange:    {"service.Values.Set", "value.stage"},
-		ToolValidateChange: {"service.Values.Validate", "value.validate"},
+		ToolStageChange:    {"service.Values.Set/Unset", "value.stage"},
+		ToolValidateChange: {"service.Values.ValidateSet/ValidateUnset", "value.validate"},
 	}
 	rows := registry.Rows()
 	if len(rows) != len(want) {
@@ -246,7 +246,6 @@ func TestWriteToolArgumentsAreClosedAndBounded(t *testing.T) {
 		"unset with value":  `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"unset","value":"x"}`,
 		"missing key name":  `{"org_id":"o","project_id":"p","environment_id":"e","operation":"set","value":"x"}`,
 		"unknown field":     `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":"x","publish":true}`,
-		"oversized value":   `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":"` + strings.Repeat("v", 70000) + `"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			values.lastOp = ""
@@ -256,6 +255,29 @@ func TestWriteToolArgumentsAreClosedAndBounded(t *testing.T) {
 			}
 			if values.lastOp != "" {
 				t.Fatalf("service reached with %s", name)
+			}
+		})
+	}
+}
+
+// TestSchemaRefusalsNeverEchoTheProposedValue pins the reason `value` carries
+// no maxLength: the SDK's schema validator quotes the offending value in its
+// error, so every schema refusal of a stage call must be produced by a field
+// other than the proposal, and the proposal must never appear in the response.
+func TestSchemaRefusalsNeverEchoTheProposedValue(t *testing.T) {
+	values := &fakeValues{}
+	h := writeHandler(t, values, fakeAdmission{})
+	canary := "CANARY-" + strings.Repeat("v", 70000)
+	for name, args := range map[string]string{
+		"oversized value accepted by the schema": `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":"` + canary + `"}`,
+		"unknown operation":                      `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"publish","value":"` + canary + `"}`,
+		"unknown field":                          `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":"` + canary + `","publish":true}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, tool := range WriteToolNames() {
+				if body := bodyString(t, h, tool, args); strings.Contains(body, "CANARY-") {
+					t.Fatalf("%s echoed the proposed value: %.200s", tool, body)
+				}
 			}
 		})
 	}

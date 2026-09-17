@@ -1,6 +1,7 @@
 package isolation
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -190,6 +191,49 @@ func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
 			t.Fatalf("denied identity owns %d drafts", n)
 		}
 
+		// Cancellation (ADR § 6): a tools/call whose request context is cancelled
+		// once the stage reaches the service commits nothing. The decorator
+		// cancels the request context at the moment the store work would begin,
+		// so the real transaction path runs under a cancelled context and no
+		// partial draft or value.staged row survives.
+		cancelHandler := func() (http.Handler, *cancellingStager) {
+			stager := &cancellingStager{inner: values}
+			registry := mcpserver.NewRegistry()
+			if err := mcpserver.RegisterProductionTools(registry, readServices); err != nil {
+				t.Fatal(err)
+			}
+			if err := mcpserver.RegisterWriteTools(registry, mcpserver.WriteServices{
+				Admission: &service.MCPAdmission{DB: db}, Staging: stager, Validation: values,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			h, err := mcpserver.New(mcpserver.Options{Registry: registry, ExternalOrigin: "https://hikyo.example.com", Version: "mcp-write-e2e", CursorSealer: sealer})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return h, stager
+		}
+		cancelling, stager := cancelHandler()
+		cancelCtx, cancel := context.WithCancel(ctx)
+		stager.cancel = cancel
+		beforeStaged := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'value.staged'`)
+		draftsBefore := editorDrafts()
+		cancelArgs := `{"org_id":"org_a","project_id":"prj_a1","environment_id":"env_a1","key_name":"PORT","operation":"set","value":"8080"}`
+		cancelRec := mcpRequestWithContext(t, cancelCtx, cancelling, editor.token, "tools/call", mcpserver.ToolStageChange, cancelArgs, mcpserver.ProtocolVersion)
+		cancel()
+		if !stager.reached {
+			t.Fatal("cancellation probe never reached the staging service")
+		}
+		if strings.Contains(cancelRec.Body.String(), `"version_id"`) {
+			t.Fatalf("cancelled stage reported success: %s", cancelRec.Body.String())
+		}
+		if n := editorDrafts(); n != draftsBefore {
+			t.Fatalf("cancelled stage left a draft: %d, want %d", n, draftsBefore)
+		}
+		if n := queryInt(t, db, `SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'value.staged'`); n != beforeStaged {
+			t.Fatalf("cancelled stage recorded value.staged: %d, want %d", n, beforeStaged)
+		}
+
 		for _, table := range []string{"audit_tenant_events", "audit_instance_events"} {
 			if leaked := queryInt(t, db, `SELECT COUNT(*) FROM `+table+` WHERE CAST(payload AS TEXT) LIKE '%`+mcpCanaryPlaintext+`%'`); leaked != 0 {
 				t.Fatalf("secret canary leaked into %s: %d rows", table, leaked)
@@ -199,4 +243,28 @@ func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
 		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "https://hikyo.example.com/mcp", nil))
 		assertMCPNoCanary(t, "transport", rec.Body.Bytes())
 	})
+}
+
+// cancellingStager cancels the request context the moment the stage reaches
+// the service, then delegates, so the real transaction runs cancelled.
+type cancellingStager struct {
+	inner   mcpserver.StagingService
+	cancel  context.CancelFunc
+	reached bool
+}
+
+func (c *cancellingStager) Set(ctx context.Context, actor service.Actor, scope domain.Scope, keyName, value string, acks []string) (service.StagedChange, error) {
+	c.reached = true
+	if c.cancel != nil {
+		c.cancel()
+	}
+	return c.inner.Set(ctx, actor, scope, keyName, value, acks)
+}
+
+func (c *cancellingStager) Unset(ctx context.Context, actor service.Actor, scope domain.Scope, keyName string) (service.StagedChange, error) {
+	c.reached = true
+	if c.cancel != nil {
+		c.cancel()
+	}
+	return c.inner.Unset(ctx, actor, scope, keyName)
 }

@@ -21,8 +21,9 @@ import (
 const surfaceValidate = "validate"
 
 // ValidatedChange is the verdict on one proposed change (mcp-write ADR § 1).
-// It carries what publish would refuse, in the same safe wording publish uses,
-// and never the proposed material.
+// It carries what publish would refuse, in the same safe wording publish uses.
+// A schema failure on a config key may quote the offending fragment, as it
+// does over REST; a secret key's engine text never carries instance data.
 type ValidatedChange struct {
 	KeyID          string
 	Name           string

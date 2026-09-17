@@ -193,6 +193,16 @@ scrivener's corrections in the sense of [oss-mechanics.md](./oss-mechanics.md)
    classification is added (§ Protected environments, Alternatives). "Entry"
    in the threat-model banner names the phase-1 path class: no dedicated
    secret-input path, reveal, or publish is added.
+4. **Wire-safe refusals cross the transport.** A service refusal that
+   declares its own wire-safe detail (the `required_in`/`forbidden_in` vetoes,
+   the schema verdict, the pending cap) crosses `tools/call` verbatim, as it
+   does over REST; every other failure still collapses to the one safe error,
+   so an unauthorized target stays indistinguishable from a nonexistent one.
+   This widens phase-1's closed error policy for the read tools too, though no
+   read path returns such a detail today. Relatedly, § 3's "never the
+   proposed material" holds for the audit trail (counts and verdict only); the
+   `problems` text in a validate response may quote the caller's own config
+   proposal, exactly as the REST publish refusal does.
 
 ## Alternatives considered
 

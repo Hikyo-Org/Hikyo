@@ -276,7 +276,7 @@ func toolSpec(name, title, description, serviceOperation, authorizationOperation
 	}
 	return ToolSpec{
 		Name: name, Title: title, Description: description,
-		ServiceOperation: serviceOperation, Contract: contract,
+		ServiceOperation: serviceOperation, Contract: contract, Class: ToolClassRead,
 		AuditDisposition: AuditDispositionNone, SecretPolicy: SecretPolicyNoSecretMaterial,
 	}, nil
 }

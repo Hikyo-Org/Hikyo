@@ -138,6 +138,27 @@ Tests: `mcpserver/registry_test.go` (gate matrix), `write_tools_test.go`
 `isolation/mcp_write_e2e_test.go` (real datastore, both engines, canary,
 audit origin, denial), `config_test.go` (flag parse and refusal).
 
+## Same-provider review (Standards + Spec, 2026-09-17)
+
+Two parallel Claude sub-agents (code-review skill), explicitly NOT the
+cross-provider gate. Both returned CHANGES; every finding folded in:
+
+- Schema `maxLength` on `value` echoed the oversized proposal in the SDK's
+  validation error (reproduced with a canary). Removed; the service byte
+  budget bounds it and `TestSchemaRefusalsNeverEchoTheProposedValue` pins it.
+- Cancellation now proven end to end: `cancellingStager` cancels the request
+  context as the stage reaches the service; no draft and no `value.staged`
+  row survive (`TestMCPWriteSurfaceEndToEnd`).
+- Registry rows pin the real service pair (`Set/Unset`,
+  `ValidateSet/ValidateUnset`); read tools declare `ToolClassRead` explicitly;
+  shared `runChange` helper; `service.MaxRequestFindings` exported and reused;
+  SafeDetail contract documented; serverInfo no longer says read-only.
+- ADR § Corrections gained item 4 (wire-safe refusals cross the transport;
+  § 3 "never the proposed material" holds for the trail, not the response).
+- Fallout fixed: `MaxSelfConfigSeedInputBytes` raised to 32 MiB (the owner
+  catalogue grew by one key); `TestAuditCore` now exercises the
+  `value.change_validated` emitter.
+
 ## Not done
 
 Cross-provider review of the ADR text (still the operative gate). Governance PR

@@ -49,6 +49,13 @@ func mcpCall(t *testing.T, handler http.Handler, token, tool, arguments string) 
 
 func mcpRequest(t *testing.T, handler http.Handler, token, method, tool, arguments, version string) *httptest.ResponseRecorder {
 	t.Helper()
+	return mcpRequestWithContext(t, context.Background(), handler, token, method, tool, arguments, version)
+}
+
+// mcpRequestWithContext is mcpRequest under a caller-owned request context, so
+// a test can cancel a tools/call in flight.
+func mcpRequestWithContext(t *testing.T, ctx context.Context, handler http.Handler, token, method, tool, arguments, version string) *httptest.ResponseRecorder {
+	t.Helper()
 	meta := `"_meta":{"io.modelcontextprotocol/protocolVersion":"` + mcpserver.ProtocolVersion + `","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"e2e","version":"1"}}`
 	if version != mcpserver.ProtocolVersion {
 		meta = `"_meta":{"io.modelcontextprotocol/protocolVersion":"` + version + `","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"e2e","version":"1"}}`
@@ -58,7 +65,7 @@ func mcpRequest(t *testing.T, handler http.Handler, token, method, tool, argumen
 		params = `"name":"` + tool + `","arguments":` + arguments + `,` + meta
 	}
 	body := `{"jsonrpc":"2.0","id":1,"method":"` + method + `","params":{` + params + `}}`
-	req := httptest.NewRequest(http.MethodPost, "https://hikyo.example.com"+mcpserver.Path, bytes.NewReader([]byte(body)))
+	req := httptest.NewRequest(http.MethodPost, "https://hikyo.example.com"+mcpserver.Path, bytes.NewReader([]byte(body))).WithContext(ctx)
 	req.Host = "hikyo.example.com"
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")

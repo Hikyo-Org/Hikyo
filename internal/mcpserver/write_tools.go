@@ -11,7 +11,6 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/operation"
-	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -27,10 +26,6 @@ const (
 	ToolStageChange    = "hikyo_stage_change"
 	ToolValidateChange = "hikyo_validate_change"
 )
-
-// maxAcknowledgements bounds the keep-as-config tokens one stage call may
-// present; it mirrors the service's per-request finding cap.
-const maxAcknowledgements = 100
 
 type writeToolRegistration struct {
 	name     string
@@ -81,9 +76,12 @@ type WriteServices struct {
 	Validation ValidationService
 }
 
-// Write tool input schemas. `operation` is a closed enum; `value` is bounded by
-// the schema engine's value budget so an oversized proposal is refused at the
-// schema, and `acknowledgements` by the service's finding cap.
+// Write tool input schemas. `operation` is a closed enum and `acknowledgements`
+// carries the service's finding cap. `value` is deliberately unbounded at the
+// schema: the SDK's schema validator echoes the offending value in its error,
+// so a maxLength here would put an oversized secret proposal on the wire. The
+// request-size bound and the service's byte budget bound it instead, and a
+// service refusal collapses to the safe error.
 type (
 	changeOperationInput  string
 	valueInput            string
@@ -113,11 +111,9 @@ func writeInputSchemaOptions() *jsonschema.ForOptions {
 	options.TypeSchemas[reflect.TypeFor[changeOperationInput]()] = &jsonschema.Schema{
 		Type: "string", Enum: []any{string(changeOperationSet), string(changeOperationUnset)},
 	}
-	options.TypeSchemas[reflect.TypeFor[valueInput]()] = &jsonschema.Schema{
-		Type: "string", MaxLength: jsonschema.Ptr(schema.MaxValueBytes),
-	}
+	options.TypeSchemas[reflect.TypeFor[valueInput]()] = &jsonschema.Schema{Type: "string"}
 	options.TypeSchemas[reflect.TypeFor[acknowledgementsInput]()] = &jsonschema.Schema{
-		Type: "array", MaxItems: jsonschema.Ptr(maxAcknowledgements),
+		Type: "array", MaxItems: jsonschema.Ptr(service.MaxRequestFindings),
 		Items: &jsonschema.Schema{Type: "string", MaxLength: jsonschema.Ptr(CursorMaxBytes)},
 	}
 	return options
@@ -208,6 +204,33 @@ func (in changeInput) validate() (domain.Scope, error) {
 	return domain.Scope{Org: domain.OrgID(in.OrgID), Project: domain.ProjectID(in.ProjectID), Env: domain.EnvID(in.EnvironmentID)}, nil
 }
 
+// runChange is the shared handler shape: validate the closed arguments, admit
+// under the mapped operation, then dispatch set or unset to the service.
+func runChange[Out any](ctx context.Context, bearer Bearer, admission AdmissionService, in changeInput, op authz.Operation,
+	set func(context.Context, service.Actor, domain.Scope) (Out, error),
+	unset func(context.Context, service.Actor, domain.Scope) (Out, error)) (Out, error) {
+	var zero Out
+	scope, err := in.validate()
+	if err != nil {
+		return zero, err
+	}
+	actor := service.Bearer(bearer.raw())
+	var out Out
+	err = withAdmission(ctx, admission, actor, op, scope, func() error {
+		var err error
+		if in.Operation == changeOperationSet {
+			out, err = set(ctx, actor, scope)
+		} else {
+			out, err = unset(ctx, actor, scope)
+		}
+		return err
+	})
+	if err != nil {
+		return zero, err
+	}
+	return out, nil
+}
+
 func mapFindings(findings []service.Finding) []findingElement {
 	out := make([]findingElement, 0, len(findings))
 	for _, f := range findings {
@@ -219,26 +242,18 @@ func mapFindings(findings []service.Finding) []findingElement {
 func registerStageChange(registry *Registry, services WriteServices) error {
 	spec, err := writeToolSpec(ToolStageChange, "Stage a change",
 		"Mutating. Requires edit@environment for explicit org_id/project_id/environment_id. Stages one set or unset of a declared key as the caller's own pending draft and returns its version id and any secret-scanner findings. Publishes nothing and delivers nothing: the draft is inert until a separate human publish. Requires no user interaction.",
-		"service.Values.Set", "value.stage")
+		"service.Values.Set/Unset", "value.stage")
 	if err != nil {
 		return err
 	}
 	return registerWrite(registry, spec, func(ctx context.Context, bearer Bearer, in stageInput) (stageOutput, error) {
-		scope, err := in.validate()
-		if err != nil {
-			return stageOutput{}, err
-		}
-		actor := service.Bearer(bearer.raw())
-		var staged service.StagedChange
-		err = withAdmission(ctx, services.Admission, actor, authz.OpValueStage, scope, func() error {
-			var err error
-			if in.Operation == changeOperationSet {
-				staged, err = services.Staging.Set(ctx, actor, scope, in.KeyName, string(in.Value), in.Acknowledgements)
-			} else {
-				staged, err = services.Staging.Unset(ctx, actor, scope, in.KeyName)
-			}
-			return err
-		})
+		staged, err := runChange(ctx, bearer, services.Admission, in.changeInput, authz.OpValueStage,
+			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.StagedChange, error) {
+				return services.Staging.Set(ctx, actor, scope, in.KeyName, string(in.Value), in.Acknowledgements)
+			},
+			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.StagedChange, error) {
+				return services.Staging.Unset(ctx, actor, scope, in.KeyName)
+			})
 		if err != nil {
 			return stageOutput{}, err
 		}
@@ -255,26 +270,18 @@ func registerStageChange(registry *Registry, services WriteServices) error {
 func registerValidateChange(registry *Registry, services WriteServices) error {
 	spec, err := writeToolSpec(ToolValidateChange, "Validate a change",
 		"Audited, non-mutating. Requires edit@environment for explicit org_id/project_id/environment_id. Evaluates a proposed set or unset of a declared key against the current schema, presence rules, and secret scanner and reports what publish would refuse. Stages nothing, publishes nothing, and requires no user interaction.",
-		"service.Values.Validate", "value.validate")
+		"service.Values.ValidateSet/ValidateUnset", "value.validate")
 	if err != nil {
 		return err
 	}
 	return registerWrite(registry, spec, func(ctx context.Context, bearer Bearer, in changeInput) (validateOutput, error) {
-		scope, err := in.validate()
-		if err != nil {
-			return validateOutput{}, err
-		}
-		actor := service.Bearer(bearer.raw())
-		var verdict service.ValidatedChange
-		err = withAdmission(ctx, services.Admission, actor, authz.OpValueValidate, scope, func() error {
-			var err error
-			if in.Operation == changeOperationSet {
-				verdict, err = services.Validation.ValidateSet(ctx, actor, scope, in.KeyName, string(in.Value))
-			} else {
-				verdict, err = services.Validation.ValidateUnset(ctx, actor, scope, in.KeyName)
-			}
-			return err
-		})
+		verdict, err := runChange(ctx, bearer, services.Admission, in, authz.OpValueValidate,
+			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.ValidatedChange, error) {
+				return services.Validation.ValidateSet(ctx, actor, scope, in.KeyName, string(in.Value))
+			},
+			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.ValidatedChange, error) {
+				return services.Validation.ValidateUnset(ctx, actor, scope, in.KeyName)
+			})
 		if err != nil {
 			return validateOutput{}, err
 		}
