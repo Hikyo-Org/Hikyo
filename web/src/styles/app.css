@@ -2350,57 +2350,11 @@ a:is(.badge, .chip, .settings-tag) {
   padding: 20px;
 }
 
-.matrix-editor {
-  width: min(var(--width-dialog-wide), calc(100% - var(--space-6)));
-  max-height: min(82vh, 760px);
-  margin: auto;
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-container);
-  background: var(--bg-panel);
-  color: var(--tx);
-  overflow: auto;
-}
-
-.matrix-editor form {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.matrix-editor__head,
-.matrix-editor__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.matrix-editor__head {
-  justify-content: space-between;
-}
-
-.matrix-editor__head h2,
-.matrix-editor__head p,
 .matrix-editor__hint,
 .matrix-editor__copy p {
   margin: 0;
-}
-
-.matrix-editor__head p,
-.matrix-editor__hint,
-.matrix-editor__copy p {
   color: var(--tx-dim);
   font-size: var(--fs-sm);
-}
-
-.matrix-editor__close {
-  width: var(--control);
-  padding: 0;
-  min-width: var(--control);
-  height: var(--control);
-  min-height: var(--control);
-  line-height: normal;
 }
 
 .matrix-editor__provenance {
@@ -2536,8 +2490,8 @@ a:is(.badge, .chip, .settings-tag) {
   border-color: var(--danger);
 }
 
-/* Declare-key modal (env-matrix 31). Field pairs stack tight; the modal itself
-   reuses .matrix-editor for shell, backdrop, actions, and copy fieldsets. */
+/* Declare-key modal (env-matrix 31). Field pairs stack tight; ui/Dialog is the
+   shell and the copy fieldsets are the rules below. */
 .matrix-key-create__field {
   display: flex;
   flex-direction: column;
@@ -2671,15 +2625,8 @@ a:is(.badge, .chip, .settings-tag) {
   font-size: var(--fs-xs);
 }
 
-/* Surface-1 secret-scanning warn dialog (#74). Reuses the matrix-editor shell;
-   these rules only lay out the finding list, which has no form to inherit the
-   editor's flex gap from. */
-.scan-warn {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
+/* Surface-1 secret-scanning warn dialog (#74). ui/Dialog lays the body out;
+   these rules only lay out the finding list. */
 .scan-warn__findings {
   display: flex;
   flex-direction: column;
@@ -2727,12 +2674,6 @@ a:is(.badge, .chip, .settings-tag) {
 /* Surface-2 secret-scanning block dialog (#183). Renders only the redacted
    findings a refusal carried; the danger accent marks it as a block, not the
    warn's advisory tone. */
-.scan-block {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
 .scan-block__findings {
   display: flex;
   flex-direction: column;
@@ -2825,7 +2766,6 @@ a:is(.badge, .chip, .settings-tag) {
      because this block sits ABOVE the base `.dialog` rules and a media query
      adds no specificity, so a single class would lose the cascade to them.
      Narrow dialogs never had a phone override, so `.dialog` stays out of it. */
-  .matrix-editor,
   .dialog.dialog--wide {
     width: calc(100% - 20px);
     max-width: 760px;
@@ -2844,7 +2784,6 @@ a:is(.badge, .chip, .settings-tag) {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .matrix-editor__actions > *,
   .dialog--wide .dialog__actions > * {
     flex: 1 1 140px;
   }
@@ -3048,24 +2987,8 @@ a:is(.badge, .chip, .settings-tag) {
   color: var(--tx);
 }
 
-/* The ceremony modal (locked prototype #21, approach a).
- *
- * A native <dialog> in the top layer: the scrim is ::backdrop, so there is no
- * positioning wrapper and no z-index to lose an argument with. */
-
-.ceremony {
-  width: min(var(--width-dialog), 100%);
-  max-height: 90vh;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: 20px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-container);
-  background: var(--bg-panel);
-  color: var(--tx);
-}
+/* The ceremony modal's CONTENT (locked prototype #21, approach a). The shell
+   is ui/Dialog; what is left here is what goes inside one. */
 
 .ceremony__scope {
   margin: 0;
@@ -3092,11 +3015,10 @@ a:is(.badge, .chip, .settings-tag) {
   background: color-mix(in oklch, var(--bg), var(--accent) 8%);
 }
 
-/* A form as the dialog's direct child is a column of fields, in the atom and
-   in the legacy shells alike. This beats `.ceremony__totp` on flex-direction by
-   specificity, which is how that form has always rendered. */
-.dialog > form,
-.ceremony > form {
+/* A form as the dialog's direct child is a column of fields. This beats
+   `.ceremony__totp` on flex-direction by specificity, which is how that form
+   has always rendered. */
+.dialog > form {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -3112,11 +3034,10 @@ a:is(.badge, .chip, .settings-tag) {
 }
 /* --- Dialog -------------------------------------------------------------------
  *
- * One modal anatomy (ui/Dialog.tsx). Folds `.ceremony__title` (20px),
+ * One modal anatomy (ui/Dialog.tsx). It folded `.ceremony__title` (20px),
  * `.matrix-editor__head h2` (15px), the ledes and the two action rows (12px and
- * 8px gaps). The legacy classes are restyled here so the route dialogs that
- * still use them match until they migrate. DESIGN.md reserves shadows for modal
- * overlays, so every family gets one. */
+ * 8px gaps); both legacy shells are gone and every route dialog is this one.
+ * DESIGN.md reserves shadows for modal overlays, so it gets one. */
 .dialog {
   width: min(var(--width-dialog), calc(100% - var(--space-6)));
   max-height: min(90vh, var(--width-dialog-wide));
@@ -3136,31 +3057,22 @@ a:is(.badge, .chip, .settings-tag) {
   width: min(var(--width-dialog-wide), calc(100% - var(--space-6)));
 }
 
-.dialog,
-.ceremony,
-.matrix-editor {
+.dialog {
   box-shadow: var(--overlay-shadow);
 }
 
-.dialog::backdrop,
-.ceremony::backdrop,
-.matrix-editor::backdrop {
+.dialog::backdrop {
   background: oklch(0 0 0 / 55%);
 }
 
-.dialog__title,
-.ceremony__title,
-.ceremony > h2,
-.matrix-editor__head h2 {
+.dialog__title {
   margin: 0;
   font-size: var(--fs-lg);
   font-weight: 700;
   line-height: var(--lh-heading);
 }
 
-.dialog__lede,
-.ceremony__lede,
-.matrix-editor__head p {
+.dialog__lede {
   margin: 0;
   color: var(--tx-dim);
   font-size: var(--fs-sm);
@@ -3168,9 +3080,7 @@ a:is(.badge, .chip, .settings-tag) {
 }
 
 /* Action rows: 8px everywhere, page and dialog alike; primary last. */
-.dialog__actions,
-.ceremony__actions,
-.matrix-editor__actions {
+.dialog__actions {
   display: flex;
   gap: var(--space-2);
   flex-wrap: wrap;
@@ -4167,12 +4077,6 @@ label.chk:has(input:disabled) {
   font-size: var(--fs-sm);
 }
 
-.history-sheet {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
 .history__pin-what {
   padding: 10px 12px;
   border: 1px solid var(--line);
@@ -5085,7 +4989,7 @@ label.chk:has(input:disabled) {
   border-radius: var(--radius-container);
   background: var(--bg);
   list-style: none;
-  /* No inner scroller: `.ceremony` is a scrolling flex column, and a second
+  /* No inner scroller: `.dialog` is a scrolling flex column, and a second
      scroll container inside one shrinks its siblings into each other, which
      on a phone put the mode fieldset on top of the checklist and made the
      rows unclickable while still passing every visibility check. */
@@ -5390,7 +5294,7 @@ label.chk:has(input:disabled) {
   }
 }
 
-/* #495 dotenv import wizard. Reuses the .matrix-editor dialog shell; these rules
+/* #495 dotenv import wizard. ui/Dialog is the shell; these rules
    only lay out the wizard's own review lists and per-key controls. */
 .import-wizard fieldset {
   display: flex;
@@ -5600,14 +5504,7 @@ label.chk:has(input:disabled) {
   color: var(--accent);
 }
 
-/* #493 folder & key-group lifecycle dialog. Reuses .matrix-editor for the
-   dialog shell, backdrop, head, and close. */
-.catalogue-manage {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
+/* #493 folder & key-group lifecycle dialog. ui/Dialog is the shell. */
 .catalogue-manage__section {
   display: flex;
   flex-direction: column;
