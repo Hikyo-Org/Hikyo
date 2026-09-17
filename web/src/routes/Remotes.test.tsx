@@ -135,6 +135,29 @@ describe('AddRemote', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('That is this instance. A remote must be another instance.');
   });
 
+  it('replaces a shown server refusal with the field error on an invalid re-submit', async () => {
+    const { container } = await renderAddRemote([], 'self_connected');
+    await act(async () => {
+      typeInto(input(container, 'remote-name'), 'alias');
+      typeInto(input(container, 'remote-url'), 'https://alias.example');
+      typeInto(input(container, 'remote-pin'), 'pin');
+      typeInto(input(container, 'remote-credential'), 'credential');
+    });
+    await submit(container);
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      'That is this instance. A remote must be another instance.',
+    );
+
+    // The server sentence answered the previous request. A refusal that names
+    // the URL replaces it; two refusals at once would name no single cause.
+    await act(async () => typeInto(input(container, 'remote-url'), 'hikyo.example'));
+    await submit(container);
+    const alerts = [...container.querySelectorAll('[role="alert"]')];
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]?.className).toContain('field__error');
+    expect(alerts[0]?.textContent).toContain('Enter a bare HTTPS origin');
+  });
+
   it('blocks an existing origin before starting the mutation', async () => {
     const { container, fetchMock } = await renderAddRemote([peer]);
     const url = input(container, 'remote-url');

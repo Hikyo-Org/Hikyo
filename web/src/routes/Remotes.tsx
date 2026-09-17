@@ -460,6 +460,10 @@ export function AddRemote() {
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    // Drop the last server refusal first: it answered a request this submit
+    // replaces, and it must not sit above a fresh field error.
+    add.reset();
+
     const trimmedURL = url.trim();
     const submittedOrigin = remoteOriginForSubmit(trimmedURL);
     if (submittedOrigin === null) {
@@ -858,7 +862,7 @@ export function MintConnectionForm({
             value={days}
             onChange={(e) => setDays(e.target.value)}
             disabled={choice !== 'custom'}
-            aria-invalid={customInvalid}
+            aria-invalid={customInvalid /* markup-check: Task 11 */}
             aria-label="Lifetime in days"
           />
           <span>days (clamped to the instance ceiling)</span>

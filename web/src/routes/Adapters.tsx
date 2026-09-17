@@ -1150,21 +1150,20 @@ export function TargetForm({
         {kind === 'environment' && lockRouting !== true ? (
           <label className="field">
             <span><input type="checkbox" checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} /> Create the GitHub environment if missing</span>
-            <span className="field__hint">Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</span>
+            <span className="field__hint">{/* markup-check: Task 5 */}Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</span>
           </label>
         ) : null}
-        <label className="field">
-          <span className="field__label">Name prefix</span>
-          <input
-            value={prefix}
-            onChange={(event) => setPrefix(event.target.value)}
-            placeholder="PROD_"
-          />
-          <span className="field__hint">Applied to every name at the provider; applications keep canonical names.</span>
-          {normalisePrefix(prefix) !== prefix ? (
-            <span className="field__hint">Will be stored as {normalisePrefix(prefix)}</span>
-          ) : null}
-        </label>
+        <Input
+          label="Name prefix"
+          value={prefix}
+          onChange={(event) => setPrefix(event.target.value)}
+          placeholder="PROD_"
+          hint={
+            normalisePrefix(prefix) === prefix
+              ? 'Applied to every name at the provider; applications keep canonical names.'
+              : `Applied to every name at the provider; applications keep canonical names. Will be stored as ${normalisePrefix(prefix)}`
+          }
+        />
       </div>
       <fieldset className="field">
         <legend className="field__label">Keys</legend>

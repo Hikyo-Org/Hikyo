@@ -1149,7 +1149,7 @@ function GrantModal({
             }}>
               {enterPrincipalId ? 'Choose an existing member' : 'Enter an ID for another principal'}
             </Button>
-            <p className="field__hint">
+            <p className="field__hint">{/* markup-check: control + action + hint */}
               {enterPrincipalId
                 ? 'Enter the exact ID of a person or service account outside this member list.'
                 : 'Choose a person or service account already holding access here. Invite a new person from Members.'}

@@ -194,6 +194,7 @@ export function OidcProvidersPanel() {
             feedback.ok(describe);
           }}
           onFailure={(refusal) => feedback.report(refusal)}
+          onClearFailure={() => feedback.clear()}
           onFailClosed={() => {
             // A stale, forbidden, or ended-session refusal: close the editor and
             // refetch, latching the action controls until fresh data lands so no
@@ -228,6 +229,7 @@ function ProviderEditor({
   onCancel,
   onSaved,
   onFailure,
+  onClearFailure,
   onFailClosed,
 }: {
   target: EditorTarget;
@@ -235,6 +237,8 @@ function ProviderEditor({
   onCancel: () => void;
   onSaved: (describe: string) => void;
   onFailure: (refusal: Refusal) => void;
+  /** Drops the form-level sentence: a field refusal must not sit beside a stale one. */
+  onClearFailure: () => void;
   onFailClosed: () => void;
 }) {
   const original = target.kind === 'reconfigure' ? target.provider : null;
@@ -258,6 +262,9 @@ function ProviderEditor({
   const submit = () => {
     const result = validateProviderDraft(draft, original, existing);
     if (!result.ok) {
+      // Drop whatever the last save said: it is about a request this one
+      // replaces, and two refusals on screen at once name no single cause.
+      onClearFailure();
       setFieldRefusal({ field: result.field, message: result.message });
       return;
     }
