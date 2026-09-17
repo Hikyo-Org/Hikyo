@@ -31,6 +31,7 @@ Commits in `git log --oneline origin/main..HEAD` order (oldest first).
 | 12 | The `markup-check` gate, this handoff, section 5 closed | `f4ddb83c`, `bc3bbc2f` |
 | Final review, round 1 | A marker rules one element and never its siblings; a ruling ends at its element's indent, not at a tag count alone; the row editor's dialog keeps its key name in the value face; the serving instance's e2e session is repaired like the viewing one | `a35e1960`, `42d079bb`, `8040d88b`, `44f5014a` |
 | Final review, round 2 | Every ruling names its own reason; a backdrop click needs both ends on the scrim; the edit-all toggle's label carries its mode, with no ARIA state; a dead class and a dead pad go; the scanner scans the line that ends a ruling by indent | `4c852b8a`, `822d9ae0`, `0bc9cdc1`, `350df65b`, and the preview record `6ba67383` |
+| PR review (Dunky13) | The row's problem list keeps the danger tone, a persisted problem leaves the control's error slot once the row is edited, and a multi-line opening tag stays inside its ruling | `1bd69e2f` |
 
 The `app.css` adherence budget ratcheted down through the series, 284 to 266,
 as each task's CSS was retired.
@@ -128,6 +129,31 @@ Input type expresses; Field still owns the label and the wiring.
 Not gated at all, by ruling: the 37 standalone `.field__hint` captions (they
 are captions, not fields) and the non-button `.btn` sites from Task 1
 (`<a>`, `<Link>`, `<summary>`), which are not buttons.
+
+## PR review (Dunky13)
+
+Three P2 findings from the adversarial review of PR #772, all fixed in
+`1bd69e2f`.
+
+- **Tone of the problem list** (`web/src/routes/MatrixRowEditor.tsx`). The list
+  of several persisted problems rendered `tone="warn"` while a lone problem got
+  error treatment. Required absence and declaration violations are violations,
+  which DESIGN.md:43-45 reserves red for, so the list takes the default
+  `danger` Alert (`role="alert"`) and the markup stays a list.
+- **Stale invalid state** (`web/src/routes/MatrixRowEditor.tsx`). A persisted
+  problem now feeds the control's `error` only while the row is untouched. Once
+  there is a local edit the control's invalid state comes from live validation
+  alone, so typing a valid replacement drops `aria-invalid` and the stale
+  `.field__error`; the persisted problem stands above the control instead.
+  Pinned by `drops the standing problem from the control once a valid
+  replacement is typed`.
+- **Multi-line opener in the scanner** (`web/scripts/design/markup.ts`). The
+  indentation boundary read a multi-line opening tag's own `>` as the end of
+  the ruled element, so a valid ruling on a split `<div role="radiogroup"`
+  opener reported its radios. The boundary now waits for the opening tag to
+  close (an `=>` is not that `>`). The real-tree scan is unchanged by the fix:
+  0 hits with markers active before and after, 19 with the marker regex muted
+  both times, so every ruling still covers exactly what it covered.
 
 ## The gate is green at HEAD
 
