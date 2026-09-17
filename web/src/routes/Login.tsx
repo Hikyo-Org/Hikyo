@@ -61,15 +61,16 @@ export function Login() {
         ? { provider: contacting ?? '' }
         : null;
   // The card has one refusal slot, and the latest attempt is what the person
-  // is waiting on: starting a leg retires the other legs' refusals so a stale
-  // one cannot outlive the attempt it described, or mask a fresh failure.
-  const retireOtherLegs = (leg: 'password' | 'passkey' | 'provider') => {
-    if (leg !== 'password') login.reset();
-    if (leg !== 'passkey') passkey.reset();
-    if (leg !== 'provider') {
-      oidc.reset();
-      saml.reset();
-    }
+  // is waiting on: starting ANY leg retires every leg's refusal, so a stale
+  // one cannot outlive the attempt it described or mask a fresh failure. That
+  // includes the sibling protocol (a SAML refusal must not sit in the slot
+  // while an OIDC attempt runs) and the leg about to start, where the reset is
+  // a no-op: mutateAsync bumps the operation counter and sets pending anyway.
+  const retireEveryLeg = () => {
+    login.reset();
+    passkey.reset();
+    oidc.reset();
+    saml.reset();
   };
   const error = login.isError
     ? loginFailureText(login.error)
@@ -87,15 +88,15 @@ export function Login() {
         busy={busy}
         error={error}
         onPassword={(credentials) => {
-          retireOtherLegs('password');
+          retireEveryLeg();
           login.mutate(credentials);
         }}
         onPasskey={() => {
-          retireOtherLegs('passkey');
+          retireEveryLeg();
           passkey.mutate();
         }}
         onProvider={(slug) => {
-          retireOtherLegs('provider');
+          retireEveryLeg();
           setContacting(slug);
           const provider = providers.find((candidate) => candidate.slug === slug);
           if (provider?.kind === 'saml') saml.mutate(slug);

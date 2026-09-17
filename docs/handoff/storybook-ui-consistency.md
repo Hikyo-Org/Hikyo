@@ -157,7 +157,7 @@ Rules locked 2026-09-16:
   and acknowledged. **No way past it** until a factor stands.
   Policy `allow-unenrolled`: the password is the whole ceremony.
 - Passkey sign-in: primary authentication with multi-factor assurance,
-  worded "Sign in with a passkey", never a second step.
+  worded "Use a passkey instead", never a second step.
 - Identity provider sign-in: assurance is the provider's (`acr`/`amr`
   policy); no local factor asked. `StepUpBanner` stays for such sessions
   (3A) but its title "This session is password-only" was wrong for them;
