@@ -272,11 +272,16 @@ func TestSchemaRefusalsNeverEchoTheProposedValue(t *testing.T) {
 		"oversized value accepted by the schema": `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":"` + canary + `"}`,
 		"unknown operation":                      `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"publish","value":"` + canary + `"}`,
 		"unknown field":                          `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":"` + canary + `","publish":true}`,
+		"value is an array":                      `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":["` + canary + `"]}`,
+		"value is an object":                     `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":{"CANARY-":"` + canary + `"}}`,
+		"value is a number":                      `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":4242424242}`,
+		"acknowledgement is not a string":        `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":"` + canary + `","acknowledgements":[{"CANARY-":1}]}`,
+		"too many acknowledgements":              `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":"` + canary + `","acknowledgements":[` + strings.Repeat(`"CANARY-",`, 100) + `"CANARY-"]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			for _, tool := range WriteToolNames() {
-				if body := bodyString(t, h, tool, args); strings.Contains(body, "CANARY-") {
-					t.Fatalf("%s echoed the proposed value: %.200s", tool, body)
+				if body := bodyString(t, h, tool, args); strings.Contains(body, "CANARY-") || strings.Contains(body, "4242424242") {
+					t.Fatalf("%s echoed the proposed value: %s", tool, body)
 				}
 			}
 		})
@@ -293,8 +298,10 @@ func TestWriteToolErrorsCollapseExceptSafeDetail(t *testing.T) {
 	if body := bodyString(t, h, ToolStageChange, stageArgs); !strings.Contains(body, SafeOperationError) {
 		t.Fatalf("unauthorized did not collapse to the safe error: %s", body)
 	}
-	values.stageErr = safeDetailError{detail: "a project holds at most 100 pending changes"}
-	if body := bodyString(t, h, ToolStageChange, stageArgs); !strings.Contains(body, "at most 100 pending changes") || strings.Contains(body, "service:") {
+	// The detail shape the real stage and validate paths emit (invalidDetail):
+	// a presence veto naming the key the caller already named.
+	values.stageErr = safeDetailError{detail: "key \"DB_URL\" is `forbidden_in` environment env_a"}
+	if body := bodyString(t, h, ToolStageChange, stageArgs); !strings.Contains(body, "forbidden_in") || strings.Contains(body, "service:") {
 		t.Fatalf("safe detail did not cross verbatim: %s", body)
 	}
 	values.stageErr = nil

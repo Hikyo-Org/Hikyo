@@ -116,8 +116,15 @@ func New(options Options) (http.Handler, error) {
 	if len(registrations) > 0 && options.CursorSealer == nil {
 		return nil, errors.New("mcpserver: a paginated tool registry requires a cursor sealer")
 	}
+	description := "Read-only Hikyo configuration tools."
+	for _, item := range registrations {
+		if item.row.Class == ToolClassWriteSurface {
+			description = "Hikyo configuration tools."
+			break
+		}
+	}
 	server := mcp.NewServer(&mcp.Implementation{
-		Name: "hikyo", Title: "Hikyo", Description: "Hikyo configuration tools.", Version: options.Version,
+		Name: "hikyo", Title: "Hikyo", Description: description, Version: options.Version,
 	}, &mcp.ServerOptions{
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
 	})

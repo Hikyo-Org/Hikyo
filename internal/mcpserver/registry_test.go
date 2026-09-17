@@ -87,6 +87,10 @@ func TestRegistryGateKeysOffDeclaredToolClass(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	publishContract, err := operation.NewContract("mcp:tool", "value.publish", []string{"publish@environment"}, []string{operation.ArtifactMachineCredential})
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		name     string
 		class    ToolClass
@@ -104,6 +108,7 @@ func TestRegistryGateKeysOffDeclaredToolClass(t *testing.T) {
 		{name: "read tool declaring events", class: ToolClassRead, audit: AuditDispositionEvents, contract: readContract, want: "audited-none disposition"},
 		{name: "write-surface tool declaring audited-none", class: ToolClassWriteSurface, audit: AuditDispositionNone, contract: stageContract, want: "events disposition"},
 		{name: "unknown class", class: "mutating", audit: AuditDispositionEvents, contract: stageContract, want: "unsupported tool class"},
+		{name: "write-surface tool on an unadmitted mutation", class: ToolClassWriteSurface, audit: AuditDispositionEvents, contract: publishContract, want: "outside the admitted write operations"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			registry := NewRegistry()

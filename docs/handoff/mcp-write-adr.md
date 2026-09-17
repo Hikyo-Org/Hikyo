@@ -159,6 +159,29 @@ cross-provider gate. Both returned CHANGES; every finding folded in:
   catalogue grew by one key); `TestAuditCore` now exercises the
   `value.change_validated` emitter.
 
+## Fresh adversarial code review, round 2 (2026-09-17, same provider)
+
+Owner: "skip adversarial review; do code review with fresh fable subagent."
+One fresh Claude sub-agent, adversarial brief, full diff of #768. CHANGES; all
+eleven findings folded in:
+
+- HIGH: validate evaluated the raw value while stage seals and publish
+  validates the normalized one (`"  8080 "` on an integer key disagreed).
+  Validate now normalizes once via `normalizeStoredValue`; e2e pins it.
+- HIGH: a non-string `value` hit the SDK type check, which echoes the
+  instance. `value` now carries no schema constraint at all; Go decoding
+  reports only the JSON kind; no-echo test covers array/object/number.
+- Registration allowlist: a write-surface tool may map only to `value.stage`
+  or `value.validate` (mirrors the admission switch), so an unadmitted
+  mutation is refused at registration, never registered-then-refused.
+- serverInfo description derives from whether write tools are registered.
+- Validate description no longer claims group all-or-none presence.
+- Docs and comments no longer say "a machine credential cannot publish".
+- Smoke and production-client catalog acceptance restored (lost in a rebase).
+- SafeDetail unit test uses the detail shape the real path emits;
+  cancellation test comment states exactly what it proves; compose reference
+  deployment carries a commented write-flag twin.
+
 ## Not done
 
 ADR text corrected in place for the five implementation findings (ADR

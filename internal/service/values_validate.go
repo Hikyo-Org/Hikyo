@@ -108,14 +108,18 @@ func (s *Values) validate(ctx context.Context, actor Actor, scope domain.Scope, 
 			if err != nil {
 				return ValidatedChange{}, err
 			}
-			if err := problem(validateValueWithParameters(key, value, declarations)); err != nil {
+			// Evaluate exactly what stage would store: stage seals the
+			// normalized value, and publish validates the stored one, so
+			// validate must not disagree with either over surrounding space.
+			stored := normalizeStoredValue(p, key, value)
+			if err := problem(validateValueWithParameters(key, stored, declarations)); err != nil {
 				return ValidatedChange{}, err
 			}
 			if out.Valid && key.Classification == string(schema.Config) && len(declarations) > 0 {
-				refs, err := parameters.References(value)
+				refs, err := parameters.References(stored)
 				out.ValidationDeferred = err == nil && len(refs) > 0
 			}
-			if out.Findings, err = scanValueForValidate(ctx, s.Scan, key.ID, key.Classification, []byte(schema.Normalize(value))); err != nil {
+			if out.Findings, err = scanValueForValidate(ctx, s.Scan, key.ID, key.Classification, []byte(stored)); err != nil {
 				return ValidatedChange{}, err
 			}
 		default:

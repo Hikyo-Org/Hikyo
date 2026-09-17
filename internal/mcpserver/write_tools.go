@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"time"
@@ -19,7 +20,7 @@ import (
 // sets HIKYO_MCP_WRITE_ENABLED on top of HIKYO_MCP_ENABLED. The enforceable
 // boundary is that this surface stages and validates and never publishes or
 // delivers: a staged change is an inert pending draft until a separate
-// `value.publish` that a machine credential cannot perform.
+// `value.publish`, which no MCP tool exposes.
 
 // Write tool names are stable MCP surface once released.
 const (
@@ -77,11 +78,12 @@ type WriteServices struct {
 }
 
 // Write tool input schemas. `operation` is a closed enum and `acknowledgements`
-// carries the service's finding cap. `value` is deliberately unbounded at the
-// schema: the SDK's schema validator echoes the offending value in its error,
-// so a maxLength here would put an oversized secret proposal on the wire. The
-// request-size bound and the service's byte budget bound it instead, and a
-// service refusal collapses to the safe error.
+// carries the service's finding cap. `value` deliberately carries NO schema
+// constraint, not even a type: the SDK's schema validator echoes the offending
+// instance in its error, so a maxLength or a type check here would put a
+// proposal on the wire. A non-string value fails Go decoding, which reports
+// only the JSON kind; the request-size bound and the service's byte budget
+// bound the length; a service refusal collapses to the safe error.
 type (
 	changeOperationInput  string
 	valueInput            string
@@ -106,16 +108,52 @@ const (
 	changeOperationUnset changeOperationInput = "unset"
 )
 
+// errValueNotString and errAcknowledgementsNotStrings are the value-free
+// decode refusals: encoding/json quotes the offending instance in its own
+// error, and the SDK returns decode errors to the caller, so a proposal that
+// is not a string must fail through an error that never carries it.
+var (
+	errValueNotString            = errors.New("value must be a JSON string")
+	errAcknowledgementsNotString = errors.New("acknowledgements must be JSON strings")
+	errAcknowledgementsBound     = errors.New("acknowledgements exceed the count or length bound")
+)
+
+func (v *valueInput) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return errValueNotString
+	}
+	*v = valueInput(value)
+	return nil
+}
+
+func (a *acknowledgementsInput) UnmarshalJSON(data []byte) error {
+	var tokens []string
+	if err := json.Unmarshal(data, &tokens); err != nil {
+		return errAcknowledgementsNotString
+	}
+	if len(tokens) > service.MaxRequestFindings {
+		return errAcknowledgementsBound
+	}
+	for _, token := range tokens {
+		if len(token) > CursorMaxBytes {
+			return errAcknowledgementsBound
+		}
+	}
+	*a = tokens
+	return nil
+}
+
 func writeInputSchemaOptions() *jsonschema.ForOptions {
 	options := inputSchemaOptions()
 	options.TypeSchemas[reflect.TypeFor[changeOperationInput]()] = &jsonschema.Schema{
 		Type: "string", Enum: []any{string(changeOperationSet), string(changeOperationUnset)},
 	}
-	options.TypeSchemas[reflect.TypeFor[valueInput]()] = &jsonschema.Schema{Type: "string"}
-	options.TypeSchemas[reflect.TypeFor[acknowledgementsInput]()] = &jsonschema.Schema{
-		Type: "array", MaxItems: jsonschema.Ptr(service.MaxRequestFindings),
-		Items: &jsonschema.Schema{Type: "string", MaxLength: jsonschema.Ptr(CursorMaxBytes)},
-	}
+	options.TypeSchemas[reflect.TypeFor[valueInput]()] = &jsonschema.Schema{}
+	// Same rule for the acknowledgement list: the schema declares only the
+	// array; item type, length and count are bounded in UnmarshalJSON so a
+	// refusal never quotes a token.
+	options.TypeSchemas[reflect.TypeFor[acknowledgementsInput]()] = &jsonschema.Schema{Type: "array"}
 	return options
 }
 
@@ -269,7 +307,7 @@ func registerStageChange(registry *Registry, services WriteServices) error {
 
 func registerValidateChange(registry *Registry, services WriteServices) error {
 	spec, err := writeToolSpec(ToolValidateChange, "Validate a change",
-		"Audited, non-mutating. Requires edit@environment for explicit org_id/project_id/environment_id. Evaluates a proposed set or unset of a declared key against the current schema, presence rules, and secret scanner and reports what publish would refuse. Stages nothing, publishes nothing, and requires no user interaction.",
+		"Audited, non-mutating. Requires edit@environment for explicit org_id/project_id/environment_id. Evaluates a proposed set or unset of a declared key against the key's schema, its required_in/forbidden_in presence rules, and the secret scanner, reporting the per-key refusals publish would raise; group all-or-none presence is evaluated only at publish. Stages nothing, publishes nothing, and requires no user interaction.",
 		"service.Values.ValidateSet/ValidateUnset", "value.validate")
 	if err != nil {
 		return err

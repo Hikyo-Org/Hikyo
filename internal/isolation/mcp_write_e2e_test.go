@@ -20,8 +20,7 @@ import (
 // real datastore: the write tools are installed only behind the flag, a stage
 // lands an inert pending draft and its audit row with origin=mcp, a validate
 // reports publish-time refusals and scanner findings without staging, nothing
-// publishes, and the secret canary never crosses the transport, the trail, or
-// the logs.
+// publishes, and the secret canary never crosses the transport or the trail.
 func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
@@ -167,6 +166,14 @@ func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
 		if n := editorDrafts(); n != 2 {
 			t.Fatalf("validate changed the draft count: %d, want 2", n)
 		}
+		// Validate evaluates what stage would store: a padded integer is valid
+		// because stage seals the normalized value and publish validates that.
+		padded := mcpCall(t, handler, editor.token, mcpserver.ToolValidateChange,
+			`{"org_id":"org_a","project_id":"prj_a1","environment_id":"env_a1","key_name":"PORT","operation":"set","value":"  8080 "}`)
+		if !strings.Contains(padded.Body.String(), `"valid":true`) {
+			t.Fatalf("padded integer validate = %s", padded.Body.String())
+		}
+
 		// Validate an INVALID proposal on a secret key: the schema verdict text
 		// rides `problems`, and for a secret key the engine puts no instance
 		// data in it, so the canary still never crosses.
@@ -209,10 +216,13 @@ func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
 		}
 
 		// Cancellation (ADR § 6): a tools/call whose request context is cancelled
-		// once the stage reaches the service commits nothing. The decorator
-		// cancels the request context at the moment the store work would begin,
-		// so the real transaction path runs under a cancelled context and no
-		// partial draft or value.staged row survives.
+		// as the stage reaches the service commits nothing. The decorator cancels
+		// the request context at the service boundary, so the real service and
+		// transaction path run under a cancelled context and no draft or
+		// value.staged row survives. Mid-transaction cancellation rolling back
+		// open store work is the tx package's contract
+		// (TestRetryLoopRespectsCancelledContext); this proves the transport
+		// hands the cancelled context all the way down.
 		cancelHandler := func() (http.Handler, *cancellingStager) {
 			stager := &cancellingStager{inner: values}
 			registry := mcpserver.NewRegistry()

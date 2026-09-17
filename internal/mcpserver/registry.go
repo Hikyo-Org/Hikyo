@@ -58,6 +58,13 @@ const (
 	ToolClassWriteSurface ToolClass = "write-surface"
 )
 
+// writeSurfaceOperations is the closed set of authorization operations a
+// write-surface tool may map to (mcp-write ADR § 1). It mirrors the admission
+// switch in service.MCPAdmission so a mutating operation the amendment did not
+// admit (publish, say) is refused at registration and never appears in
+// tools/list, rather than registering and being refused per call.
+var writeSurfaceOperations = map[string]bool{"value.stage": true, "value.validate": true}
+
 type SecretPolicy string
 
 const SecretPolicyNoSecretMaterial SecretPolicy = "no-secret-material"
@@ -193,6 +200,9 @@ func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaO
 		// mutation or authority-bearing action can never register.
 		if policy.AuditedNone {
 			return fmt.Errorf("mcpserver: write-surface tool %q authorization operation is audited-none", spec.Name)
+		}
+		if !writeSurfaceOperations[spec.Contract.AuthorizationOperation] {
+			return fmt.Errorf("mcpserver: write-surface tool %q maps to %q, outside the admitted write operations", spec.Name, spec.Contract.AuthorizationOperation)
 		}
 	}
 	inputSchema, err := jsonschema.For[In](schemaOptions)

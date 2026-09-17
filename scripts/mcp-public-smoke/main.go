@@ -264,10 +264,14 @@ func validateCatalog(result json.RawMessage) error {
 	for _, tool := range catalog.Tools {
 		got = append(got, tool.Name)
 	}
-	want := mcpserver.ProductionToolNames()
 	slices.Sort(got)
-	slices.Sort(want)
-	if !slices.Equal(got, want) {
+	// The read catalog alone (HIKYO_MCP_WRITE_ENABLED off) or the read catalog
+	// plus the closed write surface; nothing else, nothing partial.
+	readOnly := mcpserver.ProductionToolNames()
+	slices.Sort(readOnly)
+	withWrite := mcpserver.AllToolNames()
+	slices.Sort(withWrite)
+	if !slices.Equal(got, readOnly) && !slices.Equal(got, withWrite) {
 		return errors.New("server did not advertise the exact closed production tool catalog")
 	}
 	return nil
