@@ -5,6 +5,8 @@ import type { z } from 'zod';
 
 import { Login } from './Login.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // Logged-out screen. `useLogin` reads `useAuth`, so it needs AuthProvider even
 // though it is the sign-in page — a whoami 401 gives the honest anonymous state.
 // Load-time calls: GET /api/v1/auth/whoami (401) and GET /api/v1/auth/methods.
@@ -25,6 +27,7 @@ const meta = {
   component: Login,
   tags: ['ai-generated'],
   parameters: {
+    ...topLayerDocs,
     app: {
       auth: true,
       responses: [

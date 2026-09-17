@@ -12,13 +12,24 @@ export function slugFor(node: string): string {
   return node.replaceAll('/', '--');
 }
 
-// The argument must be a string literal: a variable or template expression is invisible here.
-const designCall = /design\((['"])([^'"]*)\1\)/g;
+// The argument must be one string literal. Whitespace, a line break and a
+// trailing comma around it are fine; a variable, template or concatenation is
+// not, and a call the literal form cannot see fails the build by name rather
+// than silently missing from the export and the missing-node check.
+const designCall = /\bdesign\(\s*(['"])([^'"]*)\1\s*,?\s*\)/g;
+const anyDesignCall = /\bdesign\(/g;
 
-export function collectDesignNodes(sources: string[]): string[] {
+export type DesignSource = { path: string; text: string };
+
+export function collectDesignNodes(sources: DesignSource[]): string[] {
   const found = new Set<string>();
-  for (const source of sources) {
-    for (const match of source.matchAll(designCall)) {
+  for (const { path, text } of sources) {
+    const literal = [...text.matchAll(designCall)];
+    const every = [...text.matchAll(anyDesignCall)];
+    if (every.length !== literal.length) {
+      throw new Error(`${path}: ${every.length - literal.length} design() call(s) do not pass a single string literal, so the export cannot see them`);
+    }
+    for (const match of literal) {
       const node = match[2];
       // The group is not optional, so this only ever satisfies the type checker.
       if (node === undefined) throw new Error('design(): regex matched without a capture group');
@@ -29,6 +40,32 @@ export function collectDesignNodes(sources: string[]): string[] {
     }
   }
   return [...found].sort();
+}
+
+// A node's identity in the document. `children` is otherwise unknown on
+// purpose: nothing here interprets nodes, only their ids.
+const penNode: z.ZodType<{ id?: string; children?: unknown[] }> = z.looseObject({
+  id: z.string().optional(),
+  children: z.array(z.unknown()).optional(),
+});
+
+/** Every node id that appears more than once in the document tree, sorted. */
+export function findDuplicateNodeIds(penJson: string): string[] {
+  const doc = z.looseObject({ children: z.array(z.unknown()).default([]) }).parse(JSON.parse(penJson));
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  const walk = (nodes: unknown[]) => {
+    for (const raw of nodes) {
+      const node = penNode.parse(raw);
+      if (node.id !== undefined) {
+        if (seen.has(node.id)) duplicates.add(node.id);
+        seen.add(node.id);
+      }
+      if (node.children !== undefined) walk(node.children);
+    }
+  };
+  walk(doc.children);
+  return [...duplicates].sort();
 }
 
 const queryNode = z.object({ id: z.string(), name: z.string() });
@@ -94,12 +131,23 @@ const penVariable = z.object({
 /** The shape of one entry in a .pen document's `variables` block. */
 export type PenVariable = z.infer<typeof penVariable>;
 
-const penDocument = z.object({ variables: z.record(z.string(), penVariable).default({}) });
+const penDocument = z.object({
+  themes: z.record(z.string(), z.array(z.string())),
+  variables: z.record(z.string(), penVariable).default({}),
+});
 
 export type PenSides = Map<string, { type: 'color' | 'number' | 'string'; light: string; dark: string }>;
 
 export function parsePenVariables(penJson: string): PenSides {
   const doc = penDocument.parse(JSON.parse(penJson));
+  // The reader takes the FIRST declared mode as the document default and the
+  // untheme'd entry of a variable as that default's value, applying the
+  // entries in order. The mirror below assumes default = Dark (the app's
+  // default theme, DESIGN.md), so the declaration has to say exactly that: a
+  // reordered or extra mode would render one thing while this reports another.
+  if (JSON.stringify(doc.themes['Mode']) !== '["Dark","Light"]' || Object.keys(doc.themes).length !== 1) {
+    throw new Error(`hikyo.pen: themes must be exactly {"Mode":["Dark","Light"]} (the first mode is the default the export renders), got ${JSON.stringify(doc.themes)}`);
+  }
   const out: PenSides = new Map();
   for (const [name, v] of Object.entries(doc.variables)) {
     if (!Array.isArray(v.value)) {
@@ -111,7 +159,16 @@ export function parsePenVariables(penJson: string): PenSides {
     // whichever mode is the default, so the design file has to agree.
     const dark = v.value.find((e) => e.theme === undefined);
     if (!dark) throw new Error(`hikyo.pen: variable ${name} has no default (Dark) value`);
-    const light = v.value.find((e) => e.theme?.Mode === 'Light') ?? dark;
+    // An explicit Dark entry beside the untheme'd default is applied after it
+    // by the reader and would win in Dark mode while this mirror reported the
+    // default: ambiguous, so refused. One entry per mode, no more.
+    const explicitDark = v.value.filter((e) => e.theme?.Mode === 'Dark').length;
+    const defaults = v.value.filter((e) => e.theme === undefined).length;
+    const lights = v.value.filter((e) => e.theme?.Mode === 'Light');
+    if (explicitDark > 0 || defaults > 1 || lights.length > 1) {
+      throw new Error(`hikyo.pen: variable ${name} must have one untheme'd (Dark) entry and at most one Light entry, and no explicit Dark entry`);
+    }
+    const light = lights[0] ?? dark;
     out.set(name, { type: v.type, light: String(light.value), dark: String(dark.value) });
   }
   return out;
@@ -159,13 +216,15 @@ export function compareTokens(css: TokenSides, pen: PenSides): string[] {
       check('dark', expectedDark, p.dark);
       check('light', expectedLight, p.light);
     } else {
-      const expected = kind === 'number' ? cssNumber(expectedDark) : expectedDark;
-      // One message per drifting mode, like the colour branch: a mode that is right must not hide behind one that is wrong.
-      const modes: [string, string][] = [
-        ['dark', p.dark],
-        ['light', p.light],
+      const expectedFor = (value: string) => (kind === 'number' ? cssNumber(value) : value);
+      // Each mode against ITS OWN css value, one message per drifting mode like
+      // the colour branch: a mode that is right must not hide behind one that
+      // is wrong, and a light-only css override must not be compared to dark.
+      const modes: [string, string, string][] = [
+        ['dark', expectedFor(expectedDark), p.dark],
+        ['light', expectedFor(expectedLight), p.light],
       ];
-      for (const [mode, actual] of modes) {
+      for (const [mode, expected, actual] of modes) {
         if (actual !== expected) errors.push(`${name}: expected ${expected} (tokens.css), got ${actual} (hikyo.pen, ${mode})`);
       }
     }
@@ -190,10 +249,14 @@ export function cssToPenVariables(css: TokenSides): Record<string, PenVariable> 
         // Dark first and untheme'd: it is the default mode (see parsePenVariables).
         value: [{ value: cssHex(dark) }, { value: cssHex(light), theme: { Mode: 'Light' } }],
       };
-    } else if (kind === 'number') {
-      variables[name] = { type: 'number', value: Number(cssNumber(dark)) };
     } else {
-      variables[name] = { type: 'string', value: dark };
+      // Only colours are seeded per mode. A non-colour that differs between
+      // the themes has no supported mirror here, and seeding the dark value
+      // alone would silently drop the light one, so it is refused instead.
+      if (light !== dark) {
+        throw new Error(`tokens.css: ${name} differs between dark (${dark}) and light (${light}); only colour tokens are mirrored per mode`);
+      }
+      variables[name] = kind === 'number' ? { type: 'number', value: Number(cssNumber(dark)) } : { type: 'string', value: dark };
     }
   }
   return variables;

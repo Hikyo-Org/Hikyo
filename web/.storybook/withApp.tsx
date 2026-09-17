@@ -114,10 +114,19 @@ function router(routes: readonly MockRoute[]): typeof fetch {
  */
 export async function installAppFetch(context: {
   parameters: { app?: AppParameters }
+  viewMode?: string
 }): Promise<() => void> {
   const app = context.parameters.app
   if (app === undefined) {
     return () => {}
+  }
+  // Docs renders a page's stories inline in ONE document by default, and this
+  // hook runs for each of them: they would replace the same globalThis.fetch in
+  // turn and a later refetch would read another example's fixtures. An app
+  // story renders framed on Docs instead (spread `topLayerDocs`), where
+  // viewMode is 'story' inside its own window. Fail loud on the alternative.
+  if (context.viewMode === 'docs') {
+    throw new Error('parameters.app stories must spread topLayerDocs so Docs renders them framed: inline Docs examples share one globalThis.fetch')
   }
   const routes: MockRoute[] = [...(app.responses ?? [])]
   if (app.auth === true) {

@@ -58,3 +58,41 @@ export const Selects: Story = {
     await waitFor(() => expect(panel).not.toBeVisible());
   },
 };
+
+// The keyboard model role="menu" promises: opening lands on the first enabled
+// item, arrows move and wrap, Home/End jump, a disabled row is skipped, and
+// Escape closes and hands focus back to the trigger.
+export const KeyboardModel: Story = {
+  args: {
+    children: (
+      <>
+        <MenuItem>Rename</MenuItem>
+        <MenuItem disabled>Duplicate</MenuItem>
+        <MenuItem>Delete</MenuItem>
+      </>
+    ),
+  },
+  play: async ({ canvas, canvasElement }) => {
+    const trigger = canvas.getByRole('button', { name: 'Row actions' });
+    const panel = canvasElement.querySelector('[popover]');
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(panel).toBeVisible());
+    const rename = canvas.getByRole('menuitem', { name: 'Rename' });
+    const remove = canvas.getByRole('menuitem', { name: 'Delete' });
+    await waitFor(() => expect(rename).toHaveFocus());
+    await userEvent.keyboard('{ArrowDown}');
+    await expect(remove).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    await expect(rename).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
+    await expect(remove).toHaveFocus();
+    await userEvent.keyboard('{Home}');
+    await expect(rename).toHaveFocus();
+    await userEvent.keyboard('{End}');
+    await expect(remove).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(panel).not.toBeVisible());
+    await expect(trigger).toHaveFocus();
+  },
+};

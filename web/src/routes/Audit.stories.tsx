@@ -4,6 +4,8 @@ import { expect, waitFor } from 'storybook/test';
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { Audit } from './Audit.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // One denied grant event; the trail page wraps it in the cursor envelope the
 // infinite query reads (a single exhausted page, no ceiling to chase).
 const event = {
@@ -37,6 +39,7 @@ const meta = {
   component: Audit,
   tags: ['ai-generated'],
   parameters: {
+    ...topLayerDocs,
     app: { auth: true, path: '/orgs/acme/audit', routePath: '/orgs/:org/audit', responses: [] },
   },
 } satisfies Meta<typeof Audit>;

@@ -6,6 +6,8 @@ import type { z } from 'zod';
 import { authenticatedIdentity } from '../testkit/identity.ts';
 import { Projects } from './Projects.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // The projects surface reads `useOutletContext({ activeOrgId })` and, through
 // `useInSystemScope`, `useInstanceOperator` from the real AuthProvider — so the
 // harness runs it with `auth: true`. The identity is a *non-operator*: that
@@ -34,6 +36,7 @@ const meta = {
   component: Projects,
   tags: ['ai-generated'],
   parameters: {
+    ...topLayerDocs,
     app: {
       auth: true,
       identity: { ...authenticatedIdentity, capabilities: { instance_operator: false } },

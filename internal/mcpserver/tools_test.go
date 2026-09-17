@@ -258,12 +258,18 @@ func TestSharedAdmissionLimitUsesUniformHTTP429(t *testing.T) {
 	}
 }
 
-func TestSharedAdmissionReleaseFailureFailsClosed(t *testing.T) {
+// TestSharedAdmissionReleaseFailureKeepsTheResult pins that a slot release
+// which fails AFTER the call completed neither fails the call (the work is
+// done; a write in the same position has already committed, see
+// TestReleaseFailureKeepsCommittedStageResult) nor leaks the coordinator's
+// detail to the client. Admission itself still fails closed: a coordinator
+// that cannot ACQUIRE refuses the call (TestSharedAdmissionLimitUsesUniformHTTP429).
+func TestSharedAdmissionReleaseFailureKeepsTheResult(t *testing.T) {
 	services := envServices(env("a"))
 	services.Admission = fakeAdmission{releaseErr: errors.New("CANARY-RELEASE-DETAIL")}
 	h := toolHandler(t, services)
 	body := bodyString(t, h, ToolListEnvironments, `{"org_id":"org_a","project_id":"prj_a"}`)
-	if !strings.Contains(body, SafeOperationError) || strings.Contains(body, "CANARY-RELEASE-DETAIL") {
+	if strings.Contains(body, SafeOperationError) || !strings.Contains(body, `"environments"`) || strings.Contains(body, "CANARY-RELEASE-DETAIL") {
 		t.Fatalf("release failure response = %q", body)
 	}
 }

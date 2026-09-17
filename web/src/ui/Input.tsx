@@ -20,11 +20,23 @@ type InputProps = Omit<ComponentProps<'input'>, 'className'> & FieldProps & {
   revealable?: boolean;
 };
 
-export function Input({ label, hint, error, id, className, mono, revealable, type, ...rest }: InputProps) {
+export function Input({
+  label,
+  hint,
+  error,
+  id,
+  className,
+  mono,
+  revealable,
+  type,
+  'aria-describedby': describedBy,
+  'aria-invalid': invalid,
+  ...rest
+}: InputProps) {
   const [shown, setShown] = useState(false);
   const reveal = revealable === true && type === 'password';
   return (
-    <Field label={label} hint={hint} error={error} id={id} className={className}>
+    <Field label={label} hint={hint} error={error} id={id} className={className} aria-describedby={describedBy} aria-invalid={invalid}>
       {(control) =>
         reveal ? (
           <span className="field__control">

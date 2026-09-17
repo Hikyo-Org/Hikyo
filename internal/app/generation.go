@@ -321,6 +321,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			Admission:      limiter,
 			Version:        Version,
 			CursorSealer:   cursorSealer,
+			Log:            log,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: MCP transport: %w", err)

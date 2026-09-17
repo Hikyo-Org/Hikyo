@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -84,9 +85,17 @@ type WriteServices struct {
 // proposal on the wire. A non-string value fails Go decoding, which reports
 // only the JSON kind; the request-size bound and the service's byte budget
 // bound the length; a service refusal collapses to the safe error.
+//
+// valueInput records presence separately from content (as pageSizeInput does):
+// a set MUST carry a JSON string, and an omitted or null value is a missing
+// proposal, never an intentional empty-string draft that would replace the
+// caller's existing one. An explicit "" stays a legitimate empty proposal.
 type (
-	changeOperationInput  string
-	valueInput            string
+	changeOperationInput string
+	valueInput           struct {
+		value string
+		set   bool
+	}
 	acknowledgementsInput []string
 
 	changeInput struct {
@@ -119,11 +128,16 @@ var (
 )
 
 func (v *valueInput) UnmarshalJSON(data []byte) error {
+	// encoding/json hands a JSON null to UnmarshalJSON and a string decode of
+	// null is a silent no-op, so null has to be refused by name here.
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return errValueNotString
+	}
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
 		return errValueNotString
 	}
-	*v = valueInput(value)
+	*v = valueInput{value: value, set: true}
 	return nil
 }
 
@@ -229,8 +243,11 @@ func registerWrite[In, Out any](registry *Registry, spec ToolSpec, handler func(
 func (in changeInput) validate() (domain.Scope, error) {
 	switch in.Operation {
 	case changeOperationSet:
+		if !in.Value.set {
+			return domain.Scope{}, ErrInvalidArgument
+		}
 	case changeOperationUnset:
-		if in.Value != "" {
+		if in.Value.set {
 			return domain.Scope{}, ErrInvalidArgument
 		}
 	default:
@@ -279,7 +296,7 @@ func mapFindings(findings []service.Finding) []findingElement {
 
 func registerStageChange(registry *Registry, services WriteServices) error {
 	spec, err := writeToolSpec(ToolStageChange, "Stage a change",
-		"Mutating. Requires edit@environment for explicit org_id/project_id/environment_id. Stages one set or unset of a declared key as the caller's own pending draft and returns its version id and any secret-scanner findings. Publishes nothing and delivers nothing: the draft is inert until a separate human publish. Requires no user interaction.",
+		"Mutating. Requires edit@environment for explicit org_id/project_id/environment_id. Stages one set or unset of a declared key as the caller's own pending draft and returns its version id and any secret-scanner findings. Publishes nothing and delivers nothing: the draft is inert until a separate value.publish, which no MCP tool exposes. Requires no user interaction.",
 		"service.Values.Set/Unset", "value.stage")
 	if err != nil {
 		return err
@@ -287,7 +304,7 @@ func registerStageChange(registry *Registry, services WriteServices) error {
 	return registerWrite(registry, spec, func(ctx context.Context, bearer Bearer, in stageInput) (stageOutput, error) {
 		staged, err := runChange(ctx, bearer, services.Admission, in.changeInput, authz.OpValueStage,
 			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.StagedChange, error) {
-				return services.Staging.Set(ctx, actor, scope, in.KeyName, string(in.Value), in.Acknowledgements)
+				return services.Staging.Set(ctx, actor, scope, in.KeyName, in.Value.value, in.Acknowledgements)
 			},
 			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.StagedChange, error) {
 				return services.Staging.Unset(ctx, actor, scope, in.KeyName)
@@ -315,7 +332,7 @@ func registerValidateChange(registry *Registry, services WriteServices) error {
 	return registerWrite(registry, spec, func(ctx context.Context, bearer Bearer, in changeInput) (validateOutput, error) {
 		verdict, err := runChange(ctx, bearer, services.Admission, in, authz.OpValueValidate,
 			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.ValidatedChange, error) {
-				return services.Validation.ValidateSet(ctx, actor, scope, in.KeyName, string(in.Value))
+				return services.Validation.ValidateSet(ctx, actor, scope, in.KeyName, in.Value.value)
 			},
 			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.ValidatedChange, error) {
 				return services.Validation.ValidateUnset(ctx, actor, scope, in.KeyName)

@@ -85,11 +85,13 @@ func measure(host string) (bench.Result, error) {
 	// single pass, a shared CI runner's tail-latency noise lands directly on the
 	// p99 sample and once tipped it ~5% over the 5 ms bound. Mirror the publish
 	// floor (internal/isolation/floor_bench_test.go): scan the full corpus a few
-	// times and keep the fastest pass's distribution as the measured capability.
+	// times and report the whole pass with the lowest p99 as the measured
+	// capability. Every pass is recorded in the artifact with the selection
+	// procedure named, so a reader can tell this from single-pass evidence.
 	// Every pass scans identically; boot/RSS stay one-shot below.
-	const passes = 3
-	var p50, p99 float64
-	for pass := range passes {
+	const passCount = 3
+	passes := make([]bench.Pass, 0, passCount)
+	for range passCount {
 		latencies := make([]float64, 0, len(items))
 		for _, item := range items {
 			start := time.Now()
@@ -98,10 +100,9 @@ func measure(host string) (bench.Result, error) {
 			}
 			latencies = append(latencies, float64(time.Since(start).Microseconds())/1000)
 		}
-		if passP99 := bench.Percentile(latencies, 99); pass == 0 || passP99 < p99 {
-			p50, p99 = bench.Percentile(latencies, 50), passP99
-		}
+		passes = append(passes, bench.Pass{P50Millis: bench.Percentile(latencies, 50), P99Millis: bench.Percentile(latencies, 99)})
 	}
+	selected := passes[bench.SelectPass(passes)]
 
 	if host == "" {
 		host = runtime.GOOS + "/" + runtime.GOARCH
@@ -119,9 +120,11 @@ func measure(host string) (bench.Result, error) {
 		ItemBytes:         itemBytes,
 		BootCompileMillis: bootMillis,
 		BootPeakRSSBytes:  bootRSS,
-		P50Millis:         p50,
-		P99Millis:         p99,
+		P50Millis:         selected.P50Millis,
+		P99Millis:         selected.P99Millis,
 		PeakRSSBytes:      peakRSSBytes(),
+		Passes:            passes,
+		Selection:         bench.SelectionLowestP99,
 	}, nil
 }
 

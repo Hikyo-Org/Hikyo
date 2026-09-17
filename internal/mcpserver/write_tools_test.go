@@ -1,9 +1,11 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -18,6 +20,7 @@ import (
 type fakeValues struct {
 	stageErr    error
 	validateErr error
+	setCalls    int
 	lastOp      string
 	lastKey     string
 	lastValue   string
@@ -26,6 +29,7 @@ type fakeValues struct {
 }
 
 func (f *fakeValues) Set(_ context.Context, _ service.Actor, _ domain.Scope, keyName, value string, acks []string) (service.StagedChange, error) {
+	f.setCalls++
 	f.lastOp, f.lastKey, f.lastValue, f.lastAcks = "set", keyName, value, acks
 	if f.stageErr != nil {
 		return service.StagedChange{}, f.stageErr
@@ -257,6 +261,85 @@ func TestWriteToolArgumentsAreClosedAndBounded(t *testing.T) {
 				t.Fatalf("service reached with %s", name)
 			}
 		})
+	}
+}
+
+// TestStageValuePresenceIsExplicit pins the set/unset value contract: a set
+// must carry a JSON string (an omitted or null value is a missing proposal,
+// not an empty draft that would replace the caller's pending one), an explicit
+// empty string is a legitimate proposal, and an unset carries no value at all.
+func TestStageValuePresenceIsExplicit(t *testing.T) {
+	const prefix = `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K",`
+	for _, tool := range WriteToolNames() {
+		for name, tc := range map[string]struct {
+			args     string
+			accepted bool
+			value    string
+		}{
+			"set without value":         {prefix + `"operation":"set"}`, false, ""},
+			"set with null value":       {prefix + `"operation":"set","value":null}`, false, ""},
+			"set with empty string":     {prefix + `"operation":"set","value":""}`, true, ""},
+			"set with ordinary string":  {prefix + `"operation":"set","value":"x"}`, true, "x"},
+			"unset with empty string":   {prefix + `"operation":"unset","value":""}`, false, ""},
+			"unset with null value":     {prefix + `"operation":"unset","value":null}`, false, ""},
+			"unset without value":       {prefix + `"operation":"unset"}`, true, ""},
+			"unset with ordinary value": {prefix + `"operation":"unset","value":"x"}`, false, ""},
+		} {
+			t.Run(tool+"/"+name, func(t *testing.T) {
+				values := &fakeValues{}
+				h := writeHandler(t, values, fakeAdmission{})
+				body := bodyString(t, h, tool, tc.args)
+				reached := values.lastOp != ""
+				if reached != tc.accepted {
+					t.Fatalf("service reached = %v, want %v: %s", reached, tc.accepted, body)
+				}
+				if tc.accepted && values.lastValue != tc.value {
+					t.Fatalf("service value = %q, want %q", values.lastValue, tc.value)
+				}
+				if !tc.accepted && !strings.Contains(body, ErrInvalidArgument.Error()) && !strings.Contains(body, errValueNotString.Error()) {
+					t.Fatalf("refusal is not the named argument error: %s", body)
+				}
+			})
+		}
+	}
+}
+
+// TestReleaseFailureKeepsCommittedStageResult pins that a stage which the
+// service committed is reported as committed even when releasing the admission
+// slot afterwards fails: the caller must not be told to retry a write that
+// already landed, and the cleanup failure is logged rather than swallowed.
+func TestReleaseFailureKeepsCommittedStageResult(t *testing.T) {
+	values := &fakeValues{}
+	registry := NewRegistry()
+	if err := RegisterProductionTools(registry, envServices()); err != nil {
+		t.Fatal(err)
+	}
+	admission := fakeAdmission{releaseErr: errors.New("release boom")}
+	if err := RegisterWriteTools(registry, WriteServices{Admission: admission, Staging: values, Validation: values}); err != nil {
+		t.Fatal(err)
+	}
+	var logged bytes.Buffer
+	h, err := New(Options{
+		Registry: registry, ExternalOrigin: "https://hikyo.example.com", Version: "v-test",
+		CursorSealer: testCursorSealer, Log: slog.New(slog.NewTextHandler(&logged, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := structuredContent(t, callTool(t, h, ToolStageChange, stageArgs))
+	if out["version_id"] != "pcv_1" || values.setCalls != 1 {
+		t.Fatalf("committed stage not reported: out=%v setCalls=%d", out, values.setCalls)
+	}
+	if !strings.Contains(logged.String(), "release failed") || !strings.Contains(logged.String(), "release boom") || !strings.Contains(logged.String(), "value.stage") {
+		t.Fatalf("release failure not logged: %q", logged.String())
+	}
+	if strings.Contains(logged.String(), "postgres://db") || strings.Contains(logged.String(), "Bearer") {
+		t.Fatalf("log carries request material: %q", logged.String())
+	}
+	// A failing call still fails, release error or not.
+	values.stageErr = domain.ErrUnauthorized
+	if body := bodyString(t, h, ToolStageChange, stageArgs); !strings.Contains(body, SafeOperationError) {
+		t.Fatalf("failed call reported as success: %s", body)
 	}
 }
 

@@ -878,6 +878,23 @@ jobs:
       - name: Storybook story tests (light)
         working-directory: web
         run: pnpm run test-storybook:light
+      # The production bundle is otherwise first built by the main-only docs
+      # workflow, where a Storybook-only failure would block the whole Pages
+      # deploy; build it here so it fails the PR instead. Design exports ran
+      # above, so this is `storybook build` itself, not the script that reruns
+      # them. The check after it is the /storybook/ subpath contract: every
+      # design image a story links (a relative design/<slug>.png, see
+      # .storybook/design.ts) must ship inside the static tree.
+      - name: Storybook production build
+        working-directory: web
+        run: pnpm exec storybook build
+      - name: Every linked design image ships in the static build
+        working-directory: web
+        run: |
+          for png in design/exports/*.png; do
+            [ -e "$png" ] || continue
+            [ -f "storybook-static/design/$(basename "$png")" ] || { echo "missing storybook-static/design/$(basename "$png")"; exit 1; }
+          done
 
   # The ui-tagged Go coverage the browser suite used to carry inline: the
   # release-shaped binary's govulncheck pass and the ui-tagged server/webui

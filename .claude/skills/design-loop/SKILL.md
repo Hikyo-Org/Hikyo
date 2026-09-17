@@ -75,10 +75,16 @@ Not mirrored into the design file, so nothing can bind to them: `--ease`,
 the `-soft` set).
 
 ## Bootstrapping from an existing component
-Copy the JSON of an existing node in `hikyo.pen`, paste it as a sibling and
-rename it. Or author the frames in the app (`create_shape` and friends over the
-`open-pencil` MCP) and transcribe them back with `get_jsx` / `node_tree`, since
-the app cannot write `.pen`. `openpencil import` is not usable here: it runs under Node since
+Prefer `clone_node` over the `open-pencil` MCP, which mints fresh ids for the
+whole subtree, then rename the clone. Or author the frames in the app
+(`create_shape` and friends) and transcribe them back with `get_jsx` /
+`node_tree`, since the app cannot write `.pen`.
+
+If you copy node JSON by hand instead, give EVERY node in the pasted subtree a
+new `id` and remap any reference inside it to the old ids: the reader registers
+nodes by id, so a pasted subtree that keeps the original's ids aliases and
+overwrites the original's entries and renders the wrong node. `pnpm --dir web
+run design:export` refuses a document with a duplicate id before exporting. `openpencil import` is not usable here: it runs under Node since
 `@open-pencil/cli` 0.15.0 (#575), but its `-f` is `fig` or a DOM/CSS `json`
 dump, so it cannot produce or extend a `.pen`.
 

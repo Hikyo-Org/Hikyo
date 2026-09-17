@@ -32,3 +32,30 @@ export const AllStates: Story = {
     </div>
   ),
 };
+
+// The caller's own accessibility wiring survives the field's: an external
+// description is merged in front of the generated hint and error, and an
+// external invalid state is kept when the field has no error of its own.
+export const ExternalDescriptionIsMerged: Story = {
+  args: { label: 'Description', hint: 'The hint.', error: 'The error.' },
+  render: (args) => (
+    <>
+      <p id="external-note">An external note.</p>
+      <Textarea {...args} aria-describedby="external-note" />
+    </>
+  ),
+  play: async ({ canvas }) => {
+    const control = canvas.getByLabelText('Description');
+    await expect(control).toHaveAccessibleDescription(/an external note.*the hint.*the error/i);
+    await expect(control).toHaveAttribute('aria-invalid', 'true');
+  },
+};
+
+export const ExternalInvalidIsKept: Story = {
+  args: { label: 'Description', hint: 'The hint.', 'aria-invalid': true },
+  play: async ({ canvas }) => {
+    const control = canvas.getByLabelText('Description');
+    await expect(control).toHaveAttribute('aria-invalid', 'true');
+    await expect(control).toHaveAccessibleDescription('The hint.');
+  },
+};
