@@ -2137,7 +2137,14 @@ fieldset.field > legend {
    the row also holds the `+ key` Button, and an element selector here would
    outrank every `.btn` rule and repaint the atom. The group row now carries
    that `+ key` beside the toggle (env-matrix 31), so the toggle shares the
-   row rather than owning its full width. */
+   row rather than owning its full width.
+
+   Sentence case at --fs-sm, not the eyebrow treatment (#755): this is a row
+   HEADING inside the matrix table, the same tier as `.matrix__table thead th`
+   (fs-sm / 500 / no transform) and the key row headers beside it, so it reads
+   at their size and case. The eyebrow is 11px uppercase for a marker ABOVE a
+   block, which a folder name in the table body is not; uppercasing it also
+   mangled folder paths, which are content. */
 .matrix__group-row .matrix__group-toggle {
   display: flex;
   align-items: center;
@@ -2151,10 +2158,10 @@ fieldset.field > legend {
   background: transparent;
   color: var(--accent);
   font-size: var(--fs-sm);
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  font-weight: 500;
+  letter-spacing: normal;
   text-align: left;
-  text-transform: uppercase;
+  text-transform: none;
   cursor: pointer;
 }
 
@@ -2185,14 +2192,14 @@ fieldset.field > legend {
   transform: rotate(-90deg);
 }
 
+/* The toggle is sentence case now, so the summary no longer has to undo a
+   transform or a tracking; it only steps the weight and ink down. */
 .matrix__group-summary {
   min-width: 0;
   overflow: hidden;
   color: var(--tx-dim);
   font-weight: 400;
-  letter-spacing: 0;
   text-overflow: ellipsis;
-  text-transform: none;
   white-space: nowrap;
 }
 
