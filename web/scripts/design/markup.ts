@@ -22,7 +22,8 @@
 // scanned, so a computed `className={...}` is invisible. And a ruled element
 // is followed by tag depth, which a generic type argument or a `<` comparison
 // inflates, so the ruling is also bounded by indentation: it ends at the first
-// line back at the opener's own indent.
+// non-blank line at or below the opener's own indent. That closing line is
+// still pattern-scanned, because it is a sibling the ruling never covered.
 
 export type MarkupHit = { line: number; text: string } & (
   | { atom: string; note?: undefined }
@@ -109,11 +110,20 @@ export function scanMarkup(lines: readonly string[]): MarkupHit[] {
 
     if (state.kind === 'element') {
       const depth: number = state.depth + depthDelta(line);
-      // Back at the opener's indent is the closing tag: the element is over,
-      // whatever the tag count says.
-      const closed: boolean = depth <= 0 || (line.trim() !== '' && indent(line) <= state.opener);
-      state = closed ? { kind: 'open' } : { kind: 'element', depth, opener: state.opener };
-      continue;
+      // The tag count reaching zero is the element's own closing tag: over, and
+      // the line belongs to the ruled element, so it is not scanned.
+      if (depth <= 0) {
+        state = { kind: 'open' };
+        continue;
+      }
+      // Back at or below the opener's indent with tags still nominally open is
+      // an inflated count, not a nesting: the element ended and THIS line is a
+      // sibling, so it falls through to the patterns like any unruled line.
+      if (line.trim() === '' || indent(line) > state.opener) {
+        state = { kind: 'element', depth, opener: state.opener };
+        continue;
+      }
+      state = { kind: 'open' };
     }
 
     for (const { pattern, atom } of BANNED) if (pattern.test(line)) hit(atom);

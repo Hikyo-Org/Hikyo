@@ -240,7 +240,7 @@ test.describe('environment matrix', () => {
     await expect(chooser.locator('summary')).toContainText('envs 2/2');
     await chooser.locator('summary').click();
 
-    const group = page.locator('.matrix__group-row button', { hasText: 'app' });
+    const group = page.locator('.matrix__group-toggle', { hasText: 'app' });
     await group.click();
     await expect(group).toHaveAttribute('aria-expanded', 'false');
     await expect(group).toContainText('LOG_LEVEL');

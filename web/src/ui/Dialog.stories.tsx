@@ -90,20 +90,33 @@ export const AllStates: Story = {
   ),
 };
 
-/** The scrim is a way out; the dialog's own padding is not. */
+/** The scrim is a way out; the dialog's own padding, and a drag, are not. */
 export const BackdropClick: Story = {
   args: { onBackdropClick: fn() },
   play: async ({ canvas, args }) => {
     const dialog = canvas.getByRole('dialog', { name: 'Revoke this connection?' });
     const box = dialog.getBoundingClientRect();
-    const click = (clientX: number, clientY: number) => {
-      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX, clientY }));
+    const at = (kind: 'mousedown' | 'click', clientX: number, clientY: number) => {
+      dialog.dispatchEvent(new MouseEvent(kind, { bubbles: true, clientX, clientY }));
+    };
+    const press = (clientX: number, clientY: number) => {
+      at('mousedown', clientX, clientY);
+      at('click', clientX, clientY);
     };
     // Inside the box: the padding around the title is still the dialog.
-    click(box.left + 2, box.top + 2);
+    press(box.left + 2, box.top + 2);
     await expect(args.onBackdropClick).not.toHaveBeenCalled();
     // Outside it: the scrim.
-    click(box.left - 20, box.top - 20);
+    press(box.left - 20, box.top - 20);
+    await expect(args.onBackdropClick).toHaveBeenCalledTimes(1);
+    // A drag that starts in the box and releases on the scrim is a selection,
+    // not a walk away.
+    at('mousedown', box.left + 2, box.top + 2);
+    at('click', box.left - 20, box.top - 20);
+    await expect(args.onBackdropClick).toHaveBeenCalledTimes(1);
+    // And the reverse drag, which the same both-ends rule covers.
+    at('mousedown', box.left - 20, box.top - 20);
+    at('click', box.left + 2, box.top + 2);
     await expect(args.onBackdropClick).toHaveBeenCalledTimes(1);
   },
 };

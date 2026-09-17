@@ -644,7 +644,7 @@ function MappingWarnings({ warnings }: { warnings: readonly ScimBlastWarning[] }
           key={`${warning.code}-${index}`}
           className={warning.severity === 'critical' ? 'alert' : 'notice'}
           role={warning.severity === 'critical' ? 'alert' : 'status'}
-        >{/* markup-check: not an alert */}
+        >{/* markup-check: list item, atom renders a div */}
           <span className="alert__glyph" aria-hidden="true">
             !
           </span>
@@ -1025,7 +1025,7 @@ function MintDialog({
         Copy to clipboard
       </Button>
       {copyStatus === null ? null : (
-        <p className="notice" role="status">{/* markup-check: not an alert */}
+        <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>

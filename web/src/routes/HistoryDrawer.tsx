@@ -284,7 +284,7 @@ export function HistoryDrawer({
   // A pointer-down outside the drawer closes it back to the matrix, the same way
   // the Close link and Escape do. Guarded on an open dialog: the restore/pin/
   // release sheets are native `<dialog>`s rendered as SIBLINGS of the drawer, so
-  // a click inside one lands outside the aside — the guard keeps that from also
+  // a click inside one lands outside the aside, and the guard keeps that from also
   // collapsing the drawer, leaving each sheet its own dismissal.
   useEffect(() => {
     const closeOutside = (event: PointerEvent) => {

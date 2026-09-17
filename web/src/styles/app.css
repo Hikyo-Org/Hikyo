@@ -2011,10 +2011,12 @@ fieldset.field > legend {
   cursor: pointer;
 }
 
-/* The copy rows are ui/Checkbox, so `.chk` states the row; only the pad and the
-   radius the hover fill needs are this site's own. */
+/* The copy rows are ui/Checkbox, so `.chk` states the row; only the radius the
+   hover fill needs is this site's own. The pad is gone (2026-09-17): ui/Checkbox
+   makes the input and the label the hit targets, not the row box, so a padded
+   strip along the row would have offered a click that does nothing. The picker
+   above pads because there the padded element IS the label. */
 .matrix-editor__copy .chk {
-  padding-inline: var(--space-2);
   border-radius: var(--radius-control);
 }
 

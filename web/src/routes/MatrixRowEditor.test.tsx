@@ -308,30 +308,38 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     // the dialog's own padding is NOT a walk away, one outside its box is.
     dialog.getBoundingClientRect = () =>
       ({ left: 100, top: 100, right: 300, bottom: 300, width: 200, height: 200, x: 100, y: 100, toJSON: () => ({}) });
-    await act(async () => {
-      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 150, clientY: 150 }));
-    });
+    const at = (kind: 'mousedown' | 'click', clientX: number, clientY: number) =>
+      act(async () => {
+        dialog.dispatchEvent(new MouseEvent(kind, { bubbles: true, clientX, clientY }));
+      });
+    await at('mousedown', 150, 150);
+    await at('click', 150, 150);
     expect(onClose).toHaveBeenCalledOnce();
-    await act(async () => {
-      dialog.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 10, clientY: 10 }));
-    });
+    // A drag that starts in the editor and releases past its edge is a text
+    // selection: both ends have to land on the scrim before the edit is dropped.
+    await at('mousedown', 150, 150);
+    await at('click', 10, 10);
+    expect(onClose).toHaveBeenCalledOnce();
+    await at('mousedown', 10, 10);
+    await at('click', 10, 10);
     expect(onClose).toHaveBeenCalledTimes(2);
     await act(async () => root.unmount());
   });
 
-  it('toggles edit-all with aria-expanded and offers the per-row clear only in the single view', async () => {
+  it('toggles edit-all with aria-pressed and offers the per-row clear only in the single view', async () => {
     const view = await renderEditor(keyRecord, twoRows);
     const clearButtons = () =>
       [...view.container.querySelectorAll('button')].filter((node) => node.textContent?.startsWith('Clear '));
     expect(clearButtons()).toHaveLength(1);
     const toggle = button(view.container, 'Edit all environments');
-    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    // The panel is always on screen, so the toggle is pressed, never expanded.
+    expect(toggle.getAttribute('aria-expanded')).toBeNull();
 
-    // A disclosure, not a dialog action: the toggle names the panel it opens,
-    // that panel exists, and it FOLLOWS the toggle in the document, so Tab
-    // after opening walks into what opened.
-    const panelId = toggle.getAttribute('aria-controls') ?? '';
-    const panel = view.container.querySelector(`#${panelId}`);
+    // A mode switch, not a dialog action: the panel it changes exists, and it
+    // FOLLOWS the toggle in the document, so Tab after pressing walks into
+    // what changed.
+    const panel = view.container.querySelector('.matrix-row-editor__panel');
     expect(panel).not.toBeNull();
     expect(view.container.querySelector('.dialog__actions')?.contains(toggle)).toBe(false);
     expect(panel === null ? 0 : toggle.compareDocumentPosition(panel)).toBe(
@@ -342,8 +350,7 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     expect(clearButtons()).toHaveLength(0);
     expect(panel?.querySelector('textarea#matrix-fill-all')).not.toBeNull();
     const back = button(view.container, 'Back to development only');
-    expect(back.getAttribute('aria-expanded')).toBe('true');
-    expect(back.getAttribute('aria-controls')).toBe(panelId);
+    expect(back.getAttribute('aria-pressed')).toBe('true');
     await act(async () => back.click());
     expect(clearButtons()).toHaveLength(1);
     await view.unmount();

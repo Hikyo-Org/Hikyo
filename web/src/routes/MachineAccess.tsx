@@ -428,7 +428,7 @@ function MachineAccessPage() {
       ) : null}
 
       {credentials.isPending && !credentials.isError && accounts.length > 0 ? (
-        <p className="notice" role="status">{/* markup-check: not an alert */}
+        <p className="notice" role="status">{/* markup-check: in-flight status, transient */}
           <span className="alert__glyph" aria-hidden="true">
             <Glyph name="ellipsis" />
           </span>
@@ -1925,7 +1925,7 @@ export function MintDialog({
             Copy to clipboard
           </Button>
           {disclosed.copyStatus === null ? null : (
-            <p className="notice" role="status">{/* markup-check: not an alert */}
+            <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
               <span className="alert__glyph" aria-hidden="true">
                 ⧉
               </span>
@@ -3647,7 +3647,7 @@ function LeaseMintDialog({
             Copy password
           </Button>
           {disclosed.copyStatus === null ? null : (
-            <p className="notice" role="status">{/* markup-check: not an alert */}
+            <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
               <span className="alert__glyph" aria-hidden="true">
                 ⧉
               </span>

@@ -255,14 +255,14 @@ export function MatrixRowEditor({
             </p>
           ) : null}
 
-          {/* A disclosure, not a dialog action: the toggle sits directly above the
-              panel it names, so Tab after opening lands inside what opened. */}
+          {/* A mode switch, not a dialog action: the toggle sits directly above the
+              panel it changes, so Tab after pressing lands inside what changed. The
+              panel is always rendered, so the state is pressed, not expanded. */}
           {rows.length > 1 ? (
             <Button
               className="matrix-row-editor__toggle"
               type="button"
-              aria-expanded={editAll}
-              aria-controls="matrix-editor-environments"
+              aria-pressed={editAll}
               onClick={() => {
                 if (editAll) {
                   // Leaving the all-environments view drops the edits it alone
@@ -279,7 +279,7 @@ export function MatrixRowEditor({
               {editAll ? `Back to ${environment.name} only` : 'Edit all environments'}
             </Button>
           ) : null}
-          <div className="matrix-row-editor__panel" id="matrix-editor-environments">
+          <div className="matrix-row-editor__panel">
             {editAll ? (
               <Field
                 className="matrix-row-editor__fill"

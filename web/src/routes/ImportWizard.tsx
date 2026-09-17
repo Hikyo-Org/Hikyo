@@ -464,7 +464,7 @@ export function ImportWizard({
         </p>
 
         {step !== 'pick' && journey?.kind !== 'cli' ? (
-          <p className="notice" role="note">{/* markup-check: not an alert */}
+          <p className="notice" role="note">{/* markup-check: note, not a live region */}
             <span aria-hidden="true">⚠</span>
             <span>
               The file is read in this browser and reviewed here. Its values are sent only when you

@@ -241,7 +241,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
           {/* A set: check several to match any of them; none checked means any
               outcome. Checkboxes, not a multi-select: three values read
               cleaner and stay keyboard-reachable. */}
-          <ChoiceGroup legend="Outcomes" className="audit__outcomes">
+          <ChoiceGroup legend="Outcomes">
             {AUDIT_OUTCOMES.map((outcome) => (
               <Checkbox
                 key={outcome}

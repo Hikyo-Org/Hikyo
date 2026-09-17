@@ -1,4 +1,11 @@
-import { useId, type ReactNode, type RefObject, type SyntheticEvent } from 'react';
+import {
+  useId,
+  useRef,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+  type SyntheticEvent,
+} from 'react';
 
 import { cx } from './cx.ts';
 import { useModalDialog } from './useModalDialog.ts';
@@ -51,6 +58,11 @@ export function Dialog({
    * its own PADDING as well as for the backdrop (`event.target` is the dialog
    * either way), so a click inside the dialog's box never counts: aiming at a
    * field and missing it by a few pixels must not discard the edit.
+   *
+   * BOTH ends of the click must land on the scrim. A drag-select that starts
+   * in a field and releases past the dialog's edge is a selection, not a walk
+   * away, and the reverse drag (down on the scrim, up inside) is not one
+   * either.
    */
   onBackdropClick?: () => void;
   initialFocus?: RefObject<HTMLElement | null>;
@@ -59,26 +71,35 @@ export function Dialog({
 }) {
   const ref = useModalDialog(initialFocus);
   const titleId = useId();
+  const pressedScrim = useRef(false);
+  const onScrim = (event: MouseEvent<HTMLDialogElement>) => {
+    if (event.target !== event.currentTarget) return false;
+    const box = event.currentTarget.getBoundingClientRect();
+    return (
+      event.clientX < box.left ||
+      event.clientX > box.right ||
+      event.clientY < box.top ||
+      event.clientY > box.bottom
+    );
+  };
   return (
     <dialog
       ref={ref}
       className={cx('dialog', size === 'wide' && 'dialog--wide', className)}
       aria-labelledby={titleId}
       onCancel={onCancel}
+      onMouseDown={
+        onBackdropClick === undefined
+          ? undefined
+          : (event) => {
+              pressedScrim.current = onScrim(event);
+            }
+      }
       onClick={
         onBackdropClick === undefined
           ? undefined
           : (event) => {
-              if (event.target !== event.currentTarget) return;
-              const box = event.currentTarget.getBoundingClientRect();
-              if (
-                event.clientX < box.left ||
-                event.clientX > box.right ||
-                event.clientY < box.top ||
-                event.clientY > box.bottom
-              ) {
-                onBackdropClick();
-              }
+              if (pressedScrim.current && onScrim(event)) onBackdropClick();
             }
       }
     >

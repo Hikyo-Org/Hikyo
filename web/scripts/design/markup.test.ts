@@ -70,6 +70,16 @@ describe('scanMarkup', () => {
     ]);
   });
 
+  it('scans the line that ends a ruling by indent: it is a sibling, not the close', () => {
+    expect(scanMarkup(lines(`
+      {/* markup-check: rich label */}
+      <div role="radiogroup"><input type="radio" value={pick<string>(rows)} /></div>
+      <p className="chk">the next line at the opener's indent</p>
+    `))).toEqual([
+      { line: 4, atom: 'ui/Checkbox', text: `<p className="chk">the next line at the opener's indent</p>` },
+    ]);
+  });
+
   it('reports a marker at column 0, which would rule the whole file', () => {
     expect(scanMarkup(lines(`// markup-check: everything below is fine, honest
 <input type="checkbox" />`))).toEqual([

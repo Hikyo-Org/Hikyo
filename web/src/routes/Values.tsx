@@ -449,7 +449,7 @@ export function Values() {
       ) : null}
 
       {notice !== null ? (
-        <p className="notice" role="status">{/* markup-check: not an alert */}
+        <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>
