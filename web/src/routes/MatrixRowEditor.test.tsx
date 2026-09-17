@@ -326,18 +326,19 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     await act(async () => root.unmount());
   });
 
-  it('toggles edit-all with aria-pressed and offers the per-row clear only in the single view', async () => {
+  it('toggles edit-all through its label and offers the per-row clear only in the single view', async () => {
     const view = await renderEditor(keyRecord, twoRows);
     const clearButtons = () =>
       [...view.container.querySelectorAll('button')].filter((node) => node.textContent?.startsWith('Clear '));
     expect(clearButtons()).toHaveLength(1);
     const toggle = button(view.container, 'Edit all environments');
-    expect(toggle.getAttribute('aria-pressed')).toBe('false');
-    // The panel is always on screen, so the toggle is pressed, never expanded.
+    // The label carries the mode, so no ARIA state repeats it: the panel is
+    // always on screen (not a disclosure) and the name flips (not a toggle).
+    expect(toggle.getAttribute('aria-pressed')).toBeNull();
     expect(toggle.getAttribute('aria-expanded')).toBeNull();
 
     // A mode switch, not a dialog action: the panel it changes exists, and it
-    // FOLLOWS the toggle in the document, so Tab after pressing walks into
+    // FOLLOWS the button in the document, so Tab after clicking walks into
     // what changed.
     const panel = view.container.querySelector('.matrix-row-editor__panel');
     expect(panel).not.toBeNull();
@@ -349,8 +350,11 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     await act(async () => toggle.click());
     expect(clearButtons()).toHaveLength(0);
     expect(panel?.querySelector('textarea#matrix-fill-all')).not.toBeNull();
+    // Same button, renamed: the label is the whole state, so the
+    // all-environments mode is announced by looking it up under the new name.
     const back = button(view.container, 'Back to development only');
-    expect(back.getAttribute('aria-pressed')).toBe('true');
+    expect(back).toBe(toggle);
+    expect(back.getAttribute('aria-pressed')).toBeNull();
     await act(async () => back.click());
     expect(clearButtons()).toHaveLength(1);
     await view.unmount();

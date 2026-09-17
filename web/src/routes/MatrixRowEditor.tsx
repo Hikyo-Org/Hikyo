@@ -255,14 +255,16 @@ export function MatrixRowEditor({
             </p>
           ) : null}
 
-          {/* A mode switch, not a dialog action: the toggle sits directly above the
-              panel it changes, so Tab after pressing lands inside what changed. The
-              panel is always rendered, so the state is pressed, not expanded. */}
+          {/* A mode switch, not a dialog action: the button sits directly above the
+              panel it changes, so Tab after clicking lands inside what changed. No
+              ARIA state on it. The panel is always rendered, so it is not a
+              disclosure, and the LABEL carries the mode ("Edit all environments"
+              becomes "Back to <env> only"), which an `aria-pressed` toggle may not
+              do: a flipping label plus a flipping state says the same thing twice. */}
           {rows.length > 1 ? (
             <Button
               className="matrix-row-editor__toggle"
               type="button"
-              aria-pressed={editAll}
               onClick={() => {
                 if (editAll) {
                   // Leaving the all-environments view drops the edits it alone

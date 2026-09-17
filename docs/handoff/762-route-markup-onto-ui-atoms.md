@@ -30,7 +30,7 @@ Commits in `git log --oneline origin/main..HEAD` order (oldest first).
 | 11 fix | `Audit.tsx`'s pane refusal takes `ui/Alert`, the row editor's toggles sit beside the panels they open | `d4604925` |
 | 12 | The `markup-check` gate, this handoff, section 5 closed | `f4ddb83c`, `bc3bbc2f` |
 | Final review, round 1 | A marker rules one element and never its siblings; a ruling ends at its element's indent, not at a tag count alone; the row editor's dialog keeps its key name in the value face; the serving instance's e2e session is repaired like the viewing one | `a35e1960`, `42d079bb`, `8040d88b`, `44f5014a` |
-| Final review, round 2 | Every ruling names its own reason; a backdrop click needs both ends on the scrim; the edit-all toggle is pressed, not expanded; a dead class and a dead pad go; the scanner scans the line that ends a ruling by indent | `4c852b8a`, `822d9ae0` |
+| Final review, round 2 | Every ruling names its own reason; a backdrop click needs both ends on the scrim; the edit-all toggle's label carries its mode, with no ARIA state; a dead class and a dead pad go; the scanner scans the line that ends a ruling by indent | `4c852b8a`, `822d9ae0` |
 
 The `app.css` adherence budget ratcheted down through the series, 284 to 266,
 as each task's CSS was retired.
