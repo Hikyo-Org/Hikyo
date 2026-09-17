@@ -73,8 +73,24 @@ checkable boundary "stage-and-validate never publish or deliver": a staged
 change is an inert pending draft, nothing is delivered until a separate
 `value.publish` that a machine credential cannot perform.
 
+## Cross-provider review of the ADR text
+
+Required by [oss-mechanics.md](../adr/oss-mechanics.md) before this amendment
+is operative. Author provider: Anthropic (Claude), so the reviewer must be the
+native OpenAI CLI (cached `gpt-6-astra`, effort `low`).
+
+| Date | Round | Result |
+|---|---|---|
+| 2026-09-14 | attempt on `24ddbba` (pre-lock draft) | no verdict file produced; stale, superseded by the locked text |
+| 2026-09-17 | R1 on the locked text | SKIPPED, quota gate: owner reported Codex out of limits |
+
+A skipped pass is never SOUND. Re-run R1 against the locked ADR text once
+OpenAI quota is back above the cached thresholds (weekly at least 50%, session
+at least 40%). Brief: `.xreview/mcp-write-adr-brief.txt` in the review worktree
+is stale (describes the pre-lock "non-secret / stage+publish" shape); write a
+fresh brief from the six locked decisions above.
+
 ## Not done
 
-No implementation. No PR. No cross-model review of the ADR text yet (the R1
-above reviewed the findings, not this ADR text; that review is the remaining
-gate to operative). Not operative.
+No implementation. Governance PR open as draft, blocked on the review above.
+Not operative. Implementation tickets may be filed only after operative.
