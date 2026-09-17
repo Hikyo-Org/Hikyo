@@ -46,8 +46,6 @@ kbd,
 /* Focus is never invisible and never removed. A two-tone ring survives both
    themes and forced-colors, where `outline` is repainted by the OS. */
 :focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
   border-radius: var(--radius-control);
 }
 
@@ -65,7 +63,6 @@ select {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: var(--touch);
   padding: 0 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
@@ -94,15 +91,12 @@ select {
    carry the attribute, a <label> standing in for a file input, for instance. */
 .btn[disabled],
 .btn--disabled {
-  opacity: 0.6;
   cursor: not-allowed;
 }
 
 /* A square control that holds a single glyph, the theme toggle. Keeps the
    control radius and the touch floor the pinned set asserts. */
 .btn--icon {
-  width: var(--touch);
-  min-width: var(--touch);
   padding: 0;
 }
 
@@ -110,25 +104,6 @@ select {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.field label,
-.field .field__label {
-  color: var(--tx-dim);
-  font-size: 13px;
-}
-
-.field input {
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
-}
-
-.field input:focus-visible {
-  border-color: var(--accent);
 }
 
 /* A read-only field must not read as an editable one that simply hasn't been
@@ -414,9 +389,6 @@ select {
 
 .login__title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
 }
 
 .login__lede {
@@ -746,13 +718,7 @@ select {
    anything in it. Both of these read --tx-dim only because --tx-faint did not
    exist; --tx-faint clears 4.5:1 on every surface in both themes. */
 .sidebar__section h2 {
-  margin: 0;
   padding: 16px 16px 6px;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: var(--tx-faint);
 }
 
 .sidebar__items {
@@ -894,11 +860,7 @@ select {
   padding: 16px 16px 6px;
   color: var(--tx-faint);
   font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -1155,8 +1117,6 @@ select {
 .card h1,
 .card h2 {
   margin: 0 0 8px;
-  font-size: 18px;
-  font-weight: 700;
 }
 
 .card p {
@@ -1189,7 +1149,6 @@ select {
 .menu__item {
   display: flex;
   align-items: center;
-  min-height: var(--touch);
   padding: 0 8px;
   border: 0;
   border-radius: var(--radius-control);
@@ -1492,10 +1451,6 @@ select {
 .matrix__empty h2,
 .matrix__empty p {
   margin: 0;
-}
-
-.matrix__head h1 {
-  font-size: 20px;
 }
 
 .matrix__head p,
@@ -2013,14 +1968,12 @@ select {
 .matrix__group-row .matrix__add-key {
   flex: none;
   width: auto;
-  min-height: 0;
   padding: 4px 12px;
   border: 1px dashed var(--line);
   /* Rounded rect, not a full pill, DESIGN.md reserves the pill for identity
      circles and count badges (expectNoStrayPills). */
   border-radius: var(--radius-control);
   color: var(--tx-faint);
-  font-size: 11px;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
@@ -2377,7 +2330,6 @@ select {
    lets it share the row with its apply button. */
 .matrix-row-editor__fill textarea {
   min-width: 0;
-  min-height: var(--touch);
   flex: 1;
 }
 
@@ -2402,19 +2354,6 @@ select {
 .matrix-key-create label {
   color: var(--tx-dim);
   font-size: 12px;
-}
-
-.matrix-key-create__field input,
-.matrix-key-create__field textarea,
-.matrix-key-create__constraints input,
-.matrix-key-create__constraints textarea,
-.matrix-key-create__type select {
-  min-height: var(--touch);
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
 }
 
 .matrix-key-create__field input,
@@ -2715,10 +2654,6 @@ select {
      touch-height base (`+ key` zeroes the group-row button floor; drafts is a
      bare pill). Both need the 44px floor back on a phone, the add-key selector
      matches the base's specificity so this later rule wins. */
-  .matrix__group-row .matrix__add-key {
-    min-height: var(--touch);
-  }
-
   .matrix__drafts {
     min-height: var(--touch);
   }
@@ -2815,15 +2750,6 @@ select {
 
 .field--inline {
   min-width: 220px;
-}
-
-.field select {
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
 }
 
 .values__table {
@@ -3019,7 +2945,6 @@ select {
 }
 
 .tab {
-  min-height: var(--touch);
   padding: 0 14px;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -3823,15 +3748,6 @@ select {
   font-size: 12.5px;
 }
 
-.history-sheet input[type='date'] {
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
-}
-
 .history-sheet select {
   justify-content: flex-start;
 }
@@ -3983,7 +3899,6 @@ select {
 .matrix__history-link {
   min-height: var(--touch);
   padding: 0 10px;
-  font-size: 11.5px;
   font-weight: 400;
   white-space: nowrap;
 }
@@ -4022,8 +3937,6 @@ select {
 
 .page h1 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 700;
 }
 
 .page__lede {
@@ -4082,17 +3995,10 @@ select {
 
 .panel h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--tx-dim);
 }
 
 .panel h3 {
   margin: 4px 0 0;
-  font-size: 14px;
-  font-weight: 700;
 }
 
 /* The prototype's danger card is a two-part signal: a border MUTED toward the
@@ -4120,19 +4026,6 @@ select {
   gap: 8px;
 }
 
-.field__hint {
-  margin: 0;
-  color: var(--tx-dim);
-  font-size: 13px;
-  max-width: 68ch;
-}
-
-.btn--quiet {
-  min-height: 32px;
-  padding: 0 10px;
-  font-size: 13px;
-}
-
 /* Finalized app-chrome settings measure and card treatment. */
 .page--chrome {
   display: grid;
@@ -4145,12 +4038,6 @@ select {
 
 .content > .page--chrome {
   margin-top: 32px;
-}
-
-.page--chrome h1 {
-  font-size: 19px;
-  line-height: normal;
-  letter-spacing: -0.01em;
 }
 
 .page--chrome .page__lede {
@@ -4183,13 +4070,6 @@ select {
   padding: 16px 18px;
   border-color: var(--panel-line);
   background: var(--bg-panel);
-}
-
-.page--chrome .panel h2 {
-  color: var(--tx-faint);
-  font-size: 13px;
-  line-height: 15px;
-  letter-spacing: 0.05em;
 }
 
 .page--chrome .panel > .settings-row + .settings-row {
@@ -4293,8 +4173,6 @@ select {
 }
 
 .identity-hue {
-  width: 30px;
-  height: 30px;
   padding: 0;
   border: 2px solid transparent;
   border-radius: var(--radius-control);
@@ -4308,8 +4186,6 @@ select {
 .identity-glyph {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
   padding: 0;
   border: 1px solid var(--panel-line);
   border-radius: var(--radius-control);
@@ -4382,17 +4258,6 @@ select {
   padding: 0;
   min-inline-size: 0;
   grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-}
-
-.settings-select,
-.settings-input {
-  min-height: 36px;
-  padding: 7px 10px;
-  border: 1px solid var(--panel-line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
-  font-size: 13px;
 }
 
 .settings-input--compact {
@@ -4495,18 +4360,6 @@ select {
 
 .page--chrome .panel--tight {
   gap: 8px;
-}
-
-.page--chrome .btn {
-  min-height: 36px;
-}
-
-/* The 36px density belongs to the settings PAGE, not to an overlay opened over
-   it. A dialog is a decision surface with two or three buttons in it, and it
-   keeps the touch floor whatever page it happens to be a descendant of. */
-.page--chrome .ceremony .btn,
-.page--chrome .matrix-editor .btn {
-  min-height: var(--touch);
 }
 
 .page--chrome #account-factors > h3:first-of-type {
@@ -4759,9 +4612,6 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  min-width: 26px;
-  min-height: 26px;
   margin: -6px -8px -6px -2px;
   padding: 0;
   border: 0;
@@ -5036,8 +4886,7 @@ select {
     height: var(--touch);
   }
 
-  .explain__toggle,
-  .btn--quiet {
+  .explain__toggle {
     min-width: var(--touch);
     min-height: var(--touch);
   }
@@ -5103,7 +4952,6 @@ select {
 
 .stepup__form input {
   width: 9ch;
-  min-height: var(--touch);
   font-family: var(--font-mono);
 }
 
@@ -5142,9 +4990,6 @@ select {
  */
 @media (max-width: 700px) {
   .page--chrome .jump__link,
-  .page--chrome .btn,
-  .settings-select,
-  .settings-input,
   .settings-tag,
   .page--members .inspect select {
     min-height: var(--touch);
@@ -5154,9 +4999,6 @@ select {
      margins keep the row's own height where it was, so growing the hit area
      does not grow the list. */
   .capability__revoke {
-    width: var(--touch);
-    min-width: var(--touch);
-    min-height: var(--touch);
     margin-top: -12px;
     margin-bottom: -12px;
   }
@@ -5178,11 +5020,6 @@ select {
   .settings-row__detail a,
   .identity-hue {
     min-height: var(--touch);
-  }
-
-  .identity-hue {
-    width: var(--touch);
-    height: var(--touch);
   }
 }
 
@@ -5463,12 +5300,6 @@ select {
 .catalogue-manage__row-main input,
 .catalogue-manage__create input {
   flex: 1 1 12ch;
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg);
-  color: var(--tx);
 }
 
 .catalogue-manage__meta {
@@ -5816,24 +5647,6 @@ select {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-}
-
-/* Form controls in the approvals surface meet the touch floor the pinned set
-   asserts on mobile; the design system's bare `select`/`textarea` carry only
-   typography, so the surface sizes them like `.field input`. */
-.change-approvals select,
-.change-approvals input:not([type='checkbox']),
-.change-approvals textarea {
-  min-height: var(--touch);
-  padding: 0 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-control);
-  background: var(--bg-panel);
-  color: var(--tx);
-}
-
-.change-approvals textarea {
-  padding: 8px 12px;
 }
 
 .change-approvals label {
@@ -6299,7 +6112,6 @@ select {
 .login__links a {
   display: inline-flex;
   align-items: center;
-  min-height: var(--touch);
   color: var(--tx-dim);
 }
 
@@ -6333,7 +6145,6 @@ select {
 .self-config-preview code, #configuration-owner code, #configuration-instances .settings-row__detail { overflow-wrap: anywhere; }
 @media (max-width: 640px) {
   .self-config-controls { align-items: stretch; }
-  .self-config-controls .btn { min-height: 44px; }
   #configuration-instances .settings-row { align-items: stretch; flex-wrap: wrap; }
 }
 
