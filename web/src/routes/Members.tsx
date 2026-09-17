@@ -38,6 +38,7 @@ import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Select } from '../ui/Select.tsx';
 
 /**
  * wideningEnvironment reads the environment a reauth-required grant refusal
@@ -872,8 +873,6 @@ function GrantModal({
   const applyTemplate = useApplyTemplate();
   const principalId = useId();
   const [enterPrincipalId, setEnterPrincipalId] = useState(false);
-  const scopeId = useId();
-  const templateId = useId();
 
   const chosen = optionByValue(options, draft.scope);
   const atoms = projectContext && prototypeMode
@@ -1207,77 +1206,68 @@ function GrantModal({
           ))}
         </ul>
       ) : (
-        <div className="field">
-          <label htmlFor={templateId}>Role template</label>
-          <select
-            id={templateId}
-            value={draft.template}
-            onChange={(event) => onDraft({ ...draft, template: event.target.value })}
-          >
-            <option value="">Choose a template…</option>
-            {templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.id}
-              </option>
-            ))}
-          </select>
-          <p className="field__hint">
-            {draft.template === '' || selectedTemplate === undefined || chosen === undefined
+        <Select
+          label="Role template"
+          value={draft.template}
+          onChange={(event) => onDraft({ ...draft, template: event.target.value })}
+          hint={
+            draft.template === '' || selectedTemplate === undefined || chosen === undefined
               ? 'A template is expanded by the server at grant time; what lands is grants.'
-              : `Seeds: ${expandTemplate(selectedTemplate.id, chosen.level).join(', ')}.`}
-          </p>
-        </div>
+              : `Seeds: ${expandTemplate(selectedTemplate.id, chosen.level).join(', ')}.`
+          }
+        >
+          <option value="">Choose a template…</option>
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.id}
+            </option>
+          ))}
+        </Select>
       )}
 
-      <div className="field">
-        <label htmlFor={scopeId}>Scope</label>
-        <select
-          id={scopeId}
-          value={draft.scope}
-          onChange={(event) => {
-            const next = optionByValue(options, event.target.value);
-            if (next === undefined) {
-              onDraft({ ...draft, scope: '', capabilities: [], template: '' });
-              return;
-            }
-            onDraft({
-              ...draft,
-              scope: next.value,
-              capabilities: draft.capabilities.filter((id) =>
-                capabilitiesAt(next.level).some((atom) => atom.id === id),
-              ),
-              template: templatesAt(next.level).some((template) => template.id === draft.template)
-                ? draft.template
-                : '',
-            });
-          }}
-        >
-          {projectContext && prototypeMode ? null : <option value="">Choose a scope…</option>}
-          {[...new Set(options.map((option) => option.group))].map((group) => (
-            <optgroup key={group} label={group}>
-              {options
-                .filter((option) => option.group === group)
-                .map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {projectContext && prototypeMode
-                      ? compactGrantOptionLabel(option, orgName)
-                      : option.label}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
-        </select>
-        {projectContext && prototypeMode ? null : chosen?.level === 'instance' ? (
-          <p className="field__hint">
-            Instance scope reaches every organisation, current and future.
-          </p>
-        ) : (
-          <p className="field__hint">
-            Narrowest first. A protected environment is last in its project and is never
-            preselected; an organisation scope reaches every project, current and future.
-          </p>
-        )}
-      </div>
+      <Select
+        label="Scope"
+        value={draft.scope}
+        onChange={(event) => {
+          const next = optionByValue(options, event.target.value);
+          if (next === undefined) {
+            onDraft({ ...draft, scope: '', capabilities: [], template: '' });
+            return;
+          }
+          onDraft({
+            ...draft,
+            scope: next.value,
+            capabilities: draft.capabilities.filter((id) =>
+              capabilitiesAt(next.level).some((atom) => atom.id === id),
+            ),
+            template: templatesAt(next.level).some((template) => template.id === draft.template)
+              ? draft.template
+              : '',
+          });
+        }}
+        hint={
+          projectContext && prototypeMode
+            ? undefined
+            : chosen?.level === 'instance'
+              ? 'Instance scope reaches every organisation, current and future.'
+              : 'Narrowest first. A protected environment is last in its project and is never preselected; an organisation scope reaches every project, current and future.'
+        }
+      >
+        {projectContext && prototypeMode ? null : <option value="">Choose a scope…</option>}
+        {[...new Set(options.map((option) => option.group))].map((group) => (
+          <optgroup key={group} label={group}>
+            {options
+              .filter((option) => option.group === group)
+              .map((option) => (
+                <option key={option.value} value={option.value}>
+                  {projectContext && prototypeMode
+                    ? compactGrantOptionLabel(option, orgName)
+                    : option.label}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </Select>
 
       <div className="ceremony__actions">
         <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>

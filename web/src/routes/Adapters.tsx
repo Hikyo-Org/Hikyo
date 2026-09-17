@@ -50,6 +50,7 @@ import {
 } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Input } from '../ui/Input.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 
@@ -891,16 +892,14 @@ function CreateAdapterPanel({
           />
         </label>
         {provider === 'github-actions' ? <p className="field__hint">GitHub Enterprise Server: use https://HOST/api/v3. GHES support is best-effort; CI verifies github.com only.</p> : null}
-        <label className="field">
-          <span className="field__label">Credential</span>
-          <input
-            type="password"
-            value={credential}
-            onChange={(event) => setCredential(event.target.value)}
-            autoComplete="new-password"
-          />
-          <span className="field__hint">Write-only. It is sealed on save and never shown again.</span>
-        </label>
+        <Input
+          label="Credential"
+          type="password"
+          value={credential}
+          onChange={(event) => setCredential(event.target.value)}
+          autoComplete="new-password"
+          hint="Write-only. It is sealed on save and never shown again."
+        />
       </div>
       <TargetForm
         title="First target"
@@ -1119,24 +1118,24 @@ export function TargetForm({
           </label>
         )}
         {kind === 'organization' && visibility === 'selected' ? (
-          <label className="field">
-            <span className="field__label">Repository ids</span>
-            <input
-              className="mono"
-              inputMode="numeric"
-              value={repositoryIds}
-              disabled={lockRouting === true}
-              aria-invalid={repositoryIdsError !== null}
-              placeholder="123456, 789012"
-              onChange={(event) => {
-                setRepositoryIds(event.target.value);
-                setRepositoryIdsError(null);
-              }}
-            />
-            <span className="field__hint">
-              {repositoryIdsError ?? 'Comma-separated GitHub repository ids the organization secret is visible to.'}
-            </span>
-          </label>
+          <Input
+            label="Repository ids"
+            mono
+            inputMode="numeric"
+            value={repositoryIds}
+            disabled={lockRouting === true}
+            placeholder="123456, 789012"
+            onChange={(event) => {
+              setRepositoryIds(event.target.value);
+              setRepositoryIdsError(null);
+            }}
+            hint={
+              repositoryIdsError === null
+                ? 'Comma-separated GitHub repository ids the organization secret is visible to.'
+                : undefined
+            }
+            error={repositoryIdsError ?? undefined}
+          />
         ) : null}
         {kind === 'environment' ? (
           <label className="field">

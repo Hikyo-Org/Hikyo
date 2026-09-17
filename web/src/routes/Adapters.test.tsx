@@ -69,8 +69,16 @@ it('TargetForm keeps the typed prefix, previews the stored form, and parses sele
     />,
   );
   try {
-    const select = (label: string) =>
-      [...container.querySelectorAll('label')].find((l) => l.textContent?.startsWith(label))?.querySelector('select, input');
+    // Fields are a mix of the wrapping-label form and the ui/Input, ui/Select
+    // atoms, which associate by `htmlFor`; resolve both.
+    const select = (label: string) => {
+      const found = [...container.querySelectorAll('label')].find((l) => l.textContent?.startsWith(label));
+      if (found === undefined) return null;
+      const inside = found.querySelector('select, input');
+      if (inside !== null) return inside;
+      const target = found.htmlFor === '' ? null : container.querySelector(`#${CSS.escape(found.htmlFor)}`);
+      return target;
+    };
     const kind = select('Destination kind');
     if (!(kind instanceof HTMLSelectElement)) throw new Error('kind select missing');
     expect([...kind.options].map((o) => o.textContent)).toContain('GitHub organization');

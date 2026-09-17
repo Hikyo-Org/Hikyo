@@ -13,6 +13,7 @@ import {
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Select } from '../ui/Select.tsx';
 import { DisplayOnceCopy } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -145,8 +146,6 @@ function InviteForm({
   const titleId = useId();
   const usernameId = useId();
   const displayNameId = useId();
-  const templateId = useId();
-  const templateHintId = useId();
   const templates = templatesAt(level);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -198,27 +197,20 @@ function InviteForm({
             onChange={(event) => onDisplayName(event.target.value)}
           />
         </div>
-        <div className="field">
-          <label htmlFor={templateId}>Role template</label>
-          <select
-            id={templateId}
-            aria-describedby={templateHintId}
-            disabled={pending}
-            value={template}
-            onChange={(event) => onTemplate(event.target.value)}
-          >
-            <option value="">No initial grants</option>
-            {templates.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.id}
-              </option>
-            ))}
-          </select>
-          <p id={templateHintId} className="field__hint">
-            Expanded at {scopeName} in the same transaction; each grant stays individually
-            revocable. With no template the account exists but reaches nothing.
-          </p>
-        </div>
+        <Select
+          label="Role template"
+          disabled={pending}
+          value={template}
+          onChange={(event) => onTemplate(event.target.value)}
+          hint={`Expanded at ${scopeName} in the same transaction; each grant stays individually revocable. With no template the account exists but reaches nothing.`}
+        >
+          <option value="">No initial grants</option>
+          {templates.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.id}
+            </option>
+          ))}
+        </Select>
         <div className="ceremony__actions">
           <Button type="submit" variant="primary" disabled={pending} aria-busy={pending ? true : undefined}>
             {pending ? 'Inviting…' : 'Invite'}
