@@ -2458,8 +2458,9 @@ fieldset.field > legend {
   flex: 1;
 }
 
-/* A disclosure toggle is sized to its own label, not stretched to the dialog's
-   column, and the panel it names follows it on the form's own rhythm. */
+/* The row editor's in-body buttons (the copy disclosure and the edit-all mode
+   switch) are sized to their own label, not stretched to the dialog's column,
+   and what they open follows them on the form's own rhythm. */
 .matrix-row-editor__toggle {
   align-self: flex-start;
 }
