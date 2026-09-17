@@ -337,7 +337,6 @@ function ProjectCryptoMaintenance({
 }) {
   const dek = useRotateDek();
   const reencrypt = useReencryptProject(org, project);
-  const titleId = useId();
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [dialogFailure, setDialogFailure] = useState<string | null>(null);
 
@@ -383,7 +382,6 @@ function ProjectCryptoMaintenance({
 
       {confirmRotate ? (
         <ConsequencesDialog
-          titleId={titleId}
           title="Rotate this project's DEK?"
           confirmLabel="Rotate the DEK"
           busyLabel="Rotating the project DEK…"

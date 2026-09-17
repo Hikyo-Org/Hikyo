@@ -67,7 +67,6 @@ export const Consequences: Story = {
   parameters: topLayerDocs,
   render: () => (
     <ConsequencesDialog
-      titleId="ceremony-title"
       title="Delete this workspace"
       confirmLabel="Delete workspace"
       busyLabel="Deleting…"

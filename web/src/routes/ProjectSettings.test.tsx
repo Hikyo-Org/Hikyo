@@ -317,7 +317,7 @@ describe('project crypto maintenance', () => {
       await settleTask();
 
       await act(async () => button(view.container, 'Rotate the project DEK').click());
-      const dialog = view.container.ownerDocument.querySelector('dialog.ceremony');
+      const dialog = view.container.ownerDocument.querySelector('dialog[open]');
       expect(dialog?.textContent).toContain('incomplete until');
       await act(async () => button(view.container, 'Rotate the DEK').click());
       await settleTask();

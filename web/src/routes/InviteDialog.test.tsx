@@ -50,13 +50,18 @@ function input(root: ParentNode, label: string): HTMLInputElement {
   return control;
 }
 
+/** Submits through the Invite button, which sits in the dialog's action row
+ *  OUTSIDE the form and reaches it by `form=`: the association is what this
+ *  clicks, so a broken one fails here rather than in a browser. */
 function submit(root: ParentNode): Promise<void> {
-  const form = root.querySelector('form');
-  if (!(form instanceof HTMLFormElement)) {
-    throw new Error('the invite form is missing');
+  const invite = [...root.querySelectorAll('button')].find(
+    (candidate) => candidate.type === 'submit',
+  );
+  if (!(invite instanceof HTMLButtonElement)) {
+    throw new Error('the invite submit button is missing');
   }
   return act(async () => {
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    invite.click();
     // The submit handler is async: let its awaited call and the state it sets
     // resolve inside the same act.
     await Promise.resolve();

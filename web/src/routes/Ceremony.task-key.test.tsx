@@ -278,7 +278,7 @@ describe('Ceremony copy and factor state (a11y audit)', () => {
       ],
       window: slidingWindow,
     });
-    expect(view.container.querySelector('.ceremony__lede strong')?.textContent).toBe(
+    expect(view.container.querySelector('.dialog__lede strong')?.textContent).toBe(
       'publish into a protected environment',
     );
     const items = [...view.container.querySelectorAll('.ceremony__keys li')];
@@ -290,28 +290,30 @@ describe('Ceremony copy and factor state (a11y audit)', () => {
 
   it('keeps disclosure wording for a reveal and no window sentence for a single decision', async () => {
     const view = await mount(ceremonyRequest('production'));
-    expect(view.container.querySelector('.ceremony__lede strong')?.textContent).toBe('disclosure');
+    expect(view.container.querySelector('.dialog__lede strong')?.textContent).toBe('disclosure');
     expect(view.container.textContent).not.toContain('Success opens a sliding reveal window.');
     await view.unmount();
   });
 
-  it('relabels only the pending factor and puts Cancel last', async () => {
+  it('relabels only the pending factor and puts the passkey last', async () => {
     mocks.identity = { session: { assurance: { method: 'oidc:strict', provider: 'strict' } } };
     mocks.providerAvailable = true;
     const passkey = deferred<void>();
     mocks.runPasskeyCeremony.mockReturnValue(passkey.promise);
     const view = await mount({ ...ceremonyRequest('production'), window: slidingWindow });
-    const actions = [...view.container.querySelectorAll('.ceremony__actions button')];
-    expect(actions.at(-1)?.textContent).toBe('Cancel');
+    // Primary last: Escape and the leftmost button both mean "no".
+    const actions = [...view.container.querySelectorAll('.dialog__actions button')];
+    expect(actions[0]?.textContent).toBe('Cancel');
+    expect(actions.at(-1)?.textContent).toBe('Use a passkey');
 
     await act(async () => button(view.container, 'Use a passkey').click());
-    const labels = [...view.container.querySelectorAll<HTMLButtonElement>('.ceremony__actions button')].map(
+    const labels = [...view.container.querySelectorAll<HTMLButtonElement>('.dialog__actions button')].map(
       (node) => [node.textContent, node.disabled],
     );
     expect(labels).toEqual([
-      ['Waiting for your passkey…', true],
-      ['Re-authenticate with Corporate IdP', true],
       ['Cancel', true],
+      ['Re-authenticate with Corporate IdP', true],
+      ['Waiting for your passkey…', true],
     ]);
     await act(async () => passkey.resolve());
     await view.unmount();

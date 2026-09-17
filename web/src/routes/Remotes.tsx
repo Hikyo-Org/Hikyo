@@ -56,10 +56,10 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { useNavigationGuard } from './MachineAccess.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
@@ -901,7 +901,6 @@ export function ConnectionMintDialog({
   onClose: () => void;
 }) {
   const confirmation = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(confirmation);
   const [stored, setStored] = useState(false);
   const [heldBack, setHeldBack] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
@@ -918,18 +917,19 @@ export function ConnectionMintDialog({
   useNavigationGuard(!stored, dismiss);
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="connection-mint-title"
-      ref={dialog}
+    <Dialog
+      title="Connection credential minted, shown exactly once"
+      initialFocus={confirmation}
       onCancel={(event) => {
         event.preventDefault();
         dismiss();
       }}
+      actions={
+        <Button variant="primary" type="button" onClick={dismiss}>
+          Done
+        </Button>
+      }
     >
-      <h2 className="ceremony__title" id="connection-mint-title">
-        Connection credential minted, shown exactly once
-      </h2>
       <p className="ceremony__scope">
         For <strong>{minted.label}</strong>. Hand this value to that peer; it goes into its{' '}
         <strong>Add a remote</strong> form as the connection credential.
@@ -986,12 +986,7 @@ export function ConnectionMintDialog({
       {heldBack ? (
         <Alert>Confirm you have stored it. There is no second look at this value.</Alert>
       ) : null}
-      <div className="ceremony__actions">
-        <Button variant="primary" type="button" onClick={dismiss}>
-          Done
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -1011,7 +1006,6 @@ export function RevokeConnectionDialog({
   onClose: () => void;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
-  const dialog = useModalDialog(cancel);
   const revoke = useRevokeConnection();
 
   const run = () => {
@@ -1019,20 +1013,36 @@ export function RevokeConnectionDialog({
   };
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="connection-revoke-title"
-      ref={dialog}
+    <Dialog
+      title={`Revoke ${connection.label}?`}
+      initialFocus={cancel}
       onCancel={(event) => {
         event.preventDefault();
         if (!revoke.isPending) {
           onClose();
         }
       }}
+      actions={
+        <>
+          <Button
+            type="button"
+            ref={cancel}
+            onClick={onClose}
+            disabled={revoke.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            type="button"
+            onClick={run}
+            disabled={revoke.isPending}
+          >
+            {revoke.isPending ? 'Revoking…' : 'Revoke credential'}
+          </Button>
+        </>
+      }
     >
-      <h2 className="ceremony__title" id="connection-revoke-title">
-        Revoke {connection.label}?
-      </h2>
       <p className="ceremony__scope">
         The credential and its principal are retired together. The peer holding it loses this
         instance&apos;s directory fetch at its <strong>next</strong> presentation; its card over
@@ -1042,25 +1052,7 @@ export function RevokeConnectionDialog({
       {revoke.isError ? (
         <Alert>{revokeFailureText(revoke.error)}</Alert>
       ) : null}
-      <div className="ceremony__actions">
-        <Button
-          variant="primary"
-          type="button"
-          onClick={run}
-          disabled={revoke.isPending}
-        >
-          {revoke.isPending ? 'Revoking…' : 'Revoke credential'}
-        </Button>
-        <Button
-          type="button"
-          ref={cancel}
-          onClick={onClose}
-          disabled={revoke.isPending}
-        >
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 

@@ -3084,6 +3084,10 @@ a:is(.badge, .chip, .settings-tag) {
   background: color-mix(in oklch, var(--bg), var(--accent) 8%);
 }
 
+/* A form as the dialog's direct child is a column of fields, in the atom and
+   in the legacy shells alike. This beats `.ceremony__totp` on flex-direction by
+   specificity, which is how that form has always rendered. */
+.dialog > form,
 .ceremony > form {
   display: flex;
   flex-direction: column;

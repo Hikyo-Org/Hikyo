@@ -271,7 +271,6 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
   const dek = useRotateDek();
   const reencrypt = useReencryptInstance();
   const root = useRotateRootKey();
-  const titleId = useId();
   const [ceremony, setCeremony] = useState<CryptoCeremony | null>(null);
   const [dialogFailure, setDialogFailure] = useState<string | null>(null);
   const open = (which: CryptoCeremony) => { setDialogFailure(null); setCeremony(which); };
@@ -329,49 +328,49 @@ function CryptoMaintenance({ onDone }: { onDone: (message: string) => void }) {
 
     <p className="field__hint"><span className="mono">init</span>, <span className="mono">migrate</span>, restore reconciliation, break-glass, host-file custody and startup-only key material are local host authority. They are deliberately absent from every network surface: CLI-at-the-box, not CLI-over-network.</p>
 
-    {ceremony === 'token' ? <ConsequencesDialog titleId={titleId} title="Rotate the change-token key?" confirmLabel="Rotate the key" busyLabel="Rotating the change-token key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'token' ? <ConsequencesDialog title="Rotate the change-token key?" confirmLabel="Rotate the key" busyLabel="Rotating the change-token key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       token.mutate(undefined, { onSuccess: (result) => { onDone(`The change-token key was rotated (version ${String(result.token_key_version)}). Every client cursor is invalid; the next fetch from each workload is a full one.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-token-key')) });
     }}>
       <p>Every conditional-fetch cursor in circulation stops matching. The next fetch from every workload is a full one, and nothing restarts. This cannot be undone by rotating back.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'scanning' ? <ConsequencesDialog titleId={titleId} title="Rotate the secret-scanning key?" confirmLabel="Rotate the key" busyLabel="Rotating the scanning key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'scanning' ? <ConsequencesDialog title="Rotate the secret-scanning key?" confirmLabel="Rotate the key" busyLabel="Rotating the scanning key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       scanning.mutate(undefined, { onSuccess: (result) => { onDone(`The secret-scanning key was rotated (version ${String(result.scanning_key_version)}). ${String(result.dismissals_dropped)} dismissal${result.dismissals_dropped === 1n ? ' was' : 's were'} dropped; their warns will re-fire.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-scanning-key')) });
     }}>
       <p>Every stored scan fingerprint becomes unrecomputable under the new key, so every dismissal is dropped in the same transaction and the warns they suppressed will fire again. This cannot be undone.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'master' ? <ConsequencesDialog titleId={titleId} title="Rotate the master key?" confirmLabel="Rotate the key" busyLabel="Rotating the master key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'master' ? <ConsequencesDialog title="Rotate the master key?" confirmLabel="Rotate the key" busyLabel="Rotating the master key…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       master.mutate(undefined, { onSuccess: (result) => { onDone(`The master key was rotated (version ${String(result.key_version)}). Every tier-3 key is now wrapped under it.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-master-key')) });
     }}>
       <p>A new master key is generated, every tier-3 key is re-wrapped under it, and the old master is retired after a zero-reference check. This is refused while the root key is dual-wrapped; finalize the root rotation first.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'dek-instance' ? <ConsequencesDialog titleId={titleId} title="Rotate the instance DEK?" confirmLabel="Rotate the DEK" busyLabel="Rotating the instance DEK…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'dek-instance' ? <ConsequencesDialog title="Rotate the instance DEK?" confirmLabel="Rotate the DEK" busyLabel="Rotating the instance DEK…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       dek.mutate({ scope: 'instance' }, { onSuccess: (result) => { onDone(`The instance DEK was rotated (version ${String(result.key_version)}). New writes seal under it; existing ciphertext stays readable until you run the instance re-encryption to complete the rotation.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-dek')) });
     }}>
       <p>A new instance DEK version is appended. New writes seal under it immediately; existing ciphertext stays readable under the previous version until the instance re-encryption walks it forward. The rotation is incomplete until you run that re-encryption.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'root-prepare' ? <ConsequencesDialog titleId={titleId} title="Prepare the root-key rotation?" confirmLabel="Prepare" busyLabel="Preparing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'root-prepare' ? <ConsequencesDialog title="Prepare the root-key rotation?" confirmLabel="Prepare" busyLabel="Preparing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       root.mutate('prepare', { onSuccess: (result) => { onDone(`Root-key rotation prepared (epoch ${String(result.root_key_epoch)}). Install the new root at the primary source on the host, then run verify. The instance stays bootable under either root and warns on every start until finalize.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
     }}>
       <p>Prepare reads the new root from the server-side source and seals a second master wrapper. No key material crosses the wire. After this you must install the new root at the primary source on the host, then run verify. The instance stays bootable under either root until you finalize.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'root-verify' ? <ConsequencesDialog titleId={titleId} title="Verify the root-key rotation?" confirmLabel="Verify" busyLabel="Verifying the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'root-verify' ? <ConsequencesDialog title="Verify the root-key rotation?" confirmLabel="Verify" busyLabel="Verifying the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       root.mutate('verify', { onSuccess: (result) => { onDone(`Root-key rotation verified (epoch ${String(result.root_key_epoch)}). The primary source now unwraps the new root. Run finalize to retire the old wrapper.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
     }}>
       <p>Verify re-reads the primary source and confirms it now unwraps the new wrapper you sealed in prepare. Run this only after installing the new root at the primary source on the host. If it has not been installed yet, this phase is refused.</p>
     </ConsequencesDialog> : null}
 
-    {ceremony === 'root-finalize' ? <ConsequencesDialog titleId={titleId} title="Finalize the root-key rotation?" confirmLabel="Finalize" busyLabel="Finalizing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
+    {ceremony === 'root-finalize' ? <ConsequencesDialog title="Finalize the root-key rotation?" confirmLabel="Finalize" busyLabel="Finalizing the root-key rotation…" busy={busy} failure={dialogFailure} onCancel={close} onConfirm={() => {
       setDialogFailure(null);
       root.mutate('finalize', { onSuccess: (result) => { onDone(`Root-key rotation finalized (epoch ${String(result.root_key_epoch)}). The old wrapper is retired and the startup warning clears.`); close(); }, onError: (error) => setDialogFailure(cryptoFailureText(error, 'rotate-root-key')) });
     }}>

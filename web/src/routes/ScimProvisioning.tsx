@@ -43,9 +43,9 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 import { useFeedback } from './useFeedback.ts';
 import { useNavigationGuard } from './MachineAccess.tsx';
 import { gateSystemScope } from './SystemScope.tsx';
@@ -966,7 +966,6 @@ function MintDialog({
   onClose: () => void;
 }) {
   const confirmation = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(confirmation);
   const [stored, setStored] = useState(false);
   const [heldBack, setHeldBack] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
@@ -982,18 +981,19 @@ function MintDialog({
   useNavigationGuard(!stored, dismiss);
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="scim-mint-title"
-      ref={dialog}
+    <Dialog
+      title="Provisioning credential minted, shown exactly once"
+      initialFocus={confirmation}
       onCancel={(event) => {
         event.preventDefault();
         dismiss();
       }}
+      actions={
+        <Button variant="primary" type="button" disabled={!stored} onClick={dismiss}>
+          Done
+        </Button>
+      }
     >
-      <h2 className="ceremony__title" id="scim-mint-title">
-        Provisioning credential minted, shown exactly once
-      </h2>
       {minted.rotated ? (
         <Alert tone="warn">
           This joined an already-live credential; that is overlap rotation. Update the identity
@@ -1045,10 +1045,7 @@ function MintDialog({
       {heldBack ? (
         <Alert>Store the credential first. It cannot be shown again once this closes.</Alert>
       ) : null}
-      <Button variant="primary" type="button" disabled={!stored} onClick={dismiss}>
-        Done
-      </Button>
-    </dialog>
+    </Dialog>
   );
 }
 

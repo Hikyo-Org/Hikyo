@@ -1081,7 +1081,7 @@ test.describe('catalogue declaration lifecycle', () => {
       // Reclassify config → secret through the confirm ceremony. Tightening
       // discloses nothing and needs no reveal.
       await panel.getByRole('button', { name: 'Reclassify as secret…' }).click();
-      const dialog = page.locator('dialog.matrix-editor');
+      const dialog = page.getByRole('dialog', { name: 'Reclassify this key as secret?' });
       await expect(dialog).toBeVisible();
       await dialog.getByRole('button', { name: 'Reclassify as secret', exact: true }).click();
       await expectStatusIsTextAndAria(

@@ -35,9 +35,9 @@ import type { EnvironmentList } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
 
@@ -1079,38 +1079,34 @@ function ConfirmDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   return (
-    <dialog className="matrix-editor" ref={dialog} aria-labelledby={titleId} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2 id={titleId}>{title}</h2>
-        </div>
-        <Button
-          type="button"
-          className="matrix-editor__close"
-          aria-label="Close"
-          onClick={onClose}
-        >
-          ✕
-        </Button>
-      </div>
+    <Dialog
+      title={title}
+      size="wide"
+      // Escape is the platform's; the close it fires has to reach the caller or
+      // the panel would still believe the confirm is open.
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <>
+          <Button type="button" disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant={danger ? 'danger' : 'primary'}
+            disabled={busy || confirmDisabled}
+            onClick={onConfirm}
+          >
+            {busy ? 'Working…' : confirmLabel}
+          </Button>
+        </>
+      }
+    >
       {children}
-      <div className="matrix-editor__actions">
-        <Button
-          type="button"
-          variant={danger ? 'danger' : 'primary'}
-          disabled={busy || confirmDisabled}
-          onClick={onConfirm}
-        >
-          {busy ? 'Working…' : confirmLabel}
-        </Button>
-        <Button type="button" disabled={busy} onClick={onClose}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 

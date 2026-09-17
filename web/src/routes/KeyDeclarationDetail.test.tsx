@@ -158,7 +158,7 @@ function buttonBy(container: HTMLElement, text: string): HTMLButtonElement {
 /** The confirm dialog's action button, matched EXACTLY so it is never confused
  *  with the section trigger whose label is a superset ("…config…"). */
 function dialogButton(container: HTMLElement, text: string): HTMLButtonElement {
-  const dialog = container.querySelector('dialog.matrix-editor');
+  const dialog = container.querySelector('dialog[open]');
   const button = [...(dialog?.querySelectorAll('button') ?? [])].find(
     (candidate) => candidate.textContent === text,
   );
@@ -577,7 +577,7 @@ describe('KeyDeclarationDetail', () => {
     const view = await render({ setEnvironmentIds: ['env_b'], pendingEnvironmentIds: [] });
     await act(async () => buttonBy(view.container, 'Reclassify as config…').click());
 
-    const dialog = view.container.querySelector('dialog.matrix-editor');
+    const dialog = view.container.querySelector('dialog[open]');
     expect(dialog).not.toBeNull();
     const dialogText = dialog?.textContent ?? '';
     // The disclosure consequence and the second-factor requirement are stated.
@@ -656,7 +656,7 @@ describe('KeyDeclarationDetail', () => {
 
     const view = await render();
     await act(async () => buttonBy(view.container, 'Reclassify as secret…').click());
-    const dialog = view.container.querySelector('dialog.matrix-editor');
+    const dialog = view.container.querySelector('dialog[open]');
     expect(dialog?.textContent ?? '').toContain('dismissals are dropped');
     // Tightening does not disclose, so it names no second-factor requirement.
     expect((dialog?.textContent ?? '').toLowerCase()).not.toContain('second-factor');

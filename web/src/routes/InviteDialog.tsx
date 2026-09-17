@@ -13,9 +13,9 @@ import {
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Select } from '../ui/Select.tsx';
 import { DisplayOnceCopy } from './Sections.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 /**
  * The member invitation ceremony (#568): the human-auth ADR's one account-
@@ -142,8 +142,7 @@ function InviteForm({
   onSubmit: () => void;
 }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
-  const titleId = useId();
+  const formId = useId();
   const usernameId = useId();
   const displayNameId = useId();
   const templates = templatesAt(level);
@@ -154,25 +153,34 @@ function InviteForm({
   };
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby={titleId}
+    <Dialog
+      title={`Invite a member to ${scopeName}`}
+      lede="Creates their account now. They set their own password with the authority you hand them; no email is sent."
+      initialFocus={first}
       onCancel={(event) => {
         // Escape closes the native dialog on its own; without this the page
         // would still believe the ceremony is open.
         event.preventDefault();
         onCancel();
       }}
+      actions={
+        <>
+          <Button type="button" disabled={pending} onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form={formId}
+            variant="primary"
+            disabled={pending}
+            aria-busy={pending ? true : undefined}
+          >
+            {pending ? 'Inviting…' : 'Invite'}
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={submit} noValidate>
-        <h2 id={titleId} className="ceremony__title">
-          Invite a member to {scopeName}
-        </h2>
-        <p className="ceremony__lede">
-          Creates their account now. They set their own password with the authority you hand
-          them; no email is sent.
-        </p>
+      <form id={formId} onSubmit={submit} noValidate>
         {failure === null ? null : <Alert>{failure}</Alert>}
         <div className="field">
           <label htmlFor={usernameId}>Username</label>
@@ -211,16 +219,8 @@ function InviteForm({
             </option>
           ))}
         </Select>
-        <div className="ceremony__actions">
-          <Button type="submit" variant="primary" disabled={pending} aria-busy={pending ? true : undefined}>
-            {pending ? 'Inviting…' : 'Invite'}
-          </Button>
-          <Button type="button" disabled={pending} onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
       </form>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -248,25 +248,28 @@ export function IssuedAuthorityDialog({
   origin: string;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   const expires = new Date(issued.expiresAt);
   const handle = username ?? '<their username>';
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby={titleId}
+    <Dialog
+      title={title}
+      lede={lede}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
       }}
+      actions={
+        <>
+          <Link className="btn" to={surfaceById('establish-credential').path}>
+            Open the establish page
+          </Link>
+          <Button type="button" variant="primary" onClick={onClose}>
+            Close
+          </Button>
+        </>
+      }
     >
-      <h2 id={titleId} className="ceremony__title">
-        {title}
-      </h2>
-      <p className="ceremony__lede">{lede}</p>
       {principalId === null ? null : (
         <p className="field__hint">
           Principal <span className="mono" data-testid="issued-principal">{principalId}</span>
@@ -290,14 +293,6 @@ export function IssuedAuthorityDialog({
       <code className="instance-cli">
         $ hikyo account establish-credential --instance {origin} --as {handle}
       </code>
-      <div className="ceremony__actions">
-        <Button type="button" variant="primary" onClick={onClose}>
-          Close
-        </Button>
-        <Link className="btn" to={surfaceById('establish-credential').path}>
-          Open the establish page
-        </Link>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }

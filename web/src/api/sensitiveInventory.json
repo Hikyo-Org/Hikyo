@@ -28,7 +28,7 @@
     "routes/CLIReauth.tsx": "6a6b2442dbf47d79bd920dfa588ea962d8490604fd1eddd81be5c2e7d9480c9b",
     "routes/EstablishCredential.tsx": "1548f7f47270eb52865807dc6048a0402f448f58b9d9fe746ccd7f67128ef6d9",
     "routes/HistoryDrawer.tsx": "df97d56e96c0eb73212b526bed1848a5fd3dd9a9b5b3f3e52b84a394ad0f7f5e",
-    "routes/InstanceAdmin.tsx": "709f08be7ff34beba1541febd40d812977fc60af9c526a781fcb8893159d4953",
+    "routes/InstanceAdmin.tsx": "c9a7f2e0adfb2e1275d381ca7747d5d4e8f45368135334222c037eba3fc3fb18",
     "routes/Login.tsx": "74d5986555f05b8ca6045aede479b4376185658558707f82ad039d91596ca19f",
     "routes/WorkspaceApprove.tsx": "7f18ee4ba2318327952da40ce447af672118a5bbdbb6a1f65e680415b8f4c834"
   }

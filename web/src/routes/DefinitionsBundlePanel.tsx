@@ -339,7 +339,6 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
       </div>
       {confirm && plan !== null ? (
         <ConsequencesDialog
-          titleId={`${titleId}-apply`}
           title="Apply definitions and publish"
           confirmLabel="Apply and publish"
           busyLabel="Applying definitions…"

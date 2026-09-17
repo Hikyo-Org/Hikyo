@@ -15,10 +15,10 @@ import {
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 import { useFeedback } from './useFeedback.ts';
 
 /**
@@ -415,28 +415,31 @@ function DeleteProviderDialog({
   onDeleted: (name: string) => void;
   onFailure: (error: unknown) => void;
 }) {
-  const dialog = useModalDialog();
   const del = useDeleteOidcProvider();
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby="delete-oidc-title"
+    <Dialog
+      title={`Delete ${provider.display_name}?`}
+      lede={
+        <>
+          &ldquo;Continue with {provider.display_name}&rdquo; leaves the sign-in page and every
+          session that authenticated through it ends immediately; its live transactions cascade.
+          Identities linked through it can no longer sign in. Local password and second-factor
+          sign-in is unaffected. This cannot be undone.
+        </>
+      }
       onCancel={(event) => {
         event.preventDefault();
         if (!del.isPending) {
           onCancel();
         }
       }}
+      actions={
+        <Button type="button" onClick={onCancel} disabled={del.isPending}>
+          Cancel
+        </Button>
+      }
     >
-      <h2 id="delete-oidc-title">Delete {provider.display_name}?</h2>
-      <p className="ceremony__lede">
-        &ldquo;Continue with {provider.display_name}&rdquo; leaves the sign-in page and every
-        session that authenticated through it ends immediately; its live transactions cascade.
-        Identities linked through it can no longer sign in. Local password and second-factor
-        sign-in is unaffected. This cannot be undone.
-      </p>
       <TypedNameConfirm
         label="Type the provider slug to confirm"
         expect={provider.slug}
@@ -458,11 +461,6 @@ function DeleteProviderDialog({
           )
         }
       />
-      <div className="ceremony__actions">
-        <Button type="button" onClick={onCancel} disabled={del.isPending}>
-          Cancel
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }

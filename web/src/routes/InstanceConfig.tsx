@@ -11,8 +11,8 @@ import { uuid } from '../lib/uuid.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { Panel } from './Sections.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 
 export function InstanceConfig() {
   const query = useSelfConfig();
@@ -205,8 +205,6 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
 
 function SelfConfigCeremony({ decision, onComplete, onCancel }: { decision: Decision; onComplete: () => Promise<void>; onCancel: () => void }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
-  const titleId = useId();
   const codeId = useId();
   const [code, setCode] = useSensitiveState('');
   const [busy, setBusy] = useState(false);
@@ -231,8 +229,10 @@ function SelfConfigCeremony({ decision, onComplete, onCancel }: { decision: Deci
       if (current.current) setFailure(error instanceof Error ? selfConfigFailure(error) : 'Authorization did not complete.');
     } finally { if (current.current) setBusy(false); }
   };
-  return <dialog ref={dialog} className="ceremony" aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
-    <h2 id={titleId}>{decision.label}</h2>
+  return <Dialog title={decision.label} initialFocus={first} onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}
+    actions={<><Button type="button" disabled={busy} onClick={onCancel}>Cancel</Button>
+      {workspace === null ? <Button type="button" disabled={busy} onClick={() => void confirm('passkey')}>Authorize with passkey</Button> : <a className="btn" href={`${workspace.origin}${surfaceById('instance-config').path}`} target="_blank" rel="noreferrer">Use a passkey on owner</a>}
+      <Button type="button" variant="primary" disabled={busy || code.trim() === ''} onClick={() => void confirm('totp')}>{busy ? 'Authorizing…' : 'Authorize with code'}</Button></>}>
     <p>Owner <code>{decision.intent.owner_instance_id}</code>. This authorization covers only this decision at generation {String(decision.intent.expected_generation)} and schema version {decision.intent.schema_version}.</p>
     {decision.intent.action === 'apply' ? <p><strong>{decision.intent.plan_digest === undefined ? 'Reload live' : 'Controlled rollout'}</strong>{decision.intent.plan_digest === undefined ? ': prepared settings take effect after the current operations drain.' : ': startup setting changes replace the enrolled deployment. Nodes remain pending until their installed settings and identity are verified.'}</p> : null}
     {decision.intent.plan_digest === undefined ? null : <p>Prepared plan <code className="self-config-plan">{decision.intent.plan_digest}</code>. This exact plan is bound to your one-use authorization.</p>}
@@ -241,10 +241,7 @@ function SelfConfigCeremony({ decision, onComplete, onCancel }: { decision: Deci
     {decision.intent.action === 'mail-test' ? <p>Send one message to <strong>{decision.intent.to}</strong>.</p> : null}
     <div className="field"><label htmlFor={codeId}>Fresh authenticator code</label><input ref={first} id={codeId} inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} disabled={busy} /></div>
     {failure === null ? null : <Alert>{failure}</Alert>}
-    <div className="ceremony__actions"><Button type="button" variant="primary" disabled={busy || code.trim() === ''} onClick={() => void confirm('totp')}>{busy ? 'Authorizing…' : 'Authorize with code'}</Button>
-      {workspace === null ? <Button type="button" disabled={busy} onClick={() => void confirm('passkey')}>Authorize with passkey</Button> : <a className="btn" href={`${workspace.origin}${surfaceById('instance-config').path}`} target="_blank" rel="noreferrer">Use a passkey on owner</a>}
-      <Button type="button" disabled={busy} onClick={onCancel}>Cancel</Button></div>
-  </dialog>;
+  </Dialog>;
 }
 
 function stateLabel(state: SelfConfigStatus['state']): string {

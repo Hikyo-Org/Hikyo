@@ -26,8 +26,8 @@ import { clearNotification, notifyFailure } from '../app/notifications.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { DisplayOnceCopy, JumpIndex, Panel } from './Sections.tsx';
-import { useModalDialog } from '../ui/useModalDialog.ts';
 import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
@@ -619,24 +619,32 @@ function ProofDialog({
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }) {
-  const dialog = useModalDialog();
+  const formId = useId();
   const inputId = useId();
   const [value, setValue] = useSensitiveState('');
   const copy = PROOF_COPY[request.kind];
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby="proof-title"
+    <Dialog
+      title={copy.title}
+      lede={copy.hint}
       onCancel={(event) => {
         event.preventDefault();
         onCancel();
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} variant="primary" disabled={value === ''}>
+            Confirm
+          </Button>
+        </>
+      }
     >
-      <h2 id="proof-title">{copy.title}</h2>
-      <p className="ceremony__lede">{copy.hint}</p>
       <form
+        id={formId}
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit(value);
@@ -652,16 +660,8 @@ function ProofDialog({
             onChange={(event) => setValue(event.target.value)}
           />
         </div>
-        <div className="ceremony__actions">
-          <Button type="button" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" disabled={value === ''}>
-            Confirm
-          </Button>
-        </div>
       </form>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -671,25 +671,23 @@ function ProofDialog({
  * says they have stored them.
  */
 function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: () => void }) {
-  const dialog = useModalDialog();
   const [stored, setStored] = useState(false);
   const [cancelAttempted, setCancelAttempted] = useState(false);
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby="codes-title"
+    <Dialog
+      title="Your new recovery codes"
+      lede="Shown once. They are stored as hashes, so nobody, including this instance, can show them to you again. The previous batch is already invalid."
       onCancel={(event) => {
         event.preventDefault();
         setCancelAttempted(true);
       }}
+      actions={
+        <Button type="button" variant="primary" disabled={!stored} onClick={onClose}>
+          Done
+        </Button>
+      }
     >
-      <h2 id="codes-title">Your new recovery codes</h2>
-      <p className="ceremony__lede">
-        Shown once. They are stored as hashes, so nobody, including this instance, can show them
-        to you again. The previous batch is already invalid.
-      </p>
       <ul className="codes" aria-label="Recovery codes">
         {codes.map((code) => (
           <li className="mono" key={code}>
@@ -712,12 +710,7 @@ function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: 
         checked={stored}
         onChange={(event) => setStored(event.target.checked)}
       />
-      <div className="ceremony__actions">
-        <Button type="button" variant="primary" disabled={!stored} onClick={onClose}>
-          Done
-        </Button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
