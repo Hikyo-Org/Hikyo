@@ -2,8 +2,10 @@ import { useState } from 'react';
 
 import type { EnvironmentList } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
@@ -131,6 +133,7 @@ export function MatrixPublishSheet({
           Each environment publishes as its own atomic revision: untick any you want to hold
           back.
         </p>
+        <ChoiceGroup legend="Environments to publish" variant="rows">
         {environments.map((environment) => {
           const entries = pendingByEnvironment.get(environment.id) ?? [];
           if (entries.length === 0) {
@@ -146,16 +149,14 @@ export function MatrixPublishSheet({
             throw new Error(`publish review has no revision for environment ${environment.id}`);
           }
           return (
-            <div
-              className={`matrix__publish-env${blocked ? ' matrix__publish-env--blocked' : ''}`}
-              key={environment.id}
-            >
-              {/* markup-check: rich label (the name in <strong>, the PROTECTED
-                  marker and the revision step are separate spans), so this row
-                  cannot pass ui/Checkbox's `label: string`. */}
-              <label className="matrix__publish-heading">
-                <input
-                  type="checkbox"
+            <div className="matrix__publish-env" key={environment.id}>
+              {/* The checkbox says one thing now: include this environment in
+                  the publish. What the row used to crowd into its label (the
+                  protected marker, the revision step) sits beside it as its own
+                  named piece. */}
+              <div className="matrix__publish-heading">
+                <Checkbox
+                  label={environment.name}
                   checked={checked}
                   disabled={blocked || busy}
                   onChange={() => {
@@ -168,16 +169,14 @@ export function MatrixPublishSheet({
                     setProtectedConfirmed(false);
                   }}
                 />
-                <strong>{environment.name}</strong>
                 {protectedEnvironmentIds.includes(environment.id) ? (
-                  <span className="matrix__publish-protected">
-                    PROTECTED: confirms before publish
-                  </span>
+                  <Badge tone="danger">PROTECTED: confirms before publish</Badge>
                 ) : null}
                 <span className="matrix__publish-revision">
                   {`r${String(revision)} → r${String(revision + 1n)}`}
                 </span>
-              </label>
+              </div>
+              <span className="eyebrow">changes</span>
               {groupPendingEntries(entries).map((bucket) => (
                 <ul
                   key={bucket.group?.id ?? ''}
@@ -204,23 +203,27 @@ export function MatrixPublishSheet({
                   ))}
                 </ul>
               ))}
+              {/* Readiness is a Badge, not coloured text: the word carries the
+                  state and the tone only echoes it. */}
               {blocked ? (
-                <div className="matrix__publish-blocked" role="alert">
-                  <Glyph name="cross" />{' '}
+                <div role="alert">
+                  <Badge tone="danger">blocked</Badge>{' '}
                   {`Publish blocked: ${environmentProblems
                     .map((problem) => `${problem.keyName} in ${environment.name}`)
                     .join('; ')}. This environment has violations or missing required keys.`}
                 </div>
               ) : (
-                <span className="matrix__publish-ready">
+                <div>
+                  <Badge tone="ok">ready</Badge>{' '}
                   {entries.some((entry) => entry.validationDeferred === true)
-                    ? 'Ready to publish; template schemas are checked with each fetch.'
-                    : <><Glyph name="check" /> ready</>}
-                </span>
+                    ? 'Template schemas are checked with each fetch.'
+                    : null}
+                </div>
               )}
             </div>
           );
         })}
+        </ChoiceGroup>
         {protectedConfirmationRequired ? (
           <Checkbox
             className="matrix__publish-confirmation"

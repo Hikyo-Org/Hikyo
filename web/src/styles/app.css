@@ -1717,22 +1717,11 @@ fieldset.field > legend {
   border-top: 1px solid var(--line);
 }
 
-.matrix__publish-env--blocked {
-  background: color-mix(in oklch, var(--bg), var(--danger) 8%);
-}
-
 .matrix__publish-heading {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-height: var(--control);
-}
-
-.matrix__publish-protected {
-  color: var(--danger);
-  font-size: var(--fs-sm);
-  font-weight: 800;
-  letter-spacing: 0.04em;
 }
 
 .matrix__publish-revision {
@@ -1752,15 +1741,6 @@ fieldset.field > legend {
   gap: var(--space-4);
 }
 
-.matrix__publish-ready {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.matrix__publish-blocked {
-  color: var(--danger);
-  font-weight: 700;
-}
 /* --- Publish sheet: rows align to the environment name ---------------------
  *
  * The key rows and the ready/blocked state sit under the environment name, not

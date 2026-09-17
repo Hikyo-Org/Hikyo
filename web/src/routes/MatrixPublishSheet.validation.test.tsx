@@ -27,8 +27,12 @@ it('shows deferred template validation before publishing', async () => {
   );
   try {
     expect(view.container.textContent).toContain('Validated at fetch: invalid resolved config refuses delivery.');
-    expect(view.container.textContent).toContain('template schemas are checked with each fetch');
-    expect(view.container.querySelector('.matrix__publish-ready')?.querySelector('svg.glyph')).toBeNull();
+    expect(view.container.textContent).toContain('Template schemas are checked with each fetch.');
+    // Readiness is the badge's word, not a colour and not a glyph on its own.
+    const badge = view.container.querySelector('.badge');
+    expect(badge?.textContent).toBe('ready');
+    expect(badge?.classList.contains('badge--ok')).toBe(true);
+    expect(badge?.querySelector('svg.glyph')).toBeNull();
   } finally {
     await view.unmount();
   }

@@ -54,6 +54,13 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   play: async ({ args, canvas }) => {
     args.onPublish.mockClear();
+    // The row says what it is: a checkbox named for the environment it includes,
+    // the eyebrow over its key list, and readiness as a word in a badge.
+    await expect(
+      canvas.getByRole('group', { name: 'Environments to publish' }),
+    ).toBeVisible();
+    await expect(canvas.getByRole('checkbox', { name: 'preview' })).toBeChecked();
+    await expect(canvas.getByText('changes')).toBeVisible();
     await expect(canvas.getByText('ready')).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: /Publish selected/ }));
     await waitFor(() => expect(args.onPublish).toHaveBeenCalledWith(['env_a']));
@@ -76,6 +83,8 @@ export const Blocked: Story = {
     ],
   },
   play: async ({ canvas }) => {
+    await expect(canvas.getByText('blocked')).toBeVisible();
+    await expect(canvas.getByRole('checkbox', { name: 'preview' })).toBeDisabled();
     await expect(canvas.getByRole('alert')).toHaveTextContent('Publish blocked: PORT in preview');
     await expect(canvas.getByRole('button', { name: /Publish selected/ })).toBeDisabled();
   },
