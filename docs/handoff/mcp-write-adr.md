@@ -161,6 +161,10 @@ cross-provider gate. Both returned CHANGES; every finding folded in:
 
 ## Not done
 
+Owner wording calls: ADR § Corrections items 3 (secret entry) and 5 (a machine
+credential with `publish` CAN publish over REST; the MCP boundary holds because
+no publish tool is registered, not because machines cannot publish).
+
 Cross-provider review of the ADR text (still the operative gate). Governance PR
 [#766](https://github.com/Hikyo-Org/Hikyo/pull/766) stays draft until it
 concludes SOUND; the implementation PR merges only after #766. The owner has

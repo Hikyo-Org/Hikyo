@@ -167,6 +167,23 @@ func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
 		if n := editorDrafts(); n != 2 {
 			t.Fatalf("validate changed the draft count: %d, want 2", n)
 		}
+		// Validate an INVALID proposal on a secret key: the schema verdict text
+		// rides `problems`, and for a secret key the engine puts no instance
+		// data in it, so the canary still never crosses.
+		if _, err := keys.Create(ctx, service.LocalPrincipal(custodian), projectScope, service.KeySpec{
+			Name: "SECRET_PORT", Classification: string(schema.Secret),
+			Declaration: schema.Declaration{Rule: &schema.Rule{Type: schema.TypeInteger}},
+			Presence:    schema.DefaultPresenceRules(),
+		}, nil); err != nil {
+			t.Fatalf("create SECRET_PORT: %v", err)
+		}
+		secretInvalid := mcpCall(t, handler, editor.token, mcpserver.ToolValidateChange,
+			`{"org_id":"org_a","project_id":"prj_a1","environment_id":"env_a1","key_name":"SECRET_PORT","operation":"set","value":"`+mcpCanaryPlaintext+`"}`)
+		if !strings.Contains(secretInvalid.Body.String(), `"valid":false`) {
+			t.Fatalf("secret invalid validate = %s", secretInvalid.Body.String())
+		}
+		assertMCPNoCanary(t, "secret invalid validate response", secretInvalid.Body.Bytes())
+
 		// Validate on a secret key with the canary: valid, no scanner, no echo.
 		secretValidate := mcpCall(t, handler, editor.token, mcpserver.ToolValidateChange,
 			`{"org_id":"org_a","project_id":"prj_a1","environment_id":"env_a1","key_name":"CANARY_SECRET","operation":"set","value":"`+mcpCanaryPlaintext+`"}`)

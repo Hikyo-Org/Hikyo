@@ -203,6 +203,18 @@ scrivener's corrections in the sense of [oss-mechanics.md](./oss-mechanics.md)
    proposed material" holds for the audit trail (counts and verdict only); the
    `problems` text in a validate response may quote the caller's own config
    proposal, exactly as the REST publish refusal does.
+5. **"Publish, which a machine credential cannot perform" is not what holds
+   the boundary.** `machineAllowlists[ClassAutomation]` admits `publish`
+   (`internal/domain/permission.go:234`), and publish's protected-environment
+   ceremony is skipped for a caller without a session
+   (`internal/service/publish.go`, `skipsCeremony`), which is what
+   [api-cli-surface.md](./api-cli-surface.md) admits for automation
+   `values publish` over CLI/HTTP (#730). An automation holding `publish` can
+   therefore publish over REST. What holds the MCP boundary is that no publish
+   tool is registered on the MCP surface at all; the sentences in § 2 and
+   § Protected environments that lean on "a machine credential cannot publish"
+   should be read as "publish is not reachable over MCP". Surfaced to the
+   owner for wording.
 
 ## Alternatives considered
 
