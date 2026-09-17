@@ -31,6 +31,7 @@ import { useWorkspaces } from '../api/workspace.ts';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
 import { needsOrg, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import {
   CHROME_IDENTITY_EVENT,
@@ -457,12 +458,7 @@ export function Shell({ session }: { session: WhoAmI }) {
           </p>
         ) : null}
         {orgs.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>Your organisations could not be loaded. Reload to try again.</span>
-          </p>
+          <Alert>Your organisations could not be loaded. Reload to try again.</Alert>
         ) : null}
         {/* The context block (project or instance) stacks ABOVE the organisation
             block, which is never hidden: every destination stays reachable in

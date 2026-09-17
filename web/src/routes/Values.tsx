@@ -19,6 +19,7 @@ import {
 import type { EnvRef } from '../api/keys.ts';
 import { useTransport } from '../api/transport.tsx';
 import { writeExpiringClipboard } from '../app/clipboard.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
@@ -439,21 +440,11 @@ export function Values() {
       </header>
 
       {values.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>The values could not be loaded. Reload to try again.</span>
-        </p>
+        <Alert>The values could not be loaded. Reload to try again.</Alert>
       ) : null}
 
       {refusal !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{refusal}</span>
-        </p>
+        <Alert>{refusal}</Alert>
       ) : null}
 
       {notice !== null ? (

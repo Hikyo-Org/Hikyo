@@ -12,8 +12,9 @@ import {
   type OidcProviderDraft,
   type OidcProviderField,
 } from '../api/oidcProviders.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, Done, Panel, TypedNameConfirm } from './Sections.tsx';
+import { Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
 /**
@@ -115,7 +116,7 @@ export function OidcProvidersPanel() {
       ) : null}
 
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       {providers.isSuccess && providers.data.providers.length === 0 ? (
         <p role="status">No identity providers are configured.</p>

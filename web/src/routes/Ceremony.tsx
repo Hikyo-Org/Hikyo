@@ -15,6 +15,7 @@ import {
   workspaceBearer,
   WorkspaceError,
 } from '../api/workspace.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
@@ -262,12 +263,7 @@ export function Ceremony({
       </ul>
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       {workspace === null ? (
@@ -426,12 +422,7 @@ export function WorkspaceStepUp({
   return (
     <>
       {phase.kind !== 'failed' ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{phase.message}</span>
-        </p>
+        <Alert>{phase.message}</Alert>
       )}
       <div className="ceremony__actions">
         <Button

@@ -16,6 +16,7 @@ import {
 } from '../api/values.ts';
 import { writeExpiringClipboard } from '../app/clipboard.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
@@ -533,10 +534,7 @@ export function MatrixRowEditor({
                 </label>
               ) : null}
               {protectedGuard.error === null ? null : (
-                <p className="alert" role="alert">
-                  <span className="alert__glyph" aria-hidden="true">!</span>
-                  <span>{protectedGuard.error}</span>
-                </p>
+                <Alert>{protectedGuard.error}</Alert>
               )}
               <p>Each copied value is independent; later source edits do not propagate.</p>
               <Button

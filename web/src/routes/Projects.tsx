@@ -3,8 +3,9 @@ import { generatePath, Link, useOutletContext } from 'react-router';
 
 import { createProjectRefusalText, useCreateProject, useProjects } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, JumpIndex, Panel } from './Sections.tsx';
+import { JumpIndex, Panel } from './Sections.tsx';
 import { useInSystemScope } from './SystemScope.tsx';
 
 /** Projects is a real data surface; keeping it out of Placeholder preserves the chrome skeleton seam. */

@@ -18,8 +18,9 @@ import {
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { notifySuccess } from '../app/notifications.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
-import { Alert, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
@@ -92,7 +93,7 @@ export function OrgSettings() {
         </Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       <Panel id="org-identity" title="Identity">
         <ChromeIdentityControls

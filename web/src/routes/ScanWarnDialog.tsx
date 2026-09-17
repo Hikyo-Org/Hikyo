@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 
 import type { ScanFinding } from '../api/matrix.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -144,10 +145,7 @@ export function ScanWarnDialog({
       </p>
 
       {error === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{error}</span>
-        </p>
+        <Alert>{error}</Alert>
       )}
 
       <div className="matrix-editor__actions">

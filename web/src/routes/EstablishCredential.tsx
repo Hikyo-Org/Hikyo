@@ -9,6 +9,7 @@ import {
   recoveryFailureText,
 } from '../api/session.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 
 /**
@@ -139,12 +140,7 @@ export function EstablishCredential() {
         )}
 
         {failure === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{failure}</span>
-          </p>
+          <Alert>{failure}</Alert>
         )}
 
         {recovered ? null : (
@@ -265,12 +261,7 @@ function RecoveryForm({
         </p>
 
         {failure === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{failure}</span>
-          </p>
+          <Alert>{failure}</Alert>
         )}
 
         <div className="field">

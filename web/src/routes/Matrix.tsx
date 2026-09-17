@@ -44,6 +44,7 @@ import {
   type MatrixPendingEntry,
 } from './MatrixPublishSheet.tsx';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { ImportWizard } from './ImportWizard.tsx';
 import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
@@ -870,18 +871,12 @@ export function Matrix({
   }
   if (catalogueForbidden) {
     return (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">!</span>
-        <span>You do not have permission to view this project's environment matrix.</span>
-      </p>
+      <Alert>You do not have permission to view this project's environment matrix.</Alert>
     );
   }
   if (loadError) {
     return (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">!</span>
-        <span>The environment matrix could not be loaded. Reload to try again.</span>
-      </p>
+      <Alert>The environment matrix could not be loaded. Reload to try again.</Alert>
     );
   }
 

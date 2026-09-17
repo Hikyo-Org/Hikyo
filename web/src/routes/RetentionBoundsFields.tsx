@@ -1,8 +1,8 @@
 import { useId } from 'react';
 
 import type { RetentionDayState } from '../api/settings.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert } from './Sections.tsx';
 
 /** Shared whole-day and revision-bound controls for both retention editors. */
 export function RetentionBoundsFields({

@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 
 import { writeClipboard } from '../app/clipboard.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -68,37 +69,6 @@ export function Panel({
       <h2>{title}</h2>
       {children}
     </section>
-  );
-}
-
-/** Alert is a refusal: text, a glyph, and `role=alert` so it is announced. */
-export function Alert({ children }: { children: ReactNode }) {
-  return (
-    <p className="alert" role="alert">
-      <span className="alert__glyph" aria-hidden="true">
-        !
-      </span>
-      <span>{children}</span>
-    </p>
-  );
-}
-
-/**
- * Done is post-action feedback that STAYS.
- *
- * The prototype used an eight-second toast with an undo. A toast that removes
- * itself is a message a screen-reader user can miss and a keyboard user cannot
- * return to, and there is no undo behind it here: a revoke is a real
- * revocation, and re-granting is an ordinary audited grant, not an undo.
- */
-export function Done({ children }: { children: ReactNode }) {
-  return (
-    <p className="notice" role="status">
-      <span className="alert__glyph" aria-hidden="true">
-        ✓
-      </span>
-      <span>{children}</span>
-    </p>
   );
 }
 

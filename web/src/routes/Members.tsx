@@ -36,6 +36,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 
 /**
@@ -54,7 +55,7 @@ function wideningEnvironment(error: unknown): string | null {
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
-import { Alert, Done, Explain, JumpIndex, Panel } from './Sections.tsx';
+import { Explain, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
@@ -326,7 +327,7 @@ export function Members({ scope }: { scope: MembersScope }) {
         <Alert>The organisation could not be read. Reload before managing its grants.</Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       <Inspect
         options={inspectOptions}

@@ -8,6 +8,7 @@ import { useAuthMethods } from '../api/account.ts';
 import { loginFailureText, useLogin, useOIDCLogin } from '../api/session.ts';
 import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
 /**
@@ -56,12 +57,7 @@ export function Login() {
         <p className="login__lede">Use the credential you established with your setup authority.</p>
 
         {login.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{loginFailureText(login.error)}</span>
-          </p>
+          <Alert>{loginFailureText(login.error)}</Alert>
         ) : null}
 
         <div className="field">
@@ -108,12 +104,7 @@ export function Login() {
               {passkey.isPending ? 'Waiting for the passkey…' : 'Use a passkey instead'}
             </button>
             {passkey.isError ? (
-              <p className="alert" role="alert">
-                <span className="alert__glyph" aria-hidden="true">
-                  !
-                </span>
-                <span>{stepUpFailureText(passkey.error)}</span>
-              </p>
+              <Alert>{stepUpFailureText(passkey.error)}</Alert>
             ) : null}
           </>
         ) : null}
@@ -141,10 +132,7 @@ export function Login() {
           <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} />
         ) : null}
         {oidc.isError || saml.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{loginFailureText(oidc.isError ? oidc.error : saml.error)}</span>
-          </p>
+          <Alert>{loginFailureText(oidc.isError ? oidc.error : saml.error)}</Alert>
         ) : null}
         {/* Quiet links, demoted from buttons: the CSS keeps them on the 44px
             touch floor (#567) without reading as a third way to sign in. */}

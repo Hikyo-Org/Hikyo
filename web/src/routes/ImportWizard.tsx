@@ -11,6 +11,7 @@ import {
   type ValueOccurrenceList,
 } from '../api/matrix.ts';
 import type { MatrixRef } from '../api/keys.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import type { KeyClassification } from '@hikyo/client';
 import {
@@ -23,7 +24,6 @@ import {
   type PrimitiveType,
 } from './import-state.ts';
 import { MAX_FILE_BYTES, parseSource, type FileConnector } from './import-sources.ts';
-import { Alert } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 type WizardEnvironment = { readonly id: string; readonly name: string };
@@ -484,10 +484,7 @@ export function ImportWizard({
         ) : null}
 
         {error === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{error}</span>
-          </p>
+          <Alert>{error}</Alert>
         )}
 
         {step === 'pick'
@@ -638,13 +635,10 @@ export function ImportWizard({
           )}
           {parseErrors.length === 0 ? null : (
             <>
-              <p className="alert" role="alert">
-                <span className="alert__glyph" aria-hidden="true">!</span>
-                <span>
-                  Fix these lines at the source and choose the file again. The import is
-                  all-or-nothing, so nothing is sent while any line is invalid.
-                </span>
-              </p>
+              <Alert>
+                Fix these lines at the source and choose the file again. The import is
+                all-or-nothing, so nothing is sent while any line is invalid.
+              </Alert>
               <ul className="import-wizard__invalid" aria-label="Invalid lines">
                 {parseErrors.map((invalid) => (
                   <li key={invalid.line}>{`Line ${String(invalid.line)}: ${invalid.reason}`}</li>
@@ -740,10 +734,7 @@ export function ImportWizard({
             </p>
           ) : null}
           {source === null ? null : refusal !== null ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">!</span>
-              <span>{refusal}</span>
-            </p>
+            <Alert>{refusal}</Alert>
           ) : (
             <p className="import-wizard__summary" role="status">
               {`${fileName ?? 'file'}: ${String(source.entries.length)} value${source.entries.length === 1 ? '' : 's'} read` +

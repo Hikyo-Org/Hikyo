@@ -52,6 +52,7 @@ import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useNavigationGuard } from './MachineAccess.tsx';
 import { useModalDialog } from './useModalDialog.ts';
@@ -89,17 +90,12 @@ export function Remotes() {
         </p>
 
         {remotes.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              The remote directory could not be read. You may not hold{' '}
-              <span className="mono">instance-directory</span> on this instance. The operator
-              template does not include it; an instance member manager grants it under Instance
-              members, and the grant ends the current session.
-            </span>
-          </p>
+          <Alert>
+            The remote directory could not be read. You may not hold{' '}
+            <span className="mono">instance-directory</span> on this instance. The operator
+            template does not include it; an instance member manager grants it under Instance
+            members, and the grant ends the current session.
+          </Alert>
         ) : null}
 
         {remotes.isSuccess && remotes.data.items.length === 0 ? (
@@ -138,12 +134,11 @@ export function ThisInstance() {
       <p>The identity and directory this instance shares with connected instances.</p>
       {directory.isPending ? <p role="status">Loading this instance's directory…</p> : null}
       {directory.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{directory.error instanceof ApiError && directory.error.status === 403
+        <Alert>
+          {directory.error instanceof ApiError && directory.error.status === 403
             ? 'You do not hold instance-directory on this instance. Its directory is not available to you. The operator template does not include it; an instance member manager grants it under Instance members, and the grant ends the current session.'
-            : "This instance's directory could not be read. Reload to try again."}</span>
-        </p>
+            : "This instance's directory could not be read. Reload to try again."}
+        </Alert>
       ) : directory.data === undefined ? null : (
         <>
           <dl className="remote__facts">
@@ -256,26 +251,21 @@ export function RemoteCard({
       {/* The badge already names the state; this line is the recovery. It is
           an alert only when there is something to do. */}
       {recovery === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            {recovery}
-            {/* A rejected credential is fixed on the PEER's own Connection
-                credentials section: link straight to it rather than describe
-                where it lives (AC#1). */}
-            {state === 'credential-rejected' ? (
-              <>
-                {' '}
-                <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
-                  Manage connection credentials on {origin}
-                </a>
-                .
-              </>
-            ) : null}
-          </span>
-        </p>
+        <Alert>
+          {recovery}
+          {/* A rejected credential is fixed on the PEER's own Connection
+              credentials section: link straight to it rather than describe
+              where it lives (AC#1). */}
+          {state === 'credential-rejected' ? (
+            <>
+              {' '}
+              <a href={`${origin}/remotes#connection-credentials`} target="_blank" rel="noreferrer">
+                Manage connection credentials on {origin}
+              </a>
+              .
+            </>
+          ) : null}
+        </Alert>
       )}
       {staleness === null ? null : (
         <p className="remote__stale" role="status">
@@ -306,42 +296,24 @@ export function RemoteCard({
       )}
 
       {failure === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       )}
 
       {/* A duplicate identity's refusal is the recovery line above; the
           handoff's own failed phase would only repeat it. */}
       {live !== undefined || duplicateIdentity || handoff.phase.kind !== 'failed' ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{handoff.phase.message}</span>
-        </p>
+        <Alert>{handoff.phase.message}</Alert>
       )}
 
       {updateProbe?.error === null || updateProbe?.error === undefined ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>The remote update check failed. Reload or inspect the remote instance logs.</span>
-        </p>
+        <Alert>The remote update check failed. Reload or inspect the remote instance logs.</Alert>
       )}
 
       {ended && live === undefined ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            Workspace session ended: that instance revoked it, withdrew consent for this origin,
-            or became unreachable. Reconnect to continue.
-          </span>
-        </p>
+        <Alert>
+          Workspace session ended: that instance revoked it, withdrew consent for this origin,
+          or became unreachable. Reconnect to continue.
+        </Alert>
       ) : null}
 
       {live !== undefined && update?.available === true ? (
@@ -455,17 +427,12 @@ export function UpdateJobStatus({
   const outcome = job === undefined ? undefined : updateJobOutcome(job);
   if (outcome?.kind === 'failed') {
     return (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>
-          Update job <span className="mono">{jobID}</span> {job?.state}
-          {job?.phase === undefined ? '' : ` (${job.phase})`}
-          {outcome.failureCode === undefined ? '' : ` (${outcome.failureCode})`}. Inspect the
-          remote instance logs.
-        </span>
-      </p>
+      <Alert>
+        Update job <span className="mono">{jobID}</span> {job?.state}
+        {job?.phase === undefined ? '' : ` (${job.phase})`}
+        {outcome.failureCode === undefined ? '' : ` (${outcome.failureCode})`}. Inspect the
+        remote instance logs.
+      </Alert>
     );
   }
   return (
@@ -540,14 +507,9 @@ export function AddRemote() {
       {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. The server refuses this identity even through another URL.</p>}
       <form className="form" onSubmit={onSubmit} noValidate>
         {validationFailure !== null || add.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              {validationFailure ?? addFailureText(add.error)}
-            </span>
-          </p>
+          <Alert>
+            {validationFailure ?? addFailureText(add.error)}
+          </Alert>
         ) : null}
         <div className="field">
           <label htmlFor="remote-name">Name</label>
@@ -619,15 +581,10 @@ function OriginAllowlist() {
       </p>
 
       {origins.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            The allowlist could not be read. It is gated on{' '}
-            <span className="mono">instance-config</span>.
-          </span>
-        </p>
+        <Alert>
+          The allowlist could not be read. It is gated on{' '}
+          <span className="mono">instance-config</span>.
+        </Alert>
       ) : null}
 
       {origins.isSuccess && origins.data.items.length === 0 ? (
@@ -659,12 +616,7 @@ function OriginAllowlist() {
 
       <form className="form form--inline" onSubmit={onSubmit} noValidate>
         {add.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>That origin was refused. It must be a bare scheme, host and port.</span>
-          </p>
+          <Alert>That origin was refused. It must be a bare scheme, host and port.</Alert>
         ) : null}
         <div className="field">
           <label htmlFor="origin">Origin</label>
@@ -717,15 +669,10 @@ export function ConnectionCredentials() {
       </p>
 
       {connections.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            The connection credentials could not be read. It is gated on{' '}
-            <span className="mono">instance-config</span>.
-          </span>
-        </p>
+        <Alert>
+          The connection credentials could not be read. It is gated on{' '}
+          <span className="mono">instance-config</span>.
+        </Alert>
       ) : null}
 
       {connections.isSuccess && items.length === 0 ? (
@@ -875,12 +822,7 @@ export function MintConnectionForm({
         instance cannot verify who holds the value.
       </p>
       {mint.error !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{mintFailureText(mint.error)}</span>
-        </p>
+        <Alert>{mintFailureText(mint.error)}</Alert>
       ) : null}
       <div className="field">
         <label htmlFor="connection-label">Label</label>
@@ -1055,12 +997,7 @@ export function ConnectionMintDialog({
         <label htmlFor="connection-stored">I have stored this credential in its target instance.</label>
       </div>
       {heldBack ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>Confirm you have stored it. There is no second look at this value.</span>
-        </p>
+        <Alert>Confirm you have stored it. There is no second look at this value.</Alert>
       ) : null}
       <div className="ceremony__actions">
         <Button variant="primary" type="button" onClick={dismiss}>
@@ -1116,12 +1053,7 @@ export function RevokeConnectionDialog({
         are <strong>unaffected</strong>: those follow the origin allowlist, not this credential.
       </p>
       {revoke.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{revokeFailureText(revoke.error)}</span>
-        </p>
+        <Alert>{revokeFailureText(revoke.error)}</Alert>
       ) : null}
       <div className="ceremony__actions">
         <Button
@@ -1252,12 +1184,7 @@ function PickerBody({ remoteName }: { remoteName: string }) {
   }
   if (orgs.isError) {
     return (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">
-          !
-        </span>
-        <span>The remote&apos;s projects could not be read. Your grants over there may not cover them.</span>
-      </p>
+      <Alert>The remote&apos;s projects could not be read. Your grants over there may not cover them.</Alert>
     );
   }
   if (orgs.data.items.length === 0) {

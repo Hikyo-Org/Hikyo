@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { parsed } from '../api/client.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ceremonyRefusalText, runPasskeyCeremony, runTOTPCeremony } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Login } from './Login.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
@@ -165,15 +166,10 @@ export function WorkspaceApprove() {
       <main className="login">
         <div className="login__card">
           <h1 className="login__title">Nothing to authorize</h1>
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              This page was opened without a handoff transaction. Start the workspace from the
-              instance you were browsing.
-            </span>
-          </p>
+          <Alert>
+            This page was opened without a handoff transaction. Start the workspace from the
+            instance you were browsing.
+          </Alert>
         </div>
       </main>
     );
@@ -203,15 +199,10 @@ export function WorkspaceApprove() {
       <main className="login">
         <div className="login__card">
           <h1 className="login__title">Authorization could not be completed</h1>
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              This authorization request could not be read. It may have expired or been used
-              already. Close this window and start again from the instance you were browsing.
-            </span>
-          </p>
+          <Alert>
+            This authorization request could not be read. It may have expired or been used
+            already. Close this window and start again from the instance you were browsing.
+          </Alert>
         </div>
       </main>
     );
@@ -394,12 +385,7 @@ function StepUpReauth({
   return (
     <>
       {failure === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       )}
       <div className="ceremony__actions">
         <Button variant="primary" type="button" onClick={onPasskey} disabled={working}>

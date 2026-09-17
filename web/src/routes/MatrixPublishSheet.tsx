@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import type { EnvironmentList } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
@@ -233,10 +234,7 @@ export function MatrixPublishSheet({
           </label>
         ) : null}
         {protectedGuard.error === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{protectedGuard.error}</span>
-          </p>
+          <Alert>{protectedGuard.error}</Alert>
         )}
         <Button
           type="button"
@@ -265,10 +263,7 @@ export function MatrixPublishSheet({
           Close
         </Button>
         {mutationError === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{mutationError}</span>
-          </p>
+          <Alert>{mutationError}</Alert>
         )}
         <p>Invalid environments cannot publish. Templates are also checked with each caller's parameters before delivery.</p>
       </section>

@@ -40,10 +40,11 @@ import {
   type SettingsOperation,
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
-import { Alert, ConsequencesDialog, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { ConsequencesDialog, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
 
@@ -119,7 +120,7 @@ export function ProjectSettings() {
         </Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       <Panel id="project-identity" title="Identity">
         <ChromeIdentityControls

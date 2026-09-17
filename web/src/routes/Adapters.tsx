@@ -48,6 +48,7 @@ import {
   runAdapterPasskeyCeremony,
   runAdapterTOTPCeremony,
 } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 import { gateSystemScope } from './SystemScope.tsx';
@@ -173,12 +174,7 @@ function AdaptersPage() {
       </p>
 
       {feedback.failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{feedback.failure}</span>
-        </p>
+        <Alert>{feedback.failure}</Alert>
       ) : null}
       {feedback.done !== null ? (
         <p className="adapters__done" role="status">
@@ -1777,12 +1773,7 @@ function AdapterCeremony({
           bound to exactly those environments and to this one act.
         </p>
         {failure !== null ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{failure}</span>
-          </p>
+          <Alert>{failure}</Alert>
         ) : null}
         {policy === null && failure === null ? <p role="status">Reading environment policy…</p> : null}
         {policy !== null && policy.sliding.length > 0 ? (

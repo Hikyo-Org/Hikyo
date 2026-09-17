@@ -17,6 +17,7 @@ import {
   runOIDCCeremony,
   runTOTPCeremony,
 } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Login } from './Login.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
@@ -136,7 +137,7 @@ export function CLIReauth() {
         <h1 className="login__title">Authorize CLI</h1>
         {transaction.isPending ? <p role="status">Loading authorization policy…</p> : null}
         {transaction.isError ? (
-          <p className="alert" role="alert"><span className="alert__glyph" aria-hidden="true">!</span><span>This CLI transaction is invalid, expired, or already used. Return to the terminal and start again.</span></p>
+          <Alert>This CLI transaction is invalid, expired, or already used. Return to the terminal and start again.</Alert>
         ) : null}
         {transaction.data !== undefined ? (
           <>
@@ -187,7 +188,7 @@ export function CLIReauth() {
                 <input id="cli-reauth-totp" inputMode="numeric" autoComplete="one-time-code" value={totp} onChange={(event) => setTOTP(event.target.value)} required />
               </div>
             ) : null}
-            {approve.isError ? <p className="alert" role="alert"><span className="alert__glyph" aria-hidden="true">!</span><span>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</span></p> : null}
+            {approve.isError ? <Alert>Authorization failed. No CLI credential was disclosed; return to the terminal and try again.</Alert> : null}
             <Button variant="primary" type="button" disabled={approve.isPending || (requiresTOTP && totp.trim() === '')} onClick={() => approve.mutate('factor')}>
               {approve.isPending ? 'Authorizing…' : 'Authorize CLI'}
             </Button>
@@ -206,7 +207,7 @@ export function CLIReauth() {
 
 function CLIReauthMessage(input: { title: string; text: string }) {
   return (
-    <main className="login"><div className="login__card"><h1 className="login__title">{input.title}</h1><p className="alert" role="alert"><span className="alert__glyph" aria-hidden="true">!</span><span>{input.text}</span></p></div></main>
+    <main className="login"><div className="login__card"><h1 className="login__title">{input.title}</h1><Alert>{input.text}</Alert></div></main>
   );
 }
 

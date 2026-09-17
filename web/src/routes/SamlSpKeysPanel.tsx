@@ -10,8 +10,9 @@ import {
   useSamlSpKeys,
   type SamlAction,
 } from '../api/samlProviders.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, Done, Panel, TypedNameConfirm } from './Sections.tsx';
+import { Panel, TypedNameConfirm } from './Sections.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
 const nondisclosed = (error: unknown) => error instanceof ApiError && error.status === 404;
@@ -61,7 +62,7 @@ export function SamlSpKeysPanel() {
       ) : null}
 
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       {keys.isSuccess
         ? keys.data.keys.map((key) => (

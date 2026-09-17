@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 
 import type { FolderMove, FolderMoveOutcome } from '../api/catalogue.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import type { FolderProposal } from './folder-cleanup.ts';
 import { useModalDialog } from './useModalDialog.ts';
@@ -114,10 +115,7 @@ export function FolderCleanupDialog({
                 />
               </div>
               {row.error === null ? null : (
-                <p className="alert" role="alert">
-                  <span className="alert__glyph" aria-hidden="true">!</span>
-                  <span>{row.error}</span>
-                </p>
+                <Alert>{row.error}</Alert>
               )}
             </li>
           ))}
@@ -130,10 +128,7 @@ export function FolderCleanupDialog({
       </datalist>
 
       {failure === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       )}
 
       <div className="matrix-editor__actions">

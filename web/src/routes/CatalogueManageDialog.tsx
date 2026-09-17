@@ -18,8 +18,8 @@ import {
 } from '../api/catalogue.ts';
 import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
 import type { MatrixRef } from '../api/keys.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, Done } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -191,7 +191,7 @@ function CreateFolder({ refData }: { refData: MatrixRef }) {
         Add folder
       </Button>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
-      {write.done === null ? null : <Done>{write.done}</Done>}
+      {write.done === null ? null : <Alert tone="done">{write.done}</Alert>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
           title="Folder name blocked by secret scanning"
@@ -276,7 +276,7 @@ function FolderRow({
       </div>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
       {deleteError === null ? null : <Alert>{deleteError}</Alert>}
-      {write.done === null ? null : <Done>{write.done}</Done>}
+      {write.done === null ? null : <Alert tone="done">{write.done}</Alert>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
           title="Folder name blocked by secret scanning"
@@ -328,7 +328,7 @@ function CreateKeyGroup({ refData }: { refData: MatrixRef }) {
         Add linked-key set
       </Button>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
-      {write.done === null ? null : <Done>{write.done}</Done>}
+      {write.done === null ? null : <Alert tone="done">{write.done}</Alert>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
           title="Linked-key set name blocked by secret scanning"
@@ -416,7 +416,7 @@ function GroupRow({
       </div>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
       {deleteError === null ? null : <Alert>{deleteError}</Alert>}
-      {write.done === null ? null : <Done>{write.done}</Done>}
+      {write.done === null ? null : <Alert tone="done">{write.done}</Alert>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
           title="Linked-key set name blocked by secret scanning"

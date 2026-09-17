@@ -15,6 +15,7 @@ import {
 } from '../api/approvals.ts';
 import { ApiError } from '../api/client.ts';
 import { useEnvironments } from '../api/settings.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
@@ -214,10 +215,7 @@ export function ChangeApprovals() {
         </div>
         {policies.isLoading ? <p role="status">Loading policies…</p> : null}
         {policies.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{refusal(policies.error)}</span>
-          </p>
+          <Alert>{refusal(policies.error)}</Alert>
         ) : null}
         {policies.data !== undefined && policies.data.items.length === 0 ? (
           <p>No approval policies. Changes in every environment publish directly.</p>
@@ -384,17 +382,11 @@ export function ChangeApprovals() {
         </select>
 
         {actionError !== null ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{actionError}</span>
-          </p>
+          <Alert>{actionError}</Alert>
         ) : null}
 
         {approvalGuard.error === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{approvalGuard.error}</span>
-          </p>
+          <Alert>{approvalGuard.error}</Alert>
         )}
 
         {selectedEnv === '' ? (
@@ -406,10 +398,7 @@ export function ChangeApprovals() {
         ) : null}
 
         {selectedEnv !== '' && requests.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{refusal(requests.error)}</span>
-          </p>
+          <Alert>{refusal(requests.error)}</Alert>
         ) : null}
 
         {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length === 0 ? (

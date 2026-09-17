@@ -4,8 +4,9 @@ import { accountFailureText, useMyProfile, useUpdateMyProfile } from '../api/acc
 import { ApiError } from '../api/client.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, Done, Panel } from './Sections.tsx';
+import { Panel } from './Sections.tsx';
 
 export function AccountProfile() {
   const profile = useMyProfile();
@@ -49,7 +50,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
       });
       setProof('');
     }}>
-      {done ? <Done>Profile saved.</Done> : null}
+      {done ? <Alert tone="done">Profile saved.</Alert> : null}
       {update.error !== null ? <Alert>{update.error instanceof ApiError && update.error.status === 409
         ? 'That username is already in use. Choose another username.'
         : accountFailureText(update.error)}</Alert> : null}

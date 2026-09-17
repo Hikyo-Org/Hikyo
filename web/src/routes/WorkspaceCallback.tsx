@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { channelName } from '../api/workspace.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 
 /**
@@ -61,12 +62,7 @@ export function WorkspaceCallback() {
               : 'Handing the authorization back. This window closes itself.'}
           </p>
         ) : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{failure}</span>
-          </p>
+          <Alert>{failure}</Alert>
         )}
         {/* A browser may refuse to close a window this script did not open, so
             the human is given the control rather than left on a dead page. */}

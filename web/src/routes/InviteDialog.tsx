@@ -11,8 +11,9 @@ import {
   type Level,
 } from '../api/access.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, DisplayOnceCopy } from './Sections.tsx';
+import { DisplayOnceCopy } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 /**

@@ -87,6 +87,7 @@ import { useMachineReveal, useSetMachineReveal } from '../api/machineReveal.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { writeClipboard } from '../app/clipboard.ts';
 import { runPasskeyCeremony, useEnvironments } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import {
   type IsMintSubmitting,
@@ -408,59 +409,34 @@ function MachineAccessPage() {
       </header>
 
       {accountsQuery.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{accountsRefusalText(accountsQuery.error)}</span>
-        </p>
+        <Alert>{accountsRefusalText(accountsQuery.error)}</Alert>
       ) : null}
 
       {grantsQuery.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            The grant rows could not be read, so no scope is shown below. Reading the membership
-            surface needs manage-members on this project, a separate authority from administering
-            identities.
-          </span>
-        </p>
+        <Alert>
+          The grant rows could not be read, so no scope is shown below. Reading the membership
+          surface needs manage-members on this project, a separate authority from administering
+          identities.
+        </Alert>
       ) : null}
 
       {environmentsQuery.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            The project&apos;s environments could not be read, so no scope is shown below; an empty
-            scope column here would say &ldquo;this account reaches nothing&rdquo;, which is not
-            something this page knows.
-          </span>
-        </p>
+        <Alert>
+          The project&apos;s environments could not be read, so no scope is shown below; an empty
+          scope column here would say &ldquo;this account reaches nothing&rdquo;, which is not
+          something this page knows.
+        </Alert>
       ) : null}
 
       {credentials.isError ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            At least one service account&apos;s credentials could not be listed. Counts and the
-            federation tab are incomplete, and the actions are held back until the listing succeeds.
-          </span>
-        </p>
+        <Alert>
+          At least one service account&apos;s credentials could not be listed. Counts and the
+          federation tab are incomplete, and the actions are held back until the listing succeeds.
+        </Alert>
       ) : null}
 
       {refusal !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{refusal}</span>
-        </p>
+        <Alert>{refusal}</Alert>
       ) : null}
 
       {credentials.isPending && !credentials.isError && accounts.length > 0 ? (
@@ -473,12 +449,7 @@ function MachineAccessPage() {
       ) : null}
 
       {notice !== null ? (
-        <p className="notice" role="status">
-          <span className="alert__glyph" aria-hidden="true">
-            ✓
-          </span>
-          <span>{notice}</span>
-        </p>
+        <Alert tone="done">{notice}</Alert>
       ) : null}
 
       {/* APG tabs: one tab stop, arrows move and select, Home/End jump. */}
@@ -1258,12 +1229,7 @@ function MachineRevealDialog({
         </p>
       )}
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
       <div className="ceremony__actions">
         <Button type="button" onClick={onClose} disabled={busy}>
@@ -1944,12 +1910,7 @@ export function MintDialog({
             </p>
           ) : null}
           {failure !== null ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>{failure}</span>
-            </p>
+            <Alert>{failure}</Alert>
           ) : null}
           <div className="ceremony__actions">
             <Button
@@ -2040,12 +2001,7 @@ export function MintDialog({
             <label htmlFor="mint-stored">I have stored this credential in its target system.</label>
           </div>
           {disclosed.heldBack ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>Confirm you have stored it: there is no second look at this value.</span>
-            </p>
+            <Alert>Confirm you have stored it: there is no second look at this value.</Alert>
           ) : null}
           <div className="ceremony__actions">
             <Button variant="primary" type="button" onClick={dismiss}>
@@ -2436,12 +2392,7 @@ function BindingDialog({
 
       {refusal === null ? null : (
         <>
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{refusal}</span>
-          </p>
+          <Alert>{refusal}</Alert>
           <div className="field chk">
             <input
               id="binding-deliberate"
@@ -2459,12 +2410,7 @@ function BindingDialog({
       </fieldset>
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <p className="machine__footnote">
@@ -2777,25 +2723,15 @@ function GrantBody({
           )}
         </>
       ) : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            {values.isError
-              ? 'The key catalogue could not be read, so what this grant makes reachable cannot be named, and a grant whose blast radius is unknown is not one to make from here.'
-              : 'Reading what this grant would make reachable…'}
-          </span>
-        </p>
+        <Alert>
+          {values.isError
+            ? 'The key catalogue could not be read, so what this grant makes reachable cannot be named, and a grant whose blast radius is unknown is not one to make from here.'
+            : 'Reading what this grant would make reachable…'}
+        </Alert>
       )}
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <div className="ceremony__actions">
@@ -2926,12 +2862,7 @@ function CreateAccountDialog({
       </fieldset>
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <div className="ceremony__actions">
@@ -3035,12 +2966,7 @@ function DeleteAccountDialog({
       </p>
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <TypedNameConfirm
@@ -3202,12 +3128,7 @@ function CreateProviderDialog({
       </fieldset>
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <div className="ceremony__actions">
@@ -3313,12 +3234,7 @@ function SetCredentialDialog({
       </fieldset>
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <div className="ceremony__actions">
@@ -3404,12 +3320,7 @@ function RevokeCredentialDialog({
       </p>
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <div className="ceremony__actions">
@@ -3538,12 +3449,7 @@ function DeleteProviderDialog({
       ) : null}
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <TypedNameConfirm
@@ -3780,20 +3686,10 @@ function LeaseMintDialog({
           </p>
 
           {formError !== null ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>{formError}</span>
-            </p>
+            <Alert>{formError}</Alert>
           ) : null}
           {failure !== null ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>{failure}</span>
-            </p>
+            <Alert>{failure}</Alert>
           ) : null}
 
           <div className="ceremony__actions">
@@ -3884,12 +3780,7 @@ function LeaseMintDialog({
             </label>
           </div>
           {disclosed.heldBack ? (
-            <p className="alert" role="alert">
-              <span className="alert__glyph" aria-hidden="true">
-                !
-              </span>
-              <span>Confirm you have stored it: there is no second look at this password.</span>
-            </p>
+            <Alert>Confirm you have stored it: there is no second look at this password.</Alert>
           ) : null}
           <div className="ceremony__actions">
             <Button variant="primary" type="button" onClick={dismiss}>
@@ -4017,12 +3908,7 @@ function LeaseActionDialog({
       ) : null}
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       <div className="ceremony__actions">

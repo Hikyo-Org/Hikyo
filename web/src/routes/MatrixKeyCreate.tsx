@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from 'react';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import type { CreateKeyPresence, CreateKeyRule, CreateKeyType } from '../api/matrix.ts';
 import type { EnvironmentList } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
 import { isBackdropClick } from './MatrixRowEditor.tsx';
@@ -575,16 +576,10 @@ export function MatrixKeyCreate({
         />
 
         {error === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{error}</span>
-          </p>
+          <Alert>{error}</Alert>
         )}
         {mutationError === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{mutationError}</span>
-          </p>
+          <Alert>{mutationError}</Alert>
         )}
 
         <div className="matrix-editor__actions">

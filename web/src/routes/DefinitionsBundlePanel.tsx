@@ -14,8 +14,9 @@ import {
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { GIT_DEFINITIONS_NOTICE, type DefinitionsSettings } from '../api/definitions.ts';
 import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, ConsequencesDialog, Done } from './Sections.tsx';
+import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -229,7 +230,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           <LastApplyProvenance lastApply={settings.last_apply} />
         ) : null}
         {failure === null ? null : <Alert>{failure}</Alert>}
-        {done === null ? null : <Done>{done}</Done>}
+        {done === null ? null : <Alert tone="done">{done}</Alert>}
         <div className="field">
           <label htmlFor={fileId}>Definitions bundle file (JSON, up to 1 MiB)</label>
           <input

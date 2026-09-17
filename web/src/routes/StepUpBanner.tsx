@@ -10,6 +10,7 @@ import {
   useStepUpPasskey,
   useStepUpTotp,
 } from '../api/stepup.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 
 /**
@@ -98,12 +99,7 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
         ) : null}
       </div>
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
     </section>
   );

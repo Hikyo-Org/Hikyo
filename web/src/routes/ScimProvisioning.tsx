@@ -39,8 +39,9 @@ import {
 } from '../api/scim.ts';
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { writeClipboard } from '../app/clipboard.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, Done, Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 import { useNavigationGuard } from './MachineAccess.tsx';
 import { gateSystemScope } from './SystemScope.tsx';
@@ -328,7 +329,7 @@ function CreateBindingForm({ org }: { org: string }) {
     <form className="form" onSubmit={onSubmit} noValidate>
       <h3>Create a binding</h3>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
-      {feedback.done === null ? null : <Done>{feedback.done}</Done>}
+      {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
       <fieldset className="field">
         <legend>Provider kind</legend>
         <div className="chk">
@@ -422,7 +423,7 @@ function MappingsSection({ org, binding }: { org: string; binding: ScimBinding }
       </p>
 
       {mappings.isError ? <Alert>{scimReadFailureText(mappings.error)}</Alert> : null}
-      {deleteOutcome === null ? null : <Done>{deleteOutcome}</Done>}
+      {deleteOutcome === null ? null : <Alert tone="done">{deleteOutcome}</Alert>}
 
       {mappings.isSuccess && rows.length === 0 ? (
         <p role="status">No mappings yet. Map a provisioned group to a template below.</p>
@@ -568,7 +569,7 @@ function MappingRow({
       </ul>
 
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
-      {feedback.done === null ? null : <Done>{feedback.done}</Done>}
+      {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
       {result === null ? null : <MappingWarnings warnings={result.warnings} />}
 
       {editing ? (
@@ -710,7 +711,7 @@ function CreateMappingForm({ org, binding }: { org: string; binding: string }) {
         for you.
       </p>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
-      {feedback.done === null ? null : <Done>{feedback.done}</Done>}
+      {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
       {result === null ? null : <MappingWarnings warnings={result.warnings} />}
 
       {groups.isSuccess && groupItems.length === 0 ? (

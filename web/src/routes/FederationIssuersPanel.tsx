@@ -15,8 +15,9 @@ import {
   type FederationJwksMode,
 } from '../api/federationIssuers.ts';
 import { notifySuccess } from '../app/notifications.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, Done, Panel } from './Sections.tsx';
+import { Panel } from './Sections.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
 const nondisclosed = (error: unknown) => error instanceof ApiError && error.status === 404;
@@ -96,7 +97,7 @@ export function FederationIssuersPanel() {
       </p>
 
       {failure !== null ? <Alert>{failure}</Alert> : null}
-      {done !== null ? <Done>{done}</Done> : null}
+      {done !== null ? <Alert tone="done">{done}</Alert> : null}
 
       {issuers.isPending ? <p role="status">Loading federation issuers…</p> : null}
       {secondFactor(issuers.error) ? (

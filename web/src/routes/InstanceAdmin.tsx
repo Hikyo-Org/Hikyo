@@ -24,12 +24,13 @@ import {
 } from '../api/settings.ts';
 import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
 import { SamlSpKeysPanel } from './SamlSpKeysPanel.tsx';
-import { Alert, ConsequencesDialog, Done, JumpIndex, Panel } from './Sections.tsx';
+import { ConsequencesDialog, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
 import { useReencryptDrain } from './useReencryptDrain.ts';
 
@@ -133,7 +134,7 @@ export function InstanceAdmin() {
       { id: 'instance-saml-sp-keys', label: 'SP signing keys' },
     ]} />
     {failure !== null ? <Alert>{failure}</Alert> : null}
-    {done !== null ? <Done>{done}</Done> : null}
+    {done !== null ? <Alert tone="done">{done}</Alert> : null}
 
     <Panel id="instance-orgs" title="Organisations">
       {orgs.isPending ? <p role="status">Loading organisations…</p> : null}

@@ -33,9 +33,10 @@ import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import type { EnvironmentList } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { Alert, Done, TypedNameConfirm } from './Sections.tsx';
+import { TypedNameConfirm } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
@@ -629,7 +630,7 @@ function MetadataEditor({
       </label>
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Saved.</Done> : null}
+      {done ? <Alert tone="done">Saved.</Alert> : null}
 
       <Button type="submit" variant="primary" disabled={update.isPending || !dirty}>
         {update.isPending ? 'Saving…' : 'Save declaration'}
@@ -765,7 +766,7 @@ function RenameKey({
       </label>
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Renamed.</Done> : null}
+      {done ? <Alert tone="done">Renamed.</Alert> : null}
 
       <Button type="submit" variant="primary" disabled={rename.isPending || !dirty}>
         {rename.isPending ? 'Renaming…' : 'Rename key'}
@@ -867,11 +868,11 @@ function ReclassifyKey({
 
       {refusal === null ? null : <Alert>{refusal}</Alert>}
       {doneClassification === null ? null : (
-        <Done>
+        <Alert tone="done">
           {doneClassification === 'config'
             ? 'Reclassified as config.'
             : 'Reclassified as secret. Tightening cannot un-disclose earlier values. Rotate the value if it was ever shown.'}
-        </Done>
+        </Alert>
       )}
 
       {warnings.length === 0 ? null : (
@@ -1627,7 +1628,7 @@ function DeclarationEditor({
 
       {invalid === null ? null : <Alert>{invalid}</Alert>}
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Saved.</Done> : null}
+      {done ? <Alert tone="done">Saved.</Alert> : null}
 
       <Button type="submit" variant="primary" disabled={update.isPending}>
         {update.isPending ? 'Saving…' : 'Save value rules & presence'}
@@ -1898,7 +1899,7 @@ function GroupEditor({
       </label>
       {groups.isError ? <Alert>The project’s linked keys could not be read.</Alert> : null}
       {refusal === null ? null : <Alert>{refusal}</Alert>}
-      {done ? <Done>Linked keys updated.</Done> : null}
+      {done ? <Alert tone="done">Linked keys updated.</Alert> : null}
     </section>
   );
 }

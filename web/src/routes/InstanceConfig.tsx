@@ -8,8 +8,9 @@ import { useTransport, useWorkspaceContext, withRemote } from '../api/transport.
 import { rememberWorkspace, workspaceSession } from '../api/workspace.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { uuid } from '../lib/uuid.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, Done, Panel } from './Sections.tsx';
+import { Panel } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
 export function InstanceConfig() {
@@ -147,7 +148,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
   };
   return <>
     {failure === null ? null : <Alert>{failure}</Alert>}
-    {done === null ? null : <Done>{done}</Done>}
+    {done === null ? null : <Alert tone="done">{done}</Alert>}
     <Panel id="configuration-owner" title={workspace === null ? 'This instance' : workspace.remote}>
       <p className="settings-note">Owner <code>{status.owner_instance_id}</code></p>
       <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">{stateLabel(status.state)}</span><span className="settings-row__detail">Generation {String(status.generation)} · Desired {status.desired_revision === null ? 'none' : `r${status.desired_revision}`} · Latest published {status.latest_revision === null ? 'none' : `r${status.latest_revision}`}</span></div></div>

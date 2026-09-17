@@ -33,6 +33,7 @@ import {
 import type { EnvRef, MatrixRef } from '../api/keys.ts';
 import type { EnvironmentList, ValueCell } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
@@ -631,10 +632,7 @@ export function HistoryDrawer({
         {history.isPending ? (
           <p role="status">Loading revision history…</p>
         ) : history.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>The revision history could not be read. Reload to try again.</span>
-          </p>
+          <Alert>The revision history could not be read. Reload to try again.</Alert>
         ) : filtered.length === 0 ? (
           <p className="history__empty" role="status">
             {keyFilter === null

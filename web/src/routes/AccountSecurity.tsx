@@ -23,8 +23,9 @@ import { useRevokeSession, useSessions, type ActiveSession } from '../api/remote
 import { useAuth } from '../app/AuthProvider.tsx';
 import { themeLabel, useThemeChoice, type ThemeChoice } from '../app/theme.ts';
 import { clearNotification, notifyFailure } from '../app/notifications.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
-import { Alert, DisplayOnceCopy, Done, JumpIndex, Panel } from './Sections.tsx';
+import { DisplayOnceCopy, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
@@ -197,7 +198,7 @@ export function AccountSecurity() {
         ]}
       />
 
-      {done !== null ? <Done>{done}</Done> : null}
+      {done !== null ? <Alert tone="done">{done}</Alert> : null}
       {failure !== null ? <Alert>{failure}</Alert> : null}
 
       <AccountProfile />
