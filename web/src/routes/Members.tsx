@@ -38,6 +38,8 @@ import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Radio } from '../ui/Radio.tsx';
 import { Select } from '../ui/Select.tsx';
 
 /**
@@ -1161,24 +1163,18 @@ function GrantModal({
       {projectContext ? null : (
         <fieldset className="grant-modal__mode">
           <legend>What to grant</legend>
-          <label className="chk">
-            <input
-              type="radio"
-              name="grant-mode"
-              checked={draft.mode === 'capabilities'}
-              onChange={() => onDraft({ ...draft, mode: 'capabilities' })}
-            />
-            <span>Choose capabilities</span>
-          </label>
-          <label className="chk">
-            <input
-              type="radio"
-              name="grant-mode"
-              checked={draft.mode === 'template'}
-              onChange={() => onDraft({ ...draft, mode: 'template' })}
-            />
-            <span>Apply a role template</span>
-          </label>
+          <Radio
+            name="grant-mode"
+            label="Choose capabilities"
+            checked={draft.mode === 'capabilities'}
+            onChange={() => onDraft({ ...draft, mode: 'capabilities' })}
+          />
+          <Radio
+            name="grant-mode"
+            label="Apply a role template"
+            checked={draft.mode === 'template'}
+            onChange={() => onDraft({ ...draft, mode: 'template' })}
+          />
         </fieldset>
       )}
 
@@ -1186,21 +1182,19 @@ function GrantModal({
         <ul className="capgrid" aria-label="Capabilities to grant">
           {atoms.map((atom) => (
             <li className="capitem" key={atom.id}>
-              <label className="chk">
-                <input
-                  type="checkbox"
-                  checked={draft.capabilities.includes(atom.id)}
-                  onChange={(event) =>
-                    onDraft({
-                      ...draft,
-                      capabilities: event.target.checked
-                        ? [...draft.capabilities, atom.id]
-                        : draft.capabilities.filter((id) => id !== atom.id),
-                    })
-                  }
-                />
-                <span className="mono">{atom.id}</span>
-              </label>
+              <Checkbox
+                mono
+                label={atom.id}
+                checked={draft.capabilities.includes(atom.id)}
+                onChange={(event) =>
+                  onDraft({
+                    ...draft,
+                    capabilities: event.target.checked
+                      ? [...draft.capabilities, atom.id]
+                      : draft.capabilities.filter((id) => id !== atom.id),
+                  })
+                }
+              />
               <Explain label={atom.id} text={atom.covers} />
             </li>
           ))}

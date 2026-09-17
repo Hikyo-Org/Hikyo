@@ -89,6 +89,7 @@ import { writeClipboard } from '../app/clipboard.ts';
 import { runPasskeyCeremony, useEnvironments } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import {
   type IsMintSubmitting,
   type MintBoundary,
@@ -1209,16 +1210,13 @@ function MachineRevealDialog({
             has an active non-current pin. Each grant still runs its own widening ceremony. Nothing
             is granted by this act alone.
           </p>
-          <label className="ceremony__ack">
-            <input
-              type="checkbox"
-              checked={acknowledged}
-              onChange={(event) => setAcknowledged(event.target.checked)}
-              disabled={busy}
-            />{' '}
-            I understand this admits standing decryption capabilities onto machine principals in
-            this project.
-          </label>
+          <Checkbox
+            className="ceremony__ack"
+            label="I understand this admits standing decryption capabilities onto machine principals in this project."
+            checked={acknowledged}
+            onChange={(event) => setAcknowledged(event.target.checked)}
+            disabled={busy}
+          />
         </>
       ) : (
         <p>
@@ -1976,18 +1974,15 @@ export function MintDialog({
               <span>{disclosed.copyStatus}</span>
             </p>
           )}
-          <div className="field chk">
-            <input
-              id="mint-stored"
-              type="checkbox"
-              ref={confirmation}
-              checked={disclosed.stored}
-              onChange={(event) => {
-                move({ type: 'confirm-stored', stored: event.target.checked });
-              }}
-            />
-            <label htmlFor="mint-stored">I have stored this credential in its target system.</label>
-          </div>
+          <Checkbox
+            id="mint-stored"
+            label="I have stored this credential in its target system."
+            ref={confirmation}
+            checked={disclosed.stored}
+            onChange={(event) => {
+              move({ type: 'confirm-stored', stored: event.target.checked });
+            }}
+          />
           {disclosed.heldBack ? (
             <Alert>Confirm you have stored it: there is no second look at this value.</Alert>
           ) : null}
@@ -2381,18 +2376,11 @@ function BindingDialog({
       {refusal === null ? null : (
         <>
           <Alert>{refusal}</Alert>
-          <div className="field chk">
-            <input
-              id="binding-deliberate"
-              type="checkbox"
-              checked={deliberate}
-              onChange={(event) => setDeliberate(event.target.checked)}
-            />
-            <label htmlFor="binding-deliberate">
-              I am deliberately binding a pull-request identity and accept that pull-request authors
-              reach this account&apos;s scope.
-            </label>
-          </div>
+          <Checkbox
+            label="I am deliberately binding a pull-request identity and accept that pull-request authors reach this account's scope."
+            checked={deliberate}
+            onChange={(event) => setDeliberate(event.target.checked)}
+          />
         </>
       )}
       </fieldset>
@@ -3419,21 +3407,15 @@ function DeleteProviderDialog({
       </p>
 
       {showCascade ? (
-        <div className="field chk">
-          <input
-            id="delete-provider-cascade"
-            type="checkbox"
-            checked={revokeAll}
-            disabled={busy}
-            onChange={(event) => {
-              setRevokeAll(event.target.checked);
-              setFailure(null);
-            }}
-          />
-          <label htmlFor="delete-provider-cascade">
-            Revoke every live lease of this provider as part of the delete.
-          </label>
-        </div>
+        <Checkbox
+          label="Revoke every live lease of this provider as part of the delete."
+          checked={revokeAll}
+          disabled={busy}
+          onChange={(event) => {
+            setRevokeAll(event.target.checked);
+            setFailure(null);
+          }}
+        />
       ) : null}
 
       {failure !== null ? (
@@ -3748,20 +3730,14 @@ function LeaseMintDialog({
               <span>{disclosed.copyStatus}</span>
             </p>
           )}
-          <div className="field chk">
-            <input
-              id="lease-mint-stored"
-              type="checkbox"
-              ref={confirmation}
-              checked={disclosed.stored}
-              onChange={(event) => {
-                move({ type: 'confirm-stored', stored: event.target.checked });
-              }}
-            />
-            <label htmlFor="lease-mint-stored">
-              I have stored this password in its target workload.
-            </label>
-          </div>
+          <Checkbox
+            label="I have stored this password in its target workload."
+            ref={confirmation}
+            checked={disclosed.stored}
+            onChange={(event) => {
+              move({ type: 'confirm-stored', stored: event.target.checked });
+            }}
+          />
           {disclosed.heldBack ? (
             <Alert>Confirm you have stored it: there is no second look at this password.</Alert>
           ) : null}

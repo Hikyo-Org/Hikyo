@@ -15,6 +15,7 @@ import {
 } from '../api/samlProviders.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
@@ -302,18 +303,9 @@ function ProviderPolicyForm({
         <label htmlFor={assuranceId}>Accepted AuthnContextClassRef values (one per line; empty = single-factor)</label>
         <textarea id={assuranceId} className="mono" rows={2} value={assurance} onChange={(event) => setAssurance(event.target.value)} />
       </div>
-      <div className="field chk">
-        <input id={`${nameId}-email`} type="checkbox" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
-        <label htmlFor={`${nameId}-email`}>Allow opaque emailAddress NameID values</label>
-      </div>
-      <div className="field chk">
-        <input id={`${nameId}-sign`} type="checkbox" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
-        <label htmlFor={`${nameId}-sign`}>Force signed AuthnRequests</label>
-      </div>
-      <div className="field chk">
-        <input id={`${nameId}-enabled`} type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-        <label htmlFor={`${nameId}-enabled`}>Enabled (advertises for sign-in)</label>
-      </div>
+      <Checkbox label="Allow opaque emailAddress NameID values" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
+      <Checkbox label="Force signed AuthnRequests" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
+      <Checkbox label="Enabled (advertises for sign-in)" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
       <div className="panel__actions">
         <Button type="button" onClick={onCancel}>Cancel</Button>
         <Button type="button" variant="primary" disabled={patch.isPending} onClick={submit}>Save policy</Button>
@@ -619,18 +611,9 @@ function ProviderCreateForm({
         <label htmlFor={ids.assurance}>Accepted AuthnContextClassRef values (one per line; empty = single-factor)</label>
         <textarea id={ids.assurance} className="mono" rows={2} value={assurance} onChange={(event) => setAssurance(event.target.value)} />
       </div>
-      <div className="field chk">
-        <input id={`${ids.slug}-email`} type="checkbox" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
-        <label htmlFor={`${ids.slug}-email`}>Allow opaque emailAddress NameID values</label>
-      </div>
-      <div className="field chk">
-        <input id={`${ids.slug}-sign`} type="checkbox" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
-        <label htmlFor={`${ids.slug}-sign`}>Force signed AuthnRequests</label>
-      </div>
-      <div className="field chk">
-        <input id={`${ids.slug}-enabled`} type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-        <label htmlFor={`${ids.slug}-enabled`}>Enabled (advertises for sign-in)</label>
-      </div>
+      <Checkbox label="Allow opaque emailAddress NameID values" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
+      <Checkbox label="Force signed AuthnRequests" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
+      <Checkbox label="Enabled (advertises for sign-in)" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
       {clientErrors.length > 0 ? <Alert>{clientErrors.join(' ')}</Alert> : null}
       {pending ? <MetadataDiff diff={pending.diff.diff} /> : null}
       <div className="panel__actions">

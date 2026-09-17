@@ -26,6 +26,7 @@ import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { FederationIssuersPanel } from './FederationIssuersPanel.tsx';
 import { OidcProvidersPanel } from './OidcProvidersPanel.tsx';
 import { SamlProvidersPanel } from './SamlProvidersPanel.tsx';
@@ -209,7 +210,7 @@ export function InstanceAdmin() {
 function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType<typeof useCredentialPolicy>; onDone: (message: string) => void; onFailure: (error: unknown) => void }) {
   const update = useSetCredentialPolicy();
   const [editing, setEditing] = useState(false);
-  const finiteId = useId(); const liveId = useId(); const indefiniteId = useId();
+  const finiteId = useId(); const liveId = useId();
   const [finite, setFinite] = useState(''); const [live, setLive] = useState(''); const [indefinite, setIndefinite] = useState(false);
   type PolicyProposal = { readonly maxFiniteLifetimeSeconds: number; readonly allowIndefinite: boolean; readonly maxLiveCredentials: number };
   type PolicyPreview = { readonly result: Awaited<ReturnType<typeof update.mutateAsync>>; readonly proposal: PolicyProposal };
@@ -240,7 +241,7 @@ function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType
       {query.isSuccess ? <>
         <div className="field"><label htmlFor={finiteId}>Maximum finite lifetime (seconds)</label><input id={finiteId} inputMode="numeric" value={finite} onChange={(event) => { setPreview(null); setFinite(event.target.value); }} /></div>
         <div className="field"><label htmlFor={liveId}>Maximum live credentials per service account</label><input id={liveId} inputMode="numeric" value={live} onChange={(event) => { setPreview(null); setLive(event.target.value); }} /></div>
-        <div className="field chk"><input id={indefiniteId} type="checkbox" checked={indefinite} onChange={(event) => { setPreview(null); setIndefinite(event.target.checked); }} /><label htmlFor={indefiniteId}>Allow credentials with no expiry</label></div>
+        <Checkbox label="Allow credentials with no expiry" checked={indefinite} onChange={(event) => { setPreview(null); setIndefinite(event.target.checked); }} />
         {preview === null ? null : <div className="policy-impact" role="alert"><p>This tightening affects {preview.result.affected.length} live credential{preview.result.affected.length === 1 ? '' : 's'}. Nothing has changed yet.</p><ul>{preview.result.affected.map((credential) => <li key={credential.id} className="mono">{credential.id}: {credential.reason}</li>)}</ul><Button type="button" variant="danger" disabled={update.isPending} onClick={() => submit(true, preview.proposal)}>Apply and affect these credentials</Button></div>}
         <div className="panel__actions"><Button type="button" onClick={() => setEditing(false)}>Cancel</Button><Button type="button" variant="primary" disabled={update.isPending} onClick={() => submit(false)}>Save credential policy</Button></div>
       </> : null}

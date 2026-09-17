@@ -27,8 +27,8 @@
     "api/values.ts": "3db171557bb4afc147eae2e597cc8f225c9fa104033b53f267265c9d586b7c84",
     "routes/CLIReauth.tsx": "6a6b2442dbf47d79bd920dfa588ea962d8490604fd1eddd81be5c2e7d9480c9b",
     "routes/EstablishCredential.tsx": "1548f7f47270eb52865807dc6048a0402f448f58b9d9fe746ccd7f67128ef6d9",
-    "routes/HistoryDrawer.tsx": "4a2de50de812832ace12426593f12abc7ea018c55a8eb8ef8f13733d173a84dc",
-    "routes/InstanceAdmin.tsx": "2c4272887ff947a8b5f7c1a99bfe1d7240656517cdaa4d27b83665bc28002b94",
+    "routes/HistoryDrawer.tsx": "e07c519ab80bfeacb9f0397191fa1ea8f2ac3821117c2ebf386fa73435f0df42",
+    "routes/InstanceAdmin.tsx": "21a7ea79bd9dffcc82dbd5ad4ed94bbb91c0aac7cf377aec92f1c6864abfb873",
     "routes/Login.tsx": "74d5986555f05b8ca6045aede479b4376185658558707f82ad039d91596ca19f",
     "routes/WorkspaceApprove.tsx": "7f18ee4ba2318327952da40ce447af672118a5bbdbb6a1f65e680415b8f4c834"
   }

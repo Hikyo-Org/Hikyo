@@ -13,6 +13,7 @@ import {
 import type { MatrixRef } from '../api/keys.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import type { KeyClassification } from '@hikyo/client';
 import {
   indexOccurrences,
@@ -768,14 +769,12 @@ export function ImportWizard({
       <fieldset>
         <legend>Target environments</legend>
         {environments.map((environment) => (
-          <label key={environment.id} className="import-wizard__env">
-            <input
-              type="checkbox"
-              checked={selected.has(environment.id)}
-              onChange={() => setSelected((current) => toggle(current, environment.id))}
-            />
-            {environment.name}
-          </label>
+          <Checkbox
+            key={environment.id}
+            label={environment.name}
+            checked={selected.has(environment.id)}
+            onChange={() => setSelected((current) => toggle(current, environment.id))}
+          />
         ))}
       </fieldset>
     );
@@ -829,21 +828,18 @@ export function ImportWizard({
                     {name}
                     {folder === '' ? null : <span className="import-wizard__key-folder">{` · ${folder}`}</span>}
                   </span>
-                  <label className="import-wizard__secret">
-                    <input
-                      type="checkbox"
-                      checked={declaration.classification === 'secret'}
-                      onChange={(event) =>
-                        setDeclarations((current) =>
-                          new Map(current).set(name, {
-                            ...declaration,
-                            classification: event.target.checked ? 'secret' : 'config',
-                          }),
-                        )
-                      }
-                    />
-                    secret
-                  </label>
+                  <Checkbox
+                    label="secret"
+                    checked={declaration.classification === 'secret'}
+                    onChange={(event) =>
+                      setDeclarations((current) =>
+                        new Map(current).set(name, {
+                          ...declaration,
+                          classification: event.target.checked ? 'secret' : 'config',
+                        }),
+                      )
+                    }
+                  />
                   <label>
                     Type
                     <select
@@ -906,14 +902,12 @@ export function ImportWizard({
               written, or fix it at the source.
             </p>
             {trimOffenders.map((entry) => (
-              <label key={entry.key} className="import-wizard__env">
-                <input
-                  type="checkbox"
-                  checked={trimAcks.has(entry.key)}
-                  onChange={() => setTrimAcks((current) => toggle(current, entry.key))}
-                />
-                {entry.key}
-              </label>
+              <Checkbox
+                key={entry.key}
+                label={entry.key}
+                checked={trimAcks.has(entry.key)}
+                onChange={() => setTrimAcks((current) => toggle(current, entry.key))}
+              />
             ))}
           </fieldset>
         )}
@@ -942,20 +936,18 @@ export function ImportWizard({
                 <div className="import-wizard__collisions">
                   <span>Overwrite already-set values:</span>
                   {plan.collisions.map((name) => (
-                    <label key={name} className="import-wizard__env">
-                      <input
-                        type="checkbox"
-                        checked={(overwrite.get(environment.id) ?? new Set()).has(name)}
-                        onChange={() =>
-                          setOverwrite((current) => {
-                            const next = new Map(current);
-                            next.set(environment.id, toggle(current.get(environment.id) ?? new Set(), name));
-                            return next;
-                          })
-                        }
-                      />
-                      {name}
-                    </label>
+                    <Checkbox
+                      key={name}
+                      label={name}
+                      checked={(overwrite.get(environment.id) ?? new Set()).has(name)}
+                      onChange={() =>
+                        setOverwrite((current) => {
+                          const next = new Map(current);
+                          next.set(environment.id, toggle(current.get(environment.id) ?? new Set(), name));
+                          return next;
+                        })
+                      }
+                    />
                   ))}
                 </div>
               )}

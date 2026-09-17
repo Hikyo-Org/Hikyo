@@ -54,7 +54,10 @@ import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Input } from '../ui/Input.tsx';
+import { Radio } from '../ui/Radio.tsx';
 import { useNavigationGuard } from './MachineAccess.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
@@ -834,18 +837,15 @@ export function MintConnectionForm({
           required
         />
       </div>
-      <fieldset className="field">
-        <legend>Lifetime</legend>
-        <div className="chk">
-          <input
-            id="lifetime-default"
-            type="radio"
-            name="lifetime"
-            checked={choice === 'default'}
-            onChange={() => setChoice('default')}
-          />
-          <label htmlFor="lifetime-default">Instance default</label>
-        </div>
+      <ChoiceGroup legend="Lifetime">
+        <Radio
+          name="lifetime"
+          label="Instance default"
+          checked={choice === 'default'}
+          onChange={() => setChoice('default')}
+        />
+        {/* markup-check: the custom row carries its own number input, so it
+            stays a hand-written .chk row inside the group. */}
         <div className="chk">
           <input
             id="lifetime-custom"
@@ -867,19 +867,14 @@ export function MintConnectionForm({
           />
           <span>days (clamped to the instance ceiling)</span>
         </div>
-        <div className="chk">
-          <input
-            id="lifetime-indefinite"
-            type="radio"
-            name="lifetime"
-            checked={choice === 'indefinite'}
-            onChange={() => setChoice('indefinite')}
-          />
-          <label htmlFor="lifetime-indefinite">
-            Never expires (only if this instance allows it)
-          </label>
-        </div>
-      </fieldset>
+        <Radio
+          id="lifetime-indefinite"
+          name="lifetime"
+          label="Never expires (only if this instance allows it)"
+          checked={choice === 'indefinite'}
+          onChange={() => setChoice('indefinite')}
+        />
+      </ChoiceGroup>
       <Button
         variant="primary"
         type="submit"
@@ -976,21 +971,18 @@ export function ConnectionMintDialog({
           <span>{copyStatus}</span>
         </p>
       )}
-      <div className="field chk">
-        <input
-          id="connection-stored"
-          type="checkbox"
-          ref={confirmation}
-          checked={stored}
-          onChange={(event) => {
-            setStored(event.target.checked);
-            if (event.target.checked) {
-              setHeldBack(false);
-            }
-          }}
-        />
-        <label htmlFor="connection-stored">I have stored this credential in its target instance.</label>
-      </div>
+      <Checkbox
+        id="connection-stored"
+        label="I have stored this credential in its target instance."
+        ref={confirmation}
+        checked={stored}
+        onChange={(event) => {
+          setStored(event.target.checked);
+          if (event.target.checked) {
+            setHeldBack(false);
+          }
+        }}
+      />
       {heldBack ? (
         <Alert>Confirm you have stored it. There is no second look at this value.</Alert>
       ) : null}

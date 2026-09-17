@@ -50,6 +50,7 @@ import {
 } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Input } from '../ui/Input.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 import { gateSystemScope } from './SystemScope.tsx';
@@ -528,10 +529,11 @@ function OriginMoveForm({
         />
       </label>
       {keepRemoteChoice ? (
-        <label className="field chk">
-          <input type="checkbox" checked={keepRemote} onChange={(event) => setKeepRemote(event.target.checked)} />
-          <span>Keep remote names at the old origin (release custody instead of scrubbing)</span>
-        </label>
+        <Checkbox
+          label="Keep remote names at the old origin (release custody instead of scrubbing)"
+          checked={keepRemote}
+          onChange={(event) => setKeepRemote(event.target.checked)}
+        />
       ) : null}
       <div className="panel__actions">
         <Button type="submit" variant="primary" disabled={busy || origin.trim() === '' || credential === ''}>
@@ -650,6 +652,8 @@ export function DeleteAdapterDialog({
         Every target under this adapter is torn down. Decide what happens to the names Hikyo owns
         at each destination.
       </p>
+      {/* markup-check: rich label (each option leads with a <strong> verb), so
+          these rows cannot pass ui/Radio's `label: string`. */}
       <div className="adapters__decision" role="radiogroup" aria-label="Remote names">
         <label>
           <input
@@ -1148,10 +1152,10 @@ export function TargetForm({
           </label>
         ) : null}
         {kind === 'environment' && lockRouting !== true ? (
-          <label className="field">
-            <span><input type="checkbox" checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} /> Create the GitHub environment if missing</span>
-            <span className="field__hint">{/* markup-check: Task 5 */}Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</span>
-          </label>
+          <div className="field">
+            <Checkbox label="Create the GitHub environment if missing" checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} />
+            <p className="field__hint">Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</p>
+          </div>
         ) : null}
         <Input
           label="Name prefix"
@@ -1171,10 +1175,7 @@ export function TargetForm({
         <ul className="adapters__keys" aria-label="Keys to include">
           {keys.map((key) => (
             <li key={key.id}>
-              <label className="chip">
-                <input type="checkbox" checked={keyIds.has(key.id)} onChange={() => toggle(key.id)} />{' '}
-                <span className="mono">{key.name}</span>
-              </label>
+              <Checkbox className="chip" mono label={key.name} checked={keyIds.has(key.id)} onChange={() => toggle(key.id)} />
             </li>
           ))}
         </ul>
@@ -1587,10 +1588,7 @@ function ConflictArtifact({
           const name = `${entry.surface}:${entry.effective_name}`;
           return (
             <li key={name} className="adapters__conflict">
-              <label>
-                <input type="checkbox" checked={ticked.has(name)} onChange={() => onToggle(name)} />{' '}
-                <span className="mono">{name}</span>
-              </label>
+              <Checkbox mono label={name} checked={ticked.has(name)} onChange={() => onToggle(name)} />
             </li>
           );
         })}
@@ -1628,6 +1626,8 @@ function RemoveDialog({
         Remove target {destinationText(target)}
       </h2>
       <p className="ceremony__lede">Decide what happens to the names Hikyo owns at the destination.</p>
+      {/* markup-check: rich label (each option leads with a <strong> verb), so
+          these rows cannot pass ui/Radio's `label: string`. */}
       <div className="adapters__decision" role="radiogroup" aria-label="Remote names">
         <label>
           <input

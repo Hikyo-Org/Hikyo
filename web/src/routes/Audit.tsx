@@ -15,6 +15,8 @@ import { ApiError } from '../api/client.ts';
 import { useScopeNames } from '../api/scopeNames.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 
 /** The glyph before an outcome word, so the state is never colour-only. */
@@ -233,22 +235,19 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
               placeholder="value.* — * wildcards"
             />
           </label>
-          <fieldset className="field audit__outcomes">
-            <legend className="field__label">Outcomes</legend>
-            {/* A set: check several to match any of them; none checked means any
-                outcome. Checkboxes, not a multi-select — three values read
-                cleaner and stay keyboard-reachable. */}
+          {/* A set: check several to match any of them; none checked means any
+              outcome. Checkboxes, not a multi-select — three values read
+              cleaner and stay keyboard-reachable. */}
+          <ChoiceGroup legend="Outcomes" className="audit__outcomes">
             {AUDIT_OUTCOMES.map((outcome) => (
-              <label key={outcome} className="audit__outcome-choice">
-                <input
-                  type="checkbox"
-                  checked={draft.outcomes.includes(outcome)}
-                  onChange={(event) => toggleOutcome(outcome, event.target.checked)}
-                />
-                {outcome}
-              </label>
+              <Checkbox
+                key={outcome}
+                label={outcome}
+                checked={draft.outcomes.includes(outcome)}
+                onChange={(event) => toggleOutcome(outcome, event.target.checked)}
+              />
             ))}
-          </fieldset>
+          </ChoiceGroup>
           <label className="field">
             <span className="field__label">Resource type</span>
             <input

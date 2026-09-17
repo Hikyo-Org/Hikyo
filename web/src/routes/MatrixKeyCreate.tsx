@@ -5,6 +5,8 @@ import type { CreateKeyPresence, CreateKeyRule, CreateKeyType } from '../api/mat
 import type { EnvironmentList } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Radio } from '../ui/Radio.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
 import { isBackdropClick } from './MatrixRowEditor.tsx';
 import { useModalDialog } from './useModalDialog.ts';
@@ -352,14 +354,12 @@ export function MatrixKeyCreate({
               </option>
             ))}
           </select>
-          <label className="matrix-key-create__secret">
-            <input
-              type="checkbox"
-              checked={secret}
-              onChange={(event) => setSecret(event.target.checked)}
-            />
-            <span>🔒 secret</span>
-          </label>
+          <Checkbox
+            className="matrix-key-create__secret"
+            label="🔒 secret"
+            checked={secret}
+            onChange={(event) => setSecret(event.target.checked)}
+          />
         </div>
 
         {type === 'string' ? (
@@ -397,14 +397,12 @@ export function MatrixKeyCreate({
                 onChange={(event) => setPattern(event.target.value)}
               />
             </label>
-            <label className="matrix-key-create__secret">
-              <input
-                type="checkbox"
-                checked={allowEmpty}
-                onChange={(event) => setAllowEmpty(event.target.checked)}
-              />
-              <span>allow empty value</span>
-            </label>
+            <Checkbox
+              className="matrix-key-create__secret"
+              label="allow empty value"
+              checked={allowEmpty}
+              onChange={(event) => setAllowEmpty(event.target.checked)}
+            />
           </fieldset>
         ) : null}
 
@@ -512,14 +510,12 @@ export function MatrixKeyCreate({
             onChange={(event) => setValue(event.target.value)}
           />
           {secret ? (
-            <label className="matrix-editor__show-typing">
-              <input
-                type="checkbox"
-                checked={showTyping}
-                onChange={(event) => setShowTyping(event.target.checked)}
-              />
-              <span>Show while typing</span>
-            </label>
+            <Checkbox
+              className="matrix-editor__show-typing"
+              label="Show while typing"
+              checked={showTyping}
+              onChange={(event) => setShowTyping(event.target.checked)}
+            />
           ) : null}
           {whitespaceRemoved ? (
             <p className="matrix-editor__hint" role="status">
@@ -531,17 +527,12 @@ export function MatrixKeyCreate({
         <fieldset className="matrix-editor__copy">
           <legend>Set that value in</legend>
           {environments.map((environment) => (
-            <label key={environment.id}>
-              <input
-                type="checkbox"
-                checked={valueEnvironmentIds.includes(environment.id)}
-                onChange={() => toggle(setValueEnvironmentIds, environment.id)}
-              />
-              <span>
-                {environment.name}
-                {protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}
-              </span>
-            </label>
+            <Checkbox
+              key={environment.id}
+              label={`${environment.name}${protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}`}
+              checked={valueEnvironmentIds.includes(environment.id)}
+              onChange={() => toggle(setValueEnvironmentIds, environment.id)}
+            />
           ))}
         </fieldset>
 
@@ -628,32 +619,25 @@ function PresenceField({
       <legend>{legend}</legend>
       <div className="matrix-key-create__presence-modes" role="radiogroup" aria-label={legend}>
         {modes.map((option) => (
-          <label key={option.value}>
-            <input
-              type="radio"
-              name={idPrefix}
-              value={option.value}
-              checked={mode === option.value}
-              onChange={() => setMode(option.value)}
-            />
-            <span>{option.label}</span>
-          </label>
+          <Radio
+            key={option.value}
+            name={idPrefix}
+            label={option.label}
+            value={option.value}
+            checked={mode === option.value}
+            onChange={() => setMode(option.value)}
+          />
         ))}
       </div>
       {mode === 'explicit' ? (
         <div className="matrix-editor__copy">
           {environments.map((environment) => (
-            <label key={environment.id}>
-              <input
-                type="checkbox"
-                checked={environmentIds.includes(environment.id)}
-                onChange={() => onToggle(environment.id)}
-              />
-              <span>
-                {environment.name}
-                {protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}
-              </span>
-            </label>
+            <Checkbox
+              key={environment.id}
+              label={`${environment.name}${protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}`}
+              checked={environmentIds.includes(environment.id)}
+              onChange={() => onToggle(environment.id)}
+            />
           ))}
         </div>
       ) : (

@@ -1083,6 +1083,10 @@ export function Matrix({
                             {environments.map((environment) => {
                               const checked = visibleEnvironmentIds.includes(environment.id);
                               return (
+                                /* markup-check: rich label (the PROTECTED
+                                   marker is its own span, pushed right by the
+                                   picker's rule), so this row cannot pass
+                                   ui/Checkbox's `label: string`. */
                                 <label key={environment.id}>
                                   <input
                                     type="checkbox"

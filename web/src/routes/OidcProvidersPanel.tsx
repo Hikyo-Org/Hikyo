@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useState } from 'react';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { ApiError } from '../api/client.ts';
@@ -14,6 +14,7 @@ import {
 } from '../api/oidcProviders.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
@@ -252,7 +253,6 @@ function ProviderEditor({
     readonly field: OidcProviderField;
     readonly message: string;
   } | null>(null);
-  const enabledId = useId();
 
   const set = <K extends keyof OidcProviderDraft>(key: K, value: OidcProviderDraft[K]) => {
     setFieldRefusal(null);
@@ -377,15 +377,11 @@ function ProviderEditor({
         error={refusalFor('assurance_policy')}
       />
 
-      <div className="field chk">
-        <input
-          id={enabledId}
-          type="checkbox"
-          checked={draft.enabled}
-          onChange={(event) => set('enabled', event.target.checked)}
-        />
-        <label htmlFor={enabledId}>Enabled (advertised on the sign-in page)</label>
-      </div>
+      <Checkbox
+        label="Enabled (advertised on the sign-in page)"
+        checked={draft.enabled}
+        onChange={(event) => set('enabled', event.target.checked)}
+      />
 
       {disabling ? (
         <p className="policy-impact" role="alert">

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { EnvironmentList } from '../api/values.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   blockedPublishEnvironmentIds,
@@ -148,6 +149,9 @@ export function MatrixPublishSheet({
               className={`matrix__publish-env${blocked ? ' matrix__publish-env--blocked' : ''}`}
               key={environment.id}
             >
+              {/* markup-check: rich label (the name in <strong>, the PROTECTED
+                  marker and the revision step are separate spans), so this row
+                  cannot pass ui/Checkbox's `label: string`. */}
               <label className="matrix__publish-heading">
                 <input
                   type="checkbox"
@@ -216,22 +220,14 @@ export function MatrixPublishSheet({
           );
         })}
         {protectedConfirmationRequired ? (
-          <label className="matrix__publish-confirmation">
-            <input
-              type="checkbox"
-              checked={protectedConfirmed}
-              onChange={(event) => setProtectedConfirmed(event.target.checked)}
-            />
-            <span>
-              I confirm publishing to protected{' '}
-              {selectedProtectedIds
-                .map((environmentId) =>
-                  environmentName(environments, environmentId),
-                )
-                .join(', ')}
-              .
-            </span>
-          </label>
+          <Checkbox
+            className="matrix__publish-confirmation"
+            label={`I confirm publishing to protected ${selectedProtectedIds
+              .map((environmentId) => environmentName(environments, environmentId))
+              .join(', ')}.`}
+            checked={protectedConfirmed}
+            onChange={(event) => setProtectedConfirmed(event.target.checked)}
+          />
         ) : null}
         {protectedGuard.error === null ? null : (
           <Alert>{protectedGuard.error}</Alert>

@@ -18,6 +18,7 @@ import { writeExpiringClipboard } from '../app/clipboard.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import {
   canClearMatrixCell,
@@ -268,14 +269,12 @@ export function MatrixRowEditor({
           </div>
 
           {secret ? (
-            <label className="matrix-editor__show-typing">
-              <input
-                type="checkbox"
-                checked={showTyping}
-                onChange={(event) => setShowTyping(event.target.checked)}
-              />
-              <span>Show while typing</span>
-            </label>
+            <Checkbox
+              className="matrix-editor__show-typing"
+              label="Show while typing"
+              checked={showTyping}
+              onChange={(event) => setShowTyping(event.target.checked)}
+            />
           ) : null}
           {secret && disclosure.revealDenied ? (
             <p className="matrix-editor__hint">
@@ -507,31 +506,26 @@ export function MatrixRowEditor({
               {rows
                 .filter((row) => row.environmentId !== environmentId && !row.degraded)
                 .map((row) => (
-                  <label key={row.environmentId}>
-                    <input
-                      type="checkbox"
-                      checked={destinations.includes(row.environmentId)}
-                      onChange={() => {
-                        setDestinations((current) =>
-                          current.includes(row.environmentId)
-                            ? current.filter((id) => id !== row.environmentId)
-                            : [...current, row.environmentId],
-                        );
-                        setProtectedCopyConfirmed(false);
-                      }}
-                    />
-                    <span>{row.environment.name}{row.protected ? ' · protected' : ''}</span>
-                  </label>
+                  <Checkbox
+                    key={row.environmentId}
+                    label={`${row.environment.name}${row.protected ? ' · protected' : ''}`}
+                    checked={destinations.includes(row.environmentId)}
+                    onChange={() => {
+                      setDestinations((current) =>
+                        current.includes(row.environmentId)
+                          ? current.filter((id) => id !== row.environmentId)
+                          : [...current, row.environmentId],
+                      );
+                      setProtectedCopyConfirmed(false);
+                    }}
+                  />
                 ))}
               {protectedConfirmationRequired ? (
-                <label className="matrix-editor__protected-confirmation">
-                  <input
-                    type="checkbox"
-                    checked={protectedCopyConfirmed}
-                    onChange={(event) => setProtectedCopyConfirmed(event.target.checked)}
-                  />
-                  <span>I confirm copying into protected {protectedDestinationNames.join(', ')}.</span>
-                </label>
+                <Checkbox
+                  label={`I confirm copying into protected ${protectedDestinationNames.join(', ')}.`}
+                  checked={protectedCopyConfirmed}
+                  onChange={(event) => setProtectedCopyConfirmed(event.target.checked)}
+                />
               ) : null}
               {protectedGuard.error === null ? null : (
                 <Alert>{protectedGuard.error}</Alert>

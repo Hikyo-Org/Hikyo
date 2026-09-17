@@ -35,6 +35,7 @@ import type { EnvironmentList, ValueCell } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   defaultPinExpiry,
@@ -1448,17 +1449,11 @@ function PinSheet({
       />
 
       {state.offerOverride ? (
-        <label className="history__field history__override chk">
-          <input
-            type="checkbox"
-            checked={state.overrideSchema}
-            onChange={(event) => onChange({ overrideSchema: event.target.checked })}
-          />
-          <span>
-            Pin despite the current-schema failure above. Pinned delivery is verbatim, so this is
-            recorded as an explicit override and the pin is surfaced as drift afterwards.
-          </span>
-        </label>
+        <Checkbox
+          label="Pin despite the current-schema failure above. Pinned delivery is verbatim, so this is recorded as an explicit override and the pin is surfaced as drift afterwards."
+          checked={state.overrideSchema}
+          onChange={(event) => onChange({ overrideSchema: event.target.checked })}
+        />
       ) : null}
 
       <section className="history__comparison" aria-labelledby="history-pin-compare-heading">

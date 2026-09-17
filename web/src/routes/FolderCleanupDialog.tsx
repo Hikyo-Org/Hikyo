@@ -96,6 +96,9 @@ export function FolderCleanupDialog({
           {rows.map((row) => (
             <li className="catalogue-manage__row" key={row.id}>
               <div className="catalogue-manage__row-main">
+                {/* markup-check: no visible label (the row's name is the
+                    column beside it), so this bare control keeps its
+                    aria-label rather than ui/Checkbox's `label: string`. */}
                 <input
                   type="checkbox"
                   aria-label={`Move ${row.name}`}

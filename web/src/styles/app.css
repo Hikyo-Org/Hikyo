@@ -1792,10 +1792,6 @@ a:is(.badge, .chip, .settings-tag) {
 }
 
 .matrix__publish-confirmation {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control);
   font-weight: 700;
 }
 
@@ -2034,7 +2030,7 @@ a:is(.badge, .chip, .settings-tag) {
 }
 
 .matrix__environment-picker label,
-.matrix-editor__copy label {
+.matrix-editor__copy .chk {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -2045,7 +2041,7 @@ a:is(.badge, .chip, .settings-tag) {
 }
 
 .matrix__environment-picker label:hover,
-.matrix-editor__copy label:hover {
+.matrix-editor__copy .chk:hover {
   background: var(--bg-hover);
 }
 
@@ -2572,7 +2568,7 @@ a:is(.badge, .chip, .settings-tag) {
   font-size: var(--fs-sm);
 }
 
-.matrix-key-create__constraints label {
+.matrix-key-create__constraints > label {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -2612,12 +2608,6 @@ a:is(.badge, .chip, .settings-tag) {
   flex-wrap: wrap;
 }
 
-.matrix-key-create__presence-modes label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .matrix-key-create__presence-hint {
   margin: 0;
   color: var(--tx-dim);
@@ -2633,12 +2623,6 @@ a:is(.badge, .chip, .settings-tag) {
 
 .matrix-key-create__type select {
   min-width: 130px;
-}
-
-.matrix-key-create__secret {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
 .matrix__empty-actions {
@@ -3244,7 +3228,7 @@ a:is(.badge, .chip, .settings-tag) {
 }
 
 /* The opt-in acknowledgement: a deliberate tick, never pre-checked. */
-.ceremony__ack {
+.chk.ceremony__ack {
   display: flex;
   gap: var(--space-2);
   align-items: flex-start;
@@ -4195,12 +4179,6 @@ label.chk:has(input:disabled) {
 .history__field {
   color: var(--tx-dim);
   font-size: var(--fs-sm);
-}
-
-.history__override {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
 }
 
 .history__comparison {
@@ -5427,14 +5405,6 @@ label.chk:has(input:disabled) {
   font-size: var(--fs-sm);
 }
 
-.import-wizard__env,
-.import-wizard__secret {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--control);
-}
-
 .import-wizard__key {
   display: flex;
   flex-wrap: wrap;
@@ -5738,18 +5708,6 @@ label.chk:has(input:disabled) {
 
 .field.audit__outcomes {
   gap: 6px;
-}
-
-.audit__outcome-choice {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  color: var(--tx);
-  font-size: var(--fs-sm);
-}
-
-.audit__outcomes .audit__outcome-choice + .audit__outcome-choice {
-  margin-top: 2px;
 }
 
 .audit__panes {
@@ -6258,7 +6216,6 @@ label.chk:has(input:disabled) {
 .definitions-bundle__body h3, .definitions-bundle__body h4 { margin: 0; }
 .definitions-bundle__body .remote__facts dd { overflow-wrap: anywhere; min-width: 0; }
 .definitions-bundle__body input[type="file"] { width: 100%; min-width: 0; max-width: 100%; }
-.definitions-bundle__delete { display: flex; align-items: center; gap: .75rem; min-height: var(--control); }
 
 /* The link glyph rides inline after the key; the sentence it stands for is a
    visually-hidden span in the markup. */
@@ -6328,12 +6285,7 @@ label.chk:has(input:disabled) {
 }
 
 .matrix-editor__show-typing {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
   margin-top: var(--space-1);
-  color: var(--tx-dim);
-  font-size: var(--fs-sm);
 }
 
 .matrix__publish-group {

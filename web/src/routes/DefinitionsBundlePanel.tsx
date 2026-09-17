@@ -16,6 +16,7 @@ import { GIT_DEFINITIONS_NOTICE, type DefinitionsSettings } from '../api/definit
 import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { useModalDialog } from './useModalDialog.ts';
@@ -318,15 +319,12 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
               </Alert>
             )}
             {plan.deletions_present ? (
-              <label className="definitions-bundle__delete">
-                <input
-                  type="checkbox"
-                  checked={allowDelete}
-                  disabled={busy || git}
-                  onChange={(event) => setAllowDelete(event.currentTarget.checked)}
-                />{' '}
-                I reviewed and allow the listed deletions.
-              </label>
+              <Checkbox
+                label="I reviewed and allow the listed deletions."
+                checked={allowDelete}
+                disabled={busy || git}
+                onChange={(event) => setAllowDelete(event.currentTarget.checked)}
+              />
             ) : null}
             <Button
               variant="primary"

@@ -17,6 +17,7 @@ import { ApiError } from '../api/client.ts';
 import { useEnvironments } from '../api/settings.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
@@ -311,22 +312,16 @@ export function ChangeApprovals() {
               }
             />
 
-            <label>
-              <input
-                type="checkbox"
-                checked={draft.allowSelfApproval}
-                onChange={(event) => setDraft({ ...draft, allowSelfApproval: event.target.checked })}
-              />
-              Allow the requester to approve their own change
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-              />
-              Enabled
-            </label>
+            <Checkbox
+              label="Allow the requester to approve their own change"
+              checked={draft.allowSelfApproval}
+              onChange={(event) => setDraft({ ...draft, allowSelfApproval: event.target.checked })}
+            />
+            <Checkbox
+              label="Enabled"
+              checked={draft.enabled}
+              onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+            />
 
             <fieldset>
               <legend>Approvers</legend>
@@ -559,6 +554,9 @@ function PolicyPeople({ names, selected, onChange }: {
 }) {
   const ids = [...new Set([...names.keys(), ...selected])];
   if (ids.length === 0) return <p>No people are named in the current policies or review queue. Use Advanced to add the first person.</p>;
+  // markup-check: the row's `title` disambiguates two people with the same
+  // display name; ui/Checkbox spreads rest onto the input, which would shrink
+  // that tooltip to the box, so this row stays hand-written.
   return <div>{ids.map((id) => <label key={id} title={id}>
     <input type="checkbox" checked={selected.includes(id)} onChange={(event) => onChange(id, event.target.checked)} />
     {names.get(id) ?? id}

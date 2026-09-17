@@ -10,6 +10,7 @@ import { surfaceById } from '../app/navigation.ts';
 import { uuid } from '../lib/uuid.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Panel } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 
@@ -178,7 +179,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
         <p className="field__hint">Shared settings apply to this instance’s HA nodes. <code>HIKYO_NODE_OVERRIDES</code> holds each node’s listeners, resource limits, backup directory and managed TLS certificate/key contents. Keep an entry for every selected node; independent remote instances use their own projects.</p>
         <p className="field__hint">Changing the public hostname requires a fresh TOTP code and an existing password login on the same administrator account. Preparation does not prove the new hostname is reachable.</p>
         <p className="field__hint">Saving drafts and publishing keep the running settings unchanged. To roll back, restore history into drafts, publish, then apply the new revision.</p>
-        {recovering ? <label className="field"><span><input type="checkbox" checked={confirmRestored} disabled={busy || preparation !== null || decision !== null} onChange={(event) => setConfirmRestored(event.target.checked)} /> I reviewed the restored credentials and reconciled access grants on this owner.</span></label> : null}
+        {recovering ? <Checkbox label="I reviewed the restored credentials and reconciled access grants on this owner." checked={confirmRestored} disabled={busy || preparation !== null || decision !== null} onChange={(event) => setConfirmRestored(event.target.checked)} /> : null}
         <div className="self-config-controls">
           <div className="field"><label htmlFor={revisionId}>Published revision to apply or test</label><input id={revisionId} inputMode="numeric" pattern="[1-9][0-9]*" value={revision} disabled={busy || preparation !== null || decision !== null} onChange={(event) => { setRevisionChosen(true); setRevision(event.target.value); }} /></div>
           <Button variant="primary" type="button" disabled={candidate === null || busy || stale || preparation !== null || decision !== null || unsettled || (recovering && !confirmRestored)} onClick={() => choose('apply')}>Apply selected revision</Button>

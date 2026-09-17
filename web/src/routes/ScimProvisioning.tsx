@@ -41,6 +41,9 @@ import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Radio } from '../ui/Radio.tsx';
 import { Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 import { useNavigationGuard } from './MachineAccess.tsx';
@@ -330,29 +333,20 @@ function CreateBindingForm({ org }: { org: string }) {
       <h3>Create a binding</h3>
       {feedback.failure === null ? null : <Alert>{feedback.failure}</Alert>}
       {feedback.done === null ? null : <Alert tone="done">{feedback.done}</Alert>}
-      <fieldset className="field">
-        <legend>Provider kind</legend>
-        <div className="chk">
-          <input
-            id="scim-kind-oidc"
-            type="radio"
-            name="scim-kind"
-            checked={providerKind === 'oidc'}
-            onChange={() => setProviderKind('oidc')}
-          />
-          <label htmlFor="scim-kind-oidc">OIDC</label>
-        </div>
-        <div className="chk">
-          <input
-            id="scim-kind-saml"
-            type="radio"
-            name="scim-kind"
-            checked={providerKind === 'saml'}
-            onChange={() => setProviderKind('saml')}
-          />
-          <label htmlFor="scim-kind-saml">SAML</label>
-        </div>
-      </fieldset>
+      <ChoiceGroup legend="Provider kind">
+        <Radio
+          name="scim-kind"
+          label="OIDC"
+          checked={providerKind === 'oidc'}
+          onChange={() => setProviderKind('oidc')}
+        />
+        <Radio
+          name="scim-kind"
+          label="SAML"
+          checked={providerKind === 'saml'}
+          onChange={() => setProviderKind('saml')}
+        />
+      </ChoiceGroup>
       <div className="field">
         <label htmlFor="scim-provider-slug">Provider slug</label>
         <input
@@ -941,17 +935,11 @@ function MintCredentialForm({
           required
         />
       </div>
-      <div className="field chk">
-        <input
-          id="scim-indefinite"
-          type="checkbox"
-          checked={indefinite}
-          onChange={(event) => setIndefinite(event.target.checked)}
-        />
-        <label htmlFor="scim-indefinite">
-          Never expires (refused unless this instance allows indefinite credentials)
-        </label>
-      </div>
+      <Checkbox
+        label="Never expires (refused unless this instance allows indefinite credentials)"
+        checked={indefinite}
+        onChange={(event) => setIndefinite(event.target.checked)}
+      />
       <Button
         variant="primary"
         type="submit"
@@ -1042,21 +1030,17 @@ function MintDialog({
           <span>{copyStatus}</span>
         </p>
       )}
-      <div className="field chk">
-        <input
-          id="scim-stored"
-          type="checkbox"
-          ref={confirmation}
-          checked={stored}
-          onChange={(event) => {
-            setStored(event.target.checked);
-            if (event.target.checked) {
-              setHeldBack(false);
-            }
-          }}
-        />
-        <label htmlFor="scim-stored">I have configured this credential at the identity provider.</label>
-      </div>
+      <Checkbox
+        label="I have configured this credential at the identity provider."
+        ref={confirmation}
+        checked={stored}
+        onChange={(event) => {
+          setStored(event.target.checked);
+          if (event.target.checked) {
+            setHeldBack(false);
+          }
+        }}
+      />
       {heldBack ? (
         <Alert>Store the credential first. It cannot be shown again once this closes.</Alert>
       ) : null}

@@ -25,6 +25,7 @@ import { themeLabel, useThemeChoice, type ThemeChoice } from '../app/theme.ts';
 import { clearNotification, notifyFailure } from '../app/notifications.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { DisplayOnceCopy, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
@@ -526,7 +527,7 @@ export function AccountSecurity() {
             </div>
             <span className="settings-row__spacer" />
             <span className="mono">in-app</span>
-            <label className="chk"><input type="checkbox" defaultChecked /> also email</label>
+            <Checkbox label="also email" defaultChecked />
           </div>
           <div className="settings-row">
             <div className="settings-row__copy">
@@ -670,7 +671,6 @@ function ProofDialog({
  */
 function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: () => void }) {
   const dialog = useModalDialog();
-  const ackId = useId();
   const [stored, setStored] = useState(false);
   const [cancelAttempted, setCancelAttempted] = useState(false);
 
@@ -706,15 +706,11 @@ function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: 
           previous batch is already invalid.
         </Alert>
       ) : null}
-      <div className="field chk">
-        <input
-          id={ackId}
-          type="checkbox"
-          checked={stored}
-          onChange={(event) => setStored(event.target.checked)}
-        />
-        <label htmlFor={ackId}>I have stored these somewhere safe.</label>
-      </div>
+      <Checkbox
+        label="I have stored these somewhere safe."
+        checked={stored}
+        onChange={(event) => setStored(event.target.checked)}
+      />
       <div className="ceremony__actions">
         <Button type="button" variant="primary" disabled={!stored} onClick={onClose}>
           Done
