@@ -1178,12 +1178,8 @@ select {
   left: -9999px;
   top: 8px;
   z-index: 20;
-  /* It is a control like any other once it is visible, so it carries the same
-     touch floor, found by the pinned set's sweep over every interactive
-     element, which is the point of sweeping rather than listing. */
   display: inline-flex;
   align-items: center;
-  min-height: var(--touch);
   padding: 8px 12px;
   border: 1px solid var(--accent);
   border-radius: var(--radius-control);
@@ -1329,9 +1325,12 @@ select {
 
   .sidebar__link,
   .context-sidebar__group {
-    min-height: var(--touch);
     padding-top: 12px;
     padding-bottom: 12px;
+  }
+
+  .context-sidebar__group {
+    min-height: var(--touch);
   }
 
   .menu {
@@ -1442,7 +1441,6 @@ select {
 /* Legend reduces to a `?` icon (env-matrix 31); square it off like the app's
    other icon buttons rather than the wide text button it replaced. */
 .matrix__legend-toggle.btn {
-  min-width: var(--touch);
   padding: 0;
   font-size: 14px;
 }
@@ -1482,7 +1480,6 @@ select {
   color: var(--tx-dim);
   font-size: 12px;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .matrix__publish > p {
@@ -1506,7 +1503,6 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: var(--touch);
 }
 
 .matrix__publish-heading input,
@@ -1552,7 +1548,6 @@ select {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: var(--touch);
   font-weight: 700;
 }
 
@@ -1587,7 +1582,6 @@ select {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
-  min-height: var(--touch);
   padding: 6px 8px;
   border: 0;
   border-radius: var(--radius-control);
@@ -1795,10 +1789,13 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: var(--touch);
   padding-inline: 8px;
   border-radius: var(--radius-control);
   cursor: pointer;
+}
+
+.matrix__environment-picker label {
+  min-height: var(--touch);
 }
 
 .matrix__environment-picker label:hover,
@@ -1858,7 +1855,6 @@ select {
   top: 0;
   z-index: 4;
   min-width: 190px;
-  height: var(--touch);
   background: var(--bg);
   color: var(--tx-dim);
   font-size: 12px;
@@ -1909,7 +1905,6 @@ select {
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: var(--touch);
   padding: 7px 12px;
   border: 0;
   background: transparent;
@@ -2133,12 +2128,7 @@ select {
   border-radius: var(--radius-container);
   background: var(--bg-panel);
   color: var(--tx);
-  box-shadow: 0 14px 42px rgb(0 0 0 / 45%);
   overflow: auto;
-}
-
-.matrix-editor::backdrop {
-  background: color-mix(in srgb, black 55%, transparent);
 }
 
 .matrix-editor form {
@@ -2147,8 +2137,7 @@ select {
   gap: 14px;
 }
 
-.matrix-editor__head,
-.matrix-editor__actions {
+.matrix-editor__head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2159,15 +2148,10 @@ select {
   justify-content: space-between;
 }
 
-.matrix-editor__head h2,
 .matrix-editor__head p,
 .matrix-editor__hint,
 .matrix-editor__copy p {
   margin: 0;
-}
-
-.matrix-editor__head h2 {
-  font-size: 15px;
 }
 
 .matrix-editor__head p,
@@ -2178,7 +2162,6 @@ select {
 }
 
 .matrix-editor__close {
-  width: var(--touch);
   padding: 0;
 }
 
@@ -2225,7 +2208,6 @@ select {
 .matrix-editor__schema summary {
   display: flex;
   align-items: center;
-  min-height: var(--touch);
   color: var(--tx-dim);
   cursor: pointer;
   font-size: 12px;
@@ -2726,7 +2708,6 @@ select {
 }
 
 .values__keyname {
-  min-height: var(--touch);
   padding: 0 8px;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
@@ -2822,16 +2803,6 @@ select {
   color: var(--tx);
 }
 
-.ceremony::backdrop {
-  background: color-mix(in srgb, black 55%, transparent);
-}
-
-.ceremony__title {
-  margin: 0;
-  font-size: 20px;
-}
-
-.ceremony__lede,
 .ceremony__scope {
   margin: 0;
   color: var(--tx);
@@ -2855,12 +2826,6 @@ select {
   border: 1px solid var(--accent);
   border-radius: var(--radius-container);
   background: color-mix(in oklch, var(--bg), var(--accent) 8%);
-}
-
-.ceremony__actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
 }
 
 .ceremony > form {
@@ -3147,25 +3112,6 @@ select {
   overflow-wrap: anywhere;
 }
 
-/* A checkbox is a control the pinned set sweeps like any other, so it carries
-   the touch floor on a phone rather than the browser's 13px default. */
-.chk {
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-}
-
-.chk input[type='checkbox'] {
-  width: 24px;
-  height: 24px;
-  flex: none;
-  accent-color: var(--accent);
-}
-
-.chk label {
-  color: var(--tx);
-}
-
 .ceremony__stepup {
   display: flex;
   gap: 8px;
@@ -3190,10 +3136,6 @@ select {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .chk input[type='checkbox'] {
-    width: var(--touch);
-    height: var(--touch);
-  }
 }
 
 
@@ -3851,7 +3793,6 @@ select {
 }
 
 .matrix__history-link {
-  min-height: var(--touch);
   padding: 0 10px;
   font-weight: 400;
   white-space: nowrap;
@@ -3923,7 +3864,6 @@ select {
 .jump__link {
   display: inline-flex;
   align-items: center;
-  min-height: var(--touch);
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);
@@ -4336,9 +4276,8 @@ select {
 
 /* Keep the native disclosure marker: `display: flex`/`block` on a summary drops
    it in most browsers, so leave the default list-item display and only pad it
-   up to the touch target. */
+   out; the design foundations below own the control height. */
 .environment-lifecycle > summary {
-  min-height: var(--touch);
   padding: 10px 0;
   cursor: pointer;
   font-weight: 650;
@@ -4562,7 +4501,6 @@ select {
 }
 
 .page--members .btn--primary {
-  min-height: 36px;
   font-size: 13px;
 }
 
@@ -4612,10 +4550,6 @@ select {
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 8px;
-}
-
-.capitem .chk {
-  display: flex;
 }
 
 .explain__toggle {
@@ -4805,21 +4739,9 @@ select {
   gap: 8px;
 }
 
-/* A checkbox is an interactive element like any other, and the 44px floor is
-   not waived because the platform draws it small. Only on a coarse pointer:
-   a 44px checkbox beside 14px text is wrong with a mouse. */
 @media (pointer: coarse) {
-  .chk input[type='checkbox'],
-  .chk input[type='radio'],
-  .field.chk input[type='checkbox'],
-  .audit__outcome-choice input[type='checkbox'] {
-    width: var(--touch);
-    height: var(--touch);
-  }
-
   .explain__toggle {
     min-width: var(--touch);
-    min-height: var(--touch);
   }
 
   /* The retention line's link to the owning settings panel is inline prose on
@@ -4984,6 +4906,9 @@ select {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+
+.import-wizard__env {
   min-height: var(--touch);
 }
 
@@ -5048,7 +4973,6 @@ select {
   align-items: flex-start;
   gap: 2px;
   width: 100%;
-  min-height: var(--touch);
   padding: 10px 12px;
   text-align: start;
 }
@@ -5292,10 +5216,6 @@ select {
   align-items: center;
   color: var(--tx);
   font-size: 13px;
-}
-
-.audit__outcome-choice input {
-  min-height: 0;
 }
 
 .audit__outcomes .audit__outcome-choice + .audit__outcome-choice {
@@ -5565,7 +5485,6 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: var(--touch);
 }
 
 /* ---------------------------------------------------------------------------
@@ -6829,6 +6748,14 @@ label.chk:has(input:disabled) {
   line-height: var(--lh-heading);
   letter-spacing: normal;
   text-transform: none;
+}
+
+/* A settings tag that is a button keeps the touch floor on a coarse pointer
+   until #762 renders it through Button (bridge, delete with the markup swap). */
+@media (pointer: coarse) {
+  button.settings-tag {
+    min-height: var(--touch);
+  }
 }
 
 :is(.badge, .chip, .settings-tag).mono {
