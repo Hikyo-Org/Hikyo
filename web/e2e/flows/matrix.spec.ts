@@ -348,7 +348,7 @@ test.describe('environment matrix', () => {
           [firstEditorRow, 'borderTopColor', '--line'],
         ],
         hairlines: [firstEditorRow],
-        density: [[editor.getByRole('button', { name: 'Close row editor' }), '--touch']],
+        density: [[editor.getByRole('button', { name: 'Close row editor' }), '--control']],
       });
 
       const value = `matrix-${testInfo.project.name}`;
@@ -432,7 +432,7 @@ test.describe('environment matrix', () => {
             [sidebar, 'backgroundColor', '--bg-panel'],
           ],
           hairlines: [],
-          density: [[chooser, '--touch']],
+          density: [[chooser, '--control']],
         });
         // Sidebar treatment e draws the hairline on each ROW, so the row is
         // where the rule has to be, a border on the list around them would
@@ -1018,7 +1018,7 @@ test.describe('catalogue declaration detail', () => {
           [panel, 'backgroundColor', '--bg-panel'],
         ],
         hairlines: [],
-        density: [[close, '--touch']],
+        density: [[close, '--control']],
       });
     });
   }

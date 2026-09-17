@@ -154,7 +154,7 @@ test.describe('secret scanning warn dialog', () => {
             [sidebar, 'backgroundColor', '--bg-panel'],
           ],
           hairlines: [],
-          density: [[chooser, '--touch']],
+          density: [[chooser, '--control']],
         });
         // Sidebar treatment e draws the hairline on each ROW, so the row is
         // where the rule has to be, a border on the list around them would

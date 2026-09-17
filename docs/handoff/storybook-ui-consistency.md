@@ -85,12 +85,25 @@ pointer:
 - The pinned sweep measures the INPUT's own box (>= 44 on coarse) and reads
   the focus ring from the element's own `outline`; forced colours need a
   non-none `outline`. Hit box and ring stay on the input element.
-- Density pins read `--touch` on desktop for: login submit, editor close,
-  environment chooser, theme toggle, dialog Cancel/Back/Done, machine-access
-  mint, history tab (under `web/e2e/flows/`: `login.spec.ts:67`, `matrix.spec.ts:351/435/1021`,
+- Density pins read `--touch` on desktop for: login submit and the three other
+  login buttons, editor close, environment chooser (matrix and scanning),
+  theme toggle, dialog Cancel/Back/Done, machine-access mint, history tab,
+  the reveal dialog and its value input, and the two settings inputs. That is
+  **twenty** pins under `web/e2e/flows/`, not the twelve this list first
+  counted: `login.spec.ts:67/96/140/182`, `matrix.spec.ts:351/435/1021`,
   `shell.spec.ts:506`, `members.spec.ts:679/718/744`,
   `machine-access.spec.ts:673/800`, `history.spec.ts:296`,
-  `settings.spec.ts:575`). Row density already switches token by project.
+  `settings.spec.ts:586/842` (the first was listed as `:575`, off by 11),
+  `reveal.spec.ts:416/449/753`, `scanning.spec.ts:157`. Row density already
+  switches token by project (seven `mobile ? '--touch' : '--row'` lines, left
+  alone). #761 retargeted all twenty to `--control`; on a coarse pointer
+  `tokens.css` resolves `--control` to `--touch`, so the mobile project is
+  unchanged.
+- The "five rules app.css states with more specificity" note (`ui.css:367`)
+  resolves to **three** rules over three selectors: `.page--members .inspect
+  select` (plus its `max-width: 700px` copy), `.sidebar__link`, and
+  `.environment-lifecycle > summary`. The count of five was counting
+  selectors plus media copies.
 
 ### Dialogs (every dialog story, 1280 wide)
 
@@ -369,6 +382,28 @@ superseded and delete those; move the `:root` tokens in `ui.css` into
 the desktop density pins listed under 4a; fix the browser-blue link and the
 `StepUpBanner` copy; wire `/login` to the challenge and setup gates once
 the backend in §3 exists.
+
+**Layer 1 (#761) is done** on branch `feat/761-design-foundations-app`; see
+[761-design-foundations-into-app.md](./761-design-foundations-into-app.md) for
+the full account.
+
+- Tokens: nothing to move. `ui.css` declared no custom properties; the token
+  move happened in #755 and `web/src/styles/tokens.css` already held all 48.
+  The stale claim in `DESIGN.md:54` is corrected. (`312251e9`)
+- Blocks moved: `ui.css` appended to `web/src/styles/app.css` under a
+  provenance banner and the file deleted, with its Storybook import and its
+  budget key. (`312251e9`)
+- Superseded rules deleted, block by block, each delete checked against the
+  trailing section that restates it. (`d216d101`, `9df304f6`, `8dffd823`,
+  `4063f417`, `e7956597`)
+- Pins retargeted: all twenty desktop density pins now read `--control`; the
+  dead `(max-width: 800px)` matrix checkbox bump is gone. (this task)
+
+Layer 2 (#762) still open: route markup onto the `ui/` atoms, the badge fold
+(`.history__current`, `.matrix__problem-count` and the `chip--armed` /
+`chip--wide` / `settings-tag--on` states onto `Badge` tones), the
+`button.settings-tag` coarse-floor bridge that layer 1 left in place, the
+`StepUpBanner` copy, and the route copy findings.
 
 ## 6. Verification
 

@@ -503,7 +503,7 @@ test.describe('app chrome', () => {
             [active, 'borderLeftColor', '--accent'],
           ],
           hairlines: [well],
-          density: [[theme, '--touch']],
+          density: [[theme, '--control']],
         });
       });
     }

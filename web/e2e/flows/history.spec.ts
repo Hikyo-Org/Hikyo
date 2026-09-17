@@ -293,7 +293,7 @@ test.describe('revision history', () => {
             [retention, 'borderTopColor', '--line'],
           ],
           hairlines: [retention],
-          density: [[tab, '--touch']],
+          density: [[tab, '--control']],
         });
       });
     }

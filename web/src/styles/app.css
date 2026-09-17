@@ -2587,13 +2587,6 @@ select {
     min-height: var(--touch);
   }
 
-  .matrix__environment-picker input,
-  .matrix-editor__copy input,
-  .matrix__publish input {
-    width: var(--touch);
-    height: var(--touch);
-  }
-
   .matrix-editor {
     width: calc(100% - 20px);
     max-width: 760px;
@@ -6456,10 +6449,13 @@ h3,
    on a coarse pointer only, where DESIGN.md sets it.
 
    The box rules match EVERY checkbox and radio, not only those in a `.chk`
-   row, and carry a `:root` prefix so their specificity (0,2,1) ties app.css's
-   `(max-width: 800px) .chk input[type='checkbox']` bump and wins by order;
-   without it that bump took every viewport under 800px back to 44px. On
-   migration the bump is deleted and the prefix can go. Row: the route sweep found raw inputs in `label.chip` (TargetForm), the
+   row, and carry a `:root` prefix so their specificity (0,2,1) outranks the
+   per-surface rules that used to size these boxes. The two
+   `(max-width: 800px)` bumps that took every viewport under 800px back to
+   44px by viewport width are deleted (#761); the prefix stays until a
+   separate specificity audit says it can go.
+
+   Row: the route sweep found raw inputs in `label.chip` (TargetForm), the
    audit filter, the adapter and folder dialogs and the key-create sheet
    still on native or leaked sizes. `.chk` keeps only the row layout and the
    label treatment. Supersedes app.css `.chk`, the checkbox rule under it,
