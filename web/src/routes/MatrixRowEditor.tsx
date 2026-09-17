@@ -254,174 +254,200 @@ export function MatrixRowEditor({
             </p>
           ) : null}
 
-          {editAll ? (
-            <Field
-              className="matrix-row-editor__fill"
-              label="Fill all environments"
-              id="matrix-fill-all"
+          {/* A disclosure, not a dialog action: the toggle sits directly above the
+              panel it names, so Tab after opening lands inside what opened. */}
+          {rows.length > 1 ? (
+            <Button
+              className="matrix-row-editor__toggle"
+              type="button"
+              aria-expanded={editAll}
+              aria-controls="matrix-editor-environments"
+              onClick={() => {
+                if (editAll) {
+                  // Leaving the all-environments view drops the edits it alone
+                  // could show; the save count must match what is on screen.
+                  setEdits((current) => {
+                    const kept = current.get(environmentId);
+                    return kept === undefined ? new Map() : new Map([[environmentId, kept]]);
+                  });
+                  setFillAll('');
+                }
+                setEditAll(!editAll);
+              }}
             >
-              {(control) => (
-                <div>
-                  {/* markup-check: a raw textarea inside the atom's field, not an
-                      Input: the secret face is `-webkit-text-security` on a
-                      textarea so pasted newlines survive, which no Input type
-                      expresses. Field still owns the label and the wiring. */}
-                  <textarea
-                    {...control}
-                    className={valueClass}
-                    rows={2}
-                    autoComplete="off"
-                    value={fillAll}
-                    placeholder={secret ? 'Write-only replacement' : 'Shared draft value'}
-                    onChange={(event) => setFillAll(event.target.value)}
-                  />
-                  <Button
-                    type="button"
-                    disabled={fillAll === '' || busy || applying}
-                    onClick={() => {
-                      setEdits(new Map<string, MatrixDraftEdit>(
-                        editableRows.map((row) => [row.environmentId, { op: 'set', value: fillAll }]),
-                      ));
-                      setFillAll('');
-                    }}
-                  >
-                    Fill all
-                  </Button>
-                </div>
-              )}
-            </Field>
+              {editAll ? `Back to ${environment.name} only` : 'Edit all environments'}
+            </Button>
           ) : null}
-
-          <div className="matrix-row-editor__rows">
-            {visibleRows.map((row) => {
-              const rowEnvironmentId = row.environmentId;
-              const publishedSet = row.cell?.set === true;
-              const edit = edits.get(rowEnvironmentId);
-              const clearing = edit?.op === 'unset';
-              const liveValidation = validationByEnvironment.get(rowEnvironmentId) ?? null;
-              // One refusal fits the control's error slot. A live validation
-              // error owns it (it is about what is being typed); a lone standing
-              // problem takes it when nothing is being refused; several problems
-              // stay a list above the control, because a field error is one
-              // sentence, not an enumeration.
-              const messages = row.problems.map((problem) => problem.message);
-              const liveError = liveValidation?.level === 'error' ? liveValidation.message : undefined;
-              const loneProblem = liveError === undefined && messages.length === 1 ? messages[0] : undefined;
-              const listedProblems = loneProblem === undefined ? messages : [];
-              return (
-                <section
-                  className={`matrix-row-editor__row${row.protected ? ' matrix-row-editor__row--protected' : ''}`}
-                  key={rowEnvironmentId}
-                  aria-labelledby={`matrix-row-${rowEnvironmentId}`}
-                >
-                  <div className="matrix-row-editor__row-head">
-                    <h3 id={`matrix-row-${rowEnvironmentId}`}>{row.environment.name}</h3>
-                    {row.protected ? <span>PROTECTED</span> : null}
-                    <span>{publishedSet ? 'set' : '· absent'}</span>
-                    {row.signal?.pending === undefined ? null : (
-                      <span>
-                        <Glyph name="delta" />{' '}
-                        {`pending ${row.signal.pending.operation === 'unset' ? 'clear' : 'set'}`}
-                      </span>
-                    )}
-                  </div>
-                  {listedProblems.length === 0 ? null : (
-                    <Alert tone="warn">
-                      <ul className="matrix-row-editor__problems">
-                        {listedProblems.map((message) => (
-                          <li key={message}>{message}</li>
-                        ))}
-                      </ul>
-                    </Alert>
-                  )}
-                  <Field
-                    label={`${row.environment.name} value`}
-                    id={`matrix-edit-${rowEnvironmentId}`}
-                    hint={
-                      liveValidation !== null && liveValidation.level !== 'error'
-                        ? liveValidation.message
-                        : undefined
-                    }
-                    error={liveError ?? loneProblem}
-                  >
-                    {/* markup-check: a raw textarea inside the atom's field, not
-                        an Input: the secret face is `-webkit-text-security` on a
+          <div className="matrix-row-editor__panel" id="matrix-editor-environments">
+            {editAll ? (
+              <Field
+                className="matrix-row-editor__fill"
+                label="Fill all environments"
+                id="matrix-fill-all"
+              >
+                {(control) => (
+                  <div>
+                    {/* markup-check: a raw textarea inside the atom's field, not an
+                        Input: the secret face is `-webkit-text-security` on a
                         textarea so pasted newlines survive, which no Input type
-                        expresses. Field owns the label, the hint, the error and
-                        the aria wiring the row used to hand-write. */}
-                    {(control) => (
-                      <textarea
-                        {...control}
-                        className={valueClass}
-                        rows={2}
-                        autoComplete="off"
-                        value={
-                          edit?.op === 'set'
-                            ? edit.value
-                            : clearing
-                              ? ''
-                              : initialDrafts.get(rowEnvironmentId) ?? ''
-                        }
-                        placeholder={
-                          keyRecord.classification === 'secret'
-                            ? publishedSet
-                              ? 'Write-only · replace current secret'
-                              : 'Write-only · set a new secret'
-                            : publishedSet
-                              ? 'Edit the explicit value'
-                              : 'Touch to stage an explicit value'
-                        }
-                        onChange={(event) => {
-                          setEdits((current) => {
-                            const next = new Map(current);
-                            next.set(rowEnvironmentId, { op: 'set', value: event.target.value });
-                            return next;
-                          });
-                        }}
-                      />
-                    )}
-                  </Field>
-                  <dl className="matrix-editor__provenance">
-                    <div>
-                      <dt>Updated</dt>
-                      <dd>{row.cell?.updated_at === undefined ? 'No published value' : formatTimestamp(row.cell.updated_at)}</dd>
-                    </div>
-                    <div><dt>Updated by</dt><dd className="mono">{row.cell?.updated_by ?? 'unknown'}</dd></div>
-                    <div>
-                      <dt>Revision</dt>
-                      <dd>{row.signal?.changed_in_revision === undefined ? 'No change signal' : `r${String(row.signal.changed_in_revision)}`}</dd>
-                    </div>
-                  </dl>
-                  {rowEnvironmentId === environmentId && disclosure.revealed !== null ? (
-                    // No aria-label here: it would REPLACE the plaintext as the
-                    // accessible name, hiding the disclosed value from AT. The
-                    // announcement lives in the status region below.
-                    <p className="matrix-editor__revealed mono">
-                      <span>{disclosure.revealed.value}</span>
-                      <small aria-hidden="true">{`re-masks in ${String(disclosure.revealed.remaining)}s`}</small>
-                    </p>
-                  ) : null}
-                  {editAll ? null : (
-                  <Button
-                    type="button"
-                    disabled={busy || applying || (!clearing && !canClearMatrixCell(publishedSet, row.signal?.pending?.operation))}
-                    onClick={() => {
-                      setEdits((current) => {
-                        if (clearing) {
-                          const kept = new Map(current);
-                          kept.delete(rowEnvironmentId);
-                          return kept;
-                        }
-                        return new Map(current).set(rowEnvironmentId, { op: 'unset' });
-                      });
-                    }}
+                        expresses. Field still owns the label and the wiring. */}
+                    <textarea
+                      {...control}
+                      className={valueClass}
+                      rows={2}
+                      autoComplete="off"
+                      value={fillAll}
+                      placeholder={secret ? 'Write-only replacement' : 'Shared draft value'}
+                      onChange={(event) => setFillAll(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      disabled={fillAll === '' || busy || applying}
+                      onClick={() => {
+                        setEdits(new Map<string, MatrixDraftEdit>(
+                          editableRows.map((row) => [row.environmentId, { op: 'set', value: fillAll }]),
+                        ));
+                        setFillAll('');
+                      }}
+                    >
+                      Fill all
+                    </Button>
+                  </div>
+                )}
+              </Field>
+            ) : null}
+
+            <div className="matrix-row-editor__rows">
+              {visibleRows.map((row) => {
+                const rowEnvironmentId = row.environmentId;
+                const publishedSet = row.cell?.set === true;
+                const edit = edits.get(rowEnvironmentId);
+                const clearing = edit?.op === 'unset';
+                const liveValidation = validationByEnvironment.get(rowEnvironmentId) ?? null;
+                // One refusal fits the control's error slot. A live validation
+                // error owns it (it is about what is being typed); a lone standing
+                // problem takes it when nothing is being refused; several problems
+                // stay a list above the control, because a field error is one
+                // sentence, not an enumeration.
+                const messages = row.problems.map((problem) => problem.message);
+                const liveError = liveValidation?.level === 'error' ? liveValidation.message : undefined;
+                const loneProblem = liveError === undefined && messages.length === 1 ? messages[0] : undefined;
+                const listedProblems = loneProblem === undefined ? messages : [];
+                return (
+                  <section
+                    className={`matrix-row-editor__row${row.protected ? ' matrix-row-editor__row--protected' : ''}`}
+                    key={rowEnvironmentId}
+                    aria-labelledby={`matrix-row-${rowEnvironmentId}`}
                   >
-                    {clearing ? 'Keep current state' : `Clear ${row.environment.name} to absent`}
-                  </Button>
-                  )}
-                </section>
-              );
-            })}
+                    <div className="matrix-row-editor__row-head">
+                      <h3 id={`matrix-row-${rowEnvironmentId}`}>{row.environment.name}</h3>
+                      {row.protected ? <span>PROTECTED</span> : null}
+                      <span>{publishedSet ? 'set' : '· absent'}</span>
+                      {row.signal?.pending === undefined ? null : (
+                        <span>
+                          <Glyph name="delta" />{' '}
+                          {`pending ${row.signal.pending.operation === 'unset' ? 'clear' : 'set'}`}
+                        </span>
+                      )}
+                    </div>
+                    {listedProblems.length === 0 ? null : (
+                      <Alert tone="warn">
+                        <ul className="matrix-row-editor__problems">
+                          {listedProblems.map((message) => (
+                            <li key={message}>{message}</li>
+                          ))}
+                        </ul>
+                      </Alert>
+                    )}
+                    <Field
+                      label={`${row.environment.name} value`}
+                      id={`matrix-edit-${rowEnvironmentId}`}
+                      hint={
+                        liveValidation !== null && liveValidation.level !== 'error'
+                          ? liveValidation.message
+                          : undefined
+                      }
+                      error={liveError ?? loneProblem}
+                    >
+                      {/* markup-check: a raw textarea inside the atom's field, not
+                          an Input: the secret face is `-webkit-text-security` on a
+                          textarea so pasted newlines survive, which no Input type
+                          expresses. Field owns the label, the hint, the error and
+                          the aria wiring the row used to hand-write. */}
+                      {(control) => (
+                        <textarea
+                          {...control}
+                          className={valueClass}
+                          rows={2}
+                          autoComplete="off"
+                          value={
+                            edit?.op === 'set'
+                              ? edit.value
+                              : clearing
+                                ? ''
+                                : initialDrafts.get(rowEnvironmentId) ?? ''
+                          }
+                          placeholder={
+                            keyRecord.classification === 'secret'
+                              ? publishedSet
+                                ? 'Write-only · replace current secret'
+                                : 'Write-only · set a new secret'
+                              : publishedSet
+                                ? 'Edit the explicit value'
+                                : 'Touch to stage an explicit value'
+                          }
+                          onChange={(event) => {
+                            setEdits((current) => {
+                              const next = new Map(current);
+                              next.set(rowEnvironmentId, { op: 'set', value: event.target.value });
+                              return next;
+                            });
+                          }}
+                        />
+                      )}
+                    </Field>
+                    <dl className="matrix-editor__provenance">
+                      <div>
+                        <dt>Updated</dt>
+                        <dd>{row.cell?.updated_at === undefined ? 'No published value' : formatTimestamp(row.cell.updated_at)}</dd>
+                      </div>
+                      <div><dt>Updated by</dt><dd className="mono">{row.cell?.updated_by ?? 'unknown'}</dd></div>
+                      <div>
+                        <dt>Revision</dt>
+                        <dd>{row.signal?.changed_in_revision === undefined ? 'No change signal' : `r${String(row.signal.changed_in_revision)}`}</dd>
+                      </div>
+                    </dl>
+                    {rowEnvironmentId === environmentId && disclosure.revealed !== null ? (
+                      // No aria-label here: it would REPLACE the plaintext as the
+                      // accessible name, hiding the disclosed value from AT. The
+                      // announcement lives in the status region below.
+                      <p className="matrix-editor__revealed mono">
+                        <span>{disclosure.revealed.value}</span>
+                        <small aria-hidden="true">{`re-masks in ${String(disclosure.revealed.remaining)}s`}</small>
+                      </p>
+                    ) : null}
+                    {editAll ? null : (
+                    <Button
+                      type="button"
+                      disabled={busy || applying || (!clearing && !canClearMatrixCell(publishedSet, row.signal?.pending?.operation))}
+                      onClick={() => {
+                        setEdits((current) => {
+                          if (clearing) {
+                            const kept = new Map(current);
+                            kept.delete(rowEnvironmentId);
+                            return kept;
+                          }
+                          return new Map(current).set(rowEnvironmentId, { op: 'unset' });
+                        });
+                      }}
+                    >
+                      {clearing ? 'Keep current state' : `Clear ${row.environment.name} to absent`}
+                    </Button>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
           </div>
 
           {applyError === null ? null : <Alert>{applyError}</Alert>}
@@ -434,11 +460,25 @@ export function MatrixRowEditor({
             )}
           </p>
 
+          {keyRecord.classification === 'config' && sourceSet ? (
+            <Button
+              className="matrix-row-editor__toggle"
+              type="button"
+              aria-expanded={copyOpen}
+              // Only while it is open: a reference to an id that is not in the
+              // document is a dangling one, and the attribute's absence already
+              // says "nothing to go to".
+              aria-controls={copyOpen ? 'matrix-editor-copy' : undefined}
+              onClick={() => setCopyOpen((open) => !open)}
+            >
+              {`Copy published ${environment.name} value to…`}
+            </Button>
+          ) : null}
           {copyOpen ? (
-            <div className="matrix-editor__copy">
+            <div className="matrix-editor__copy" id="matrix-editor-copy">
               <ChoiceGroup
                 legend="Copy independent published value to"
-                columns={copyDestinations.length}
+                columns={Math.min(4, copyDestinations.length)}
                 hint="Each copied value is independent; later source edits do not propagate."
               >
                 {copyDestinations.map((row) => (
@@ -505,27 +545,6 @@ export function MatrixRowEditor({
             <Button type="button" onClick={onClose}>
               Close
             </Button>
-            {rows.length > 1 ? (
-              <Button
-                type="button"
-                aria-expanded={editAll}
-                onClick={() => {
-                  if (editAll) {
-                    // Leaving the all-environments view drops the edits it
-                    // alone could show; the save count must match what is on
-                    // screen.
-                    setEdits((current) => {
-                      const kept = current.get(environmentId);
-                      return kept === undefined ? new Map() : new Map([[environmentId, kept]]);
-                    });
-                    setFillAll('');
-                  }
-                  setEditAll(!editAll);
-                }}
-              >
-                {editAll ? `Back to ${environment.name} only` : 'Edit all environments'}
-              </Button>
-            ) : null}
             {sourceSet && secret && disclosure.canReveal ? (
               <Button type="button" onClick={disclosure.reveal}>
                 {`Reveal ${keyRecord.name}`}
@@ -553,15 +572,6 @@ export function MatrixRowEditor({
             >
               {`History for ${keyRecord.name}`}
             </Link>
-            {keyRecord.classification === 'config' && sourceSet ? (
-              <Button
-                type="button"
-                aria-expanded={copyOpen}
-                onClick={() => setCopyOpen((open) => !open)}
-              >
-                {`Copy published ${environment.name} value to…`}
-              </Button>
-            ) : null}
             <Button
               type="submit"
               variant="primary"

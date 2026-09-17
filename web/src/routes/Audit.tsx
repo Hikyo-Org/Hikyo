@@ -14,6 +14,7 @@ import {
 import { ApiError } from '../api/client.ts';
 import { useScopeNames } from '../api/scopeNames.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
+import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
@@ -295,9 +296,7 @@ function AuditTrail({ org, project }: { readonly org: string; readonly project: 
         <Panel id="audit-events" title="Events">
           {trail.isPending ? <p role="status">Loading events…</p> : null}
           {trail.isError ? (
-            <p className="audit__empty alert" role="alert">
-              {refusalText(trail.error, scope)}
-            </p>
+            <Alert>{refusalText(trail.error, scope)}</Alert>
           ) : emptyResult ? (
             <div className="audit__empty" role="status">
               <p>

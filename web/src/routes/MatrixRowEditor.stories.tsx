@@ -88,6 +88,21 @@ export const Default: Story = {
   },
 };
 
+// The copy panel opens from a toggle that sits beside it and names it, not from
+// the action row: `aria-controls` resolves to the panel that appears.
+export const CopyDisclosure: Story = {
+  play: async ({ canvas }) => {
+    const toggle = canvas.getByRole('button', { name: 'Copy published development value to\u2026' });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await userEvent.click(toggle);
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+
+    const panelId = toggle.getAttribute('aria-controls') ?? '';
+    const panel = canvas.getByRole('group', { name: 'Copy independent published value to' });
+    await expect(panel.closest(`#${panelId}`)).not.toBeNull();
+  },
+};
+
 // Editing the value enables Save and submits the change through onApply.
 export const Edits: Story = {
   play: async ({ args, canvas }) => {

@@ -326,10 +326,24 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     expect(clearButtons()).toHaveLength(1);
     const toggle = button(view.container, 'Edit all environments');
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+
+    // A disclosure, not a dialog action: the toggle names the panel it opens,
+    // that panel exists, and it FOLLOWS the toggle in the document, so Tab
+    // after opening walks into what opened.
+    const panelId = toggle.getAttribute('aria-controls') ?? '';
+    const panel = view.container.querySelector(`#${panelId}`);
+    expect(panel).not.toBeNull();
+    expect(view.container.querySelector('.dialog__actions')?.contains(toggle)).toBe(false);
+    expect(panel === null ? 0 : toggle.compareDocumentPosition(panel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+
     await act(async () => toggle.click());
     expect(clearButtons()).toHaveLength(0);
+    expect(panel?.querySelector('textarea#matrix-fill-all')).not.toBeNull();
     const back = button(view.container, 'Back to development only');
     expect(back.getAttribute('aria-expanded')).toBe('true');
+    expect(back.getAttribute('aria-controls')).toBe(panelId);
     await act(async () => back.click());
     expect(clearButtons()).toHaveLength(1);
     await view.unmount();
@@ -379,6 +393,26 @@ describe('MatrixRowEditor surface (a11y audit)', () => {
     const notice = view.container.querySelector('.matrix-row-editor__row .notice');
     expect(notice?.getAttribute('role')).toBe('status');
     expect(notice?.textContent).toContain('LOG_LEVEL is required in development but is absent.');
+    await view.unmount();
+  });
+
+  it('opens the copy panel from a toggle beside it, not from the action row', async () => {
+    const view = await renderEditor(keyRecord, twoRows);
+    const toggle = button(view.container, 'Copy published development value to\u2026');
+    expect(view.container.querySelector('.dialog__actions')?.contains(toggle)).toBe(false);
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    // Nothing to point at while it is closed: a dangling reference is worse
+    // than no attribute.
+    expect(toggle.getAttribute('aria-controls')).toBeNull();
+
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    const panelId = toggle.getAttribute('aria-controls') ?? '';
+    const panel = view.container.querySelector(`#${panelId}`);
+    expect(panel?.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(panel === null ? 0 : toggle.compareDocumentPosition(panel)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     await view.unmount();
   });
 

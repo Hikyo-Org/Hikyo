@@ -129,10 +129,9 @@ export function MatrixPublishSheet({
     <>
       <section className="matrix__publish" id="matrix-publish" aria-label="Publish drafts">
         <h2>Publish drafts</h2>
-        <p>
-          Each environment publishes as its own atomic revision: untick any you want to hold
-          back.
-        </p>
+        {/* The legend names the set, so the lede keeps only the fact the legend
+            cannot carry: each environment is its own atomic revision. */}
+        <p>Each environment publishes as its own atomic revision.</p>
         <ChoiceGroup legend="Environments to publish" variant="rows">
         {environments.map((environment) => {
           const entries = pendingByEnvironment.get(environment.id) ?? [];
@@ -220,9 +219,9 @@ export function MatrixPublishSheet({
                 </div>
               ) : (
                 <div>
-                  <Badge tone="ok">ready</Badge>{' '}
+                  <Badge tone="ok">ready</Badge>
                   {entries.some((entry) => entry.validationDeferred === true)
-                    ? 'Template schemas are checked with each fetch.'
+                    ? ' Template schemas are checked with each fetch.'
                     : null}
                 </div>
               )}

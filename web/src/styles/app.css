@@ -1714,12 +1714,13 @@ fieldset.field > legend {
   color: var(--tx-dim);
 }
 
+/* The rows sit in the ChoiceGroup's own column gap, so a border-top here would
+   separate them twice over; one separator, and it is the space. */
 .matrix__publish-env {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3);
-  border-top: 1px solid var(--line);
 }
 
 .matrix__publish-heading {
@@ -1746,11 +1747,13 @@ fieldset.field > legend {
   gap: var(--space-4);
 }
 
-/* --- Publish sheet: rows align to the environment name ---------------------
+/* --- Publish sheet: the key list aligns to the environment name -------------
  *
- * The key rows and the ready/blocked state sit under the environment name, not
- * under its checkbox; the two full-width buttons become an action row. */
-.matrix__publish-env > :not(.matrix__publish-heading) {
+ * Scoped to the list and the eyebrow that names it: those two are the block the
+ * environment owns. The readiness badge and the blocked alert are the row's own
+ * verdict and stay flush, so a state is never hidden in an indent. */
+.matrix__publish-env > ul,
+.matrix__publish-env > .eyebrow {
   margin-left: calc(var(--chk-box) + var(--space-2));
   padding-left: 0;
   list-style: none;
@@ -2451,6 +2454,17 @@ fieldset.field > legend {
 .matrix-row-editor__fill textarea {
   min-width: 0;
   flex: 1;
+}
+
+/* A disclosure toggle is sized to its own label, not stretched to the dialog's
+   column, and the panel it names follows it on the form's own rhythm. */
+.matrix-row-editor__toggle {
+  align-self: flex-start;
+}
+
+.matrix-row-editor__panel {
+  display: grid;
+  gap: var(--space-3);
 }
 
 .matrix-row-editor__rows {
@@ -3361,7 +3375,7 @@ label.chk {
    a few digits, and a full-width control would read as the form's main field.
    It is no longer inline beside the radio, so this is the field, not a `.chk`. */
 .mint__lifetime-days input {
-  width: 8ch;
+  width: 12ch;
   flex: none;
 }
 
