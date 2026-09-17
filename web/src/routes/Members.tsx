@@ -483,7 +483,6 @@ export function Members({ scope }: { scope: MembersScope }) {
                                 type="button"
                                 variant="quiet"
                                 icon={compactPresentation}
-                                className={compactPresentation ? 'capability__revoke' : undefined}
                                 disabled={revoking}
                                 aria-busy={revoking ? true : undefined}
                                 aria-label={revokeLabel}
