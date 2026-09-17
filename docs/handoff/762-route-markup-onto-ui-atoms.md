@@ -28,34 +28,47 @@ Commits in `git log --oneline origin/main..HEAD` order (oldest first).
 | 10 | Route copy: the StepUpBanner title covers provider sessions, two ledes say what the page does rather than which colour it is | `d00813e1`, `73d9093d` |
 | 11 | The design calls: row editor on the dialog anatomy, publish sheet legend and eyebrow and badges, credential lifetime as a choice group with its own Days field | `d813489b`, `8d700073`, `3da0c246`, `1e7b9cb9`, `6b28299d`, `913b81ea` |
 | 11 fix | `Audit.tsx`'s pane refusal takes `ui/Alert`, the row editor's toggles sit beside the panels they open | `d4604925` |
-| 12 | The `markup-check` gate, this handoff, section 5 closed | `f4ddb83c`, `bc3bbc2f`, and this one |
+| 12 | The `markup-check` gate, this handoff, section 5 closed | `f4ddb83c`, `bc3bbc2f` |
+| Final review, round 1 | A marker rules one element and never its siblings; a ruling ends at its element's indent, not at a tag count alone; the row editor's dialog keeps its key name in the value face; the serving instance's e2e session is repaired like the viewing one | `a35e1960`, `42d079bb`, `8040d88b`, `44f5014a` |
+| Final review, round 2 | Every ruling names its own reason; a backdrop click needs both ends on the scrim; the edit-all toggle is pressed, not expanded; a dead class and a dead pad go; the scanner scans the line that ends a ruling by indent | `4c852b8a`, and this one |
 
 The `app.css` adherence budget ratcheted down through the series, 284 to 266,
 as each task's CSS was retired.
 
 ## Atoms extended, and why
 
-Six atom edits were authorised during the series; each was a gap the routes
-proved, not a convenience.
+Every atom edit authorised during the series is listed here; each was a gap the
+routes proved, not a convenience.
 
 - **`ui/Alert` gains `warn` and `info` tones** (`dc6f6e77`). The routes carried
   three severities where the atom had two, so without them a caution would have
   rendered as a failure.
-- **`ui/Dialog` gains `onBackdropClick`** (`646b5e78`). Deleting the
-  `.matrix-editor` shell would have removed click-to-dismiss from the two matrix
-  editors; the prop restores it (fires only when the click target is the dialog
-  itself) and a story covers both halves.
+- **`ui/Dialog` gains `onBackdropClick`** (`646b5e78`, tightened in `4c852b8a`).
+  Deleting the `.matrix-editor` shell would have removed click-to-dismiss from
+  the two matrix editors; the prop restores it. It fires only when the click
+  target is the dialog itself AND both ends of the click land outside the
+  dialog's box, so the dialog's own padding is not a way out and a drag-select
+  that starts in a field and releases on the scrim keeps the edit. The story
+  covers all four halves.
+- **`ui/Dialog` gains a `mono` title prop** (`8040d88b`). The row editor is
+  named after a key, and the value face reaches the title only, so the lede and
+  the body stay body text.
 - **`ui/auth/LoginForm` holds the password in `useSensitiveState`** (`50bff042`).
   The route had the retirement wipe, the mount clear and the stale-generation
   refusal; plain `useState` in the atom would have dropped all three. Security
-  fix, found in review.
+  fix, found in review. The passkey button keeps the route's wording, "Use a
+  passkey instead", so the sign-in copy did not drift with the move.
 - **`ui/ChoiceGroup` lost an `as` cast** (`d813489b`): it types its column custom
   property instead, so the group toggle reads as a row heading without the
   escape hatch.
 - **`ui/Tabs.stories` covers the keyboard model** (`90f1cfff`) that the deleted
   `nextTab` helper's tests used to cover.
-- **`ui/auth/QrCode`'s docstring** was corrected (`d813489b`) once
-  `AccountSecurity` stopped keeping its own copy.
+- **Three docstrings were corrected** where a route move made them false:
+  `ui/auth/QrCode` (`d813489b`) once `AccountSecurity` stopped keeping its own
+  copy; `ui/Button` (`f5c12af0`), because quiet stands at `--control` like every
+  other button and recedes by padding and type size, not by height; and
+  `ui/useModalDialog` (`4c852b8a`), which is the hook behind `ui/Dialog` and its
+  only caller now that no route owns a raw `<dialog>`.
 
 ## Sites left raw, and why
 
@@ -66,11 +79,23 @@ computed) document the ruling for a reader, because the gate cannot see those
 sites at all. Grep: `grep -rn "markup-check" web/src/routes web/src/app`. Cited
 below by the comment's own words, since line numbers move.
 
-**Not an alert** (a status paragraph, or a `role="note"`, that borrows the
-alert or notice skin but is not a refusal), marker `not an alert`:
-`Values.tsx`, `Sections.tsx`, `MachineAccess.tsx` (three of them, the reveal,
-the mint and the grant status lines), `Remotes.tsx`, `ImportWizard.tsx`,
-`ScimProvisioning.tsx` (the severity-keyed `<li>` and one status paragraph).
+**A copy receipt**, marker `copy receipt, not feedback`: `Values.tsx`,
+`Sections.tsx`, `MachineAccess.tsx` x2, `Remotes.tsx`, `ScimProvisioning.tsx`.
+Six `⧉` lines that say the clipboard took the value. They borrow the notice
+skin, but the copy succeeded: an Alert would announce a nothing as an outcome.
+
+**An in-flight status**, marker `in-flight status, transient`:
+`MachineAccess.tsx`, the ellipsis line while the credentials load. It is gone
+the moment the read lands, and a tone on the Alert scale would outlive it.
+
+**A note, not a live region**, marker `note, not a live region`:
+`ImportWizard.tsx`. `role="note"` is standing advice about where the file is
+read; `ui/Alert` is for something that just happened.
+
+**A list item**, marker `list item, atom renders a div`: `ScimProvisioning.tsx`.
+The consequence rows ARE alerts, severity-keyed class and role and all, but
+they are `<li>`s inside a `<ul>` and `ui/Alert` renders a div, which is not
+valid there.
 
 **The `machine__policy` skin**, marker `machine__policy skin`:
 `MachineAccess.tsx` x3. The policy paragraphs combine `alert` or `notice` with
@@ -199,8 +224,9 @@ Two limits worth knowing before trusting a green run. Only double-quoted
 `className="..."` literals are scanned, so a computed `className={...}` is
 invisible to every class pattern. And a ruled element is followed by tag depth,
 which a generic type argument or a `<` comparison inflates, so the ruling is
-also bounded by indentation: it ends at the first line back at the opener's own
-indent.
+also bounded by indentation: it ends at the first non-blank line at or below the
+opener's own indent. That closing line is scanned like any other, because it is
+a sibling the ruling never covered.
 
 ## Preview verification (controller)
 
