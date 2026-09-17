@@ -114,6 +114,7 @@ var variableInventory = []VariableDescriptor{
 	{Key: "HIKYO_MAIL_USER", Audience: VariableServer, Scope: VariableOwner, Activation: VariableComponent, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_MCP_ALLOWED_ORIGINS", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_MCP_ENABLED", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
+	{Key: "HIKYO_MCP_WRITE_ENABLED", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_NEW_ROOT_KEY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableExternal, ReferencedContentSecret: true},
 	{Key: "HIKYO_NODE_ID", ManagedField: "HIKYO_BOOTSTRAP_SOURCES.topology.node_id", Audience: VariableServer, Scope: VariableNode, Activation: VariableDeployment, Secret: false, Import: VariableExternal},
 	{Key: "HIKYO_OIDC_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_OIDC_EGRESS_POLICY_JSON"},

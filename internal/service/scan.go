@@ -649,6 +649,28 @@ func scanBundleForCheck(ctx context.Context, rs *scanning.Ruleset, b definitions
 	return out, nil
 }
 
+// scanValueForValidate is the `value.validate` scan (mcp-write ADR § 1): the
+// Surface-1 rules over a proposed config value, surfaced without persisting
+// anything, without a dismissal lookup, and without minting a token. Validate
+// is a diagnostic, not an ingress, so no scanning.* event is emitted.
+func scanValueForValidate(ctx context.Context, rs *scanning.Ruleset, keyID, classification string, canonical []byte) ([]Finding, error) {
+	if rs == nil || classification != string(schema.Config) {
+		return nil, nil
+	}
+	matches, err := rs.Scan(ctx, canonical)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) > maxRequestFindings {
+		return nil, errFindingCap
+	}
+	var out []Finding
+	for _, m := range matches {
+		out = append(out, Finding{RuleID: m.RuleID, Surface: surfaceValidate, Locator: keyID})
+	}
+	return out, nil
+}
+
 // declScanResult is what scanDeclaration reports. blocked findings refuse the
 // write (finding_blocked committed alone); overridden findings ride the write's
 // own transaction (finding_overridden). rejections name every presented token

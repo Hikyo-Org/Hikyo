@@ -105,6 +105,9 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
 {{- if and (not .Values.mcp.enabled) (not (empty .Values.mcp.allowedOrigins)) -}}
   {{- fail "mcp.allowedOrigins requires mcp.enabled=true" -}}
 {{- end -}}
+{{- if and (not .Values.mcp.enabled) .Values.mcp.writeEnabled -}}
+  {{- fail "mcp.writeEnabled requires mcp.enabled=true" -}}
+{{- end -}}
 {{- if ne (len .Values.mcp.allowedOrigins) (len (uniq .Values.mcp.allowedOrigins)) -}}
   {{- fail "mcp.allowedOrigins must not contain duplicates" -}}
 {{- end -}}

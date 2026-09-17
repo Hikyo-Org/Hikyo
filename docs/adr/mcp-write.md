@@ -167,6 +167,33 @@ write path does not silently depend on its correctness. It is not a mechanically
 testable invariant, because the map's fail-closed default already covers the
 omission case.
 
+## Corrections from implementation (2026-09-17, #767)
+
+Three source facts found while implementing corrected the text above. They are
+scrivener's corrections in the sense of [oss-mechanics.md](./oss-mechanics.md)
+(2026-08-06 precedent): no decision moves.
+
+1. **No migration lands.** The audit event `type` column carries no database
+   CHECK constraint on either engine; the closed event-type enum is
+   `audit.Spec()` plus the isolation invariants (`TestInvariantAuditCompleteness`,
+   `TestInvariantAuditRegistryClosure`). `EventValueChangeValidated` is added to
+   the registry only. Decision 4's "closed-enum forward/rollback migration"
+   clause is therefore moot; the enum is registry-enforced.
+2. **`value.validate` derives `ReadOnly=false`.** Its only write is its own
+   audit event, but `StoreAuditTenantInsert` is not in `readOnlyStoreOps`, and
+   adding it there would be exactly the wrongful addition the review obligation
+   above warns against. Decision 4's "`policy.ReadOnly` may be true
+   (`value.validate`)" does not hold; both write-surface tools derive
+   `ReadOnly=false`, and their annotations (`ReadOnlyHint`, `IdempotentHint`
+   false, `DestructiveHint` true) follow mechanically. Conservative-wrong is
+   acceptable for a defense-in-depth hint.
+3. **"Secret entry stays out" is a path class, not a classification refusal.**
+   The stage tool maps 1:1 to `value.stage`, whose `edit@env` formula covers
+   secret and config keys alike (§ 2), and no MCP-layer refusal by key
+   classification is added (§ Protected environments, Alternatives). "Entry"
+   in the threat-model banner names the phase-1 path class: no dedicated
+   secret-input path, reveal, or publish is added.
+
 ## Alternatives considered
 
 - Single flag reused for read and write: rejected. It removes the accidental-

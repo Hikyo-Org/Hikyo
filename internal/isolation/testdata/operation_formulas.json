@@ -1779,6 +1779,14 @@
     ]
   },
   {
+    "operation": "value.validate",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "edit@environment"
+    ]
+  },
+  {
     "operation": "workspace-origin.add",
     "class": "instance",
     "level": "instance",

@@ -57,6 +57,7 @@ func Catalogue() []Key {
 		"HIKYO_EXTERNAL_ORIGIN":            "Exact public HTTP(S) origin, without credentials, path, query or fragment.",
 		"HIKYO_MCP_ALLOWED_ORIGINS":        "Optional comma-separated exact browser origins such as https://app.example.com, not IPs or CIDRs. Requires MCP enabled.",
 		"HIKYO_MCP_ENABLED":                "Enable the MCP endpoint. Requires an HTTPS public origin outside loopback development.",
+		"HIKYO_MCP_WRITE_ENABLED":          "Install the MCP stage-and-validate write tools. Requires MCP enabled; grants no authority by itself.",
 		"HIKYO_REAUTH_WINDOW_SECONDS":      "Disclosure reauthentication window in seconds, from 0 to 86400. Apply still requires its own ceremony.",
 	}
 	for _, name := range config.ManagedOwnerKeys() {
@@ -64,7 +65,7 @@ func Catalogue() []Key {
 		switch name {
 		case "HIKYO_ARGON2_MEMORY_KIB", "HIKYO_ARGON2_TIME", "HIKYO_ARGON2_PARALLELISM", "HIKYO_AUDIT_ACCESS_RETAIN_DAYS", "HIKYO_AUDIT_SECURITY_RETAIN_DAYS", "HIKYO_BACKUP_RETAIN_COUNT", "HIKYO_BACKUP_RETAIN_DAYS", "HIKYO_REAUTH_WINDOW_SECONDS":
 			key.Declaration.Rule.Type = schema.TypeInteger
-		case "HIKYO_MCP_ENABLED":
+		case "HIKYO_MCP_ENABLED", "HIKYO_MCP_WRITE_ENABLED":
 			key.Declaration.Rule.Type = schema.TypeBoolean
 		}
 		keys = append(keys, key)

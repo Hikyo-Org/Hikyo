@@ -91,8 +91,56 @@ If a later reopen wants the review, `.xreview/mcp-write-adr-brief.txt` in the
 old review worktree is stale (pre-lock shape); write a fresh brief from the six
 locked decisions above.
 
+## Owner waiver and implementation (2026-09-17)
+
+Owner instruction "Continue without review" (recorded on #742). Implementation
+proceeds ahead of the SOUND verdict as a PR stacked on #766; the review is
+still owed before #766 is undrafted, and the ADR stays non-operative until it
+merges. Implementation ticket: [#767](https://github.com/Hikyo-Org/Hikyo/issues/767).
+
+What landed (see the ADR § Corrections for the three source facts):
+
+- `internal/mcpserver/registry.go`: `ToolClass` on `ToolSpec`, `AuditDispositionEvents`,
+  gate keyed off the class, `ReadOnly` and annotations derived from the authz
+  policy. Empty class is read (strictest default).
+- `internal/mcpserver/write_tools.go`: `hikyo_stage_change` (→ `Values.Set`/`Unset`,
+  `value.stage`) and `hikyo_validate_change` (→ `Values.ValidateSet`/`ValidateUnset`,
+  `value.validate`); `RegisterWriteTools`, `WriteToolNames`, `AllToolNames`.
+  Wire-safe `SafeDetail()` refusals cross verbatim (`cursor.go`); everything
+  else still collapses to the one safe error.
+- `internal/authz/registry.go`: `OpValueValidate` (`edit@env`, four store ops,
+  emits `value.change_validated`). `internal/audit/registry.go`: the event.
+- `internal/service/values_validate.go`, `scan.go`: the validate operation and
+  its non-persisting scan. `checkNotForbidden` now returns a wire-safe detail,
+  matching the `required_in` veto beside it.
+- `internal/service/mcp_admission.go`: admits the two operations.
+- `HIKYO_MCP_WRITE_ENABLED`: `config.go` (requires `HIKYO_MCP_ENABLED`),
+  `variables.go`, `managed_owner.go`, `runtimeconfig/catalogue.go`, boot log,
+  chart `mcp.writeEnabled` (+ helper refusal, CI check), docs
+  (`configuration.mdx`, `mcp.mdx`), regenerated `variable-inventory.json`.
+- `internal/app/generation.go`: registration-time exclusion; metrics label set
+  is the full catalog regardless of the flag (`conformance/metrics_test.go`
+  series pins raised accordingly).
+- Scripts: `mcp-public-smoke` accepts read-only or read+write catalog;
+  `mcp-production-client` never calls a write tool.
+- Pins updated: `isolation/testdata/operation_formulas.json`,
+  `service/budget_classification.go`.
+
+Cancellation (decision 6): the transport propagates request cancellation into
+the handler context (`TestCancellationReachesRegisteredOperation`), and
+`tx.WriteResult` commits only a completed attempt while `retryLoop` honours a
+cancelled context (`TestRetryLoopRespectsCancelledContext`), so a cancelled
+stage never commits a partial draft. No new mid-transaction cancel test was
+added; it would flake without proving more than those two.
+
+Tests: `mcpserver/registry_test.go` (gate matrix), `write_tools_test.go`
+(catalog, pinned rows, mapping, bounds, error policy),
+`isolation/mcp_write_e2e_test.go` (real datastore, both engines, canary,
+audit origin, denial), `config_test.go` (flag parse and refusal).
+
 ## Not done
 
-No implementation. Governance PR [#766](https://github.com/Hikyo-Org/Hikyo/pull/766)
-open as draft, blocked on the review above.
-Not operative. Implementation tickets may be filed only after operative.
+Cross-provider review of the ADR text (still the operative gate). Governance PR
+[#766](https://github.com/Hikyo-Org/Hikyo/pull/766) stays draft until it
+concludes SOUND; the implementation PR merges only after #766. The owner has
+not yet answered the banner-wording question (ADR § Corrections item 3).

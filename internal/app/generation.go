@@ -297,6 +297,18 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		}); err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: MCP tools: %w", err)
 		}
+		// Registration-time exclusion (mcp-write ADR § 5): with the write flag
+		// off the write tools are never installed, so they appear in no
+		// tools/list and cannot be called.
+		if cfg.MCPWriteEnabled {
+			if err := mcpserver.RegisterWriteTools(registry, mcpserver.WriteServices{
+				Admission:  &service.MCPAdmission{DB: db},
+				Staging:    valuesSvc,
+				Validation: valuesSvc,
+			}); err != nil {
+				return nil, fmt.Errorf("boot: refusing to serve: MCP write tools: %w", err)
+			}
+		}
 		cursorSealer, err := kr.MCPCursorSealer()
 		if err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: MCP cursor sealer: %w", err)
@@ -313,7 +325,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		if err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: MCP transport: %w", err)
 		}
-		mcpHandler = metrics.ObserveMCP(mcpHandler, log, mcpserver.ProductionToolNames())
+		mcpHandler = metrics.ObserveMCP(mcpHandler, log, mcpserver.AllToolNames())
 		mcpHandler = requireMCPRuntime(selfConfig, mcpHandler)
 	}
 

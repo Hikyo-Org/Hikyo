@@ -36,7 +36,27 @@ var ErrRateLimited = errors.New("mcpserver: rate limited")
 
 type AuditDisposition string
 
-const AuditDispositionNone AuditDisposition = "audited:none"
+const (
+	// AuditDispositionNone is the phase-1 read disposition: the mapped
+	// operation is a tenant-class audited-none pure read.
+	AuditDispositionNone AuditDisposition = "audited:none"
+	// AuditDispositionEvents is the write-surface disposition (mcp-write ADR
+	// § 3): the mapped operation emits audit events on every call, so the trail
+	// is the operation's own and the transport adds only origin=mcp.
+	AuditDispositionEvents AuditDisposition = "audited:events"
+)
+
+// ToolClass is the declared class the registration gate keys off (mcp-write
+// ADR § 4). A read tool must map to an audited-none read-only operation. A
+// write-surface tool must map to an events-emitting operation; it is never
+// audited:none. The empty class is read: the strictest gate is the default,
+// so a spec that forgets to declare itself cannot register a mutation.
+type ToolClass string
+
+const (
+	ToolClassRead         ToolClass = "read"
+	ToolClassWriteSurface ToolClass = "write-surface"
+)
 
 type SecretPolicy string
 
@@ -62,6 +82,7 @@ type ToolSpec struct {
 	Description      string
 	ServiceOperation string
 	Contract         operation.Contract
+	Class            ToolClass
 	AuditDisposition AuditDisposition
 	SecretPolicy     SecretPolicy
 }
@@ -75,10 +96,13 @@ type RegistryRow struct {
 	AuthorizationOperation string
 	Formula                []string
 	Artifacts              []string
+	Class                  ToolClass
 	AuditDisposition       AuditDisposition
-	ReadOnly               bool
-	ResultBytes            int
-	SecretPolicy           SecretPolicy
+	// ReadOnly is derived from the authorization registry's policy for the
+	// mapped operation, never hand-set, and drives the tool annotations.
+	ReadOnly     bool
+	ResultBytes  int
+	SecretPolicy SecretPolicy
 }
 
 type registration struct {
@@ -110,6 +134,10 @@ func inputSchemaOptions() *jsonschema.ForOptions {
 
 // Register adds one typed service-operation mapping to the closed registry.
 func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(context.Context, Bearer, In) (Out, error)) error {
+	return registerWithOptions(registry, spec, inputSchemaOptions(), handler)
+}
+
+func registerWithOptions[In, Out any](registry *Registry, spec ToolSpec, schemaOptions *jsonschema.ForOptions, handler func(context.Context, Bearer, In) (Out, error)) error {
 	if registry == nil {
 		return errors.New("mcpserver: nil registry")
 	}
@@ -125,8 +153,21 @@ func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(conte
 	if spec.ServiceOperation == "" {
 		return fmt.Errorf("mcpserver: tool %q has no service operation", spec.Name)
 	}
-	if spec.AuditDisposition != AuditDispositionNone {
-		return fmt.Errorf("mcpserver: tool %q has an unsupported audit disposition", spec.Name)
+	class := spec.Class
+	if class == "" {
+		class = ToolClassRead
+	}
+	switch class {
+	case ToolClassRead:
+		if spec.AuditDisposition != AuditDispositionNone {
+			return fmt.Errorf("mcpserver: read tool %q must declare the audited-none disposition", spec.Name)
+		}
+	case ToolClassWriteSurface:
+		if spec.AuditDisposition != AuditDispositionEvents {
+			return fmt.Errorf("mcpserver: write-surface tool %q must declare the events disposition", spec.Name)
+		}
+	default:
+		return fmt.Errorf("mcpserver: tool %q has an unsupported tool class %q", spec.Name, spec.Class)
 	}
 	if spec.SecretPolicy != SecretPolicyNoSecretMaterial {
 		return fmt.Errorf("mcpserver: tool %q has an unsupported secret policy", spec.Name)
@@ -142,10 +183,19 @@ func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(conte
 	if !ok || !slices.Equal(policy.Formula, spec.Contract.Formula()) {
 		return fmt.Errorf("mcpserver: tool %q authorization formula does not match the registry", spec.Name)
 	}
-	if !policy.ReadOnly || !policy.AuditedNone {
-		return fmt.Errorf("mcpserver: tool %q authorization operation is not an audited-none read", spec.Name)
+	switch class {
+	case ToolClassRead:
+		if !policy.ReadOnly || !policy.AuditedNone {
+			return fmt.Errorf("mcpserver: tool %q authorization operation is not an audited-none read", spec.Name)
+		}
+	case ToolClassWriteSurface:
+		// The one hard, fail-closed rule of the write surface: an unaudited
+		// mutation or authority-bearing action can never register.
+		if policy.AuditedNone {
+			return fmt.Errorf("mcpserver: write-surface tool %q authorization operation is audited-none", spec.Name)
+		}
 	}
-	inputSchema, err := jsonschema.For[In](inputSchemaOptions())
+	inputSchema, err := jsonschema.For[In](schemaOptions)
 	if err != nil {
 		return fmt.Errorf("mcpserver: tool %q input schema: %w", spec.Name, err)
 	}
@@ -175,20 +225,24 @@ func Register[In, Out any](registry *Registry, spec ToolSpec, handler func(conte
 		Name: spec.Name, InputSchema: inputSchemaJSON, OutputSchema: outputSchemaJSON,
 		ServiceOperation: spec.ServiceOperation, AuthorizationOperation: spec.Contract.AuthorizationOperation,
 		Formula: spec.Contract.Formula(), Artifacts: spec.Contract.Artifacts(),
-		AuditDisposition: spec.AuditDisposition, ReadOnly: true,
+		Class: class, AuditDisposition: spec.AuditDisposition, ReadOnly: policy.ReadOnly,
 		ResultBytes: MaxStructuredContentBytes, SecretPolicy: spec.SecretPolicy,
 	}
 	registry.registrations[spec.Name] = registration{
 		row: row,
 		install: func(server *mcp.Server) {
+			// Annotations are derived from the registry's policy, never
+			// hand-set, and remain defense-in-depth, never authorization
+			// (mcp-server ADR). A mutating operation is neither read-only nor
+			// idempotent and is reported destructive, conservatively.
 			closedWorld := false
-			nondestructive := false
+			destructive := !policy.ReadOnly
 			mcp.AddTool(server, &mcp.Tool{
 				Name: spec.Name, Title: spec.Title, Description: spec.Description,
 				InputSchema: json.RawMessage(inputSchemaJSON), OutputSchema: json.RawMessage(outputSchemaJSON),
 				Annotations: &mcp.ToolAnnotations{
-					ReadOnlyHint: true, IdempotentHint: true,
-					DestructiveHint: &nondestructive, OpenWorldHint: &closedWorld,
+					ReadOnlyHint: policy.ReadOnly, IdempotentHint: policy.ReadOnly,
+					DestructiveHint: &destructive, OpenWorldHint: &closedWorld,
 				},
 			}, func(ctx context.Context, _ *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
 				ctx = operation.WithContract(ctx, spec.Contract)

@@ -313,6 +313,14 @@
     "import": "value"
   },
   {
+    "key": "HIKYO_MCP_WRITE_ENABLED",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
     "key": "HIKYO_NEW_ROOT_KEY_FILE",
     "audience": "server",
     "scope": "node",
@@ -362,6 +370,38 @@
     "activation": "app-reload",
     "secret": false,
     "import": "value"
+  },
+  {
+    "key": "HIKYO_PG_STORAGE_KUBELET_URL",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_PG_STORAGE_NAMESPACE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_PG_STORAGE_NODE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_PG_STORAGE_PVC",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
   },
   {
     "key": "HIKYO_PROJECT",
@@ -512,6 +552,14 @@
     "import": "external"
   },
   {
+    "key": "HIKYO_UPGRADE_SCRATCH_POSTGRES_DSN",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": true,
+    "import": "external"
+  },
+  {
     "key": "HIKYO_UPGRADE_STATE_DIR",
     "audience": "server",
     "scope": "node",
@@ -521,6 +569,14 @@
   },
   {
     "key": "HIKYO_UPGRADE_TARGET_MANIFEST",
+    "audience": "server",
+    "scope": "node",
+    "activation": "bootstrap",
+    "secret": false,
+    "import": "external"
+  },
+  {
+    "key": "HIKYO_UPGRADE_UNATTENDED",
     "audience": "server",
     "scope": "node",
     "activation": "bootstrap",

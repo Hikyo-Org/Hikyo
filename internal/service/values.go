@@ -396,10 +396,12 @@ func validateLiteralValue(key store.CatalogueKey, value string) error {
 // exist. `forbidden_in` is the flat model's ONLY "this key must not be here"
 // mechanism — it changes under schema authority, not per-environment publish
 // authority, which is precisely why it survived and `masked` did not.
+//
+// The refusal is a wire-safe detail, like the `required_in` veto beside it: it
+// is decided after authorization on a key the caller already named.
 func checkNotForbidden(key store.CatalogueKey, rules schema.PresenceRules, envID string) error {
 	if rules.Forbidden.Covers(envID) {
-		return fmt.Errorf("%w: key %q is `forbidden_in` environment %s",
-			domain.ErrInvalid, key.Name, envID)
+		return invalidDetail("key %q is `forbidden_in` environment %s", key.Name, envID)
 	}
 	return nil
 }

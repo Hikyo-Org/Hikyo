@@ -227,6 +227,10 @@ spec:
             - name: HIKYO_MCP_ALLOWED_ORIGINS
               value: {{ join "," .Values.mcp.allowedOrigins | quote }}
             {{- end }}
+            {{- if .Values.mcp.writeEnabled }}
+            - name: HIKYO_MCP_WRITE_ENABLED
+              value: "true"
+            {{- end }}
             {{- end }}
             {{- if $trustedProxyCIDRs }}
             - name: HIKYO_TRUSTED_PROXY_CIDRS

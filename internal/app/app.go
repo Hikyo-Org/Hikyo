@@ -456,7 +456,7 @@ func boot(ctx context.Context, cfg *config.Config, log *slog.Logger, resources b
 	publicAddress, operationalAddress := endpoints.public.listener.Addr().String(), endpoints.operational.listener.Addr().String()
 	log.Info("boot complete", "version", Version, "engine", sc.Engine, "external_origin", cfg.ExternalOrigin,
 		"addr", publicAddress, "operational_addr", operationalAddress, "dev", cfg.Dev,
-		"argon2_memory_kib", cfg.Argon2MemoryKiB, "mcp_enabled", cfg.MCPEnabled)
+		"argon2_memory_kib", cfg.Argon2MemoryKiB, "mcp_enabled", cfg.MCPEnabled, "mcp_write_enabled", cfg.MCPWriteEnabled)
 
 	// Ownership transfers only after the Server is complete. Nothing remains
 	// between disarm and return, so Server.Close is now the sole owner.
