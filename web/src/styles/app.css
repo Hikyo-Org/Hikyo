@@ -43,8 +43,8 @@ kbd,
   font-size: 13px;
 }
 
-/* Focus is never invisible and never removed. A two-tone ring survives both
-   themes and forced-colors, where `outline` is repainted by the OS. */
+/* The focused box is rounded to the control radius; the ring itself is the
+   design foundation's `:root :focus-visible` at the end of this file. */
 :focus-visible {
   border-radius: var(--radius-control);
 }
@@ -94,8 +94,9 @@ select {
   cursor: not-allowed;
 }
 
-/* A square control that holds a single glyph, the theme toggle. Keeps the
-   control radius and the touch floor the pinned set asserts. */
+/* A square control that holds a single glyph, the theme toggle. Its box comes
+   from the control token in the Buttons block; here it only drops the label
+   padding. */
 .btn--icon {
   padding: 0;
 }
@@ -855,10 +856,8 @@ select {
 }
 
 .context-sidebar > h2 {
-  margin: 0;
   overflow: hidden;
   padding: 16px 16px 6px;
-  color: var(--tx-faint);
   font-family: var(--font-ui);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2650,10 +2649,8 @@ select {
     line-height: var(--touch);
   }
 
-  /* env-matrix 31 added two matrix-head/group controls that opt out of a
-     touch-height base (`+ key` zeroes the group-row button floor; drafts is a
-     bare pill). Both need the 44px floor back on a phone, the add-key selector
-     matches the base's specificity so this later rule wins. */
+  /* `drafts` is a bare pill with no touch-height base of its own (env-matrix
+     31), so it needs the 44px floor back on a phone. */
   .matrix__drafts {
     min-height: var(--touch);
   }
@@ -4612,7 +4609,6 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin: -6px -8px -6px -2px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-badge);
@@ -4982,25 +4978,17 @@ select {
  * which is exactly how these controls stayed at their desktop density on a
  * phone while looking like they had been fixed.
  *
- * The 36px and 32px densities above are the DESIGN.md desktop-pointer scale,
- * not a waiver of the 44px floor: `expectTouchTargets` enforces the floor only
- * on a coarse pointer, and every one of those rules needs the partner below.
- * They were missing, and each failure masked the next, because the touch sweep
- * stops at its first offender.
+ * The desktop-pointer densities still declared in px above are not a waiver of
+ * the 44px floor: `expectTouchTargets` enforces the floor only on a coarse
+ * pointer, so each of them needs its partner below. Rules that size themselves
+ * from `--control` need no partner at all, because tokens.css raises that token
+ * to `--touch` on a coarse pointer.
  */
 @media (max-width: 700px) {
   .page--chrome .jump__link,
   .settings-tag,
   .page--members .inspect select {
     min-height: var(--touch);
-  }
-
-  /* An icon-only control has to clear the floor on BOTH axes. The negative
-     margins keep the row's own height where it was, so growing the hit area
-     does not grow the list. */
-  .capability__revoke {
-    margin-top: -12px;
-    margin-bottom: -12px;
   }
 
   /* A settings row's title and detail are often links, to the organisation
@@ -5017,8 +5005,7 @@ select {
 
   .sidebar__switcher,
   .settings-row__title--link,
-  .settings-row__detail a,
-  .identity-hue {
+  .settings-row__detail a {
     min-height: var(--touch);
   }
 }
@@ -6212,6 +6199,7 @@ h3,
    and the settings 11px bold labels all become this. */
 .eyebrow,
 .sidebar__section h2,
+.context-sidebar > h2,
 .sidebar__version-label,
 .page--members .grants th,
 .page--members .inspect label,
