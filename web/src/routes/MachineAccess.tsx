@@ -1055,7 +1055,7 @@ function PolicyStrip({ project }: { project: ProjectRef }) {
 
   if (query.isPending) {
     return (
-      <p className="notice machine__policy" role="status">
+      <p className="notice machine__policy" role="status">{/* markup-check: machine__policy skin */}
         <span className="alert__glyph" aria-hidden="true">
           ◆
         </span>
@@ -1065,7 +1065,7 @@ function PolicyStrip({ project }: { project: ProjectRef }) {
   }
   if (query.isError) {
     return (
-      <p className="alert machine__policy" role="alert">
+      <p className="alert machine__policy" role="alert">{/* markup-check: machine__policy skin */}
         <span className="alert__glyph" aria-hidden="true">
           !
         </span>
@@ -1085,7 +1085,7 @@ function PolicyStrip({ project }: { project: ProjectRef }) {
   };
   return (
     <>
-      <p className="notice machine__policy" role="status">
+      <p className="notice machine__policy" role="status">{/* markup-check: machine__policy skin */}
         <span className="alert__glyph" aria-hidden="true">
           ◆
         </span>

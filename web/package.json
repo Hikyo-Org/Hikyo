@@ -18,7 +18,7 @@
     "storybook": "pnpm run design:export && storybook dev -p 6006",
     "build-storybook": "pnpm run design:export && storybook build",
     "design:seed": "node scripts/design/tokens-seed.ts",
-    "design:check": "node scripts/design/tokens-check.ts && node scripts/design/adherence-check.ts",
+    "design:check": "node scripts/design/tokens-check.ts && node scripts/design/adherence-check.ts && node scripts/design/markup-check.ts",
     "design:export": "pnpm run design:check && node scripts/design/export.ts"
   },
   "dependencies": {
