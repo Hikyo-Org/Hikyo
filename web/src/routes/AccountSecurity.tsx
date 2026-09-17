@@ -44,7 +44,8 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  * where a human looks for it.
  *
  * Factor, recovery and identity mutations are account-security mutations and share
- * one rule the prototype drew as a blue "confirm it's you" step-up: the proof
+ * one rule the prototype drew as the "confirm it's you" step-up, the one kept
+ * visually distinct from the reveal ceremony: the proof
  * is the PRE-EXISTING credential, the password, or a confirmed code, never
  * the credential being added or removed. One dialog asks for it, so the rule
  * is stated once and cannot be half-applied.
@@ -187,8 +188,9 @@ export function AccountSecurity() {
     <div className="page page--chrome">
       <h1>Account &amp; security</h1>
       <p className="page__lede">
-        Security changes ask for a possession factor first: the blue &quot;confirm it&apos;s you&quot;
-        step-up, deliberately unlike the teal reveal ceremony.
+        Edit your profile, enrol sign-in factors and recovery codes, and review your sessions and
+        linked identities. Security changes ask you to confirm it&apos;s you first; revealing a
+        secret is a separate ceremony.
       </p>
 
       <JumpIndex

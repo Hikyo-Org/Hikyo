@@ -160,9 +160,11 @@ Rules locked 2026-09-16:
   worded "Sign in with a passkey", never a second step.
 - Identity provider sign-in: assurance is the provider's (`acr`/`amr`
   policy); no local factor asked. `StepUpBanner` stays for such sessions
-  (3A) but its title "This session is password-only" is wrong for them;
-  the copy fix is deferred to migration because the route is outside the
+  (3A) but its title "This session is password-only" was wrong for them;
+  the copy fix was deferred to migration because the route is outside the
   Storybook-only scope.
+  Landed in this branch (#762, task 10): the title now reads "This session
+  has no second factor", and the story assertion moved with it.
 
 `ui/auth/LoginFlow` walks all of it with mocked transport (password
 `correct`, code `123456`); six play tests assert the sequencing.
