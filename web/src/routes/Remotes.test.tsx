@@ -144,7 +144,16 @@ describe('AddRemote', () => {
     await submit(container);
 
     expect(fetchMock.mock.calls.filter(([request]) => request instanceof Request && request.method === 'POST')).toHaveLength(0);
-    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    // The refusal names the URL control, so it is that control's error: marked
+    // invalid, announced, and reachable through its accessible description.
+    expect(url.getAttribute('aria-invalid')).toBe('true');
+    const described = (url.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .filter((id) => id !== '')
+      .map((id) => container.querySelector(`#${CSS.escape(id)}`)?.textContent ?? '')
+      .join(' ');
+    expect(described).toContain('This origin is already added as production.');
+    expect(container.querySelector('.field__error[role="alert"]')?.textContent).toContain(
       'This origin is already added as production.',
     );
   });

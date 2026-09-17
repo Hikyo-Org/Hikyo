@@ -14,6 +14,8 @@ import {
 } from '../api/oidcProviders.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Input } from '../ui/Input.tsx';
+import { Textarea } from '../ui/Textarea.tsx';
 import { Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
 
@@ -240,30 +242,26 @@ function ProviderEditor({
   const [draft, setDraft] = useSensitiveState<OidcProviderDraft>(
     original === null ? emptyDraft : draftFrom(original),
   );
-  const [invalidField, setInvalidField] = useState<OidcProviderField | null>(null);
-  const ids = {
-    slug: useId(),
-    displayName: useId(),
-    issuer: useId(),
-    clientId: useId(),
-    clientSecret: useId(),
-    scopes: useId(),
-    assurance: useId(),
-  };
+  // A refusal that names one control lives under that control, not in the
+  // form-level alert: the alert carries only what is about the whole save.
+  const [fieldRefusal, setFieldRefusal] = useState<{
+    readonly field: OidcProviderField;
+    readonly message: string;
+  } | null>(null);
+  const enabledId = useId();
 
   const set = <K extends keyof OidcProviderDraft>(key: K, value: OidcProviderDraft[K]) => {
-    setInvalidField(null);
+    setFieldRefusal(null);
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
   const submit = () => {
     const result = validateProviderDraft(draft, original, existing);
     if (!result.ok) {
-      setInvalidField(result.field);
-      onFailure(new Refusal(result.message));
+      setFieldRefusal({ field: result.field, message: result.message });
       return;
     }
-    setInvalidField(null);
+    setFieldRefusal(null);
     const verb = original === null ? 'Configured' : 'Reconfigured';
     const describe = `${verb} ${result.input.displayName}. ${result.input.enabled ? 'It is advertised on the sign-in page.' : 'It is disabled and not advertised.'}`;
     setBusy(true);
@@ -293,23 +291,21 @@ function ProviderEditor({
   };
 
   const disabling = original !== null && original.enabled && !draft.enabled;
-  const invalid = (field: OidcProviderField) => (invalidField === field ? true : undefined);
+  const refusalFor = (field: OidcProviderField) =>
+    fieldRefusal?.field === field ? fieldRefusal.message : undefined;
 
   return (
     <div className="oidc-editor">
       <h3>{original === null ? 'New identity provider' : `Reconfigure ${original.display_name}`}</h3>
       {original === null ? (
-        <div className="field">
-          <label htmlFor={ids.slug}>Slug</label>
-          <input
-            id={ids.slug}
-            className="mono"
-            value={draft.slug}
-            aria-invalid={invalid('slug')}
-            onChange={(event) => set('slug', event.target.value)}
-          />
-          <p className="field__hint">Lowercase letters, digits and hyphens; it appears in the callback URL and cannot change.</p>
-        </div>
+        <Input
+          label="Slug"
+          mono
+          value={draft.slug}
+          onChange={(event) => set('slug', event.target.value)}
+          hint="Lowercase letters, digits and hyphens; it appears in the callback URL and cannot change."
+          error={refusalFor('slug')}
+        />
       ) : (
         <div className="settings-row">
           <div className="settings-row__copy">
@@ -319,90 +315,69 @@ function ProviderEditor({
         </div>
       )}
 
-      <div className="field">
-        <label htmlFor={ids.displayName}>Display name</label>
-        <input
-          id={ids.displayName}
-          value={draft.displayName}
-          aria-invalid={invalid('display_name')}
-          onChange={(event) => set('displayName', event.target.value)}
-        />
-      </div>
+      <Input
+        label="Display name"
+        value={draft.displayName}
+        onChange={(event) => set('displayName', event.target.value)}
+        error={refusalFor('display_name')}
+      />
 
-      <div className="field">
-        <label htmlFor={ids.issuer}>Issuer URL</label>
-        <input
-          id={ids.issuer}
-          className="mono"
-          value={draft.issuer}
-          aria-invalid={invalid('issuer')}
-          disabled={original !== null}
-          onChange={(event) => set('issuer', event.target.value)}
-        />
-        <p className="field__hint">
-          {original === null
+      <Input
+        label="Issuer URL"
+        mono
+        value={draft.issuer}
+        disabled={original !== null}
+        onChange={(event) => set('issuer', event.target.value)}
+        hint={
+          original === null
             ? 'Its OpenID configuration is fetched and validated on save.'
-            : 'The issuer is immutable after create; every linked identity is keyed by it.'}
-        </p>
-      </div>
+            : 'The issuer is immutable after create; every linked identity is keyed by it.'
+        }
+        error={refusalFor('issuer')}
+      />
 
-      <div className="field">
-        <label htmlFor={ids.clientId}>Client ID</label>
-        <input
-          id={ids.clientId}
-          className="mono"
-          value={draft.clientId}
-          aria-invalid={invalid('client_id')}
-          onChange={(event) => set('clientId', event.target.value)}
-        />
-      </div>
+      <Input
+        label="Client ID"
+        mono
+        value={draft.clientId}
+        onChange={(event) => set('clientId', event.target.value)}
+        error={refusalFor('client_id')}
+      />
 
-      <div className="field">
-        <label htmlFor={ids.clientSecret}>Client secret</label>
-        <input
-          id={ids.clientSecret}
-          type="password"
-          autoComplete="off"
-          value={draft.clientSecret}
-          aria-invalid={invalid('client_secret')}
-          onChange={(event) => set('clientSecret', event.target.value)}
-        />
-        <p className="field__hint">
-          Write-only: it is never displayed, so it must be entered on every save, including when
-          only disabling.
-        </p>
-      </div>
+      <Input
+        label="Client secret"
+        type="password"
+        autoComplete="off"
+        value={draft.clientSecret}
+        onChange={(event) => set('clientSecret', event.target.value)}
+        hint="Write-only: it is never displayed, so it must be entered on every save, including when only disabling."
+        error={refusalFor('client_secret')}
+      />
 
-      <div className="field">
-        <label htmlFor={ids.scopes}>Scopes</label>
-        <input
-          id={ids.scopes}
-          className="mono"
-          value={draft.scopes}
-          aria-invalid={invalid('scopes')}
-          onChange={(event) => set('scopes', event.target.value)}
-        />
-      </div>
+      <Input
+        label="Scopes"
+        mono
+        value={draft.scopes}
+        onChange={(event) => set('scopes', event.target.value)}
+        error={refusalFor('scopes')}
+      />
 
-      <div className="field">
-        <label htmlFor={ids.assurance}>Assurance policy (JSON, optional)</label>
-        <textarea
-          id={ids.assurance}
-          className="mono"
-          value={draft.assurancePolicy}
-          aria-invalid={invalid('assurance_policy')}
-          onChange={(event) => set('assurancePolicy', event.target.value)}
-        />
-      </div>
+      <Textarea
+        label="Assurance policy (JSON, optional)"
+        mono
+        value={draft.assurancePolicy}
+        onChange={(event) => set('assurancePolicy', event.target.value)}
+        error={refusalFor('assurance_policy')}
+      />
 
       <div className="field chk">
         <input
-          id={`${ids.slug}-enabled`}
+          id={enabledId}
           type="checkbox"
           checked={draft.enabled}
           onChange={(event) => set('enabled', event.target.checked)}
         />
-        <label htmlFor={`${ids.slug}-enabled`}>Enabled (advertised on the sign-in page)</label>
+        <label htmlFor={enabledId}>Enabled (advertised on the sign-in page)</label>
       </div>
 
       {disabling ? (

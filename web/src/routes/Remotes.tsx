@@ -54,6 +54,7 @@ import { makeQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
+import { Input } from '../ui/Input.tsx';
 import { useNavigationGuard } from './MachineAccess.tsx';
 import { useModalDialog } from './useModalDialog.ts';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
@@ -504,30 +505,27 @@ export function AddRemote() {
       </p>
       {identity.data == null ? null : <p>This instance: <span className="mono">{identity.data}</span>. The server refuses this identity even through another URL.</p>}
       <form className="form" onSubmit={onSubmit} noValidate>
-        {validationFailure !== null || add.isError ? (
-          <Alert>
-            {validationFailure ?? addFailureText(add.error)}
-          </Alert>
-        ) : null}
+        {/* Whole-form refusals only: a refusal that names the URL is rendered
+            under the URL control as its error. */}
+        {add.isError ? <Alert>{addFailureText(add.error)}</Alert> : null}
         <div className="field">
           <label htmlFor="remote-name">Name</label>
           <input id="remote-name" value={name} onChange={(e) => setName(e.target.value)} required />
         </div>
-        <div className="field">
-          <label htmlFor="remote-url">URL</label>
-          <input
-            id="remote-url"
-            type="url"
-            value={url}
-            onChange={(e) => {
-              setUrl(e.target.value);
-              setValidationFailure(null);
-            }}
-            placeholder="https://hikyo.example"
-            aria-invalid={validationFailure !== null}
-            required
-          />
-        </div>
+        {/* id kept: Remotes.test.tsx selects this control by `#remote-url`. */}
+        <Input
+          id="remote-url"
+          label="URL"
+          type="url"
+          value={url}
+          onChange={(e) => {
+            setUrl(e.target.value);
+            setValidationFailure(null);
+          }}
+          placeholder="https://hikyo.example"
+          error={validationFailure ?? undefined}
+          required
+        />
         <div className="field">
           <label htmlFor="remote-pin">Certificate fingerprint</label>
           <input id="remote-pin" value={pin} onChange={(e) => setPin(e.target.value)} required />

@@ -362,7 +362,7 @@ export function MatrixRowEditor({
                           ? 'Edit the explicit value'
                           : 'Touch to stage an explicit value'
                     }
-                    aria-invalid={liveValidation?.level === 'error' ? true : undefined}
+                    aria-invalid={liveValidation?.level === 'error' ? true : undefined /* markup-check: Task 11 */}
                     aria-describedby={liveValidation === null ? undefined : `matrix-error-${rowEnvironmentId}`}
                     onChange={(event) => {
                       setEdits((current) => {
