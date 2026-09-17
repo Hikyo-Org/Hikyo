@@ -1,10 +1,14 @@
 # Hikyo MCP write capability (ADR, decision locked 2026-09-14)
 
-> **Status: decision locked, not yet operative.** The owner locked this decision
-> on 2026-09-14 via grilling ([#742](https://github.com/Hikyo-Org/Hikyo/issues/742)).
-> Per the [oss-mechanics.md](./oss-mechanics.md) amendment procedure it becomes
-> **operative** only after a cross-provider adversarial review of this ADR
-> concludes SOUND and the governance PR merges. It is the separate ADR that
+> **Status: decision locked; operative upon the governance PR merging.** The
+> owner locked this decision on 2026-09-14 via grilling
+> ([#742](https://github.com/Hikyo-Org/Hikyo/issues/742)). On 2026-09-17 the
+> owner **waived the cross-provider adversarial review** that the
+> [oss-mechanics.md](./oss-mechanics.md) amendment procedure normally requires
+> (reviewer quota exhausted; recorded on #742), so this amendment becomes
+> operative when the governance PR merges. A same-provider Standards and Spec
+> review of the implementation stands in and is recorded in the handoff; it is
+> not a cross-provider review. This is the separate ADR that
 > [mcp-server.md](./mcp-server.md) requires before any mutating MCP tool can
 > exist. Until operative, MCP stays read-only.
 
@@ -68,9 +72,11 @@ both, and the secret scanner it runs is a detector, not an authorization gate).
 The enforceable and reviewable boundary is instead: **the MCP write surface can
 stage and validate, never publish or deliver.** A staged change is an inert
 pending draft; nothing reaches an adapter or downstream target until a separate
-`value.publish`, which stays out of scope and which a machine credential cannot
-perform (see § Protected environments). The existing secret scanner still runs
-at the stage ingress.
+`value.publish`, which is not reachable over MCP: no publish tool is registered
+on this surface (see § Protected environments). Whether the same credential may
+publish over REST or the CLI is decided by its grants there, exactly as before
+this amendment (an automation may hold `publish`, [api-cli-surface.md](./api-cli-surface.md)).
+The existing secret scanner still runs at the stage ingress.
 
 ### 3. Alignment with the audit model
 
@@ -94,10 +100,13 @@ events-emitting disposition alongside `audited:none`. The gate then asserts:
 
 - **read tool** requires `policy.ReadOnly && policy.AuditedNone` (unchanged).
 - **write-surface tool** requires `!policy.AuditedNone`: it must emit events.
-  `policy.ReadOnly` may be true (`value.validate`) or false (`value.stage`);
-  the registry row and tool annotations are derived from `policy.ReadOnly`, not
-  hand-set. `ReadOnly=false` means `ReadOnlyHint: false`, `IdempotentHint:
-  false`, and destructive-hint from the operation.
+  `policy.ReadOnly` is whatever the authz registry derives for the operation;
+  the registry row and tool annotations are derived from it, not hand-set.
+  Both write-surface operations derive `ReadOnly=false`, because
+  `StoreAuditTenantInsert` is not in `readOnlyStoreOps` and adding it there
+  would be the wrongful addition § Review obligation warns against. So
+  `ReadOnlyHint: false`, `IdempotentHint: false`, `DestructiveHint: true` for
+  both tools; conservative-wrong is acceptable for a defense-in-depth hint.
 
 The one hard, fail-closed rule: **a write-surface tool is never
 `audited:none`.** An unaudited mutation or authority-bearing action can never
@@ -137,9 +146,14 @@ back"). No partial stage may survive a cancelled `tools/call`.
 can stage pending drafts into any environment it is authorized for, including
 protected ones. This is accepted: staging produces only an inert pending draft;
 the protected-environment ceremony and the blocked-environment veto bite at
-publish, which is out of scope and which a machine credential cannot satisfy. No
-MCP-layer authorization refusal is added, because authorization belongs in the
-operation, never in the transport ([mcp-server.md:243](./mcp-server.md)).
+publish, which is not reachable over MCP. Note that a sessionless caller skips
+the human reauthentication ceremony and confirms protected destinations
+explicitly instead (`internal/service/publish.go`, `skipsCeremony`), so an
+automation holding `publish` can publish over REST; that is the existing
+#730 posture, unchanged here, and it is the absence of a publish tool, not a
+property of machine credentials, that keeps MCP from delivering. No MCP-layer
+authorization refusal is added, because authorization belongs in the operation,
+never in the transport ([mcp-server.md:243](./mcp-server.md)).
 
 ## Review obligation: the read-only store-op classification map
 
@@ -177,10 +191,12 @@ omission case.
 - Two new operator-facing tools, `hikyo_stage_change` and
   `hikyo_validate_change`, behind `HIKYO_MCP_WRITE_ENABLED`.
 - One net-new authorization operation `value.validate` and one net-new audit
-  event `EventValueChangeValidated`, with forward and rollback closed-enum
-  migrations on SQLite and PostgreSQL, landing with the emitter.
+  event `EventValueChangeValidated`. The event-type enum is registry-enforced
+  (`audit.Spec()` plus the isolation invariants; the audit `type` column has
+  no database CHECK), so no migration lands.
 - One new operator flag and its catalogue entry.
 - A relaxed but still fail-closed registration gate in `mcpserver`, keyed off a
   declared tool class.
-- Publish, secret entry, and secret reveal remain out; each needs a further
-  amendment.
+- Publish, secret reveal, and any dedicated secret-input path remain out; each
+  needs a further amendment. Staging a value for a secret-classified key over
+  `hikyo_stage_change` is in, because it is `value.stage` (§ 2).

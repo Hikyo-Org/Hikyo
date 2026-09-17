@@ -6,9 +6,9 @@ threat-model.md. This doc lets a fresh context pick up without re-deriving.
 
 ## Status
 
-Decision LOCKED 2026-09-14 via grilling. Not yet operative. Operative still
-requires: a cross-provider adversarial review of the ADR text concluding SOUND,
-and the governance PR merging. Per [oss-mechanics.md](../adr/oss-mechanics.md)
+Decision LOCKED 2026-09-14 via grilling. Cross-provider review WAIVED by the
+owner 2026-09-17 (quota exhausted; "skip adversarial review"). Operative upon
+the governance PR merging. Per [oss-mechanics.md](../adr/oss-mechanics.md)
 § Governance, a locked ADR is amended only by reopening its ticket, running the
 same adversarial cross-model review that locks decisions, and recording the
 amendment in the ADR itself.
@@ -71,7 +71,8 @@ scanner is a detector, not an authorization gate). So "non-secret only" is not
 expressible at the op level. Resolved by dropping that framing and adopting the
 checkable boundary "stage-and-validate never publish or deliver": a staged
 change is an inert pending draft, nothing is delivered until a separate
-`value.publish` that a machine credential cannot perform.
+`value.publish`, which no MCP tool exposes (an automation may still hold
+`publish` over REST; see ADR § Protected environments).
 
 ## Cross-provider review of the ADR text
 
@@ -84,11 +85,11 @@ native OpenAI CLI (cached `gpt-6-astra`, effort `low`).
 | 2026-09-14 | attempt on `24ddbba` (pre-lock draft) | no verdict file produced; stale, superseded by the locked text |
 | 2026-09-17 | R1 on the locked text | SKIPPED, quota gate: owner reported Codex out of limits |
 
-A skipped pass is never SOUND. Re-run R1 against the locked ADR text once
-OpenAI quota is back above the cached thresholds (weekly at least 50%, session
-at least 40%). Brief: `.xreview/mcp-write-adr-brief.txt` in the review worktree
-is stale (describes the pre-lock "non-secret / stage+publish" shape); write a
-fresh brief from the six locked decisions above.
+A skipped pass is never SOUND. On 2026-09-17 the owner waived this review for
+the amendment ("skip adversarial review"); the ADR status records the waiver.
+If a later reopen wants the review, `.xreview/mcp-write-adr-brief.txt` in the
+old review worktree is stale (pre-lock shape); write a fresh brief from the six
+locked decisions above.
 
 ## Not done
 
