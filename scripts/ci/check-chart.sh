@@ -530,7 +530,7 @@ if mcp_env.get("HIKYO_MCP_ALLOWED_ORIGINS") != "https://assistant.example.com,ht
     fail(f"mcp-enabled: HIKYO_MCP_ALLOWED_ORIGINS = {mcp_env.get('HIKYO_MCP_ALLOWED_ORIGINS')}")
 if mcp_env.get("HIKYO_MCP_WRITE_ENABLED") != "true":
     fail(f"mcp-enabled: HIKYO_MCP_WRITE_ENABLED = {mcp_env.get('HIKYO_MCP_WRITE_ENABLED')}")
-for mode_name, docs in (("cluster-wide", cluster_wide), ("namespaced", namespaced)):
+for mode_name, docs in (("cluster-wide", load(cluster_wide)), ("namespaced", load(namespaced))):
     server = next(c for d in by(docs, "Deployment") for c in d["spec"]["template"]["spec"]["containers"] if c["name"] == "server")
     env_names = {e["name"] for e in server.get("env", [])}
     if env_names & {"HIKYO_MCP_ENABLED", "HIKYO_MCP_WRITE_ENABLED", "HIKYO_MCP_ALLOWED_ORIGINS"}:
