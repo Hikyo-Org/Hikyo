@@ -3359,9 +3359,10 @@ label.chk {
   cursor: pointer;
 }
 
-/* An inline number beside a choice (the credential lifetime) stays short so
-   the sentence around it holds one line. */
-.chk input[type='number'] {
+/* The credential lifetime's revealed number stays short: a day count is at most
+   a few digits, and a full-width control would read as the form's main field.
+   It is no longer inline beside the radio, so this is the field, not a `.chk`. */
+.mint__lifetime-days input {
   width: 8ch;
   flex: none;
 }

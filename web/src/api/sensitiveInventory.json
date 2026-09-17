@@ -41,7 +41,7 @@
     "routes/MatrixRowEditor.tsx": "89374971c860ea41865b626ea332406ca6008d268596ead883dc7987de3f30b5",
     "routes/Members.tsx": "6b910e100b35c8a2b933cb51d1392f8cf0a150f280f6f198196f34f6109b90e1",
     "routes/OidcProvidersPanel.tsx": "3dc004daecffa3d7e89a50aa83d42e166d664924b6e309e7a5efcdb5970dbb1f",
-    "routes/Remotes.tsx": "3a7ab9e04233ae0e28a7ddbaa69b4f7a0d17b3e66b2395c53f2dadafedf6ee9d",
+    "routes/Remotes.tsx": "b142f6030e30ea5770796af11137b3cf8523812a846c97322ab560cb4d687caa",
     "routes/RevisionDiff.tsx": "0c37277583ed707bdd297e91c90f957a1aaeabf467da70e503bb3249f86a5b1b",
     "routes/ScimProvisioning.tsx": "c62ee930d2bc01b8bf49ae070eac5d347f70042684380f9b52de6641337b7246",
     "routes/StepUpBanner.tsx": "b6886299976f1c0644e53e21cebc8a4c033e7b7a392ce3624a77c9ce7fb1ff9f",

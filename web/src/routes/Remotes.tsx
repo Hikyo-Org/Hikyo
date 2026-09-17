@@ -845,29 +845,28 @@ export function MintConnectionForm({
           checked={choice === 'default'}
           onChange={() => setChoice('default')}
         />
-        {/* markup-check: the custom row carries its own number input, so it
-            stays a hand-written .chk row inside the group. */}
-        <div className="chk">
-          <input
-            id="lifetime-custom"
-            type="radio"
-            name="lifetime"
-            checked={choice === 'custom'}
-            onChange={() => setChoice('custom')}
-          />
-          <label htmlFor="lifetime-custom">Expires after</label>
-          <input
+        <Radio
+          id="lifetime-custom"
+          name="lifetime"
+          label="Expires after"
+          checked={choice === 'custom'}
+          onChange={() => setChoice('custom')}
+        />
+        {/* The number reveals on its own line under the radio that asks for it,
+            instead of wrapping the sentence around the control. */}
+        {choice === 'custom' ? (
+          <Input
             id="lifetime-days"
+            className="mint__lifetime-days"
             type="number"
+            label="Days"
             min={1}
             value={days}
             onChange={(e) => setDays(e.target.value)}
-            disabled={choice !== 'custom'}
-            aria-invalid={customInvalid /* markup-check: Task 11 */}
-            aria-label="Lifetime in days"
+            hint="Clamped to the instance ceiling."
+            error={customInvalid ? 'Enter a whole number of days, at least 1.' : undefined}
           />
-          <span>days (clamped to the instance ceiling)</span>
-        </div>
+        ) : null}
         <Radio
           id="lifetime-indefinite"
           name="lifetime"
