@@ -95,7 +95,11 @@ pointer:
   `shell.spec.ts:506`, `members.spec.ts:679/718/744`,
   `machine-access.spec.ts:673/800`, `history.spec.ts:296`,
   `settings.spec.ts:586/842` (the first was listed as `:575`, off by 11),
-  `reveal.spec.ts:416/449/753`, `scanning.spec.ts:157`. Row density already
+  `reveal.spec.ts:416/449/753`, `scanning.spec.ts:157`. A twenty-first pin,
+  `shell.spec.ts:86` (sidebar link), was a LITERAL `'38px'` rather than a
+  `--touch` read, so the sweep missed it; #761 deletes the dead
+  `min-height: 38px` on `.sidebar__link` and has the test read `--control` off
+  `:root`. Row density already
   switches token by project (seven `mobile ? '--touch' : '--row'` lines, left
   alone). #761 retargeted all twenty to `--control`; on a coarse pointer
   `tokens.css` resolves `--control` to `--touch`, so the mobile project is

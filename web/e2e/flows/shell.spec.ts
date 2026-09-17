@@ -83,7 +83,12 @@ test.describe('app chrome', () => {
 
     const projectNav = sidebar.getByRole('navigation', { name: 'Project' });
     const matrixLink = projectNav.getByRole('link', { name: 'Environment matrix' });
-    await expect(matrixLink).toHaveCSS('min-height', '38px');
+    // Sidebar links take the control token, not a literal: `--control` is 36px
+    // on a fine pointer and 44px on a coarse one, so read it off `:root`.
+    const control = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--control').trim(),
+    );
+    await expect(matrixLink).toHaveCSS('min-height', control);
     await expect(matrixLink).toHaveCSS('font-size', '13px');
     await expect(sidebar.locator('.context-sidebar__org-avatar')).toHaveCSS('width', '28px');
     // whoami reports no organisation role, so the org block states none.

@@ -728,7 +728,8 @@ select {
 .sidebar__link {
   display: flex;
   align-items: center;
-  min-height: 38px;
+  /* Height comes from the design foundations' control-height fold, which names
+     this selector; a local min-height here would be dead. */
   width: 100%;
   padding: 9px 13px;
   border-radius: 0;
@@ -6053,9 +6054,12 @@ h3,
    Supersedes app.css `.btn` (min-height), `.page--chrome .btn`, the
    `.page--chrome .ceremony .btn` / `.matrix-editor .btn` dialog exceptions,
    `.btn--icon`, `.btn--quiet`, and the `@media (pointer: coarse) .btn--quiet`
-   bump. Padding, radius, colours and weights are unchanged. */
+   bump on BOTH axes: that bump set `min-width` as well as `min-height`, and a
+   short quiet label ("Self" in the audit filter, 41px) needs the floor
+   horizontally too. Padding, radius, colours and weights are unchanged. */
 .btn {
   min-height: var(--control);
+  min-width: var(--control);
   font-size: var(--fs-md);
   /* A button is one line: a label that wraps grows the control past the
      token (the members table's "Reset credential" at 41px). */

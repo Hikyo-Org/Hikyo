@@ -134,7 +134,8 @@ below the budget and the budget was not lowered with it.
 
 ## The e2e density pins
 
-Twenty desktop pins moved from `'--touch'` to `'--control'`. `expectDensity`
+Twenty-one desktop pins now read the control token. Twenty moved from
+`'--touch'` to `'--control'`. `expectDensity`
 (`web/e2e/fixtures/assertions.ts`) reads the token off `:root` and compares the
 element's own box, so this is a pure token-name swap: no assertion is weakened,
 and on a coarse pointer `tokens.css` resolves `--control` to 44px, so the mobile
@@ -152,13 +153,47 @@ project measures exactly what it measured before.
 | `reveal.spec.ts` | 416, 449, 753 | "Use a passkey", new-value input, "Reveal all" |
 | `scanning.spec.ts` | 157 | environment chooser summary |
 
+The twenty-first is a different shape: `shell.spec.ts:86` pinned the sidebar
+link's `min-height` to the LITERAL `'38px'`, so the `'--touch'` sweep that found
+the other twenty never saw it. `.sidebar__link` is named in the control-height
+fold, so the foundations put it on `--control` (36px on a fine pointer) and the
+local `min-height: 38px` at `app.css:731` was dead; the desktop run failed with
+`Expected: "38px" / Received: "36px"`. The dead declaration is deleted and the
+pin now reads `--control` off `:root` inside the test, since this assertion is a
+plain `toHaveCSS` rather than an `expectPinnedAssertionSet` density entry. The
+adjacent `font-size: 13px` (which is `--fs-sm`) and the 28px avatar are
+unaffected and were left alone.
+
 Unchanged: the seven `testInfo.project.name === 'mobile' ? '--touch' : '--row'`
 row-density lines (`members.spec.ts:614/938/1061`,
 `instance-admin.spec.ts:1082/1114`, `machine-access.spec.ts:1035/1267`). After
 this branch, `grep -n "'--touch'" web/e2e/flows/*.ts` lists exactly those seven.
 
+## What the controller's e2e runs found
+
+Two findings, both from rules the fold superseded on fewer axes than the
+deleted originals covered.
+
+Desktop (181 passed, 1 failed): `shell.spec.ts:86` expected the sidebar link at
+`38px` and got `36px`. See the pin note above; the dead `min-height: 38px` on
+`.sidebar__link` is deleted and the pin reads `--control`.
+
+Mobile (122 passed, 3 failed, one root cause): `touch width of Self`, 41px
+against the 44px floor, in `machine-access.spec.ts:1253` and
+`members.spec.ts:1042` (dark and light). "Self" is the quiet button in the audit
+filter (`web/src/routes/Audit.tsx` around line 213). The deleted
+`@media (pointer: coarse) .btn--quiet` rule set `min-width` as well as
+`min-height`; the Buttons block restated only the height, which is enough for
+every quiet button with a wide label and not for a four-character one.
+`min-width: var(--control)` is added to the foundation `.btn` rule, so every
+button holds the control size on both axes (36px on a fine pointer, 44px on a
+coarse one through the tokens.css override). No compact tier was introduced.
+The block's header now says the coarse `.btn--quiet` bump is superseded on both
+axes.
+
 The Constraints list in `storybook-ui-consistency.md` named twelve of the twenty
-and had `settings.spec.ts:575` for `:586`; it is corrected there, along with the
+and had `settings.spec.ts:575` for `:586`; it is corrected there, with the
+twenty-first pin added, along with the
 "five rules app.css states with more specificity" note, which resolves to three
 rules.
 
