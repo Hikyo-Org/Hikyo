@@ -11,6 +11,8 @@ import type { z } from 'zod';
 
 import { ProjectSettings } from './ProjectSettings.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // The project-settings surface reads `useParams({ org, project })` and fires
 // five load-time GETs on mount, every one independent of the granted
 // capabilities (the Policy/Danger panels are gated on the project body, but the
@@ -92,6 +94,7 @@ const meta = {
   component: ProjectSettings,
   tags: ['ai-generated'],
   parameters: {
+    ...topLayerDocs,
     app: {
       auth: true,
       path: PATH,

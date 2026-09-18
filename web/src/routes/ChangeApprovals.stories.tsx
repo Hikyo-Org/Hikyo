@@ -4,6 +4,8 @@ import { expect, waitFor } from 'storybook/test';
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ChangeApprovals } from './ChangeApprovals.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // The page mounts two queries at once: the environment list (whose names label
 // the policy rows) and the approval-policy list (the panel that is loaded,
 // empty, or failed). The review queue stays disabled until an environment is
@@ -94,7 +96,7 @@ const routePath = '/orgs/:org/projects/:project/approvals';
 const meta = {
   component: ChangeApprovals,
   tags: ['ai-generated'],
-  parameters: { app: { auth: true, path, routePath, responses: [] } },
+  parameters: { ...topLayerDocs, app: { auth: true, path, routePath, responses: [] } },
 } satisfies Meta<typeof ChangeApprovals>;
 
 export default meta;

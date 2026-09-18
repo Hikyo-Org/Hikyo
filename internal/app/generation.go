@@ -321,6 +321,11 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			Admission:      limiter,
 			Version:        Version,
 			CursorSealer:   cursorSealer,
+			// The MCP package owns no telemetry sink; a slot release that fails
+			// after a committed call is surfaced through the app's logger here.
+			OnReleaseFailure: func(operation string, err error) {
+				log.Warn("mcp admission release failed after a successful call", "operation", operation, "err", err)
+			},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("boot: refusing to serve: MCP transport: %w", err)

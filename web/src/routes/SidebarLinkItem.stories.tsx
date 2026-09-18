@@ -3,6 +3,8 @@ import { expect, fn } from 'storybook/test';
 
 import { SidebarLinkItem } from './Shell.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 type Props = Parameters<typeof SidebarLinkItem>[0];
 type Link = Props['link'];
 
@@ -18,7 +20,7 @@ const meta = {
   tags: ['ai-generated'],
   // The row renders a router Link/NavLink; the app harness supplies the
   // MemoryRouter. No fetch, so an empty response table is enough.
-  parameters: { app: { responses: [] } },
+  parameters: { ...topLayerDocs, app: { responses: [] } },
   args: {
     link: settingsLink,
     onNavigate: fn(),

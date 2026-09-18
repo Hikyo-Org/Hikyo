@@ -13,9 +13,9 @@ type TextareaProps = Omit<ComponentProps<'textarea'>, 'className'> & FieldProps 
   mono?: boolean;
 };
 
-export function Textarea({ label, hint, error, id, className, mono, ...rest }: TextareaProps) {
+export function Textarea({ label, hint, error, id, className, mono, 'aria-describedby': describedBy, 'aria-invalid': invalid, ...rest }: TextareaProps) {
   return (
-    <Field label={label} hint={hint} error={error} id={id} className={className}>
+    <Field label={label} hint={hint} error={error} id={id} className={className} aria-describedby={describedBy} aria-invalid={invalid}>
       {(control) => <textarea {...rest} {...control} className={mono === true ? 'mono' : undefined} />}
     </Field>
   );

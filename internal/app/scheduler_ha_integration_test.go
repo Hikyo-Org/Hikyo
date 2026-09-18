@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,11 +34,18 @@ func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 	db := openSchedulerHAPostgres(t, dsn)
 	coord := db.Coordination()
 
-	var jobRuns atomic.Int64
+	// Per-node run counts, so the final assertion is per leadership term (which
+	// node ran the singleton, and how often), not one cluster-wide total that a
+	// duplicate on the wrong node could still satisfy.
 	nodeIDs := []string{"node-a", "node-b", "node-c"}
+	runs := make(map[string]*atomic.Int64, len(nodeIDs))
 	cancels := make(map[string]context.CancelFunc, len(nodeIDs))
+	exited := make(map[string]chan struct{}, len(nodeIDs))
 	schedulers := make(map[string]*Scheduler, len(nodeIDs))
+	var workers sync.WaitGroup
 	for _, id := range nodeIDs {
+		count := &atomic.Int64{}
+		runs[id] = count
 		s := &Scheduler{
 			Interval:  time.Hour, // only the startup catch-up runs per leadership term
 			Deadline:  time.Second,
@@ -46,27 +54,43 @@ func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 			NodeID:    id,
 			LeaseTTL:  400 * time.Millisecond,
 			Heartbeat: 100 * time.Millisecond,
-			Jobs:      []ScheduledJob{{Name: "gc", Run: func(context.Context) error { jobRuns.Add(1); return nil }}},
+			Jobs:      []ScheduledJob{{Name: "gc", Run: func(context.Context) error { count.Add(1); return nil }}},
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancels[id] = cancel
 		schedulers[id] = s
-		go s.Run(ctx)
+		done := make(chan struct{})
+		exited[id] = done
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			defer close(done)
+			s.Run(ctx)
+		}()
 	}
 	t.Cleanup(func() {
 		for _, cancel := range cancels {
 			cancel()
 		}
+		workers.Wait()
 	})
+	total := func() int64 {
+		var sum int64
+		for _, count := range runs {
+			sum += count.Load()
+		}
+		return sum
+	}
 
 	leader := waitForSingleLeader(t, schedulers)
 	// Wait for the startup catch-up to land instead of sleeping a fixed span the
-	// -race build can outrun. The singleton guarantee — that only one node runs
-	// it — rests on waitForSingleLeader above (exactly one leader) plus the hour
+	// -race build can outrun. The singleton guarantee, that only one node runs
+	// it, rests on waitForSingleLeader above (exactly one leader) plus the hour
 	// Interval, which stops anything but the startup catch-up from firing; the
-	// count check below then confirms it.
-	waitFor(t, "cluster startup job", func() bool { return jobRuns.Load() >= 1 })
-	if got := jobRuns.Load(); got != 1 {
+	// per-node counts after every worker has been joined (below) are the final
+	// word, this early check only fails fast.
+	waitFor(t, "cluster startup job", func() bool { return total() >= 1 })
+	if got := total(); got != 1 {
 		t.Fatalf("startup job ran %d times across the cluster, want exactly 1", got)
 	}
 	// Exactly one lease row in the datastore, owned by the elected leader.
@@ -78,8 +102,12 @@ func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 		t.Fatalf("datastore lease owner %q disagrees with the elected leader %q", owner, leader)
 	}
 
-	// Kill the leader: another node must take over within a bounded time.
+	// Kill the leader and JOIN it: Run returns only once its term goroutine has
+	// drained (or the drain bound elapsed and the lease was left to expire), so
+	// nothing the old leader ran can land after this point and the handover
+	// below observes a node that has fully stopped, not one still winding down.
 	cancels[leader]()
+	<-exited[leader]
 	delete(schedulers, leader)
 	newLeader := waitForSingleLeader(t, schedulers)
 	if newLeader == leader {
@@ -87,9 +115,26 @@ func TestSchedulerHAThreeNodesOnePostgres(t *testing.T) {
 	}
 	// The new leader ran its own startup catch-up exactly once more: takeover
 	// executes the singleton one additional time, never once per surviving node.
-	waitFor(t, "failover startup job", func() bool { return jobRuns.Load() >= 2 })
-	if got := jobRuns.Load(); got != 2 {
-		t.Fatalf("startup job ran %d times after failover, want exactly 2", got)
+	waitFor(t, "failover startup job", func() bool { return total() >= 2 })
+
+	// Stop every node and join every worker BEFORE the final counts, so a
+	// delayed extra startup execution cannot slip in after the assertion: the
+	// counts below are the complete history of the cluster.
+	for _, cancel := range cancels {
+		cancel()
+	}
+	workers.Wait()
+	for _, id := range nodeIDs {
+		var want int64
+		if id == leader || id == newLeader {
+			want = 1
+		}
+		if got := runs[id].Load(); got != want {
+			t.Errorf("node %q ran the startup job %d times, want %d (first leader %q, failover leader %q)", id, got, want, leader, newLeader)
+		}
+	}
+	if got := total(); got != 2 {
+		t.Errorf("startup job ran %d times across both terms, want exactly 2", got)
 	}
 }
 

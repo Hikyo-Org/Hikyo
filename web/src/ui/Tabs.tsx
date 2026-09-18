@@ -51,7 +51,10 @@ export function Tabs<Id extends string>({
       return;
     }
     onSelect(target.id);
-    document.getElementById(`${idPrefix}-tab-${target.id}`)?.focus();
+    // Focus within THIS tablist, by position: a document-wide id lookup would
+    // land on the first tablist that shares the prefix (a Docs page renders
+    // several examples inline), and a generated prefix is not selector-safe.
+    event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]')[next]?.focus();
   };
   return (
     <div className={cx('tabs', className)} role="tablist" aria-label={label} onKeyDown={onKeyDown}>

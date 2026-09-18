@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useId, type ComponentProps, type ReactNode } from 'react';
 
 import { cx } from './cx.ts';
 
@@ -11,11 +11,22 @@ export type FieldProps = {
   className?: string;
 };
 
+/**
+ * The caller's own accessibility wiring, merged rather than replaced: an
+ * external description (a paragraph elsewhere on the screen) is kept in front
+ * of the generated hint and error ids, and an external invalid state is kept
+ * unless the field's own error already marks the control.
+ */
+export type FieldAriaProps = {
+  'aria-describedby'?: string;
+  'aria-invalid'?: ComponentProps<'input'>['aria-invalid'];
+};
+
 /** What the control inside a {@link Field} must spread to be described and marked. */
 export type FieldControlProps = {
   id: string;
   'aria-describedby': string | undefined;
-  'aria-invalid': true | undefined;
+  'aria-invalid': ComponentProps<'input'>['aria-invalid'];
 };
 
 /**
@@ -29,7 +40,8 @@ export type FieldControlProps = {
  * an {@link Alert} above the actions, as the routes do today.
  *
  * No story of its own: it is never rendered bare, and the Input, Select and
- * Textarea stories (WithHint, WithError, ErrorIsWired) are its coverage.
+ * Textarea stories (WithHint, WithError, ErrorIsWired, the External* pair)
+ * are its coverage.
  */
 export function Field({
   label,
@@ -37,14 +49,16 @@ export function Field({
   error,
   className,
   id,
+  'aria-describedby': describedByProp,
+  'aria-invalid': invalidProp,
   children,
-}: FieldProps & { id?: string; children: (control: FieldControlProps) => ReactNode }) {
+}: FieldProps & FieldAriaProps & { id?: string; children: (control: FieldControlProps) => ReactNode }) {
   const generated = useId();
   const controlId = id ?? generated;
   const hintId = `${controlId}-hint`;
   const errorId = `${controlId}-error`;
-  const describedBy = [hint !== undefined ? hintId : null, error !== undefined ? errorId : null]
-    .filter((part): part is string => part !== null)
+  const describedBy = [describedByProp, hint !== undefined ? hintId : undefined, error !== undefined ? errorId : undefined]
+    .filter((part): part is string => part !== undefined && part !== '')
     .join(' ');
   return (
     <div className={cx('field', className)}>
@@ -52,7 +66,7 @@ export function Field({
       {children({
         id: controlId,
         'aria-describedby': describedBy === '' ? undefined : describedBy,
-        'aria-invalid': error !== undefined ? true : undefined,
+        'aria-invalid': error !== undefined ? true : invalidProp,
       })}
       {hint !== undefined ? (
         <p className="field__hint" id={hintId}>

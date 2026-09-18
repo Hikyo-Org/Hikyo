@@ -5,6 +5,8 @@ import type { WhoAmI } from '../api/session.ts';
 import { authenticatedIdentity } from '../testkit/identity.ts';
 import { StepUpBanner } from './StepUpBanner.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // A browser session minted at password assurance: the login floor enrols no
 // second factor, so the banner's whole reason to exist is this shape.
 const passwordOnly: WhoAmI = {
@@ -38,6 +40,7 @@ const meta = {
   component: StepUpBanner,
   tags: ['ai-generated'],
   args: { session: passwordOnly },
+  parameters: topLayerDocs,
 } satisfies Meta<typeof StepUpBanner>;
 
 export default meta;

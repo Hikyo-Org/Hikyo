@@ -257,7 +257,14 @@ func RegisterProductionTools(registry *Registry, services ProductionServices) er
 	return nil
 }
 
-func withAdmission(ctx context.Context, svc AdmissionService, actor service.Actor, op authz.Operation, scope domain.Scope, call func() error) (err error) {
+// withAdmission runs call under one acquired admission slot. The call's own
+// outcome is the result: a stage that committed is reported as committed even
+// when the slot's release then fails (a datastore hiccup on the detached
+// cleanup context), because a caller told "failed" would retry and stage a
+// second draft over the first. The release failure is not swallowed: it is
+// recorded on the call state and logged by the transport, so lease cleanup
+// stays bounded and operationally visible.
+func withAdmission(ctx context.Context, svc AdmissionService, actor service.Actor, op authz.Operation, scope domain.Scope, call func() error) error {
 	release, err := svc.Acquire(ctx, actor, op, scope)
 	if err != nil {
 		if errors.Is(err, admission.ErrOverloaded) {
@@ -265,8 +272,14 @@ func withAdmission(ctx context.Context, svc AdmissionService, actor service.Acto
 		}
 		return err
 	}
-	defer func() { err = errors.Join(err, release()) }()
-	return call()
+	callErr := call()
+	if releaseErr := release(); releaseErr != nil {
+		if callErr != nil {
+			return errors.Join(callErr, releaseErr)
+		}
+		markReleaseFailed(ctx, op, releaseErr)
+	}
+	return callErr
 }
 
 func toolSpec(name, title, description, serviceOperation, authorizationOperation string, formula []string) (ToolSpec, error) {

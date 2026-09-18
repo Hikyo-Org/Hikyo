@@ -3443,25 +3443,32 @@ input[type='checkbox']:indeterminate::before {
   background: var(--accent);
 }
 
-/* The mark is a masked fill so it takes the theme's on-accent ink rather than a
-   colour baked into an SVG. */
+/* The mark is drawn geometry in the theme's on-accent ink, never a fetched
+   image: production serves img-src 'self' (internal/server/spa.go), which
+   blocks a data: mask and would leave checked and indeterminate as a bare
+   accent square. The tick is the two trailing borders of a box rotated 45deg
+   (its visual centre sits low, hence the lift); the dash is a plain bar. */
 input[type='checkbox']::after {
-  width: var(--chk-visual);
-  height: var(--chk-visual);
-  background: var(--on-accent);
-  mask: center / 72% no-repeat;
+  width: calc(var(--chk-visual) * 0.3);
+  height: calc(var(--chk-visual) * 0.55);
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: translateY(-10%) rotate(45deg);
   opacity: 0;
   transition: opacity var(--dur) var(--ease);
 }
 
 input[type='checkbox']:checked::after {
   opacity: 1;
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3.2 3.2L13 5'/%3E%3C/svg%3E");
 }
 
 input[type='checkbox']:indeterminate::after {
+  width: calc(var(--chk-visual) * 0.55);
+  height: 2px;
+  border: 0;
+  background: var(--on-accent);
+  transform: none;
   opacity: 1;
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' d='M3.5 8h9'/%3E%3C/svg%3E");
 }
 
 input[type='radio']::after {
