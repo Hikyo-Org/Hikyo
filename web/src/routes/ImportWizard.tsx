@@ -235,8 +235,7 @@ export function ImportWizard({
   // Git-managed projects declare keys only through `definitions apply`; new keys
   // cannot be declared here and are dropped from the import (their values would
   // be rejected by name). Already-declared keys still import their values.
-  const blockedNewKeys = gitManaged ? newKeys : [];
-  const excluded = useMemo(() => new Set(blockedNewKeys), [blockedNewKeys]);
+  const excluded = useMemo(() => new Set(gitManaged ? newKeys : []), [gitManaged, newKeys]);
   const importableEntries = useMemo(
     () => entries.filter((entry) => !excluded.has(entry.key)),
     [entries, excluded],
@@ -323,7 +322,7 @@ export function ImportWizard({
             forbidden: { mode: 'none', environmentIds: [] },
           });
           declared.push(name);
-        } catch (caught) {
+        } catch {
           declareFailures.push(name);
         }
       }

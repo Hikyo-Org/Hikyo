@@ -4,7 +4,7 @@ import { generatePath, Link } from 'react-router';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { historyHref } from '../api/history.ts';
 import type { MatrixKeyList, MatrixSignalCell } from '../api/matrix.ts';
-import type { MatrixRef } from '../api/keys.ts';
+import type { EnvRef, MatrixRef } from '../api/keys.ts';
 import { withRemote, useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import {
   disclosureRefusalText,
@@ -131,25 +131,9 @@ export function MatrixRowEditor({
   // target only the columns whose reads succeeded.
   const editableRows = rows.filter((row) => !row.degraded);
   const visibleRows = editAll ? editableRows : [sourceRow];
-  const degradedEnvironmentIds = rows.flatMap((row) => (row.degraded ? [row.environmentId] : []));
-  const degradedSignature = degradedEnvironmentIds.join('/');
-  // A copy destination or a queued bulk edit chosen before its column degraded
-  // would otherwise linger in `destinations`/`edits` and reach the copy or apply
-  // call for a column we can no longer read. Prune both when a column degrades so
-  // the selectable set and every pending change stay in sync (#451).
-  useEffect(() => {
-    const degraded = new Set(degradedSignature === '' ? [] : degradedSignature.split('/'));
-    setDestinations((current) => {
-      const pruned = current.filter((id) => !degraded.has(id));
-      return pruned.length === current.length ? current : pruned;
-    });
-    setEdits((current) => {
-      if (![...current.keys()].some((id) => degraded.has(id))) {
-        return current;
-      }
-      return new Map([...current].filter(([id]) => !degraded.has(id)));
-    });
-  }, [degradedSignature]);
+  // A copy destination or bulk edit for a since-degraded column (#451) is dropped
+  // by remounting this editor: Matrix keys it on the degraded-column set, so a
+  // column degrading gives a fresh editor with no stale `destinations`/`edits`.
   const protectedConfirmationRequired = copyRequiresProtectedConfirmation(
     destinations,
     protectedEnvironmentIds,
@@ -620,7 +604,10 @@ function useCellDisclosure(
   keyRecord: MatrixKey,
   sourceRow: EditorRow,
 ) {
-  const env = { ...refData, environment: sourceRow.environmentId };
+  const env = useMemo<EnvRef>(
+    () => ({ org: refData.org, project: refData.project, environment: sourceRow.environmentId }),
+    [refData.org, refData.project, sourceRow.environmentId],
+  );
   const transport = useTransport();
   const window = useRevealWindow(env, keyRecord.classification === 'secret');
   const revealOne = useRevealOne(env);
@@ -646,14 +633,10 @@ function useCellDisclosure(
 
   useEffect(() => {
     if (plaintext !== null && plaintext.until <= now) setPlaintext(null);
-  }, [now, plaintext]);
+  }, [now, plaintext, setPlaintext]);
 
-  useEffect(() => {
-    setPlaintext(null);
-    setError(null);
-    setNotice(null);
-    setAnnouncement(null);
-  }, [keyRecord.id, sourceRow.environmentId]);
+  // No key/environment reset effect here: Matrix remounts the editor (and so
+  // this hook) on a cell change, which re-masks by dropping all disclosure state.
 
   const clipboardMessage = useCallback(
     (value: string, audited: boolean) => writeExpiringClipboard(value, audited),
@@ -688,7 +671,7 @@ function useCellDisclosure(
       keys: [{ id: keyRecord.id, name: keyRecord.name, classification: keyRecord.classification }],
       window: state,
     }, () => void act(task));
-  }, [ceremony, env, keyRecord.id, keyRecord.name, sourceRow.environment.name, sourceRow.environmentId, transport.client]);
+  }, [ceremony, env, keyRecord.classification, keyRecord.id, keyRecord.name, sourceRow.environment.name, sourceRow.environmentId, transport.client]);
 
   const discloseValue = useCallback(async (
     task: CeremonyTask,
@@ -709,7 +692,7 @@ function useCellDisclosure(
     } finally {
       ceremony.finish(task);
     }
-  }, [ceremony, keyRecord.name, revealOne]);
+  }, [ceremony, keyRecord.name, revealOne, setPlaintext]);
 
   const reveal = useCallback(() => {
     void withDisclosure('reveal', (task) => discloseValue(task, (value) => {
@@ -722,7 +705,7 @@ function useCellDisclosure(
         }));
       });
     }));
-  }, [ceremony, discloseValue, keyRecord.name, withDisclosure]);
+  }, [ceremony, discloseValue, keyRecord.name, setPlaintext, withDisclosure]);
 
   const copy = useCallback(() => {
     if (keyRecord.classification === 'config') {

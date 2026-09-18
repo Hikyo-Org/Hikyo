@@ -38,7 +38,9 @@ type StagedRequest = {
 export function useCeremonyTask(scope: CeremonyTaskIdentity) {
   const scopeKey = JSON.stringify(scope);
   const scopeRef = useRef(scopeKey);
-  scopeRef.current = scopeKey;
+  useEffect(() => {
+    scopeRef.current = scopeKey;
+  }, [scopeKey]);
   const attemptSequence = useRef(0);
   const mounted = useRef(true);
   const current = useRef<ActiveCeremonyTask | null>(null);
@@ -146,7 +148,10 @@ export function useCeremonyTask(scope: CeremonyTaskIdentity) {
     };
   }, [abortCurrent]);
 
-  const currentStaged = staged !== null && isCurrent(staged.task) ? staged : null;
+  // Every ref change that could retire a staged task also clears `staged`, so
+  // the one thing render has to check for itself is the scope: the render
+  // after a scope change arrives before the effect above has cleared it.
+  const currentStaged = staged !== null && staged.task.scopeKey === scopeKey ? staged : null;
   const request = currentStaged?.request ?? null;
   const stagedTask = currentStaged?.task ?? null;
   const requestKey = stagedTask?.key ?? null;
@@ -168,5 +173,5 @@ export function useCeremonyTask(scope: CeremonyTaskIdentity) {
     isCurrent,
     onAuthorised,
     onCancel,
-  }), [begin, commit, finish, isCurrent, onAuthorised, onCancel, request, scopeKey, stage]);
+  }), [begin, commit, finish, isCurrent, onAuthorised, onCancel, request, requestKey, scopeKey, stage]);
 }

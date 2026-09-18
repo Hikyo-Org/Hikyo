@@ -1,5 +1,5 @@
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { generatePath, Link } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
@@ -50,7 +50,8 @@ import {
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { writeClipboard } from '../app/clipboard.ts';
-import { makeQueryClient } from '../app/queryClient.ts';
+import { useNavigationGuard } from '../app/useNavigationGuard.ts';
+import { makeQueryClient, retireQueryClient } from '../app/queryClient.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
@@ -60,7 +61,6 @@ import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
 import { Radio } from '../ui/Radio.tsx';
-import { useNavigationGuard } from './MachineAccess.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
@@ -1143,6 +1143,10 @@ function useWorkspaceLiveness(bearer: WorkspaceBearer | undefined, onEnded: () =
 function WorkspacePicker({ origin, remoteName }: { origin: string; remoteName: string }) {
   const [queries] = useState(() => makeQueryClient());
   const client = useMemo(() => createWorkspaceClient(origin), [origin]);
+  // The picker's cache dies with the picker, the same way the connected
+  // workspace retires its own: nothing read over the workspace bearer may
+  // outlive the surface that read it.
+  useEffect(() => () => retireQueryClient(queries), [queries]);
   return (
     <QueryClientProvider client={queries}>
       <WorkspaceContextProvider value={{ origin, remote: remoteName, client }}>

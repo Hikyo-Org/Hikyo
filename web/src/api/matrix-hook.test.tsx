@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -158,7 +158,9 @@ describe('useDeleteKey invalidation', () => {
     function DeleteHarness() {
       const key = useKey(ref, keyId);
       const remove = useDeleteKey(ref, keyId);
-      deleteFn = () => remove.mutate();
+      useEffect(() => {
+        deleteFn = () => remove.mutate();
+      }, [remove]);
       return <span>{key.data?.name ?? 'pending'}</span>;
     }
 

@@ -166,8 +166,12 @@ Unknown findings remain explicit and produce a warning result. Critical findings
 produce doctor exit code 4. Diagnostics do not change admission or readiness.
 The existing public operational metrics expose bounded aggregate counts without
 identities or labels. `hikyo_data_volume_capacity_known` must be checked before
-using volume gauges; an unknown percentage is `NaN`, not zero. Escrow timestamp
-and verification gauges expose public metadata only.
+using volume gauges; an unknown percentage is `NaN`, not zero. The same rule
+applies to `hikyo_dynamic_gauges_known` and `hikyo_approval_gauges_known`: when
+either is `0` the scrape could not measure the dynamic-secret lease gauges or
+the change-approval gauges, and those gauges are omitted from the scrape rather
+than reported as zero. Escrow timestamp and verification gauges expose public
+metadata only.
 
 ### PostgreSQL capacity on Kubernetes
 

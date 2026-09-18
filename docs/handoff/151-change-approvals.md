@@ -41,7 +41,9 @@ Full vertical, both engines (sqlite + postgres):
   per-environment review queue with approve/reject/merge/bypass) and the matrix
   / restore publish flows branch on the 202 ("submitted for approval").
 - **metrics**: `hikyo_approval_requests_open` and
-  `hikyo_approval_requests_expired`, label-free.
+  `hikyo_approval_requests_expired`, label-free, guarded by
+  `hikyo_approval_gauges_known` (0 when the scrape could not measure them; both
+  value gauges are then omitted rather than rendered as zeros).
 - **scheduler**: `approval_expiry_sweep` job beside `payload_gc`.
 
 ## Decisions taken / deviations from the original handoff (accept or ticket)

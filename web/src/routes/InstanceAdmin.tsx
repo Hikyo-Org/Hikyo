@@ -4,7 +4,7 @@ import {
   setCredentialPolicyOp,
 } from '@hikyo/operations';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { generatePath, Link } from 'react-router';
 
 import { ApiError, parsed } from '../api/client.ts';
@@ -24,6 +24,7 @@ import {
 } from '../api/settings.ts';
 import { notifySuccess } from '../app/notifications.tsx';
 import { surfaceById } from '../app/navigation.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -212,11 +213,26 @@ function CredentialPolicyPanel({ query, onDone, onFailure }: { query: ReturnType
   const update = useSetCredentialPolicy();
   const [editing, setEditing] = useState(false);
   const finiteId = useId(); const liveId = useId();
-  const [finite, setFinite] = useState(''); const [live, setLive] = useState(''); const [indefinite, setIndefinite] = useState(false);
+  // Seed from the fetched policy on first render (react-query may hand this back
+  // already cached, before any signature change would fire the reset below) and
+  // re-seed whenever the fetched values change.
+  const [finite, setFinite] = useState(query.data === undefined ? '' : String(query.data.max_finite_lifetime_seconds));
+  const [live, setLive] = useState(query.data === undefined ? '' : String(query.data.max_live_credentials));
+  const [indefinite, setIndefinite] = useState(query.data === undefined ? false : query.data.allow_indefinite);
   type PolicyProposal = { readonly maxFiniteLifetimeSeconds: number; readonly allowIndefinite: boolean; readonly maxLiveCredentials: number };
   type PolicyPreview = { readonly result: Awaited<ReturnType<typeof update.mutateAsync>>; readonly proposal: PolicyProposal };
   const [preview, setPreview] = useState<PolicyPreview | null>(null);
-  useEffect(() => { if (query.data !== undefined) { setFinite(String(query.data.max_finite_lifetime_seconds)); setLive(String(query.data.max_live_credentials)); setIndefinite(query.data.allow_indefinite); } }, [query.data]);
+  useResetOnChange(
+    query.data === undefined
+      ? ''
+      : JSON.stringify([query.data.max_finite_lifetime_seconds, query.data.max_live_credentials, query.data.allow_indefinite]),
+    () => {
+      if (query.data === undefined) return;
+      setFinite(String(query.data.max_finite_lifetime_seconds));
+      setLive(String(query.data.max_live_credentials));
+      setIndefinite(query.data.allow_indefinite);
+    },
+  );
   const submit = (confirm: boolean, confirmedProposal?: PolicyProposal) => {
     const proposal = confirmedProposal ?? { maxFiniteLifetimeSeconds: Number(finite), allowIndefinite: indefinite, maxLiveCredentials: Number(live) };
     if (!Number.isInteger(proposal.maxFiniteLifetimeSeconds) || proposal.maxFiniteLifetimeSeconds < 1 || !Number.isInteger(proposal.maxLiveCredentials) || proposal.maxLiveCredentials < 1) return onFailure(new SurfaceMessage('Credential policy values must be whole numbers of at least one.'));

@@ -721,6 +721,15 @@ func (s *Auth) ConsumeReauthEvidence(ctx context.Context, az *authz.TxAuthorizer
 	default:
 		return domain.ErrUnauthenticated
 	}
+	// The epoch the factor was verified under must still be live, exactly as
+	// the password evidence above demands.
+	epoch, err := az.CredentialEpoch(ctx)
+	if err != nil {
+		return err
+	}
+	if ev.epoch != epoch {
+		return domain.ErrUnauthenticated
+	}
 	// CAS on the row whose seed was verified, so a code proved against a
 	// since-replaced factor cannot apply to its successor — and a code already
 	// spent cannot be spent again.
@@ -741,6 +750,20 @@ func (s *Auth) ConsumeReauthEvidence(ctx context.Context, az *authz.TxAuthorizer
 	return nil
 }
 
+// factorClass names the credential class the evidence was verified against:
+// the string every reissued session and audit payload carries. Exempt
+// evidence (local host authority) has no class.
+func (ev ReauthEvidence) factorClass() string {
+	switch ev.kind {
+	case reauthEvidenceTOTP:
+		return "totp"
+	case reauthEvidencePassword:
+		return "password"
+	default:
+		return ""
+	}
+}
+
 // VerifyReauthProof re-proves the acting human inside a request that performs a
 // REAUTHENTICATION-GATED operation whose scope is not an environment.
 //
@@ -754,6 +777,10 @@ func (s *Auth) ConsumeReauthEvidence(ctx context.Context, az *authz.TxAuthorizer
 // A caller with no session is LOCAL HOST AUTHORITY (the fixtures, and the
 // below-the-network paths). It has nothing to reauthenticate and is exempt, the
 // same exemption authorize() already makes for the MFA-mandatory rule.
+//
+// The single proof field is read as whichever class the selection picks (the
+// confirmed TOTP where one stands, else the password), so it is handed to the
+// shared selector as both candidates.
 func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (ReauthEvidence, error) {
 	if presented == "" {
 		return ReauthEvidence{kind: reauthEvidenceExempt}, nil
@@ -761,6 +788,32 @@ func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (
 	if proof == "" {
 		return ReauthEvidence{}, ErrReauthProofRequired
 	}
+	_, ev, err := s.verifyAccountSecurityProof(ctx, presented, proof, proof)
+	return ev, err
+}
+
+// verifyAccountSecurityProof is the ONE selection of the proof an
+// account-security mutation runs under (human-auth ADR § Account-security
+// mutations, step 1): possession-first over the account's PRE-EXISTING
+// credentials. A confirmed TOTP factor is the proof where one stands and the
+// code is required; a password alone does not satisfy such an account
+// (ErrReauthProofRequired, a loud 400 naming the class the request lacks: the
+// caller owns the account and can already read its factor state). Only an
+// account with no confirmed factor proves with its password; an account with
+// neither has no pre-existing credential to authorize the change
+// (ErrNoProofCredential). The field the selection did not pick is ignored.
+//
+// Exclusion of the mutation's own target (B7) is the caller's: a mutation whose
+// target IS the confirmed factor (RemoveTOTP) does not route through here and
+// proves with the password; a passkey mutation's target is never a password or
+// TOTP row, so nothing is excluded. Passkeys are not yet a proof class here.
+//
+// The returned evidence is VERIFIED, NOT CONSUMED. The caller spends it with
+// ConsumeReauthEvidence inside the mutation's write transaction, so a TOTP
+// step is single-use across every mutation that accepts one and a replayed
+// code cannot open a second ceremony. A bad proof is throttled exactly like
+// every other account-security proof.
+func (s *Auth) verifyAccountSecurityProof(ctx context.Context, presented, password, code string) (authz.Account, ReauthEvidence, error) {
 	var (
 		account   authz.Account
 		cred      authz.PasswordCredential
@@ -776,12 +829,19 @@ func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (
 		if err != nil {
 			return err
 		}
+		epoch, err := az.CredentialEpoch(ctx)
+		if err != nil {
+			return err
+		}
+		// A confirmed factor from a superseded epoch (a restored row) is inert
+		// like every other pre-bump credential: it is not a live possession
+		// factor, so it neither proves nor blocks the password from proving.
 		confirmed, err = az.ConfirmedTOTP(ctx, account.ID)
 		switch {
-		case err == nil:
+		case err == nil && confirmed.CredentialEpoch == epoch:
 			hasTOTP = true
 			return nil
-		case errors.Is(err, domain.ErrNotFound):
+		case err == nil || errors.Is(err, domain.ErrNotFound):
 			cred, err = az.PasswordCredentialFor(ctx, account.ID)
 			if errors.Is(err, domain.ErrNotFound) {
 				return ErrNoProofCredential
@@ -791,14 +851,21 @@ func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (
 			return err
 		}
 	}); err != nil {
-		return ReauthEvidence{}, err
+		return authz.Account{}, ReauthEvidence{}, err
+	}
+	proof := password
+	if hasTOTP {
+		proof = code
+	}
+	if proof == "" {
+		return authz.Account{}, ReauthEvidence{}, ErrReauthProofRequired
 	}
 
 	// A bad proof here is a takeover primitive on a stolen session, so it is
 	// throttled exactly like the account-security mutations are.
 	release, err := s.enterFactorBudget(ctx, account.ID)
 	if err != nil {
-		return ReauthEvidence{}, err
+		return authz.Account{}, ReauthEvidence{}, err
 	}
 	defer release()
 
@@ -807,23 +874,23 @@ func (s *Auth) VerifyReauthProof(ctx context.Context, presented, proof string) (
 		seed, oerr := s.Keyring.ForInstance().OpenField(totpSeedAAD(confirmed.ID), confirmed.Seed)
 		if oerr != nil {
 			s.logFault(ctx, "opening a TOTP seed failed", oerr, account.ID)
-			return ReauthEvidence{}, domain.ErrUnauthenticated
+			return authz.Account{}, ReauthEvidence{}, domain.ErrUnauthenticated
 		}
 		step, ok := crypto.ValidateTOTP(seed, proof, s.now(), crypto.TOTPSkewSteps)
 		crypto.Zero(seed)
 		if !ok {
 			s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-			return ReauthEvidence{}, domain.ErrUnauthenticated
+			return authz.Account{}, ReauthEvidence{}, domain.ErrUnauthenticated
 		}
-		out.kind, out.factorID, out.rowVersion, out.step = reauthEvidenceTOTP, confirmed.ID, confirmed.RowVersion, step
+		out.kind, out.factorID, out.rowVersion, out.step, out.epoch = reauthEvidenceTOTP, confirmed.ID, confirmed.RowVersion, step, confirmed.CredentialEpoch
 	} else if !s.verifyPassword(ctx, account.ID, cred, proof) {
 		s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-		return ReauthEvidence{}, domain.ErrUnauthenticated
+		return authz.Account{}, ReauthEvidence{}, domain.ErrUnauthenticated
 	} else {
 		out.kind, out.rowVersion, out.epoch = reauthEvidencePassword, cred.RowVersion, cred.CredentialEpoch
 	}
 	s.Admission.RecordSuccess(account.ID)
-	return out, nil
+	return account, out, nil
 }
 
 // ErrReauthProofRequired refuses a reauthentication-gated operation presented

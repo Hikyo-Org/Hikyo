@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect, fn } from 'storybook/test';
+import { expect } from 'storybook/test';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { RemoteCard } from './Remotes.tsx';

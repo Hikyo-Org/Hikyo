@@ -1,11 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  assertCompatible,
   forgetWorkspace,
+  HANDOFF_REQUEST_TIMEOUT_MS,
+  openPrepared,
+  prepareWorkspace,
   probeWorkspace,
   rememberWorkspace,
   transitionWorkspaceOwner,
   workspaceBearer,
+  WorkspaceError,
   type WorkspaceBearer,
 } from './workspace.ts';
 
@@ -57,8 +62,152 @@ function deferredResponse(): {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   forgetWorkspace(bearer.origin);
   transitionWorkspaceOwner(undefined);
+});
+
+/** A fetch that behaves like the real one on abort: it never settles otherwise. */
+function hangingFetch() {
+  return vi.fn<(input: string, init?: RequestInit) => Promise<Response>>(
+    (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      }),
+  );
+}
+
+// Every handoff request carries the caller's signal AND a deadline, and the
+// deadline covers the body read too. A stalled remote must become a retryable
+// refusal, never a launcher stuck on "Contacting…".
+describe('remoteJSON deadlines', () => {
+  it('aborts the request on the handoff deadline and refuses with a WorkspaceError', async () => {
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    const fetchMock = hangingFetch();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const checking = assertCompatible(bearer.origin, { signal: new AbortController().signal });
+    const refused = expect(checking).rejects.toThrow(
+      new WorkspaceError(`${bearer.origin} did not answer within 15 seconds. Try again.`),
+    );
+    deadline.abort();
+    await refused;
+
+    expect(timeout).toHaveBeenCalledWith(HANDOFF_REQUEST_TIMEOUT_MS);
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(init?.signal?.aborted).toBe(true);
+  });
+
+  it('applies the deadline to a body that never finishes arriving', async () => {
+    const deadline = new AbortController();
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(new ReadableStream({ start() {} }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        ),
+      ),
+    );
+
+    const checking = assertCompatible(bearer.origin, { signal: new AbortController().signal });
+    const refused = expect(checking).rejects.toBeInstanceOf(WorkspaceError);
+    deadline.abort();
+    await refused;
+  });
+
+  it("rethrows the caller's own abort reason so disposal is not mistaken for a stalled remote", async () => {
+    const caller = new AbortController();
+    vi.stubGlobal('fetch', hangingFetch());
+
+    const checking = assertCompatible(bearer.origin, { signal: caller.signal });
+    const abandoned = expect(checking).rejects.toSatisfy(
+      (error: unknown) => error === caller.signal.reason && !(error instanceof WorkspaceError),
+    );
+    caller.abort();
+    await abandoned;
+  });
+
+  it('carries one caller signal through every phase of a prepare', async () => {
+    const caller = new AbortController();
+    const seen: Array<AbortSignal | null | undefined> = [];
+    vi.stubGlobal('location', { origin: 'https://viewer.example' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string, init?: RequestInit) => {
+        seen.push(init?.signal);
+        const body = String(input).endsWith('/api/v1/meta')
+          ? { server_version: '1.0.0', api_revision: 1, protocol_capabilities: [] }
+          : {
+              handoff: 'ic_00000000-0000-4000-8000-000000000001',
+              state: 'hik_1_hs_abc',
+              expires_at: '2099-01-01T00:00:00Z',
+            };
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }),
+    );
+
+    await prepareWorkspace(bearer.origin, { signal: caller.signal });
+    expect(seen).toHaveLength(2);
+    expect(seen.every((signal) => signal instanceof AbortSignal && !signal.aborted)).toBe(true);
+    caller.abort();
+    expect(seen.every((signal) => signal?.aborted)).toBe(true);
+  });
+});
+
+// The popup wait keeps the ceremony's own five-minute deadline, but a launcher
+// that has been disposed has nobody to hand the code to: its abort ends the
+// wait and releases the channel instead of leaving a listener behind.
+describe('openPrepared disposal', () => {
+  it('ends the front-channel wait when the caller aborts', async () => {
+    const closed = vi.fn();
+    class IdleChannel {
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      close = closed;
+    }
+    vi.stubGlobal('BroadcastChannel', IdleChannel);
+    vi.stubGlobal('open', vi.fn());
+    vi.stubGlobal('location', { origin: 'https://viewer.example' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: string) => {
+        const body = String(input).endsWith('/api/v1/meta')
+          ? { server_version: '1.0.0', api_revision: 1, protocol_capabilities: [] }
+          : {
+              handoff: 'ic_00000000-0000-4000-8000-000000000001',
+              state: 'hik_1_hs_abc',
+              expires_at: '2099-01-01T00:00:00Z',
+            };
+        return Promise.resolve(
+          new Response(JSON.stringify(body), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }),
+        );
+      }),
+    );
+    const prepared = await prepareWorkspace(bearer.origin, {
+      signal: new AbortController().signal,
+    });
+
+    const caller = new AbortController();
+    const opening = openPrepared(prepared, { signal: caller.signal });
+    const abandoned = expect(opening).rejects.toSatisfy((error) => error === caller.signal.reason);
+    caller.abort();
+    await abandoned;
+
+    expect(closed).toHaveBeenCalledOnce();
+    expect(workspaceBearer(bearer.origin)).toBeUndefined();
+  });
 });
 
 // A blip must not cost a ceremony, and a re-established workspace is a NEW

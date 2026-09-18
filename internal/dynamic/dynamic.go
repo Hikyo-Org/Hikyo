@@ -48,8 +48,9 @@ var (
 
 // CreateRoleRequest is one lease mint at the provider. GrantRole is the parent
 // role the minted role inherits (IN ROLE), so a lease role is not privilege-
-// less; ValidUntil is enforced by the engine itself, so a lease expires even if
-// Hikyo is down.
+// less; ValidUntil is enforced by the engine itself as a PASSWORD expiry: new
+// logins are refused after it even if Hikyo is down, while sessions already
+// open are not ended by it (see the postgres provider's createRoleSQL).
 type CreateRoleRequest struct {
 	Name       string
 	Password   string

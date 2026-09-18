@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 )
 
 func trustedDirectory(path string) error {
@@ -58,24 +59,7 @@ func atomicWrite(path string, data []byte, mode os.FileMode) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".hikyo-upgrade-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	if err = f.Chmod(mode); err != nil {
-		f.Close()
-		return err
-	}
-	_, writeErr := f.Write(data)
-	err = errors.Join(writeErr, f.Sync(), f.Close())
-	if err != nil {
-		return err
-	}
-	if err = os.Rename(f.Name(), path); err != nil {
-		return err
-	}
-	return filedurability.SyncDirectory(filepath.Dir(path))
+	return securefile.WriteAtomic(path, data, mode)
 }
 
 func fileDigest(path string) (string, error) {

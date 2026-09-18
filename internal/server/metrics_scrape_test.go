@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -232,4 +233,87 @@ func mustContain(t *testing.T, body, want string) {
 	if !strings.Contains(body, want) {
 		t.Fatalf("metrics missing %q\n---\n%s", want, body)
 	}
+}
+
+type stubMeasuredGauges struct {
+	approvals server.ApprovalStats
+	active    int64
+	unknown   int64
+	err       error
+}
+
+func (s stubMeasuredGauges) ApprovalSnapshot() (server.ApprovalStats, error) {
+	return s.approvals, s.err
+}
+
+func (s stubMeasuredGauges) DynamicSnapshot() (int64, int64, error) {
+	return s.active, s.unknown, s.err
+}
+
+// A failed gauge read must never render as a healthy zero: the lease and
+// approval gauges are omitted and the known flag reads 0, so an alert can tell
+// "not measured" from "nothing pending". A healthy source renders both values
+// and known=1.
+func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
+	scrape := func(t *testing.T, source stubMeasuredGauges) string {
+		t.Helper()
+		metrics := server.NewMetrics(stubAdmissionSnapshot{})
+		metrics.SetApprovalSource(source)
+		metrics.SetDynamicSource(source)
+		operational := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{}, metrics))
+		t.Cleanup(operational.Close)
+		resp, err := operational.Client().Get(operational.URL + "/metrics")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	valueGauges := []string{
+		server.MetricDynamicLeasesActive, server.MetricDynamicEffectsUnknown,
+		server.MetricApprovalRequestsOpen, server.MetricApprovalRequestsExpired,
+	}
+
+	body := scrape(t, stubMeasuredGauges{err: errors.New("datastore unavailable")})
+	for _, name := range valueGauges {
+		if strings.Contains(body, name) {
+			t.Fatalf("%s rendered although the source failed:\n%s", name, body)
+		}
+	}
+	mustContain(t, body, server.MetricDynamicGaugesKnown+" 0")
+	mustContain(t, body, server.MetricApprovalGaugesKnown+" 0")
+
+	body = scrape(t, stubMeasuredGauges{approvals: server.ApprovalStats{Open: 3, Expired: 1}, active: 5, unknown: 2})
+	mustContain(t, body, server.MetricDynamicLeasesActive+" 5")
+	mustContain(t, body, server.MetricDynamicEffectsUnknown+" 2")
+	mustContain(t, body, server.MetricApprovalRequestsOpen+" 3")
+	mustContain(t, body, server.MetricApprovalRequestsExpired+" 1")
+	mustContain(t, body, server.MetricDynamicGaugesKnown+" 1")
+	mustContain(t, body, server.MetricApprovalGaugesKnown+" 1")
+
+	// No source wired is equally unmeasured, never a synthetic zero.
+	metrics := server.NewMetrics(stubAdmissionSnapshot{})
+	operational := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{}, metrics))
+	t.Cleanup(operational.Close)
+	resp, err := operational.Client().Get(operational.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unwired := string(raw)
+	for _, name := range valueGauges {
+		if strings.Contains(unwired, name) {
+			t.Fatalf("%s rendered with no source wired:\n%s", name, unwired)
+		}
+	}
+	mustContain(t, unwired, server.MetricDynamicGaugesKnown+" 0")
+	mustContain(t, unwired, server.MetricApprovalGaugesKnown+" 0")
 }

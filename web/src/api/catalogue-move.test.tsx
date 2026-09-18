@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -77,7 +77,9 @@ async function run(
   const holder: { mutate: Mutate | null } = { mutate: null };
   function Harness() {
     const move = useMoveKeysToFolders(ref);
-    holder.mutate = (value) => move.mutateAsync(value);
+    useEffect(() => {
+      holder.mutate = (value) => move.mutateAsync(value);
+    }, [move]);
     return null;
   }
   await act(async () => {

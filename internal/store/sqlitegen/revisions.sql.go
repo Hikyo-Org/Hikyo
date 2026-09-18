@@ -7,6 +7,7 @@ package sqlitegen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const countPendingChangeForCell = `-- name: CountPendingChangeForCell :one
@@ -63,6 +64,33 @@ type CountRevisionPinsForProjectParams struct {
 
 func (q *Queries) CountRevisionPinsForProject(ctx context.Context, arg CountRevisionPinsForProjectParams) (int64, error) {
 	row := q.db.QueryRowContext(ctx, countRevisionPinsForProject, arg.OrgID, arg.ProjectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSecretValueOccurrence = `-- name: CountSecretValueOccurrence :one
+SELECT COUNT(*) FROM secret_value_occurrences
+WHERE org_id = ? AND project_id = ? AND environment_id = ? AND value_entry_id = ?
+`
+
+type CountSecretValueOccurrenceParams struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ValueEntryID  string
+}
+
+// CountSecretValueOccurrence is the point membership read of the sticky
+// sensitivity lineage: one value entry, in the proof's environment. Callers
+// ask about the handful of entries they hold, never the lifetime history.
+func (q *Queries) CountSecretValueOccurrence(ctx context.Context, arg CountSecretValueOccurrenceParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countSecretValueOccurrence,
+		arg.OrgID,
+		arg.ProjectID,
+		arg.EnvironmentID,
+		arg.ValueEntryID,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -970,6 +998,63 @@ func (q *Queries) ListRevisionKeyChanges(ctx context.Context, arg ListRevisionKe
 	return items, nil
 }
 
+const listRevisionKeyChangesInRange = `-- name: ListRevisionKeyChangesInRange :many
+SELECT org_id, project_id, environment_id, revision, key_id, key_name, change
+FROM revision_key_changes
+WHERE org_id = ?1 AND project_id = ?2
+  AND environment_id = ?3
+  AND revision >= ?4 AND revision <= ?5
+ORDER BY revision DESC, key_name
+`
+
+type ListRevisionKeyChangesInRangeParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+	MinRevision    int64
+	MaxRevision    int64
+}
+
+// ListRevisionKeyChangesInRange is the history page's lineage read: every
+// change row of the revisions in [min_revision, max_revision], newest revision
+// first, so one statement serves a whole page instead of one per revision.
+func (q *Queries) ListRevisionKeyChangesInRange(ctx context.Context, arg ListRevisionKeyChangesInRangeParams) ([]RevisionKeyChange, error) {
+	rows, err := q.db.QueryContext(ctx, listRevisionKeyChangesInRange,
+		arg.ChainOrgID,
+		arg.ChainProjectID,
+		arg.ChainEnvID,
+		arg.MinRevision,
+		arg.MaxRevision,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RevisionKeyChange
+	for rows.Next() {
+		var i RevisionKeyChange
+		if err := rows.Scan(
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvironmentID,
+			&i.Revision,
+			&i.KeyID,
+			&i.KeyName,
+			&i.Change,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRevisionPins = `-- name: ListRevisionPins :many
 SELECT id, org_id, project_id, environment_id, workload_principal_id,
        snapshot_id, revision, authority_principal_id, expires_at, created_at,
@@ -1012,42 +1097,6 @@ func (q *Queries) ListRevisionPins(ctx context.Context, arg ListRevisionPinsPara
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listSecretValueOccurrenceIDs = `-- name: ListSecretValueOccurrenceIDs :many
-SELECT value_entry_id
-FROM secret_value_occurrences
-WHERE org_id = ? AND project_id = ? AND environment_id = ?
-ORDER BY value_entry_id
-`
-
-type ListSecretValueOccurrenceIDsParams struct {
-	OrgID         string
-	ProjectID     string
-	EnvironmentID string
-}
-
-func (q *Queries) ListSecretValueOccurrenceIDs(ctx context.Context, arg ListSecretValueOccurrenceIDsParams) ([]string, error) {
-	rows, err := q.db.QueryContext(ctx, listSecretValueOccurrenceIDs, arg.OrgID, arg.ProjectID, arg.EnvironmentID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []string
-	for rows.Next() {
-		var value_entry_id string
-		if err := rows.Scan(&value_entry_id); err != nil {
-			return nil, err
-		}
-		items = append(items, value_entry_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -1169,7 +1218,7 @@ func (q *Queries) ListSnapshotEntriesForReencrypt(ctx context.Context, arg ListS
 
 const listSnapshots = `-- name: ListSnapshots :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
+       published_by, published_at, payload_present, collected_at, collected_policy
 FROM snapshots
 WHERE org_id = ? AND project_id = ? AND environment_id = ?
 ORDER BY revision DESC
@@ -1181,15 +1230,32 @@ type ListSnapshotsParams struct {
 	EnvironmentID string
 }
 
-func (q *Queries) ListSnapshots(ctx context.Context, arg ListSnapshotsParams) ([]Snapshot, error) {
+type ListSnapshotsRow struct {
+	ID              string
+	OrgID           string
+	ProjectID       string
+	EnvironmentID   string
+	Revision        int64
+	SchemaRevision  int64
+	PublishedBy     string
+	PublishedAt     string
+	PayloadPresent  int64
+	CollectedAt     sql.NullString
+	CollectedPolicy string
+}
+
+// ListSnapshots is the environment's whole revision header set, newest first:
+// the pin retention-consequence read, which ranks one snapshot against every
+// sibling. Header projection only; the parameter contract has its own read.
+func (q *Queries) ListSnapshots(ctx context.Context, arg ListSnapshotsParams) ([]ListSnapshotsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listSnapshots, arg.OrgID, arg.ProjectID, arg.EnvironmentID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Snapshot
+	var items []ListSnapshotsRow
 	for rows.Next() {
-		var i Snapshot
+		var i ListSnapshotsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
@@ -1202,7 +1268,6 @@ func (q *Queries) ListSnapshots(ctx context.Context, arg ListSnapshotsParams) ([
 			&i.PayloadPresent,
 			&i.CollectedAt,
 			&i.CollectedPolicy,
-			&i.ParameterContract,
 		); err != nil {
 			return nil, err
 		}
@@ -1219,7 +1284,7 @@ func (q *Queries) ListSnapshots(ctx context.Context, arg ListSnapshotsParams) ([
 
 const listSnapshotsPage = `-- name: ListSnapshotsPage :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
+       published_by, published_at, payload_present, collected_at, collected_policy
 FROM snapshots
 WHERE org_id = ?1 AND project_id = ?2
   AND environment_id = ?3
@@ -1235,11 +1300,27 @@ type ListSnapshotsPageParams struct {
 	PageLimit      int64
 }
 
-// ListSnapshotsPage is the MCP-bounded keyset read (#629). revision is UNIQUE
-// and monotonic per environment, so it is a stable single-column cursor in
-// descending order: the statement fetches strictly below the last returned
-// revision and never materializes the whole history to slice a limit afterwards.
-func (q *Queries) ListSnapshotsPage(ctx context.Context, arg ListSnapshotsPageParams) ([]Snapshot, error) {
+type ListSnapshotsPageRow struct {
+	ID              string
+	OrgID           string
+	ProjectID       string
+	EnvironmentID   string
+	Revision        int64
+	SchemaRevision  int64
+	PublishedBy     string
+	PublishedAt     string
+	PayloadPresent  int64
+	CollectedAt     sql.NullString
+	CollectedPolicy string
+}
+
+// ListSnapshotsPage is the bounded keyset read behind revision history (#629).
+// revision is UNIQUE and monotonic per environment, so it is a stable
+// single-column cursor in descending order: the statement fetches strictly
+// below the last returned revision and never materializes the whole history to
+// slice a limit afterwards. It is a metadata projection: the parameter
+// contract is payload and has its own point read.
+func (q *Queries) ListSnapshotsPage(ctx context.Context, arg ListSnapshotsPageParams) ([]ListSnapshotsPageRow, error) {
 	rows, err := q.db.QueryContext(ctx, listSnapshotsPage,
 		arg.ChainOrgID,
 		arg.ChainProjectID,
@@ -1251,9 +1332,9 @@ func (q *Queries) ListSnapshotsPage(ctx context.Context, arg ListSnapshotsPagePa
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Snapshot
+	var items []ListSnapshotsPageRow
 	for rows.Next() {
-		var i Snapshot
+		var i ListSnapshotsPageRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.OrgID,
@@ -1266,7 +1347,6 @@ func (q *Queries) ListSnapshotsPage(ctx context.Context, arg ListSnapshotsPagePa
 			&i.PayloadPresent,
 			&i.CollectedAt,
 			&i.CollectedPolicy,
-			&i.ParameterContract,
 		); err != nil {
 			return nil, err
 		}
@@ -1282,8 +1362,9 @@ func (q *Queries) ListSnapshotsPage(ctx context.Context, arg ListSnapshotsPagePa
 }
 
 const projectSnapshotRevisions = `-- name: ProjectSnapshotRevisions :many
-SELECT environment_id, revision FROM snapshots
+SELECT environment_id, CAST(MAX(revision) AS INTEGER) AS revision FROM snapshots
 WHERE org_id = ? AND project_id = ?
+GROUP BY environment_id
 `
 
 type ProjectSnapshotRevisionsParams struct {
@@ -1296,10 +1377,11 @@ type ProjectSnapshotRevisionsRow struct {
 	Revision      int64
 }
 
-// ProjectSnapshotRevisions returns the project-confined revision rows used to
-// build the definitions plan/apply pin (#70). The repository folds the maximum
-// per environment; keeping aggregation out of SQL leaves the chain predicate in
-// the conservative analyzer's provable shape.
+// ProjectSnapshotRevisions returns the latest published revision per
+// environment across the project, the definitions plan/apply pin (#70). The
+// aggregate transfers one row per environment rather than the lifetime history;
+// the analyzer proves the chain predicate through GROUP BY, which only groups
+// rows the chain conjuncts already confined.
 func (q *Queries) ProjectSnapshotRevisions(ctx context.Context, arg ProjectSnapshotRevisionsParams) ([]ProjectSnapshotRevisionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, projectSnapshotRevisions, arg.OrgID, arg.ProjectID)
 	if err != nil {
@@ -1327,7 +1409,7 @@ const recordSecretValueOccurrence = `-- name: RecordSecretValueOccurrence :exec
 INSERT INTO secret_value_occurrences (
     value_entry_id, org_id, project_id, environment_id
 )
-VALUES (?, ?, ?, ?)
+VALUES (?, ?, ?, ?) ON CONFLICT (value_entry_id) DO NOTHING
 `
 
 type RecordSecretValueOccurrenceParams struct {
@@ -1337,6 +1419,9 @@ type RecordSecretValueOccurrenceParams struct {
 	EnvironmentID string
 }
 
+// RecordSecretValueOccurrence is idempotent on the value-entry primary key:
+// a publish records each secret occurrence it materializes without first
+// enumerating the environment's lifetime occurrence history.
 func (q *Queries) RecordSecretValueOccurrence(ctx context.Context, arg RecordSecretValueOccurrenceParams) error {
 	_, err := q.db.ExecContext(ctx, recordSecretValueOccurrence,
 		arg.ValueEntryID,

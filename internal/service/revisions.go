@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -115,8 +116,29 @@ type PendingDraft struct {
 	Value              string
 }
 
-// History lists one environment's revisions, newest first.
-func (s *Revisions) History(ctx context.Context, actor Actor, scope domain.Scope) ([]RevisionView, error) {
+const (
+	// DefaultHistoryLimit is the history page size when a caller names none.
+	DefaultHistoryLimit = 100
+	// MaxHistoryLimit is the largest history page any surface may ask for.
+	MaxHistoryLimit = 500
+	// HistoryFromNewest is the first-page cursor: strictly above every
+	// revision, so the page starts at the environment's newest.
+	HistoryFromNewest = int64(math.MaxInt64)
+)
+
+// History lists one page of an environment's revisions, newest first: the
+// revisions strictly below beforeRevision (HistoryFromNewest for the first
+// page), at most limit of them. A caller continues from the smallest revision
+// it received. History is only ever read a page at a time: the page's headers
+// come from one keyset read and the page's lineage from one range read, so
+// the cost of a page does not grow with the environment's lifetime history.
+func (s *Revisions) History(ctx context.Context, actor Actor, scope domain.Scope, beforeRevision int64, limit int) ([]RevisionView, error) {
+	if beforeRevision <= 0 {
+		return nil, fmt.Errorf("%w: history cursor must be a positive revision", domain.ErrInvalid)
+	}
+	if limit <= 0 || limit > MaxHistoryLimit {
+		return nil, fmt.Errorf("%w: history limit must be between 1 and %d", domain.ErrInvalid, MaxHistoryLimit)
+	}
 	var out []RevisionView
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
 		out = nil
@@ -124,31 +146,49 @@ func (s *Revisions) History(ctx context.Context, actor Actor, scope domain.Scope
 		if err != nil {
 			return err
 		}
-		snapshots, err := r.Snapshots().List(ctx, p)
-		if err != nil {
-			return err
-		}
-		names := newPrincipalNames()
-		for _, snapshot := range snapshots {
-			name, err := names.get(ctx, az, domain.PrincipalID(snapshot.PublishedBy))
-			if err != nil {
-				return err
-			}
-			changes, err := r.Snapshots().Changes(ctx, p, snapshot.Revision)
-			if err != nil {
-				return err
-			}
-			out = append(out, RevisionView{
-				Revision: snapshot.Revision, SchemaRevision: snapshot.SchemaRevision,
-				PublishedBy: snapshot.PublishedBy, PublishedByName: name, PublishedAt: snapshot.PublishedAt,
-				ChangedKeys:    changedKeys(changes),
-				PayloadPresent: snapshot.PayloadPresent(), CollectedPolicy: snapshot.CollectionPolicy(),
-			})
-		}
-		return nil
+		out, err = historyPage(ctx, r.Snapshots(), az, p, beforeRevision, limit)
+		return err
 	})
 	if err != nil {
 		return nil, err
+	}
+	return out, nil
+}
+
+// historyPage builds one page of lineage views under an already-authorized
+// proof: the page's snapshot headers, then every change row of the page's
+// revision range in one read, grouped by revision in memory.
+func historyPage(ctx context.Context, snapshots store.SnapshotReader, az *authz.TxAuthorizer, p authz.Proof,
+	beforeRevision int64, limit int) ([]RevisionView, error) {
+	page, err := snapshots.ListPage(ctx, p, beforeRevision, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RevisionView, 0, len(page))
+	if len(page) == 0 {
+		return out, nil
+	}
+	// ListPage is newest first: the range is [last, first].
+	changes, err := snapshots.ChangesInRange(ctx, p, page[len(page)-1].Revision, page[0].Revision)
+	if err != nil {
+		return nil, err
+	}
+	byRevision := make(map[int64][]store.RevisionKeyChange, len(page))
+	for _, change := range changes {
+		byRevision[change.Revision] = append(byRevision[change.Revision], change)
+	}
+	names := newPrincipalNames()
+	for _, snapshot := range page {
+		name, err := names.get(ctx, az, domain.PrincipalID(snapshot.PublishedBy))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, RevisionView{
+			Revision: snapshot.Revision, SchemaRevision: snapshot.SchemaRevision,
+			PublishedBy: snapshot.PublishedBy, PublishedByName: name, PublishedAt: snapshot.PublishedAt,
+			ChangedKeys:    changedKeys(byRevision[snapshot.Revision]),
+			PayloadPresent: snapshot.PayloadPresent(), CollectedPolicy: snapshot.CollectionPolicy(),
+		})
 	}
 	return out, nil
 }

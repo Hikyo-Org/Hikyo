@@ -3,7 +3,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearNotification, notifyFailure, ToastViewport } from '../app/notifications.tsx';
-import { renderForm, settle } from '../testkit/renderForm.tsx';
+import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { AccountSecurity } from './AccountSecurity.tsx';
 
 vi.mock('./AccountProfile.tsx', () => ({ AccountProfile: () => null }));
@@ -12,6 +12,9 @@ const authProviders = vi.hoisted(() => {
   const values: { kind: string; slug: string; display_name: string }[] = [];
   return { values };
 });
+
+const factor = vi.hoisted(() => ({ confirmed: false }));
+const passkeyMutations = vi.hoisted(() => ({ enrol: vi.fn(), remove: vi.fn() }));
 
 vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({
@@ -35,7 +38,7 @@ vi.mock('../api/account.ts', async (importActual) => {
       data: { providers: authProviders.values },
     }),
     useConfirmTotp: mutation,
-    useEnrolPasskey: mutation,
+    useEnrolPasskey: () => ({ isPending: false, mutate: passkeyMutations.enrol }),
     useEnrolTotpStart: mutation,
     useIdentities: () => ({
       isError: false,
@@ -47,17 +50,21 @@ vi.mock('../api/account.ts', async (importActual) => {
       isPending: false,
       isError: false,
       isSuccess: true,
-      data: { passkeys: [] },
+      data: {
+        passkeys: [
+          { id: 'wacred_1', label: 'passkey', discoverable: true, disabled: false, created_at: '2026-08-24T12:00:00Z', last_used_at: null },
+        ],
+      },
     }),
     useRegenerateRecoveryCodes: () => ({ ...mutation(), codes: null, dismiss: vi.fn() }),
-    useRemovePasskey: mutation,
+    useRemovePasskey: () => ({ isPending: false, mutate: passkeyMutations.remove }),
     useRemoveTotp: mutation,
     useTotpStatus: () => ({
       isPending: false,
       isFetching: false,
       isError: false,
       isSuccess: true,
-      data: { confirmed: false, pending: false },
+      data: { confirmed: factor.confirmed, pending: false },
     }),
     useUnlinkIdentity: mutation,
   };
@@ -92,6 +99,9 @@ let unmount: (() => Promise<void>) | undefined;
 beforeEach(() => {
   clearNotification();
   authProviders.values.length = 0;
+  factor.confirmed = false;
+  passkeyMutations.enrol.mockReset();
+  passkeyMutations.remove.mockReset();
 });
 
 afterEach(async () => {
@@ -152,4 +162,70 @@ it('preserves unknown provider kinds without starting an unsupported link flow',
   expect(known?.disabled).toBe(false);
   await act(async () => future?.click());
   expect(rendered.container.querySelector('[role="dialog"]')).toBeNull();
+});
+
+/**
+ * The passkey proof dialog asks for the class the server will accept
+ * (possession-first): the authenticator code where a confirmed factor stands,
+ * the password otherwise, and sends that class and nothing else.
+ */
+describe('passkey proof selection', () => {
+  async function submitProof(open: string, value: string) {
+    const rendered = await renderForm(<AccountSecurity />);
+    unmount = rendered.unmount;
+    const trigger = rendered.container.querySelector(`button[aria-label="${open}"]`);
+    if (!(trigger instanceof HTMLButtonElement)) {
+      throw new Error(`no ${open} button`);
+    }
+    await act(async () => trigger.click());
+    const input = rendered.container.querySelector('dialog form input');
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error('the proof dialog has no input');
+    }
+    const label = rendered.container.querySelector(`label[for="${input.id}"]`);
+    const form = input.closest('form');
+    if (form === null) {
+      throw new Error('the proof input is outside its form');
+    }
+    await act(async () => typeInto(input, value));
+    await act(async () => {
+      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    await settle();
+    return { input, label: label?.textContent ?? '' };
+  }
+
+  it('asks for the password and sends it when no factor is confirmed', async () => {
+    const { input, label } = await submitProof('Add a passkey', 'existing-password');
+    expect(label).toBe('Password');
+    expect(input.type).toBe('password');
+    expect(input.autocomplete).toBe('current-password');
+    expect(passkeyMutations.enrol).toHaveBeenCalledWith(
+      { proof: { kind: 'password', password: 'existing-password' } },
+      expect.anything(),
+    );
+  });
+
+  it('asks for the authenticator code and sends it when a factor is confirmed', async () => {
+    factor.confirmed = true;
+    const { input, label } = await submitProof('Add a passkey', '123456');
+    expect(label).toBe('Authenticator code');
+    expect(input.type).toBe('text');
+    expect(input.inputMode).toBe('numeric');
+    expect(input.autocomplete).toBe('one-time-code');
+    expect(passkeyMutations.enrol).toHaveBeenCalledWith(
+      { proof: { kind: 'code', code: '123456' } },
+      expect.anything(),
+    );
+  });
+
+  it('removes a passkey with the same selection', async () => {
+    factor.confirmed = true;
+    const { label } = await submitProof('Remove passkey passkey', '654321');
+    expect(label).toBe('Authenticator code');
+    expect(passkeyMutations.remove).toHaveBeenCalledWith(
+      { id: 'wacred_1', proof: { kind: 'code', code: '654321' } },
+      expect.anything(),
+    );
+  });
 });

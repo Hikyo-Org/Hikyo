@@ -130,7 +130,7 @@ test.describe('account and security', () => {
     await page.getByRole('button', { name: 'Add a passkey' }).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog.getByRole('heading', { name: 'Confirm it is you' })).toBeVisible();
-    await expect(dialog).toContainText('the new one never authorises itself');
+    await expect(dialog).toContainText('The new passkey never authorises itself');
     // Escape is the platform's, and it must reach the caller rather than
     // leaving the page with an invisible open dialog.
     await page.keyboard.press('Escape');
@@ -259,6 +259,10 @@ test.describe('account and security', () => {
     test.use({ passkeyCredential: 'empty' });
 
     test('reports the existing TOTP factor and enrols then removes an additional passkey', async ({ passkeyPage: page }) => {
+      // Two possession-first ceremonies, each spending a single-use TOTP code,
+      // so the second waits out the current 30s step before it can mint a fresh
+      // one: a deterministic span of the factor's own period, not a flaky race.
+      test.slow();
       // The factor state is now readable: the suite's administrator has a
       // confirmed authenticator, and the panel reports it rather than
       // disclaiming knowledge.
@@ -268,11 +272,14 @@ test.describe('account and security', () => {
       await expect(page.getByRole('button', { name: 'enrol' })).toHaveCount(0);
       await expect(page.locator('.enrolment')).toHaveCount(0);
 
+      // Both mutations are proved possession-first: the account holds a
+      // confirmed authenticator, so the dialog asks for its code and the server
+      // refuses a password. Each ceremony spends a fresh step from the ledger.
       const rows = page.locator('#account-factors .account-passkey');
       const before = await rows.count();
       await page.getByRole('button', { name: 'Add a passkey' }).click();
       const addProof = page.getByRole('dialog');
-      await addProof.getByLabel('Password').fill(ADMIN.password);
+      await addProof.getByLabel('Authenticator code').fill(await nextTotpCode());
       await addProof.getByRole('button', { name: 'Confirm' }).click();
       await expect(rows).toHaveCount(before + 1);
       await expect(page.getByRole('status').filter({ hasText: 'Passkey enrolled' })).toBeVisible();
@@ -281,7 +288,7 @@ test.describe('account and security', () => {
       await expect(added).toContainText('added');
       await added.getByRole('button', { name: /Remove passkey/ }).click();
       const removeProof = page.getByRole('dialog');
-      await removeProof.getByLabel('Password').fill(ADMIN.password);
+      await removeProof.getByLabel('Authenticator code').fill(await nextTotpCode());
       await removeProof.getByRole('button', { name: 'Confirm' }).click();
       await expect(rows).toHaveCount(before);
       await expect(page.getByRole('status').filter({ hasText: 'Passkey removed' })).toBeVisible();
@@ -298,6 +305,10 @@ test.describe('account and security', () => {
    * that file.
    */
   test('replaces the recovery codes and shows them exactly once', async ({ passkeyPage: page }) => {
+      // Runs right after the two passkey ceremonies spent this account's next
+      // two TOTP steps, so this proof's fresh code busy-waits out the current
+      // step: the same deterministic factor-period span, not a flaky race.
+      test.slow();
       await page.getByRole('button', { name: 'Replace recovery codes' }).click();
       const proof = page.getByRole('dialog');
       await expect(proof).toContainText('never authorise their own regeneration');

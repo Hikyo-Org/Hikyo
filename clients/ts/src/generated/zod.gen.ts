@@ -1890,7 +1890,8 @@ export const zRevision = z.object({
 
 export const zRevisionList = z.object({
     items: z.array(zRevision),
-    count: z.int()
+    count: z.int(),
+    next_before: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
 });
 
 export const zDeclareValuesRequest = z.object({
@@ -2648,9 +2649,14 @@ export const zWebauthnOptions = z.record(z.string(), z.unknown());
 export const zWebauthnResponse = z.record(z.string(), z.unknown());
 
 /**
- * The account-security proof, where the account has one to give. Both
- * members are optional so a passwordless, factorless account can open a
- * ceremony; the service enforces which proof it requires.
+ * The account-security proof, selected possession-first over the
+ * account's pre-existing credentials: where a confirmed TOTP factor
+ * stands, `code` is required and a password alone is refused (400);
+ * where none does, `password` is required. Never the passkey being
+ * added. Both members are optional on the wire because the client may
+ * not know the factor state; the service enforces the selection, and
+ * the field it did not select is ignored. A TOTP code is spent when the
+ * ceremony is staged, so the same code cannot open a second ceremony.
  *
  */
 export const zWebauthnEnrolStartRequest = z.object({
@@ -2716,9 +2722,13 @@ export const zWebauthnReauthStartRequest = z.object({
 });
 
 /**
- * The account-security proof for removing a credential — the pre-existing
- * password or a TOTP code, never the credential being removed (B7). Both
- * optional; the service selects and enforces the required proof.
+ * The account-security proof for removing a credential, selected
+ * possession-first over the pre-existing credentials: where a confirmed
+ * TOTP factor stands, `code` is required and a password alone is refused
+ * (400); where none does, `password` is required. Never the credential
+ * being removed (B7). Both optional on the wire; the service enforces
+ * the selection and spends a TOTP code inside the removal itself, so the
+ * same code cannot remove a second credential.
  *
  */
 export const zWebauthnCredentialProofRequest = z.object({
@@ -3592,6 +3602,19 @@ export const zAuditToSeq = z.coerce.bigint().gte(BigInt(0)).max(BigInt('92233720
  *
  */
 export const zAuditLimit = z.int().gte(1).lte(1000).default(100);
+
+/**
+ * Page cursor, exclusive: return revisions strictly below this number.
+ * Omit it for the first page (the newest revisions); pass the previous
+ * page's `next_before` to continue.
+ *
+ */
+export const zRevisionBefore = z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' });
+
+/**
+ * Maximum revisions returned on this page.
+ */
+export const zRevisionLimit = z.int().gte(1).lte(500).default(100);
 
 /**
  * Match only events whose acting principal has this id (exact).
@@ -5938,6 +5961,11 @@ export const zListRevisionsPath = z.object({
     org: zId,
     project: zId,
     environment: zId
+});
+
+export const zListRevisionsQuery = z.object({
+    before: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    limit: z.int().gte(1).lte(500).optional().default(100)
 });
 
 /**

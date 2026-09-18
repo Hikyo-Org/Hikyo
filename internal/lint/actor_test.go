@@ -4,6 +4,8 @@ import (
 	"go/ast"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 // The transport may not name service.LocalPrincipal.
@@ -17,35 +19,33 @@ import (
 //
 // This is the check that keeps the Actor split a rule rather than a habit.
 func TestTransportCannotConstructALocalPrincipal(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	const forbidden = "LocalPrincipal"
-	for _, p := range pkgs {
-		path := strings.TrimSuffix(p.PkgPath, ".test")
-		if path != Module+"/internal/server" {
-			continue
-		}
-		if p.TypesInfo == nil {
-			t.Fatalf("no type information for %s", path)
-		}
-		for _, file := range p.Syntax {
-			ast.Inspect(file, func(n ast.Node) bool {
-				sel, ok := n.(*ast.SelectorExpr)
-				if !ok || sel.Sel.Name != forbidden {
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		const forbidden = "LocalPrincipal"
+		for _, p := range pkgs {
+			path := strings.TrimSuffix(p.PkgPath, ".test")
+			if path != Module+"/internal/server" {
+				continue
+			}
+			if p.TypesInfo == nil {
+				t.Fatalf("no type information for %s", path)
+			}
+			for _, file := range p.Syntax {
+				ast.Inspect(file, func(n ast.Node) bool {
+					sel, ok := n.(*ast.SelectorExpr)
+					if !ok || sel.Sel.Name != forbidden {
+						return true
+					}
+					obj, ok := p.TypesInfo.Uses[sel.Sel]
+					if !ok || obj.Pkg() == nil {
+						return true
+					}
+					if obj.Pkg().Path() == Module+"/internal/service" {
+						t.Errorf("%s: %s names service.%s — the transport must hand over the raw artifact and let the service resolve it in-transaction",
+							p.Fset.Position(sel.Pos()), path, forbidden)
+					}
 					return true
-				}
-				obj, ok := p.TypesInfo.Uses[sel.Sel]
-				if !ok || obj.Pkg() == nil {
-					return true
-				}
-				if obj.Pkg().Path() == Module+"/internal/service" {
-					t.Errorf("%s: %s names service.%s — the transport must hand over the raw artifact and let the service resolve it in-transaction",
-						p.Fset.Position(sel.Pos()), path, forbidden)
-				}
-				return true
-			})
+				})
+			}
 		}
-	}
+	})
 }

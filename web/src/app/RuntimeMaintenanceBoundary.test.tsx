@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
-import { act, useState } from 'react';
+import { act, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderForm, settle } from '../testkit/renderForm.tsx';
@@ -56,7 +56,9 @@ describe('runtime interruption', () => {
     const queries = new QueryClient();
     function Probe() {
       const [failure, setFailure] = useState<Error | null>(null);
-      changeFailure = setFailure;
+      useEffect(() => {
+        changeFailure = setFailure;
+      }, []);
       return <RuntimeMaintenanceBoundary failure={failure} refreshSession={refresh} queries={queries}>
         <input defaultValue="Preserved draft" />
       </RuntimeMaintenanceBoundary>;
@@ -183,7 +185,9 @@ describe('runtime interruption', () => {
     }));
     function Probe() {
       const auth = useAuth();
-      supersede = auth.refreshSession;
+      useEffect(() => {
+        supersede = auth.refreshSession;
+      }, [auth.refreshSession]);
       return <SessionProbe />;
     }
     const result = await renderForm(<AuthProvider monitorRuntime><Probe /></AuthProvider>);

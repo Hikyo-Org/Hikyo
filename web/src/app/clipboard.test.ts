@@ -24,6 +24,22 @@ describe('writeExpiringClipboard', () => {
     expect(writeText).toHaveBeenNthCalledWith(2, '');
   });
 
+  it('never clears an ordinary (non-audited) copy, matching its microcopy', async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn(() => Promise.resolve());
+    const readText = vi.fn(() => Promise.resolve('LOG_LEVEL=debug'));
+    vi.stubGlobal('navigator', { clipboard: { writeText, readText } });
+    vi.stubGlobal('document', { hasFocus: () => true });
+
+    await expect(writeExpiringClipboard('LOG_LEVEL=debug', false)).resolves.toBe(
+      'Copied. This value is not a secret, so no disclosure was recorded.',
+    );
+    await vi.advanceTimersByTimeAsync(45_000);
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(readText).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['the clipboard now holds something else', () => Promise.resolve('other')],
     ['the clipboard cannot be read', () => Promise.reject(new Error('denied'))],

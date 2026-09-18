@@ -1,5 +1,5 @@
 import { useIsMutating } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import {
@@ -40,6 +40,7 @@ import {
   type SettingsOperation,
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
@@ -75,20 +76,11 @@ export function ProjectSettings() {
   const remove = useDeleteProject(org, () => navigate(surfaceById('projects').path));
   const nameId = useId();
 
-  const [name, setName] = useState('');
   const feedback = useFeedback(settingsFailureText);
 
   const current = projectQuery.data;
   const canManagePolicy = current?.can_manage_policy === true;
   const canDelete = current?.can_delete === true;
-  useEffect(() => {
-    setName('');
-  }, [org, project]);
-  useEffect(() => {
-    if (current !== undefined) {
-      setName(current.name);
-    }
-  }, [current]);
 
   const report = (operation: SettingsOperation, error: unknown) => {
     feedback.report(settingsOperationFailure(operation, error));
@@ -135,22 +127,21 @@ export function ProjectSettings() {
         <div className="settings-grid">
           <div className="field">
             <label htmlFor={nameId}>Name</label>
-            <input
-              id={nameId}
-              value={name}
-              disabled={current === undefined}
-              onChange={(event) => setName(event.target.value)}
-              onBlur={() => {
-                if (current === undefined || name === '' || name === current.name) return;
-                rename.mutate(
-                  { project, name },
-                  {
-                    onSuccess: (result) => feedback.ok(`Renamed to ${result.name}.`),
-                    onError: (error) => report('rename-project', error),
-                  },
-                );
-              }}
-            />
+            {current === undefined ? (
+              <input id={nameId} disabled />
+            ) : (
+              // Remount on org/project switch: a half-typed draft never carries
+              // into another project, and a refetch no longer clobbers typing.
+              <NameEditor
+                key={`${org}/${project}`}
+                id={nameId}
+                project={project}
+                current={current}
+                rename={rename}
+                onRenamed={(renamed) => feedback.ok(`Renamed to ${renamed}.`)}
+                onFail={(error) => report('rename-project', error)}
+              />
+            )}
           </div>
         </div>
       </Panel>
@@ -319,6 +310,48 @@ export function ProjectSettings() {
 }
 
 /**
+ * The project name field. Keyed on org/project so switching either remounts
+ * it: `draft` (the uncommitted edit) starts undefined and the shown value
+ * derives from it or the loaded name, so a background refetch never clobbers
+ * typing.
+ */
+function NameEditor({
+  id,
+  project,
+  current,
+  rename,
+  onRenamed,
+  onFail,
+}: {
+  id: string;
+  project: string;
+  current: NonNullable<ReturnType<typeof useProject>['data']>;
+  rename: ReturnType<typeof useRenameProject>;
+  onRenamed: (name: string) => void;
+  onFail: (error: unknown) => void;
+}) {
+  const [draft, setDraft] = useState<string | undefined>(undefined);
+  const name = draft ?? current.name;
+  return (
+    <input
+      id={id}
+      value={name}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (name === '' || name === current.name) return;
+        rename.mutate(
+          { project, name },
+          {
+            onSuccess: (result) => onRenamed(result.name),
+            onError: (error) => onFail(error),
+          },
+        );
+      }}
+    />
+  );
+}
+
+/**
  * ProjectCryptoMaintenance exposes the project-scoped half of the remotely
  * operable cryptographic jobs (#503): rotate this project's DEK, then walk its
  * ciphertext onto the new version. The two are paired, a DEK rotation is
@@ -424,9 +457,9 @@ function DefinitionsPolicy({
   const sourceId = useId();
   const [source, setSource] = useState(settings.definitions_source);
 
-  useEffect(() => {
+  useResetOnChange(settings.definitions_source, () => {
     setSource(settings.definitions_source);
-  }, [settings.definitions_source]);
+  });
 
   return (
     <div className="settings-row">

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -450,23 +452,15 @@ func pinnedHistoricalSecrets(ctx context.Context, r store.Repos, p authz.Proof,
 
 // stickySecretValueEntries identifies value occurrences that have ever been
 // materialized as secret. The payload-free lineage survives snapshot payload
-// collection, so reclassification and GC cannot launder an occurrence.
+// collection, so reclassification and GC cannot launder an occurrence. Only
+// the candidates are looked up; the lifetime history is never enumerated.
 func stickySecretValueEntries(ctx context.Context, r store.Repos, p authz.Proof,
 	valueEntryIDs map[string]struct{}) (map[string]bool, error) {
-	out := make(map[string]bool, len(valueEntryIDs))
 	if len(valueEntryIDs) == 0 {
-		return out, nil
+		return map[string]bool{}, nil
 	}
-	secretIDs, err := r.Snapshots().SecretValueOccurrenceIDs(ctx, p)
-	if err != nil {
-		return nil, err
-	}
-	for _, valueEntryID := range secretIDs {
-		if _, relevant := valueEntryIDs[valueEntryID]; relevant {
-			out[valueEntryID] = true
-		}
-	}
-	return out, nil
+	candidates := slices.Sorted(maps.Keys(valueEntryIDs))
+	return r.Snapshots().SecretValueOccurrenceIDsIn(ctx, p, candidates)
 }
 
 func auditSnapshotDisclosure(ctx context.Context, trail store.AuditRepo, p authz.Proof,

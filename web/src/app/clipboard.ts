@@ -31,14 +31,23 @@ async function clearClipboardIfStill(expected: string): Promise<void> {
   if (current === expected) await writeClipboard('');
 }
 
-/** Copy a value with the prototype's honest best-effort expiry microcopy. */
+/**
+ * Copy a value with the prototype's honest best-effort expiry microcopy.
+ *
+ * Expiry is a SECRET measure: only an audited (secret) copy schedules the
+ * clear, so the microcopy below stays truthful for both branches. An ordinary
+ * config value is already on screen under plain read, and wiping it from the
+ * clipboard 45 seconds later would surprise the human for no protection.
+ */
 export async function writeExpiringClipboard(text: string, audited: boolean): Promise<string> {
   if ((await writeClipboard(text)) === 'refused') {
     return 'This browser refused clipboard access, so nothing was copied.';
   }
-  globalThis.setTimeout(() => {
-    if (document.hasFocus()) void clearClipboardIfStill(text);
-  }, CLIPBOARD_CLEAR_MS);
+  if (audited) {
+    globalThis.setTimeout(() => {
+      if (document.hasFocus()) void clearClipboardIfStill(text);
+    }, CLIPBOARD_CLEAR_MS);
+  }
   return audited
     ? 'Copied, and recorded as a disclosure. Cleared in 45s if this tab stays focused. The OS may keep clipboard history.'
     : 'Copied. This value is not a secret, so no disclosure was recorded.';

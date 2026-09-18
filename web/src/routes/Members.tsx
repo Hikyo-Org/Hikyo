@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
@@ -248,17 +248,17 @@ export function Members({ scope }: { scope: MembersScope }) {
 
   // The safe default is computed from the topology, so it can only settle once
   // the environments, and their protection, have actually been read.
-  useEffect(() => {
-    if (modal === 'grant' && topologyReady && draft.scope === '' && grantOptions.length > 0) {
-      // Instance scope has one option and nothing narrower to prefer, so it
-      // IS the safe default; everywhere else the narrowest confirmed-unprotected
-      // environment wins, or nothing does.
-      const safe = instance ? instanceOption.value : defaultScopeValue(grantOptions);
-      if (safe !== '') {
-        setDraft((current) => (current.scope === '' ? { ...current, scope: safe } : current));
-      }
-    }
-  }, [draft.scope, grantOptions, instance, instanceOption.value, modal, topologyReady]);
+  // Instance scope has one option and nothing narrower to prefer, so it IS the
+  // safe default; everywhere else the narrowest confirmed-unprotected
+  // environment wins, or nothing does ('').
+  const safeGrantScope =
+    grantOptions.length === 0 ? '' : instance ? instanceOption.value : defaultScopeValue(grantOptions);
+  // The grant modal's scope defaults to the safe topology-derived option, but
+  // only once the topology has been read (a premature default is exactly what
+  // the guard prevented). A user's explicit pick — the raw draft.scope — always
+  // wins; the raw draft stays untouched so clearing it falls back to the
+  // default again, as the old effect did on re-fire.
+  const effectiveScope = draft.scope || (topologyReady ? safeGrantScope : '');
 
   const onRevoke = (grant: Grant) => {
     feedback.clear();
@@ -581,6 +581,7 @@ export function Members({ scope }: { scope: MembersScope }) {
           options={grantOptions}
           projectContext={compactPresentation}
           draft={draft}
+          effectiveScope={effectiveScope}
           stage={modal}
           projects={topology.projects}
           topologyReady={topologyReady}
@@ -842,6 +843,7 @@ function GrantModal({
   orgName,
   options,
   draft,
+  effectiveScope,
   stage,
   projects,
   topologyReady,
@@ -857,6 +859,8 @@ function GrantModal({
   orgName: string;
   options: readonly ScopeOption[];
   draft: GrantDraft;
+  /** The parent's topology-defaulted scope: raw draft.scope, else the safe default once ready. */
+  effectiveScope: string;
   stage: 'grant' | 'blast';
   projects: ReturnType<typeof useOrgTopology>['projects'];
   topologyReady: boolean;
@@ -875,7 +879,7 @@ function GrantModal({
   const principalId = useId();
   const [enterPrincipalId, setEnterPrincipalId] = useState(false);
 
-  const chosen = optionByValue(options, draft.scope);
+  const chosen = optionByValue(options, effectiveScope);
   const atoms = projectContext && prototypeMode
     ? projectGrantCapabilities.flatMap((id) =>
         capabilitiesAt('org').filter((atom) => atom.id === id),
@@ -1228,7 +1232,7 @@ function GrantModal({
 
       <Select
         label="Scope"
-        value={draft.scope}
+        value={effectiveScope}
         onChange={(event) => {
           const next = optionByValue(options, event.target.value);
           if (next === undefined) {

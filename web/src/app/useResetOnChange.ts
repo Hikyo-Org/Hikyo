@@ -1,0 +1,20 @@
+import { useState } from 'react';
+
+/**
+ * Runs `reset` during render whenever `signature` changes, the React-documented
+ * alternative to a reset effect (which the hooks lint forbids and which would
+ * paint a stale value for one frame). `signature` must be a primitive that
+ * captures the identity to watch; build it from the parts with a NUL ('\u0000')
+ * separator so no part's contents can spoof a boundary.
+ *
+ * It does NOT run on mount (the first render seeds `previous === signature`), so
+ * any state the old effect also initialised on mount must be seeded in its
+ * `useState` initialiser; this hook only handles the change.
+ */
+export function useResetOnChange(signature: string, reset: () => void): void {
+  const [previous, setPrevious] = useState(signature);
+  if (previous !== signature) {
+    setPrevious(signature);
+    reset();
+  }
+}

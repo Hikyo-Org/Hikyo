@@ -238,6 +238,12 @@ func actorNameKeep(ctx context.Context, az *authz.TxAuthorizer, f store.AuditFil
 // page is materialized, the query event inserted, and both commit in one
 // transaction — the event is durable before any byte of the response exists
 // outside it.
+//
+// Interactive pages are ordered by the allocation seq. A transaction that
+// commits out of allocation order can land below a cursor that already passed
+// it, so that event can be absent from the remainder of one paging session; it
+// is durable and a fresh query recovers it. Export is the gap-free surface: it
+// pages in commit order behind the writer barrier.
 func (s *Audits) Query(ctx context.Context, principal domain.PrincipalID, scope domain.Scope, f store.AuditFilter) (AuditPage, error) {
 	// Commit order is export-only. Ignore internal cursor fields if a caller
 	// constructs AuditFilter directly instead of using an API decoder.

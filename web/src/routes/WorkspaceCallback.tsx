@@ -24,15 +24,19 @@ import { Button } from '../ui/Button.tsx';
  * one's.
  */
 export function WorkspaceCallback() {
-  const [failure, setFailure] = useState<string | null>(null);
+  const params = new URLSearchParams(globalThis.location.search);
+  const code = params.get('code') ?? '';
+  const state = params.get('state') ?? '';
+  // A missing handoff result is a fact of the URL this page was opened with, so
+  // it is derived during render rather than written from the effect.
+  const failure =
+    code === '' || state === ''
+      ? 'This page was opened without a handoff result. Close it and start again.'
+      : null;
   const [stayedOpen, setStayedOpen] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(globalThis.location.search);
-    const code = params.get('code') ?? '';
-    const state = params.get('state') ?? '';
     if (code === '' || state === '') {
-      setFailure('This page was opened without a handoff result. Close it and start again.');
       return;
     }
     const channel = new BroadcastChannel(channelName(state));
@@ -42,14 +46,13 @@ export function WorkspaceCallback() {
     // script did not open, and that is a cosmetic failure rather than a
     // functional one, the shell already has what it needs.
     globalThis.close();
-    setFailure(null);
     // A refused close() leaves the window open with no error to read; the
     // page checks after the close settles and says so instead of waiting.
     const check = globalThis.setTimeout(() => {
       if (!globalThis.closed) setStayedOpen(true);
     }, 0);
     return () => globalThis.clearTimeout(check);
-  }, []);
+  }, [code, state]);
 
   return (
     <main className="login">

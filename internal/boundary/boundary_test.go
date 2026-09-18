@@ -6,9 +6,14 @@ package boundary
 
 import (
 	"encoding/json"
+	"errors"
 	"os/exec"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/lint"
 )
 
 const module = "github.com/Hikyo-Org/hikyo"
@@ -146,16 +151,45 @@ var ageImporters = map[string]bool{
 
 type pkg struct {
 	ImportPath   string
+	GoFiles      []string
 	Imports      []string
 	TestImports  []string
 	XTestImports []string
 }
 
-func loadPackages(t *testing.T) []pkg {
+var (
+	loadMu     sync.Mutex
+	loadedPkgs = map[string][]pkg{}
+)
+
+// loadPackagesIn lists the module under one analysis context with an explicit
+// environment (ambient GOFLAGS cleared, GOOS pinned when the context names
+// one), cached per context for the test process.
+func loadPackagesIn(t *testing.T, ctx lint.BuildContext) []pkg {
 	t.Helper()
-	out, err := exec.Command("go", "list", "-json", module+"/...").Output()
+	loadMu.Lock()
+	defer loadMu.Unlock()
+	if pkgs, ok := loadedPkgs[ctx.Name]; ok {
+		return pkgs
+	}
+	args := []string{"list", "-json"}
+	args = append(args, ctx.BuildFlags...)
+	overlay, err := ctx.WriteOverlay(t.TempDir())
 	if err != nil {
-		t.Fatalf("go list: %v", err)
+		t.Fatalf("overlay for %s: %v", ctx.Name, err)
+	}
+	if overlay != "" {
+		args = append(args, "-overlay", overlay)
+	}
+	cmd := exec.Command("go", append(args, module+"/...")...)
+	cmd.Env = ctx.Env()
+	out, err := cmd.Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			t.Fatalf("go list under %s: %v\n%s", ctx.Name, err, exitErr.Stderr)
+		}
+		t.Fatalf("go list under %s: %v", ctx.Name, err)
 	}
 	var pkgs []pkg
 	dec := json.NewDecoder(strings.NewReader(string(out)))
@@ -167,9 +201,22 @@ func loadPackages(t *testing.T) []pkg {
 		pkgs = append(pkgs, p)
 	}
 	if len(pkgs) == 0 {
-		t.Fatal("go list returned no packages")
+		t.Fatalf("go list under %s returned no packages", ctx.Name)
 	}
+	loadedPkgs[ctx.Name] = pkgs
 	return pkgs
+}
+
+// eachContext runs fn over the module's packages under every supported
+// analysis context, so an import that only exists on a tagged or platform
+// source set is checked rather than left to the host's ambient build context.
+func eachContext(t *testing.T, fn func(t *testing.T, pkgs []pkg)) {
+	t.Helper()
+	for _, ctx := range lint.Contexts {
+		t.Run(ctx.Name, func(t *testing.T) {
+			fn(t, loadPackagesIn(t, ctx))
+		})
+	}
 }
 
 // allImports covers production and test imports alike — a test file in
@@ -248,58 +295,66 @@ func TestProtocolImportConfinementMatchers(t *testing.T) {
 }
 
 func TestStoreImportAllowlist(t *testing.T) {
-	for _, p := range loadPackages(t) {
-		for _, imp := range allImports(p) {
-			if matchesDependencyPrefix(imp, module+"/internal/store") {
-				if !storeImporters[p.ImportPath] {
-					t.Errorf("%s imports %s: not on the store-importer allowlist", p.ImportPath, imp)
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		for _, p := range pkgs {
+			for _, imp := range allImports(p) {
+				if matchesDependencyPrefix(imp, module+"/internal/store") {
+					if !storeImporters[p.ImportPath] {
+						t.Errorf("%s imports %s: not on the store-importer allowlist", p.ImportPath, imp)
+					}
 				}
 			}
 		}
-	}
+	})
 }
 
 // The gate must precede runtime construction. Its only production datastore
 // dependency is the leaf control package; root store is a schema fixture in tests.
 func TestUpgradeGateCannotOpenRuntimeStore(t *testing.T) {
-	for _, p := range loadPackages(t) {
-		if p.ImportPath != module+"/internal/upgradegate" && p.ImportPath != module+"/internal/upgradegate/testfixture" {
-			continue
-		}
-		for _, imp := range p.Imports {
-			if matchesDependencyPrefix(imp, module+"/internal/store") && imp != module+"/internal/store/upgrade" {
-				t.Errorf("%s imports %s: upgrade admission must not depend on runtime store or legacy migration entry points", p.ImportPath, imp)
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		for _, p := range pkgs {
+			if p.ImportPath != module+"/internal/upgradegate" && p.ImportPath != module+"/internal/upgradegate/testfixture" {
+				continue
+			}
+			for _, imp := range p.Imports {
+				if matchesDependencyPrefix(imp, module+"/internal/store") && imp != module+"/internal/store/upgrade" {
+					t.Errorf("%s imports %s: upgrade admission must not depend on runtime store or legacy migration entry points", p.ImportPath, imp)
+				}
 			}
 		}
-	}
+	})
 }
 
 func TestCryptoChokepoint(t *testing.T) {
-	for _, p := range loadPackages(t) {
-		for _, imp := range allImports(p) {
-			for _, prefix := range cryptoPrimitivePrefixes {
-				if strings.HasPrefix(imp, prefix) && !cryptoPrimitiveImporters[p.ImportPath] {
-					t.Errorf("%s imports %s: cryptographic primitives are confined to internal/crypto", p.ImportPath, imp)
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		for _, p := range pkgs {
+			for _, imp := range allImports(p) {
+				for _, prefix := range cryptoPrimitivePrefixes {
+					if strings.HasPrefix(imp, prefix) && !cryptoPrimitiveImporters[p.ImportPath] {
+						t.Errorf("%s imports %s: cryptographic primitives are confined to internal/crypto", p.ImportPath, imp)
+					}
+				}
+				if matchesDependencyPrefix(imp, "filippo.io/age") && !ageImporters[p.ImportPath] {
+					t.Errorf("%s imports %s: age is confined to internal/crypto/backup", p.ImportPath, imp)
 				}
 			}
-			if matchesDependencyPrefix(imp, "filippo.io/age") && !ageImporters[p.ImportPath] {
-				t.Errorf("%s imports %s: age is confined to internal/crypto/backup", p.ImportPath, imp)
-			}
 		}
-	}
+	})
 }
 
 // TestProtocolLibraryImportConfinement executes every declarative protocol
 // dependency rule through the same go-list import graph walker.
 func TestProtocolLibraryImportConfinement(t *testing.T) {
-	packages := loadPackages(t)
-	for _, confinement := range protocolImportConfinements {
-		t.Run(confinement.Name, func(t *testing.T) {
-			for _, violation := range confinementViolations(confinement, packages) {
-				t.Errorf("%s imports %s: %s dependencies are confined to %s", violation.Importer, violation.Dependency, confinement.Name, strings.Join(confinement.AllowedImporters, ", "))
-			}
-		})
-	}
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		packages := pkgs
+		for _, confinement := range protocolImportConfinements {
+			t.Run(confinement.Name, func(t *testing.T) {
+				for _, violation := range confinementViolations(confinement, packages) {
+					t.Errorf("%s imports %s: %s dependencies are confined to %s", violation.Importer, violation.Dependency, confinement.Name, strings.Join(confinement.AllowedImporters, ", "))
+				}
+			})
+		}
+	})
 }
 
 // scanningHashPrimitivePrefixes are the hash/HMAC primitives the runtime
@@ -333,28 +388,30 @@ var scanningHashPrimitivePrefixes = []string{
 // The check applies only when internal/scanning exists (a parallel stream
 // authors it and it may be absent at first) and does not fail on its absence.
 func TestScanningNoHashPrimitives(t *testing.T) {
-	scanning := module + "/internal/scanning"
-	generator := scanning + "/gen"
-	saw := false
-	for _, p := range loadPackages(t) {
-		if p.ImportPath != scanning && !strings.HasPrefix(p.ImportPath, scanning+"/") {
-			continue
-		}
-		if p.ImportPath == generator || strings.HasPrefix(p.ImportPath, generator+"/") {
-			continue
-		}
-		saw = true
-		for _, imp := range p.Imports {
-			for _, prefix := range scanningHashPrimitivePrefixes {
-				if imp == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(imp, prefix) {
-					t.Errorf("%s imports %s: runtime scanning code must not touch a hash/HMAC primitive — the fingerprint is computed inside internal/crypto and rule digests are generation-time constants (SS4)", p.ImportPath, imp)
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		scanning := module + "/internal/scanning"
+		generator := scanning + "/gen"
+		saw := false
+		for _, p := range pkgs {
+			if p.ImportPath != scanning && !strings.HasPrefix(p.ImportPath, scanning+"/") {
+				continue
+			}
+			if p.ImportPath == generator || strings.HasPrefix(p.ImportPath, generator+"/") {
+				continue
+			}
+			saw = true
+			for _, imp := range p.Imports {
+				for _, prefix := range scanningHashPrimitivePrefixes {
+					if imp == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(imp, prefix) {
+						t.Errorf("%s imports %s: runtime scanning code must not touch a hash/HMAC primitive — the fingerprint is computed inside internal/crypto and rule digests are generation-time constants (SS4)", p.ImportPath, imp)
+					}
 				}
 			}
 		}
-	}
-	if !saw {
-		t.Log("internal/scanning not present yet; the hash-primitive ban applies once it exists")
-	}
+		if !saw {
+			t.Log("internal/scanning not present yet; the hash-primitive ban applies once it exists")
+		}
+	})
 }
 
 // TestMCPTelemetryBoundary keeps the secret-bearing MCP adapter away from log,
@@ -362,21 +419,23 @@ func TestScanningNoHashPrimitives(t *testing.T) {
 // and metric outputs; this import boundary proves there is no hidden tracing
 // path beside those observed surfaces.
 func TestMCPTelemetryBoundary(t *testing.T) {
-	const mcpPackage = module + "/internal/mcpserver"
-	for _, p := range loadPackages(t) {
-		if p.ImportPath != mcpPackage {
-			continue
-		}
-		for _, imp := range allImports(p) {
-			for _, forbiddenPrefix := range []string{"log/slog", "go.opentelemetry.io/", "github.com/prometheus/"} {
-				if imp == strings.TrimSuffix(forbiddenPrefix, "/") || strings.HasPrefix(imp, forbiddenPrefix) {
-					t.Errorf("%s imports telemetry sink %s: MCP secret boundary must stay sink-free", p.ImportPath, imp)
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		const mcpPackage = module + "/internal/mcpserver"
+		for _, p := range pkgs {
+			if p.ImportPath != mcpPackage {
+				continue
+			}
+			for _, imp := range allImports(p) {
+				for _, forbiddenPrefix := range []string{"log/slog", "go.opentelemetry.io/", "github.com/prometheus/"} {
+					if imp == strings.TrimSuffix(forbiddenPrefix, "/") || strings.HasPrefix(imp, forbiddenPrefix) {
+						t.Errorf("%s imports telemetry sink %s: MCP secret boundary must stay sink-free", p.ImportPath, imp)
+					}
 				}
 			}
+			return
 		}
-		return
-	}
-	t.Fatal("internal/mcpserver package missing")
+		t.Fatal("internal/mcpserver package missing")
+	})
 }
 
 func packageWithin(path, prefix string) bool {
@@ -385,25 +444,27 @@ func packageWithin(path, prefix string) bool {
 }
 
 func TestForbiddenEdges(t *testing.T) {
-	for _, p := range loadPackages(t) {
-		for _, rule := range forbidden {
-			if !packageWithin(p.ImportPath, rule.importer) {
-				continue
-			}
-			for _, imp := range allImports(p) {
-				// An external test package (`package foo_test`) importing the
-				// package under test is not a dependency edge — it is the
-				// same package seen from outside, and counting it would make
-				// every leaf package unable to have a black-box test.
-				if imp == p.ImportPath {
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		for _, p := range pkgs {
+			for _, rule := range forbidden {
+				if !packageWithin(p.ImportPath, rule.importer) {
 					continue
 				}
-				if packageWithin(imp, rule.imports) {
-					t.Errorf("%s imports %s: %s", p.ImportPath, imp, rule.why)
+				for _, imp := range allImports(p) {
+					// An external test package (`package foo_test`) importing the
+					// package under test is not a dependency edge — it is the
+					// same package seen from outside, and counting it would make
+					// every leaf package unable to have a black-box test.
+					if imp == p.ImportPath {
+						continue
+					}
+					if packageWithin(imp, rule.imports) {
+						t.Errorf("%s imports %s: %s", p.ImportPath, imp, rule.why)
+					}
 				}
 			}
 		}
-	}
+	})
 }
 
 // TestAuthnImportAllowlist enforces the resolution surface's boundary in
@@ -412,28 +473,65 @@ func TestForbiddenEdges(t *testing.T) {
 // the repository layer (which would create a cycle through authz) and never
 // anything upward.
 func TestAuthnImportAllowlist(t *testing.T) {
-	authn := module + "/internal/store/authn"
-	allowedImports := map[string]bool{
-		module + "/internal/domain": true,
-		// Closed federation-key-source vocabulary shared with oidcfed. This leaf
-		// performs no fetch, service, authorization, or persistence work.
-		module + "/internal/jwkssource":      true,
-		module + "/internal/store/sqlitegen": true,
-		module + "/internal/store/pggen":     true,
-		// The audit vocabulary (leaf) and the shared Row→params mapping, for
-		// the denial writer — one of the surface's pinned write paths (audit-model
-		// ADR amendment part 4).
-		module + "/internal/audit":          true,
-		module + "/internal/store/auditrow": true,
-	}
-	for _, p := range loadPackages(t) {
-		for _, imp := range allImports(p) {
-			if imp == authn && !authnImporters[p.ImportPath] {
-				t.Errorf("%s imports %s: not on the authn-importer allowlist", p.ImportPath, imp)
-			}
-			if p.ImportPath == authn && strings.HasPrefix(imp, module+"/") && !allowedImports[imp] {
-				t.Errorf("%s imports %s: the resolution surface builds on generated queries and leaf domain vocabularies only", p.ImportPath, imp)
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		authn := module + "/internal/store/authn"
+		allowedImports := map[string]bool{
+			module + "/internal/domain": true,
+			// Closed federation-key-source vocabulary shared with oidcfed. This leaf
+			// performs no fetch, service, authorization, or persistence work.
+			module + "/internal/jwkssource":      true,
+			module + "/internal/store/sqlitegen": true,
+			module + "/internal/store/pggen":     true,
+			// The audit vocabulary (leaf) and the shared Row→params mapping, for
+			// the denial writer — one of the surface's pinned write paths (audit-model
+			// ADR amendment part 4).
+			module + "/internal/audit":          true,
+			module + "/internal/store/auditrow": true,
+		}
+		for _, p := range pkgs {
+			for _, imp := range allImports(p) {
+				if imp == authn && !authnImporters[p.ImportPath] {
+					t.Errorf("%s imports %s: not on the authn-importer allowlist", p.ImportPath, imp)
+				}
+				if p.ImportPath == authn && strings.HasPrefix(imp, module+"/") && !allowedImports[imp] {
+					t.Errorf("%s imports %s: the resolution surface builds on generated queries and leaf domain vocabularies only", p.ImportPath, imp)
+				}
 			}
 		}
+	})
+}
+
+// The contexts select the source sets they exist for: the ui context lists
+// the embedded web asset file, the windows context lists a windows-only file,
+// and the default context lists neither.
+func TestContextsListTaggedAndPlatformFiles(t *testing.T) {
+	files := func(t *testing.T, name, importPath string) []string {
+		t.Helper()
+		for _, ctx := range lint.Contexts {
+			if ctx.Name != name {
+				continue
+			}
+			for _, p := range loadPackagesIn(t, ctx) {
+				if p.ImportPath == importPath {
+					return p.GoFiles
+				}
+			}
+			t.Fatalf("%s not listed under %s", importPath, name)
+		}
+		t.Fatalf("no context named %s", name)
+		return nil
+	}
+	webui, durability := module+"/internal/webui", module+"/internal/filedurability"
+	if got := files(t, "default", webui); slices.Contains(got, "embedded.go") || !slices.Contains(got, "absent.go") {
+		t.Fatalf("default context webui files = %v", got)
+	}
+	if got := files(t, "ui", webui); !slices.Contains(got, "embedded.go") || slices.Contains(got, "absent.go") {
+		t.Fatalf("ui context webui files = %v, want embedded.go listed", got)
+	}
+	if got := files(t, "default", durability); slices.Contains(got, "directory_windows.go") {
+		t.Fatalf("default context filedurability files = %v", got)
+	}
+	if got := files(t, "windows", durability); !slices.Contains(got, "directory_windows.go") || slices.Contains(got, "directory_unix.go") {
+		t.Fatalf("windows context filedurability files = %v, want the windows leg listed", got)
 	}
 }

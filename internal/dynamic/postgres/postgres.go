@@ -1,7 +1,8 @@
 // Package postgres implements the dynamic-secret Provider seam over a
 // PostgreSQL engine. It mints a login role IN ROLE the operator's grant role,
-// VALID UNTIL the lease expiry (so the engine enforces expiry even if Hikyo is
-// down), extends, drops (idempotently), and probes role status. Every outbound
+// VALID UNTIL the lease expiry (the engine refuses NEW password logins after
+// the deadline even if Hikyo is down; it does not end sessions already open,
+// see createRoleSQL), extends, drops (idempotently), and probes role status. Every outbound
 // connection is TLS verify-full and dials only a policy-approved public address
 // (or an operator-allowed CIDR); there is no arbitrary-SQL entry point and no
 // statement ever reads a secret back out.
@@ -183,6 +184,14 @@ func (p *Provider) ExtendRole(ctx context.Context, name string, validUntil time.
 
 // DropRole removes the lease role. It is idempotent: a role that is already
 // gone is a success, which is what makes revoke safe to retry.
+//
+// Dropping the role prevents any further login as it. It does NOT terminate
+// backends already connected as the role: PostgreSQL refuses DROP ROLE only
+// while the role owns objects or holds privileges, not while it has open
+// sessions, and those sessions keep running until they disconnect or the
+// database's own session controls (pg_terminate_backend, idle/statement
+// timeouts, a proxy's connection lifetime) end them. Revocation is therefore
+// a login deadline, not an access deadline.
 func (p *Provider) DropRole(ctx context.Context, name string) error {
 	if !dynamic.ValidRoleName(name) {
 		return fmt.Errorf("postgres: refusing malformed role name %q", name)
@@ -261,8 +270,18 @@ func classifyExec(err error) error {
 
 // createRoleSQL renders the mint DDL. Identifiers are sanitized (pgx doubles
 // embedded quotes and wraps them); the password is charset-validated by the
-// caller and additionally escaped as a literal here; VALID UNTIL enforces
-// expiry at the engine; IN ROLE inherits the operator's grant role.
+// caller and additionally escaped as a literal here; IN ROLE inherits the
+// operator's grant role.
+//
+// VALID UNTIL is PASSWORD expiry, not session termination. After the lease
+// deadline the engine refuses new password-authenticated connections for the
+// role, and it does so on its own clock, so that holds even while Hikyo is
+// down. A session opened before the deadline is NOT ended by it: existing
+// sessions end only when revocation drops the role while Hikyo is up (and
+// even DROP ROLE does not terminate live backends, see DropRole) or through
+// the database's own session controls (idle/statement timeouts, a proxy's
+// connection lifetime). An offline hard access deadline therefore needs
+// database-side or proxy session limits; Hikyo does not provide one.
 func createRoleSQL(req dynamic.CreateRoleRequest) string {
 	return fmt.Sprintf(
 		"CREATE ROLE %s LOGIN PASSWORD %s VALID UNTIL %s IN ROLE %s",

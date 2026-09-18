@@ -23,7 +23,9 @@ export function RevisionDiffDialog({ env, environmentName, left, right, onClose 
   const [now, setNow] = useState(Date.now);
   const preflightGeneration = useRef(0);
   const actions = useRef({ compare, reveal, setData, setDisclosure });
-  actions.current = { compare, reveal, setData, setDisclosure };
+  useEffect(() => {
+    actions.current = { compare, reveal, setData, setDisclosure };
+  }, [compare, reveal, setData, setDisclosure]);
   useEffect(() => {
     actions.current.compare.mutate(undefined, { onSuccess: (result) => actions.current.setData(result) });
     const ticker = window.setInterval(() => setNow(Date.now()), 1000);

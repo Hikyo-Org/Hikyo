@@ -59,33 +59,46 @@ esac
 install_dir=${HIKYO_INSTALL_DIR:-/usr/local/bin}
 state_dir=${XDG_STATE_HOME:-"$HOME/.local/state"}/hikyo
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/hikyo-install.XXXXXX")
-trap 'rm -rf "$scratch"' EXIT HUP INT TERM
+staged=''
+cleanup() {
+	rm -rf "$scratch"
+	[ -z "$staged" ] || rm -f "$staged"
+}
+trap cleanup EXIT HUP INT TERM
+
+# Byte budgets mirror internal/selfupdate/selfupdate.go: trust and JSON
+# documents get 4 MiB (maxTrustBytes); verifier binaries and manifest-listed
+# release artifacts get 256 MiB (maxArchiveBytes, maxBinaryBytes). Every
+# download names its budget explicitly so no fetch is unbounded.
+trust_budget=4194304
+artifact_budget=268435456
 
 download() {
-	url=$1
-	output=$2
-	curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error "$url" -o "$output"
+	[ "$#" -eq 3 ] || fail 'download requires url, output and byte budget'
+	curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --silent --show-error \
+		--connect-timeout 15 --max-time 300 --max-filesize "$3" "$1" -o "$2" \
+		|| fail "download failed: $1"
 }
 
-download "$source_url/release/trust/root.json" "$scratch/root.json"
+download "$source_url/release/trust/root.json" "$scratch/root.json" "$trust_budget"
 [ "$(sha256_file "$scratch/root.json")" = "$root_sha256" ] || fail 'pinned trust-root hash mismatch'
 mkdir -p "$scratch/scripts/release" "$scratch/scripts/lib"
-download "$source_url/scripts/release/verify-bundle.sh" "$scratch/scripts/release/verify-bundle.sh"
+download "$source_url/scripts/release/verify-bundle.sh" "$scratch/scripts/release/verify-bundle.sh" "$trust_budget"
 [ "$(sha256_file "$scratch/scripts/release/verify-bundle.sh")" = "$verifier_sha256" ] || fail 'pinned verifier hash mismatch'
-download "$source_url/scripts/lib/release.sh" "$scratch/scripts/lib/release.sh"
+download "$source_url/scripts/lib/release.sh" "$scratch/scripts/lib/release.sh" "$trust_budget"
 [ "$(sha256_file "$scratch/scripts/lib/release.sh")" = "$release_lib_sha256" ] || fail 'pinned verifier-library hash mismatch'
 chmod +x "$scratch/scripts/release/verify-bundle.sh"
 
-download "$current_trust_url/release/trust/metadata.json" "$scratch/metadata.json"
-download "$current_trust_url/release/trust/metadata.sigstore.json" "$scratch/metadata.sigstore.json"
+download "$current_trust_url/release/trust/metadata.json" "$scratch/metadata.json" "$trust_budget"
+download "$current_trust_url/release/trust/metadata.sigstore.json" "$scratch/metadata.sigstore.json" "$trust_budget"
 if [ "$stable_verifiers" != '{}' ]; then
 	for trust_file in stable-policy.json stable-policy.sigstore.json stable-trusted-root.json catalog.json catalog.sigstore.json; do
-		download "$current_trust_url/release/trust/$trust_file" "$scratch/$trust_file"
+		download "$current_trust_url/release/trust/$trust_file" "$scratch/$trust_file" "$trust_budget"
 	done
 	platform="${os}_${arch}"
 	stable_verifier_sha=$(printf '%s' "$stable_verifiers" | jq -er --arg platform "$platform" '.[$platform] | select(test("^[0-9a-f]{64}$"))') \
 		|| fail 'missing pinned stable verifier for this platform'
-	download "$base_url/hikyo-release-verifier_$platform" "$scratch/stable-verifier"
+	download "$base_url/hikyo-release-verifier_$platform" "$scratch/stable-verifier" "$artifact_budget"
 	[ "$(sha256_file "$scratch/stable-verifier")" = "$stable_verifier_sha" ] || fail 'pinned stable verifier hash mismatch'
 	chmod +x "$scratch/stable-verifier"
 	HIKYO_STABLE_VERIFIER="$scratch/stable-verifier"
@@ -94,7 +107,7 @@ fi
 jq -r '[.recovery.public_key, .bootstrap_primary.public_key] | unique[]' "$scratch/root.json" |
 while IFS= read -r key_name; do
 	safe_public_key_name "$key_name" || fail "unsafe public-key name $key_name"
-	download "$source_url/release/trust/$key_name" "$scratch/$key_name"
+	download "$source_url/release/trust/$key_name" "$scratch/$key_name" "$trust_budget"
 done
 recovery_name=$(jq -er '.recovery.public_key' "$scratch/root.json")
 jq -e '.primary_keys as $keys | ($keys | type == "array" and length > 0 and length <= 256) and
@@ -107,23 +120,32 @@ while IFS= read -r key_name; do
 	# Keep the bootstrap primary fetched from the pinned source. Its hash is
 	# checked by the verifier; metadata cannot overwrite those trusted bytes.
 	[ ! -e "$scratch/$key_name" ] || continue
-	download "$current_trust_url/release/trust/$key_name" "$scratch/$key_name"
+	download "$current_trust_url/release/trust/$key_name" "$scratch/$key_name" "$trust_budget"
 done
 
 bundle="$scratch/bundle"
 mkdir -p "$bundle" "$state_dir"
-download "$base_url/release-manifest.json" "$bundle/release-manifest.json"
-download "$base_url/release-manifest.sigstore.json" "$bundle/release-manifest.sigstore.json"
+download "$base_url/release-manifest.json" "$bundle/release-manifest.json" "$trust_budget"
+download "$base_url/release-manifest.sigstore.json" "$bundle/release-manifest.sigstore.json" "$trust_budget"
 if [ "$stable_verifiers" != '{}' ]; then
 	for trust_file in metadata.json metadata.sigstore.json catalog.json catalog.sigstore.json; do
-		download "$base_url/$trust_file" "$bundle/$trust_file"
+		download "$base_url/$trust_file" "$bundle/$trust_file" "$trust_budget"
 	done
 fi
+# The manifest is unverified until verify-bundle.sh runs below, so bound the
+# inventory before traversing it. A release today lists about 36 artifacts
+# (6 archives, 8 packages, 6 verifiers, 2 SBOMs, singletons); 64 leaves
+# headroom. Worst-case aggregate download is therefore
+# 64 x (artifact_budget + trust_budget) on top of the fixed bootstrap set.
+jq -e '.artifacts as $artifacts | ($artifacts | type == "array" and length > 0 and length <= 64) and
+	([$artifacts[].name] | all(type == "string")) and
+	([$artifacts[].name] | unique | length) == ($artifacts | length)' "$bundle/release-manifest.json" >/dev/null \
+	|| fail 'invalid or duplicate artifact inventory'
 jq -r '.artifacts[].name' "$bundle/release-manifest.json" | while IFS= read -r name; do
 	safe_name "$name" || fail "unsafe artifact name $name"
-	download "$base_url/$name" "$bundle/$name"
+	download "$base_url/$name" "$bundle/$name" "$artifact_budget"
 	if [ "$stable_verifiers" = '{}' ] || { [ "$name" != stable-policy.json ] && [ "$name" != stable-policy.sigstore.json ]; }; then
-		download "$base_url/$name.sigstore.json" "$bundle/$name.sigstore.json"
+		download "$base_url/$name.sigstore.json" "$bundle/$name.sigstore.json" "$trust_budget"
 	fi
 done
 
@@ -143,5 +165,17 @@ esac
 [ -f "$bundle/$archive" ] || fail "verified archive $archive is absent"
 mkdir -p "$install_dir"
 tar -xzf "$bundle/$archive" -C "$scratch" hikyo
-install -m 0755 "$scratch/hikyo" "$install_dir/hikyo"
+# Publish the way internal/selfupdate/replace_unix.go does: stage beside the
+# target, then rename. rename(2) is atomic on one filesystem, so a reader sees
+# the old executable or the new one, never a partial write. Two known gaps:
+# the Go updater also takes "$install_dir/hikyo.update.lock" via flock, which
+# POSIX sh cannot honour portably, so a concurrent hikyo self-update can race
+# this rename; and sync(1) has no single-directory form on macOS, so a plain
+# sync flushes everything instead of just the directory entry.
+staged=$(mktemp "$install_dir/.hikyo-install.XXXXXX") || fail "cannot stage executable in $install_dir"
+cp "$scratch/hikyo" "$staged"
+chmod 0755 "$staged"
+mv -f "$staged" "$install_dir/hikyo" || fail "cannot publish executable to $install_dir/hikyo"
+staged=''
+sync
 printf 'installed verified hikyo %s to %s/hikyo\n' "$version" "$install_dir"

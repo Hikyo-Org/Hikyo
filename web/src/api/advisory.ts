@@ -2,6 +2,7 @@ import { watchProjectEventsOp } from '@hikyo/operations';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import type { MatrixRef } from './keys.ts';
 import type { TransportOptions } from './transport.tsx';
 
@@ -19,10 +20,14 @@ import type { TransportOptions } from './transport.tsx';
  * connected or has failed, and stops once the stream is healthy again.
  *
  * The channel is ADVISORY ONLY and replays nothing (`Last-Event-ID` refetches
- * nothing): a client that misses events refetches current state from the
- * signals endpoint. The fallback poll is that refetch, it runs precisely
- * while the stream is not healthy, so a dropped stream costs two seconds of
- * age, never correctness.
+ * nothing): a client that misses events refetches current state. Two things
+ * are that refetch. The fallback poll runs precisely while the stream is not
+ * healthy and keeps signals and pending drafts fresh, so a dropped stream
+ * costs two seconds of age, never correctness. And every RECOVERY, a stream
+ * that went healthy again after it was lost, invalidates the whole matrix
+ * working set once (system-architecture ADR § Real-time: "a reconnecting
+ * client performs a normal authorized refetch of current state"), so what
+ * the poll does not cover (keys, groups, settings) converges too.
  */
 
 /** The event types the revision-model ADR enumerates. */
@@ -148,12 +153,62 @@ const ADVISORY_RECONNECT_MAX_MS = 10_000;
 export const SIGNALS_FALLBACK_POLL_MS = 2_000;
 
 /**
- * signalsPollInterval is the fallback-poll selector the signals queries read:
- * poll while the stream is not healthy, and never while it is. Pure, so the
- * connection logic is testable without a stream.
+ * signalsPollInterval is the fallback-poll selector the signals and pending
+ * drafts queries read: poll while the stream is not healthy, and never while
+ * it is. Pure, so the connection logic is testable without a stream.
  */
 export function signalsPollInterval(state: AdvisoryConnectionState): number | false {
   return state === 'healthy' ? false : SIGNALS_FALLBACK_POLL_MS;
+}
+
+/**
+ * What the matrix reads off the stream: the connection state that gates the
+ * fallback poll, and a recovery counter that ticks once per stream that went
+ * healthy again after it was LOST. `lost` is the memory that makes the
+ * difference between a first connect (no catch-up: the queries were just
+ * mounted) and a reconnect (catch-up: events were missed in the dark).
+ */
+export type AdvisoryLiveness = {
+  readonly connection: AdvisoryConnectionState;
+  readonly recoveries: number;
+  readonly lost: boolean;
+};
+
+export const INITIAL_ADVISORY_LIVENESS: AdvisoryLiveness = {
+  connection: 'connecting',
+  recoveries: 0,
+  lost: false,
+};
+
+/**
+ * advanceAdvisoryLiveness folds one connection-state report into the
+ * liveness. Returns the SAME object when nothing changed, so the healthy
+ * report every frame repeats never re-renders the matrix, and a recovery is
+ * counted exactly once no matter how many failures preceded it (hey-api's
+ * internal retries can report `failed` several times before a `connecting`,
+ * or without one).
+ */
+export function advanceAdvisoryLiveness(
+  previous: AdvisoryLiveness,
+  connection: AdvisoryConnectionState,
+): AdvisoryLiveness {
+  switch (connection) {
+    case 'failed':
+      return previous.connection === 'failed' && previous.lost
+        ? previous
+        : { connection, recoveries: previous.recoveries, lost: true };
+    case 'connecting':
+      return previous.connection === 'connecting' ? previous : { ...previous, connection };
+    case 'healthy':
+      if (previous.connection === 'healthy') {
+        return previous;
+      }
+      return {
+        connection,
+        recoveries: previous.lost ? previous.recoveries + 1 : previous.recoveries,
+        lost: false,
+      };
+  }
 }
 
 /**
@@ -252,34 +307,44 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  * useAdvisoryStream owns one project's advisory subscription for the lifetime
  * of the calling component: opened on mount, aborted on unmount, re-opened if
  * the project ref changes. The event handler runs through a latest-ref so a
- * re-render never re-subscribes, and the connection state is React state so
- * the fallback poll re-renders with it.
+ * re-render never re-subscribes, and the liveness is React state so the
+ * fallback poll and the recovery catch-up re-render with it. A new
+ * subscription starts from the initial liveness: its queries were just
+ * mounted, so its first connect is never a recovery.
  */
 export function useAdvisoryStream(
   ref: MatrixRef,
   transport: TransportOptions,
   onEvent: (event: AdvisoryEvent) => void,
   enabled: boolean,
-): AdvisoryConnectionState {
-  const [state, setState] = useState<AdvisoryConnectionState>('connecting');
+): AdvisoryLiveness {
+  const [state, setState] = useState<AdvisoryLiveness>(INITIAL_ADVISORY_LIVENESS);
   const live = useRef({ onEvent, transport });
   useEffect(() => {
     live.current = { onEvent, transport };
   });
 
+  const { org, project } = ref;
+  // A new subscription always starts from the initial liveness: its queries were
+  // just (re)mounted, so its first connect is never a recovery. Reset during
+  // render as the subscription identity changes, ahead of the effect that
+  // re-subscribes, rather than with a setState inside the effect body.
+  useResetOnChange(`${enabled}\u0000${org}\u0000${project}`, () =>
+    setState(INITIAL_ADVISORY_LIVENESS),
+  );
   useEffect(() => {
     if (!enabled) {
       return;
     }
     let stopped = false;
     const handle = watchProjectAdvisoryStream(
-      ref,
+      { org, project },
       live.current.transport,
       {
         onEvent: (event) => live.current.onEvent(event),
         onState: (connection) => {
           if (!stopped) {
-            setState(connection);
+            setState((previous) => advanceAdvisoryLiveness(previous, connection));
           }
         },
       },
@@ -288,7 +353,7 @@ export function useAdvisoryStream(
       stopped = true;
       void handle.stop();
     };
-  }, [enabled, ref.org, ref.project]);
+  }, [enabled, org, project]);
 
-  return enabled ? state : 'connecting';
+  return enabled ? state : INITIAL_ADVISORY_LIVENESS;
 }

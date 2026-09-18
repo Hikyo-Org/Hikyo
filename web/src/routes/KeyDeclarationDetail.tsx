@@ -3,6 +3,8 @@ import type { KeyRule } from '@hikyo/client';
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { generatePath, Link, useNavigate } from 'react-router';
 
+import { useResetOnChange } from '../app/useResetOnChange.ts';
+
 import {
   catalogueRefusalText,
   presenceImpact,
@@ -529,10 +531,10 @@ function MetadataEditor({
   // Reload the fields when the underlying record changes (a concurrent edit
   // invalidated the query) so the form never silently overwrites fresh data
   // with the values it opened with.
-  useEffect(() => {
+  useResetOnChange(`${record.folder_path} ${record.description}`, () => {
     setFolderPath(record.folder_path);
     setDescription(record.description);
-  }, [record.folder_path, record.description]);
+  });
 
   // Send only the fields that actually changed. updateKeyMetadata is a partial
   // update, and writing an untouched field back would clobber a value another
@@ -702,9 +704,9 @@ function RenameKey({
   // Reload the field when the record's name changes underneath (a concurrent
   // rename, or this rename's own success invalidating the query) so the form
   // never re-submits a name that is already applied.
-  useEffect(() => {
+  useResetOnChange(record.name, () => {
     setName(record.name);
-  }, [record.name]);
+  });
 
   const dirty = name !== record.name && name !== '';
 
@@ -1399,7 +1401,7 @@ function DeclarationEditor({
     // `keyId` is a dep so navigating to ANOTHER key always re-seeds, even when
     // the two keys' declaration/presence signatures happen to be identical, 
     // otherwise a stale dirty draft could be written into the new key.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- content signatures stand in for the objects
+    // oxlint-disable-next-line react/exhaustive-deps -- content signatures stand in for the objects
   }, [keyId, declSignature, presSignature]);
 
   const envIds = useMemo(() => environments.map((environment) => environment.id), [environments]);

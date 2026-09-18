@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  advanceAdvisoryLiveness,
+  INITIAL_ADVISORY_LIVENESS,
   parseAdvisoryEvent,
   signalsPollInterval,
   SIGNALS_FALLBACK_POLL_MS,
+  type AdvisoryConnectionState,
+  type AdvisoryLiveness,
 } from './advisory.ts';
-import { advisoryInvalidations } from './matrix.ts';
+import { advisoryInvalidations, advisoryRecoveryInvalidations } from './matrix.ts';
 
 const ref = { org: 'org_a', project: 'project_a' };
 const envDev = 'env_01989abc-def0-7123-8123-123456789abc';
@@ -114,6 +118,57 @@ describe('advisory invalidation mapping', () => {
       ['matrix-pending', ref.org, ref.project, envDev],
       ['matrix-signals', ref.org, ref.project, envDev],
     ]);
+  });
+});
+
+describe('recovery catch-up', () => {
+  it('refetches the whole matrix working set by project-wide prefix', () => {
+    expect(advisoryRecoveryInvalidations(ref)).toEqual([
+      ['matrix-keys', ref.org, ref.project],
+      ['matrix-groups', ref.org, ref.project],
+      ['values', ref.org, ref.project],
+      ['matrix-signals', ref.org, ref.project],
+      ['matrix-pending', ref.org, ref.project],
+      ['environment-settings', ref.org, ref.project],
+    ]);
+  });
+});
+
+describe('advisory liveness', () => {
+  function replay(...reports: readonly AdvisoryConnectionState[]): AdvisoryLiveness {
+    return reports.reduce(advanceAdvisoryLiveness, INITIAL_ADVISORY_LIVENESS);
+  }
+
+  it('does not count the first connect as a recovery', () => {
+    expect(replay('connecting', 'healthy')).toEqual({
+      connection: 'healthy',
+      recoveries: 0,
+      lost: false,
+    });
+  });
+
+  it('keeps healthy idempotent per frame, returning the same object', () => {
+    const healthy = replay('connecting', 'healthy');
+    expect(advanceAdvisoryLiveness(healthy, 'healthy')).toBe(healthy);
+  });
+
+  it('counts exactly one recovery per lost stream that comes back', () => {
+    expect(replay('connecting', 'healthy', 'failed', 'connecting', 'healthy').recoveries).toBe(1);
+    // hey-api's internal retries can report several failures, with or without
+    // a connecting report between them, before the stream is back.
+    expect(replay('connecting', 'failed', 'failed', 'healthy').recoveries).toBe(1);
+    expect(
+      replay('connecting', 'healthy', 'failed', 'connecting', 'healthy', 'healthy', 'failed', 'healthy')
+        .recoveries,
+    ).toBe(2);
+  });
+
+  it('remembers the loss across the reconnect attempt', () => {
+    expect(replay('connecting', 'healthy', 'failed', 'connecting')).toEqual({
+      connection: 'connecting',
+      recoveries: 0,
+      lost: true,
+    });
   });
 });
 

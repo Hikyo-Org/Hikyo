@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 import { announceSessionChange } from '../api/sessionEpoch.ts';
-import { oidcChannelName, takeOIDCReturn } from '../api/oidcChannel.ts';
+import { oidcChannelName, peekOIDCReturn, takeOIDCReturn } from '../api/oidcChannel.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 
@@ -26,25 +26,40 @@ function successLede(purpose: Purpose | null): string {
   }
 }
 
+const NO_TRANSACTION = 'This page was opened without an OIDC transaction. Close it and start again.';
+
 /** Same-origin return page for browser-started OIDC login/link/reauth flows. */
 export function OIDCDone() {
-  const [failure, setFailure] = useState<string | null>(null);
-  const [returnTarget, setReturnTarget] = useState<string | null>(null);
+  const params = new URLSearchParams(globalThis.location.search);
   const purpose = purposeFromLocation();
+  const state = params.get('state') ?? '';
+  const error = params.get('error');
+  const invalid = state === '' || purpose === null;
+
+  // Both the message and the return link are pure functions of the URL, so
+  // they are derived here rather than set from the effect. The effect owns only
+  // the irreversible side effects: the opener broadcast, consuming the stored
+  // return target, and the navigation or window close on a successful return.
+  const failure = invalid
+    ? NO_TRANSACTION
+    : error === null
+      ? null
+      : purpose === 'login'
+        ? 'Your identity provider refused this sign-in. Return to sign in and try again.'
+        : purpose === 'link'
+          ? 'Your identity provider refused this link. Return to account security and try again.'
+          : 'Your identity provider refused this reauthentication. Go back and try again.';
+  const returnTarget =
+    invalid || error === null ? null : purpose === 'login' ? '/login' : peekOIDCReturn(state);
 
   useEffect(() => {
-    const params = new URLSearchParams(globalThis.location.search);
-    const state = params.get('state') ?? '';
-    const error = params.get('error');
-
-    if (state === '' || purpose === null) {
-      setFailure('This page was opened without an OIDC transaction. Close it and start again.');
+    if (invalid) {
       return;
     }
     if (purpose === 'login') {
+      // A refused sign-in only shows the derived failure; it neither broadcasts
+      // nor navigates. A success announces the new session and lands home.
       if (error !== null) {
-        setFailure('Your identity provider refused this sign-in. Return to sign in and try again.');
-        setReturnTarget('/login');
         return;
       }
       announceSessionChange();
@@ -55,29 +70,22 @@ export function OIDCDone() {
     const channel = new BroadcastChannel(oidcChannelName(state));
     channel.postMessage(error === null ? { state, ok: true } : { state, ok: false, error });
     channel.close();
-    const returnTo = takeOIDCReturn(state);
-    if (purpose === 'link') {
-      if (error !== null) {
-        setFailure('Your identity provider refused this link. Return to account security and try again.');
-        setReturnTarget(returnTo);
-      } else {
-        globalThis.location.replace(returnTo);
-      }
+    if (error !== null) {
+      // A refused link/reauth stays on screen with its return link; the opener
+      // already heard the refusal. The single-use return nonce is left in
+      // storage (harmless) so the derived return target stays stable.
       return;
     }
-    if (error !== null) {
-      // A refused reauthentication stays on screen: the broadcast above told
-      // the opener, and closing or navigating here would hide the refusal.
-      setFailure('Your identity provider refused this reauthentication. Go back and try again.');
-      setReturnTarget(returnTo);
+    const returnTo = takeOIDCReturn(state);
+    if (purpose === 'link') {
+      globalThis.location.replace(returnTo);
       return;
     }
     globalThis.close();
     // If this was a same-tab fallback, close() is refused. Return to the page
     // that started the transaction after the broadcast has been sent.
     globalThis.setTimeout(() => globalThis.location.assign(returnTo), 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on the callback URL
-  }, []);
+  }, [purpose, state, error, invalid]);
 
   return (
     <main className="login">

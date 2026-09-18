@@ -145,7 +145,10 @@ Three locked places bear on this ticket:
    `lease mint|renew|revoke|list|show|reconcile` (print triad for the secret).
    SPA: status/metadata only on the machine-access "Leases" tab, never the
    secret. Metrics label-free: `hikyo_dynamic_leases_active`,
-   `hikyo_dynamic_effects_unknown`. `hikyo doctor`: unknown effects > 0 = warning.
+   `hikyo_dynamic_effects_unknown`, guarded by `hikyo_dynamic_gauges_known`
+   (0 when the scrape could not measure them; both value gauges are then
+   omitted rather than rendered as zeros). `hikyo doctor`: unknown effects > 0
+   = warning.
 
 ## Egress (advisor finding 3)
 

@@ -13,7 +13,7 @@ import {
   WorkspaceError,
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
-import { makeQueryClient } from '../app/queryClient.ts';
+import { makeQueryClient, retireQueryClient } from '../app/queryClient.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
@@ -155,14 +155,19 @@ function ConnectedWorkspace({
   const [gate, setGate] = useState<'pending' | 'ok' | 'refused'>('pending');
   const [message, setMessage] = useState('');
 
+  // The cache dies with the workspace it served. Cancelling first drops the
+  // answers of requests still in flight instead of writing them into a cache
+  // nobody will read; clearing then leaves no remote data behind the unmount.
+  useEffect(() => () => retireQueryClient(queries), [queries]);
+
   useEffect(() => {
-    let live = true;
-    assertCompatible(origin)
+    const check = new AbortController();
+    assertCompatible(origin, { signal: check.signal })
       .then(() => {
-        if (live) setGate('ok');
+        if (!check.signal.aborted) setGate('ok');
       })
       .catch((error: unknown) => {
-        if (!live) {
+        if (check.signal.aborted) {
           return;
         }
         setMessage(
@@ -172,9 +177,7 @@ function ConnectedWorkspace({
         );
         setGate('refused');
       });
-    return () => {
-      live = false;
-    };
+    return () => check.abort();
   }, [origin]);
 
   if (gate === 'pending') {

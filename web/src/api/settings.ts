@@ -77,8 +77,11 @@ const projectsKey = (org: string) => ['projects', org] as const;
 const projectKey = (org: string, project: string) => ['project', org, project] as const;
 const environmentsKey = (org: string, project: string) =>
   ['environments', org, project] as const;
+/** Every environment's settings in one project: the prefix a project-wide refresh invalidates. */
+export const environmentSettingsPrefix = (org: string, project: string) =>
+  ['environment-settings', org, project] as const;
 const environmentSettingsKey = (org: string, project: string, environment: string) =>
-  ['environment-settings', org, project, environment] as const;
+  [...environmentSettingsPrefix(org, project), environment] as const;
 const orgRetentionKey = (org: string) => ['org-retention', org] as const;
 const projectRetentionKey = (org: string, project: string) =>
   ['project-retention', org, project] as const;
@@ -502,7 +505,7 @@ function invalidateEnvironmentTopology(
 ) {
   const queryKeys = [
     environmentsKey(org, project),
-    ['environment-settings', org, project],
+    environmentSettingsPrefix(org, project),
     ...environmentTopologyQueryPrefixes({ org, project }),
   ];
   return Promise.all(

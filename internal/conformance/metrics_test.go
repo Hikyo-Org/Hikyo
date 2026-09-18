@@ -91,6 +91,7 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_ha_lease_age_seconds", MaxSeries: 1},
 		{Name: "hikyo_approval_requests_open", MaxSeries: 1},
 		{Name: "hikyo_approval_requests_expired", MaxSeries: 1},
+		{Name: "hikyo_approval_gauges_known", MaxSeries: 1},
 		// Disaster-recovery gauges (#145): label-free, one series each.
 		{Name: "hikyo_last_backup_export_success_timestamp_seconds", MaxSeries: 1},
 		{Name: "hikyo_backup_rpo_exceeded", MaxSeries: 1},
@@ -99,8 +100,20 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_restore_drill_ok", MaxSeries: 1},
 		{Name: "hikyo_dynamic_leases_active", MaxSeries: 1},
 		{Name: "hikyo_dynamic_effects_unknown", MaxSeries: 1},
+		{Name: "hikyo_dynamic_gauges_known", MaxSeries: 1},
 	}
 }
+
+// stubMeasuredSources answers the approval and dynamic gauge reads with healthy
+// zeros: those families are omitted when unmeasured, so the registry pin needs
+// a source that measures.
+type stubMeasuredSources struct{}
+
+func (stubMeasuredSources) ApprovalSnapshot() (server.ApprovalStats, error) {
+	return server.ApprovalStats{}, nil
+}
+
+func (stubMeasuredSources) DynamicSnapshot() (int64, int64, error) { return 0, 0, nil }
 
 // scrapeOperationalMetrics returns the /metrics body of a fresh operational
 // handler. NewMetrics pre-registers every label combination eagerly, so the
@@ -108,6 +121,8 @@ func pinnedMetricRegistry() []metricFamily {
 func scrapeOperationalMetrics(t *testing.T) string {
 	t.Helper()
 	metrics := server.NewMetrics(stubAdmissionSnapshot{})
+	metrics.SetApprovalSource(stubMeasuredSources{})
+	metrics.SetDynamicSource(stubMeasuredSources{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

@@ -21,7 +21,7 @@ function isWorkspaceHandoffStepUp(
 function useHandoffExpiry(expiresAt: string | undefined): boolean {
   const [clock, setClock] = useState(() => Date.now());
   const deadline = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
-  const expired = !Number.isFinite(deadline) || Math.max(clock, Date.now()) >= deadline;
+  const expired = !Number.isFinite(deadline) || clock >= deadline;
   useEffect(() => {
     if (expired) return;
     const timer = globalThis.setTimeout(

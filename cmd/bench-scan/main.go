@@ -1,3 +1,5 @@
+//go:build unix
+
 // Command bench-scan measures the secret scanner against the fixture corpus:
 // per-item latency distribution (p50/p99) at the 64 KiB size cap, boot-compile
 // (Load) duration, and peak RSS where cheaply obtainable. It emits a JSON

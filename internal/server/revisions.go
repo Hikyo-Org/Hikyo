@@ -40,7 +40,7 @@ type RevisionService interface {
 	Diff(ctx context.Context, actor service.Actor, scope domain.Scope, leftRevision, rightRevision int64, keyID string) (service.RevisionDiff, error)
 	PublishPlanned(ctx context.Context, actor service.Actor, scope domain.Scope, request service.PublishRequest) (service.PublishResult, error)
 	Restore(ctx context.Context, actor service.Actor, scope domain.Scope, revision int64, keyName string) (service.RestoreResult, error)
-	History(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.RevisionView, error)
+	History(ctx context.Context, actor service.Actor, scope domain.Scope, beforeRevision int64, limit int) ([]service.RevisionView, error)
 	Show(ctx context.Context, actor service.Actor, scope domain.Scope, revision int64) (service.RevisionDetail, error)
 	Signals(ctx context.Context, actor service.Actor, scope domain.Scope) (service.EnvironmentSignals, error)
 	PendingDrafts(ctx context.Context, actor service.Actor, scope domain.Scope) ([]service.PendingDraft, error)
@@ -264,9 +264,22 @@ func wireRevision(rev service.RevisionView) apigen.Revision {
 	return item
 }
 
+// ListRevisions is one page of lineage. The contract validator has already
+// bounded `limit` to the spec's range, so the defaults here are the only
+// interpretation left: no cursor means "from the newest", no limit means the
+// documented default page. `next_before` appears exactly when the page was
+// full, so a client that pages until it is absent reads the whole history.
 func (a *API) ListRevisions(ctx context.Context, req apigen.ListRevisionsRequestObject) (apigen.ListRevisionsResponseObject, error) {
+	before := service.HistoryFromNewest
+	if req.Params.Before != nil {
+		before = *req.Params.Before
+	}
+	limit := service.DefaultHistoryLimit
+	if req.Params.Limit != nil {
+		limit = *req.Params.Limit
+	}
 	history, err := a.Revisions.History(ctx, service.Bearer(bearer(ctx)),
-		envScope(req.Org, req.Project, req.Environment))
+		envScope(req.Org, req.Project, req.Environment), before, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -274,9 +287,12 @@ func (a *API) ListRevisions(ctx context.Context, req apigen.ListRevisionsRequest
 	for _, rev := range history {
 		items = append(items, wireRevision(rev))
 	}
-	return apigen.ListRevisions200JSONResponse(apigen.RevisionList{
-		Items: items, Count: len(items),
-	}), nil
+	out := apigen.RevisionList{Items: items, Count: len(items)}
+	if len(history) == limit {
+		next := history[len(history)-1].Revision
+		out.NextBefore = &next
+	}
+	return apigen.ListRevisions200JSONResponse(out), nil
 }
 
 func (a *API) GetRevision(ctx context.Context, req apigen.GetRevisionRequestObject) (apigen.GetRevisionResponseObject, error) {

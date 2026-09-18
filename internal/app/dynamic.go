@@ -49,21 +49,22 @@ type dynamicWorker struct {
 }
 
 // dynamicGaugeSource feeds the two label-free /metrics gauges at scrape time.
-// A datastore hiccup renders zeros rather than failing the scrape.
+// A datastore hiccup is reported as an error so the collector marks the gauges
+// unknown for that scrape instead of rendering zeros (#F08).
 type dynamicGaugeSource struct {
 	runtime *store.DynamicRuntime
 	log     *slog.Logger
 }
 
-func (s dynamicGaugeSource) DynamicSnapshot() (activeLeases, unknownEffects int64) {
+func (s dynamicGaugeSource) DynamicSnapshot() (activeLeases, unknownEffects int64, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	active, unknown, err := s.runtime.Gauges(ctx)
 	if err != nil {
 		s.log.Warn("dynamic-secret gauge scrape failed", "err", err)
-		return 0, 0
+		return 0, 0, err
 	}
-	return active, unknown
+	return active, unknown, nil
 }
 
 func (w *dynamicWorker) Run(ctx context.Context) {

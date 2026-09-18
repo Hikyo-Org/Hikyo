@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -25,8 +25,11 @@ type Guard = ReturnType<typeof useProtectedPublishCeremony>;
 let latestGuard: Guard | undefined;
 
 function Harness() {
-  latestGuard = useProtectedPublishCeremony({ org: 'org-a', project: 'project-a' }, ['values']);
-  return <output>{latestGuard.request?.environmentName ?? 'idle'}</output>;
+  const guard = useProtectedPublishCeremony({ org: 'org-a', project: 'project-a' }, ['values']);
+  useEffect(() => {
+    latestGuard = guard;
+  }, [guard]);
+  return <output>{guard.request?.environmentName ?? 'idle'}</output>;
 }
 
 function guard(): Guard {

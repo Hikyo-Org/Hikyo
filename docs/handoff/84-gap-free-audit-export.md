@@ -46,7 +46,13 @@ both trails. sqlite keeps using
   trigger is the commit-time non-null invariant: it rejects caller-supplied
   positions, assigns the database position, and aborts if finalization misses
   the row. Read conversion also fails loud on any committed NULL.
-- Interactive query pages stay allocation-ordered by `seq`.
+- Interactive query pages stay allocation-ordered by `seq`. That is a
+  documented consistency limit, not a gap-free promise: a transaction that
+  commits out of allocation order can land below a cursor that already passed
+  it, so the event can be absent from the remainder of one paging session. The
+  event is durable and a fresh query recovers it. Exports page in commit order
+  behind the writer barrier and are gap-free; the same paragraph is stated on
+  the `queryOrgAudit` operation and on `Audits.Query`.
 - Export pages retain the caller's `AfterSeq` lower bound, then page by
   `commit_seq` on postgres. `AfterSeq` is a selection floor, not a resumable
   export cursor: #25 must not derive a continuation token from the last

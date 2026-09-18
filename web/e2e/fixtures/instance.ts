@@ -1373,6 +1373,9 @@ async function mintStorageState(keepForeign?: readonly Cookie[]): Promise<void> 
     const failure = await page.evaluate(sessionScript, {
       username: ADMIN.username,
       password: ADMIN.password,
+      // Only the initial mint enrols, and enrolment is proved by the TOTP code
+      // for the shared account's confirmed factor, not its password.
+      code: initialMint ? await nextTotpCode() : '',
       enrol: initialMint,
       stepUp: true,
     });
@@ -1495,6 +1498,9 @@ export async function establishSession(page: Page, stepUp = true): Promise<void>
   const failure = await page.evaluate(sessionScript, {
     username: ADMIN.username,
     password: ADMIN.password,
+    // This path never enrols, so no TOTP code is spent; the shared passkey is
+    // loaded into the authenticator instead.
+    code: '',
     enrol: false,
     stepUp,
   });
@@ -1516,11 +1522,13 @@ export async function establishSession(page: Page, stepUp = true): Promise<void>
 const sessionScript = async ({
   username,
   password,
+  code,
   enrol,
   stepUp,
 }: {
   username: string;
   password: string;
+  code: string;
   enrol: boolean;
   stepUp: boolean;
 }): Promise<string | null> => {
@@ -1586,7 +1594,11 @@ const sessionScript = async ({
     }
 
     if (enrol) {
-      const create = options(await post('/api/v1/auth/webauthn/enrol/start', { password }));
+      // The shared account carries a confirmed TOTP factor (global setup enrols
+      // it), so enrolling a passkey is proved possession-first: the service
+      // requires the authenticator `code` and refuses a password alone with a
+      // 400. The caller mints a fresh single-use code through `nextTotpCode`.
+      const create = options(await post('/api/v1/auth/webauthn/enrol/start', { code }));
       const user = record(create['user']);
       const rp = record(create['rp']);
       const credential = await navigator.credentials.create({

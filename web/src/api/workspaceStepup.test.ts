@@ -11,6 +11,11 @@ import {
 
 const ORIGIN = 'https://b.example';
 
+/** A signal no test aborts: these cases are about binding, not disposal. */
+function live(): AbortSignal {
+  return new AbortController().signal;
+}
+
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -63,10 +68,13 @@ test('a step-up prepare binds the decision only into server-owned transaction st
   );
 
   const prepared = await prepareWorkspace(ORIGIN, {
-    session: 'ses_1',
-    operation: 'reveal',
-    environment: 'env_1',
-    keySet: ['k1', 'k2'],
+    signal: live(),
+    stepUp: {
+      session: 'ses_1',
+      operation: 'reveal',
+      environment: 'env_1',
+      keySet: ['k1', 'k2'],
+    },
   });
 
   // The bound fields reach the remote's transaction row.
@@ -97,7 +105,7 @@ test('assertCompatible resolves against a well-formed meta at the floor', async 
     'fetch',
     vi.fn(() => Promise.resolve(json({ server_version: '1.0.0', api_revision: 1, protocol_capabilities: [] }))),
   );
-  await expect(assertCompatible(ORIGIN)).resolves.toBeUndefined();
+  await expect(assertCompatible(ORIGIN, { signal: live() })).resolves.toBeUndefined();
 });
 
 test('assertCompatible REFUSES a remote whose meta does not parse as this protocol', async () => {
@@ -109,7 +117,7 @@ test('assertCompatible REFUSES a remote whose meta does not parse as this protoc
     'fetch',
     vi.fn(() => Promise.resolve(json({ not: 'a hikyo meta' }))),
   );
-  await expect(assertCompatible(ORIGIN)).rejects.toThrow();
+  await expect(assertCompatible(ORIGIN, { signal: live() })).rejects.toThrow();
 });
 
 test('assertCompatible REFUSES an unreachable or non-allowlisting remote', async () => {
@@ -117,7 +125,7 @@ test('assertCompatible REFUSES an unreachable or non-allowlisting remote', async
     'fetch',
     vi.fn(() => Promise.reject(new TypeError('Failed to fetch'))),
   );
-  await expect(assertCompatible(ORIGIN)).rejects.toBeInstanceOf(WorkspaceError);
+  await expect(assertCompatible(ORIGIN, { signal: live() })).rejects.toBeInstanceOf(WorkspaceError);
 });
 
 test('an establishment prepare carries no step-up parameters', async () => {
@@ -146,7 +154,7 @@ test('an establishment prepare carries no step-up parameters', async () => {
     }),
   );
 
-  const prepared = await prepareWorkspace(ORIGIN);
+  const prepared = await prepareWorkspace(ORIGIN, { signal: live() });
 
   expect(starts[0]).toMatchObject({ purpose: 'establishment' });
   expect(starts[0]).not.toHaveProperty('session');

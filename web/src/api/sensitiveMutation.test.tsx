@@ -81,6 +81,35 @@ it.each(['success', 'reset', 'unmount', 'retirement', 'extra-retirement', 'wrong
   }
 });
 
+it('keeps the state setter and transfer identity stable across renders', async () => {
+  // A caller that puts the setter in an effect dependency array (exhaustive-deps
+  // cannot see through this hook) would re-run every render on an unstable
+  // identity; with an unconditional setState updater that is an unbounded loop.
+  const client = new QueryClient();
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  const setters = new Set<unknown>();
+  const transfers = new Set<unknown>();
+  function Surface() {
+    const [, setValue, prepare] = useSensitiveState('');
+    const [count, force] = useSensitiveState(0);
+    setters.add(setValue);
+    transfers.add(prepare);
+    return <button onClick={() => force((n) => n + 1)}>{count}</button>;
+  }
+  try {
+    await act(async () => root.render(<QueryClientProvider client={client}><Surface /></QueryClientProvider>));
+    await act(async () => container.querySelector('button')?.click());
+    await act(async () => container.querySelector('button')?.click());
+    expect(container.querySelector('button')?.textContent).toBe('2');
+    expect(setters.size).toBe(1);
+    expect(transfers.size).toBe(1);
+  } finally {
+    await act(async () => root.unmount());
+    client.clear();
+  }
+});
+
 async function assertUncached<Input>(hook: () => { mutate: (input: Input) => void }, input: Input, response: object) {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: 5, gcTime: Infinity } } });
   const container = document.createElement('div');

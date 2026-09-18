@@ -127,29 +127,36 @@ FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id) AND revision = sqlc.arg(revision);
 
--- ProjectSnapshotRevisions returns the project-confined revision rows used to
--- build the definitions plan/apply pin (#70). The repository folds the maximum
--- per environment; keeping aggregation out of SQL leaves the chain predicate in
--- the conservative analyzer's provable shape.
+-- ProjectSnapshotRevisions returns the latest published revision per
+-- environment across the project, the definitions plan/apply pin (#70). The
+-- aggregate transfers one row per environment rather than the lifetime history;
+-- the analyzer proves the chain predicate through GROUP BY, which only groups
+-- rows the chain conjuncts already confined.
 -- name: ProjectSnapshotRevisions :many
-SELECT environment_id, revision FROM snapshots
-WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id);
+SELECT environment_id, MAX(revision)::bigint AS revision FROM snapshots
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+GROUP BY environment_id;
 
+-- ListSnapshots is the environment's whole revision header set, newest first:
+-- the pin retention-consequence read, which ranks one snapshot against every
+-- sibling. Header projection only; the parameter contract has its own read.
 -- name: ListSnapshots :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
+       published_by, published_at, payload_present, collected_at, collected_policy
 FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id)
 ORDER BY revision DESC;
 
--- ListSnapshotsPage is the MCP-bounded keyset read (#629). revision is UNIQUE
--- and monotonic per environment, so it is a stable single-column cursor in
--- descending order: the statement fetches strictly below the last returned
--- revision and never materializes the whole history to slice a limit afterwards.
+-- ListSnapshotsPage is the bounded keyset read behind revision history (#629).
+-- revision is UNIQUE and monotonic per environment, so it is a stable
+-- single-column cursor in descending order: the statement fetches strictly
+-- below the last returned revision and never materializes the whole history to
+-- slice a limit afterwards. It is a metadata projection: the parameter
+-- contract is payload and has its own point read.
 -- name: ListSnapshotsPage :many
 SELECT id, org_id, project_id, environment_id, revision, schema_revision,
-       published_by, published_at, payload_present, collected_at, collected_policy, parameter_contract
+       published_by, published_at, payload_present, collected_at, collected_policy
 FROM snapshots
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id)
@@ -180,20 +187,24 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
   AND environment_id = sqlc.arg(chain_env_id) AND snapshot_id = sqlc.arg(snapshot_id)
 ORDER BY key_name;
 
+-- RecordSecretValueOccurrence is idempotent on the value-entry primary key:
+-- a publish records each secret occurrence it materializes without first
+-- enumerating the environment's lifetime occurrence history.
 -- name: RecordSecretValueOccurrence :exec
 INSERT INTO secret_value_occurrences (
     value_entry_id, org_id, project_id, environment_id
 ) VALUES (
     sqlc.arg(value_entry_id), sqlc.arg(chain_org_id),
     sqlc.arg(chain_project_id), sqlc.arg(chain_env_id)
-);
+) ON CONFLICT (value_entry_id) DO NOTHING;
 
--- name: ListSecretValueOccurrenceIDs :many
-SELECT value_entry_id
-FROM secret_value_occurrences
+-- CountSecretValueOccurrence is the point membership read of the sticky
+-- sensitivity lineage: one value entry, in the proof's environment. Callers
+-- ask about the handful of entries they hold, never the lifetime history.
+-- name: CountSecretValueOccurrence :one
+SELECT COUNT(*) FROM secret_value_occurrences
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
-  AND environment_id = sqlc.arg(chain_env_id)
-ORDER BY value_entry_id;
+  AND environment_id = sqlc.arg(chain_env_id) AND value_entry_id = sqlc.arg(value_entry_id);
 
 -- name: DeleteSecretValueOccurrencesForEnvironment :execrows
 DELETE FROM secret_value_occurrences
@@ -218,6 +229,17 @@ FROM revision_key_changes
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
   AND environment_id = sqlc.arg(chain_env_id) AND revision = sqlc.arg(revision)
 ORDER BY key_name;
+
+-- ListRevisionKeyChangesInRange is the history page's lineage read: every
+-- change row of the revisions in [min_revision, max_revision], newest revision
+-- first, so one statement serves a whole page instead of one per revision.
+-- name: ListRevisionKeyChangesInRange :many
+SELECT org_id, project_id, environment_id, revision, key_id, key_name, change
+FROM revision_key_changes
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
+  AND environment_id = sqlc.arg(chain_env_id)
+  AND revision >= sqlc.arg(min_revision) AND revision <= sqlc.arg(max_revision)
+ORDER BY revision DESC, key_name;
 
 -- name: GetRevisionPinForWorkload :one
 SELECT id, org_id, project_id, environment_id, workload_principal_id,

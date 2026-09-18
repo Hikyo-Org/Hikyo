@@ -43,9 +43,9 @@ async function mount(path: string, pattern: string, element: React.ReactElement)
 
 describe('the system scope gate', () => {
   it.each([
-    ['machine access', '/orgs/org_system/projects/prj_system/machine-access', '/orgs/:org/projects/:project/machine-access', <MachineAccess />, 'Machine access', 'service-accounts'],
-    ['adapters', '/orgs/org_system/projects/prj_system/adapters', '/orgs/:org/projects/:project/adapters', <Adapters />, 'Deployment adapters', '/adapters'],
-    ['scim', '/orgs/org_system/scim', '/orgs/:org/scim', <ScimProvisioning />, 'SCIM provisioning', 'scim-bindings'],
+    ['machine access', '/orgs/org_system/projects/prj_system/machine-access', '/orgs/:org/projects/:project/machine-access', <MachineAccess key="machine-access" />, 'Machine access', 'service-accounts'],
+    ['adapters', '/orgs/org_system/projects/prj_system/adapters', '/orgs/:org/projects/:project/adapters', <Adapters key="adapters" />, 'Deployment adapters', '/adapters'],
+    ['scim', '/orgs/org_system/scim', '/orgs/:org/scim', <ScimProvisioning key="scim" />, 'SCIM provisioning', 'scim-bindings'],
   ])('answers a deep link into the system scope for %s with the reason, not a denial', async (_name, path, pattern, element, heading, tenantRead) => {
     const paths = stub(status);
     const { container, unmount } = await mount(path, pattern, element);

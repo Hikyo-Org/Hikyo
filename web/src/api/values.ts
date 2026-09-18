@@ -1,3 +1,4 @@
+import { fromBase64URL, optionParsers, toBase64URL } from './webauthnOptions.ts';
 import { assertSessionEpoch, captureSessionEpoch, reconcileSessionResponse } from './sessionEpoch.ts';
 import {
   copyValuesOp,
@@ -141,29 +142,7 @@ export function useRevealWindow(
  * exported so the account-security enrolment ceremonies (#60) share it rather
  * than growing a second, subtly different copy.
  */
-export function fromBase64URL(value: string): ArrayBuffer {
-  const padded = value.replace(/-/g, '+').replace(/_/g, '/');
-  const binary = atob(padded + '='.repeat((4 - (padded.length % 4)) % 4));
-  // An ArrayBuffer, not a Uint8Array view: `BufferSource` wants a view over a
-  // plain ArrayBuffer and a bare `Uint8Array` is typed over `ArrayBufferLike`,
-  // which admits SharedArrayBuffer. Handing back the buffer keeps the browser
-  // API's own type honest without a cast.
-  const buffer = new ArrayBuffer(binary.length);
-  const out = new Uint8Array(buffer);
-  for (let i = 0; i < binary.length; i++) {
-    out[i] = binary.charCodeAt(i);
-  }
-  return buffer;
-}
-
-export function toBase64URL(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+export { fromBase64URL, toBase64URL } from './webauthnOptions.ts';
 
 export type PasskeyCeremonyInput = {
   /**
@@ -283,7 +262,10 @@ export async function runAdapterTOTPCeremony(
  * Written by hand rather than through a schema because the values are
  * BUFFERS by the time the browser sees them: a Zod schema would describe the
  * wire shape and then every field would still need converting, so the check
- * and the conversion live together and neither can be skipped.
+ * and the conversion live together and neither can be skipped. The
+ * descriptor and policy parsing is the registration ceremony's, shared, so a
+ * malformed descriptor refuses rather than being filtered away and every
+ * supported policy value (transports, `discouraged`) survives verbatim.
  */
 export function requestOptions(blob: unknown): PublicKeyCredentialRequestOptions {
   if (typeof blob !== 'object' || blob === null) {
@@ -293,13 +275,8 @@ export function requestOptions(blob: unknown): PublicKeyCredentialRequestOptions
   const inner = outer['publicKey'];
   const source: Record<string, unknown> =
     typeof inner === 'object' && inner !== null ? { ...inner } : outer;
-
-  const challenge = source['challenge'];
-  if (typeof challenge !== 'string') {
-    throw new Error('the reauth options carried no challenge');
-  }
   const request: PublicKeyCredentialRequestOptions = {
-    challenge: fromBase64URL(challenge),
+    challenge: fromBase64URL(reauthOptions.requiredString(source['challenge'], 'challenge')),
   };
   if (typeof source['rpId'] === 'string') {
     request.rpId = source['rpId'];
@@ -307,25 +284,18 @@ export function requestOptions(blob: unknown): PublicKeyCredentialRequestOptions
   if (typeof source['timeout'] === 'number') {
     request.timeout = source['timeout'];
   }
-  if (source['userVerification'] === 'required' || source['userVerification'] === 'preferred') {
-    request.userVerification = source['userVerification'];
+  const verification = reauthOptions.userVerification(source['userVerification']);
+  if (verification !== undefined) {
+    request.userVerification = verification;
   }
-  const allow = source['allowCredentials'];
-  if (Array.isArray(allow)) {
-    request.allowCredentials = allow.flatMap((entry: unknown) => {
-      if (typeof entry !== 'object' || entry === null) {
-        return [];
-      }
-      const record: Record<string, unknown> = { ...entry };
-      const id = record['id'];
-      if (typeof id !== 'string') {
-        return [];
-      }
-      return [{ id: fromBase64URL(id), type: 'public-key' as const }];
-    });
+  const allow = reauthOptions.descriptors(source['allowCredentials'], 'allowed credential');
+  if (allow !== undefined) {
+    request.allowCredentials = allow;
   }
   return request;
 }
+
+const reauthOptions = optionParsers('the reauth options');
 
 /** runTOTPCeremony opens a sliding window with a code. */
 export async function runTOTPCeremony(environmentId: string, code: string): Promise<void> {

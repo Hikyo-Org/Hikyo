@@ -537,7 +537,10 @@ test.describe('environment matrix', () => {
       (response) => new URL(response.url()).pathname === eventsPath && response.status() === 200,
       { timeout: 20_000 },
     );
-    await page.waitForTimeout(1_000); // let the healthy transition land
+    // Let the healthy transition land, and with it the one-time recovery
+    // catch-up (one signals request per environment): the silence asserted
+    // below starts AFTER that refetch, not before it.
+    await page.waitForTimeout(1_000);
     const atRecovery = signalsCount;
     await page.waitForTimeout(6_000);
     expect(signalsCount).toBe(atRecovery);
@@ -1366,6 +1369,11 @@ test.describe('change approvals', () => {
         const original = initial.items.find((policy) => policy.environment_id === seed.dev);
         let ownedPolicy: ApprovalPolicy | undefined;
         const grantCleanup: (() => Promise<void>)[] = [];
+        // The body's outcome is held, not left pending under a `finally`: a
+        // cleanup failure thrown from a finally block would replace it, and the
+        // test's own failure is the one worth reading.
+        let bodyFailed = false;
+        let bodyFailure: unknown;
         try {
           await use({
             ensurePolicy: async () => {
@@ -1405,52 +1413,58 @@ test.describe('change approvals', () => {
               });
             },
           });
-        } finally {
+        } catch (error) {
+          bodyFailed = true;
+          bodyFailure = error;
+        }
+        // Attempt every exact grant cleanup and the policy restore even if one
+        // request fails; every failure is reported, none hides another.
+        const failures: Error[] = [];
+        for (const clean of grantCleanup) {
           try {
-            // Attempt every exact grant cleanup even if one request fails.
-            const failures: Error[] = [];
-            for (const clean of grantCleanup) {
-              try {
-                await clean();
-              } catch (error) {
-                failures.push(
-                  error instanceof Error ? error : new Error('Reviewer grant cleanup failed'),
-                );
-              }
-            }
-            if (failures.length > 0)
-              throw new AggregateError(failures, 'Reviewer grant cleanup failed');
-          } finally {
-            if (ownedPolicy !== undefined) {
-              if (original === undefined) {
-                await fixtureApiCall(
-                  token,
-                  'DELETE',
-                  `${projectBase}/approval-policies/${ownedPolicy.id}`,
-                  z.object({}),
-                );
-              } else {
-                await fixtureApiCall(
-                  token,
-                  'PUT',
-                  `${projectBase}/approval-policies/${original.id}`,
-                  zApprovalPolicy,
-                  policyInput(original),
-                );
-              }
-            }
-            const restored = await fixtureApiCall(
-              token,
-              'GET',
-              `${projectBase}/approval-policies`,
-              zApprovalPolicyList,
-            );
-            const actual = restored.items.find((policy) => policy.environment_id === seed.dev);
-            expect(actual === undefined ? undefined : policyInput(actual)).toEqual(
-              original === undefined ? undefined : policyInput(original),
+            await clean();
+          } catch (error) {
+            failures.push(
+              error instanceof Error ? error : new Error('Reviewer grant cleanup failed'),
             );
           }
         }
+        try {
+          if (ownedPolicy !== undefined) {
+            if (original === undefined) {
+              await fixtureApiCall(
+                token,
+                'DELETE',
+                `${projectBase}/approval-policies/${ownedPolicy.id}`,
+                z.object({}),
+              );
+            } else {
+              await fixtureApiCall(
+                token,
+                'PUT',
+                `${projectBase}/approval-policies/${original.id}`,
+                zApprovalPolicy,
+                policyInput(original),
+              );
+            }
+          }
+          const restored = await fixtureApiCall(
+            token,
+            'GET',
+            `${projectBase}/approval-policies`,
+            zApprovalPolicyList,
+          );
+          const actual = restored.items.find((policy) => policy.environment_id === seed.dev);
+          expect(actual === undefined ? undefined : policyInput(actual)).toEqual(
+            original === undefined ? undefined : policyInput(original),
+          );
+        } catch (error) {
+          failures.push(
+            error instanceof Error ? error : new Error('Approval policy restore failed'),
+          );
+        }
+        if (bodyFailed) throw bodyFailure;
+        if (failures.length > 0) throw new AggregateError(failures, 'Approval fixture cleanup failed');
       },
       { auto: true },
     ],

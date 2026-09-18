@@ -39,6 +39,7 @@ import {
 } from '../api/scim.ts';
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { writeClipboard } from '../app/clipboard.ts';
+import { useNavigationGuard } from '../app/useNavigationGuard.ts';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
@@ -48,7 +49,6 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { Radio } from '../ui/Radio.tsx';
 import { Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
-import { useNavigationGuard } from './MachineAccess.tsx';
 import { gateSystemScope } from './SystemScope.tsx';
 
 /**

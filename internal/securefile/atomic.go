@@ -11,7 +11,16 @@ import (
 // WriteAtomic writes contents beside path, syncs and closes the file, then
 // atomically replaces path and syncs the directory so the rename is durable.
 // Callers own validation and contextual error text.
-func WriteAtomic(path string, contents []byte, mode os.FileMode) (returnErr error) {
+func WriteAtomic(path string, contents []byte, mode os.FileMode) error {
+	return WriteAtomicPrepared(path, contents, mode, nil)
+}
+
+// WriteAtomicPrepared is WriteAtomic with a prepare hook that runs on the open
+// temporary file after its mode is set and before any byte is written, so a
+// caller can apply ownership or other attributes that must be in place before
+// publication. A nil prepare is a plain WriteAtomic; a prepare error aborts the
+// publication and removes the temporary file.
+func WriteAtomicPrepared(path string, contents []byte, mode os.FileMode, prepare func(*os.File) error) (returnErr error) {
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".secure-write-*")
 	if err != nil {
 		return err
@@ -25,6 +34,12 @@ func WriteAtomic(path string, contents []byte, mode os.FileMode) (returnErr erro
 	if err := tmp.Chmod(mode); err != nil {
 		_ = tmp.Close()
 		return err
+	}
+	if prepare != nil {
+		if err := prepare(tmp); err != nil {
+			_ = tmp.Close()
+			return err
+		}
 	}
 	if _, err := tmp.Write(contents); err != nil {
 		_ = tmp.Close()

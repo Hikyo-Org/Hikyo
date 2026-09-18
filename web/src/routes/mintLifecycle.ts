@@ -182,7 +182,9 @@ export function useMintLifecycle<Req extends MintBoundaryFields = MintRequest, R
   const [lifecycle, setLifecycle] = useState<MintLifecycle<Req, Res>>({ kind: 'idle' });
   const lifecycleRef = useRef<MintLifecycle<Req, Res>>(lifecycle);
   const boundaryRef = useRef<MintBoundary>(boundary);
-  boundaryRef.current = boundary;
+  useEffect(() => {
+    boundaryRef.current = boundary;
+  }, [boundary]);
   const requestId = useRef(0);
 
   const moveMint = useCallback<MoveMint<Req, Res>>((event) => {

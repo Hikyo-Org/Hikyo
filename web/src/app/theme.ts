@@ -24,22 +24,56 @@ function isTheme(value: string | null): value is Theme {
   return value === 'dark' || value === 'light';
 }
 
+/**
+ * Persistence is best-effort, like the other storage users (Shell.tsx's
+ * dismissals, sessionEpoch.ts's notification fallback): a hardened browser or
+ * a private mode can throw on ANY storage access, and `initTheme` runs before
+ * React mounts, so a throw here would take the whole SPA, login included, down
+ * with it. The choice therefore lives in memory for the document lifetime and
+ * storage only mirrors it when the browser lets it.
+ */
+function readStoredChoice(): ThemeChoice {
+  try {
+    const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? null;
+    return isTheme(stored) ? stored : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function storeChoice(choice: ThemeChoice): void {
+  try {
+    if (choice === 'system') {
+      globalThis.localStorage?.removeItem(STORAGE_KEY);
+    } else {
+      globalThis.localStorage?.setItem(STORAGE_KEY, choice);
+    }
+  } catch {
+    // Storage refused the write; the in-memory choice below still paints and
+    // still reaches every subscriber, it just does not survive a reload.
+  }
+}
+
+/** The document's current choice, the source of truth for `useThemeChoice`.
+ *  Filled lazily from storage, replaced by every write and cross-tab event. */
+let current: ThemeChoice | null = null;
+
 function readThemeChoice(): ThemeChoice {
-  const stored = globalThis.localStorage?.getItem(STORAGE_KEY) ?? null;
-  return isTheme(stored) ? stored : 'system';
+  current ??= readStoredChoice();
+  return current;
 }
 
 /** applyTheme writes the DOM attribute and storage. Internal: every caller goes
  *  through setThemeChoice so the in-document subscribers are notified. */
 function applyTheme(choice: ThemeChoice): void {
+  current = choice;
   const root = document.documentElement;
   if (choice === 'system') {
     root.removeAttribute('data-theme');
-    globalThis.localStorage?.removeItem(STORAGE_KEY);
-    return;
+  } else {
+    root.setAttribute('data-theme', choice);
   }
-  root.setAttribute('data-theme', choice);
-  globalThis.localStorage?.setItem(STORAGE_KEY, choice);
+  storeChoice(choice);
 }
 
 /** initTheme applies the stored choice once at startup, before first paint of
@@ -57,7 +91,7 @@ function subscribe(onChange: () => void): () => void {
     // `null` key is a storage.clear(); either way re-read and mirror it into
     // this document's DOM, then let subscribers re-render.
     if (event.key === STORAGE_KEY || event.key === null) {
-      applyTheme(readThemeChoice());
+      applyTheme(readStoredChoice());
       onChange();
     }
   };

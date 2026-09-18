@@ -43,39 +43,28 @@ func (q *Queries) GetLastPruneSuccess(ctx context.Context) (pgtype.Timestamptz, 
 }
 
 const listEligibleSnapshotPayloads = `-- name: ListEligibleSnapshotPayloads :many
-WITH ranked AS (
-    SELECT s.id, s.org_id, s.project_id, s.environment_id, s.revision,
-           s.published_at, s.payload_present,
-           COALESCE(p.retention_age_seconds, o.retention_age_seconds) AS age_seconds,
-           COALESCE(p.retention_revision_count, o.retention_revision_count) AS revision_count,
-           CASE
-               WHEN p.retention_age_seconds IS NOT NULL THEN FALSE
-               ELSE o.retention_mode = 'unlimited'
-           END AS is_unlimited,
-           s.published_at < $1::timestamptz -
-               COALESCE(p.retention_age_seconds, o.retention_age_seconds) * INTERVAL '1 second' AS age_expired,
-           ROW_NUMBER() OVER (
-               PARTITION BY s.org_id, s.project_id, s.environment_id
-               ORDER BY s.revision DESC
-           ) AS newest_rank
-    FROM snapshots AS s
-    JOIN projects AS p ON p.org_id = s.org_id AND p.id = s.project_id
-    JOIN orgs AS o ON o.id = s.org_id
-)
-SELECT ranked.id, ranked.org_id, ranked.project_id, ranked.environment_id,
-       ranked.revision, ranked.age_seconds, ranked.revision_count
-FROM ranked
-WHERE NOT ranked.is_unlimited
-  AND ranked.payload_present
-  AND NOT EXISTS (SELECT 1 FROM self_config_retention r WHERE r.snapshot_id = ranked.id)
-  AND ranked.age_expired
-  AND ranked.newest_rank > ranked.revision_count
+SELECT s.id, s.org_id, s.project_id, s.environment_id, s.revision,
+       COALESCE(p.retention_age_seconds, o.retention_age_seconds) AS age_seconds,
+       COALESCE(p.retention_revision_count, o.retention_revision_count) AS revision_count
+FROM snapshots AS s
+JOIN projects AS p ON p.org_id = s.org_id AND p.id = s.project_id
+JOIN orgs AS o ON o.id = s.org_id
+WHERE s.payload_present
+  AND (p.retention_age_seconds IS NOT NULL OR o.retention_mode <> 'unlimited')
+  AND s.published_at < $1::timestamptz -
+      COALESCE(p.retention_age_seconds, o.retention_age_seconds) * INTERVAL '1 second'
+  AND (
+      SELECT COUNT(*) FROM snapshots AS n
+      WHERE n.org_id = s.org_id AND n.project_id = s.project_id
+        AND n.environment_id = s.environment_id AND n.revision > s.revision
+  ) >= COALESCE(p.retention_revision_count, o.retention_revision_count)
+  AND NOT EXISTS (SELECT 1 FROM self_config_retention r WHERE r.snapshot_id = s.id)
   AND NOT EXISTS (
       SELECT 1 FROM revision_pins
-      WHERE revision_pins.snapshot_id = ranked.id
+      WHERE revision_pins.snapshot_id = s.id
         AND revision_pins.expires_at > $1::timestamptz
   )
-ORDER BY ranked.org_id, ranked.project_id, ranked.environment_id, ranked.revision
+ORDER BY s.org_id, s.project_id, s.environment_id, s.revision
 LIMIT $2
 `
 
@@ -94,6 +83,13 @@ type ListEligibleSnapshotPayloadsRow struct {
 	RevisionCount int64
 }
 
+// ListEligibleSnapshotPayloads selects the next batch of collectable payloads.
+// The latest-N cutoff is a per-environment count over the
+// (org_id, project_id, environment_id, revision DESC) index: a snapshot is
+// outside the window exactly when at least revision_count newer revisions
+// exist in its environment (collected or not, lineage is the unit of the
+// window). The outer scan touches only live payloads, so a collected backlog
+// never re-enters the ranking work.
 // hikyo:instance-scoped
 func (q *Queries) ListEligibleSnapshotPayloads(ctx context.Context, arg ListEligibleSnapshotPayloadsParams) ([]ListEligibleSnapshotPayloadsRow, error) {
 	rows, err := q.db.Query(ctx, listEligibleSnapshotPayloads, arg.Now, arg.BatchLimit)
@@ -159,7 +155,8 @@ const markSnapshotCollected = `-- name: MarkSnapshotCollected :execrows
 UPDATE snapshots
 SET payload_present = FALSE,
     collected_at = $1,
-    collected_policy = $2
+    collected_policy = $2,
+    parameter_contract = '{}'
 WHERE snapshots.id = $3 AND snapshots.payload_present
   AND NOT EXISTS (SELECT 1 FROM self_config_retention r WHERE r.snapshot_id = snapshots.id)
   AND NOT EXISTS (
@@ -176,6 +173,11 @@ type MarkSnapshotCollectedParams struct {
 	Now             pgtype.Timestamptz
 }
 
+// MarkSnapshotCollected stamps the collection and drops the payload-class
+// columns held on the header row itself. The parameter contract is payload:
+// it is charged to the project storage quota beside the entries, every reader
+// of it needs the entries the collection removes, and '{}' decodes as the
+// valid empty contract.
 // hikyo:instance-scoped
 func (q *Queries) MarkSnapshotCollected(ctx context.Context, arg MarkSnapshotCollectedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markSnapshotCollected,

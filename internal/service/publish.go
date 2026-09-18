@@ -1100,14 +1100,6 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 	for _, entry := range entries {
 		entryByKey[entry.KeyID] = entry
 	}
-	secretOccurrenceIDs, err := r.Snapshots().SecretValueOccurrenceIDs(ctx, p)
-	if err != nil {
-		return PublishedEnvironment{}, err
-	}
-	secretOccurrences := make(map[string]bool, len(secretOccurrenceIDs))
-	for _, id := range secretOccurrenceIDs {
-		secretOccurrences[id] = true
-	}
 	applyByKey := make(map[string]pendingApply, len(applies))
 	for _, apply := range applies {
 		applyByKey[apply.keyID] = apply
@@ -1287,11 +1279,13 @@ func materialize(ctx context.Context, r store.Repos, p authz.Proof, sealer *cryp
 		if storage != nil {
 			storage.total += int64(len(sealed))
 		}
-		if (cell.key.Classification == string(schema.Secret) || cell.materialSecret) && !secretOccurrences[cell.entryID] {
+		// The occurrence record is idempotent on the value-entry id, so a
+		// publish never reads the environment's lifetime occurrence history
+		// to decide whether to write it.
+		if cell.key.Classification == string(schema.Secret) || cell.materialSecret {
 			if err := r.Snapshots().RecordSecretValueOccurrence(ctx, p, cell.entryID); err != nil {
 				return PublishedEnvironment{}, err
 			}
-			secretOccurrences[cell.entryID] = true
 		}
 		rows = append(rows, delivery.Row{
 			Key: cell.key.Name, Classification: cell.key.Classification, Value: cell.value,

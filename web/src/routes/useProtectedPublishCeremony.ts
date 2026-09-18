@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 
 import { useTransport } from '../api/transport.tsx';
 import { fetchApprovalCeremony } from '../api/approvals.ts';
@@ -44,9 +46,10 @@ export function useProtectedPublishCeremony(
   const transport = useTransport();
   const ceremony = useCeremonyTask([refData.org, refData.project, scope]);
 
-  useEffect(
-    () => setError(null),
-    [refData.org, refData.project, ceremony.scopeKey],
+  // Clear the refusal when the scope identity changes so no stale error
+  // survives into a different target.
+  useResetOnChange(`${refData.org}\u0000${refData.project}\u0000${ceremony.scopeKey}`, () =>
+    setError(null),
   );
 
   const run = async (

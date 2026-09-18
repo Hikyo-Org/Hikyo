@@ -13,7 +13,7 @@ import {
 import { flushSync } from 'react-dom';
 import type { z } from 'zod';
 
-import { retireSensitiveOperations, transferSensitiveState, type SensitiveStateTransfer } from '../api/sensitiveMutation.ts';
+import { transferSensitiveState, type SensitiveStateTransfer } from '../api/sensitiveMutation.ts';
 import {
   announceSessionChange,
   blockSessionEpoch,
@@ -30,7 +30,7 @@ import {
 
 import { ApiError, parsed, readCsrfToken } from '../api/client.ts';
 import { transitionWorkspaceOwner } from '../api/workspace.ts';
-import { makeQueryClient } from './queryClient.ts';
+import { makeQueryClient, retireQueryClient } from './queryClient.ts';
 import { RuntimeMaintenanceBoundary } from './RuntimeMaintenanceBoundary.tsx';
 
 export type WhoAmI = z.infer<typeof zWhoAmI>;
@@ -195,9 +195,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
   }, []);
 
   const destroySessionCache = useCallback((current: Snapshot): Snapshot => {
-    retireSensitiveOperations(current.queries);
-    void current.queries.cancelQueries();
-    current.queries.clear();
+    retireQueryClient(current.queries);
     return { ...current, epoch: current.epoch + 1, queries: makeQueryClient() };
   }, []);
 
@@ -491,9 +489,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
         requestRef.current += 1;
         // whoami already proved this exact remint. Retire old secrets while
         // preserving the initiating surface for its one-shot transfer.
-        retireSensitiveOperations(current.queries);
-        void current.queries.cancelQueries();
-        current.queries.clear();
+        retireQueryClient(current.queries);
         settleIdentity(hydrated, false);
       });
       return accepted;
@@ -564,15 +560,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
     };
   }, [revalidate]);
 
-  useEffect(
-    () => () => {
-      const current = snapshotRef.current;
-      retireSensitiveOperations(current.queries);
-      void current.queries.cancelQueries();
-      current.queries.clear();
-    },
-    [],
-  );
+  useEffect(() => () => retireQueryClient(snapshotRef.current.queries), []);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {

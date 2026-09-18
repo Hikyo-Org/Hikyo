@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { createClient } from '@hikyo/runtime-core';
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { act, useState, type ReactNode } from 'react';
+import { act, useEffect, useState, type ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -238,7 +238,9 @@ describe('AuthProvider', () => {
     function RecoverySurface() {
       const auth = useAuth();
       const operation = useRegenerateRecoveryCodes();
-      hasPlaintextPromise = Object.hasOwn(operation, 'mutateAsync');
+      useEffect(() => {
+        hasPlaintextPromise = Object.hasOwn(operation, 'mutateAsync');
+      }, [operation]);
       return <><button onClick={() => { returned = operation.mutate({ proof: 'SENTINEL-proof' }, { onError: report }); }}>Replace</button>
         <button onClick={operation.dismiss}>Dismiss</button>
         <button onClick={() => auth.endSession(auth.captureTransition())}>Logout</button>

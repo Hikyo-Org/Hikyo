@@ -3919,13 +3919,19 @@ export const releaseRevisionPin = <ThrowOnError extends boolean = false>(options
 });
 
 /**
- * One environment's revision history, newest first.
+ * One page of an environment's revision history, newest first.
  *
  * LINEAGE ONLY: revision numbers, publishers, timestamps, the pinned
  * schema revision, and which keys changed. It never contains a value in
  * any form - not a plaintext, not a length, not a digest, not a
  * changed-from marker. That is what lets lineage be retained forever
  * while payloads are collected by retention policy.
+ *
+ * The history is paged by revision, newest first. A page holds the
+ * revisions strictly below `before` (default: above the newest), at
+ * most `limit` of them. When the page was full, `next_before` carries
+ * the smallest revision returned; pass it as the next `before` to
+ * continue. Its absence means the page reached the oldest revision.
  *
  */
 export const listRevisions = <ThrowOnError extends boolean = false>(options: Options<ListRevisionsData, ThrowOnError>) => (options.client ?? client).get<ListRevisionsResponses, ListRevisionsErrors, ThrowOnError>({
@@ -4031,6 +4037,13 @@ export const watchProjectEvents = <ThrowOnError extends boolean = false>(options
  * one `audit.query` event recording the normalized filter and the count
  * returned, durably, in the same transaction as the read. No value
  * material is ever in the trail, so none can be in this response.
+ *
+ * Consistency limit of interactive paging: pages are ordered by the
+ * allocation `seq`. A transaction that commits out of allocation order
+ * can land below a cursor that has already passed it, so that event can
+ * be absent from the remainder of one paging session. It is durable and
+ * a fresh query recovers it. Exports do not have this limit: they page
+ * in commit order behind the writer barrier and are gap-free.
  *
  */
 export const queryOrgAudit = <ThrowOnError extends boolean = false>(options: Options<QueryOrgAuditData, ThrowOnError>) => (options.client ?? client).get<QueryOrgAuditResponses, QueryOrgAuditErrors, ThrowOnError>({

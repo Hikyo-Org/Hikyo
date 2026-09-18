@@ -252,6 +252,11 @@ func checkQuery(engine string, q Query, rules map[string]TableRule) []string {
 		return nil
 	}
 	sql := maskSQLCArgs(normalizeSpace(q.SQL))
+	// An idempotent insert's `ON CONFLICT (target) DO NOTHING` suffix names a
+	// conflict target and no action: it can neither widen the rows written nor
+	// rewrite a chain column, so it is cut before the shape scan. `DO UPDATE`
+	// and sqlite's `INSERT OR REPLACE` stay unprovable shapes.
+	sql = doNothingRe.ReplaceAllString(sql, "")
 	upper := strings.ToUpper(sql)
 
 	// Conservative rejection: shapes the analyzer cannot prove are refused
@@ -334,9 +339,10 @@ func checkWhere(label, sql, upper string, chainCols []string) []string {
 	}
 	where := sql[idx+len(" WHERE "):]
 	// Trailing clauses that are not predicates get cut before the conjunct
-	// walk. FOR UPDATE is a row-lock request, ORDER BY a sort; neither narrows
-	// which rows the chain conjuncts already confined.
-	for _, tail := range []string{" ORDER BY ", " FOR UPDATE"} {
+	// walk. FOR UPDATE is a row-lock request, ORDER BY a sort, GROUP BY (with
+	// any HAVING after it) an aggregation over rows the chain conjuncts already
+	// confined; none of them widens that set.
+	for _, tail := range []string{" ORDER BY ", " FOR UPDATE", " GROUP BY "} {
 		if end := strings.Index(strings.ToUpper(where), tail); end >= 0 {
 			where = where[:end]
 		}
@@ -484,9 +490,10 @@ func eachSQLFile(dir string, fn func(path, src string) error) error {
 }
 
 var (
-	andSplitRe = regexp.MustCompile(`(?i)\s+AND\s+`)
-	conjunctRe = regexp.MustCompile(`^(\w+)\s*(=|<=|>=|<|>)\s*` + paramRe + `$`)
-	spaceRe    = regexp.MustCompile(`\s+`)
+	andSplitRe  = regexp.MustCompile(`(?i)\s+AND\s+`)
+	doNothingRe = regexp.MustCompile(`(?i)\s+ON CONFLICT \([\w, ]+\) DO NOTHING$`)
+	conjunctRe  = regexp.MustCompile(`^(\w+)\s*(=|<=|>=|<|>)\s*` + paramRe + `$`)
+	spaceRe     = regexp.MustCompile(`\s+`)
 
 	setColRes  = map[string]*regexp.Regexp{}
 	setColResM sync.Mutex

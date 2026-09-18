@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
@@ -83,11 +83,28 @@ function cellKey(environment: string, keyID: string): string {
 
 export function Values() {
   const params = useParams();
-  const env: EnvRef = {
-    org: params['org'] ?? '',
-    project: params['project'] ?? '',
-    environment: params['environment'] ?? '',
-  };
+  const org = params['org'] ?? '';
+  const project = params['project'] ?? '';
+  const environment = params['environment'] ?? '';
+  // NAVIGATION RE-MASKS. React Router reuses this component when only the route
+  // parameters change. Keying the surface on the environment identity remounts
+  // it, so a value disclosed in development is not still in state, and on
+  // screen, a moment after the human moved to production. Everything transient
+  // dies with the old instance: the plaintext, a ceremony waiting to be
+  // answered, the act it was staged for, an open editor and the clipboard
+  // notice, none of which mean anything in a different environment.
+  return (
+    <ValuesSurface
+      key={`${org}\u0000${project}\u0000${environment}`}
+      org={org}
+      project={project}
+      environment={environment}
+    />
+  );
+}
+
+function ValuesSurface({ org, project, environment }: { org: string; project: string; environment: string }) {
+  const env = useMemo<EnvRef>(() => ({ org, project, environment }), [org, project, environment]);
 
   const transport = useTransport();
   const values = useValues(env);
@@ -106,32 +123,12 @@ export function Values() {
   const [audit, setAudit] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [destination, setDestination] = useState('');
-  const writeGeneration = useRef(0);
   const ceremony = useCeremonyTask([
     env.org,
     env.project,
     env.environment,
     destination,
   ]);
-
-  // NAVIGATION RE-MASKS. React Router reuses this component when only the
-  // route parameters change, so without this a value disclosed in development
-  // would still be in state, and on screen, a moment after the human moved
-  // to production. Everything transient goes: the plaintext, a ceremony
-  // waiting to be answered, the act it was staged for, an open editor and the
-  // clipboard notice, none of which mean anything in a different environment.
-  useEffect(() => {
-    writeGeneration.current += 1;
-    setDisclosed({});
-    setEditing(null);
-    setRefusal(null);
-    setNotice(null);
-    setRevealAnnouncement(null);
-    setAudit([]);
-    return () => {
-      writeGeneration.current += 1;
-    };
-  }, [env.org, env.project, env.environment]);
 
   // One ticker drives every countdown on the surface: the remask timers and
   // the window chip are the same question asked of different deadlines, and a
@@ -149,7 +146,7 @@ export function Values() {
       const live = Object.entries(current).filter(([, d]) => d.until > Date.now());
       return live.length === Object.keys(current).length ? current : Object.fromEntries(live);
     });
-  }, [now]);
+  }, [now, setDisclosed]);
 
   const cells: ValueCell[] = useMemo(() => values.data?.items ?? [], [values.data]);
   // The modal title is purpose-bound, `reveal · production`, so it needs the
@@ -292,7 +289,7 @@ export function Values() {
       }
       noteDisclosure(entries.map((e) => e.name));
     },
-    [env.environment, noteDisclosure],
+    [env.environment, noteDisclosure, setDisclosed],
   );
 
   const doRevealOne = (cell: ValueCell) =>
@@ -417,16 +414,16 @@ export function Values() {
       return;
     }
 
-    const generation = writeGeneration.current;
+    // A navigation away during the await remounts the surface (keyed on the
+    // environment), so this instance is gone and its state updates are no-ops:
+    // the "staged" notice cannot surface in a different environment.
     setRefusal(null);
     setNotice(null);
     try {
       await setValue.mutateAsync({ key: cell.name, value });
-      if (writeGeneration.current !== generation) return;
       setEditing((current) => (current === cell.name ? null : current));
       setNotice(`${cell.name} staged.`);
     } catch (error) {
-      if (writeGeneration.current !== generation) return;
       setRefusal(writeRefusalText(error));
     }
   };

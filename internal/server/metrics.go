@@ -80,6 +80,11 @@ const (
 	// not keeping up). No per-tenant labels, so cardinality is one each.
 	MetricApprovalRequestsOpen    = "hikyo_approval_requests_open"
 	MetricApprovalRequestsExpired = "hikyo_approval_requests_expired"
+	// MetricApprovalGaugesKnown is 1 when the two approval gauges above were
+	// measured on this scrape and 0 when the source failed, in which case both
+	// are omitted rather than rendered as zeros (a failed count is unknown,
+	// not empty). Check it before alerting on either, like capacity_known.
+	MetricApprovalGaugesKnown = "hikyo_approval_gauges_known"
 	// Disaster-recovery gauges (#145, ops-spec section 11). Label-free like
 	// every other operator gauge: one series each, no archive name, no path.
 	MetricLastBackupExportSuccess = "hikyo_last_backup_export_success_timestamp_seconds"
@@ -93,6 +98,10 @@ const (
 	// transitions stuck in an uncertain state awaiting reconcile.
 	MetricDynamicLeasesActive   = "hikyo_dynamic_leases_active"
 	MetricDynamicEffectsUnknown = "hikyo_dynamic_effects_unknown"
+	// MetricDynamicGaugesKnown is 1 when the two dynamic gauges above were
+	// measured on this scrape and 0 when the source failed, in which case both
+	// are omitted: a datastore outage must not read as "no unknown effects".
+	MetricDynamicGaugesKnown = "hikyo_dynamic_gauges_known"
 
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
@@ -486,9 +495,11 @@ type ApprovalStats struct {
 
 // ApprovalSnapshotter supplies the approval gauges at scrape time. It is read
 // synchronously in Collect, so an implementation must be quick and must not
-// block; it returns zeros on any error rather than failing the scrape.
+// block. An error marks the gauges unknown for this scrape: the collector
+// omits them and renders MetricApprovalGaugesKnown as 0 instead of failing
+// the scrape or inventing zeros.
 type ApprovalSnapshotter interface {
-	ApprovalSnapshot() ApprovalStats
+	ApprovalSnapshot() (ApprovalStats, error)
 }
 
 // SetApprovalSource attaches the approval gauge source after registration, via
@@ -500,26 +511,29 @@ func (m *Metrics) SetApprovalSource(source ApprovalSnapshotter) {
 type approvalCollector struct {
 	source atomic.Pointer[ApprovalSnapshotter]
 	descs  [2]*prometheus.Desc
+	known  *prometheus.Desc
 }
 
 func newApprovalCollector() *approvalCollector {
 	return &approvalCollector{descs: [2]*prometheus.Desc{
 		prometheus.NewDesc(MetricApprovalRequestsOpen, "Change-approval requests awaiting review (open or approved, not yet resolved).", nil, nil),
 		prometheus.NewDesc(MetricApprovalRequestsExpired, "Change-approval requests that expired unmerged.", nil, nil),
-	}}
+	}, known: prometheus.NewDesc(MetricApprovalGaugesKnown, "Whether the approval gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
 }
 
 func (c *approvalCollector) Describe(ch chan<- *prometheus.Desc) {
 	for _, desc := range c.descs {
 		ch <- desc
 	}
+	ch <- c.known
 }
 
-// DynamicSnapshotter is the dynamic-secret gauge source, read at scrape time. A
-// nil source (or an error inside it) renders zeros, so the exposition shape
-// stays deterministic on a datastore hiccup.
+// DynamicSnapshotter is the dynamic-secret gauge source, read at scrape time.
+// An error (or a nil source) marks the gauges unknown for this scrape: the
+// collector omits them and renders MetricDynamicGaugesKnown as 0, so a
+// datastore hiccup never reads as a measured zero.
 type DynamicSnapshotter interface {
-	DynamicSnapshot() (activeLeases, unknownEffects int64)
+	DynamicSnapshot() (activeLeases, unknownEffects int64, err error)
 }
 
 // SetDynamicSource attaches the dynamic-secret gauge source once at boot.
@@ -528,43 +542,59 @@ func (m *Metrics) SetDynamicSource(source DynamicSnapshotter) { m.dyn.source.Sto
 type dynamicCollector struct {
 	source atomic.Pointer[DynamicSnapshotter]
 	descs  [2]*prometheus.Desc
+	known  *prometheus.Desc
 }
 
 func newDynamicCollector() *dynamicCollector {
 	return &dynamicCollector{descs: [2]*prometheus.Desc{
 		prometheus.NewDesc(MetricDynamicLeasesActive, "Number of currently usable dynamic-secret leases.", nil, nil),
 		prometheus.NewDesc(MetricDynamicEffectsUnknown, "Number of dynamic-secret lease transitions in an uncertain state awaiting reconcile.", nil, nil),
-	}}
+	}, known: prometheus.NewDesc(MetricDynamicGaugesKnown, "Whether the dynamic-secret gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
 }
 
 func (c *dynamicCollector) Describe(ch chan<- *prometheus.Desc) {
 	for _, desc := range c.descs {
 		ch <- desc
 	}
+	ch <- c.known
+}
+
+// collectMeasured renders a pair of gauges plus their known flag. A failed or
+// absent measurement emits only known=0: an omitted series is "unknown" to an
+// alert, a zero is "healthy", and the two must never be confused.
+func collectMeasured(ch chan<- prometheus.Metric, descs [2]*prometheus.Desc, known *prometheus.Desc, values [2]float64, measured bool) {
+	if measured {
+		for i, desc := range descs {
+			ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
+		}
+	}
+	knownValue := 0.0
+	if measured {
+		knownValue = 1
+	}
+	ch <- prometheus.MustNewConstMetric(known, prometheus.GaugeValue, knownValue)
 }
 
 func (c *approvalCollector) Collect(ch chan<- prometheus.Metric) {
-	stats := ApprovalStats{}
+	var values [2]float64
+	measured := false
 	if p := c.source.Load(); p != nil && *p != nil {
-		stats = (*p).ApprovalSnapshot()
+		if stats, err := (*p).ApprovalSnapshot(); err == nil {
+			values, measured = [2]float64{stats.Open, stats.Expired}, true
+		}
 	}
-	values := [...]float64{stats.Open, stats.Expired}
-	kinds := [...]prometheus.ValueType{prometheus.GaugeValue, prometheus.GaugeValue}
-	for i, desc := range c.descs {
-		ch <- prometheus.MustNewConstMetric(desc, kinds[i], values[i])
-	}
+	collectMeasured(ch, c.descs, c.known, values, measured)
 }
 
 func (c *dynamicCollector) Collect(ch chan<- prometheus.Metric) {
-	active, unknown := 0.0, 0.0
+	var values [2]float64
+	measured := false
 	if p := c.source.Load(); p != nil && *p != nil {
-		a, u := (*p).DynamicSnapshot()
-		active, unknown = float64(a), float64(u)
+		if active, unknown, err := (*p).DynamicSnapshot(); err == nil {
+			values, measured = [2]float64{float64(active), float64(unknown)}, true
+		}
 	}
-	values := [...]float64{active, unknown}
-	for i, desc := range c.descs {
-		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
-	}
+	collectMeasured(ch, c.descs, c.known, values, measured)
 }
 
 // observe is the outer public-router leg for /api/v1 traffic. Its placement

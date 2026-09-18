@@ -1562,7 +1562,7 @@ func (s stubRevisions) Restore(context.Context, service.Actor, domain.Scope, int
 	return service.RestoreResult{}, s.outcome()
 }
 
-func (s stubRevisions) History(context.Context, service.Actor, domain.Scope) ([]service.RevisionView, error) {
+func (s stubRevisions) History(context.Context, service.Actor, domain.Scope, int64, int) ([]service.RevisionView, error) {
 	return nil, s.outcome()
 }
 

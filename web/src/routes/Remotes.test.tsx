@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { QueryClient } from '@tanstack/react-query';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -336,5 +337,39 @@ describe('RemoteCard', () => {
     expect(card?.querySelector('.remote__actions .badge')).toBeNull();
     expect(card?.querySelector('.remote__picker')).toBeNull();
     expect([...(card?.querySelectorAll('button') ?? [])].map((b) => b.textContent)).toContain('Close workspace');
+  });
+
+  it('retires the workspace picker cache when the card unmounts', async () => {
+    rememberWorkspace({
+      origin: 'https://peer.example',
+      value: 'bearer-1',
+      session: 'session-1',
+      idleExpiresAt: '2099-01-01T00:00:00Z',
+      absoluteExpiresAt: '2099-01-01T01:00:00Z',
+    });
+    cleanups.push(() => {
+      forgetWorkspace('https://peer.example');
+      return Promise.resolve();
+    });
+    const cancel = vi.spyOn(QueryClient.prototype, 'cancelQueries');
+    const clear = vi.spyOn(QueryClient.prototype, 'clear');
+    cleanups.push(() => {
+      cancel.mockRestore();
+      clear.mockRestore();
+      return Promise.resolve();
+    });
+    const container = await renderRemotes([{ ...peer, identity: 'inst-a' }]);
+    expect(container.querySelector('.remote__picker')).not.toBeNull();
+    expect(clear).not.toHaveBeenCalled();
+
+    const unmount = cleanups.pop();
+    if (unmount === undefined) throw new Error('the render registered no unmount');
+    await unmount();
+
+    expect(cancel).toHaveBeenCalled();
+    expect(clear).toHaveBeenCalled();
+    expect(cancel.mock.invocationCallOrder[0]).toBeLessThan(
+      clear.mock.invocationCallOrder[0] ?? Number.NaN,
+    );
   });
 });

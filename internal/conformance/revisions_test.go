@@ -69,7 +69,7 @@ func scenarioRevisionListDetailCollectionParity(t *testing.T, db *store.DB) {
 	publishValue(t, db, values, actor, dev, "PARITY", "value")
 
 	revisions := revisionSvc(t, db)
-	history, err := revisions.History(t.Context(), actor, dev)
+	history, err := revisions.History(t.Context(), actor, dev, service.HistoryFromNewest, service.DefaultHistoryLimit)
 	if err != nil {
 		t.Fatal(err)
 	}

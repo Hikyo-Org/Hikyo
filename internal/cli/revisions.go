@@ -31,8 +31,14 @@ func runRevision(ctx context.Context, ios IO, args []string) error {
 		return err
 	}
 	var format, key string
+	var limit int
+	var before int64
 	st, flags, err := parseCommon("revision "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
+		if sub == "list" {
+			fs.IntVar(&limit, "limit", 0, "revisions per page (1 to 500; the server default is 100)")
+			fs.Int64Var(&before, "before", 0, "page cursor: list revisions strictly below this number")
+		}
 		if sub == "rollback" {
 			fs.StringVar(&key, "key", "", "restore only this key")
 		}
@@ -49,6 +55,9 @@ func runRevision(ctx context.Context, ios IO, args []string) error {
 	if sub == "list" {
 		if err := flags.checkNoPositionals("revision list"); err != nil {
 			return err
+		}
+		if limit < 0 || before < 0 {
+			return failf(ExitUsage, "revision list: --limit and --before cannot be negative")
 		}
 	}
 	var rollbackRevision int64
@@ -78,9 +87,25 @@ func runRevision(ctx context.Context, ios IO, args []string) error {
 
 	switch sub {
 	case "list":
+		// One page per invocation, never a silent loop: the server names the
+		// next cursor and the hint below tells the operator how to continue.
+		q := url.Values{}
+		if limit > 0 {
+			q.Set("limit", strconv.Itoa(limit))
+		}
+		if before > 0 {
+			q.Set("before", strconv.FormatInt(before, 10))
+		}
+		path := base + "/revisions"
+		if len(q) > 0 {
+			path += "?" + q.Encode()
+		}
 		var out apigen.RevisionList
-		if err := client.Do(ctx, http.MethodGet, base+"/revisions", nil, &out); err != nil {
+		if err := client.Do(ctx, http.MethodGet, path, nil, &out); err != nil {
 			return err
+		}
+		if out.NextBefore != nil {
+			fmt.Fprintf(ios.Stderr, "page full; older revisions follow: hikyo revision list --before %d\n", *out.NextBefore)
 		}
 		rows := make([][]string, 0, len(out.Items))
 		for _, rev := range out.Items {

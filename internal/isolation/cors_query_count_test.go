@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -28,6 +29,9 @@ func init() {
 type queryCountingDriver struct {
 	delegate driver.Driver
 	queries  atomic.Int64
+	// lineageReads counts the statements that read revision_key_changes: the
+	// history page's per-page lineage read, asserted to be exactly one.
+	lineageReads atomic.Int64
 }
 
 func (d *queryCountingDriver) Open(name string) (driver.Conn, error) {
@@ -35,12 +39,13 @@ func (d *queryCountingDriver) Open(name string) (driver.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &queryCountingConn{Conn: conn, queries: &d.queries}, nil
+	return &queryCountingConn{Conn: conn, queries: &d.queries, lineageReads: &d.lineageReads}, nil
 }
 
 type queryCountingConn struct {
 	driver.Conn
-	queries *atomic.Int64
+	queries      *atomic.Int64
+	lineageReads *atomic.Int64
 }
 
 func (c *queryCountingConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driver.Tx, error) {
@@ -54,6 +59,9 @@ func (c *queryCountingConn) ExecContext(ctx context.Context, query string, args 
 
 func (c *queryCountingConn) QueryContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Rows, error) {
 	c.queries.Add(1)
+	if strings.Contains(query, "FROM revision_key_changes") {
+		c.lineageReads.Add(1)
+	}
 	return c.Conn.(driver.QueryerContext).QueryContext(ctx, query, args)
 }
 

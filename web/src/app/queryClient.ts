@@ -1,5 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
+
 /**
  * makeQueryClient builds the app's TanStack client with ONE set of defaults.
  *
@@ -31,4 +33,17 @@ export function makeQueryClient(): QueryClient {
       },
     },
   });
+}
+
+/**
+ * retireQueryClient ends a client's life the one way every owner ends it: in-
+ * flight sensitive deliveries are revoked first, so nothing settles into a
+ * component after this line; outgoing queries are cancelled next, so their
+ * answers are dropped rather than written; the cache is cleared last, so no
+ * entry outlives its owning session or workspace.
+ */
+export function retireQueryClient(queries: QueryClient): void {
+  retireSensitiveOperations(queries);
+  void queries.cancelQueries();
+  queries.clear();
 }

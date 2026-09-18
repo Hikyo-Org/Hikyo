@@ -183,42 +183,9 @@ func (s *Revisions) PendingDraftsPage(ctx context.Context, actor Actor, scope do
 	return out, nil
 }
 
-// HistoryPage is the bounded keyset read behind hikyo_list_revisions. The stable
-// order is the UNIQUE revision, descending; beforeRevision is a sentinel above
-// the newest revision for the first page. It returns revision metadata only, no
-// historical values and no change token.
+// HistoryPage is the bounded keyset read behind hikyo_list_revisions. It is
+// History under its MCP-facing name: the same page shape, the same stable
+// order (the UNIQUE revision, descending) and the same first-page sentinel.
 func (s *Revisions) HistoryPage(ctx context.Context, actor Actor, scope domain.Scope, beforeRevision int64, limit int) ([]RevisionView, error) {
-	var out []RevisionView
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, r store.ReadRepos, az *authz.TxAuthorizer) error {
-		out = nil
-		_, p, err := authorize(ctx, az, actor, authz.OpRevisionList, scope, s.now())
-		if err != nil {
-			return err
-		}
-		snapshots, err := r.Snapshots().ListPage(ctx, p, beforeRevision, limit)
-		if err != nil {
-			return err
-		}
-		for _, snapshot := range snapshots {
-			changes, err := r.Snapshots().Changes(ctx, p, snapshot.Revision)
-			if err != nil {
-				return err
-			}
-			name, err := revisionPublisherName(ctx, az, snapshot.PublishedBy)
-			if err != nil {
-				return err
-			}
-			out = append(out, RevisionView{
-				Revision: snapshot.Revision, SchemaRevision: snapshot.SchemaRevision,
-				PublishedBy: snapshot.PublishedBy, PublishedByName: name, PublishedAt: snapshot.PublishedAt,
-				ChangedKeys:    changedKeys(changes),
-				PayloadPresent: snapshot.PayloadPresent(), CollectedPolicy: snapshot.CollectionPolicy(),
-			})
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
+	return s.History(ctx, actor, scope, beforeRevision, limit)
 }

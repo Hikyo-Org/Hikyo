@@ -3,6 +3,7 @@ import { useEffect, useId, useState } from 'react';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
+  type AccountSecurityProof,
   accountFailureText,
   useAuthMethods,
   useConfirmTotp,
@@ -19,7 +20,6 @@ import {
 } from '../api/account.ts';
 import { rememberOIDCReturn } from '../api/oidcChannel.ts';
 import { useRevokeSession, useSessions, type ActiveSession } from '../api/remotes.ts';
-import { useAuth } from '../app/AuthProvider.tsx';
 import { themeLabel, useThemeChoice, type ThemeChoice } from '../app/theme.ts';
 import { clearNotification, notifyFailure } from '../app/notifications.tsx';
 import { Alert } from '../ui/Alert.tsx';
@@ -60,7 +60,6 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  *    that security alerts are not disableable, so there is nothing to offer.
  */
 export function AccountSecurity() {
-  const auth = useAuth();
   const passkeys = usePasskeys();
   const totpStatus = useTotpStatus();
   const identities = useIdentities();
@@ -78,6 +77,10 @@ export function AccountSecurity() {
   const link = useLinkIdentity();
 
   const [proof, setProof] = useState<ProofRequest | null>(null);
+  // Possession-first: where a confirmed authenticator stands, the passkey
+  // mutations are proved by its code and the server refuses a password; with
+  // no factor, the password is the proof.
+  const passkeyProof: ProofClass = totpStatus.isSuccess && totpStatus.data.confirmed ? 'code' : 'password';
   const { done, failure, report: recordFailure, ok: recordSuccess } = useFeedback(accountFailureText);
   const report = (error: unknown) => {
     notifyFailure(accountFailureText(error));
@@ -110,7 +113,7 @@ export function AccountSecurity() {
       setOtpauth(null);
       setTotpCode('');
     }
-  }, [totpSeedSpent]);
+  }, [totpSeedSpent, setOtpauth, setTotpCode]);
 
   const runProof = (value: string) => {
     const request = proof;
@@ -121,7 +124,7 @@ export function AccountSecurity() {
     switch (request.kind) {
       case 'add-passkey':
         enrolPasskey.mutate(
-          { password: value },
+          { proof: accountSecurityProof(request.proof, value) },
           {
             onSuccess: () => ok('Passkey enrolled. Every other session you held has ended.'),
             onError: report,
@@ -130,7 +133,7 @@ export function AccountSecurity() {
         return;
       case 'remove-passkey':
         removePasskey.mutate(
-          { id: request.id, password: value },
+          { id: request.id, proof: accountSecurityProof(request.proof, value) },
           { onSuccess: () => ok('Passkey removed.'), onError: report },
         );
         return;
@@ -230,7 +233,7 @@ export function AccountSecurity() {
               variant="quiet"
               type="button"
               aria-label={`Remove passkey ${passkey.label}`}
-              onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id })}
+              onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id, proof: passkeyProof })}
             >
               <Glyph name="cross" />
             </Button>
@@ -291,7 +294,7 @@ export function AccountSecurity() {
             type="button"
             aria-label="Add a passkey"
             disabled={enrolPasskey.isPending}
-            onClick={() => setProof({ kind: 'add-passkey' })}
+            onClick={() => setProof({ kind: 'add-passkey', proof: passkeyProof })}
           >
             + add
           </Button>
@@ -567,9 +570,15 @@ export function AccountSecurity() {
   );
 }
 
+type ProofClass = AccountSecurityProof['kind'];
+
+function accountSecurityProof(kind: ProofClass, value: string): AccountSecurityProof {
+  return kind === 'code' ? { kind, code: value } : { kind, password: value };
+}
+
 type ProofRequest =
-  | { kind: 'add-passkey' }
-  | { kind: 'remove-passkey'; id: string }
+  | { kind: 'add-passkey'; proof: ProofClass }
+  | { kind: 'remove-passkey'; id: string; proof: ProofClass }
   | { kind: 'totp-start' }
   | { kind: 'totp-remove' }
   | { kind: 'recovery' }
@@ -579,12 +588,12 @@ type ProofRequest =
 const PROOF_COPY: Record<ProofRequest['kind'], { title: string; hint: string; label: string }> = {
   'add-passkey': {
     title: 'Confirm it is you',
-    hint: 'Enrolling a passkey is an account-security change, so the credential you already have authorises it; the new one never authorises itself.',
+    hint: 'Enrolling a passkey is an account-security change, proved by a credential you already hold: a code from your authenticator where one is enrolled, otherwise your password. The new passkey never authorises itself.',
     label: 'Password',
   },
   'remove-passkey': {
     title: 'Confirm it is you',
-    hint: 'Removing a credential is proved by your password, never by the credential being removed.',
+    hint: 'Removing a passkey is proved by a credential you already hold: a code from your authenticator where one is enrolled, otherwise your password. Never by the credential being removed.',
     label: 'Password',
   },
   'totp-start': {
@@ -627,6 +636,7 @@ function ProofDialog({
   const inputId = useId();
   const [value, setValue] = useSensitiveState('');
   const copy = PROOF_COPY[request.kind];
+  const field: ProofClass = 'proof' in request ? request.proof : 'password';
 
   return (
     <Dialog
@@ -655,14 +665,25 @@ function ProofDialog({
         }}
       >
         <div className="field">
-          <label htmlFor={inputId}>{copy.label}</label>
-          <input
-            id={inputId}
-            type="password"
-            autoComplete="current-password"
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-          />
+          <label htmlFor={inputId}>{field === 'code' ? 'Authenticator code' : copy.label}</label>
+          {field === 'code' ? (
+            <input
+              id={inputId}
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+          ) : (
+            <input
+              id={inputId}
+              type="password"
+              autoComplete="current-password"
+              value={value}
+              onChange={(event) => setValue(event.target.value)}
+            />
+          )}
         </div>
       </form>
     </Dialog>

@@ -278,32 +278,85 @@ export class WorkspaceError extends Error {
 }
 
 /**
+ * How long one handoff request (meta read, transaction start, redemption) may
+ * take, body read included.
+ *
+ * The probe's 4 s exists because a probe must settle inside the 5 s poll that
+ * follows it. A handoff request has no successor to defer to: it is a one-shot
+ * on the human's critical path, so it gets room for a slow cross-region
+ * remote, while staying far below the five-minute popup wait. A remote that
+ * has not answered a JSON call in 15 s is not going to, and "Contacting..."
+ * forever is the one state the launcher must never sit in.
+ */
+export const HANDOFF_REQUEST_TIMEOUT_MS = 15_000;
+
+/** The caller-owned half of a handoff request: disposal, supersession, retry. */
+export type HandoffRequest = { readonly signal: AbortSignal };
+
+type RemoteRequest = HandoffRequest & { readonly body?: unknown };
+
+/**
+ * abortable races one settled step of a request against its signal. Native
+ * fetch already errors the body stream on abort; the race makes the deadline
+ * hold for a body read regardless of how the response was produced.
+ */
+function abortable<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+/**
  * remoteJSON is the one door to a foreign instance: no cookies, no synchronizer
- * token, CORS mode, and a generated schema on the way back.
+ * token, CORS mode, a generated schema on the way back, and a deadline on both
+ * the response and its body. A caller abort is rethrown as the caller's own
+ * reason so a disposed launcher can tell it from a remote that stalled.
  */
 async function remoteJSON<T>(
   origin: string,
   path: string,
   schema: ZodType<T>,
-  init?: { body: unknown },
+  request: RemoteRequest,
 ): Promise<T> {
+  const signal = AbortSignal.any([
+    request.signal,
+    AbortSignal.timeout(HANDOFF_REQUEST_TIMEOUT_MS),
+  ]);
+  const failed = (): unknown => {
+    if (request.signal.aborted) {
+      return request.signal.reason;
+    }
+    if (signal.aborted) {
+      return new WorkspaceError(
+        `${origin} did not answer within ${HANDOFF_REQUEST_TIMEOUT_MS / 1000} seconds. Try again.`,
+      );
+    }
+    // A CORS refusal and a dead host are the same opaque failure to script,
+    // and saying which would be guessing.
+    return new WorkspaceError(
+      `${origin} could not be reached, or it does not allow this origin to talk to it.`,
+    );
+  };
   let response: Response;
   try {
     response = await fetch(origin + path, {
-      method: init === undefined ? 'GET' : 'POST',
+      method: request.body === undefined ? 'GET' : 'POST',
       mode: 'cors',
       // The bearer is a header, so nothing ambient may travel. Omitting
       // credentials is what keeps the remote's CORS out of credentials mode.
       credentials: 'omit',
-      headers: init === undefined ? {} : { 'Content-Type': 'application/json' },
-      body: init === undefined ? null : JSON.stringify(init.body),
+      headers: request.body === undefined ? {} : { 'Content-Type': 'application/json' },
+      body: request.body === undefined ? null : JSON.stringify(request.body),
+      signal,
     });
   } catch {
-    // A CORS refusal and a dead host are the same opaque failure to script,
-    // and saying which would be guessing.
-    throw new WorkspaceError(
-      `${origin} could not be reached, or it does not allow this origin to talk to it.`,
-    );
+    throw failed();
   }
   if (!response.ok) {
     throw new WorkspaceError(
@@ -312,14 +365,23 @@ async function remoteJSON<T>(
         : `${origin} answered ${response.status}.`,
     );
   }
-  return schema.parse(await response.json());
+  let body: unknown;
+  try {
+    body = await abortable(signal, response.json());
+  } catch (error) {
+    if (signal.aborted) {
+      throw failed();
+    }
+    throw error;
+  }
+  return schema.parse(body);
 }
 
 /**
  * assertCompatible performs the LIVE pre-auth meta read the ADR requires before
  * establishing or resuming a workspace.
  */
-export async function assertCompatible(origin: string): Promise<void> {
+export async function assertCompatible(origin: string, request: HandoffRequest): Promise<void> {
   // The live protection is right here in `remoteJSON`: a remote that is
   // unreachable, refuses this origin, or serves a meta that does not PARSE as
   // this protocol throws, and the caller refuses the workspace. The numeric
@@ -327,7 +389,7 @@ export async function assertCompatible(origin: string): Promise<void> {
   // and it is dormant while this shell's floor equals the meta contract's own
   // (`zMeta` already rejects a revision below 1). It becomes live the day a
   // future operation raises `WORKSPACE_MIN_API_REVISION` above that floor.
-  const meta = await remoteJSON(origin, '/api/v1/meta', zMeta);
+  const meta = await remoteJSON(origin, '/api/v1/meta', zMeta, request);
   if (meta.api_revision < WORKSPACE_MIN_API_REVISION) {
     throw new WorkspaceError(
       `${origin} serves API revision ${meta.api_revision}; this shell needs at least ` +
@@ -378,13 +440,38 @@ type FrontChannelResult = { readonly code: string; readonly state: string };
  * page, so the return path is a same-origin callback page of THIS UI, talking
  * over a channel only this origin can open.
  */
-function awaitFrontChannel(state: string, timeoutMs: number): Promise<FrontChannelResult> {
+function awaitFrontChannel(
+  state: string,
+  timeoutMs: number,
+  signal: AbortSignal,
+): Promise<FrontChannelResult> {
   return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
     const channel = new BroadcastChannel(channelName(state));
+    const listening = new AbortController();
     const timer = setTimeout(() => {
-      channel.close();
+      settle();
       reject(new WorkspaceError('The sign-in window was closed or timed out. Try again.'));
     }, timeoutMs);
+    const settle = () => {
+      clearTimeout(timer);
+      channel.close();
+      listening.abort();
+    };
+    // The caller disposing of the handoff ends the wait as well: a launcher
+    // that is gone has nobody to hand the code to. The deadline stays the
+    // ceremony's own; this signal carries no timeout.
+    signal.addEventListener(
+      'abort',
+      () => {
+        settle();
+        reject(signal.reason);
+      },
+      { signal: listening.signal },
+    );
     channel.onmessage = (event: MessageEvent<unknown>) => {
       const parsed = frontChannelMessage(event.data);
       // A message for a different transaction is not this one's business. It
@@ -394,8 +481,7 @@ function awaitFrontChannel(state: string, timeoutMs: number): Promise<FrontChann
       if (parsed === null || parsed.state !== state) {
         return;
       }
-      clearTimeout(timer);
-      channel.close();
+      settle();
       resolve(parsed);
     };
   });
@@ -490,15 +576,16 @@ export type StepUpParams = {
  */
 export async function prepareWorkspace(
   origin: string,
-  stepUp?: StepUpParams,
+  request: HandoffRequest & { readonly stepUp?: StepUpParams },
 ): Promise<PreparedWorkspace> {
+  const { signal, stepUp } = request;
   const stepUpSession = stepUp === undefined ? undefined : workspaceSession(origin);
   if (stepUp !== undefined && stepUpSession?.bearer.session !== stepUp.session) {
     throw new WorkspaceError('The workspace session changed. Reconnect before trying again.');
   }
   const sessionEpoch = captureSessionEpoch();
   const owner: HandoffOwner = { epoch: workspaceOwnerEpoch, sessionEpoch, stepUpSession };
-  await assertCompatible(origin);
+  await assertCompatible(origin, { signal });
   assertHandoffOwner(owner);
 
   const verifier = newVerifier();
@@ -520,6 +607,7 @@ export async function prepareWorkspace(
           key_set: [...stepUp.keySet],
         };
   const started = await remoteJSON(origin, '/api/v1/auth/workspace/start', zWorkspaceHandoffStarted, {
+    signal,
     body,
   });
   assertHandoffOwner(owner);
@@ -549,14 +637,17 @@ export async function prepareWorkspace(
  * redirect: it comes back on the redemption response, into memory, and stays
  * there.
  */
-export async function openPrepared(prepared: PreparedWorkspace): Promise<WorkspaceBearer> {
+export async function openPrepared(
+  prepared: PreparedWorkspace,
+  { signal }: HandoffRequest,
+): Promise<WorkspaceBearer> {
   const owner = handoffOwners.get(prepared);
   if (owner === undefined) {
     throw new WorkspaceError('This workspace sign-in is no longer available. Try again.');
   }
   assertHandoffOwner(owner);
   handoffOwners.delete(prepared);
-  const waiting = awaitFrontChannel(prepared.state, CEREMONY_TIMEOUT_MS);
+  const waiting = awaitFrontChannel(prepared.state, CEREMONY_TIMEOUT_MS, signal);
   globalThis.open(prepared.approveURL, '_blank', 'noopener,popup=yes,width=520,height=680');
   const { code } = await waiting;
   assertHandoffOwner(owner);
@@ -565,7 +656,7 @@ export async function openPrepared(prepared: PreparedWorkspace): Promise<Workspa
     prepared.origin,
     '/api/v1/auth/workspace/redeem',
     zWorkspaceSession,
-    { body: { code, pkce_verifier: prepared.verifier, origin: globalThis.location.origin } },
+    { signal, body: { code, pkce_verifier: prepared.verifier, origin: globalThis.location.origin } },
   );
   const bearer: WorkspaceBearer = {
     origin: prepared.origin,
@@ -576,9 +667,13 @@ export async function openPrepared(prepared: PreparedWorkspace): Promise<Workspa
   };
   try {
     assertHandoffOwner(owner);
+    if (signal.aborted) {
+      throw signal.reason;
+    }
   } catch (error) {
-    // Redemption can finish after logout or replacement. Never install or
-    // return its credential, and retire the remote session when reachable.
+    // Redemption can finish after logout, replacement, or the launcher's
+    // disposal. Never install or return its credential, and retire the remote
+    // session when reachable.
     void revokeDiscardedWorkspace(bearer);
     throw error;
   }
