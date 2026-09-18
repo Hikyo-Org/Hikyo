@@ -37,6 +37,15 @@ func CheckProofForgery(pkgs []*packages.Package) []string {
 		if authzExempt[p.PkgPath] {
 			continue
 		}
+		// flatten reaches imported module packages that are not roots of the
+		// current load: with NeedDeps omitted they carry Types (from export
+		// data) but no TypesInfo. This analyzer, unlike the ones that select
+		// their target package by path, walks TypesInfo.Uses on every package,
+		// so it must skip those explicitly. In LoadRepo every module package is
+		// a root, so this never elides a real check.
+		if p.TypesInfo == nil {
+			continue
+		}
 		usesProof := false
 		for _, obj := range p.TypesInfo.Uses {
 			if isAuthzProof(obj.Type()) {
