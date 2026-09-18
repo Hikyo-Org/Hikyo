@@ -31,7 +31,7 @@ the corrected contract and the reason is in its comment.
 | F17 radio examples share a group | Each Radio story carries its own `name`. | Story args; comment explains the Docs composition. |
 | F18 no production Storybook build on PRs | The `storybook` CI job runs `pnpm exec storybook build` after the browser suites, then checks every exported design image is in `storybook-static/design/`. | Workflow step; run locally in this worktree (see below). |
 | F19 bench artifact provenance | `bench.Result` gains additive `passes` and `selection` (`lowest-p99-pass`); harness stays 2 and an artifact without them is single-pass evidence, stated in the schema comment. `SelectPass` is the pinned estimator. | `bench_test.go` pins whole-pass selection and tie order; committed Pi artifact still validates. |
-| F20 `as CSSProperties` | `web/src/css-custom-properties.d.ts` widens `CSSProperties` for `--*` keys; `ChoiceGroup` is checked by assignment. | Typecheck. |
+| F20 `as CSSProperties` | Resolved on `main` by #772 before this PR landed: `ChoiceGroup` declares the custom-property shape as an intersection type and is checked by assignment. This PR keeps that form and adds nothing. | Typecheck; no `as` assertion remains under `web/src/ui`. |
 
 ## Verification run for this PR
 
