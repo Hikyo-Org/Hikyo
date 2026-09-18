@@ -44,6 +44,10 @@ import {
   type MatrixPendingEntry,
 } from './MatrixPublishSheet.tsx';
 import { ApiError, type RefusalFinding } from '../api/client.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Glyph, type GlyphName } from '../ui/Glyph.tsx';
 import { ImportWizard } from './ImportWizard.tsx';
 import { MatrixKeyCreate, type MatrixKeyCreatePayload } from './MatrixKeyCreate.tsx';
 import { MatrixRowEditor } from './MatrixRowEditor.tsx';
@@ -869,18 +873,12 @@ export function Matrix({
   }
   if (catalogueForbidden) {
     return (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">!</span>
-        <span>You do not have permission to view this project's environment matrix.</span>
-      </p>
+      <Alert>You do not have permission to view this project's environment matrix.</Alert>
     );
   }
   if (loadError) {
     return (
-      <p className="alert" role="alert">
-        <span className="alert__glyph" aria-hidden="true">!</span>
-        <span>The environment matrix could not be loaded. Reload to try again.</span>
-      </p>
+      <Alert>The environment matrix could not be loaded. Reload to try again.</Alert>
     );
   }
 
@@ -919,66 +917,59 @@ export function Matrix({
             aria-controls={publishOpen ? 'matrix-publish' : undefined}
             onClick={() => setPublishOpen((open) => !open)}
           >
-            {`Δ ${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · Publish drafts`}
+            <Glyph name="delta" />{' '}
+            {`${String(pendingCount)} unpublished edit${pendingCount === 1 ? '' : 's'} · Publish drafts`}
           </button>
         )}
         {/* #495: import a .env file. Value import is not git-gated, so the entry
             stays available on a git-managed project; the wizard skips new keys
             there. Needs at least one environment to target. */}
         {environments.length > 0 && !systemManaged ? (
-          <button
+          <Button
             type="button"
-            className="btn matrix__import"
+            className="matrix__import"
             onClick={() => setImportOpen(true)}
           >
             Import
-          </button>
+          </Button>
         ) : null}
         {/* #493: folder & key-group lifecycle. Project-scoped organisation in its
             own dialog, reachable here and from the empty state. */}
-        {systemManaged ? null : <button type="button" className="btn matrix__manage" onClick={() => setManageOpen(true)}>
+        {systemManaged ? null : <Button type="button" className="matrix__manage" onClick={() => setManageOpen(true)}>
           Folders &amp; linked keys
-        </button>}
+        </Button>}
         {declarationsLocked || keys.every((key) => key.folder_path !== '') ? null : (
-          <button type="button" className="btn matrix__cleanup" onClick={() => setCleanupOpen(true)}>
+          <Button type="button" className="matrix__cleanup" onClick={() => setCleanupOpen(true)}>
             Cleanup
-          </button>
+          </Button>
         )}
         {/* env-matrix 31 / #492: the header's primary declare action. Git-managed
             projects disable it and say why, value actions still work. */}
         {environments.length > 0 && !declarationsLocked ? (
-          <button
+          <Button
             type="button"
-            className="btn btn--primary matrix__new-key"
+            variant="primary"
+            className="matrix__new-key"
             onClick={() => {
               setCreateError(null);
               setCreate({ folder: null });
             }}
           >
             + New key
-          </button>
+          </Button>
         ) : null}
       </div>
 
       {gitManaged ? (
-        <p className="notice" role="status">
-          <span aria-hidden="true">ℹ</span>
-          <span>{GIT_DEFINITIONS_NOTICE}</span>
-        </p>
+        <Alert tone="info">{GIT_DEFINITIONS_NOTICE}</Alert>
       ) : null}
 
       {notice === null ? null : (
-        <p className="notice" role="status">
-          <span aria-hidden="true">✓</span>
-          <span>{notice}</span>
-        </p>
+        <Alert tone="done">{notice}</Alert>
       )}
 
       {backgroundRefreshError ? (
-        <p className="alert" role="status">
-          <span className="alert__glyph" aria-hidden="true">!</span>
-          <span>Live matrix refresh failed. Your loaded data and open edits are preserved; retrying automatically.</span>
-        </p>
+        <Alert tone="warn">Live matrix refresh failed. Your loaded data and open edits are preserved; retrying automatically.</Alert>
       ) : null}
 
       {publishOpen ? (
@@ -1012,9 +1003,9 @@ export function Matrix({
           {filter === 'problems' ? (
             <div className="matrix__filter" role="status">
               <span>{`⚠ filter active: problems, showing ${String(filteredKeyIDs.size)} of ${String(keys.length)} keys`}</span>
-              <button type="button" className="btn" onClick={() => setFilter('all')}>
-                ✕ Show all keys
-              </button>
+              <Button type="button" onClick={() => setFilter('all')}>
+                <Glyph name="cross" /> Show all keys
+              </Button>
             </div>
           ) : null}
 
@@ -1046,19 +1037,19 @@ export function Matrix({
                 <p role="status">{GIT_DEFINITIONS_NOTICE}</p>
               ) : (
                 <div className="matrix__empty-actions">
-                  <button
+                  <Button
                     type="button"
-                    className="btn btn--primary"
+                    variant="primary"
                     onClick={() => {
                       setCreateError(null);
                       setCreate({ folder: null });
                     }}
                   >
                     Declare first key
-                  </button>
-                  <button type="button" className="btn" onClick={() => setManageOpen(true)}>
+                  </Button>
+                  <Button type="button" onClick={() => setManageOpen(true)}>
                     Folders &amp; linked keys
-                  </button>
+                  </Button>
                 </div>
               )}
               <p>
@@ -1074,9 +1065,9 @@ export function Matrix({
             <div className="matrix__empty" role="status">
               <h2>No problems</h2>
               <p>Every readable environment satisfies its required values.</p>
-              <button type="button" className="btn btn--primary" onClick={() => setFilter('all')}>
+              <Button type="button" variant="primary" onClick={() => setFilter('all')}>
                 Show all keys
-              </button>
+              </Button>
             </div>
           ) : (
             <div className="matrix__scroll" ref={matrixScroll}>
@@ -1095,6 +1086,10 @@ export function Matrix({
                             {environments.map((environment) => {
                               const checked = visibleEnvironmentIds.includes(environment.id);
                               return (
+                                /* markup-check: rich label (the PROTECTED
+                                   marker is its own span, pushed right by the
+                                   picker's rule), so this row cannot pass
+                                   ui/Checkbox's `label: string`. */
                                 <label key={environment.id}>
                                   <input
                                     type="checkbox"
@@ -1146,8 +1141,9 @@ export function Matrix({
                             </span>
                           )}
                           {degraded !== undefined || revision === undefined ? null : (
+                            // Anchor, not Button: the class is what HistoryDrawer uses to find the opener.
                             <Link
-                              className="btn matrix__history-link"
+                              className="btn btn--quiet matrix__history-link"
                               data-history-environment={environment.id}
                               to={historyLink({ ...ref, env: environment.id })}
                               onClick={(event: MouseEvent<HTMLAnchorElement>) => {
@@ -1207,9 +1203,9 @@ export function Matrix({
                                 <span>{group.name}</span>
                                 <span className="matrix__group-count">{String(group.keys.length)}</span>
                                 {count === 0 ? null : (
-                                  <span className="matrix__problem-count count">
+                                  <Badge tone="danger">
                                     {`! ${String(count)} problem${count === 1 ? '' : 's'}`}
-                                  </span>
+                                  </Badge>
                                 )}
                                 {collapsed ? (
                                   <span className="matrix__group-summary mono">
@@ -1221,8 +1217,9 @@ export function Matrix({
                                   group. Hidden while collapsed to match the
                                   prototype, you open a group, then add to it. */}
                               {collapsed || declarationsLocked ? null : (
-                                <button
+                                <Button
                                   type="button"
+                                  variant="quiet"
                                   className="matrix__add-key"
                                   onClick={() => {
                                     setCreateError(null);
@@ -1231,7 +1228,7 @@ export function Matrix({
                                   }}
                                 >
                                   + Key
-                                </button>
+                                </Button>
                               )}
                             </div>
                           </th>
@@ -1266,7 +1263,7 @@ export function Matrix({
                               keyDetailOpener.current = event.currentTarget;
                             }}
                           >
-                            {key.classification === 'secret' ? <span aria-hidden="true">🔒 </span> : null}
+                            {key.classification === 'secret' ? <><Glyph name="lock" /> </> : null}
                             {key.name}
                           </Link>
                           {linkedGroupName === null ? null : (
@@ -1274,7 +1271,7 @@ export function Matrix({
                               className="matrix__linked-keys"
                               title={`Linked keys: ${linkedGroupName}. Pending changes publish together; all linked keys must be set together in each environment.`}
                             >
-                              <span aria-hidden="true">🔗</span>
+                              <Glyph name="link" />
                               <span className="visually-hidden">{`Linked keys: ${linkedGroupName}`}</span>
                             </span>
                           )}
@@ -1339,7 +1336,7 @@ export function Matrix({
           // the sensitive disclosure (re-masks) on a cell change, and drops any
           // copy destination or bulk edit for a column that has since degraded
           // (#451), so no stale target can reach the copy or apply call.
-          key={`${selectedKey.id} ${selectedEnvironment.id} ${[...degradedByEnvironment.keys()].sort().join(',')}`}
+          key={`${selectedKey.id}\u0000${selectedEnvironment.id}\u0000${[...degradedByEnvironment.keys()].sort().join(',')}`}
           refData={ref}
           keyRecord={selectedKey}
           environmentId={selectedEnvironment.id}
@@ -1614,16 +1611,18 @@ function MatrixCell({
   const requiredProblem = problems.find((problem) => problem.kind === 'required-absent');
   const validationProblem = problems.find((problem) => problem.kind === 'validation');
   let state = '· absent';
+  let stateGlyph: GlyphName | null = null;
   let stateClass = 'matrix-cell--absent';
   if (requiredProblem !== undefined) {
     state = '! required · absent';
     stateClass = 'matrix-cell--problem';
   } else if (validationProblem !== undefined) {
     // Name the offending value, not just the fact of one. Reading a column of
-    // "value problem" tells you where to click; reading `✕ ten` tells you what
-    // happened. `offendingValue` is absent for anything the caller may not
+    // "value problem" tells you where to click; reading `cross ten` tells you
+    // what happened. `offendingValue` is absent for anything the caller may not
     // read, so a secret stays a secret in its own failure.
-    state = `✕ ${offendingValue(cell, keyRecord) ?? 'value problem'}`;
+    stateGlyph = 'cross';
+    state = offendingValue(cell, keyRecord) ?? 'value problem';
     stateClass = 'matrix-cell--problem';
   } else if (cell?.set === true && keyRecord.classification === 'secret') {
     state = '••••••••';
@@ -1633,9 +1632,10 @@ function MatrixCell({
     stateClass = 'matrix-cell--set';
   }
   // env-matrix 31 fixes the changed/draft vocabulary to bare marks, not
-  // sentences: a set cell carries a `Δ` when it changed since publish and a
-  // draft dot when it holds an unpublished edit. The revision and the set/clear
-  // sense move to the mark's tooltip and the accessible label, off the row.
+  // sentences: a set cell carries a delta mark when it changed since publish
+  // and a draft dot when it holds an unpublished edit. The revision and the
+  // set/clear sense move to the mark's tooltip and the accessible label, off
+  // the row.
   const draftSense =
     signal?.pending === undefined
       ? null
@@ -1651,7 +1651,7 @@ function MatrixCell({
     invalidDraft ? 'your draft is invalid' : null,
     validationDeferred ? 'template schema validated at fetch' : null,
   ].filter((word): word is string => word !== null);
-  const label = `${keyRecord.name} in ${environment.name}: ${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
+  const label = `${keyRecord.name} in ${environment.name}: ${stateGlyph === null ? '' : 'problem, '}${state}${signalWords.length === 0 ? '' : `, ${signalWords.join(', ')}`}`;
 
   return (
     <>
@@ -1661,7 +1661,10 @@ function MatrixCell({
         aria-label={label}
         onClick={onOpen}
       >
-        <span className="matrix-cell__value">{state}</span>
+        <span className="matrix-cell__value">
+          {stateGlyph === null ? null : <><Glyph name={stateGlyph} /> </>}
+          {state}
+        </span>
         {draftSense === null ? null : <span className="visually-hidden">draft</span>}
         {changedRevision === undefined ? null : (
           <span
@@ -1669,7 +1672,7 @@ function MatrixCell({
             aria-hidden="true"
             title={`changed in r${String(changedRevision)}`}
           >
-            Δ
+            <Glyph name="delta" />
           </span>
         )}
         {draftSense === null ? null : (
@@ -1686,7 +1689,7 @@ function MatrixCell({
             aria-hidden="true"
             title="another editor has a draft here"
           >
-            ◌
+            <Glyph name="draft" />
           </span>
         ) : null}
       </button>
@@ -1702,10 +1705,10 @@ function MatrixCell({
  * MatrixLegend says what the cell vocabulary means.
  *
  * The matrix is dense on purpose, and density is bought with abbreviation: `·`,
- * `••••••••`, `Δ` and `✕` are all shorter than the sentences they replace. That
- * trade is only honest if the expansion is one gesture away on the surface
- * itself, a reader who has to leave to find out what a glyph means has been
- * handed a puzzle, not a table.
+ * `••••••••`, the delta and the cross are all shorter than the sentences they
+ * replace. That trade is only honest if the expansion is one gesture away on
+ * the surface itself, a reader who has to leave to find out what a glyph means
+ * has been handed a puzzle, not a table.
  *
  * A `<details>`, like the environment chooser beside it: the platform already
  * owns the disclosure, the escape key and the accessible name.
@@ -1725,21 +1728,21 @@ function MatrixLegend() {
           <dt className="mono">value</dt>
           <dd>set in that environment: nothing inherits</dd>
           <dt className="mono">••••••••</dt>
-          <dd>a secret is set; 🔒 marks the key. Open the cell to reveal it, if permitted</dd>
+          <dd>a secret is set; <Glyph name="lock" label="lock" /> marks the key. Open the cell to reveal it, if permitted</dd>
           <dt className="mono">· absent</dt>
           <dd>not set here, so nothing is delivered</dd>
           <dt className="mono">! required · absent</dt>
           <dd>required in this environment and absent: publish is blocked</dd>
-          <dt className="mono">✕ value</dt>
+          <dt className="mono"><Glyph name="cross" label="cross" /> value</dt>
           <dd>the value is set but fails its declaration</dd>
-          <dt className="mono">Δ</dt>
+          <dt className="mono"><Glyph name="delta" label="delta" /></dt>
           <dd>changed since the last publish</dd>
           <dt>
             <span className="matrix-cell__draft-dot" aria-hidden="true" />
             <span className="visually-hidden">draft dot</span>
           </dt>
           <dd>an unpublished draft of your own</dd>
-          <dt className="mono">◌</dt>
+          <dt className="mono"><Glyph name="draft" label="another editor's draft" /></dt>
           <dd>another editor has a draft here</dd>
         </dl>
         <p>Choose any cell to inspect or edit it.</p>

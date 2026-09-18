@@ -64,8 +64,12 @@ describe('MintDialog', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const { container, client } = await renderForm(<MintHarness />);
-    const button = container.querySelector('button');
-    if (!(button instanceof HTMLButtonElement)) {
+    // By NAME, never by position: the action row puts the primary last, so the
+    // first button in the dialog is Cancel.
+    const button = Array.from(container.querySelectorAll('button')).find(
+      (candidate) => candidate.textContent === 'Mint credential',
+    );
+    if (button === undefined) {
       throw new Error('the mint dialog has no submit button');
     }
     await act(async () => button.click());
@@ -100,8 +104,11 @@ describe('MintDialog', () => {
     vi.stubGlobal('navigator', clipboard === undefined ? {} : { clipboard });
 
     const { container } = await renderForm(<MintHarness />);
-    // Sentence case, as every other dialog title.
-    expect(container.querySelector('#mint-title')?.textContent).toMatch(/^Mint credential · /);
+    // Sentence case, as every other dialog title. The title id belongs to the
+    // atom now, so the title is read off the dialog's own title element.
+    expect(container.querySelector('dialog[open] .dialog__title')?.textContent).toMatch(
+      /^Mint credential · /,
+    );
     const mintButton = Array.from(container.querySelectorAll('button')).find(
       (button) => button.textContent === 'Mint credential',
     );

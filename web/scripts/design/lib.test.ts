@@ -4,6 +4,7 @@ import {
   collectDesignNodes,
   compareTokens,
   cssToPenVariables,
+  findDuplicateNodeIds,
   NODE_PATH,
   parsePenVariables,
   parseQueryOutput,
@@ -72,17 +73,50 @@ describe('slugFor', () => {
   });
 });
 
+const src = (text: string, path = 'a.stories.tsx') => ({ path, text });
+
 describe('collectDesignNodes', () => {
   it('finds design() calls, dedupes, sorts', () => {
     const a = `parameters: { design: design('Button/Primary') }`;
     const b = `design('Badge/Danger')\n design('Button/Primary')`;
-    expect(collectDesignNodes([a, b])).toEqual(['Badge/Danger', 'Button/Primary']);
+    expect(collectDesignNodes([src(a), src(b, 'b.stories.tsx')])).toEqual(['Badge/Danger', 'Button/Primary']);
   });
   it('finds double-quoted calls too', () => {
-    expect(collectDesignNodes([`design("Button/Primary")`])).toEqual(['Button/Primary']);
+    expect(collectDesignNodes([src(`design("Button/Primary")`)])).toEqual(['Button/Primary']);
+  });
+  it('sees every valid formatting of the same call identically', () => {
+    const forms = [
+      `design('Button/Primary')`,
+      `design( 'Button/Primary' )`,
+      `design(\n  'Button/Primary',\n)`,
+      `design("Button/Primary",)`,
+    ];
+    for (const form of forms) expect(collectDesignNodes([src(form)])).toEqual(['Button/Primary']);
+  });
+  it('fails by file on a call the literal form cannot see', () => {
+    expect(() => collectDesignNodes([src(`const n = 'Button/Primary'; design(n)`, 'src/ui/Button.stories.tsx')])).toThrow(
+      /src\/ui\/Button\.stories\.tsx: 1 design\(\) call\(s\) do not pass a single string literal/,
+    );
+    expect(() => collectDesignNodes([src('design(`Button/${variant}`)')])).toThrow(/do not pass a single string literal/);
   });
   it('rejects a malformed path', () => {
-    expect(() => collectDesignNodes([`design('Button')`])).toThrow(/must be Title\/Variant/);
+    expect(() => collectDesignNodes([src(`design('Button')`)])).toThrow(/must be Title\/Variant/);
+  });
+});
+
+describe('findDuplicateNodeIds', () => {
+  it('is empty for a tree of unique ids and ignores nodes without one', () => {
+    const doc = JSON.stringify({ children: [{ id: 'a', children: [{ id: 'b' }, { name: 'no id' }] }, { id: 'c' }] });
+    expect(findDuplicateNodeIds(doc)).toEqual([]);
+  });
+  it('reports an id reused anywhere in the tree, once, sorted', () => {
+    const doc = JSON.stringify({
+      children: [
+        { id: 'z', children: [{ id: 'a' }, { id: 'a' }] },
+        { id: 'z', children: [{ id: 'q', children: [{ id: 'a' }] }] },
+      ],
+    });
+    expect(findDuplicateNodeIds(doc)).toEqual(['a', 'z']);
   });
 });
 
@@ -180,6 +214,64 @@ describe('compareTokens', () => {
     const t = parseTokensCss(css);
     const v = parsePenVariables(penWith({ '--extra': { type: 'number', value: 1 } }));
     expect(compareTokens(t, v)).toContain('--extra: present in hikyo.pen, absent from tokens.css');
+  });
+});
+
+describe('theme resolution', () => {
+  const withThemes = (themes: unknown) =>
+    JSON.stringify({ version: '2.8', children: [], themes, variables: cssToPenVariables(parseTokensCss(css)) });
+  it('accepts the declared Dark-first mode order', () => {
+    expect(() => parsePenVariables(withThemes({ Mode: ['Dark', 'Light'] }))).not.toThrow();
+  });
+  it.each([
+    ['reversed modes', { Mode: ['Light', 'Dark'] }],
+    ['a missing mode', { Mode: ['Dark'] }],
+    ['an extra mode', { Mode: ['Dark', 'Light', 'Contrast'] }],
+    ['a second theme axis', { Mode: ['Dark', 'Light'], Density: ['Compact'] }],
+    ['no themes block', undefined],
+  ])('rejects %s, which would change what the reader renders as default', (_name, themes) => {
+    expect(() => parsePenVariables(withThemes(themes))).toThrow(/themes/);
+  });
+  it("rejects an explicit Dark entry beside the untheme'd default", () => {
+    const doc = penWith({ '--bg': { type: 'color', value: [{ value: '#111111' }, { value: '#222222', theme: { Mode: 'Dark' } }] } });
+    expect(() => parsePenVariables(doc)).toThrow(/--bg must have one untheme'd \(Dark\) entry .* no explicit Dark entry/);
+  });
+  it("rejects two untheme'd or two Light entries", () => {
+    expect(() =>
+      parsePenVariables(penWith({ '--bg': { type: 'color', value: [{ value: '#111111' }, { value: '#222222' }] } })),
+    ).toThrow(/--bg must have one untheme'd/);
+    expect(() =>
+      parsePenVariables(
+        penWith({
+          '--bg': { type: 'color', value: [{ value: '#111111' }, { value: '#222222', theme: { Mode: 'Light' } }, { value: '#333333', theme: { Mode: 'Light' } }] },
+        }),
+      ),
+    ).toThrow(/--bg must have one untheme'd/);
+  });
+});
+
+describe('per-mode non-colours', () => {
+  const lightRadius = css.replace(
+    `:root[data-theme='light'] {\n  color-scheme: light;\n  --bg: oklch(0.965 0.008 200);`,
+    `:root[data-theme='light'] {\n  color-scheme: light;\n  --bg: oklch(0.965 0.008 200);\n  --radius-control: 5px;`,
+  ).replace(
+    `  :root:not([data-theme='dark']) {\n    --bg: oklch(0.965 0.008 200);`,
+    `  :root:not([data-theme='dark']) {\n    --bg: oklch(0.965 0.008 200);\n    --radius-control: 5px;`,
+  );
+  it('checks each mode against its own css value', () => {
+    const t = parseTokensCss(lightRadius);
+    expect(t.light.get('--radius-control')).toBe('5px');
+    const themed = parsePenVariables(penWith({
+      '--radius-control': { type: 'number', value: [{ value: 4 }, { value: 5, theme: { Mode: 'Light' } }] },
+    }));
+    expect(compareTokens(t, themed)).toEqual([]);
+    const flat = parsePenVariables(penWith({ '--radius-control': { type: 'number', value: 4 } }));
+    expect(compareTokens(t, flat)).toEqual(['--radius-control: expected 5 (tokens.css), got 4 (hikyo.pen, light)']);
+  });
+  it('refuses to seed a non-colour that differs between modes instead of dropping the light value', () => {
+    expect(() => cssToPenVariables(parseTokensCss(lightRadius))).toThrow(
+      /--radius-control differs between dark \(4px\) and light \(5px\); only colour tokens are mirrored per mode/,
+    );
   });
 });
 

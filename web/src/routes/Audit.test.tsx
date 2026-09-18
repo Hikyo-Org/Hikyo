@@ -108,7 +108,9 @@ it('fills the principal field with the session id via Self, and carries checked 
     const actor = container.querySelector<HTMLInputElement>('input[placeholder="usr_…"]');
     expect(actor?.value).toBe('usr_self');
 
-    const boxes = [...container.querySelectorAll<HTMLInputElement>('.audit__outcomes input[type="checkbox"]')];
+    // Queried by its legend, the name the group already carries; no class exists only to be a selector.
+    const outcomes = [...container.querySelectorAll('fieldset')].find((set) => set.querySelector('legend')?.textContent === 'Outcomes');
+    const boxes = [...(outcomes?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])];
     const denied = boxes.find((b) => b.parentElement?.textContent?.trim() === 'denied');
     const failure = boxes.find((b) => b.parentElement?.textContent?.trim() === 'failure');
     await act(async () => denied?.click());

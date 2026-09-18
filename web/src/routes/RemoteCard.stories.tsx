@@ -4,6 +4,8 @@ import { expect } from 'storybook/test';
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { RemoteCard } from './Remotes.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 type Props = Parameters<typeof RemoteCard>[0];
 type Remote = Props['remote'];
 
@@ -52,7 +54,7 @@ const meta = {
       </ul>
     ),
   ],
-  parameters: { app: { responses: handoffResponses } },
+  parameters: { ...topLayerDocs, app: { responses: handoffResponses } },
   args: { remote: base, duplicateIdentity: false },
 } satisfies Meta<typeof RemoteCard>;
 

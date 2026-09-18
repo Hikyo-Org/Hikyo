@@ -14,9 +14,12 @@ import {
 import { ApiError, type RefusalFinding } from '../api/client.ts';
 import { GIT_DEFINITIONS_NOTICE, type DefinitionsSettings } from '../api/definitions.ts';
 import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
-import { Alert, ConsequencesDialog, Done } from './Sections.tsx';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { ConsequencesDialog } from './Sections.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { useModalDialog } from './useModalDialog.ts';
 
 type Props = { org: string; project: string; settings: DefinitionsSettings };
 
@@ -46,9 +49,9 @@ export function DefinitionsBundlePanel({ org, project, settings }: Props) {
         ) : (
           <span>Open settings on the instance itself to download a bundle.</span>
         )}
-        <button className="btn" type="button" onClick={() => setOpen(true)}>
+        <Button type="button" onClick={() => setOpen(true)}>
           Check a bundle
-        </button>
+        </Button>
       </div>
       {open ? (
         <BundleDialog
@@ -64,8 +67,6 @@ export function DefinitionsBundlePanel({ org, project, settings }: Props) {
 }
 
 function BundleDialog({ org, project, settings, onClose }: Props & { onClose: () => void }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   const fileId = useId();
   const fileInput = useRef<HTMLInputElement>(null);
   const transport = useTransport();
@@ -197,26 +198,20 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
   };
   const git = settings.definitions_source === 'git';
   return (
-    <dialog
-      className="matrix-editor definitions-bundle"
-      ref={dialog}
-      aria-labelledby={titleId}
-      onClose={onClose}
+    <Dialog
+      title="Definitions bundle"
+      lede="Compare a file, review its immutable impact plan, then publish atomically."
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <Button type="button" onClick={onClose}>
+          Close
+        </Button>
+      }
     >
-      <div className="matrix-editor__head">
-        <div>
-          <h2 id={titleId}>Definitions bundle</h2>
-          <p>Compare a file, review its immutable impact plan, then publish atomically.</p>
-        </div>
-        <button
-          className="btn matrix-editor__close"
-          type="button"
-          aria-label="Close definitions bundle"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-      </div>
       <div className="definitions-bundle__body">
         {git ? (
           <Alert>
@@ -228,7 +223,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           <LastApplyProvenance lastApply={settings.last_apply} />
         ) : null}
         {failure === null ? null : <Alert>{failure}</Alert>}
-        {done === null ? null : <Done>{done}</Done>}
+        {done === null ? null : <Alert tone="done">{done}</Alert>}
         <div className="field">
           <label htmlFor={fileId}>Definitions bundle file (JSON, up to 1 MiB)</label>
           <input
@@ -245,22 +240,20 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           definitions. Files remain only in this open dialog.
         </p>
         <div className="panel__actions">
-          <button
-            className="btn"
+          <Button
             type="button"
             disabled={bundle === null || busy}
             onClick={() => void check()}
           >
             Check bundle
-          </button>
-          <button
-            className="btn"
+          </Button>
+          <Button
             type="button"
             disabled={checked === null || busy}
             onClick={() => void createPlan()}
           >
             Create impact plan
-          </button>
+          </Button>
         </div>
         {busy ? <p role="status">Checking the instance…</p> : null}
         {checked === null ? null : (
@@ -318,30 +311,26 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
               </Alert>
             )}
             {plan.deletions_present ? (
-              <label className="definitions-bundle__delete">
-                <input
-                  type="checkbox"
-                  checked={allowDelete}
-                  disabled={busy || git}
-                  onChange={(event) => setAllowDelete(event.currentTarget.checked)}
-                />{' '}
-                I reviewed and allow the listed deletions.
-              </label>
+              <Checkbox
+                label="I reviewed and allow the listed deletions."
+                checked={allowDelete}
+                disabled={busy || git}
+                onChange={(event) => setAllowDelete(event.currentTarget.checked)}
+              />
             ) : null}
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               disabled={busy || git || (plan.deletions_present && !allowDelete)}
               onClick={() => setConfirm(true)}
             >
               Review and apply
-            </button>
+            </Button>
           </section>
         )}
       </div>
       {confirm && plan !== null ? (
         <ConsequencesDialog
-          titleId={`${titleId}-apply`}
           title="Apply definitions and publish"
           confirmLabel="Apply and publish"
           busyLabel="Applying definitions…"
@@ -374,7 +363,7 @@ function BundleDialog({ org, project, settings, onClose }: Props & { onClose: ()
           onClose={() => setScan(null)}
         />
       )}
-    </dialog>
+    </Dialog>
   );
 }
 

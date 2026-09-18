@@ -15,7 +15,10 @@ import {
   workspaceBearer,
   WorkspaceError,
 } from '../api/workspace.ts';
-import { useModalDialog } from './useModalDialog.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
@@ -162,7 +165,6 @@ export function Ceremony({
   const busy = pending !== null;
   const [failure, setFailure] = useState<string | null>(null);
   const first = useRef<HTMLButtonElement>(null);
-  const dialog = useModalDialog(first);
   // A workspace disclosure cannot run its ceremony here: a passkey assertion is
   // bound to THIS origin's relying-party id, and the remote would reject it. So
   // inside a workspace the modal hands off to the remote's own origin in a
@@ -215,11 +217,22 @@ export function Ceremony({
   const title = `${PURPOSE_VERB[request.purpose]} · ${request.environmentName}`;
 
   return (
-    <dialog
-      className="ceremony"
-      aria-labelledby="ceremony-title"
-      aria-describedby="ceremony-scope"
-      ref={dialog}
+    <Dialog
+      title={title}
+      lede={
+        <>
+          This confirms a <strong>{LEDE_NOUN[SIGNED_OPERATION[request.purpose]]}</strong>, not your account security. It is separate from
+          signing in and from any step-up you have already done.
+          {workspace === null ? null : (
+            <>
+              {' '}
+              You will authorise it on <span className="mono">{workspace.origin}</span>, the instance
+              that holds this value, in a popup on its own origin.
+            </>
+          )}
+        </>
+      }
+      initialFocus={first}
       // Escape is the platform's, not ours, but the close it fires has to
       // reach the caller, or the modal disappears while the act stays staged.
       onCancel={(event) => {
@@ -227,22 +240,7 @@ export function Ceremony({
         onCancel();
       }}
     >
-      <h2 className="ceremony__title" id="ceremony-title">
-        {title}
-      </h2>
-      <p className="ceremony__lede">
-        This confirms a <strong>{LEDE_NOUN[SIGNED_OPERATION[request.purpose]]}</strong>, not your account security. It is separate from
-        signing in and from any step-up you have already done.
-        {workspace === null ? null : (
-          <>
-            {' '}
-            You will authorise it on <span className="mono">{workspace.origin}</span>, the instance
-            that holds this value, in a popup on its own origin.
-          </>
-        )}
-      </p>
-
-      <p className="ceremony__scope" id="ceremony-scope">
+      <p className="ceremony__scope">
         One decision over exactly the {request.keys.length}{' '}
         {request.keys.length === 1 ? 'key' : 'keys'} below.
       </p>
@@ -251,7 +249,7 @@ export function Ceremony({
           <li className="mono" key={key.id}>
             {key.classification === 'secret' ? (
               <>
-                <span aria-hidden="true">🔒 </span>
+                <Glyph name="lock" />{' '}
                 <span className="visually-hidden">secret </span>
               </>
             ) : null}
@@ -261,12 +259,7 @@ export function Ceremony({
       </ul>
 
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
 
       {workspace === null ? (
@@ -293,24 +286,27 @@ export function Ceremony({
             </p>
           )}
 
-          <div className="ceremony__actions">
-            <button
-              className="btn btn--primary"
+          {/* The row stays in the body, not in Dialog's `actions` slot: the
+              window sentence and the code form sit BELOW it, and the slot
+              would put the buttons under the form. Primary is still last. */}
+          <div className="dialog__actions">
+            <Button type="button" onClick={onCancel} disabled={busy}>
+              Cancel
+            </Button>
+            {offersOIDC ? (
+              <Button type="button" onClick={onOIDC} disabled={busy}>
+                {pending === 'oidc' ? 'Waiting for your identity provider…' : `Re-authenticate with ${oidcProvider.display_name}`}
+              </Button>
+            ) : null}
+            <Button
+              variant="primary"
               type="button"
               ref={first}
               onClick={onPasskey}
               disabled={busy}
             >
               {pending === 'passkey' ? 'Waiting for your passkey…' : 'Use a passkey'}
-            </button>
-            {offersOIDC ? (
-              <button className="btn" type="button" onClick={onOIDC} disabled={busy}>
-                {pending === 'oidc' ? 'Waiting for your identity provider…' : `Re-authenticate with ${oidcProvider.display_name}`}
-              </button>
-            ) : null}
-            <button className="btn" type="button" onClick={onCancel} disabled={busy}>
-              Cancel
-            </button>
+            </Button>
           </div>
 
           {request.window.totp_offered && !request.window.single_decision ? (
@@ -333,9 +329,9 @@ export function Ceremony({
                   onChange={(e) => setCode(e.target.value)}
                 />
               </div>
-              <button className="btn" type="submit" disabled={busy || code.length < 6}>
+              <Button type="submit" disabled={busy || code.length < 6}>
                 Authorise with a code
-              </button>
+              </Button>
             </form>
           ) : null}
         </>
@@ -350,7 +346,7 @@ export function Ceremony({
           onCancel={onCancel}
         />
       )}
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -425,26 +421,21 @@ export function WorkspaceStepUp({
   return (
     <>
       {phase.kind !== 'failed' ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{phase.message}</span>
-        </p>
+        <Alert>{phase.message}</Alert>
       )}
-      <div className="ceremony__actions">
-        <button
-          className="btn btn--primary"
+      <div className="dialog__actions">
+        <Button type="button" onClick={onCancel} disabled={authorising}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
           type="button"
           ref={firstRef}
           onClick={action.onClick}
           disabled={action.disabled}
         >
           {action.label}
-        </button>
-        <button className="btn" type="button" onClick={onCancel} disabled={authorising}>
-          Cancel
-        </button>
+        </Button>
       </div>
     </>
   );

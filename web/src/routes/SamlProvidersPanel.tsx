@@ -13,7 +13,11 @@ import {
   type SamlAction,
   type SamlProviderInputDraft,
 } from '../api/samlProviders.ts';
-import { Alert, Done, Panel, TypedNameConfirm } from './Sections.tsx';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Panel, TypedNameConfirm } from './Sections.tsx';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
 const nondisclosed = (error: unknown) => error instanceof ApiError && error.status === 404;
@@ -74,7 +78,7 @@ export function SamlProvidersPanel() {
       ) : null}
 
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       {providers.isSuccess
         ? providers.data.providers.map((provider) => (
@@ -99,9 +103,9 @@ export function SamlProvidersPanel() {
         />
       ) : (
         <div className="instance-create-row">
-          <button
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             aria-label="Configure a new SAML provider"
             onClick={() => {
               clear();
@@ -109,7 +113,7 @@ export function SamlProvidersPanel() {
             }}
           >
             + configure SAML provider
-          </button>
+          </Button>
           <code className="instance-cli">$ hikyo provider saml add</code>
         </div>
       )}
@@ -117,8 +121,8 @@ export function SamlProvidersPanel() {
   );
 }
 
-function severityClass(severity: 'warning' | 'error'): string {
-  return severity === 'error' ? 'settings-tag settings-tag--danger' : 'settings-tag';
+function severityTone(severity: 'warning' | 'error'): 'danger' | 'changed' {
+  return severity === 'error' ? 'danger' : 'changed';
 }
 
 function ProviderRow({
@@ -168,18 +172,18 @@ function ProviderRow({
             role={warning.severity === 'error' ? 'alert' : 'status'}
             key={`${warning.code}:${warning.fingerprint ?? ''}`}
           >
-            <span className={severityClass(warning.severity)}>{warning.severity}</span> {warning.message}
+            <Badge tone={severityTone(warning.severity)}>{warning.severity}</Badge> {warning.message}
           </span>
         ))}
       </div>
       <span className="settings-row__spacer" />
-      <span className={provider.enabled ? 'settings-tag' : 'settings-tag settings-tag--danger'}>
+      <Badge tone={provider.enabled ? 'neutral' : 'danger'}>
         {provider.enabled ? 'enabled' : 'disabled'}
-      </span>
+      </Badge>
       <div className="panel__actions">
-        <button type="button" className="btn" onClick={() => toggle('policy')}>Edit policy</button>
-        <button type="button" className="btn" onClick={() => toggle('refresh')}>Refresh metadata</button>
-        <button type="button" className="btn btn--danger" onClick={() => toggle('remove')}>Remove</button>
+        <Button type="button" onClick={() => toggle('policy')}>Edit policy</Button>
+        <Button type="button" onClick={() => toggle('refresh')}>Refresh metadata</Button>
+        <Button type="button" variant="danger" onClick={() => toggle('remove')}>Remove</Button>
       </div>
 
       {mode === 'policy' ? (
@@ -300,21 +304,12 @@ function ProviderPolicyForm({
         <label htmlFor={assuranceId}>Accepted AuthnContextClassRef values (one per line; empty = single-factor)</label>
         <textarea id={assuranceId} className="mono" rows={2} value={assurance} onChange={(event) => setAssurance(event.target.value)} />
       </div>
-      <div className="field chk">
-        <input id={`${nameId}-email`} type="checkbox" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
-        <label htmlFor={`${nameId}-email`}>Allow opaque emailAddress NameID values</label>
-      </div>
-      <div className="field chk">
-        <input id={`${nameId}-sign`} type="checkbox" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
-        <label htmlFor={`${nameId}-sign`}>Force signed AuthnRequests</label>
-      </div>
-      <div className="field chk">
-        <input id={`${nameId}-enabled`} type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-        <label htmlFor={`${nameId}-enabled`}>Enabled (advertises for sign-in)</label>
-      </div>
+      <Checkbox label="Allow opaque emailAddress NameID values" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
+      <Checkbox label="Force signed AuthnRequests" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
+      <Checkbox label="Enabled (advertises for sign-in)" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
       <div className="panel__actions">
-        <button type="button" className="btn" onClick={onCancel}>Cancel</button>
-        <button type="button" className="btn btn--primary" disabled={patch.isPending} onClick={submit}>Save policy</button>
+        <Button type="button" onClick={onCancel}>Cancel</Button>
+        <Button type="button" variant="primary" disabled={patch.isPending} onClick={submit}>Save policy</Button>
       </div>
     </div>
   );
@@ -455,15 +450,15 @@ function RefreshMetadataForm({
         {/* Disabled while a request is in flight: cancel resets the mutation,
             and resetting a still-pending request would leave it to settle later
             with the document in cache. */}
-        <button type="button" className="btn" disabled={refresh.isPending} onClick={cancel}>Cancel</button>
+        <Button type="button" disabled={refresh.isPending} onClick={cancel}>Cancel</Button>
         {pending ? (
-          <button type="button" className="btn btn--danger" disabled={refresh.isPending} onClick={confirm}>
+          <Button type="button" variant="danger" disabled={refresh.isPending} onClick={confirm}>
             Confirm and apply the trust change
-          </button>
+          </Button>
         ) : (
-          <button type="button" className="btn btn--primary" disabled={refresh.isPending} onClick={preview}>
+          <Button type="button" variant="primary" disabled={refresh.isPending} onClick={preview}>
             {fileBacked ? 'Preview metadata change' : 'Fetch and preview metadata'}
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -617,31 +612,22 @@ function ProviderCreateForm({
         <label htmlFor={ids.assurance}>Accepted AuthnContextClassRef values (one per line; empty = single-factor)</label>
         <textarea id={ids.assurance} className="mono" rows={2} value={assurance} onChange={(event) => setAssurance(event.target.value)} />
       </div>
-      <div className="field chk">
-        <input id={`${ids.slug}-email`} type="checkbox" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
-        <label htmlFor={`${ids.slug}-email`}>Allow opaque emailAddress NameID values</label>
-      </div>
-      <div className="field chk">
-        <input id={`${ids.slug}-sign`} type="checkbox" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
-        <label htmlFor={`${ids.slug}-sign`}>Force signed AuthnRequests</label>
-      </div>
-      <div className="field chk">
-        <input id={`${ids.slug}-enabled`} type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
-        <label htmlFor={`${ids.slug}-enabled`}>Enabled (advertises for sign-in)</label>
-      </div>
+      <Checkbox label="Allow opaque emailAddress NameID values" checked={allowEmail} onChange={(event) => setAllowEmail(event.target.checked)} />
+      <Checkbox label="Force signed AuthnRequests" checked={forceSign} onChange={(event) => setForceSign(event.target.checked)} />
+      <Checkbox label="Enabled (advertises for sign-in)" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
       {clientErrors.length > 0 ? <Alert>{clientErrors.join(' ')}</Alert> : null}
       {pending ? <MetadataDiff diff={pending.diff.diff} /> : null}
       <div className="panel__actions">
         {/* Disabled while a request is in flight: see RefreshMetadataForm. */}
-        <button type="button" className="btn" disabled={put.isPending} onClick={cancel}>Cancel</button>
+        <Button type="button" disabled={put.isPending} onClick={cancel}>Cancel</Button>
         {pending ? (
-          <button type="button" className="btn btn--danger" disabled={put.isPending} onClick={confirm}>
+          <Button type="button" variant="danger" disabled={put.isPending} onClick={confirm}>
             Confirm trust and configure provider
-          </button>
+          </Button>
         ) : (
-          <button type="button" className="btn btn--primary" disabled={put.isPending} onClick={preview}>
+          <Button type="button" variant="primary" disabled={put.isPending} onClick={preview}>
             Preview and configure
-          </button>
+          </Button>
         )}
       </div>
     </div>

@@ -5,6 +5,8 @@ import type { WhoAmI } from '../api/session.ts';
 import { authenticatedIdentity } from '../testkit/identity.ts';
 import { StepUpBanner } from './StepUpBanner.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // A browser session minted at password assurance: the login floor enrols no
 // second factor, so the banner's whole reason to exist is this shape.
 const passwordOnly: WhoAmI = {
@@ -38,6 +40,7 @@ const meta = {
   component: StepUpBanner,
   tags: ['ai-generated'],
   args: { session: passwordOnly },
+  parameters: topLayerDocs,
 } satisfies Meta<typeof StepUpBanner>;
 
 export default meta;
@@ -48,7 +51,7 @@ export const AuthenticatorCode: Story = {
   parameters: { app: { auth: true, responses: [totpConfirmed, noPasskeys] } },
   play: async ({ canvas }) => {
     await expect(
-      await canvas.findByRole('heading', { name: /this session is password-only/i }),
+      await canvas.findByRole('heading', { name: /this session has no second factor/i }),
     ).toBeVisible();
     await expect(canvas.getByLabelText(/authenticator code/i)).toBeVisible();
     await expect(canvas.getByRole('button', { name: /present code/i })).toBeDisabled();

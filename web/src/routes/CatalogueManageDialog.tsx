@@ -18,9 +18,10 @@ import {
 } from '../api/catalogue.ts';
 import { GIT_DEFINITIONS_NOTICE, useDefinitionsSettings } from '../api/definitions.ts';
 import type { MatrixRef } from '../api/keys.ts';
-import { Alert, Done } from './Sections.tsx';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
-import { useModalDialog } from './useModalDialog.ts';
 
 type ScanBlockState = {
   readonly findings: readonly RefusalFinding[];
@@ -57,28 +58,26 @@ export function CatalogueManageDialog({
   refData: MatrixRef;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
   const folders = useFolders(refData);
   const groups = useKeyGroups(refData);
   const definitions = useDefinitionsSettings(refData.org, refData.project);
   const readOnly = definitions.data?.definitions_source === 'git';
 
   return (
-    <dialog className="matrix-editor catalogue-manage" ref={dialog} onClose={onClose}>
-      <div className="matrix-editor__head">
-        <div>
-          <h2>Folders &amp; linked keys</h2>
-          <p>Folders organise keys by path. Linked keys enforce publishing and presence rules.</p>
-        </div>
-        <button
-          type="button"
-          className="btn matrix-editor__close"
-          aria-label="Close folders and linked keys"
-          onClick={onClose}
-        >
-          ✕
-        </button>
-      </div>
+    <Dialog
+      title="Folders & linked keys"
+      lede="Folders organise keys by path. Linked keys enforce publishing and presence rules."
+      size="wide"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      actions={
+        <Button type="button" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
 
       {readOnly ? <Alert>{GIT_DEFINITIONS_NOTICE}</Alert> : null}
 
@@ -117,7 +116,7 @@ export function CatalogueManageDialog({
         </ul>
         {readOnly ? null : <CreateKeyGroup refData={refData} />}
       </section>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -186,11 +185,11 @@ function CreateFolder({ refData }: { refData: MatrixRef }) {
         disabled={create.isPending}
         onChange={(event) => setPath(event.currentTarget.value)}
       />
-      <button type="submit" className="btn btn--primary" disabled={create.isPending || trimmed === ''}>
+      <Button type="submit" variant="primary" disabled={create.isPending || trimmed === ''}>
         Add folder
-      </button>
+      </Button>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
-      {write.done === null ? null : <Done>{write.done}</Done>}
+      {write.done === null ? null : <Alert tone="done">{write.done}</Alert>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
           title="Folder name blocked by secret scanning"
@@ -231,9 +230,8 @@ function FolderRow({
           disabled={readOnly || busy}
           onChange={(event) => setPath(event.currentTarget.value)}
         />
-        <button
+        <Button
           type="button"
-          className="btn"
           disabled={readOnly || busy || trimmed === '' || trimmed === folder.path}
           onClick={() =>
             write.run(
@@ -249,11 +247,11 @@ function FolderRow({
           }
         >
           Rename
-        </button>
+        </Button>
         {confirming ? (
-          <button
+          <Button
             type="button"
-            className="btn btn--danger"
+            variant="danger"
             disabled={busy}
             onClick={() => {
               setDeleteError(null);
@@ -263,21 +261,20 @@ function FolderRow({
             }}
           >
             Confirm delete
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
-            className="btn"
             disabled={readOnly || busy}
             onClick={() => setConfirming(true)}
           >
             Delete
-          </button>
+          </Button>
         )}
       </div>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
       {deleteError === null ? null : <Alert>{deleteError}</Alert>}
-      {write.done === null ? null : <Done>{write.done}</Done>}
+      {write.done === null ? null : <Alert tone="done">{write.done}</Alert>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
           title="Folder name blocked by secret scanning"
@@ -325,11 +322,11 @@ function CreateKeyGroup({ refData }: { refData: MatrixRef }) {
         disabled={create.isPending}
         onChange={(event) => setName(event.currentTarget.value)}
       />
-      <button type="submit" className="btn btn--primary" disabled={create.isPending || trimmed === ''}>
+      <Button type="submit" variant="primary" disabled={create.isPending || trimmed === ''}>
         Add linked-key set
-      </button>
+      </Button>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
-      {write.done === null ? null : <Done>{write.done}</Done>}
+      {write.done === null ? null : <Alert tone="done">{write.done}</Alert>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
           title="Linked-key set name blocked by secret scanning"
@@ -373,9 +370,8 @@ function GroupRow({
           {String(group.members.length)} {group.members.length === 1 ? 'key' : 'keys'}
           {group.inert ? <span className="catalogue-manage__inert"> · needs at least two keys</span> : null}
         </span>
-        <button
+        <Button
           type="button"
-          className="btn"
           disabled={readOnly || busy || trimmed === '' || trimmed === group.name}
           onClick={() =>
             write.run(
@@ -391,11 +387,11 @@ function GroupRow({
           }
         >
           Rename
-        </button>
+        </Button>
         {confirming ? (
-          <button
+          <Button
             type="button"
-            className="btn btn--danger"
+            variant="danger"
             disabled={busy}
             onClick={() => {
               setDeleteError(null);
@@ -405,21 +401,20 @@ function GroupRow({
             }}
           >
             Confirm delete
-          </button>
+          </Button>
         ) : (
-          <button
+          <Button
             type="button"
-            className="btn"
             disabled={readOnly || busy}
             onClick={() => setConfirming(true)}
           >
             Delete
-          </button>
+          </Button>
         )}
       </div>
       {write.refusal === null ? null : <Alert>{write.refusal}</Alert>}
       {deleteError === null ? null : <Alert>{deleteError}</Alert>}
-      {write.done === null ? null : <Done>{write.done}</Done>}
+      {write.done === null ? null : <Alert tone="done">{write.done}</Alert>}
       {write.scanBlock === null ? null : (
         <ScanBlockDialog
           title="Linked-key set name blocked by secret scanning"

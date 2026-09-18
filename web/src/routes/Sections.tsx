@@ -1,7 +1,9 @@
 import { useId, useState, type ReactNode } from 'react';
 
 import { writeClipboard } from '../app/clipboard.ts';
-import { useModalDialog } from './useModalDialog.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
 
 /**
  * The sectioned-surface parts every chrome settings surface is built from
@@ -70,37 +72,6 @@ export function Panel({
   );
 }
 
-/** Alert is a refusal: text, a glyph, and `role=alert` so it is announced. */
-export function Alert({ children }: { children: ReactNode }) {
-  return (
-    <p className="alert" role="alert">
-      <span className="alert__glyph" aria-hidden="true">
-        !
-      </span>
-      <span>{children}</span>
-    </p>
-  );
-}
-
-/**
- * Done is post-action feedback that STAYS.
- *
- * The prototype used an eight-second toast with an undo. A toast that removes
- * itself is a message a screen-reader user can miss and a keyboard user cannot
- * return to, and there is no undo behind it here: a revoke is a real
- * revocation, and re-granting is an ordinary audited grant, not an undo.
- */
-export function Done({ children }: { children: ReactNode }) {
-  return (
-    <p className="notice" role="status">
-      <span className="alert__glyph" aria-hidden="true">
-        ✓
-      </span>
-      <span>{children}</span>
-    </p>
-  );
-}
-
 /**
  * TypedNameConfirm is the danger-zone gate: the destructive button stays
  * disabled until the exact name is typed, inline, never behind a browser
@@ -155,14 +126,14 @@ export function TypedNameConfirm({
           ? `The name matches. ${action} is now possible.`
           : `Type ${expect} exactly to enable ${action.toLowerCase()}.`}
       </p>
-      <button
+      <Button
         type="button"
-        className="btn btn--danger"
+        variant="danger"
         disabled={!armed || busy}
         onClick={onConfirm}
       >
         {action}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -178,7 +149,6 @@ export function TypedNameConfirm({
  * banner, so the dialog itself carries only consequence and confirmation.
  */
 export function ConsequencesDialog({
-  titleId,
   title,
   confirmLabel,
   busyLabel,
@@ -188,7 +158,6 @@ export function ConsequencesDialog({
   onConfirm,
   children,
 }: {
-  titleId: string;
   title: string;
   confirmLabel: string;
   busyLabel: string;
@@ -198,30 +167,31 @@ export function ConsequencesDialog({
   onConfirm: () => void;
   children: ReactNode;
 }) {
-  const dialog = useModalDialog();
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby={titleId}
+    <Dialog
+      title={title}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onCancel();
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onCancel} disabled={busy}>
+            Cancel
+          </Button>
+          <Button type="button" variant="danger" onClick={onConfirm} disabled={busy}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
     >
-      <h2 id={titleId}>{title}</h2>
-      <div className="ceremony__lede">{children}</div>
+      {/* The consequence copy is block content (the callers pass paragraphs),
+          so it stays in the body wearing the lede's type; Dialog's `lede` prop
+          renders inside a <p> and cannot carry a <p>. */}
+      <div className="dialog__lede">{children}</div>
       {busy ? <p role="status">{busyLabel}</p> : null}
       {failure === null ? null : <Alert>{failure}</Alert>}
-      <div className="ceremony__actions">
-        <button type="button" className="btn" onClick={onCancel} disabled={busy}>
-          Cancel
-        </button>
-        <button type="button" className="btn btn--danger" onClick={onConfirm} disabled={busy}>
-          {confirmLabel}
-        </button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -260,9 +230,8 @@ export function DisplayOnceCopy({ value, success }: { value: string; success: st
   return (
     <>
       <div className="panel__actions">
-        <button
+        <Button
           type="button"
-          className="btn"
           onClick={async () => {
             const result = await writeClipboard(value);
             setStatus(
@@ -273,10 +242,10 @@ export function DisplayOnceCopy({ value, success }: { value: string; success: st
           }}
         >
           Copy
-        </button>
+        </Button>
       </div>
       {status === null ? null : (
-        <p className="notice" role="status">
+        <p className="notice" role="status">{/* markup-check: copy receipt, not feedback */}
           <span className="alert__glyph" aria-hidden="true">
             ⧉
           </span>

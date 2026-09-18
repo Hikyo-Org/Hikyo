@@ -15,6 +15,9 @@ import {
 } from '../api/approvals.ts';
 import { ApiError } from '../api/client.ts';
 import { useEnvironments } from '../api/settings.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
 import { Ceremony, type CeremonyPurpose } from './Ceremony.tsx';
 import { JumpIndex, Panel } from './Sections.tsx';
 import { useProtectedPublishCeremony } from './useProtectedPublishCeremony.ts';
@@ -207,16 +210,13 @@ export function ChangeApprovals() {
 
       <Panel id="ca-policies" title="Policies">
         <div className="change-approvals__section-head">
-          <button type="button" className="btn" onClick={() => openEditor(null)}>
+          <Button type="button" onClick={() => openEditor(null)}>
             New policy
-          </button>
+          </Button>
         </div>
         {policies.isLoading ? <p role="status">Loading policies…</p> : null}
         {policies.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{refusal(policies.error)}</span>
-          </p>
+          <Alert>{refusal(policies.error)}</Alert>
         ) : null}
         {policies.data !== undefined && policies.data.items.length === 0 ? (
           <p>No approval policies. Changes in every environment publish directly.</p>
@@ -244,12 +244,12 @@ export function ChangeApprovals() {
                     <td>{Math.round(policy.request_ttl_seconds / 3600)}h</td>
                     <td>{policy.enabled ? 'enabled' : 'disabled'}</td>
                     <td>
-                      <button type="button" className="btn" onClick={() => openEditor(policy)}>
+                      <Button type="button" onClick={() => openEditor(policy)}>
                         Edit
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
-                        className="btn btn--danger"
+                        variant="danger"
                         onClick={() =>
                           act(() =>
                             deletePolicy.mutate(policy.id, {
@@ -259,7 +259,7 @@ export function ChangeApprovals() {
                         }
                       >
                         Delete
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 );
@@ -312,22 +312,16 @@ export function ChangeApprovals() {
               }
             />
 
-            <label>
-              <input
-                type="checkbox"
-                checked={draft.allowSelfApproval}
-                onChange={(event) => setDraft({ ...draft, allowSelfApproval: event.target.checked })}
-              />
-              Allow the requester to approve their own change
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
-              />
-              Enabled
-            </label>
+            <Checkbox
+              label="Allow the requester to approve their own change"
+              checked={draft.allowSelfApproval}
+              onChange={(event) => setDraft({ ...draft, allowSelfApproval: event.target.checked })}
+            />
+            <Checkbox
+              label="Enabled"
+              checked={draft.enabled}
+              onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })}
+            />
 
             <fieldset>
               <legend>Approvers</legend>
@@ -356,12 +350,12 @@ export function ChangeApprovals() {
             </details>
 
             <div className="change-approvals__form-actions">
-              <button type="submit" className="btn btn--primary" disabled={savePolicy.isPending}>
+              <Button type="submit" variant="primary" disabled={savePolicy.isPending}>
                 {savePolicy.isPending ? 'Saving…' : 'Save policy'}
-              </button>
-              <button type="button" className="btn" onClick={() => setFormOpen(false)}>
+              </Button>
+              <Button type="button" onClick={() => setFormOpen(false)}>
                 Cancel
-              </button>
+              </Button>
             </div>
           </form>
         ) : null}
@@ -383,17 +377,11 @@ export function ChangeApprovals() {
         </select>
 
         {actionError !== null ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{actionError}</span>
-          </p>
+          <Alert>{actionError}</Alert>
         ) : null}
 
         {approvalGuard.error === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{approvalGuard.error}</span>
-          </p>
+          <Alert>{approvalGuard.error}</Alert>
         )}
 
         {selectedEnv === '' ? (
@@ -405,10 +393,7 @@ export function ChangeApprovals() {
         ) : null}
 
         {selectedEnv !== '' && requests.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{refusal(requests.error)}</span>
-          </p>
+          <Alert>{refusal(requests.error)}</Alert>
         ) : null}
 
         {selectedEnv !== '' && requests.data !== undefined && requests.data.items.length === 0 ? (
@@ -524,21 +509,21 @@ function ApprovalRequestRow({
       </ul> : null}
       {active ? (
         <div className="change-approvals__request-actions">
-          <button type="button" className="btn" disabled={busy} onClick={() => onVote('approve')}>
+          <Button type="button" disabled={busy} onClick={() => onVote('approve')}>
             Approve
-          </button>
-          <button type="button" className="btn" disabled={busy} onClick={() => onVote('reject')}>
+          </Button>
+          <Button type="button" disabled={busy} onClick={() => onVote('reject')}>
             Reject
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={busy || !quorumMet}
             onClick={onMerge}
             title={quorumMet ? '' : 'Waiting for the required approvals'}
           >
             Merge
-          </button>
+          </Button>
           <div className="change-approvals__bypass">
             <label htmlFor={`bypass-${request.id}`}>Bypass reason</label>
             <input
@@ -547,14 +532,14 @@ function ApprovalRequestRow({
               value={bypassReason}
               onChange={(event) => onBypassReasonChange(event.target.value)}
             />
-            <button
+            <Button
               type="button"
-              className="btn btn--danger"
+              variant="danger"
               disabled={busy || bypassReason.trim() === ''}
               onClick={onBypass}
             >
               Emergency bypass
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -569,6 +554,9 @@ function PolicyPeople({ names, selected, onChange }: {
 }) {
   const ids = [...new Set([...names.keys(), ...selected])];
   if (ids.length === 0) return <p>No people are named in the current policies or review queue. Use Advanced to add the first person.</p>;
+  // markup-check: the row's `title` disambiguates two people with the same
+  // display name; ui/Checkbox spreads rest onto the input, which would shrink
+  // that tooltip to the box, so this row stays hand-written.
   return <div>{ids.map((id) => <label key={id} title={id}>
     <input type="checkbox" checked={selected.includes(id)} onChange={(event) => onChange(id, event.target.checked)} />
     {names.get(id) ?? id}

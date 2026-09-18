@@ -4,7 +4,9 @@ import { accountFailureText, useMyProfile, useUpdateMyProfile } from '../api/acc
 import { ApiError } from '../api/client.ts';
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
-import { Alert, Done, Panel } from './Sections.tsx';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Panel } from './Sections.tsx';
 
 export function AccountProfile() {
   const profile = useMyProfile();
@@ -12,7 +14,7 @@ export function AccountProfile() {
   return (
     <Panel id="account-profile" title="Profile" tight>
       {profile.isPending ? <p role="status">Loading your profile…</p> : null}
-      {profile.isError ? <Alert>Your profile could not be loaded. <button type="button" className="btn" onClick={() => { void profile.refetch(); }}>Try again</button></Alert> : null}
+      {profile.isError ? <Alert>Your profile could not be loaded. <Button type="button" onClick={() => { void profile.refetch(); }}>Try again</Button></Alert> : null}
       {profile.isSuccess ? <ProfileForm key={auth.identity?.principal.id} profile={profile.data} /> : null}
     </Panel>
   );
@@ -48,7 +50,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
       });
       setProof('');
     }}>
-      {done ? <Done>Profile saved.</Done> : null}
+      {done ? <Alert tone="done">Profile saved.</Alert> : null}
       {update.error !== null ? <Alert>{update.error instanceof ApiError && update.error.status === 409
         ? 'That username is already in use. Choose another username.'
         : accountFailureText(update.error)}</Alert> : null}
@@ -79,9 +81,9 @@ function ProfileForm({ profile }: { profile: Profile }) {
       </fieldset>
       {profile.managed ? <p className="settings-note">Your identity provider manages your username and display name. Change them there.</p> : null}
       {!profile.managed && !profile.username_editable ? <p className="settings-note">You sign in through your identity provider. Your display name and contact email can be changed here.</p> : null}
-      <button type="submit" className="btn btn--primary" disabled={!dirty || update.isPending || (needsProof && proof === '')}>
+      <Button type="submit" variant="primary" disabled={!dirty || update.isPending || (needsProof && proof === '')}>
         {update.isPending ? 'Saving…' : 'Save profile'}
-      </button>
+      </Button>
     </form>
   );
 }

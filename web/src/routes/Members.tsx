@@ -36,6 +36,14 @@ import {
 import { ApiError } from '../api/client.ts';
 import type { Grant } from '../api/identities.ts';
 import { runPasskeyCeremony } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
+import { Radio } from '../ui/Radio.tsx';
+import { Select } from '../ui/Select.tsx';
 
 /**
  * wideningEnvironment reads the environment a reauth-required grant refusal
@@ -53,8 +61,8 @@ function wideningEnvironment(error: unknown): string | null {
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
-import { Alert, Done, Explain, JumpIndex, Panel } from './Sections.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { Explain, JumpIndex, Panel } from './Sections.tsx';
+import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 const prototypeDefaultPrincipal = 'prn_44444444-4444-4444-8444-444444444444';
@@ -325,7 +333,7 @@ export function Members({ scope }: { scope: MembersScope }) {
         <Alert>The organisation could not be read. Reload before managing its grants.</Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       <Inspect
         options={inspectOptions}
@@ -395,7 +403,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                       <span className="member-name" title={row.principal}>
                         {principalLabel(row.principal, lines)}
                       </span>
-                      {row.principal === me && !compactPresentation ? <span className="badge">you</span> : null}
+                      {row.principal === me && !compactPresentation ? <Badge>you</Badge> : null}
                       {/* Reset credential (#568): humans only (`mch_` is a
                           machine, which has no password), never yourself (a
                           reset revokes the target's sessions, this one
@@ -406,27 +414,27 @@ export function Members({ scope }: { scope: MembersScope }) {
                       !row.principal.startsWith('mch_') &&
                       row.principal !== me &&
                       rows.findIndex((candidate) => candidate.principal === row.principal) === index ? (
-                        <button
+                        <Button
                           type="button"
-                          className="btn btn--quiet"
+                          variant="quiet"
                           disabled={resetPending !== null}
                           aria-busy={resetPending === row.principal ? true : undefined}
                           aria-label={`Reset credential for ${principalLabel(row.principal, lines)}`}
                           onClick={() => void onReset(row.principal)}
                         >
                           {resetPending === row.principal ? 'Resetting…' : 'Reset credential'}
-                        </button>
+                        </Button>
                       ) : null}
                     </td>
                     <td>
-                      <span
-                        className={row.level === 'org'
-                          ? 'chip chip--wide'
-                          : protectedScope ? 'chip chip--protected' : 'chip'}
+                      <Badge
+                        mono
+                        className="member-scope"
+                        tone={protectedScope ? 'danger' : 'neutral'}
                         aria-label={protectedScope ? `${visibleScopeLabel}, protected` : undefined}
                       >
                         {visibleScopeLabel}
-                      </span>
+                      </Badge>
                     </td>
                     <td>
                       <ul className="capabilities">
@@ -435,7 +443,7 @@ export function Members({ scope }: { scope: MembersScope }) {
                             revoke.isPending && revoke.variables?.grant.id === grant.id;
                           const revokeLabel = `${revoking ? 'Revoking' : 'Revoke'} ${grant.capability} on ${row.scopeLabel} for ${principalLabel(row.principal, lines)}`;
                           const revokeText = compactPresentation
-                            ? (revoking ? '…' : '✕')
+                            ? (revoking ? '…' : <Glyph name="cross" />)
                             : (revoking ? 'Revoking…' : 'Revoke');
                           return (
                             <li
@@ -453,12 +461,9 @@ export function Members({ scope }: { scope: MembersScope }) {
                                   that tells a break-glass grant from an ordinary
                                   one after an incident. */}
                               {!compactPresentation ? grant.origins.map((origin) => (
-                                  <span
-                                    className="badge"
-                                    key={`${origin.kind}:${origin.subject}`}
-                                  >
+                                  <Badge key={`${origin.kind}:${origin.subject}`}>
                                     {origin.kind}: {origin.subject}
-                                  </span>
+                                  </Badge>
                                 )) : (
                                   <>
                                     <span className="visually-hidden">
@@ -469,27 +474,26 @@ export function Members({ scope }: { scope: MembersScope }) {
                                     {grant.origins
                                       .filter((origin) => origin.kind !== 'manual')
                                       .map((origin) => (
-                                        <span
-                                          className="badge capability__origin"
+                                        <Badge
+                                          className="capability__origin"
                                           key={`${origin.kind}:${origin.subject}`}
                                         >
                                           ! {origin.kind}
-                                        </span>
+                                        </Badge>
                                       ))}
                                   </>
                                 )}
-                              <button
+                              <Button
                                 type="button"
-                                className={compactPresentation
-                                  ? 'capability__revoke'
-                                  : 'btn btn--quiet'}
+                                variant="quiet"
+                                icon={compactPresentation}
                                 disabled={revoking}
                                 aria-busy={revoking ? true : undefined}
                                 aria-label={revokeLabel}
                                 onClick={() => onRevoke(grant)}
                               >
                                 {revokeText}
-                              </button>
+                              </Button>
                             </li>
                           );
                         })}
@@ -509,9 +513,9 @@ export function Members({ scope }: { scope: MembersScope }) {
           ) : topologyError ? (
             <Alert>The organisation topology could not be read completely. Reload before granting anything.</Alert>
           ) : null}
-          <button
+          <Button
             type="button"
-            className="btn btn--primary"
+            variant="primary"
             disabled={!topologyReady}
             onClick={() => {
               feedback.clear();
@@ -523,21 +527,20 @@ export function Members({ scope }: { scope: MembersScope }) {
             }}
           >
             {compactPresentation ? '+ new grant' : 'New grant'}
-          </button>
+          </Button>
           {/* Invite (#568) lives at organisation and instance scope only: a
               project has no accounts of its own, and the org page is one
               click up from the project projection. */}
           {projectId === '' ? (
-            <button
+            <Button
               type="button"
-              className="btn"
               onClick={() => {
                 feedback.clear();
                 setModal('invite');
               }}
             >
               Invite
-            </button>
+            </Button>
           ) : null}
         </div>
         )}
@@ -870,14 +873,11 @@ function GrantModal({
   onDone: (text: string) => void;
   projectContext: boolean;
 }) {
-  const dialog = useModalDialog();
   const [failure, setFailure] = useState<string | null>(null);
   const create = useCreateGrants();
   const applyTemplate = useApplyTemplate();
   const principalId = useId();
   const [enterPrincipalId, setEnterPrincipalId] = useState(false);
-  const scopeId = useId();
-  const templateId = useId();
 
   const chosen = optionByValue(options, effectiveScope);
   const atoms = projectContext && prototypeMode
@@ -1019,24 +1019,36 @@ function GrantModal({
 
   if (stage === 'blast') {
     return (
-      <dialog
-        className="ceremony blast"
-        ref={dialog}
-        aria-labelledby="blast-title"
+      <Dialog
+        title="Organisation-scoped grant: check the blast radius"
+        lede={
+          <>
+            <strong>{principalName(draft.principal)}</strong> would get <span className="mono">{composed}</span> on{' '}
+            <strong>every project and environment in {orgName}</strong>, current and future. Grants
+            inherit automatically, with no further decision, and there are no deny rules, so there is
+            no per-project exception under an organisation grant.
+          </>
+        }
         onCancel={(event) => {
           event.preventDefault();
           if (!mutationPending) {
             onStage('none');
           }
         }}
+        actions={
+          <>
+            <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={mutationPending} onClick={() => onStage('grant')}>
+              Back, change scope
+            </Button>
+            <Button type="button" variant="danger" disabled={submitBlocked} onClick={perform}>
+              Grant at organisation scope
+            </Button>
+          </>
+        }
       >
-        <h2 id="blast-title">Organisation-scoped grant: check the blast radius</h2>
-        <p className="ceremony__lede">
-          <strong>{principalName(draft.principal)}</strong> would get <span className="mono">{composed}</span> on{' '}
-          <strong>every project and environment in {orgName}</strong>, current and future. Grants
-          inherit automatically, with no further decision, and there are no deny rules, so there is
-          no per-project exception under an organisation grant.
-        </p>
         {topologyPending ? (
           <p role="status" aria-live="polite">
             Loading every project, environment, and protection state before showing the blast radius…
@@ -1063,41 +1075,37 @@ function GrantModal({
           </span>
         </p>
         {failure !== null ? <Alert>{failure}</Alert> : null}
-        <div className="ceremony__actions">
-          <button type="button" className="btn" disabled={mutationPending} onClick={() => onStage('none')}>
-            Cancel
-          </button>
-          <button type="button" className="btn" disabled={mutationPending} onClick={() => onStage('grant')}>
-            Back, change scope
-          </button>
-          <button type="button" className="btn btn--danger" disabled={submitBlocked} onClick={perform}>
-            Grant at organisation scope
-          </button>
-        </div>
-      </dialog>
+      </Dialog>
     );
   }
 
   return (
-    <dialog
-      className="ceremony grant-modal"
-      ref={dialog}
-      aria-labelledby="grant-title"
+    <Dialog
+      title="New grant"
+      lede={
+        projectContext && prototypeMode ? (
+          <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>
+        ) : (
+          <>Pick any number of capabilities: each becomes its <strong>own revocable line</strong> at this scope, never a bundle. A role template does exactly this with a preset list.</>
+        )
+      }
       onCancel={(event) => {
         event.preventDefault();
         if (!mutationPending) {
           onStage('none');
         }
       }}
+      actions={
+        <>
+          <Button type="button" disabled={mutationPending} onClick={() => onStage('none')}>
+            Cancel
+          </Button>
+          <Button type="button" variant="primary" disabled={submitBlocked} onClick={submit}>
+            {mutationPending ? 'Granting…' : 'Grant'}
+          </Button>
+        </>
+      }
     >
-      <h2 id="grant-title">New grant</h2>
-      <p className="ceremony__lede">
-        {projectContext && prototypeMode ? (
-          <>Each checked capability becomes its <strong>own revocable grant</strong>. Roles are templates doing exactly this with a preset checklist.</>
-        ) : (
-          <>Pick any number of capabilities: each becomes its <strong>own revocable line</strong> at this scope, never a bundle. A role template does exactly this with a preset list.</>
-        )}
-      </p>
 
       {failure !== null ? <Alert>{failure}</Alert> : null}
       {topologyPending ? (
@@ -1148,12 +1156,12 @@ function GrantModal({
                 ))}
               </select>
             )}
-            <button type="button" className="btn btn--quiet" onClick={() => {
+            <Button type="button" variant="quiet" onClick={() => {
               setEnterPrincipalId(!enterPrincipalId);
               onDraft({ ...draft, principal: '' });
             }}>
               {enterPrincipalId ? 'Choose an existing member' : 'Enter an ID for another principal'}
-            </button>
+            </Button>
             <p className="field__hint">
               {enterPrincipalId
                 ? 'Enter the exact ID of a person or service account outside this member list.'
@@ -1166,24 +1174,18 @@ function GrantModal({
       {projectContext ? null : (
         <fieldset className="grant-modal__mode">
           <legend>What to grant</legend>
-          <label className="chk">
-            <input
-              type="radio"
-              name="grant-mode"
-              checked={draft.mode === 'capabilities'}
-              onChange={() => onDraft({ ...draft, mode: 'capabilities' })}
-            />
-            <span>Choose capabilities</span>
-          </label>
-          <label className="chk">
-            <input
-              type="radio"
-              name="grant-mode"
-              checked={draft.mode === 'template'}
-              onChange={() => onDraft({ ...draft, mode: 'template' })}
-            />
-            <span>Apply a role template</span>
-          </label>
+          <Radio
+            name="grant-mode"
+            label="Choose capabilities"
+            checked={draft.mode === 'capabilities'}
+            onChange={() => onDraft({ ...draft, mode: 'capabilities' })}
+          />
+          <Radio
+            name="grant-mode"
+            label="Apply a role template"
+            checked={draft.mode === 'template'}
+            onChange={() => onDraft({ ...draft, mode: 'template' })}
+          />
         </fieldset>
       )}
 
@@ -1191,106 +1193,87 @@ function GrantModal({
         <ul className="capgrid" aria-label="Capabilities to grant">
           {atoms.map((atom) => (
             <li className="capitem" key={atom.id}>
-              <label className="chk">
-                <input
-                  type="checkbox"
-                  checked={draft.capabilities.includes(atom.id)}
-                  onChange={(event) =>
-                    onDraft({
-                      ...draft,
-                      capabilities: event.target.checked
-                        ? [...draft.capabilities, atom.id]
-                        : draft.capabilities.filter((id) => id !== atom.id),
-                    })
-                  }
-                />
-                <span className="mono">{atom.id}</span>
-              </label>
+              <Checkbox
+                mono
+                label={atom.id}
+                checked={draft.capabilities.includes(atom.id)}
+                onChange={(event) =>
+                  onDraft({
+                    ...draft,
+                    capabilities: event.target.checked
+                      ? [...draft.capabilities, atom.id]
+                      : draft.capabilities.filter((id) => id !== atom.id),
+                  })
+                }
+              />
               <Explain label={atom.id} text={atom.covers} />
             </li>
           ))}
         </ul>
       ) : (
-        <div className="field">
-          <label htmlFor={templateId}>Role template</label>
-          <select
-            id={templateId}
-            value={draft.template}
-            onChange={(event) => onDraft({ ...draft, template: event.target.value })}
-          >
-            <option value="">Choose a template…</option>
-            {templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.id}
-              </option>
-            ))}
-          </select>
-          <p className="field__hint">
-            {draft.template === '' || selectedTemplate === undefined || chosen === undefined
+        <Select
+          label="Role template"
+          value={draft.template}
+          onChange={(event) => onDraft({ ...draft, template: event.target.value })}
+          hint={
+            draft.template === '' || selectedTemplate === undefined || chosen === undefined
               ? 'A template is expanded by the server at grant time; what lands is grants.'
-              : `Seeds: ${expandTemplate(selectedTemplate.id, chosen.level).join(', ')}.`}
-          </p>
-        </div>
+              : `Seeds: ${expandTemplate(selectedTemplate.id, chosen.level).join(', ')}.`
+          }
+        >
+          <option value="">Choose a template…</option>
+          {templates.map((template) => (
+            <option key={template.id} value={template.id}>
+              {template.id}
+            </option>
+          ))}
+        </Select>
       )}
 
-      <div className="field">
-        <label htmlFor={scopeId}>Scope</label>
-        <select
-          id={scopeId}
-          value={effectiveScope}
-          onChange={(event) => {
-            const next = optionByValue(options, event.target.value);
-            if (next === undefined) {
-              onDraft({ ...draft, scope: '', capabilities: [], template: '' });
-              return;
-            }
-            onDraft({
-              ...draft,
-              scope: next.value,
-              capabilities: draft.capabilities.filter((id) =>
-                capabilitiesAt(next.level).some((atom) => atom.id === id),
-              ),
-              template: templatesAt(next.level).some((template) => template.id === draft.template)
-                ? draft.template
-                : '',
-            });
-          }}
-        >
-          {projectContext && prototypeMode ? null : <option value="">Choose a scope…</option>}
-          {[...new Set(options.map((option) => option.group))].map((group) => (
-            <optgroup key={group} label={group}>
-              {options
-                .filter((option) => option.group === group)
-                .map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {projectContext && prototypeMode
-                      ? compactGrantOptionLabel(option, orgName)
-                      : option.label}
-                  </option>
-                ))}
-            </optgroup>
-          ))}
-        </select>
-        {projectContext && prototypeMode ? null : chosen?.level === 'instance' ? (
-          <p className="field__hint">
-            Instance scope reaches every organisation, current and future.
-          </p>
-        ) : (
-          <p className="field__hint">
-            Narrowest first. A protected environment is last in its project and is never
-            preselected; an organisation scope reaches every project, current and future.
-          </p>
-        )}
-      </div>
+      <Select
+        label="Scope"
+        value={effectiveScope}
+        onChange={(event) => {
+          const next = optionByValue(options, event.target.value);
+          if (next === undefined) {
+            onDraft({ ...draft, scope: '', capabilities: [], template: '' });
+            return;
+          }
+          onDraft({
+            ...draft,
+            scope: next.value,
+            capabilities: draft.capabilities.filter((id) =>
+              capabilitiesAt(next.level).some((atom) => atom.id === id),
+            ),
+            template: templatesAt(next.level).some((template) => template.id === draft.template)
+              ? draft.template
+              : '',
+          });
+        }}
+        hint={
+          projectContext && prototypeMode
+            ? undefined
+            : chosen?.level === 'instance'
+              ? 'Instance scope reaches every organisation, current and future.'
+              : 'Narrowest first. A protected environment is last in its project and is never preselected; an organisation scope reaches every project, current and future.'
+        }
+      >
+        {projectContext && prototypeMode ? null : <option value="">Choose a scope…</option>}
+        {[...new Set(options.map((option) => option.group))].map((group) => (
+          <optgroup key={group} label={group}>
+            {options
+              .filter((option) => option.group === group)
+              .map((option) => (
+                <option key={option.value} value={option.value}>
+                  {projectContext && prototypeMode
+                    ? compactGrantOptionLabel(option, orgName)
+                    : option.label}
+                </option>
+              ))}
+          </optgroup>
+        ))}
+      </Select>
 
-      <div className="ceremony__actions">
-        <button type="button" className="btn" disabled={mutationPending} onClick={() => onStage('none')}>
-          Cancel
-        </button>
-        <button type="button" className="btn btn--primary" disabled={submitBlocked} onClick={submit}>
-          {mutationPending ? 'Granting…' : 'Grant'}
-        </button>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }

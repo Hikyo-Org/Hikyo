@@ -9,6 +9,8 @@ import {
   recoveryFailureText,
 } from '../api/session.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
 
 /**
  * The public credential-establishment page (#568, registry surface
@@ -138,12 +140,7 @@ export function EstablishCredential() {
         )}
 
         {failure === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{failure}</span>
-          </p>
+          <Alert>{failure}</Alert>
         )}
 
         {recovered ? null : (
@@ -196,9 +193,9 @@ export function EstablishCredential() {
           />
         </div>
 
-        <button className="btn btn--primary" type="submit" disabled={pending}>
+        <Button variant="primary" type="submit" disabled={pending}>
           {pending ? 'Establishing…' : 'Establish credential'}
-        </button>
+        </Button>
         {recovered ? null : (
           <Link className="btn" to={`${surfaceById('establish-credential').path}?mode=recover`}>
             Lost your second factor? Recover with a code
@@ -264,12 +261,7 @@ function RecoveryForm({
         </p>
 
         {failure === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>{failure}</span>
-          </p>
+          <Alert>{failure}</Alert>
         )}
 
         <div className="field">
@@ -300,12 +292,12 @@ function RecoveryForm({
           />
         </div>
 
-        <button className="btn btn--primary" type="submit" disabled={pending}>
+        <Button variant="primary" type="submit" disabled={pending}>
           {pending ? 'Checking…' : 'Continue'}
-        </button>
-        <button className="btn" type="button" onClick={onBack} disabled={pending}>
+        </Button>
+        <Button type="button" onClick={onBack} disabled={pending}>
           Have a setup authority instead?
-        </button>
+        </Button>
         <Link className="btn" to={surfaceById('login').path}>
           Back to sign in
         </Link>

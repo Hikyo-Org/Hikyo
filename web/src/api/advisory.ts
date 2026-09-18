@@ -329,7 +329,7 @@ export function useAdvisoryStream(
   // just (re)mounted, so its first connect is never a recovery. Reset during
   // render as the subscription identity changes, ahead of the effect that
   // re-subscribes, rather than with a setState inside the effect body.
-  useResetOnChange(`${enabled} ${org} ${project}`, () =>
+  useResetOnChange(`${enabled}\u0000${org}\u0000${project}`, () =>
     setState(INITIAL_ADVISORY_LIVENESS),
   );
   useEffect(() => {

@@ -53,36 +53,28 @@ func run() error {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	readCount, allCount := len(mcpserver.ProductionToolNames()), len(mcpserver.AllToolNames())
-	if err != nil || tools == nil || (len(tools.Tools) != readCount && len(tools.Tools) != allCount) {
-		return fmt.Errorf("closed read or read-plus-write tool catalog required")
+	if err != nil || tools == nil {
+		return fmt.Errorf("tool catalog unavailable")
 	}
-	expected := make(map[string]bool)
-	for _, name := range mcpserver.ProductionToolNames() {
-		expected[name] = true
-	}
-	writeTools := make(map[string]bool)
-	for _, name := range mcpserver.WriteToolNames() {
-		writeTools[name] = true
-	}
+	names := make([]string, 0, len(tools.Tools))
 	for _, tool := range tools.Tools {
-		if writeTools[tool.Name] {
-			// The write surface is advertised only when the operator enabled it;
-			// this proof exercises the read tools and never stages into production.
-			delete(writeTools, tool.Name)
-			continue
-		}
-		if !expected[tool.Name] {
-			return fmt.Errorf("unexpected or duplicate production tool")
-		}
-		delete(expected, tool.Name)
+		names = append(names, tool.Name)
+	}
+	if err := checkCatalog(names); err != nil {
+		return err
+	}
+	// The write surface is advertised only when the operator enabled it; this
+	// proof exercises every read tool and never stages into production, so the
+	// reported count is the number of read tools that actually answered.
+	called := 0
+	for _, name := range mcpserver.ProductionToolNames() {
 		args := map[string]any{"org_id": "org_a", "project_id": "prj_a1", "page_size": 20}
-		if tool.Name != "hikyo_list_definitions" && tool.Name != "hikyo_list_environments" {
+		if name != "hikyo_list_definitions" && name != "hikyo_list_environments" {
 			args["environment_id"] = "env_a1"
 		}
-		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: tool.Name, Arguments: args})
+		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 		if err != nil || result == nil || result.IsError {
-			return fmt.Errorf("production tool %s refused", tool.Name)
+			return fmt.Errorf("production tool %s refused", name)
 		}
 		b, err := json.Marshal(result)
 		if err != nil {
@@ -91,6 +83,38 @@ func run() error {
 		if strings.Contains(string(b), "CANARY-PLAINTEXT-9Z-do-not-disclose") {
 			return fmt.Errorf("secret canary disclosed")
 		}
+		called++
 	}
-	return json.NewEncoder(os.Stdout).Encode(map[string]any{"client": "official-go-sdk", "version": "v1.7.0", "protocol": session.InitializeResult().ProtocolVersion, "production_tools_called": 5, "secret_canary_absent": true, "passed": true})
+	if called != len(mcpserver.ProductionToolNames()) {
+		return fmt.Errorf("called %d read tools, want %d", called, len(mcpserver.ProductionToolNames()))
+	}
+	return json.NewEncoder(os.Stdout).Encode(map[string]any{"client": "official-go-sdk", "version": "v1.7.0", "protocol": session.InitializeResult().ProtocolVersion, "production_tools_called": called, "secret_canary_absent": true, "passed": true})
+}
+
+// checkCatalog requires the advertised catalog to be EXACTLY the closed read
+// set, or exactly the closed read-plus-write set: no missing read tool, no
+// duplicate, no unknown name. A catalog of the right size is not enough; a
+// five-entry mix of reads and writes would otherwise pass on fewer calls.
+func checkCatalog(names []string) error {
+	if !sameSet(names, mcpserver.ProductionToolNames()) && !sameSet(names, mcpserver.AllToolNames()) {
+		return fmt.Errorf("closed read or read-plus-write tool catalog required")
+	}
+	return nil
+}
+
+func sameSet(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	pending := make(map[string]bool, len(want))
+	for _, name := range want {
+		pending[name] = true
+	}
+	for _, name := range got {
+		if !pending[name] {
+			return false
+		}
+		delete(pending, name)
+	}
+	return len(pending) == 0
 }

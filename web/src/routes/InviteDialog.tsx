@@ -11,8 +11,11 @@ import {
   type Level,
 } from '../api/access.ts';
 import { surfaceById } from '../app/navigation.ts';
-import { Alert, DisplayOnceCopy } from './Sections.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Select } from '../ui/Select.tsx';
+import { DisplayOnceCopy } from './Sections.tsx';
 
 /**
  * The member invitation ceremony (#568): the human-auth ADR's one account-
@@ -139,12 +142,9 @@ function InviteForm({
   onSubmit: () => void;
 }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
-  const titleId = useId();
+  const formId = useId();
   const usernameId = useId();
   const displayNameId = useId();
-  const templateId = useId();
-  const templateHintId = useId();
   const templates = templatesAt(level);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -153,25 +153,34 @@ function InviteForm({
   };
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby={titleId}
+    <Dialog
+      title={`Invite a member to ${scopeName}`}
+      lede="Creates their account now. They set their own password with the authority you hand them; no email is sent."
+      initialFocus={first}
       onCancel={(event) => {
         // Escape closes the native dialog on its own; without this the page
         // would still believe the ceremony is open.
         event.preventDefault();
         onCancel();
       }}
+      actions={
+        <>
+          <Button type="button" disabled={pending} onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form={formId}
+            variant="primary"
+            disabled={pending}
+            aria-busy={pending ? true : undefined}
+          >
+            {pending ? 'Inviting…' : 'Invite'}
+          </Button>
+        </>
+      }
     >
-      <form onSubmit={submit} noValidate>
-        <h2 id={titleId} className="ceremony__title">
-          Invite a member to {scopeName}
-        </h2>
-        <p className="ceremony__lede">
-          Creates their account now. They set their own password with the authority you hand
-          them; no email is sent.
-        </p>
+      <form id={formId} onSubmit={submit} noValidate>
         {failure === null ? null : <Alert>{failure}</Alert>}
         <div className="field">
           <label htmlFor={usernameId}>Username</label>
@@ -196,37 +205,22 @@ function InviteForm({
             onChange={(event) => onDisplayName(event.target.value)}
           />
         </div>
-        <div className="field">
-          <label htmlFor={templateId}>Role template</label>
-          <select
-            id={templateId}
-            aria-describedby={templateHintId}
-            disabled={pending}
-            value={template}
-            onChange={(event) => onTemplate(event.target.value)}
-          >
-            <option value="">No initial grants</option>
-            {templates.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.id}
-              </option>
-            ))}
-          </select>
-          <p id={templateHintId} className="field__hint">
-            Expanded at {scopeName} in the same transaction; each grant stays individually
-            revocable. With no template the account exists but reaches nothing.
-          </p>
-        </div>
-        <div className="ceremony__actions">
-          <button type="submit" className="btn btn--primary" disabled={pending} aria-busy={pending ? true : undefined}>
-            {pending ? 'Inviting…' : 'Invite'}
-          </button>
-          <button type="button" className="btn" disabled={pending} onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
+        <Select
+          label="Role template"
+          disabled={pending}
+          value={template}
+          onChange={(event) => onTemplate(event.target.value)}
+          hint={`Expanded at ${scopeName} in the same transaction; each grant stays individually revocable. With no template the account exists but reaches nothing.`}
+        >
+          <option value="">No initial grants</option>
+          {templates.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.id}
+            </option>
+          ))}
+        </Select>
       </form>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -254,25 +248,28 @@ export function IssuedAuthorityDialog({
   origin: string;
   onClose: () => void;
 }) {
-  const dialog = useModalDialog();
-  const titleId = useId();
   const expires = new Date(issued.expiresAt);
   const handle = username ?? '<their username>';
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby={titleId}
+    <Dialog
+      title={title}
+      lede={lede}
       onCancel={(event) => {
         event.preventDefault();
         onClose();
       }}
+      actions={
+        <>
+          <Link className="btn" to={surfaceById('establish-credential').path}>
+            Open the establish page
+          </Link>
+          <Button type="button" variant="primary" onClick={onClose}>
+            Close
+          </Button>
+        </>
+      }
     >
-      <h2 id={titleId} className="ceremony__title">
-        {title}
-      </h2>
-      <p className="ceremony__lede">{lede}</p>
       {principalId === null ? null : (
         <p className="field__hint">
           Principal <span className="mono" data-testid="issued-principal">{principalId}</span>
@@ -296,14 +293,6 @@ export function IssuedAuthorityDialog({
       <code className="instance-cli">
         $ hikyo account establish-credential --instance {origin} --as {handle}
       </code>
-      <div className="ceremony__actions">
-        <button type="button" className="btn btn--primary" onClick={onClose}>
-          Close
-        </button>
-        <Link className="btn" to={surfaceById('establish-credential').path}>
-          Open the establish page
-        </Link>
-      </div>
-    </dialog>
+    </Dialog>
   );
 }

@@ -8,7 +8,10 @@ import reviewed from './sensitiveInventory.json';
 // Intentionally conservative: every mutation-capable source module is reviewed
 // in full, including imported aliases and hand-built cache access. A new module
 // or any edit needs an explicit sensitivity review before this pin is refreshed.
-const mutationCapability = /\b(?:useMutation|useSensitiveMutation|useMutationState|MutationObserver|MutationCache|getMutationCache)\b/;
+// useSensitiveState is in the set because holding the plaintext is the same
+// review as sending it: a presentational atom that owns a password field
+// (ui/auth/LoginForm) must not drift without one.
+const mutationCapability = /\b(?:useMutation|useSensitiveMutation|useSensitiveState|useMutationState|MutationObserver|MutationCache|getMutationCache)\b/;
 const sourceRoot = fileURLToPath(new URL('../', import.meta.url));
 function inventory(root: string, prefix = ''): Record<string, string> {
   const result: Record<string, string> = {};
@@ -30,6 +33,7 @@ it('detects imported aliases and direct cache construction as requiring review',
   for (const source of [
     "import { useMutation as save } from '@tanstack/react-query'",
     "const start = useSensitiveMutation({ mutationFn })",
+    "const [password, setPassword] = useSensitiveState('')",
     'queries.getMutationCache().build(queries, options)',
     'new MutationObserver(queries, options)',
     'new MutationCache()',

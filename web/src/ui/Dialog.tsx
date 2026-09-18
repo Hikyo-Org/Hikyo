@@ -1,4 +1,11 @@
-import { useId, type ReactNode, type RefObject, type SyntheticEvent } from 'react';
+import {
+  useId,
+  useRef,
+  type MouseEvent,
+  type ReactNode,
+  type RefObject,
+  type SyntheticEvent,
+} from 'react';
 
 import { cx } from './cx.ts';
 import { useModalDialog } from './useModalDialog.ts';
@@ -23,37 +30,80 @@ import { useModalDialog } from './useModalDialog.ts';
  *
  * `onCancel` receives the platform's cancel (Escape); a dialog that must be
  * acknowledged before it closes calls `preventDefault()` there.
+ *
+ * `onBackdropClick` is the editors' third way out, opt-in per dialog.
  */
 export function Dialog({
   title,
+  mono,
   lede,
   size = 'narrow',
   actions,
   onCancel,
+  onBackdropClick,
   initialFocus,
   className,
   children,
 }: {
   title: string;
+  /** Sets the title in the value face, for a dialog named after an identifier. */
+  mono?: boolean;
   lede?: ReactNode;
   size?: 'narrow' | 'wide';
   /** The button row. Put the primary action last. */
   actions?: ReactNode;
   onCancel?: (event: SyntheticEvent<HTMLDialogElement>) => void;
+  /**
+   * Called when a click lands on the scrim. The dialog receives the click for
+   * its own PADDING as well as for the backdrop (`event.target` is the dialog
+   * either way), so a click inside the dialog's box never counts: aiming at a
+   * field and missing it by a few pixels must not discard the edit.
+   *
+   * BOTH ends of the click must land on the scrim. A drag-select that starts
+   * in a field and releases past the dialog's edge is a selection, not a walk
+   * away, and the reverse drag (down on the scrim, up inside) is not one
+   * either.
+   */
+  onBackdropClick?: () => void;
   initialFocus?: RefObject<HTMLElement | null>;
   className?: string;
   children?: ReactNode;
 }) {
   const ref = useModalDialog(initialFocus);
   const titleId = useId();
+  const pressedScrim = useRef(false);
+  const onScrim = (event: MouseEvent<HTMLDialogElement>) => {
+    if (event.target !== event.currentTarget) return false;
+    const box = event.currentTarget.getBoundingClientRect();
+    return (
+      event.clientX < box.left ||
+      event.clientX > box.right ||
+      event.clientY < box.top ||
+      event.clientY > box.bottom
+    );
+  };
   return (
     <dialog
       ref={ref}
       className={cx('dialog', size === 'wide' && 'dialog--wide', className)}
       aria-labelledby={titleId}
       onCancel={onCancel}
+      onMouseDown={
+        onBackdropClick === undefined
+          ? undefined
+          : (event) => {
+              pressedScrim.current = onScrim(event);
+            }
+      }
+      onClick={
+        onBackdropClick === undefined
+          ? undefined
+          : (event) => {
+              if (pressedScrim.current && onScrim(event)) onBackdropClick();
+            }
+      }
     >
-      <h2 className="dialog__title" id={titleId}>
+      <h2 className={cx('dialog__title', mono === true && 'mono')} id={titleId}>
         {title}
       </h2>
       {lede !== undefined ? <p className="dialog__lede">{lede}</p> : null}

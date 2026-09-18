@@ -14,6 +14,8 @@ import {
 } from '../api/workspace.ts';
 import { createWorkspaceClient } from '../api/workspaceClient.ts';
 import { makeQueryClient, retireQueryClient } from '../app/queryClient.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
 import { useWorkspaceHandoff, workspaceHandoffAction } from './useWorkspaceHandoff.ts';
 
 /**
@@ -100,14 +102,9 @@ function WorkspaceBoundary({ remote, children }: { remote: string; children: Rea
     return (
       <section className="card" aria-labelledby="workspace-unknown">
         <h1 id="workspace-unknown">Unknown remote</h1>
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>
-            No remote named <span className="mono">{remote}</span> is configured on this instance.
-          </span>
-        </p>
+        <Alert>
+          No remote named <span className="mono">{remote}</span> is configured on this instance.
+        </Alert>
       </section>
     );
   }
@@ -195,12 +192,7 @@ function ConnectedWorkspace({
     return (
       <section className="card" aria-labelledby="workspace-skew">
         <h1 id="workspace-skew">Cannot operate this remote</h1>
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{message}</span>
-        </p>
+        <Alert>{message}</Alert>
       </section>
     );
   }
@@ -230,14 +222,13 @@ function WorkspaceBanner({ origin }: { origin: string }) {
         do here appears in its audit trail under your name. Live updates from a remote instance
         arrive by polling.
       </span>
-      <button
-        className="btn"
+      <Button
         type="button"
         onClick={() => forgetWorkspace(origin)}
         aria-label={`Exit the workspace on ${origin}`}
       >
         Exit workspace
-      </button>
+      </Button>
     </div>
   );
 }
@@ -271,21 +262,16 @@ export function Reconnect({ origin, name }: { origin: string; name: string }) {
         origin, in a popup.
       </p>
       {handoff.phase.kind !== 'failed' ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{handoff.phase.message}</span>
-        </p>
+        <Alert>{handoff.phase.message}</Alert>
       )}
-      <button
-        className="btn btn--primary"
+      <Button
+        variant="primary"
         type="button"
         onClick={action.onClick}
         disabled={action.disabled}
       >
         {action.label}
-      </button>
+      </Button>
     </div>
   );
 }

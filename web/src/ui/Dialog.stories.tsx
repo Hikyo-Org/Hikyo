@@ -90,6 +90,37 @@ export const AllStates: Story = {
   ),
 };
 
+/** The scrim is a way out; the dialog's own padding, and a drag, are not. */
+export const BackdropClick: Story = {
+  args: { onBackdropClick: fn() },
+  play: async ({ canvas, args }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'Revoke this connection?' });
+    const box = dialog.getBoundingClientRect();
+    const at = (kind: 'mousedown' | 'click', clientX: number, clientY: number) => {
+      dialog.dispatchEvent(new MouseEvent(kind, { bubbles: true, clientX, clientY }));
+    };
+    const press = (clientX: number, clientY: number) => {
+      at('mousedown', clientX, clientY);
+      at('click', clientX, clientY);
+    };
+    // Inside the box: the padding around the title is still the dialog.
+    press(box.left + 2, box.top + 2);
+    await expect(args.onBackdropClick).not.toHaveBeenCalled();
+    // Outside it: the scrim.
+    press(box.left - 20, box.top - 20);
+    await expect(args.onBackdropClick).toHaveBeenCalledTimes(1);
+    // A drag that starts in the box and releases on the scrim is a selection,
+    // not a walk away.
+    at('mousedown', box.left + 2, box.top + 2);
+    at('click', box.left - 20, box.top - 20);
+    await expect(args.onBackdropClick).toHaveBeenCalledTimes(1);
+    // And the reverse drag, which the same both-ends rule covers.
+    at('mousedown', box.left - 20, box.top - 20);
+    at('click', box.left + 2, box.top + 2);
+    await expect(args.onBackdropClick).toHaveBeenCalledTimes(1);
+  },
+};
+
 export const IsModalAndLabelled: Story = {
   play: async ({ canvas, args }) => {
     const dialog = canvas.getByRole('dialog', { name: 'Revoke this connection?' });
@@ -104,5 +135,15 @@ export const IsModalAndLabelled: Story = {
     // the event the platform would, and assert the handler is wired to it.
     dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
     await expect(args.onCancel).toHaveBeenCalled();
+  },
+};
+
+/** A dialog named after an identifier: the value face reaches the title only. */
+export const MonoTitle: Story = {
+  args: { title: 'LOG_LEVEL', mono: true, lede: 'Explicit value and provenance for this environment.' },
+  play: async ({ canvas }) => {
+    const dialog = canvas.getByRole('dialog', { name: 'LOG_LEVEL' });
+    await expect(canvas.getByRole('heading', { name: 'LOG_LEVEL' })).toHaveClass('mono');
+    await expect(dialog).not.toHaveClass('mono');
   },
 };

@@ -9,8 +9,11 @@ import { rememberWorkspace, workspaceSession } from '../api/workspace.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { uuid } from '../lib/uuid.ts';
-import { Alert, Done, Panel } from './Sections.tsx';
-import { useModalDialog } from './useModalDialog.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Panel } from './Sections.tsx';
 
 export function InstanceConfig() {
   const query = useSelfConfig();
@@ -19,7 +22,7 @@ export function InstanceConfig() {
     <h1>Hikyo configuration</h1>
     <p className="page__lede">Edit settings in the configuration project, publish a revision, then review and apply it. Ordinary settings reload live. Bootstrap source changes use an enrolled controlled rollout.</p>
     {query.isPending ? <p role="status">Loading configuration…</p> : null}
-    {query.isError ? <Alert>{selfConfigFailure(query.error)} Last confirmed state is unavailable. <button className="btn" type="button" onClick={() => void query.refetch()}>Refresh status</button></Alert> : null}
+    {query.isError ? <Alert>{selfConfigFailure(query.error)} Last confirmed state is unavailable. <Button type="button" onClick={() => void query.refetch()}>Refresh status</Button></Alert> : null}
     {query.isSuccess ? <ConfigurationOwner key={query.data.owner_instance_id} status={query.data} stale={!query.isFetchedAfterMount} /> : null}
     {workspace === null ? <ConfigurationRoot /> : null}
   </div>;
@@ -149,27 +152,27 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
   };
   return <>
     {failure === null ? null : <Alert>{failure}</Alert>}
-    {done === null ? null : <Done>{done}</Done>}
+    {done === null ? null : <Alert tone="done">{done}</Alert>}
     <Panel id="configuration-owner" title={workspace === null ? 'This instance' : workspace.remote}>
       <p className="settings-note">Owner <code>{status.owner_instance_id}</code></p>
       <div className="settings-row"><div className="settings-row__copy"><span className="settings-row__title">{stateLabel(status.state)}</span><span className="settings-row__detail">Generation {String(status.generation)} · Desired {status.desired_revision === null ? 'none' : `r${status.desired_revision}`} · Latest published {status.latest_revision === null ? 'none' : `r${status.latest_revision}`}</span></div></div>
       {status.state === 'partial' ? <Alert>Some nodes have not applied the committed revision. Review and publish a repair, then apply that revision with fresh authentication. The current target stays in place until the repair passes preparation.</Alert> : null}
-      {rolloutUnresolved ? <div className="self-config-preview"><p>The controlled deployment must be restored before a new configuration repair can apply. Restoration keeps the desired revision fenced.</p>{status.job?.deployment_restore_pending ? <p role="status">Deployment restoration is pending controller confirmation.</p> : <button className="btn" type="button" disabled={busy || stale || decision !== null || preparation !== null} onClick={chooseRestore}>Restore deployment</button>}</div> : null}
+      {rolloutUnresolved ? <div className="self-config-preview"><p>The controlled deployment must be restored before a new configuration repair can apply. Restoration keeps the desired revision fenced.</p>{status.job?.deployment_restore_pending ? <p role="status">Deployment restoration is pending controller confirmation.</p> : <Button type="button" disabled={busy || stale || decision !== null || preparation !== null} onClick={chooseRestore}>Restore deployment</Button>}</div> : null}
       {status.job?.deployment_restored ? <p role="status">Deployment resources are restored. Publish and apply a repair revision to resume Hikyo.</p> : null}
       {status.state === 'recovery_required' ? <Alert>Outbound configuration use is fenced after restore. Review credentials and reconcile access grants, then confirm the selected revision to resume.</Alert> : null}
       {binding === null ? <>
         <p>Adopt the server’s effective settings into a protected Hikyo project once. Preview lists key names only.</p>
-        <button type="button" className="btn btn--primary" disabled={actions.preview.isPending || stale} onClick={() => actions.preview.mutate(undefined, { onError: (error) => setFailure(selfConfigFailure(error)) })}>Preview adoption</button>
+        <Button type="button" variant="primary" disabled={actions.preview.isPending || stale} onClick={() => actions.preview.mutate(undefined, { onError: (error) => setFailure(selfConfigFailure(error)) })}>Preview adoption</Button>
         {actions.preview.data === undefined ? null : <div className="self-config-preview">
           <h3>Adoption preview</h3>
           <p>Schema version {actions.preview.data.schema_version}. Import these configured keys:</p>
           <ul>{actions.preview.data.configured_keys.map((key) => <li key={key}><code>{key}</code></li>)}</ul>
           {actions.preview.data.warnings.map((warning) => <p key={warning}>{warning}</p>)}
-          <button type="button" className="btn btn--primary" disabled={busy || stale} onClick={() => {
+          <Button type="button" variant="primary" disabled={busy || stale} onClick={() => {
             const preview = actions.preview.data;
             if (preview === undefined) return;
             setDecision({ label: 'Adopt this configuration', idempotencyKey: uuid(), intent: { action: 'adopt', owner_instance_id: preview.owner_instance_id, schema_version: preview.schema_version, expected_generation: 0n, revision: 0n, preview_token: preview.preview_token, to: '', confirm_restored_credentials: false } });
-          }}>Adopt previewed configuration</button>
+          }}>Adopt previewed configuration</Button>
         </div>}
       </> : <>
         <div className="panel__actions">
@@ -179,17 +182,17 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
         <p className="field__hint">Shared settings apply to this instance’s HA nodes. <code>HIKYO_NODE_OVERRIDES</code> holds each node’s listeners, resource limits, backup directory and managed TLS certificate/key contents. Keep an entry for every selected node; independent remote instances use their own projects.</p>
         <p className="field__hint">Changing the public hostname requires a fresh TOTP code and an existing password login on the same administrator account. Preparation does not prove the new hostname is reachable.</p>
         <p className="field__hint">Saving drafts and publishing keep the running settings unchanged. To roll back, restore history into drafts, publish, then apply the new revision.</p>
-        {recovering ? <label className="field"><span><input type="checkbox" checked={confirmRestored} disabled={busy || preparation !== null || decision !== null} onChange={(event) => setConfirmRestored(event.target.checked)} /> I reviewed the restored credentials and reconciled access grants on this owner.</span></label> : null}
+        {recovering ? <Checkbox label="I reviewed the restored credentials and reconciled access grants on this owner." checked={confirmRestored} disabled={busy || preparation !== null || decision !== null} onChange={(event) => setConfirmRestored(event.target.checked)} /> : null}
         <div className="self-config-controls">
           <div className="field"><label htmlFor={revisionId}>Published revision to apply or test</label><input id={revisionId} inputMode="numeric" pattern="[1-9][0-9]*" value={revision} disabled={busy || preparation !== null || decision !== null} onChange={(event) => { setRevisionChosen(true); setRevision(event.target.value); }} /></div>
-          <button className="btn btn--primary" type="button" disabled={candidate === null || busy || stale || preparation !== null || decision !== null || unsettled || (recovering && !confirmRestored)} onClick={() => choose('apply')}>Apply selected revision</button>
+          <Button variant="primary" type="button" disabled={candidate === null || busy || stale || preparation !== null || decision !== null || unsettled || (recovering && !confirmRestored)} onClick={() => choose('apply')}>Apply selected revision</Button>
         </div>
         {actions.apply.isPending && decision === null ? <p role="status">Preparing the exact revision on the selected nodes…</p> : null}
-        {preparation === null || decision !== null ? null : <div className="self-config-preview"><p role="status">Preparation for r{String(preparation.decision.intent.revision)} has not been applied. Check node preparation before authorizing. Preparing alone does not authorize Apply.</p><button type="button" className="btn" disabled={busy || stale} onClick={() => void prepare(preparation.decision, preparation.jobID)}>Check preparation</button><button type="button" className="btn" disabled={busy} onClick={() => setPreparation(null)}>Dismiss preparation</button><p className="field__hint">Dismissing leaves the server preparation to expire. It does not apply settings.</p></div>}
+        {preparation === null || decision !== null ? null : <div className="self-config-preview"><p role="status">Preparation for r{String(preparation.decision.intent.revision)} has not been applied. Check node preparation before authorizing. Preparing alone does not authorize Apply.</p><Button type="button" disabled={busy || stale} onClick={() => void prepare(preparation.decision, preparation.jobID)}>Check preparation</Button><Button type="button" disabled={busy} onClick={() => setPreparation(null)}>Dismiss preparation</Button><p className="field__hint">Dismissing leaves the server preparation to expire. It does not apply settings.</p></div>}
         <div className="self-config-controls">
           <div className="field"><label htmlFor={recipientId}>Test email recipient</label><input id={recipientId} type="email" value={recipient} onChange={(event) => setRecipient(event.target.value)} /></div>
-          <button className="btn" type="button" disabled={candidate === null || recipient.trim() === '' || busy || stale || preparation !== null || decision !== null} onClick={() => choose('mail-test')}>Send test email</button>
-          {status.desired_revision === null ? null : <button className="btn" type="button" disabled={busy || preparation !== null || decision !== null} onClick={() => { setRevisionChosen(true); setRevision(String(status.desired_revision)); }}>Select committed target r{String(status.desired_revision)}</button>}
+          <Button type="button" disabled={candidate === null || recipient.trim() === '' || busy || stale || preparation !== null || decision !== null} onClick={() => choose('mail-test')}>Send test email</Button>
+          {status.desired_revision === null ? null : <Button type="button" disabled={busy || preparation !== null || decision !== null} onClick={() => { setRevisionChosen(true); setRevision(String(status.desired_revision)); }}>Select committed target r{String(status.desired_revision)}</Button>}
         </div>
       </>}
     </Panel>
@@ -205,8 +208,6 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
 
 function SelfConfigCeremony({ decision, onComplete, onCancel }: { decision: Decision; onComplete: () => Promise<void>; onCancel: () => void }) {
   const first = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(first);
-  const titleId = useId();
   const codeId = useId();
   const [code, setCode] = useSensitiveState('');
   const [busy, setBusy] = useState(false);
@@ -231,8 +232,10 @@ function SelfConfigCeremony({ decision, onComplete, onCancel }: { decision: Deci
       if (current.current) setFailure(error instanceof Error ? selfConfigFailure(error) : 'Authorization did not complete.');
     } finally { if (current.current) setBusy(false); }
   };
-  return <dialog ref={dialog} className="ceremony" aria-labelledby={titleId} onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}>
-    <h2 id={titleId}>{decision.label}</h2>
+  return <Dialog title={decision.label} initialFocus={first} onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}
+    actions={<><Button type="button" disabled={busy} onClick={onCancel}>Cancel</Button>
+      {workspace === null ? <Button type="button" disabled={busy} onClick={() => void confirm('passkey')}>Authorize with passkey</Button> : <a className="btn" href={`${workspace.origin}${surfaceById('instance-config').path}`} target="_blank" rel="noreferrer">Use a passkey on owner</a>}
+      <Button type="button" variant="primary" disabled={busy || code.trim() === ''} onClick={() => void confirm('totp')}>{busy ? 'Authorizing…' : 'Authorize with code'}</Button></>}>
     <p>Owner <code>{decision.intent.owner_instance_id}</code>. This authorization covers only this decision at generation {String(decision.intent.expected_generation)} and schema version {decision.intent.schema_version}.</p>
     {decision.intent.action === 'apply' ? <p><strong>{decision.intent.plan_digest === undefined ? 'Reload live' : 'Controlled rollout'}</strong>{decision.intent.plan_digest === undefined ? ': prepared settings take effect after the current operations drain.' : ': startup setting changes replace the enrolled deployment. Nodes remain pending until their installed settings and identity are verified.'}</p> : null}
     {decision.intent.plan_digest === undefined ? null : <p>Prepared plan <code className="self-config-plan">{decision.intent.plan_digest}</code>. This exact plan is bound to your one-use authorization.</p>}
@@ -241,10 +244,7 @@ function SelfConfigCeremony({ decision, onComplete, onCancel }: { decision: Deci
     {decision.intent.action === 'mail-test' ? <p>Send one message to <strong>{decision.intent.to}</strong>.</p> : null}
     <div className="field"><label htmlFor={codeId}>Fresh authenticator code</label><input ref={first} id={codeId} inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(event) => setCode(event.target.value)} disabled={busy} /></div>
     {failure === null ? null : <Alert>{failure}</Alert>}
-    <div className="ceremony__actions"><button type="button" className="btn btn--primary" disabled={busy || code.trim() === ''} onClick={() => void confirm('totp')}>{busy ? 'Authorizing…' : 'Authorize with code'}</button>
-      {workspace === null ? <button type="button" className="btn" disabled={busy} onClick={() => void confirm('passkey')}>Authorize with passkey</button> : <a className="btn" href={`${workspace.origin}${surfaceById('instance-config').path}`} target="_blank" rel="noreferrer">Use a passkey on owner</a>}
-      <button type="button" className="btn" disabled={busy} onClick={onCancel}>Cancel</button></div>
-  </dialog>;
+  </Dialog>;
 }
 
 function stateLabel(state: SelfConfigStatus['state']): string {

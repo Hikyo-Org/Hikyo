@@ -108,6 +108,24 @@ function postBody(fetchMock: ReturnType<typeof stubFetch>): Promise<unknown> {
   return request.json();
 }
 
+/**
+ * A form control by id. The generic is the query's type parameter, not an `as`
+ * cast: `querySelector` narrows, and a missing control fails loudly here rather
+ * than as a null dereference three lines later.
+ */
+function control(container: HTMLElement, id: string): HTMLInputElement {
+  const node = container.querySelector<HTMLInputElement>(`input#${id}`);
+  if (node === null) {
+    throw new Error(`the mint form has no control #${id}`);
+  }
+  return node;
+}
+
+/** The accessible name of a control, read off its <label>. */
+function nameOf(container: HTMLElement, id: string): string {
+  return container.querySelector(`label[for="${id}"]`)?.textContent ?? '';
+}
+
 async function submitMintForm(container: HTMLElement, label: string): Promise<void> {
   const labelInput = container.querySelector<HTMLInputElement>('#connection-label');
   if (labelInput === null) {
@@ -153,10 +171,12 @@ describe('ConnectionCredentials mint', () => {
 
   it('sends lifetime_seconds when a custom lifetime is chosen, and never indefinite too', async () => {
     const { container, fetchMock } = await render({ list: [] });
-    await act(async () => {
-      (container.querySelector('#lifetime-custom') as HTMLInputElement).click();
-    });
-    await act(async () => typeInto(container.querySelector('#lifetime-days')!, '7'));
+    // No days field until the radio that asks for it is chosen.
+    expect(container.querySelector('input#lifetime-days')).toBeNull();
+    expect(nameOf(container, 'lifetime-custom')).toBe('Expires after');
+    await act(async () => control(container, 'lifetime-custom').click());
+    expect(nameOf(container, 'lifetime-days')).toBe('Days');
+    await act(async () => typeInto(control(container, 'lifetime-days'), '7'));
     await submitMintForm(container, 'weekly peer');
 
     const body = (await postBody(fetchMock)) as Record<string, unknown>;
@@ -166,9 +186,7 @@ describe('ConnectionCredentials mint', () => {
 
   it('sends indefinite alone when chosen', async () => {
     const { container, fetchMock } = await render({ list: [] });
-    await act(async () => {
-      (container.querySelector('#lifetime-indefinite') as HTMLInputElement).click();
-    });
+    await act(async () => control(container, 'lifetime-indefinite').click());
     await submitMintForm(container, 'forever peer');
 
     const body = (await postBody(fetchMock)) as Record<string, unknown>;
@@ -194,9 +212,7 @@ describe('ConnectionCredentials mint', () => {
     expect(container.querySelector('.machine__token')?.textContent).toBe(SENTINEL);
     expect(container.textContent).toContain('Confirm you have stored it');
 
-    await act(async () => {
-      (container.querySelector('#connection-stored') as HTMLInputElement).click();
-    });
+    await act(async () => control(container, 'connection-stored').click());
     await act(async () => button(container, 'Done').click());
     await settle();
     expect(container.querySelector('.machine__token')).toBeNull();
@@ -205,15 +221,21 @@ describe('ConnectionCredentials mint', () => {
 
   it('refuses a sub-second custom lifetime without sending it to the server', async () => {
     const { container, fetchMock } = await render({ list: [] });
-    await act(async () => {
-      (container.querySelector('#lifetime-custom') as HTMLInputElement).click();
-    });
-    await act(async () => typeInto(container.querySelector('#lifetime-days')!, '0.000001'));
-    await act(async () => typeInto(container.querySelector('#connection-label')!, 'too small'));
+    await act(async () => control(container, 'lifetime-custom').click());
+    await act(async () => typeInto(control(container, 'lifetime-days'), '0.000001'));
+    await act(async () => typeInto(control(container, 'connection-label'), 'too small'));
 
     const mintButton = button(container, 'Mint credential');
     expect(mintButton.disabled).toBe(true);
-    expect(container.querySelector('#lifetime-days')?.getAttribute('aria-invalid')).toBe('true');
+    // The refusal is the field's own error, announced and marking the control.
+    const days = control(container, 'lifetime-days');
+    expect(days.getAttribute('aria-invalid')).toBe('true');
+    expect(container.querySelector('.field__error')?.textContent).toContain(
+      'Enter a whole number of days, at least 1.',
+    );
+    expect(days.getAttribute('aria-describedby')).toContain(
+      container.querySelector('.field__error')?.id ?? 'missing',
+    );
     await act(async () => mintButton.click());
     await settleTask();
     // Only the initial inventory GET ran; no mint POST was sent.

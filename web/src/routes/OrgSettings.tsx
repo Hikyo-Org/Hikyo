@@ -19,9 +19,10 @@ import {
 import { surfaceById } from '../app/navigation.ts';
 import { notifySuccess } from '../app/notifications.tsx';
 import { useResetOnChange } from '../app/useResetOnChange.ts';
+import { Alert } from '../ui/Alert.tsx';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
-import { Alert, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
-import { useFeedback } from './useModalDialog.ts';
+import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
+import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 
@@ -64,8 +65,8 @@ export function OrgSettings() {
     <div className="page page--chrome">
       <h1>Organisation settings · {current?.name ?? 'organisation'}</h1>
       <p className="page__lede">
-        Organisation identity and lifecycle. Access lives on its own surface; the danger zone is
-        deliberately last.
+        Rename this organisation, set its retention policy, or delete it; grants are edited on
+        the members surface.
       </p>
 
       <JumpIndex
@@ -84,7 +85,7 @@ export function OrgSettings() {
         </Alert>
       ) : null}
       {feedback.failure !== null ? <Alert>{feedback.failure}</Alert> : null}
-      {feedback.done !== null ? <Done>{feedback.done}</Done> : null}
+      {feedback.done !== null ? <Alert tone="done">{feedback.done}</Alert> : null}
 
       <Panel id="org-identity" title="Identity">
         <ChromeIdentityControls
@@ -265,7 +266,7 @@ function ProjectRetentionList({
                   {state === undefined || state.status === 'pending' ? (
                     <span role="status">Loading effective bounds…</span>
                   ) : state.status === 'error' ? (
-                    <span className="alert" role="alert">
+                    <span className="alert" role="alert">{/* markup-check: inline refusal, atom is block-level */}
                       This project&apos;s retention policy could not be read.
                     </span>
                   ) : (

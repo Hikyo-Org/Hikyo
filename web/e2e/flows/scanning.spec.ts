@@ -68,10 +68,10 @@ test.describe('secret scanning warn dialog', () => {
       const cell = page.getByRole('button', { name: new RegExp(`${keyName} in development:`) });
       await expect(cell).toBeVisible();
 
-      const warn = page.locator('dialog.scan-warn');
+      const warn = page.getByRole('dialog', { name: 'Possible secret in a config value' });
 
     // --- SS2: plant the credential; the save succeeds and the warn fires -----
-      await plantValue(page, cell, CANARY);
+      await plantValue(page, cell, keyName, CANARY);
 
       await expect(
         warn.getByRole('heading', { name: 'Possible secret in a config value' }),
@@ -101,7 +101,7 @@ test.describe('secret scanning warn dialog', () => {
       await expect(cell).toHaveAccessibleName(/draft set/);
 
     // --- SS2: a distinct offending value re-fires -----------------------------
-      await plantValue(page, cell, DISTINCT);
+      await plantValue(page, cell, keyName, DISTINCT);
       await expect(
         warn.getByRole('heading', { name: 'Possible secret in a config value' }),
       ).toBeVisible();
@@ -111,7 +111,7 @@ test.describe('secret scanning warn dialog', () => {
       await expect(warn).toHaveCount(0);
     // The key is now secret: the matrix re-fetches and the key row shows the
     // lock. That is reclassification completing, observed end to end.
-      await expect(page.locator('.matrix__key').filter({ hasText: keyName })).toContainText('🔒');
+      await expect(page.locator('.matrix__key').filter({ hasText: keyName }).locator('svg.glyph')).toHaveCount(1);
     } finally {
       await browserApi(
         page,
@@ -209,7 +209,7 @@ test.describe('secret scanning block dialog', () => {
       const panel = page.locator('.key-detail');
       await expect(panel.getByRole('heading', { name: keyName, level: 2 })).toBeVisible();
 
-      const block = page.locator('dialog.scan-block');
+      const block = page.getByRole('dialog', { name: 'Declaration blocked by secret scanning' });
 
       // --- SS3: a credential-shaped description is refused, and the block dialog
       // states the exported-as-public consequence --------------------------------
@@ -261,10 +261,14 @@ test.describe('secret scanning block dialog', () => {
 async function plantValue(
   page: import('@playwright/test').Page,
   cell: import('@playwright/test').Locator,
+  keyName: string,
   value: string,
 ): Promise<void> {
   await cell.click();
-  const editor = page.locator('dialog.matrix-row-editor');
+  // ui/Dialog labels the editor by its title, which is the key name. Naming it
+  // matters at the end: a save that fires a finding closes the editor and opens
+  // the warn in the SAME commit, so `dialog[open]` would never reach zero.
+  const editor = page.getByRole('dialog', { name: keyName, exact: true });
   await expect(editor).toBeVisible();
   await editor.getByLabel('development value').fill(value);
   const save = editor.getByRole('button', { name: /^Save \d+ draft/ });

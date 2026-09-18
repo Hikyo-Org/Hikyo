@@ -149,3 +149,44 @@ export const SelectsByKeyboard: Story = {
     await waitFor(() => expect(trigger).toHaveFocus());
   },
 };
+
+// A disabled row is not a focus stop: opening lands past it, and every arrow
+// move, Home and End skip it, so wrap runs over the enabled rows only.
+export const DisabledSkipped: Story = {
+  args: {
+    children: (
+      <>
+        <MenuItem>Rename</MenuItem>
+        <MenuItem disabled>Duplicate</MenuItem>
+        <MenuItem>Delete</MenuItem>
+      </>
+    ),
+  },
+  play: async ({ canvas, canvasElement }) => {
+    const trigger = canvas.getByRole('button', { name: 'Row actions' });
+    const panel = canvasElement.querySelector('[popover]');
+
+    // The panel is a closed popover until opened, so query the rows after it
+    // is visible, the same order as the Keyboard story.
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(panel).toBeVisible());
+    const rename = canvas.getByRole('menuitem', { name: 'Rename' });
+    const remove = canvas.getByRole('menuitem', { name: 'Delete' });
+    await expect(canvas.getByRole('menuitem', { name: 'Duplicate' })).toBeDisabled();
+    await waitFor(() => expect(rename).toHaveFocus());
+
+    // Down from the first enabled row jumps the disabled Duplicate to Delete.
+    await userEvent.keyboard('{ArrowDown}');
+    await expect(remove).toHaveFocus();
+    // Down again wraps back to Rename, so the cycle is the two enabled rows.
+    await userEvent.keyboard('{ArrowDown}');
+    await expect(rename).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
+    await expect(remove).toHaveFocus();
+    await userEvent.keyboard('{Home}');
+    await expect(rename).toHaveFocus();
+    await userEvent.keyboard('{End}');
+    await expect(remove).toHaveFocus();
+  },
+};

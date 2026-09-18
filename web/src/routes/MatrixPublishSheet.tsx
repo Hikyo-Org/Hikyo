@@ -1,6 +1,12 @@
 import { useState } from 'react';
 
 import type { EnvironmentList } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import { Ceremony } from './Ceremony.tsx';
 import {
   blockedPublishEnvironmentIds,
@@ -123,10 +129,10 @@ export function MatrixPublishSheet({
     <>
       <section className="matrix__publish" id="matrix-publish" aria-label="Publish drafts">
         <h2>Publish drafts</h2>
-        <p>
-          Each environment publishes as its own atomic revision: untick any you want to hold
-          back.
-        </p>
+        {/* The legend names the set, so the lede keeps only the fact the legend
+            cannot carry: each environment is its own atomic revision. */}
+        <p>Each environment publishes as its own atomic revision.</p>
+        <ChoiceGroup legend="Environments to publish" variant="rows">
         {environments.map((environment) => {
           const entries = pendingByEnvironment.get(environment.id) ?? [];
           if (entries.length === 0) {
@@ -142,13 +148,14 @@ export function MatrixPublishSheet({
             throw new Error(`publish review has no revision for environment ${environment.id}`);
           }
           return (
-            <div
-              className={`matrix__publish-env${blocked ? ' matrix__publish-env--blocked' : ''}`}
-              key={environment.id}
-            >
-              <label className="matrix__publish-heading">
-                <input
-                  type="checkbox"
+            <div className="matrix__publish-env" key={environment.id}>
+              {/* The checkbox says one thing now: include this environment in
+                  the publish. What the row used to crowd into its label (the
+                  protected marker, the revision step) sits beside it as its own
+                  named piece. */}
+              <div className="matrix__publish-heading">
+                <Checkbox
+                  label={environment.name}
                   checked={checked}
                   disabled={blocked || busy}
                   onChange={() => {
@@ -161,16 +168,20 @@ export function MatrixPublishSheet({
                     setProtectedConfirmed(false);
                   }}
                 />
-                <strong>{environment.name}</strong>
                 {protectedEnvironmentIds.includes(environment.id) ? (
-                  <span className="matrix__publish-protected">
-                    PROTECTED: confirms before publish
-                  </span>
+                  <>
+                    {/* The badge carries the WORD, the way `.matrix__protected`
+                        and `.history__protected` do; what the word costs you is
+                        the sentence beside it, not more badge. */}
+                    <Badge tone="danger">PROTECTED</Badge>
+                    <span>confirms before publish</span>
+                  </>
                 ) : null}
                 <span className="matrix__publish-revision">
                   {`r${String(revision)} → r${String(revision + 1n)}`}
                 </span>
-              </label>
+              </div>
+              <span className="eyebrow">changes</span>
               {groupPendingEntries(entries).map((bucket) => (
                 <ul
                   key={bucket.group?.id ?? ''}
@@ -179,14 +190,14 @@ export function MatrixPublishSheet({
                 >
                   {bucket.group === undefined ? null : (
                     <li className="matrix__publish-group-name">
-                      <span aria-hidden="true">🔗 </span>
+                      <Glyph name="link" />{' '}
                       {`Linked keys: ${bucket.group.name}`}
                     </li>
                   )}
                   {bucket.entries.map((entry) => (
                     <li key={entry.versionId} className="mono">
                       <span>
-                        {entry.classification === 'secret' ? '🔒 ' : ''}
+                        {entry.classification === 'secret' ? <><Glyph name="lock" label="secret" /> </> : null}
                         {entry.name}
                       </span>
                       <span>{publishPreview(entry)}</span>
@@ -197,49 +208,43 @@ export function MatrixPublishSheet({
                   ))}
                 </ul>
               ))}
+              {/* Readiness is a Badge, not coloured text: the word carries the
+                  state and the tone only echoes it. */}
               {blocked ? (
-                <div className="matrix__publish-blocked" role="alert">
-                  {`✕ Publish blocked: ${environmentProblems
+                <div role="alert">
+                  <Badge tone="danger">blocked</Badge>{' '}
+                  {`Publish blocked: ${environmentProblems
                     .map((problem) => `${problem.keyName} in ${environment.name}`)
                     .join('; ')}. This environment has violations or missing required keys.`}
                 </div>
               ) : (
-                <span className="matrix__publish-ready">
+                <div>
+                  <Badge tone="ok">ready</Badge>
                   {entries.some((entry) => entry.validationDeferred === true)
-                    ? 'Ready to publish; template schemas are checked with each fetch.'
-                    : '✓ ready'}
-                </span>
+                    ? ' Template schemas are checked with each fetch.'
+                    : null}
+                </div>
               )}
             </div>
           );
         })}
+        </ChoiceGroup>
         {protectedConfirmationRequired ? (
-          <label className="matrix__publish-confirmation">
-            <input
-              type="checkbox"
-              checked={protectedConfirmed}
-              onChange={(event) => setProtectedConfirmed(event.target.checked)}
-            />
-            <span>
-              I confirm publishing to protected{' '}
-              {selectedProtectedIds
-                .map((environmentId) =>
-                  environmentName(environments, environmentId),
-                )
-                .join(', ')}
-              .
-            </span>
-          </label>
+          <Checkbox
+            className="matrix__publish-confirmation"
+            label={`I confirm publishing to protected ${selectedProtectedIds
+              .map((environmentId) => environmentName(environments, environmentId))
+              .join(', ')}.`}
+            checked={protectedConfirmed}
+            onChange={(event) => setProtectedConfirmed(event.target.checked)}
+          />
         ) : null}
         {protectedGuard.error === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{protectedGuard.error}</span>
-          </p>
+          <Alert>{protectedGuard.error}</Alert>
         )}
-        <button
+        <Button
           type="button"
-          className="btn btn--primary"
+          variant="primary"
           disabled={
             busy ||
             selectedEnvironmentIds.length === 0 ||
@@ -259,15 +264,12 @@ export function MatrixPublishSheet({
           {busy
             ? 'Publishing atomically…'
             : `Publish selected · ${String(selectedEntries.length)} draft${selectedEntries.length === 1 ? '' : 's'} · ${String(selectedEnvironmentIds.length)} environment${selectedEnvironmentIds.length === 1 ? '' : 's'}`}
-        </button>
-        <button type="button" className="btn" onClick={onClose} disabled={busy}>
+        </Button>
+        <Button type="button" onClick={onClose} disabled={busy}>
           Close
-        </button>
+        </Button>
         {mutationError === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{mutationError}</span>
-          </p>
+          <Alert>{mutationError}</Alert>
         )}
         <p>Invalid environments cannot publish. Templates are also checked with each caller's parameters before delivery.</p>
       </section>

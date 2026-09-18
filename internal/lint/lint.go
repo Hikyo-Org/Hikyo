@@ -170,6 +170,26 @@ func LoadRepoIn(ctx BuildContext) ([]*packages.Package, error) {
 
 // Load loads arbitrary patterns under the default context (the
 // negative-fixture tests use it on testdata packages).
+//
+// The mode deliberately omits NeedDeps. The type checker still resolves every
+// imported symbol — a root package's direct imports get their Types from
+// compiler export data as a side effect of type-checking the root — so the
+// analyzers, which reason about type identity (authz.Proof, driver handles),
+// see everything they need. Adding NeedDeps alongside NeedSyntax|NeedTypesInfo
+// would instead mark the entire transitive dependency closure (pgx, x/tools,
+// stdlib) as "needs source", parsing every dependency's AST and building a
+// full types.Info for each and keeping them all resident. On this package's
+// test suite that was the difference between a ~7GB and a ~1.2GB peak RSS, and
+// it made each tiny testdata load carry the full closure too; macOS Activity
+// Monitor's "Memory" column inflated the former past 20GB once compression and
+// -race shadow footprint were counted.
+//
+// The one seam: flatten() walks into imported module packages that are not
+// roots of the load and therefore have Types (from export data) but no
+// TypesInfo. Analyzers that reach those either select their target packages by
+// path first (never touching a non-root's TypesInfo) or guard on nil type
+// information before dereferencing it. In LoadRepo every module package is a
+// root, so no module package is skipped there regardless.
 func Load(patterns ...string) ([]*packages.Package, error) {
 	return LoadIn(Contexts[0], patterns...)
 }
@@ -182,7 +202,7 @@ func LoadIn(ctx BuildContext, patterns ...string) ([]*packages.Package, error) {
 	}
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedSyntax |
-			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports | packages.NeedDeps,
+			packages.NeedTypes | packages.NeedTypesInfo | packages.NeedImports,
 		// Test packages are in scope: a forged proof in a test outside authz
 		// is the same breach as one in production code.
 		Tests:      !ctx.ProductionOnly,

@@ -10,6 +10,8 @@ import {
   useStepUpPasskey,
   useStepUpTotp,
 } from '../api/stepup.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
 
 /**
  * StepUpBanner is the shell's second-factor affordance.
@@ -58,7 +60,7 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
     <section className="stepup" aria-labelledby="stepup-title">
       <div className="stepup__text">
         <h2 className="stepup__title" id="stepup-title">
-          This session is password-only
+          This session has no second factor
         </h2>
         <p className="stepup__lede">
           Instance settings, grants and secret disclosure need a second factor presented in
@@ -81,29 +83,23 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
               onChange={(event) => setCode(event.target.value)}
               disabled={busy}
             />
-            <button className="btn btn--primary" type="submit" disabled={busy || code.trim() === ''}>
+            <Button variant="primary" type="submit" disabled={busy || code.trim() === ''}>
               {stepUpTotp.isPending ? 'Checking…' : 'Present code'}
-            </button>
+            </Button>
           </form>
         ) : null}
         {hasPasskey ? (
-          <button
-            className="btn"
+          <Button
             type="button"
             onClick={() => stepUpPasskey.mutate()}
             disabled={busy}
           >
             {stepUpPasskey.isPending ? 'Waiting for the passkey…' : 'Use a passkey'}
-          </button>
+          </Button>
         ) : null}
       </div>
       {failure !== null ? (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       ) : null}
     </section>
   );

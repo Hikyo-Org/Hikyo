@@ -1035,7 +1035,7 @@ test.describe('instance administration', () => {
         });
         const well = page.locator('.panel').first();
         const create = page.getByRole('button', { name: 'Open create organisation form' });
-        const tag = page.locator('.settings-tag').first();
+        const tag = page.locator('.badge').first();
         const cli = page.locator('.instance-cli').first();
 
         await expectPinnedAssertionSet(page, {
@@ -1115,7 +1115,7 @@ test.describe('instance administration', () => {
         const heading = page.getByRole('heading', { name: 'Members · Instance', level: 1 });
         const well = page.locator('.panel').first();
         const jump = page.getByRole('link', { name: 'Who can…?' });
-        const chip = page.locator('.chip').first();
+        const chip = page.locator('.member-scope').first();
         const newGrant = page.getByRole('button', { name: 'New grant' });
 
         await expectPinnedAssertionSet(page, {

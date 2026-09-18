@@ -3,9 +3,12 @@ import { useMemo, useRef, useState } from 'react';
 import { GIT_DEFINITIONS_NOTICE } from '../api/definitions.ts';
 import type { CreateKeyPresence, CreateKeyRule, CreateKeyType } from '../api/matrix.ts';
 import type { EnvironmentList } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Radio } from '../ui/Radio.tsx';
 import { normalizeMatrixDraftValue } from './matrix-state.ts';
-import { isBackdropClick } from './MatrixRowEditor.tsx';
-import { useModalDialog } from './useModalDialog.ts';
 
 type Environment = EnvironmentList['items'][number];
 type PresenceMode = CreateKeyPresence['mode'];
@@ -122,7 +125,6 @@ export function MatrixKeyCreate({
   onCreate: (payload: MatrixKeyCreatePayload) => Promise<void>;
 }) {
   const nameField = useRef<HTMLInputElement>(null);
-  const dialog = useModalDialog(nameField);
   const [folder, setFolder] = useState(initialFolder ?? '');
   const [name, setName] = useState('');
   const [type, setType] = useState<CreateKeyType>('string');
@@ -257,45 +259,29 @@ export function MatrixKeyCreate({
     );
 
   return (
-    <dialog
-      className="matrix-editor matrix-key-create"
-      ref={dialog}
-      onClose={onClose}
-      onClick={(event) => {
-        if (isBackdropClick(event)) onClose();
+    <Dialog
+      title="New key"
+      lede="Each environment gets its own explicit value: nothing inherits. A new group name creates that group."
+      size="wide"
+      className="matrix-key-create"
+      initialFocus={nameField}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
       }}
+      onBackdropClick={onClose}
     >
       <form
-        method="dialog"
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
       >
-        <div className="matrix-editor__head">
-          <div>
-            <p className="matrix-editor__eyebrow">Declare key</p>
-            <h2>New key</h2>
-            <p>
-              Each environment gets its own explicit value: nothing inherits. A new group name
-              creates that group.
-            </p>
-          </div>
-          <button
-            type="button"
-            className="btn matrix-editor__close"
-            aria-label="Close new key"
-            onClick={onClose}
-          >
-            ✕
-          </button>
-        </div>
+        {/* The eyebrow follows the title now: the atom's h2 is always first. */}
+        <p className="matrix-editor__eyebrow">Declare key</p>
 
         {gitManaged ? (
-          <p className="notice" role="status">
-            <span aria-hidden="true">ℹ</span>
-            <span>{GIT_DEFINITIONS_NOTICE}</span>
-          </p>
+          <Alert tone="info">{GIT_DEFINITIONS_NOTICE}</Alert>
         ) : null}
 
         <div className="matrix-key-create__field">
@@ -336,10 +322,7 @@ export function MatrixKeyCreate({
             </p>
           )}
           {nearMiss === null ? null : (
-            <p className="notice" role="status">
-              <span aria-hidden="true">ℹ</span>
-              <span>{`Similar to existing key ${nearMiss}. Continue if this is intentional.`}</span>
-            </p>
+            <Alert tone="info">{`Similar to existing key ${nearMiss}. Continue if this is intentional.`}</Alert>
           )}
         </div>
 
@@ -356,14 +339,11 @@ export function MatrixKeyCreate({
               </option>
             ))}
           </select>
-          <label className="matrix-key-create__secret">
-            <input
-              type="checkbox"
-              checked={secret}
-              onChange={(event) => setSecret(event.target.checked)}
-            />
-            <span>🔒 secret</span>
-          </label>
+          <Checkbox
+            label="secret"
+            checked={secret}
+            onChange={(event) => setSecret(event.target.checked)}
+          />
         </div>
 
         {type === 'string' ? (
@@ -401,14 +381,11 @@ export function MatrixKeyCreate({
                 onChange={(event) => setPattern(event.target.value)}
               />
             </label>
-            <label className="matrix-key-create__secret">
-              <input
-                type="checkbox"
-                checked={allowEmpty}
-                onChange={(event) => setAllowEmpty(event.target.checked)}
-              />
-              <span>allow empty value</span>
-            </label>
+            <Checkbox
+              label="allow empty value"
+              checked={allowEmpty}
+              onChange={(event) => setAllowEmpty(event.target.checked)}
+            />
           </fieldset>
         ) : null}
 
@@ -516,14 +493,12 @@ export function MatrixKeyCreate({
             onChange={(event) => setValue(event.target.value)}
           />
           {secret ? (
-            <label className="matrix-editor__show-typing">
-              <input
-                type="checkbox"
-                checked={showTyping}
-                onChange={(event) => setShowTyping(event.target.checked)}
-              />
-              <span>Show while typing</span>
-            </label>
+            <Checkbox
+              className="matrix-editor__show-typing"
+              label="Show while typing"
+              checked={showTyping}
+              onChange={(event) => setShowTyping(event.target.checked)}
+            />
           ) : null}
           {whitespaceRemoved ? (
             <p className="matrix-editor__hint" role="status">
@@ -535,17 +510,12 @@ export function MatrixKeyCreate({
         <fieldset className="matrix-editor__copy">
           <legend>Set that value in</legend>
           {environments.map((environment) => (
-            <label key={environment.id}>
-              <input
-                type="checkbox"
-                checked={valueEnvironmentIds.includes(environment.id)}
-                onChange={() => toggle(setValueEnvironmentIds, environment.id)}
-              />
-              <span>
-                {environment.name}
-                {protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}
-              </span>
-            </label>
+            <Checkbox
+              key={environment.id}
+              label={`${environment.name}${protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}`}
+              checked={valueEnvironmentIds.includes(environment.id)}
+              onChange={() => toggle(setValueEnvironmentIds, environment.id)}
+            />
           ))}
         </fieldset>
 
@@ -574,31 +544,27 @@ export function MatrixKeyCreate({
         />
 
         {error === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{error}</span>
-          </p>
+          <Alert>{error}</Alert>
         )}
         {mutationError === null ? null : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{mutationError}</span>
-          </p>
+          <Alert>{mutationError}</Alert>
         )}
 
-        <div className="matrix-editor__actions">
-          <button type="submit" className="btn btn--primary" disabled={busy || applying || gitManaged}>
-            {busy || applying ? 'Declaring…' : 'Declare'}
-          </button>
-          <button type="button" className="btn" onClick={onClose}>
+        {/* The row stays in the form because the classification hint below it
+            explains the choice the form makes permanent. */}
+        <div className="dialog__actions">
+          <Button type="button" onClick={onClose}>
             Cancel
-          </button>
+          </Button>
+          <Button type="submit" variant="primary" disabled={busy || applying || gitManaged}>
+            {busy || applying ? 'Declaring…' : 'Declare'}
+          </Button>
         </div>
         <p className="matrix-editor__hint">
           <b>Secret</b> is permanent: values are hidden and reveal-gated everywhere.
         </p>
       </form>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -638,32 +604,25 @@ function PresenceField({
       <legend>{legend}</legend>
       <div className="matrix-key-create__presence-modes" role="radiogroup" aria-label={legend}>
         {modes.map((option) => (
-          <label key={option.value}>
-            <input
-              type="radio"
-              name={idPrefix}
-              value={option.value}
-              checked={mode === option.value}
-              onChange={() => setMode(option.value)}
-            />
-            <span>{option.label}</span>
-          </label>
+          <Radio
+            key={option.value}
+            name={idPrefix}
+            label={option.label}
+            value={option.value}
+            checked={mode === option.value}
+            onChange={() => setMode(option.value)}
+          />
         ))}
       </div>
       {mode === 'explicit' ? (
         <div className="matrix-editor__copy">
           {environments.map((environment) => (
-            <label key={environment.id}>
-              <input
-                type="checkbox"
-                checked={environmentIds.includes(environment.id)}
-                onChange={() => onToggle(environment.id)}
-              />
-              <span>
-                {environment.name}
-                {protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}
-              </span>
-            </label>
+            <Checkbox
+              key={environment.id}
+              label={`${environment.name}${protectedEnvironmentIds.includes(environment.id) ? ' · protected' : ''}`}
+              checked={environmentIds.includes(environment.id)}
+              onChange={() => onToggle(environment.id)}
+            />
           ))}
         </div>
       ) : (

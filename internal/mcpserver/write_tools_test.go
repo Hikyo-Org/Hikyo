@@ -18,6 +18,7 @@ import (
 type fakeValues struct {
 	stageErr    error
 	validateErr error
+	setCalls    int
 	lastOp      string
 	lastKey     string
 	lastValue   string
@@ -26,6 +27,7 @@ type fakeValues struct {
 }
 
 func (f *fakeValues) Set(_ context.Context, _ service.Actor, _ domain.Scope, keyName, value string, acks []string) (service.StagedChange, error) {
+	f.setCalls++
 	f.lastOp, f.lastKey, f.lastValue, f.lastAcks = "set", keyName, value, acks
 	if f.stageErr != nil {
 		return service.StagedChange{}, f.stageErr
@@ -260,40 +262,82 @@ func TestWriteToolArgumentsAreClosedAndBounded(t *testing.T) {
 	}
 }
 
-// TestSetRequiresAnExplicitStringValue pins presence tracking: a set whose
-// value is missing or JSON null is incomplete and never reaches the service,
-// while an explicit empty string is a deliberate empty proposal and does.
-func TestSetRequiresAnExplicitStringValue(t *testing.T) {
-	for name, args := range map[string]string{
-		"set without value": `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set"}`,
-		"set with null":     `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":null}`,
-		"unset with empty":  `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"unset","value":""}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			for _, tool := range WriteToolNames() {
+// TestStageValuePresenceIsExplicit pins the set/unset value contract: a set
+// must carry a JSON string (an omitted or null value is a missing proposal,
+// not an empty draft that would replace the caller's pending one), an explicit
+// empty string is a legitimate proposal, and an unset carries no value at all.
+func TestStageValuePresenceIsExplicit(t *testing.T) {
+	const prefix = `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K",`
+	for _, tool := range WriteToolNames() {
+		for name, tc := range map[string]struct {
+			args     string
+			accepted bool
+			value    string
+		}{
+			"set without value":         {prefix + `"operation":"set"}`, false, ""},
+			"set with null value":       {prefix + `"operation":"set","value":null}`, false, ""},
+			"set with empty string":     {prefix + `"operation":"set","value":""}`, true, ""},
+			"set with ordinary string":  {prefix + `"operation":"set","value":"x"}`, true, "x"},
+			"unset with empty string":   {prefix + `"operation":"unset","value":""}`, false, ""},
+			"unset with null value":     {prefix + `"operation":"unset","value":null}`, false, ""},
+			"unset without value":       {prefix + `"operation":"unset"}`, true, ""},
+			"unset with ordinary value": {prefix + `"operation":"unset","value":"x"}`, false, ""},
+		} {
+			t.Run(tool+"/"+name, func(t *testing.T) {
 				values := &fakeValues{}
 				h := writeHandler(t, values, fakeAdmission{})
-				body := bodyString(t, h, tool, args)
-				if !strings.Contains(body, "error") && !strings.Contains(body, `"isError":true`) {
-					t.Fatalf("%s accepted: %s", tool, body)
+				body := bodyString(t, h, tool, tc.args)
+				reached := values.lastOp != ""
+				if reached != tc.accepted {
+					t.Fatalf("service reached = %v, want %v: %s", reached, tc.accepted, body)
 				}
-				if values.lastOp != "" {
-					t.Fatalf("%s reached the service with %s: %+v", tool, name, values)
+				if tc.accepted && values.lastValue != tc.value {
+					t.Fatalf("service value = %q, want %q", values.lastValue, tc.value)
 				}
-			}
-		})
+				if !tc.accepted && !strings.Contains(body, ErrInvalidArgument.Error()) && !strings.Contains(body, errValueNotString.Error()) {
+					t.Fatalf("refusal is not the named argument error: %s", body)
+				}
+			})
+		}
 	}
+}
+
+// TestReleaseFailureKeepsCommittedStageResult pins that a stage which the
+// service committed is reported as committed even when releasing the admission
+// slot afterwards fails: the caller must not be told to retry a write that
+// already landed, and the cleanup failure is logged rather than swallowed.
+func TestReleaseFailureKeepsCommittedStageResult(t *testing.T) {
 	values := &fakeValues{}
-	h := writeHandler(t, values, fakeAdmission{})
-	out := structuredContent(t, callTool(t, h, ToolStageChange,
-		`{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":""}`))
-	if values.lastOp != "set" || values.lastKey != "K" || values.lastValue != "" || out["operation"] != "set" {
-		t.Fatalf("explicit empty proposal: service call = %+v, output = %v", values, out)
+	registry := NewRegistry()
+	if err := RegisterProductionTools(registry, envServices()); err != nil {
+		t.Fatal(err)
 	}
-	out = structuredContent(t, callTool(t, h, ToolValidateChange,
-		`{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":""}`))
-	if values.lastOp != "validate-set" || values.lastValue != "" || out["operation"] != "set" {
-		t.Fatalf("explicit empty validation: service call = %+v, output = %v", values, out)
+	admission := fakeAdmission{releaseErr: errors.New("release boom")}
+	if err := RegisterWriteTools(registry, WriteServices{Admission: admission, Staging: values, Validation: values}); err != nil {
+		t.Fatal(err)
+	}
+	var notified []string
+	h, err := New(Options{
+		Registry: registry, ExternalOrigin: "https://hikyo.example.com", Version: "v-test",
+		CursorSealer: testCursorSealer,
+		OnReleaseFailure: func(operation string, err error) {
+			notified = append(notified, operation+": "+err.Error())
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := structuredContent(t, callTool(t, h, ToolStageChange, stageArgs))
+	if out["version_id"] != "pcv_1" || values.setCalls != 1 {
+		t.Fatalf("committed stage not reported: out=%v setCalls=%d", out, values.setCalls)
+	}
+	if len(notified) != 1 || notified[0] != "value.stage: release boom" {
+		t.Fatalf("release failure not reported once with its operation: %v", notified)
+	}
+	// A failing call still fails, release error or not.
+	values.stageErr = domain.ErrUnauthorized
+	if body := bodyString(t, h, ToolStageChange, stageArgs); !strings.Contains(body, SafeOperationError) {
+		t.Fatalf("failed call reported as success: %s", body)
 	}
 }
 

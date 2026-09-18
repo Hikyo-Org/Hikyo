@@ -137,7 +137,7 @@ test.describe('environment matrix', () => {
       await expect(bar).toBeVisible();
       await expect(bar).toContainText('filter active: problems');
 
-      await page.getByRole('button', { name: '✕ Show all keys' }).click();
+      await page.getByRole('button', { name: 'Show all keys' }).click();
       await expect(page.getByRole('rowheader', { name: /LOG_LEVEL/ })).toBeVisible();
 
       await publish.click();
@@ -150,7 +150,10 @@ test.describe('environment matrix', () => {
 
       await page.getByRole('button', { name: /unpublished edit/ }).click();
       const repairedSheet = page.getByRole('region', { name: 'Publish drafts' });
-      await expect(repairedSheet.getByText('PROTECTED: confirms before publish')).toBeVisible();
+      // The marker is the word in a badge now, with its consequence beside it;
+      // scoped to the sheet because the row editor names the same word.
+      await expect(repairedSheet.getByText('PROTECTED', { exact: true })).toBeVisible();
+      await expect(repairedSheet.getByText('confirms before publish')).toBeVisible();
       const protectedConfirmation = repairedSheet.getByRole('checkbox', {
         name: 'I confirm publishing to protected production.',
       });
@@ -211,7 +214,7 @@ test.describe('environment matrix', () => {
       await expect(editor.getByLabel('development value')).not.toHaveValue(
         'identity-check-not-saved',
       );
-      await editor.getByRole('button', { name: 'Close row editor' }).click();
+      await editor.getByRole('button', { name: 'Close', exact: true }).click();
 
       // Three project reads plus four existing query families per environment.
       // Config cells do not need a secret-disclosure capability request.
@@ -237,7 +240,7 @@ test.describe('environment matrix', () => {
     await expect(chooser.locator('summary')).toContainText('envs 2/2');
     await chooser.locator('summary').click();
 
-    const group = page.locator('.matrix__group-row button', { hasText: 'app' });
+    const group = page.locator('.matrix__group-toggle', { hasText: 'app' });
     await group.click();
     await expect(group).toHaveAttribute('aria-expanded', 'false');
     await expect(group).toContainText('LOG_LEVEL');
@@ -301,7 +304,7 @@ test.describe('environment matrix', () => {
       await expect(revealed).toBeVisible();
       await expect(secretEditor.getByRole('status').filter({ hasText: `${secret} revealed` })).toHaveCount(1);
       await expect(revealed).toHaveCount(0, { timeout: 12_000 });
-      await secretEditor.getByRole('button', { name: 'Close row editor' }).click();
+      await secretEditor.getByRole('button', { name: 'Close', exact: true }).click();
 
       await page
         .getByRole('button', { name: new RegExp(`${secret} in production:`) })
@@ -348,7 +351,7 @@ test.describe('environment matrix', () => {
           [firstEditorRow, 'borderTopColor', '--line'],
         ],
         hairlines: [firstEditorRow],
-        density: [[editor.getByRole('button', { name: 'Close row editor' }), '--control']],
+        density: [[editor.getByRole('button', { name: 'Close', exact: true }), '--control']],
       });
 
       const value = `matrix-${testInfo.project.name}`;
@@ -376,7 +379,7 @@ test.describe('environment matrix', () => {
       await expect(reopened.getByLabel('development value')).toHaveValue(value);
       await reopened.getByRole('button', { name: 'Edit all environments' }).click();
       await expect(reopened.getByLabel('production value')).toHaveValue(`${value}-production`);
-      await reopened.getByRole('button', { name: 'Close row editor' }).click();
+      await reopened.getByRole('button', { name: 'Close', exact: true }).click();
 
       await page.reload();
 
@@ -828,7 +831,7 @@ test.describe('catalogue declaration detail', () => {
     page.on('pageerror', (error) => consoleLines.push(String(error)));
     await panel.getByLabel('Pattern (RE2, anchored)').fill(CANARY);
     await panel.getByRole('button', { name: 'Save value rules & presence' }).click();
-    const block = page.locator('dialog.scan-block');
+    const block = page.getByRole('dialog', { name: 'Declaration blocked by secret scanning' });
     await expect(block).toBeVisible();
     await expect(block.getByText('aws-access-token')).toBeVisible();
     // SS4: the canary reaches neither the dialog markup nor the console.
@@ -882,7 +885,7 @@ test.describe('catalogue declaration detail', () => {
     const groupName = `catflow ${suffix}`;
     await page.goto(MATRIX_PATH);
     await page.getByRole('button', { name: 'Folders & linked keys' }).click();
-    const dialog = page.locator('dialog.catalogue-manage');
+    const dialog = page.getByRole('dialog', { name: 'Folders & linked keys' });
     await expect(dialog.getByRole('heading', { name: 'Folders & linked keys' })).toBeVisible();
 
     await dialog.getByLabel('New folder path').fill(folderPath);
@@ -933,7 +936,7 @@ test.describe('catalogue declaration detail', () => {
     try {
       await page.goto(MATRIX_PATH);
       await page.getByRole('button', { name: 'Cleanup', exact: true }).click();
-      const dialog = page.locator('dialog.catalogue-manage');
+      const dialog = page.getByRole('dialog', { name: 'Cleanup: group keys into folders' });
       await expect(dialog.getByRole('heading', { name: 'Cleanup: group keys into folders' })).toBeVisible();
       await expect(dialog.getByLabel(`Folder for TIDY_${suffix}_HOST`)).toHaveValue('Tidy');
       await expect(dialog.getByLabel(`Folder for TIDY_${suffix}_PORT`)).toHaveValue('Tidy');
@@ -1084,14 +1087,16 @@ test.describe('catalogue declaration lifecycle', () => {
       // Reclassify config → secret through the confirm ceremony. Tightening
       // discloses nothing and needs no reveal.
       await panel.getByRole('button', { name: 'Reclassify as secret…' }).click();
-      const dialog = page.locator('dialog.matrix-editor');
+      const dialog = page.getByRole('dialog', { name: 'Reclassify this key as secret?' });
       await expect(dialog).toBeVisible();
       await dialog.getByRole('button', { name: 'Reclassify as secret', exact: true }).click();
       await expectStatusIsTextAndAria(
         page,
         page.getByRole('status').filter({ hasText: 'Reclassified as secret.' }),
       );
-      await expect(panel).toContainText('🔒 secret');
+      await expect(
+        panel.locator('.key-detail__fact', { hasText: 'Classification' }).locator('dd'),
+      ).toHaveText('secret');
 
       // Delete behind the typed-name confirm, then land on the matrix with the
       // key route gone.

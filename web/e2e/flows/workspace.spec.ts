@@ -9,6 +9,7 @@ import {
   HOST_B,
   readServing,
   REMOTE_NAME,
+  refreshServingSession,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
 import { surfacesForFlow } from '../registry.ts';
@@ -103,6 +104,20 @@ async function revokeConnectionByLabel(page: Page, label: string): Promise<void>
 
 test.describe('multi-instance', () => {
   test.use({ storageState: STORAGE_STATE });
+
+  // Everything below arrives at B holding the shared storage state's serving
+  // cookie, and a sibling flow may have advanced B's session generation since
+  // it was written (instance-admin steps up on B to apply an independent
+  // owner's revision). Repairing the file HERE, before the first context reads
+  // it, is what keeps that from landing as a sign-in page four tests deep. The
+  // probe makes it a no-op whenever the session is still live, which is every
+  // CI leg: B's two flows sit in different groups there.
+  test.beforeAll(async () => {
+    // A re-mint steps up on B, and a TOTP presentation waits out the step the
+    // last ceremony spent, so the repair path can take longer than a test.
+    test.setTimeout(120_000);
+    await refreshServingSession();
+  });
 
   test('This instance directory shows identity, metadata and scoped refusal', async ({ page }, testInfo) => {
     await page.goto('/remotes');

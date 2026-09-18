@@ -32,6 +32,9 @@ import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/
 import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { needsOrg, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import {
   CHROME_IDENTITY_EVENT,
   chromeIdentityMark,
@@ -412,14 +415,15 @@ export function Shell({ session }: { session: WhoAmI }) {
         data-open={navOpen}
         ref={sidebarRef}
       >
-        <button
+        <Button
           type="button"
-          className="btn btn--icon sidebar__close sidebar__mobile-only"
+          icon
+          className="sidebar__close sidebar__mobile-only"
           aria-label="Close navigation"
           onClick={dismissNavigation}
         >
           <span aria-hidden="true">×</span>
-        </button>
+        </Button>
         {items.length < 2 ? null : (
           <section
             className="sidebar__section sidebar__mobile-only sidebar__mobile-organisations"
@@ -447,7 +451,7 @@ export function Shell({ session }: { session: WhoAmI }) {
                     </span>
                     <span>{org.name}</span>
                     {org.id === activeOrgId ? (
-                      <span className="sidebar__switcher-check">✓</span>
+                      <span className="sidebar__switcher-check"><Glyph name="check" /></span>
                     ) : null}
                   </button>
                 </li>;
@@ -469,12 +473,7 @@ export function Shell({ session }: { session: WhoAmI }) {
           </p>
         ) : null}
         {orgs.isError ? (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>Your organisations could not be loaded. Reload to try again.</span>
-          </p>
+          <Alert>Your organisations could not be loaded. Reload to try again.</Alert>
         ) : null}
         {/* The context block (project or instance) stacks ABOVE the organisation
             block, which is never hidden: every destination stays reachable in
@@ -553,16 +552,16 @@ export function Shell({ session }: { session: WhoAmI }) {
 
       <div className="main" inert={navOpen ? true : undefined}>
         <header className="header">
-          <button
+          <Button
             type="button"
-            className="btn nav-toggle"
+            className="nav-toggle"
             ref={navToggleRef}
             aria-expanded={navOpen}
             aria-controls="sidebar"
             onClick={() => setNavOpen((open) => !open)}
           >
             Menu
-          </button>
+          </Button>
           <ol className="header__crumbs" aria-label="Breadcrumb">
             {crumbs.map((crumb, index) => (
               <li
@@ -1053,16 +1052,16 @@ export function ThemeToggle() {
   const next: Theme = current === 'dark' ? 'light' : 'dark';
 
   return (
-    <button
+    <Button
       type="button"
-      className="btn btn--icon"
+      icon
       onClick={() => setChoice(next)}
       // The label states the ACTION, and the icon the current theme by shape, 
       // so the state survives forced-colors, where the fills are repainted.
       aria-label={`Switch to ${next} theme`}
     >
       <ThemeIcon dark={current === 'dark'} />
-    </button>
+    </Button>
   );
 }
 

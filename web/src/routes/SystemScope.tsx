@@ -5,7 +5,7 @@ import { useSystemScope, type SystemScopeSurface } from '../api/selfConfig.ts';
 import { useWorkspaceContext } from '../api/transport.tsx';
 import { useInstanceOperator } from '../app/AuthProvider.tsx';
 import { surfaceById } from '../app/navigation.ts';
-import { Alert } from './Sections.tsx';
+import { Alert } from '../ui/Alert.tsx';
 
 /**
  * The Hikyo system organisation and project carry the instance's own

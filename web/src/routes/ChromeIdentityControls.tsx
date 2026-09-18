@@ -1,5 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 
+import { Button } from '../ui/Button.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
 import {
   chromeIdentityMark,
   chromeIdentityStyle,
@@ -161,13 +163,12 @@ export function ChromeIdentityControls({
           {identity.image === null ? 'upload…' : 'replace…'}
         </label>
         {identity.image === null ? null : (
-          <button
+          <Button
             type="button"
-            className="btn"
             onClick={() => updateIdentity({ ...identity, image: null })}
           >
-            <span aria-hidden="true">✕</span><span className="visually-hidden">remove image</span>
-          </button>
+            <Glyph name="cross" /><span className="visually-hidden">remove image</span>
+          </Button>
         )}
       </div>
       <p className="settings-note">

@@ -6,6 +6,8 @@ import type { z } from 'zod';
 import { authenticatedIdentity } from '../testkit/identity.ts';
 import { Members } from './Members.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // The org-scope members surface reads `useParams().org`, `useSearchParams()` and
 // `useAuth` (no outlet context, no workspace context), so the harness runs it
 // with `auth: true` at `/orgs/:org/members`. Its load-time reads are three GETs:
@@ -75,6 +77,7 @@ const meta = {
   tags: ['ai-generated'],
   args: { scope: { kind: 'org' } },
   parameters: {
+    ...topLayerDocs,
     app: {
       auth: true,
       identity: authenticatedIdentity,

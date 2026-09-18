@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 
 import { announceSessionChange } from '../api/sessionEpoch.ts';
 import { oidcChannelName, peekOIDCReturn, takeOIDCReturn } from '../api/oidcChannel.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
 
 type Purpose = 'login' | 'link' | 'reauth';
 
@@ -94,10 +96,7 @@ export function OIDCDone() {
             {successLede(purpose)}
           </p>
         ) : (
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">!</span>
-            <span>{failure}</span>
-          </p>
+          <Alert>{failure}</Alert>
         )}
         {returnTarget !== null ? (
           <a className="btn" href={returnTarget}>
@@ -108,9 +107,9 @@ export function OIDCDone() {
                 : 'Back'}
           </a>
         ) : (
-          <button className="btn" type="button" onClick={() => globalThis.close()}>
+          <Button type="button" onClick={() => globalThis.close()}>
             Close this window
-          </button>
+          </Button>
         )}
       </div>
     </main>

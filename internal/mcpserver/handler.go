@@ -12,12 +12,14 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/authz"
 )
 
 const (
@@ -50,6 +52,13 @@ type Options struct {
 	// refuses a non-empty registry without it. The crypto chokepoint confines
 	// the AEAD primitive to internal/crypto.
 	CursorSealer CursorSealer
+	// OnReleaseFailure is told when an admission slot could not be released
+	// after the call itself succeeded (the call keeps its committed outcome).
+	// It receives the authorization operation and the coordinator's error,
+	// never a bearer or request material. The package owns no telemetry sink
+	// (MCP secret boundary, internal/boundary); the app routes this to its
+	// logger. Nil drops the notice, and the lease still expires on its TTL.
+	OnReleaseFailure func(operation string, err error)
 }
 
 type handler struct {
@@ -61,6 +70,7 @@ type handler struct {
 	admission      discoveryAdmission
 	slots          chan struct{}
 	cursorSealer   CursorSealer
+	onReleaseFail  func(operation string, err error)
 }
 
 type bearerContextKey struct{}
@@ -69,6 +79,22 @@ type callStateContextKey struct{}
 type callState struct {
 	rateLimited     atomic.Bool
 	unauthenticated atomic.Bool
+	mu              sync.Mutex
+	releaseOp       authz.Operation
+	releaseErr      error
+}
+
+// markReleaseFailed records that the call's admission slot could not be
+// released after the call itself succeeded. The call keeps its committed
+// outcome; the transport hands the cleanup failure to Options.OnReleaseFailure
+// so it is observable without telling the caller to retry a write that
+// already landed.
+func markReleaseFailed(ctx context.Context, op authz.Operation, err error) {
+	if state, ok := ctx.Value(callStateContextKey{}).(*callState); ok {
+		state.mu.Lock()
+		state.releaseOp, state.releaseErr = op, err
+		state.mu.Unlock()
+	}
 }
 
 func markRateLimited(ctx context.Context) {
@@ -140,7 +166,7 @@ func New(options Options) (http.Handler, error) {
 		allowedOrigins: slices.Clone(options.AllowedOrigins),
 		trustedProxies: slices.Clone(options.TrustedProxies),
 		admission:      options.Admission, slots: make(chan struct{}, concurrency),
-		cursorSealer: options.CursorSealer,
+		cursorSealer: options.CursorSealer, onReleaseFail: options.OnReleaseFailure,
 	}, nil
 }
 
@@ -340,6 +366,16 @@ func (h *handler) serveStatic(w http.ResponseWriter, r *http.Request, method str
 func (h *handler) serveSDK(w http.ResponseWriter, r *http.Request, method string, requestID json.RawMessage, maxBytes int, state *callState) {
 	capture := newCapturedResponse()
 	h.sdk.ServeHTTP(capture, r)
+	if state != nil {
+		state.mu.Lock()
+		releaseOp, releaseErr := state.releaseOp, state.releaseErr
+		state.mu.Unlock()
+		if releaseErr != nil && h.onReleaseFail != nil {
+			// The bearer never crosses; the operation and the error are enough
+			// to find a stuck lease, which expires on its own TTL regardless.
+			h.onReleaseFail(string(releaseOp), releaseErr)
+		}
+	}
 	if state != nil && state.rateLimited.Load() {
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)

@@ -1,5 +1,5 @@
 {
-  "review": "See docs/handoff/security-2026-09/client-lifetime.html for input/result categories, uncached operations and local state ownership. Every changed mutation-capable module requires renewed sensitivity review. Self-configuration preparation and rollout review retain only revision, generation, request ID and plan digest metadata; factor codes remain in sensitive local state and factor responses bypass mutation caches. HistoryDrawer.tsx and InstanceAdmin.tsx hashes were renewed for the react/set-state-in-effect refactor (a reset moved from an effect to useResetOnChange / a seeded useState); no mutation surface, cache boundary, or plaintext ownership changed, so the sensitivity posture is unchanged.",
+  "review": "See docs/handoff/security-2026-09/client-lifetime.html for input/result categories, uncached operations and local state ownership. Every changed mutation-capable module requires renewed sensitivity review. Self-configuration preparation and rollout review retain only revision, generation, request ID and plan digest metadata; factor codes remain in sensitive local state and factor responses bypass mutation caches. Hashes were re-pinned after merging origin/main: the design-system migration (routes moved onto the shared ui primitives Dialog/Menu/Alert/Button/Select and helpers) and the react/set-state-in-effect refactor (resets moved from effects to useResetOnChange, seeded useState, or key-based remounts) both changed module bytes without adding a mutation surface, cache boundary, or plaintext ownership. Literal NUL bytes accidentally written into signature template literals were replaced with the \\u0000 escape (no runtime change). The sensitivity posture is unchanged.",
   "sources": {
     "api/access.ts": "5dde75b530e6f3db9a2271ba5dfdd7e4ca02da2a5ffd00ea729bd1334444ef97",
     "api/account.ts": "ccedaf3a7359b2f78b8b5c0bbc29912b44f0e812b4e40cf4288178862cbc94da",
@@ -25,11 +25,28 @@
     "api/stepup.ts": "1252b83784fccbc138dfa3bb08b1f073c768fd3581ae345c6812dfb5d8613be3",
     "api/updates.ts": "170c5f62a46a23aef03dc088f478f4126b2950b950fda7854ea351221b56d0e5",
     "api/values.ts": "cbf3c16f6075954fb5073f371fbd48d5239dc3dd218b6481fced583a957e4d21",
-    "routes/CLIReauth.tsx": "3609e90a15f1a686447a30e68d61822e243cdbf0f0dab62e4b49ab2d78fdaaa7",
-    "routes/EstablishCredential.tsx": "9552a6feb4bbfffa7ec510de9cca6d2d483838ed1a0317a21513c9628fb0ad08",
-    "routes/HistoryDrawer.tsx": "85a1698bcf84bd1c380d2cfea4de7b4df6d3b74ea2426ccd08b48055c4f63160",
-    "routes/InstanceAdmin.tsx": "e6f6a1576b782ff26e39fe971fe00c76f3af7ab1d892c7cd8505163eb6a02a6e",
-    "routes/Login.tsx": "aa8ffa9f6fb1f5a01f8e5e90673cc065ccb8807df8d0752de08f91778870f10c",
-    "routes/WorkspaceApprove.tsx": "0d68f128f3d1398de105bd434a22730d229177a01a19b4ee1aa2c11db03461d8"
+    "routes/AccountProfile.tsx": "eb26097cb98da6cbd2040ccd1b75c3aa5d7f97c51c37a387c5671b48e130ebac",
+    "routes/AccountSecurity.tsx": "27089d8fc348c5f94f5537f6e73d11cd6e09298d25332a83d26eeeb2990b7783",
+    "routes/Adapters.tsx": "765bce231d64f98e08c5c378c8167b6b36c2f3d45f7428970099b2777e89dfc8",
+    "routes/CLIReauth.tsx": "6a6b2442dbf47d79bd920dfa588ea962d8490604fd1eddd81be5c2e7d9480c9b",
+    "routes/Ceremony.tsx": "70c7cb11c9e57509cb440f433f30fa97bf62f645a4e0590cbcf386f54c524455",
+    "routes/EstablishCredential.tsx": "1548f7f47270eb52865807dc6048a0402f448f58b9d9fe746ccd7f67128ef6d9",
+    "routes/HistoryDrawer.tsx": "6bd0e1852d7db842d74647fee36b53fafdf835b01ea626da9abc2443f0de36ff",
+    "routes/ImportWizard.tsx": "7cfe0b3747afe567fd69624ceb0b2a609da9fe2aa4c48f8898b06d687ef5ad66",
+    "routes/InstanceAdmin.tsx": "80e6ca836ef90846a15fffef3610f8e0c7e8b9a2db602cbee68d4ca075df488b",
+    "routes/InstanceConfig.tsx": "91a62d9494923fc03faf45d8a44344a3842dcec3b8351705dc20252f978d9c5d",
+    "routes/InviteDialog.tsx": "86ae04c143071e9a25477f5985e0ef74ec6d0d7359541acdf5a10d071e998b3e",
+    "routes/Login.tsx": "c4a4bb9155bb78543ddb7c4845f37b191d49c0000ee01a5465cce0dcfa266d2b",
+    "routes/MachineAccess.tsx": "5fed81610ec2bd11078e1afd4965d8909d4faaf59b8b57550ce01014bb969c27",
+    "routes/MatrixRowEditor.tsx": "cf17a821406b67d7b01d6e0a361fb34287652f7be2cf8db31c66a6853fffc0f5",
+    "routes/Members.tsx": "3ff1114366500448ba8688a80d9e92de89400c075b5927dfff06992ded0416f4",
+    "routes/OidcProvidersPanel.tsx": "3dc004daecffa3d7e89a50aa83d42e166d664924b6e309e7a5efcdb5970dbb1f",
+    "routes/Remotes.tsx": "69b0a2cc866703c92890500987c16a56f85f820347c4c682a7ccf778834f562a",
+    "routes/RevisionDiff.tsx": "9cdc5a7876882cde4ffa0d75fb2a202c9340fd5cff75e1f81d8805d7d26051a7",
+    "routes/ScimProvisioning.tsx": "bc7f689049e80ca6d2e8b8aa20ee53eca51032157680c0a15cc86251d3eab085",
+    "routes/StepUpBanner.tsx": "b6886299976f1c0644e53e21cebc8a4c033e7b7a392ce3624a77c9ce7fb1ff9f",
+    "routes/Values.tsx": "1694f9e0fca368889d6699dc202798862e266a4effd474ca02052c46a221959f",
+    "routes/WorkspaceApprove.tsx": "a928c626cca32b1c8e691ebb34fd30fcd40d38b6fa57bb6edc28870b9cdbd812",
+    "ui/auth/LoginForm.tsx": "4db1c6ec080904c9ecf640bce31c16557d72cc00d989a6c9d9fd24e4bdaff195"
   }
 }

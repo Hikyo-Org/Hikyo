@@ -6,6 +6,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { parsed } from '../api/client.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ceremonyRefusalText, runPasskeyCeremony, runTOTPCeremony } from '../api/values.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Button } from '../ui/Button.tsx';
 import { Login } from './Login.tsx';
 import { useCeremonyTask, type CeremonyTask } from './useCeremonyTask.ts';
 
@@ -164,15 +166,10 @@ export function WorkspaceApprove() {
       <main className="login">
         <div className="login__card">
           <h1 className="login__title">Nothing to authorize</h1>
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              This page was opened without a handoff transaction. Start the workspace from the
-              instance you were browsing.
-            </span>
-          </p>
+          <Alert>
+            This page was opened without a handoff transaction. Start the workspace from the
+            instance you were browsing.
+          </Alert>
         </div>
       </main>
     );
@@ -202,15 +199,10 @@ export function WorkspaceApprove() {
       <main className="login">
         <div className="login__card">
           <h1 className="login__title">Authorization could not be completed</h1>
-          <p className="alert" role="alert">
-            <span className="alert__glyph" aria-hidden="true">
-              !
-            </span>
-            <span>
-              This authorization request could not be read. It may have expired or been used
-              already. Close this window and start again from the instance you were browsing.
-            </span>
-          </p>
+          <Alert>
+            This authorization request could not be read. It may have expired or been used
+            already. Close this window and start again from the instance you were browsing.
+          </Alert>
         </div>
       </main>
     );
@@ -296,17 +288,17 @@ export function WorkspaceApprove() {
           />
         ) : (
           <>
-            <button
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               type="button"
               onClick={authorize}
               disabled={approve.isPending}
             >
               {approve.isPending ? 'Authorizing…' : 'Authorize'}
-            </button>
-            <button className="btn" type="button" onClick={() => globalThis.close()}>
+            </Button>
+            <Button type="button" onClick={() => globalThis.close()}>
               Cancel
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -393,20 +385,15 @@ function StepUpReauth({
   return (
     <>
       {failure === null ? null : (
-        <p className="alert" role="alert">
-          <span className="alert__glyph" aria-hidden="true">
-            !
-          </span>
-          <span>{failure}</span>
-        </p>
+        <Alert>{failure}</Alert>
       )}
-      <div className="ceremony__actions">
-        <button className="btn btn--primary" type="button" onClick={onPasskey} disabled={working}>
+      <div className="dialog__actions">
+        <Button variant="primary" type="button" onClick={onPasskey} disabled={working}>
           {working ? 'Working…' : 'Use a passkey'}
-        </button>
-        <button className="btn" type="button" onClick={() => globalThis.close()} disabled={working}>
+        </Button>
+        <Button type="button" onClick={() => globalThis.close()} disabled={working}>
           Cancel
-        </button>
+        </Button>
       </div>
       <form className="ceremony__totp" onSubmit={onCode}>
         <div className="field">
@@ -421,9 +408,9 @@ function StepUpReauth({
             onChange={(e) => setCode(e.target.value)}
           />
         </div>
-        <button className="btn" type="submit" disabled={working || code.length < 6}>
+        <Button type="submit" disabled={working || code.length < 6}>
           Authorise with a code
-        </button>
+        </Button>
       </form>
     </>
   );

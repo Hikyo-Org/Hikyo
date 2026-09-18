@@ -12,9 +12,20 @@ type SelectProps = Omit<ComponentProps<'select'>, 'className'> & FieldProps & {
   mono?: boolean;
 };
 
-export function Select({ label, hint, error, id, className, mono, children, ...rest }: SelectProps) {
+export function Select({
+  label,
+  hint,
+  error,
+  id,
+  className,
+  mono,
+  children,
+  'aria-describedby': describedBy,
+  'aria-invalid': invalid,
+  ...rest
+}: SelectProps) {
   return (
-    <Field label={label} hint={hint} error={error} id={id} className={className}>
+    <Field label={label} hint={hint} error={error} id={id} className={className} aria-describedby={describedBy} aria-invalid={invalid}>
       {(control) => (
         <select {...rest} {...control} className={mono === true ? 'mono' : undefined}>
           {children}

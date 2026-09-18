@@ -3,13 +3,15 @@ import { expect } from 'storybook/test';
 
 import { SystemScopeRefusal } from './SystemScope.tsx';
 
+import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
+
 // A deep link into the Hikyo system scope for a surface the scope refuses
 // outright (machine consumers, adapters, SCIM). The gate renders this reason
 // instead of the page; a Router is all it needs (the app decorator supplies one).
 const meta = {
   component: SystemScopeRefusal,
   tags: ['ai-generated'],
-  parameters: { app: { responses: [] } },
+  parameters: { ...topLayerDocs, app: { responses: [] } },
 } satisfies Meta<typeof SystemScopeRefusal>;
 
 export default meta;

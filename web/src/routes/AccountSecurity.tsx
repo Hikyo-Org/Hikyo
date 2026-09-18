@@ -1,6 +1,5 @@
-import qrcode from 'qrcode-generator';
 import { AccountProfile } from './AccountProfile.tsx';
-import { useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import {
@@ -23,8 +22,15 @@ import { rememberOIDCReturn } from '../api/oidcChannel.ts';
 import { useRevokeSession, useSessions, type ActiveSession } from '../api/remotes.ts';
 import { themeLabel, useThemeChoice, type ThemeChoice } from '../app/theme.ts';
 import { clearNotification, notifyFailure } from '../app/notifications.tsx';
-import { Alert, DisplayOnceCopy, Done, JumpIndex, Panel } from './Sections.tsx';
-import { useFeedback, useModalDialog } from './useModalDialog.ts';
+import { Alert } from '../ui/Alert.tsx';
+import { Badge } from '../ui/Badge.tsx';
+import { Button } from '../ui/Button.tsx';
+import { Checkbox } from '../ui/Checkbox.tsx';
+import { Dialog } from '../ui/Dialog.tsx';
+import { Glyph } from '../ui/Glyph.tsx';
+import { QrCode } from '../ui/auth/QrCode.tsx';
+import { DisplayOnceCopy, JumpIndex, Panel } from './Sections.tsx';
+import { useFeedback } from './useFeedback.ts';
 
 const prototypeMode = import.meta.env.MODE === 'prototype';
 
@@ -38,7 +44,8 @@ const prototypeMode = import.meta.env.MODE === 'prototype';
  * where a human looks for it.
  *
  * Factor, recovery and identity mutations are account-security mutations and share
- * one rule the prototype drew as a blue "confirm it's you" step-up: the proof
+ * one rule the prototype drew as the "confirm it's you" step-up, the one kept
+ * visually distinct from the reveal ceremony: the proof
  * is the PRE-EXISTING credential, the password, or a confirmed code, never
  * the credential being added or removed. One dialog asks for it, so the rule
  * is stated once and cannot be half-applied.
@@ -184,8 +191,9 @@ export function AccountSecurity() {
     <div className="page page--chrome">
       <h1>Account &amp; security</h1>
       <p className="page__lede">
-        Security changes ask for a possession factor first: the blue &quot;confirm it&apos;s you&quot;
-        step-up, deliberately unlike the teal reveal ceremony.
+        Edit your profile, enrol sign-in factors and recovery codes, and review your sessions and
+        linked identities. Security changes ask you to confirm it&apos;s you first; revealing a
+        secret is a separate ceremony.
       </p>
 
       <JumpIndex
@@ -199,7 +207,7 @@ export function AccountSecurity() {
         ]}
       />
 
-      {done !== null ? <Done>{done}</Done> : null}
+      {done !== null ? <Alert tone="done">{done}</Alert> : null}
       {failure !== null ? <Alert>{failure}</Alert> : null}
 
       <AccountProfile />
@@ -220,14 +228,15 @@ export function AccountSecurity() {
               </span>
             </div>
             <span className="settings-row__spacer" />
-            <button
+            <Button
+              icon
+              variant="quiet"
               type="button"
-              className="capability__revoke"
               aria-label={`Remove passkey ${passkey.label}`}
               onClick={() => setProof({ kind: 'remove-passkey', id: passkey.id, proof: passkeyProof })}
             >
-              ✕
-            </button>
+              <Glyph name="cross" />
+            </Button>
           </div>
         )) : null}
 
@@ -238,25 +247,24 @@ export function AccountSecurity() {
           </div>
           <span className="settings-row__spacer" />
           {totpStatus.isSuccess && totpStatus.data.confirmed ? (
-            <button
+            <Button
               type="button"
-              className="settings-tag account-factor-status"
+              variant="quiet"
               aria-label="Remove the authenticator"
               disabled={totpRemove.isPending}
               title="Remove authenticator app"
               onClick={() => setProof({ kind: 'totp-remove' })}
             >
               enrolled
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
               type="button"
-              className="btn"
               disabled={totpStart.isPending || totpStatus.isPending}
               onClick={() => setProof({ kind: 'totp-start' })}
             >
               enrol
-            </button>
+            </Button>
           )}
         </div>
         {totpStatus.isError ? (
@@ -269,9 +277,9 @@ export function AccountSecurity() {
             <span className="settings-row__detail">signs you in, never authorises security changes</span>
           </div>
           <span className="settings-row__spacer" />
-          <button type="button" className="btn" disabled title="Password changes are not in the API contract">
+          <Button type="button" disabled title="Password changes are not in the API contract">
             change
-          </button>
+          </Button>
         </div>
 
         <div className="settings-row settings-row--compact">
@@ -282,15 +290,14 @@ export function AccountSecurity() {
             </span>
           </div>
           <span className="settings-row__spacer" />
-          <button
+          <Button
             type="button"
-            className="btn"
             aria-label="Add a passkey"
             disabled={enrolPasskey.isPending}
             onClick={() => setProof({ kind: 'add-passkey', proof: passkeyProof })}
           >
             + add
-          </button>
+          </Button>
         </div>
 
         {totpEnrolmentInProgress ? (
@@ -323,9 +330,9 @@ export function AccountSecurity() {
               />
             </div>
             <div className="panel__actions">
-              <button
+              <Button
                 type="button"
-                className="btn btn--primary"
+                variant="primary"
                 disabled={totpConfirm.isPending || totpCode.length < 6}
                 onClick={() =>
                   totpConfirm.mutate(
@@ -343,7 +350,7 @@ export function AccountSecurity() {
                 }
               >
                 Confirm enrolment
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -354,12 +361,12 @@ export function AccountSecurity() {
           <div className="settings-row">
             <div className="settings-row__copy"><span className="settings-row__title">Recovery codes</span><span className="settings-row__detail">not generated yet</span></div>
             <span className="settings-row__spacer" />
-            <button type="button" className="btn" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>generate</button>
+            <Button type="button" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>generate</Button>
           </div>
           <div className="settings-row">
             <div className="settings-row__copy"><span className="settings-row__title">Passkey-only sign-in</span><span className="settings-row__detail">requires recovery codes + at least 2 passkeys</span></div>
             <span className="settings-row__spacer" />
-            <button type="button" className="btn" disabled>enable</button>
+            <Button type="button" disabled>enable</Button>
           </div>
           <p className="settings-note">Locked until preconditions are met: 2/2 passkeys · recovery codes ✗. Codes restore access; they never satisfy a disclosure reauth.</p>
         </> : <>
@@ -369,7 +376,7 @@ export function AccountSecurity() {
             the proof is a code from your authenticator where one stands, otherwise your password.
           </p>
           <div className="panel__actions">
-            <button type="button" className="btn" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>Replace recovery codes</button>
+            <Button type="button" disabled={regenerate.isPending} onClick={() => setProof({ kind: 'recovery' })}>Replace recovery codes</Button>
           </div>
           <p className="field__hint">Replacing them invalidates the previous batch atomically, and the new codes are displayed once.</p>
         </>}
@@ -405,14 +412,13 @@ export function AccountSecurity() {
               <div className="session__head">
                 {/* The artifact type is text in a badge, never a colour: it is
                     the single most load-bearing fact in the row. */}
-                <span className="badge" data-artifact={item.artifact}>
+                <Badge data-artifact={item.artifact}>
                   {item.artifact}
-                </span>
+                </Badge>
                 <span className="mono session__id">{item.id}</span>
               </div>
               <p className="session__detail">{sessionDetail(item)}</p>
-              <button
-                className="btn"
+              <Button
                 type="button"
                 aria-label={`Revoke the ${item.artifact} session ${item.id}`}
                 onClick={() =>
@@ -424,7 +430,7 @@ export function AccountSecurity() {
                 disabled={revokeSession.isPending}
               >
                 Revoke
-              </button>
+              </Button>
             </li>
           )) : null}
         </ul>
@@ -437,21 +443,20 @@ export function AccountSecurity() {
             <div className="settings-row" key={identity.id}>
               <div className="settings-row__copy"><span className="settings-row__title">git.example.com</span><span className="settings-row__detail">(issuer, subject) = (git.example.com, {identity.subject}) · linked 2026-06-02</span></div>
               <span className="settings-row__spacer" />
-              <button type="button" className="capability__revoke" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}>✕</button>
+              <Button icon variant="quiet" type="button" aria-label={`Unlink ${identity.issuer}`} onClick={() => setProof({ kind: 'unlink', id: identity.id })}><Glyph name="cross" /></Button>
             </div>
           ))}
           <div className="settings-row">
             <div className="settings-row__copy"><span className="settings-row__title">Link another identity</span><span className="settings-row__detail">explicit binding: an unknown identity at sign-in is never a login, email never links</span></div>
             <span className="settings-row__spacer" />
-            <button
+            <Button
               type="button"
-              className="btn"
               disabled={link.isPending || methods.data?.providers[0] === undefined}
               onClick={() => {
                 const provider = methods.data?.providers[0];
                 if (provider !== undefined && (provider.kind === 'oidc' || provider.kind === 'saml')) setProof({ kind: 'link', provider: provider.slug, providerKind: provider.kind });
               }}
-            >link…</button>
+            >link…</Button>
           </div>
         </> : <>
         <p>
@@ -472,14 +477,13 @@ export function AccountSecurity() {
                   {new Date(identity.created_at).toLocaleDateString()}
                 </span>
               </div>
-              <button
+              <Button
                 type="button"
-                className="btn"
                 aria-label={`Unlink ${identity.issuer}`}
                 onClick={() => setProof({ kind: 'unlink', id: identity.id })}
               >
                 Unlink
-              </button>
+              </Button>
             </li>
           )) : null}
         </ul>
@@ -495,9 +499,8 @@ export function AccountSecurity() {
           <>
             <div className="panel__actions">
               {methods.data.providers.map((provider) => (
-                <button
+                <Button
                   type="button"
-                  className="btn"
                   key={provider.slug}
                   disabled={link.isPending || (provider.kind !== 'oidc' && provider.kind !== 'saml')}
                   onClick={() => {
@@ -510,7 +513,7 @@ export function AccountSecurity() {
                   }}
                 >
                   Link {provider.display_name}
-                </button>
+                </Button>
               ))}
             </div>
             <p className="field__hint">
@@ -532,7 +535,7 @@ export function AccountSecurity() {
             </div>
             <span className="settings-row__spacer" />
             <span className="mono">in-app</span>
-            <label className="chk"><input type="checkbox" defaultChecked /> also email</label>
+            <Checkbox label="also email" defaultChecked />
           </div>
           <div className="settings-row">
             <div className="settings-row__copy">
@@ -629,25 +632,33 @@ function ProofDialog({
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }) {
-  const dialog = useModalDialog();
+  const formId = useId();
   const inputId = useId();
   const [value, setValue] = useSensitiveState('');
   const copy = PROOF_COPY[request.kind];
   const field: ProofClass = 'proof' in request ? request.proof : 'password';
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby="proof-title"
+    <Dialog
+      title={copy.title}
+      lede={copy.hint}
       onCancel={(event) => {
         event.preventDefault();
         onCancel();
       }}
+      actions={
+        <>
+          <Button type="button" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button type="submit" form={formId} variant="primary" disabled={value === ''}>
+            Confirm
+          </Button>
+        </>
+      }
     >
-      <h2 id="proof-title">{copy.title}</h2>
-      <p className="ceremony__lede">{copy.hint}</p>
       <form
+        id={formId}
         onSubmit={(event) => {
           event.preventDefault();
           onSubmit(value);
@@ -674,16 +685,8 @@ function ProofDialog({
             />
           )}
         </div>
-        <div className="ceremony__actions">
-          <button type="button" className="btn" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="submit" className="btn btn--primary" disabled={value === ''}>
-            Confirm
-          </button>
-        </div>
       </form>
-    </dialog>
+    </Dialog>
   );
 }
 
@@ -693,26 +696,23 @@ function ProofDialog({
  * says they have stored them.
  */
 function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: () => void }) {
-  const dialog = useModalDialog();
-  const ackId = useId();
   const [stored, setStored] = useState(false);
   const [cancelAttempted, setCancelAttempted] = useState(false);
 
   return (
-    <dialog
-      className="ceremony"
-      ref={dialog}
-      aria-labelledby="codes-title"
+    <Dialog
+      title="Your new recovery codes"
+      lede="Shown once. They are stored as hashes, so nobody, including this instance, can show them to you again. The previous batch is already invalid."
       onCancel={(event) => {
         event.preventDefault();
         setCancelAttempted(true);
       }}
+      actions={
+        <Button type="button" variant="primary" disabled={!stored} onClick={onClose}>
+          Done
+        </Button>
+      }
     >
-      <h2 id="codes-title">Your new recovery codes</h2>
-      <p className="ceremony__lede">
-        Shown once. They are stored as hashes, so nobody, including this instance, can show them
-        to you again. The previous batch is already invalid.
-      </p>
       <ul className="codes" aria-label="Recovery codes">
         {codes.map((code) => (
           <li className="mono" key={code}>
@@ -730,63 +730,12 @@ function RecoveryCodes({ codes, onClose }: { codes: readonly string[]; onClose: 
           previous batch is already invalid.
         </Alert>
       ) : null}
-      <div className="field chk">
-        <input
-          id={ackId}
-          type="checkbox"
-          checked={stored}
-          onChange={(event) => setStored(event.target.checked)}
-        />
-        <label htmlFor={ackId}>I have stored these somewhere safe.</label>
-      </div>
-      <div className="ceremony__actions">
-        <button type="button" className="btn btn--primary" disabled={!stored} onClick={onClose}>
-          Done
-        </button>
-      </div>
-    </dialog>
-  );
-}
-
-/**
- * QrCode renders `value` as a scannable QR built as inline SVG. It is inline
- * and not an `<img src="data:…">` because the CSP's `img-src 'self'` forbids
- * data-URL images. The modules are one `<path>`, painted black on white
- * regardless of theme, a scanner needs the contrast, and `forced-color-adjust`
- * keeps the OS from repainting it into an unscannable pair.
- */
-function QrCode({ value, title }: { value: string; title: string }) {
-  const { path, count } = useMemo(() => {
-    const qr = qrcode(0, 'M');
-    qr.addData(value);
-    qr.make();
-    const modules = qr.getModuleCount();
-    let d = '';
-    for (let row = 0; row < modules; row += 1) {
-      for (let col = 0; col < modules; col += 1) {
-        if (qr.isDark(row, col)) {
-          d += `M${String(col)} ${String(row)}h1v1h-1z`;
-        }
-      }
-    }
-    return { path: d, count: modules };
-  }, [value]);
-
-  const quiet = 4; // the spec's four-module quiet zone
-  const box = count + quiet * 2;
-  return (
-    <svg
-      className="totp-qr"
-      viewBox={`0 0 ${String(box)} ${String(box)}`}
-      width="176"
-      height="176"
-      role="img"
-      aria-label={title}
-      shapeRendering="crispEdges"
-    >
-      <rect width={box} height={box} fill="#ffffff" />
-      <path d={path} transform={`translate(${String(quiet)} ${String(quiet)})`} fill="#000000" />
-    </svg>
+      <Checkbox
+        label="I have stored these somewhere safe."
+        checked={stored}
+        onChange={(event) => setStored(event.target.checked)}
+      />
+    </Dialog>
   );
 }
 
@@ -819,9 +768,9 @@ function PrototypeSessions({
           <span className="settings-row__detail">{presentation.detail}</span>
         </div>
         <span className="settings-row__spacer" />
-        <span className="settings-tag">{presentation.badge}</span>
+        <Badge>{presentation.badge}</Badge>
         {index === 0 ? null : (
-          <button type="button" className="capability__revoke" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}>✕</button>
+          <Button icon variant="quiet" type="button" aria-label={`Revoke ${presentation.title}`} disabled={busy} onClick={() => onRevoke(session)}><Glyph name="cross" /></Button>
         )}
       </div>;
     })}

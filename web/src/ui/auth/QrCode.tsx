@@ -8,8 +8,9 @@ import { useMemo } from 'react';
  * theme (a scanner needs the contrast); `.totp-qr` carries
  * `forced-color-adjust: none` so the OS cannot repaint it unscannable.
  *
- * Moved here from routes/AccountSecurity.tsx for the enrolment step; the
- * route keeps its copy until the migration swaps it for this one.
+ * Moved here from routes/AccountSecurity.tsx for the enrolment step. The route
+ * no longer keeps a copy: AccountSecurity and ui/auth/SecondFactorSetup both
+ * render this one.
  */
 export function QrCode({ value, title }: { value: string; title: string }) {
   const { path, count } = useMemo(() => {

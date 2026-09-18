@@ -615,7 +615,7 @@ test.describe('members and grants', () => {
         const heading = page.getByRole('heading', { name: 'Members', level: 1 });
         const well = page.locator('.panel').first();
         const jump = page.getByRole('link', { name: 'Who can…?' });
-        const chip = page.locator('.chip').first();
+        const chip = page.locator('.member-scope').first();
         const newGrant = page.getByRole('button', { name: 'New grant' });
 
         await expectPinnedAssertionSet(page, {
@@ -1056,7 +1056,7 @@ test.describe('audit trail', () => {
           const heading = page.getByRole('heading', { name: 'Audit', level: 1 });
           const panel = page.locator('.panel').first();
           const op = page.locator('.audit__row-op').first();
-          const badge = page.locator('.chip').first();
+          const badge = page.locator('.audit__outcome').first();
           const apply = page.getByRole('button', { name: 'Apply filter' });
           const rowDensity = testInfo.project.name === 'mobile' ? '--touch' : '--row';
 

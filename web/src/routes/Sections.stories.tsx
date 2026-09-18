@@ -3,10 +3,8 @@ import { expect, fn } from 'storybook/test';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 import {
-  Alert,
   ConsequencesDialog,
   DisplayOnceCopy,
-  Done,
   Explain,
   JumpIndex,
   Panel,
@@ -48,14 +46,6 @@ export const Jump: Story = {
   ),
 };
 
-export const RefusalAlert: Story = {
-  render: () => <Alert>That session no longer exists, so nothing was revoked.</Alert>,
-};
-
-export const DoneNotice: Story = {
-  render: () => <Done>The session was revoked and cannot be resumed.</Done>,
-};
-
 export const Disclosure: Story = {
   render: () => (
     <Explain
@@ -77,7 +67,6 @@ export const Consequences: Story = {
   parameters: topLayerDocs,
   render: () => (
     <ConsequencesDialog
-      titleId="ceremony-title"
       title="Delete this workspace"
       confirmLabel="Delete workspace"
       busyLabel="Deleting…"

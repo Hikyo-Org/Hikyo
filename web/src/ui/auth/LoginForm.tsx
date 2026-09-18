@@ -2,6 +2,7 @@ import type { zAuthMethodProvider } from '@hikyo/zod';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import type { z } from 'zod';
 
+import { useSensitiveState } from '../../api/sensitiveMutation.ts';
 import { Alert } from '../Alert.tsx';
 import { Button } from '../Button.tsx';
 import { Input } from '../Input.tsx';
@@ -48,7 +49,10 @@ export function LoginForm({
   links?: ReactNode;
 }) {
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  // The plaintext password is component-owned sensitive state, not plain
+  // useState: session retirement wipes it, it starts empty on mount, and a
+  // setter captured before a session change cannot repopulate the field.
+  const [password, setPassword] = useSensitiveState('');
   const anyBusy = busy !== null;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -97,7 +101,7 @@ export function LoginForm({
       <div className="login__actions">
         {passkeys ? (
           <Button type="button" onClick={onPasskey} disabled={anyBusy}>
-            {busy === 'passkey' ? 'Waiting for the passkey…' : 'Sign in with a passkey'}
+            {busy === 'passkey' ? 'Waiting for the passkey…' : 'Use a passkey instead'}
           </Button>
         ) : null}
         {providers.map((provider) => (
