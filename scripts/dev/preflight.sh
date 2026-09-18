@@ -80,9 +80,10 @@ pnpm --dir clients/ts run generate || fail 'clients/ts generate'
 pnpm --dir clients/ts run typecheck || fail 'clients/ts typecheck'
 pnpm --dir clients/ts run test || fail 'clients/ts test'
 
-stage 'web: install + typecheck'
+stage 'web: install + typecheck + lint'
 pnpm --dir web install --frozen-lockfile || fail 'web install'
 pnpm --dir web run typecheck || fail 'web typecheck'
+pnpm --dir web run lint || fail 'web lint'
 
 # --full: heavier deterministic checks worth running before a final push.
 if [ "$full" = true ]; then

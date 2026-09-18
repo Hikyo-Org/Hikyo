@@ -9,6 +9,7 @@ import {
   rememberWorkspace,
   transitionWorkspaceOwner,
   workspaceBearer,
+  type StepUpParams,
   type WorkspaceBearer,
 } from './workspace.ts';
 
@@ -27,7 +28,7 @@ const stepUp = {
   operation: 'reveal',
   environment: 'env_1',
   keySet: ['key_1'],
-} satisfies NonNullable<Parameters<typeof prepareWorkspace>[1]>;
+} satisfies StepUpParams;
 
 function deferred<T>() {
   let complete = (_value: T): void => {
@@ -37,6 +38,11 @@ function deferred<T>() {
     complete = resolve;
   });
   return { promise, resolve: complete };
+}
+
+/** A signal no test aborts: these cases are about ownership, not disposal. */
+function live(): AbortSignal {
+  return new AbortController().signal;
 }
 
 function json(body: object): Response {
@@ -102,7 +108,7 @@ it('rejects a delayed compatibility response before starting the handoff', async
   const response = deferred<Response>();
   const fetchMock = vi.fn(() => response.promise);
   vi.stubGlobal('fetch', fetchMock);
-  const preparing = prepareWorkspace(origin);
+  const preparing = prepareWorkspace(origin, { signal: live() });
   const rejected = expect(preparing).rejects.toThrow('session changed');
 
   transitionWorkspaceOwner(undefined);
@@ -121,7 +127,7 @@ it('rejects a delayed start response after A -> signed out -> A', async () => {
     return response.promise;
   });
   vi.stubGlobal('fetch', fetchMock);
-  const preparing = prepareWorkspace(origin);
+  const preparing = prepareWorkspace(origin, { signal: live() });
   const rejected = expect(preparing).rejects.toThrow('session changed');
   await startSent.promise;
 
@@ -136,12 +142,12 @@ it('rejects a delayed start response after A -> signed out -> A', async () => {
 it('refuses to open a prepared handoff belonging to an earlier owner epoch', async () => {
   const fetchMock = vi.fn().mockResolvedValueOnce(meta()).mockResolvedValueOnce(started());
   vi.stubGlobal('fetch', fetchMock);
-  const prepared = await prepareWorkspace(origin);
+  const prepared = await prepareWorkspace(origin, { signal: live() });
 
   transitionWorkspaceOwner(undefined);
   transitionWorkspaceOwner('browser_A');
 
-  await expect(openPrepared(prepared)).rejects.toThrow('session changed');
+  await expect(openPrepared(prepared, { signal: live() })).rejects.toThrow('session changed');
   expect(globalThis.open).not.toHaveBeenCalled();
   expect(fetchMock).toHaveBeenCalledTimes(2);
 });
@@ -149,8 +155,8 @@ it('refuses to open a prepared handoff belonging to an earlier owner epoch', asy
 it('rejects a late popup callback before redeeming its code', async () => {
   const fetchMock = vi.fn().mockResolvedValueOnce(meta()).mockResolvedValueOnce(started());
   vi.stubGlobal('fetch', fetchMock);
-  const prepared = await prepareWorkspace(origin);
-  const opening = openPrepared(prepared);
+  const prepared = await prepareWorkspace(origin, { signal: live() });
+  const opening = openPrepared(prepared, { signal: live() });
   const rejected = expect(opening).rejects.toThrow('session changed');
 
   transitionWorkspaceOwner('browser_B');
@@ -178,8 +184,8 @@ it.each(['logout', 'replacement', 'same owner returns'])(
       return Promise.resolve(new Response(null, { status: 204 }));
     });
     vi.stubGlobal('fetch', fetchMock);
-    const prepared = await prepareWorkspace(origin);
-    const opening = openPrepared(prepared);
+    const prepared = await prepareWorkspace(origin, { signal: live() });
+    const opening = openPrepared(prepared, { signal: live() });
     const rejected = expect(opening).rejects.toThrow('session changed');
     CallbackChannel.deliver();
     await redeemSent.promise;
@@ -222,8 +228,8 @@ it.each(['hangs', 'rejects'])('keeps local rejection immediate when remote revoc
       return failure === 'hangs' ? never.promise : Promise.reject(new TypeError('Failed to fetch'));
     }),
   );
-  const prepared = await prepareWorkspace(origin);
-  const opening = openPrepared(prepared);
+  const prepared = await prepareWorkspace(origin, { signal: live() });
+  const opening = openPrepared(prepared, { signal: live() });
   const rejected = expect(opening).rejects.toThrow('session changed');
   CallbackChannel.deliver();
   await redeemSent.promise;
@@ -242,9 +248,9 @@ it('preserves a live step-up and rotates its bearer within the same owner', asyn
     .mockResolvedValueOnce(redeemed());
   vi.stubGlobal('fetch', fetchMock);
   rememberWorkspace({ ...original, value: 'hik_ws_before_stepup' });
-  const prepared = await prepareWorkspace(origin, stepUp);
+  const prepared = await prepareWorkspace(origin, { signal: live(), stepUp });
   transitionWorkspaceOwner('browser_A');
-  const opening = openPrepared(prepared);
+  const opening = openPrepared(prepared, { signal: live() });
   CallbackChannel.deliver();
 
   await expect(opening).resolves.toEqual(original);
@@ -255,11 +261,11 @@ it('refuses a prepared step-up after its workspace is closed and reopened', asyn
   const fetchMock = vi.fn().mockResolvedValueOnce(meta()).mockResolvedValueOnce(started());
   vi.stubGlobal('fetch', fetchMock);
   rememberWorkspace(original);
-  const prepared = await prepareWorkspace(origin, stepUp);
+  const prepared = await prepareWorkspace(origin, { signal: live(), stepUp });
   forgetWorkspace(origin);
   rememberWorkspace(original);
 
-  await expect(openPrepared(prepared)).rejects.toThrow('session changed');
+  await expect(openPrepared(prepared, { signal: live() })).rejects.toThrow('session changed');
   expect(globalThis.open).not.toHaveBeenCalled();
   expect(workspaceBearer(origin)).toEqual(original);
 });
@@ -285,8 +291,8 @@ it('rejects a late redemption when the shared cookie changes before notification
       return Promise.resolve(new Response(null, { status: 204 }));
     });
     vi.stubGlobal('fetch', fetchMock);
-    const prepared = await prepareWorkspace(origin);
-    const opening = openPrepared(prepared);
+    const prepared = await prepareWorkspace(origin, { signal: live() });
+    const opening = openPrepared(prepared, { signal: live() });
     const rejected = expect(opening).rejects.toThrow('browser session changed');
     CallbackChannel.deliver();
     await redeemSent.promise;

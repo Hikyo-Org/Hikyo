@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useId, useState } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import { useOrgGrants } from '../api/access.ts';
@@ -18,6 +18,7 @@ import {
 } from '../api/settings.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { notifySuccess } from '../app/notifications.tsx';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { ChromeIdentityControls } from './ChromeIdentityControls.tsx';
 import { Alert, Done, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback } from './useModalDialog.ts';
@@ -51,18 +52,9 @@ export function OrgSettings() {
   const setRetention = useSetOrgRetention(org);
   const nameId = useId();
 
-  const [name, setName] = useState('');
   const feedback = useFeedback(settingsFailureText);
 
   const current = orgQuery.data;
-  useEffect(() => {
-    setName('');
-  }, [org]);
-  useEffect(() => {
-    if (current !== undefined) {
-      setName(current.name);
-    }
-  }, [current]);
 
   const report = (operation: SettingsOperation, error: unknown) => {
     feedback.report(settingsOperationFailure(operation, error));
@@ -102,22 +94,22 @@ export function OrgSettings() {
         >
           <div className="field identity-name">
             <label htmlFor={nameId}>Name</label>
-            <input
-              id={nameId}
-              value={name}
-              disabled={current === undefined}
-              onChange={(event) => setName(event.target.value)}
-              onBlur={() => {
-                if (current === undefined || name === '' || name === current.name) return;
-                rename.mutate(
-                  { org, name },
-                  {
-                    onSuccess: (result) => feedback.ok(`Renamed to ${result.name}.`),
-                    onError: (error) => report('rename-org', error),
-                  },
-                );
-              }}
-            />
+            {current === undefined ? (
+              <input id={nameId} disabled />
+            ) : (
+              // Remount on org switch: a half-typed draft never carries into
+              // another organisation, and a refetch of the same org no longer
+              // clobbers what is being typed.
+              <NameEditor
+                key={org}
+                id={nameId}
+                org={org}
+                current={current}
+                rename={rename}
+                onRenamed={(renamed) => feedback.ok(`Renamed to ${renamed}.`)}
+                onFail={(error) => report('rename-org', error)}
+              />
+            )}
           </div>
         </ChromeIdentityControls>
       </Panel>
@@ -193,6 +185,48 @@ export function OrgSettings() {
         />
       </Panel>
     </div>
+  );
+}
+
+/**
+ * The organisation name field. Keyed on the organisation so switching orgs
+ * remounts it: `draft` (the uncommitted edit) starts undefined and the shown
+ * value derives from it or the loaded name, so a background refetch never
+ * clobbers typing.
+ */
+function NameEditor({
+  id,
+  org,
+  current,
+  rename,
+  onRenamed,
+  onFail,
+}: {
+  id: string;
+  org: string;
+  current: NonNullable<ReturnType<typeof useOrg>['data']>;
+  rename: ReturnType<typeof useRenameOrg>;
+  onRenamed: (name: string) => void;
+  onFail: (error: unknown) => void;
+}) {
+  const [draft, setDraft] = useState<string | undefined>(undefined);
+  const name = draft ?? current.name;
+  return (
+    <input
+      id={id}
+      value={name}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (name === '' || name === current.name) return;
+        rename.mutate(
+          { org, name },
+          {
+            onSuccess: (result) => onRenamed(result.name),
+            onError: (error) => onFail(error),
+          },
+        );
+      }}
+    />
   );
 }
 
@@ -281,9 +315,9 @@ export function CompactOrgRetention({
   const [count, setCount] = useState(String(policy.last_revisions ?? 6));
   const [refusal, setRefusal] = useState<string | null>(null);
 
-  useEffect(() => {
+  useResetOnChange(String(policy.last_revisions), () => {
     setCount(String(policy.last_revisions ?? 6));
-  }, [policy.last_revisions]);
+  });
 
   return (
     <>

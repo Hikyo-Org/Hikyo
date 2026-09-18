@@ -391,7 +391,16 @@ further account-security mutations until regenerate **[B4]**.
 ceremony id (so the synchronous and deferred OIDC-link paths are ONE
 implementation **[A6]**), evaluates over `{credentials confirmed/created
 strictly < ceremony.created_at} \ excluded`; "no possession factor" computed
-over that same filtered set **[B7]**. Then in ONE tx: mutation +
+over that same filtered set **[B7]**. As built, the selection is
+`verifyAccountSecurityProof` (reauth.go): possession-first, a confirmed TOTP
+in the LIVE epoch is the proof where one stands (a password alone is refused
+by name, `ErrReauthProofRequired`), else the password; the evidence is spent
+by `ConsumeReauthEvidence` inside the mutation's write tx (TOTP step CAS,
+password row/epoch recheck). Passkey enrol/remove, recovery-code regeneration
+and the reauth-gated org acts share it; `RemoveTOTP` and `EnrolTOTPStart`
+prove with the password because their target is the factor (B7). Residual: a
+passkey is not yet a possession proof here (needs a purpose-bound assertion
+ceremony and a verify/consume split of the elevation finish). Then in ONE tx: mutation +
 `AdvanceGeneration` + delete all sessions + reissue acting session from the
 proof (no inherited windows, assurance from the ceremony only) + audit naming
 the mutation and authorizing credential class. `establish` is **password-only**

@@ -11,8 +11,11 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/tools/go/packages"
 )
 
 func repoRoot(t *testing.T) string {
@@ -25,65 +28,55 @@ func repoRoot(t *testing.T) string {
 }
 
 func TestProofSignaturesRepo(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckProofSignatures(pkgs, Module+"/internal/store") {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckProofSignatures(pkgs, Module+"/internal/store") {
+			t.Error(f)
+		}
+	})
 }
 
 func TestProofForgeryRepo(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckProofForgery(pkgs) {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckProofForgery(pkgs) {
+			t.Error(f)
+		}
+	})
 }
 
 func TestTransactionResultsRepo(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckTransactionResults(pkgs) {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckTransactionResults(pkgs) {
+			t.Error(f)
+		}
+	})
 }
 
 func TestFenceCompletenessRepo(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckFenceCompleteness(pkgs, Module+"/internal/service") {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckFenceCompleteness(pkgs, Module+"/internal/service") {
+			t.Error(f)
+		}
+	})
 }
 
 func TestFenceCompletenessCatchesViolations(t *testing.T) {
-	pkgs, err := Load(Module + "/internal/lint/testdata/badseal")
-	if err != nil {
-		t.Fatal(err)
-	}
-	findings := CheckFenceCompleteness(pkgs, Module+"/internal/lint/testdata/badseal")
-	// missingFence seals without fencing → flagged; delegatedSeal (marked)
-	// and exemptSeal (marked) and hasFence (fences) → not flagged.
-	var got string
-	for _, f := range findings {
-		if strings.Contains(f, "missingFence") {
-			got = f
+	eachContext(t, Module+"/internal/lint/testdata/badseal", func(t *testing.T, pkgs []*packages.Package) {
+		findings := CheckFenceCompleteness(pkgs, Module+"/internal/lint/testdata/badseal")
+		// missingFence seals without fencing → flagged; delegatedSeal (marked)
+		// and exemptSeal (marked) and hasFence (fences) → not flagged.
+		var got string
+		for _, f := range findings {
+			if strings.Contains(f, "missingFence") {
+				got = f
+			}
+			if strings.Contains(f, "delegatedSeal") || strings.Contains(f, "exemptSeal") || strings.Contains(f, "hasFence") {
+				t.Errorf("false positive: %s", f)
+			}
 		}
-		if strings.Contains(f, "delegatedSeal") || strings.Contains(f, "exemptSeal") || strings.Contains(f, "hasFence") {
-			t.Errorf("false positive: %s", f)
+		if got == "" {
+			t.Fatalf("expected a finding for missingFence, got %v", findings)
 		}
-	}
-	if got == "" {
-		t.Fatalf("expected a finding for missingFence, got %v", findings)
-	}
+	})
 }
 
 func TestSQLPredicatesRepo(t *testing.T) {
@@ -221,52 +214,46 @@ func TestAppendOnlyScanRejectsSymlinkEscapeWithReadCause(t *testing.T) {
 // --- negative fixtures: every analyzer must catch its target violations ---
 
 func TestProofSignaturesCatchesViolations(t *testing.T) {
-	pkgs, err := Load("./testdata/badstore")
-	if err != nil {
-		t.Fatal(err)
-	}
-	findings := CheckProofSignatures(pkgs, Module+"/internal/lint/testdata/badstore")
-	wantSubstrings := []string{
-		"Get: second parameter must be authz.Proof",
-		"List: tenant-identifier-typed parameter",
-		"Search: tenant-identifier-typed parameter",
-	}
-	assertFindings(t, findings, wantSubstrings)
+	eachContext(t, "./testdata/badstore", func(t *testing.T, pkgs []*packages.Package) {
+		findings := CheckProofSignatures(pkgs, Module+"/internal/lint/testdata/badstore")
+		wantSubstrings := []string{
+			"Get: second parameter must be authz.Proof",
+			"List: tenant-identifier-typed parameter",
+			"Search: tenant-identifier-typed parameter",
+		}
+		assertFindings(t, findings, wantSubstrings)
+	})
 }
 
 func TestProofForgeryCatchesViolations(t *testing.T) {
-	pkgs, err := Load("./testdata/badnil")
-	if err != nil {
-		t.Fatal(err)
-	}
-	findings := CheckProofForgery(pkgs)
-	wantSubstrings := []string{
-		"imports \"reflect\" while handling authz.Proof",
-		"nil in an authz.Proof position",
-	}
-	assertFindings(t, findings, wantSubstrings)
-	// All three nil positions (return, var init, call arg) must be caught.
-	nilCount := 0
-	for _, f := range findings {
-		if strings.Contains(f, "nil in an authz.Proof position") {
-			nilCount++
+	eachContext(t, "./testdata/badnil", func(t *testing.T, pkgs []*packages.Package) {
+		findings := CheckProofForgery(pkgs)
+		wantSubstrings := []string{
+			"imports \"reflect\" while handling authz.Proof",
+			"nil in an authz.Proof position",
 		}
-	}
-	if nilCount < 3 {
-		t.Errorf("nil-proof literals caught = %d, want 3 (return, var, call arg):\n%s", nilCount, strings.Join(findings, "\n"))
-	}
+		assertFindings(t, findings, wantSubstrings)
+		// All three nil positions (return, var init, call arg) must be caught.
+		nilCount := 0
+		for _, f := range findings {
+			if strings.Contains(f, "nil in an authz.Proof position") {
+				nilCount++
+			}
+		}
+		if nilCount < 3 {
+			t.Errorf("nil-proof literals caught = %d, want 3 (return, var, call arg):\n%s", nilCount, strings.Join(findings, "\n"))
+		}
+	})
 }
 
 func TestTransactionResultsCatchAttemptOwnedTypes(t *testing.T) {
-	pkgs, err := Load("./testdata/badtxresult")
-	if err != nil {
-		t.Fatal(err)
-	}
-	findings := CheckTransactionResults(pkgs)
-	assertFindings(t, findings, []string{
-		"store.Repos",
-		"interface values can retain attempt-owned authority",
-		"function values can capture attempt-owned authority",
+	eachContext(t, "./testdata/badtxresult", func(t *testing.T, pkgs []*packages.Package) {
+		findings := CheckTransactionResults(pkgs)
+		assertFindings(t, findings, []string{
+			"store.Repos",
+			"interface values can retain attempt-owned authority",
+			"function values can capture attempt-owned authority",
+		})
 	})
 }
 
@@ -333,6 +320,18 @@ func TestSQLPredicateCatchesViolations(t *testing.T) {
 		{"parenthesised predicate",
 			Query{Name: "Bad11", SQL: "SELECT id FROM environments WHERE org_id = ? AND project_id = ? AND name IN (?)"},
 			"unprovable shape"},
+		{"upsert with an update action",
+			Query{Name: "Bad12", SQL: "INSERT INTO environments (id, org_id, project_id, name) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET name = ?"},
+			"unprovable shape (ON CONFLICT)"},
+		{"sqlite insert or replace",
+			Query{Name: "Bad13", SQL: "INSERT OR REPLACE INTO environments (id, org_id, project_id, name) VALUES (?, ?, ?, ?)"},
+			"unprovable shape (OR)"},
+		{"group by beside a missing chain conjunct",
+			Query{Name: "Bad14", SQL: "SELECT id, MAX(display_order) AS display_order FROM environments WHERE org_id = ? GROUP BY id"},
+			"missing top-level chain conjunct"},
+		{"group by cannot hide a range on a chain column",
+			Query{Name: "Bad15", SQL: "SELECT id, MAX(display_order) AS display_order FROM environments WHERE org_id = ? AND project_id > ? GROUP BY id"},
+			"chain conjuncts must be equality"},
 	}
 	for _, tc := range cases {
 		findings := checkQuery("test", tc.q, rules)
@@ -357,6 +356,8 @@ func TestSQLPredicateAcceptsProvableShapes(t *testing.T) {
 		{Name: "Good1", SQL: "SELECT id, name FROM environments WHERE org_id = ? AND project_id = ? AND id = ?"},
 		{Name: "Good2", SQL: "UPDATE environments SET note = $1 WHERE org_id = $2 AND project_id = $3 AND id = $4"},
 		{Name: "Good3", SQL: "INSERT INTO environments (id, org_id, project_id, name) VALUES (?, ?, ?, ?)"},
+		{Name: "Good4", SQL: "INSERT INTO environments (id, org_id, project_id, name) VALUES (?, ?, ?, ?) ON CONFLICT (id) DO NOTHING"},
+		{Name: "Good5", SQL: "SELECT id, MAX(display_order) AS display_order FROM environments WHERE org_id = ? AND project_id = ? GROUP BY id"},
 	}
 	for _, q := range good {
 		if findings := checkQuery("test", q, rules); len(findings) != 0 {
@@ -511,52 +512,48 @@ func assertFindings(t *testing.T, findings, wantSubstrings []string) {
 // one-line bypasses of the whole proof boundary; both allowlists are
 // enforced across the module, tests included.
 func TestDriverHandlesRepo(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckDriverHandles(pkgs) {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckDriverHandles(pkgs) {
+			t.Error(f)
+		}
+	})
 }
 
 func TestDriverHandlesCatchesViolations(t *testing.T) {
-	pkgs, err := Load("./testdata/badhandle")
-	if err != nil {
-		t.Fatal(err)
-	}
-	findings := CheckDriverHandles(pkgs)
-	assertFindings(t, findings, []string{
-		"calls store.DB.PG",
-		"calls store.DB.SQLiteWrite",
-		"imports " + Module + "/internal/store/pggen",
-		// The escapes an accessor-call check alone cannot see: a locally
-		// declared structural interface, a type assertion to one, and a
-		// handle simply passed in as a parameter.
-		"names driver type github.com/jackc/pgx/v5/pgxpool.Pool",
-		"names driver type database/sql.DB",
-	})
-	// The alias and generic-instantiation escapes must be caught at the
-	// exact lines where they are written: an alias hides the driver type's
-	// spelling, and a generic's declaration carries only its type parameter,
-	// so the concrete handle exists solely in the instantiation expression.
-	// Lines are located from the fixture source, so it can move freely.
-	for marker, what := range map[string]string{
-		"type aliasHolder interface": "alias escape",
-		"db.(holder[*pgxpool.Pool])": "generic-instantiation escape",
-	} {
-		line := fixtureLine(t, filepath.Join("testdata", "badhandle", "evasions.go"), marker)
-		want := fmt.Sprintf("evasions.go:%d:", line)
-		found := false
-		for _, f := range findings {
-			if strings.Contains(f, want) && strings.Contains(f, "names driver type") {
-				found = true
+	eachContext(t, "./testdata/badhandle", func(t *testing.T, pkgs []*packages.Package) {
+		findings := CheckDriverHandles(pkgs)
+		assertFindings(t, findings, []string{
+			"calls store.DB.PG",
+			"calls store.DB.SQLiteWrite",
+			"imports " + Module + "/internal/store/pggen",
+			// The escapes an accessor-call check alone cannot see: a locally
+			// declared structural interface, a type assertion to one, and a
+			// handle simply passed in as a parameter.
+			"names driver type github.com/jackc/pgx/v5/pgxpool.Pool",
+			"names driver type database/sql.DB",
+		})
+		// The alias and generic-instantiation escapes must be caught at the
+		// exact lines where they are written: an alias hides the driver type's
+		// spelling, and a generic's declaration carries only its type parameter,
+		// so the concrete handle exists solely in the instantiation expression.
+		// Lines are located from the fixture source, so it can move freely.
+		for marker, what := range map[string]string{
+			"type aliasHolder interface": "alias escape",
+			"db.(holder[*pgxpool.Pool])": "generic-instantiation escape",
+		} {
+			line := fixtureLine(t, filepath.Join("testdata", "badhandle", "evasions.go"), marker)
+			want := fmt.Sprintf("evasions.go:%d:", line)
+			found := false
+			for _, f := range findings {
+				if strings.Contains(f, want) && strings.Contains(f, "names driver type") {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("%s not caught at %s:\n%s", what, want, strings.Join(findings, "\n"))
 			}
 		}
-		if !found {
-			t.Errorf("%s not caught at %s:\n%s", what, want, strings.Join(findings, "\n"))
-		}
-	}
+	})
 }
 
 // fixtureLine finds the 1-indexed line of the first source line containing
@@ -579,57 +576,51 @@ func fixtureLine(t *testing.T, path, marker string) int {
 // --- redaction + append-only (audit-model ADR, #45) ---
 
 func TestRedactionSurfacesRepo(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckRedactionSurfaces(pkgs) {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckRedactionSurfaces(pkgs) {
+			t.Error(f)
+		}
+	})
 }
 
 func TestSensitiveFormattingRepo(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckSensitiveFormatting(pkgs) {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckSensitiveFormatting(pkgs) {
+			t.Error(f)
+		}
+	})
 }
 
 func TestSensitiveFormattingCatchesViolations(t *testing.T) {
-	pkgs, err := Load("./testdata/badredact")
-	if err != nil {
-		t.Fatal(err)
-	}
-	findings := CheckSensitiveFormatting(pkgs)
-	assertFindings(t, findings, []string{
-		"passes sensitive type " + Module + "/internal/crypto.Keyring to fmt",
-		"passes sensitive type " + Module + "/internal/crypto.ProjectSealer to fmt",
-		"passes sensitive type " + Module + "/internal/crypto.Keyring to encoding/json",
-		"logs audit content " + Module + "/internal/audit.Event",
-		"logs audit content " + Module + "/internal/store.AuditEvent",
-	})
-	// The erasure evasions must be caught at the lines where they are
-	// written, not merely somewhere in the file.
-	for marker, what := range map[string]string{
-		`any(ev)`:                   "any-conversion erasure",
-		`ev.Payload["x"]`:           "payload map-index erasure",
-		`fmt.Printf("%v", any(kr))`: "sensitive-type erasure",
-	} {
-		line := fixtureLine(t, filepath.Join("testdata", "badredact", "badredact.go"), marker)
-		want := fmt.Sprintf("badredact.go:%d:", line)
-		found := false
-		for _, f := range findings {
-			if strings.Contains(f, want) {
-				found = true
+	eachContext(t, "./testdata/badredact", func(t *testing.T, pkgs []*packages.Package) {
+		findings := CheckSensitiveFormatting(pkgs)
+		assertFindings(t, findings, []string{
+			"passes sensitive type " + Module + "/internal/crypto.Keyring to fmt",
+			"passes sensitive type " + Module + "/internal/crypto.ProjectSealer to fmt",
+			"passes sensitive type " + Module + "/internal/crypto.Keyring to encoding/json",
+			"logs audit content " + Module + "/internal/audit.Event",
+			"logs audit content " + Module + "/internal/store.AuditEvent",
+		})
+		// The erasure evasions must be caught at the lines where they are
+		// written, not merely somewhere in the file.
+		for marker, what := range map[string]string{
+			`any(ev)`:                   "any-conversion erasure",
+			`ev.Payload["x"]`:           "payload map-index erasure",
+			`fmt.Printf("%v", any(kr))`: "sensitive-type erasure",
+		} {
+			line := fixtureLine(t, filepath.Join("testdata", "badredact", "badredact.go"), marker)
+			want := fmt.Sprintf("badredact.go:%d:", line)
+			found := false
+			for _, f := range findings {
+				if strings.Contains(f, want) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("%s not caught at %s:\n%s", what, want, strings.Join(findings, "\n"))
 			}
 		}
-		if !found {
-			t.Errorf("%s not caught at %s:\n%s", what, want, strings.Join(findings, "\n"))
-		}
-	}
+	})
 }
 
 func TestAuditAppendOnlyRepo(t *testing.T) {
@@ -667,95 +658,179 @@ func TestAuditAppendOnlyCatchesViolations(t *testing.T) {
 // The denial writer must be the resolution surface's ONLY write path
 // (audit-model ADR amendment part 4) — enforced, not asserted in prose.
 func TestDenialWriterIsSoleWriter(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckDenialWriter(pkgs, repoRoot(t)) {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckDenialWriter(pkgs, repoRoot(t)) {
+			t.Error(f)
+		}
+	})
 }
 
 func TestGrantLockRepo(t *testing.T) {
-	pkgs, err := LoadRepo()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range CheckGrantLock(pkgs, repoRoot(t)) {
-		t.Error(f)
-	}
+	eachRepoContext(t, func(t *testing.T, pkgs []*packages.Package) {
+		for _, f := range CheckGrantLock(pkgs, repoRoot(t)) {
+			t.Error(f)
+		}
+	})
 }
 
 func TestGrantLockCatchesLocklessWriter(t *testing.T) {
-	pkgs, err := Load("./testdata/badgrant")
-	if err != nil {
-		t.Fatal(err)
-	}
-	surface := Module + "/internal/lint/testdata/badgrant"
-	writers, err := GrantWriters(repoRoot(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !writers["InsertGrant"] {
-		t.Fatal("GrantWriters omits InsertGrant — the analyzer would not enforce the grant surface")
-	}
-	findings := CheckGrantLockIn(pkgs, surface, writers, lockName)
-	assertFindings(t, findings, []string{
-		"LocklessWriter writes a grant table but does not take the LockPrincipalRow principal-row lock",
-		// The decoy proves the lock match is type-resolved, not name-only: a
-		// same-named LockPrincipalRow on an unrelated type does not satisfy it.
-		"DecoyLockWriter writes a grant table but does not take the LockPrincipalRow principal-row lock",
-	})
-	for _, f := range findings {
-		if strings.Contains(f, "LockedWriter") || strings.Contains(f, "GrantReadIsFine") {
-			t.Errorf("analyzer flagged a locked writer or a read: %s", f)
+	eachContext(t, "./testdata/badgrant", func(t *testing.T, pkgs []*packages.Package) {
+		surface := Module + "/internal/lint/testdata/badgrant"
+		writers, err := GrantWriters(repoRoot(t))
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	// Scoping: the same package is silent when it is not the named surface.
-	if f := CheckGrantLockIn(pkgs, Module+"/internal/store/authn", writers, lockName); len(f) != 0 {
-		t.Errorf("analyzer fired outside the named surface: %v", f)
-	}
+		if !writers["InsertGrant"] {
+			t.Fatal("GrantWriters omits InsertGrant — the analyzer would not enforce the grant surface")
+		}
+		findings := CheckGrantLockIn(pkgs, surface, writers, lockName)
+		assertFindings(t, findings, []string{
+			"LocklessWriter writes a grant table but does not take the LockPrincipalRow principal-row lock",
+			// The decoy proves the lock match is type-resolved, not name-only: a
+			// same-named LockPrincipalRow on an unrelated type does not satisfy it.
+			"DecoyLockWriter writes a grant table but does not take the LockPrincipalRow principal-row lock",
+		})
+		for _, f := range findings {
+			if strings.Contains(f, "LockedWriter") || strings.Contains(f, "GrantReadIsFine") {
+				t.Errorf("analyzer flagged a locked writer or a read: %s", f)
+			}
+		}
+		// Scoping: the same package is silent when it is not the named surface.
+		if f := CheckGrantLockIn(pkgs, Module+"/internal/store/authn", writers, lockName); len(f) != 0 {
+			t.Errorf("analyzer fired outside the named surface: %v", f)
+		}
+	})
 }
 
 func TestDenialWriterCatchesSecondWriter(t *testing.T) {
-	pkgs, err := Load("./testdata/badauthn")
-	if err != nil {
-		t.Fatal(err)
-	}
-	surface := Module + "/internal/lint/testdata/badauthn"
-	mutating, mfind, err := MutatingQueries(repoRoot(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(mfind) != 0 {
-		t.Errorf("unclassified sqlc commands: %v", mfind)
-	}
-	findings := CheckDenialWriterIn(pkgs, surface, map[string]bool{"WriteDenial": true}, mutating)
-	assertFindings(t, findings, []string{
-		"SecondWriter names the mutating query InsertTenantAuditEvent, and SecondWriter is not in the pinned enumerated write list",
-		"MethodValueWriter names the mutating query InsertTenantAuditEvent, and MethodValueWriter is not in the pinned enumerated write list",
+	eachContext(t, "./testdata/badauthn", func(t *testing.T, pkgs []*packages.Package) {
+		surface := Module + "/internal/lint/testdata/badauthn"
+		mutating, mfind, err := MutatingQueries(repoRoot(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(mfind) != 0 {
+			t.Errorf("unclassified sqlc commands: %v", mfind)
+		}
+		findings := CheckDenialWriterIn(pkgs, surface, map[string]bool{"WriteDenial": true}, mutating)
+		assertFindings(t, findings, []string{
+			"SecondWriter names the mutating query InsertTenantAuditEvent, and SecondWriter is not in the pinned enumerated write list",
+			"MethodValueWriter names the mutating query InsertTenantAuditEvent, and MethodValueWriter is not in the pinned enumerated write list",
+		})
+		for _, f := range findings {
+			if strings.Contains(f, "WriteDenial names") || strings.Contains(f, "ReadsAreFine") {
+				t.Errorf("analyzer flagged a licensed write or a read: %s", f)
+			}
+		}
+		// Scoping: the same package is silent when it is not the named surface.
+		if f := CheckDenialWriterIn(pkgs, Module+"/internal/store/authn", map[string]bool{"WriteDenial": true}, mutating); len(f) != 0 {
+			t.Errorf("analyzer fired outside the named surface: %v", f)
+		}
+		// The classifier is derived from sqlc's command annotation, not from the
+		// query's name. These three mutate and none of them starts with a verb a
+		// prefix list would have guessed — which is exactly how the previous
+		// version let three real writers through.
+		for _, name := range []string{"ConsumeCredentialAuthority", "TouchSession", "AdvancePrincipalGeneration", "InsertTenantAuditEvent"} {
+			if !mutating[name] {
+				t.Errorf("MutatingQueries omits %q — a write the analyzer would not enforce", name)
+			}
+		}
+		for _, name := range []string{"GetPrincipalKind", "ResolveOrgChain", "ListGrantsForPrincipal", "GetSessionByVerifier"} {
+			if mutating[name] {
+				t.Errorf("MutatingQueries includes %q — a read misclassified as a write", name)
+			}
+		}
 	})
-	for _, f := range findings {
-		if strings.Contains(f, "WriteDenial names") || strings.Contains(f, "ReadsAreFine") {
-			t.Errorf("analyzer flagged a licensed write or a read: %s", f)
+}
+
+// eachRepoContext runs fn over the repository under every supported analysis
+// context, so a rule that holds on the host's ambient build context is also
+// proven on the ui-tagged and windows source sets.
+func eachRepoContext(t *testing.T, fn func(t *testing.T, pkgs []*packages.Package)) {
+	t.Helper()
+	for _, ctx := range Contexts {
+		t.Run(ctx.Name, func(t *testing.T) {
+			pkgs, err := LoadRepoIn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fn(t, pkgs)
+		})
+	}
+}
+
+// eachContext is eachRepoContext for a negative fixture: each analyzer must
+// catch its violation under every context, so a green repo run is never
+// vacuous on any of them.
+func eachContext(t *testing.T, pattern string, fn func(t *testing.T, pkgs []*packages.Package)) {
+	t.Helper()
+	for _, ctx := range Contexts {
+		t.Run(ctx.Name, func(t *testing.T) {
+			pkgs, err := LoadIn(ctx, pattern)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fn(t, pkgs)
+		})
+	}
+}
+
+// The contexts select the source sets they exist for: the ui context sees the
+// embedded web asset file, the windows context sees a windows-only file, and
+// the default context sees neither.
+func TestContextsSelectTaggedAndPlatformFiles(t *testing.T) {
+	files := func(t *testing.T, ctx BuildContext, pkgPath string) []string {
+		t.Helper()
+		pkgs, err := LoadRepoIn(ctx)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	// Scoping: the same package is silent when it is not the named surface.
-	if f := CheckDenialWriterIn(pkgs, Module+"/internal/store/authn", map[string]bool{"WriteDenial": true}, mutating); len(f) != 0 {
-		t.Errorf("analyzer fired outside the named surface: %v", f)
-	}
-	// The classifier is derived from sqlc's command annotation, not from the
-	// query's name. These three mutate and none of them starts with a verb a
-	// prefix list would have guessed — which is exactly how the previous
-	// version let three real writers through.
-	for _, name := range []string{"ConsumeCredentialAuthority", "TouchSession", "AdvancePrincipalGeneration", "InsertTenantAuditEvent"} {
-		if !mutating[name] {
-			t.Errorf("MutatingQueries omits %q — a write the analyzer would not enforce", name)
+		for _, p := range pkgs {
+			if p.PkgPath == pkgPath {
+				var names []string
+				for _, f := range p.GoFiles {
+					names = append(names, filepath.Base(f))
+				}
+				return names
+			}
 		}
+		t.Fatalf("%s not loaded under %s", pkgPath, ctx.Name)
+		return nil
 	}
-	for _, name := range []string{"GetPrincipalKind", "ResolveOrgChain", "ListGrantsForPrincipal", "GetSessionByVerifier"} {
-		if mutating[name] {
-			t.Errorf("MutatingQueries includes %q — a read misclassified as a write", name)
+	byName := map[string]BuildContext{}
+	for _, ctx := range Contexts {
+		byName[ctx.Name] = ctx
+	}
+	webui, durability := Module+"/internal/webui", Module+"/internal/filedurability"
+	if got := files(t, byName["default"], webui); slices.Contains(got, "embedded.go") || !slices.Contains(got, "absent.go") {
+		t.Fatalf("default context webui files = %v", got)
+	}
+	if got := files(t, byName["ui"], webui); !slices.Contains(got, "embedded.go") || slices.Contains(got, "absent.go") {
+		t.Fatalf("ui context webui files = %v, want embedded.go selected", got)
+	}
+	if got := files(t, byName["default"], durability); slices.Contains(got, "directory_windows.go") {
+		t.Fatalf("default context filedurability files = %v", got)
+	}
+	if got := files(t, byName["windows"], durability); !slices.Contains(got, "directory_windows.go") || slices.Contains(got, "directory_unix.go") {
+		t.Fatalf("windows context filedurability files = %v, want the windows leg selected", got)
+	}
+}
+
+// The context environment is explicit: ambient GOFLAGS never leaks into the
+// build-system query, and the windows context pins GOOS.
+func TestContextEnvClearsAmbientGOFLAGS(t *testing.T) {
+	t.Setenv("GOFLAGS", "-tags=hostile")
+	t.Setenv("GOOS", "plan9")
+	for _, ctx := range Contexts {
+		env := ctx.Env()
+		if !slices.Contains(env, "GOFLAGS=") || slices.Contains(env, "GOFLAGS=-tags=hostile") {
+			t.Fatalf("%s env keeps ambient GOFLAGS: %v", ctx.Name, env)
+		}
+		if slices.Contains(env, "GOOS=plan9") {
+			t.Fatalf("%s env keeps ambient GOOS", ctx.Name)
+		}
+		if ctx.GOOS != "" && !slices.Contains(env, "GOOS="+ctx.GOOS) {
+			t.Fatalf("%s env does not pin GOOS: %v", ctx.Name, env)
 		}
 	}
 }

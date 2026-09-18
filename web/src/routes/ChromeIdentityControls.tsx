@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 import {
   chromeIdentityMark,
@@ -8,6 +8,7 @@ import {
   writeChromeIdentity,
   type ChromeIdentity,
 } from './chrome-identity.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 
 const HUES: readonly number[] = [195, 280, 60, 140, 20, 320];
 const GLYPHS: readonly string[] = ['🚀', '🔐', '🌿', '📦', '🛰', '🧪'];
@@ -31,9 +32,13 @@ export function ChromeIdentityControls({
   );
   const mark = chromeIdentityMark(identity, name);
 
-  useEffect(() => {
+  // The consumer keeps this instance mounted across an id/kind change (no
+  // `key`, and its own file is out of reach), so re-seed the local identity
+  // during render when the watched pair changes — the documented alternative
+  // to a reset effect.
+  useResetOnChange(`${kind}:${identityId}`, () => {
     setIdentity(readChromeIdentity(kind, identityId, prototypeMode));
-  }, [identityId, kind]);
+  });
 
   const updateIdentity = (next: ChromeIdentity) => {
     setIdentity(next);

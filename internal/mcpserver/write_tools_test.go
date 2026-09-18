@@ -260,6 +260,43 @@ func TestWriteToolArgumentsAreClosedAndBounded(t *testing.T) {
 	}
 }
 
+// TestSetRequiresAnExplicitStringValue pins presence tracking: a set whose
+// value is missing or JSON null is incomplete and never reaches the service,
+// while an explicit empty string is a deliberate empty proposal and does.
+func TestSetRequiresAnExplicitStringValue(t *testing.T) {
+	for name, args := range map[string]string{
+		"set without value": `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set"}`,
+		"set with null":     `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":null}`,
+		"unset with empty":  `{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"unset","value":""}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, tool := range WriteToolNames() {
+				values := &fakeValues{}
+				h := writeHandler(t, values, fakeAdmission{})
+				body := bodyString(t, h, tool, args)
+				if !strings.Contains(body, "error") && !strings.Contains(body, `"isError":true`) {
+					t.Fatalf("%s accepted: %s", tool, body)
+				}
+				if values.lastOp != "" {
+					t.Fatalf("%s reached the service with %s: %+v", tool, name, values)
+				}
+			}
+		})
+	}
+	values := &fakeValues{}
+	h := writeHandler(t, values, fakeAdmission{})
+	out := structuredContent(t, callTool(t, h, ToolStageChange,
+		`{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":""}`))
+	if values.lastOp != "set" || values.lastKey != "K" || values.lastValue != "" || out["operation"] != "set" {
+		t.Fatalf("explicit empty proposal: service call = %+v, output = %v", values, out)
+	}
+	out = structuredContent(t, callTool(t, h, ToolValidateChange,
+		`{"org_id":"o","project_id":"p","environment_id":"e","key_name":"K","operation":"set","value":""}`))
+	if values.lastOp != "validate-set" || values.lastValue != "" || out["operation"] != "set" {
+		t.Fatalf("explicit empty validation: service call = %+v, output = %v", values, out)
+	}
+}
+
 // TestSchemaRefusalsNeverEchoTheProposedValue pins the reason `value` carries
 // no maxLength: the SDK's schema validator quotes the offending value in its
 // error, so every schema refusal of a stage call must be produced by a field

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
+	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 )
 
 // Offline per-key audit records (compose-integration ADR § "Audit during
@@ -129,7 +130,7 @@ func Append(stateDir string, records []OfflineRecord) error {
 	if err := writeFileFsync(filepath.Join(dir, name), data, 0o600); err != nil {
 		return fmt.Errorf("compose: write offline record: %w", err)
 	}
-	if err := fsyncDir(dir); err != nil {
+	if err := filedurability.SyncDirectory(dir); err != nil {
 		return fmt.Errorf("compose: fsync offline-records dir: %w", err)
 	}
 	return nil

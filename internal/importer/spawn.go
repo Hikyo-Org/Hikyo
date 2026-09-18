@@ -38,6 +38,9 @@ const (
 	subprocessSpecEnv      = "HIKYO_IMPORT_SUBPROCESS_SPEC"
 	subprocessExitTimeout  = 124
 	subprocessExitOverflow = 125
+	// subprocessWaitDelay bounds cmd.Wait once the child has been told to
+	// stop: a descendant that inherited the stdout pipe cannot hold Wait open.
+	subprocessWaitDelay = 5 * time.Second
 )
 
 type subprocessSpec struct {
@@ -107,10 +110,22 @@ func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 	cmd := exec.CommandContext(ctx, spec.Command, commandArgs...)
 	cmd.Env = SanitizedEnv(os.Environ())
 	cmd.Stderr = io.Discard
+	// The helper's whole process tree is owned here (group on unix, job on
+	// windows), and WaitDelay bounds Wait when a descendant inherited the
+	// stdout pipe and holds it open past the child's exit.
+	tree := prepareProcessTree(cmd)
+	cmd.WaitDelay = subprocessWaitDelay
 	pipe, err := cmd.StdoutPipe()
 	if err != nil || cmd.Start() != nil {
 		return true, 1
 	}
+	if err := tree.adopt(); err != nil {
+		_ = tree.kill()
+		_ = pipe.Close()
+		_ = cmd.Wait()
+		return true, 1
+	}
+	defer tree.release()
 	type readResult struct {
 		output []byte
 		err    error
@@ -124,14 +139,14 @@ func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 	select {
 	case read = <-readDone:
 	case <-ctx.Done():
-		_ = cmd.Process.Kill()
+		_ = tree.kill()
 		_ = pipe.Close()
 		_ = cmd.Wait()
 		return true, subprocessExitTimeout
 	}
 	output, readErr := read.output, read.err
 	if len(output) > spec.MaxBytes {
-		_ = cmd.Process.Kill()
+		_ = tree.kill()
 		_ = pipe.Close()
 		_ = cmd.Wait()
 		return true, subprocessExitOverflow

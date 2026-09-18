@@ -9519,18 +9519,27 @@ paths:
     get:
       operationId: listRevisions
       tags: [revisions]
-      summary: One environment's revision history, newest first.
+      summary: One page of an environment's revision history, newest first.
       description: |
         LINEAGE ONLY: revision numbers, publishers, timestamps, the pinned
         schema revision, and which keys changed. It never contains a value in
         any form - not a plaintext, not a length, not a digest, not a
         changed-from marker. That is what lets lineage be retained forever
         while payloads are collected by retention policy.
+
+        The history is paged by revision, newest first. A page holds the
+        revisions strictly below `before` (default: above the newest), at
+        most `limit` of them. When the page was full, `next_before` carries
+        the smallest revision returned; pass it as the next `before` to
+        continue. Its absence means the page reached the oldest revision.
       x-hikyo-class: tenant
       x-hikyo-operation: revision.list
       x-hikyo-formula: [read@environment]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/RevisionBefore"
+        - $ref: "#/components/parameters/RevisionLimit"
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -9737,6 +9746,13 @@ paths:
         one `audit.query` event recording the normalized filter and the count
         returned, durably, in the same transaction as the read. No value
         material is ever in the trail, so none can be in this response.
+
+        Consistency limit of interactive paging: pages are ordered by the
+        allocation `seq`. A transaction that commits out of allocation order
+        can land below a cursor that has already passed it, so that event can
+        be absent from the remainder of one paging session. It is durable and
+        a fresh query recovers it. Exports do not have this limit: they page
+        in commit order behind the writer barrier and are gap-free.
       x-hikyo-class: tenant
       x-hikyo-operation: audit.query-org
       x-hikyo-formula: [audit-read@org]
@@ -11406,6 +11422,28 @@ components:
         type: integer
         minimum: 1
         maximum: 1000
+        default: 100
+    RevisionBefore:
+      name: before
+      in: query
+      required: false
+      description: |
+        Page cursor, exclusive: return revisions strictly below this number.
+        Omit it for the first page (the newest revisions); pass the previous
+        page's `next_before` to continue.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    RevisionLimit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum revisions returned on this page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
         default: 100
     AuditActor:
       name: actor
@@ -13691,6 +13729,13 @@ components:
             $ref: "#/components/schemas/Revision"
         count:
           type: integer
+        next_before:
+          type: integer
+          format: int64
+          description: |
+            Present when the page was full: the smallest revision on it, to
+            pass as `before` for the next page. Absent once the page reached
+            the oldest revision.
     Revision:
       type: object
       required: [revision, schema_revision, published_by, published_at, changed_keys, payload_present]
@@ -16766,18 +16811,23 @@ components:
       type: object
       additionalProperties: false
       description: |
-        The account-security proof, where the account has one to give. Both
-        members are optional so a passwordless, factorless account can open a
-        ceremony; the service enforces which proof it requires.
+        The account-security proof, selected possession-first over the
+        account's pre-existing credentials: where a confirmed TOTP factor
+        stands, `code` is required and a password alone is refused (400);
+        where none does, `password` is required. Never the passkey being
+        added. Both members are optional on the wire because the client may
+        not know the factor state; the service enforces the selection, and
+        the field it did not select is ignored. A TOTP code is spent when the
+        ceremony is staged, so the same code cannot open a second ceremony.
       properties:
         password:
           type: string
           maxLength: 1024
-          description: The pre-existing password proof.
+          description: The pre-existing password proof (an account with no confirmed factor).
         code:
           type: string
           maxLength: 16
-          description: A confirmed TOTP code proof.
+          description: The confirmed TOTP code proof (an account holding a factor).
 
     WebauthnReauthStartRequest:
       type: object
@@ -16828,9 +16878,13 @@ components:
       type: object
       additionalProperties: false
       description: |
-        The account-security proof for removing a credential — the pre-existing
-        password or a TOTP code, never the credential being removed (B7). Both
-        optional; the service selects and enforces the required proof.
+        The account-security proof for removing a credential, selected
+        possession-first over the pre-existing credentials: where a confirmed
+        TOTP factor stands, `code` is required and a password alone is refused
+        (400); where none does, `password` is required. Never the credential
+        being removed (B7). Both optional on the wire; the service enforces
+        the selection and spends a TOTP code inside the removal itself, so the
+        same code cannot remove a second credential.
       properties:
         password:
           type: string

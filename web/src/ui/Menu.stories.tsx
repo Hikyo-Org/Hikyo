@@ -58,3 +58,94 @@ export const Selects: Story = {
     await waitFor(() => expect(panel).not.toBeVisible());
   },
 };
+
+// The APG menu button contract: Enter/Space on the trigger opens and puts
+// focus on the first item, arrows move with wrap, Home/End jump, Escape closes
+// and returns focus to the trigger, and `aria-expanded` tracks all of it.
+export const Keyboard: Story = {
+  play: async ({ canvas, canvasElement }) => {
+    const trigger = canvas.getByRole('button', { name: 'Row actions' });
+    const panel = canvasElement.querySelector('[popover]');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(panel).toBeVisible());
+    await waitFor(() => expect(canvas.getByRole('menuitem', { name: 'Rename' })).toHaveFocus());
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.keyboard('{ArrowDown}');
+    await expect(canvas.getByRole('menuitem', { name: 'Duplicate' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+    await expect(canvas.getByRole('menuitem', { name: 'Rename' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
+    await expect(canvas.getByRole('menuitem', { name: 'Delete' })).toHaveFocus();
+    await userEvent.keyboard('{Home}');
+    await expect(canvas.getByRole('menuitem', { name: 'Rename' })).toHaveFocus();
+    await userEvent.keyboard('{End}');
+    await expect(canvas.getByRole('menuitem', { name: 'Delete' })).toHaveFocus();
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(panel).not.toBeVisible());
+    await waitFor(() => expect(trigger).toHaveFocus());
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    // Space opens too, and ArrowDown on the closed trigger is the APG's
+    // third way in.
+    await userEvent.keyboard(' ');
+    await waitFor(() => expect(canvas.getByRole('menuitem', { name: 'Rename' })).toHaveFocus());
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(trigger).toHaveFocus());
+    await userEvent.keyboard('{ArrowDown}');
+    await waitFor(() => expect(canvas.getByRole('menuitem', { name: 'Rename' })).toHaveFocus());
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(trigger).toHaveFocus());
+  },
+};
+
+// Tab leaves: the menu closes and focus moves on past the trigger instead of
+// being trapped in, or snapped back to, the menu.
+export const TabLeaves: Story = {
+  render: (args) => (
+    <>
+      <Menu {...args} />
+      <button type="button" className="btn">After</button>
+    </>
+  ),
+  play: async ({ canvas, canvasElement }) => {
+    const trigger = canvas.getByRole('button', { name: 'Row actions' });
+    const panel = canvasElement.querySelector('[popover]');
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(canvas.getByRole('menuitem', { name: 'Rename' })).toHaveFocus());
+
+    await userEvent.tab();
+    await waitFor(() => expect(panel).not.toBeVisible());
+    await expect(canvas.getByRole('button', { name: 'After' })).toHaveFocus();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  },
+};
+
+// A keyboard selection returns focus to the trigger, like Escape does.
+export const SelectsByKeyboard: Story = {
+  args: {
+    children: (
+      <>
+        <MenuItem>Rename</MenuItem>
+        <MenuItem onClick={onDelete}>Delete</MenuItem>
+      </>
+    ),
+  },
+  play: async ({ canvas, canvasElement }) => {
+    onDelete.mockClear();
+    const trigger = canvas.getByRole('button', { name: 'Row actions' });
+    const panel = canvasElement.querySelector('[popover]');
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
+    await waitFor(() => expect(canvas.getByRole('menuitem', { name: 'Rename' })).toHaveFocus());
+    await userEvent.keyboard('{End}{Enter}');
+    await expect(onDelete).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(panel).not.toBeVisible());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  },
+};

@@ -829,16 +829,24 @@ const (
 	// revision behind the definitions plan/apply value-snapshot pin (#70).
 	StoreSnapshotsProjectRevisions StoreOp = "snapshots.ProjectRevisions"
 	StoreSnapshotsAtRevision       StoreOp = "snapshots.AtRevision"
-	StoreSnapshotsList             StoreOp = "snapshots.List"
-	// StoreSnapshotsListPage is the MCP-bounded keyset revision-history read (#629).
-	StoreSnapshotsListPage                    StoreOp = "snapshots.ListPage"
-	StoreSnapshotsEntries                     StoreOp = "snapshots.Entries"
-	StoreSnapshotsListForReencrypt            StoreOp = "snapshots.ListForReencrypt"
-	StoreSnapshotsReencrypt                   StoreOp = "snapshots.Reencrypt"
-	StoreSnapshotsChanges                     StoreOp = "snapshots.Changes"
-	StoreSnapshotsInsert                      StoreOp = "snapshots.Insert"
-	StoreSnapshotsInsertEntry                 StoreOp = "snapshots.InsertEntry"
-	StoreSnapshotsSecretValueOccurrenceIDs    StoreOp = "snapshots.SecretValueOccurrenceIDs"
+	// StoreSnapshotsList is the whole-environment header read behind the pin
+	// retention consequence; history surfaces page through ListPage instead.
+	StoreSnapshotsList StoreOp = "snapshots.List"
+	// StoreSnapshotsListPage is the bounded keyset revision-history read (#629):
+	// the API, CLI and MCP history surfaces all page through it.
+	StoreSnapshotsListPage         StoreOp = "snapshots.ListPage"
+	StoreSnapshotsEntries          StoreOp = "snapshots.Entries"
+	StoreSnapshotsListForReencrypt StoreOp = "snapshots.ListForReencrypt"
+	StoreSnapshotsReencrypt        StoreOp = "snapshots.Reencrypt"
+	StoreSnapshotsChanges          StoreOp = "snapshots.Changes"
+	// StoreSnapshotsChangesInRange is the history page's lineage read: the
+	// change rows of every revision on one page in one statement.
+	StoreSnapshotsChangesInRange StoreOp = "snapshots.ChangesInRange"
+	StoreSnapshotsInsert         StoreOp = "snapshots.Insert"
+	StoreSnapshotsInsertEntry    StoreOp = "snapshots.InsertEntry"
+	// StoreSnapshotsSecretValueOccurrenceIDsIn is the point membership read of
+	// the sticky sensitivity lineage for a handful of named value entries.
+	StoreSnapshotsSecretValueOccurrenceIDsIn  StoreOp = "snapshots.SecretValueOccurrenceIDsIn"
 	StoreSnapshotsRecordSecretValueOccurrence StoreOp = "snapshots.RecordSecretValueOccurrence"
 	StoreSnapshotsInsertChange                StoreOp = "snapshots.InsertChange"
 	StoreSnapshotsDeleteEnvironment           StoreOp = "snapshots.DeleteEnvironment"
@@ -1169,8 +1177,9 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSnapshotsListPage:                    true,
 	StoreSnapshotsEntries:                     true,
 	StoreSnapshotsParameterContract:           true,
-	StoreSnapshotsSecretValueOccurrenceIDs:    true,
+	StoreSnapshotsSecretValueOccurrenceIDsIn:  true,
 	StoreSnapshotsChanges:                     true,
+	StoreSnapshotsChangesInRange:              true,
 	StorePinsGetForWorkload:                   true,
 	StorePinsList:                             true,
 	// Secret-change approvals (#151): the read-only doors, licensed on the
@@ -2518,7 +2527,6 @@ var operationTable = map[Operation]opSpec{
 			StorePendingDiscard:  true,
 			StoreSnapshotsLatest: true, StoreSnapshotsEntries: true,
 			StoreSnapshotsInsert: true, StoreSnapshotsInsertEntry: true, StoreEnvironmentParametersGet: true,
-			StoreSnapshotsSecretValueOccurrenceIDs:    true,
 			StoreSnapshotsRecordSecretValueOccurrence: true,
 			StoreSnapshotsInsertChange:                true,
 			StoreAdaptersEnqueuePublished:             true,
@@ -2852,7 +2860,7 @@ var operationTable = map[Operation]opSpec{
 		class:       ClassTenant,
 		level:       domain.LevelEnv,
 		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
-		storeOps:    map[StoreOp]bool{StoreSnapshotsList: true, StoreSnapshotsChanges: true, StoreSnapshotsListPage: true},
+		storeOps:    map[StoreOp]bool{StoreSnapshotsListPage: true, StoreSnapshotsChangesInRange: true},
 		auditedNone: true,
 	},
 	// `revision show` returns the change token, which is NON-SECRET metadata by
@@ -2910,8 +2918,8 @@ var operationTable = map[Operation]opSpec{
 			StoreCatalogueRevisionGet: true,
 			StoreValuesList:           true, StoreSnapshotsLatest: true,
 			StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true,
-			StoreSnapshotsSecretValueOccurrenceIDs: true,
-			StorePendingListForOwner:               true, StorePendingListMarkers: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true,
+			StorePendingListForOwner:                 true, StorePendingListMarkers: true,
 			StorePendingStage:               true,
 			StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true,
 		},
@@ -2951,8 +2959,8 @@ var operationTable = map[Operation]opSpec{
 			StoreOrgsGet:                    true, StoreProjectsGet: true, StoreProjectsLock: true, StoreCatalogueList: true,
 			StoreCataloguePresenceList: true, StoreSnapshotsLatest: true,
 			StoreSnapshotsAtRevision: true, StoreSnapshotsEntries: true, StoreSnapshotsList: true,
-			StoreSnapshotsSecretValueOccurrenceIDs: true,
-			StorePinsGetForWorkload:                true, StorePinsCountProject: true,
+			StoreSnapshotsSecretValueOccurrenceIDsIn: true,
+			StorePinsGetForWorkload:                  true, StorePinsCountProject: true,
 			StorePinsInsert: true, StorePinsDelete: true, StorePinsList: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{

@@ -331,10 +331,21 @@ func (s *Auth) EnrolTOTPStart(ctx context.Context, presented, password string) (
 		return "", err
 	}
 
-	// Phase 3 — write. Re-read the proof credential: it must not have moved
-	// while we derived, and the epoch must still be live.
+	// Phase 3, write. Re-authenticate, then re-read the proof credential: it
+	// must not have moved while we derived, and the epoch must still be live.
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
+		// Re-authenticate inside the write tx, as every other phase-3 here does:
+		// a session revoked or expired between the phases (a concurrent recovery
+		// or password change, or the idle clock) must not replace the owner's
+		// pending enrolment state.
+		live, err := az.Authenticate(ctx, presented, now)
+		if err != nil {
+			return err
+		}
+		if live.Principal != account.PrincipalID {
+			return domain.ErrUnauthenticated
+		}
 		current, err := az.PasswordCredentialFor(ctx, account.ID)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
@@ -766,13 +777,8 @@ func (s *Auth) GenerateRecoveryCodes(ctx context.Context, presented, proof strin
 		}
 		return nil, LoginResult{}, err
 	}
-	var proofClass string
-	switch evidence.kind {
-	case reauthEvidenceTOTP:
-		proofClass = "totp"
-	case reauthEvidencePassword:
-		proofClass = "password"
-	default:
+	proofClass := evidence.factorClass()
+	if proofClass == "" {
 		return nil, LoginResult{}, domain.ErrUnauthenticated
 	}
 

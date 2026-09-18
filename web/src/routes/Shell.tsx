@@ -29,6 +29,7 @@ import {
 } from '../api/updates.ts';
 import { useWorkspaces } from '../api/workspace.ts';
 import { effectiveTheme, prefersDark, useThemeChoice, type Theme } from '../app/theme.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { needsOrg, SURFACES, surfaceById, type Surface } from '../app/navigation.ts';
 import { notifyUpdate } from '../app/notifications.tsx';
 import {
@@ -78,6 +79,30 @@ function formatGiB(bytes: number): string {
 }
 
 /**
+ * Persists a route-confirmed id into rail state. The guard is load-bearing: an
+ * unscoped route (`routedId === undefined`) must keep the last persisted choice
+ * rather than clear it, so an unscoped destination stays on the same tenant.
+ *
+ * Unlike `useResetOnChange`, the baseline seeds empty rather than the current
+ * signature, so a scoped route latches its org on the first render too: mounting
+ * a deep link with the org listing already warm in cache must still record the
+ * choice, or a later unscoped destination would fall back to the first tenant.
+ */
+export function useRoutedChoice(
+  routedId: string | undefined,
+  setChosen: (id: string) => void,
+): void {
+  const [previous, setPrevious] = useState('');
+  const signature = routedId ?? '';
+  if (previous !== signature) {
+    setPrevious(signature);
+    if (routedId !== undefined) {
+      setChosen(routedId);
+    }
+  }
+}
+
+/**
  * The application chrome skeleton (prototype/app-chrome iteration 15, sidebar
  * treatment e from iteration 18).
  *
@@ -114,7 +139,7 @@ export function Shell({ session }: { session: WhoAmI }) {
   const sidebarRef = useRef<HTMLElement>(null);
 
   // A navigation on a phone must close the sheet it was chosen from.
-  useEffect(() => setNavOpen(false), [location.pathname]);
+  useResetOnChange(location.pathname, () => setNavOpen(false));
   useEffect(() => {
     const refreshIdentity = () => setIdentityRevision((revision) => revision + 1);
     window.addEventListener(CHROME_IDENTITY_EVENT, refreshIdentity);
@@ -134,15 +159,6 @@ export function Shell({ session }: { session: WhoAmI }) {
   // disabled here anyway.
   const systemScope = useSystemScope(isInstanceOperator && remote === '').scope;
 
-  // A deep link is a selection too. Persist it only after the organisation
-  // listing confirms the id, then unscoped destinations keep the same tenant.
-  useEffect(() => {
-    const routedOrg = items.find((org) => org.id === routeOrgId || org.name === routeOrgId);
-    if (routedOrg !== undefined) {
-      setChosenOrgId(routedOrg.id);
-    }
-  }, [items, routeOrgId]);
-
   /**
    * The active organisation is the ROUTE's when the route names one, and the
    * rail's choice otherwise.
@@ -156,6 +172,10 @@ export function Shell({ session }: { session: WhoAmI }) {
   const chosenOrg = items.find((org) => org.id === chosenOrgId);
   const fallbackOrg = chosenOrg === undefined ? items[0] : chosenOrg;
   const routedOrg = items.find((org) => org.id === routeOrgId || org.name === routeOrgId);
+  // A deep link is a selection too. Persist it only after the organisation
+  // listing confirms the id, then unscoped destinations keep the same tenant.
+  const routedOrgId = routedOrg?.id;
+  useRoutedChoice(routedOrgId, setChosenOrgId);
   const activeOrgId =
     routeOrgId !== '' ? routedOrg?.id ?? routeOrgId : fallbackOrg === undefined ? '' : fallbackOrg.id;
   const activeOrgName = items.find((org) => org.id === activeOrgId)?.name ?? activeOrgId;
@@ -164,19 +184,13 @@ export function Shell({ session }: { session: WhoAmI }) {
   // workspace can publish chrome identity through the same explicit seam.
   const projects = useProjects(remote === '' ? activeOrgId : '');
   const projectItems = projects.data?.items ?? [];
-  useEffect(() => {
-    const routedProject = projectItems.find(
-      (project) => project.id === routeProjectId || project.name === routeProjectId,
-    );
-    if (routedProject !== undefined) {
-      setChosenProjectId(routedProject.id);
-    }
-  }, [projectItems, routeProjectId]);
   const chosenProject = projectItems.find((project) => project.id === chosenProjectId);
   const fallbackProject = chosenProject === undefined ? projectItems[0] : chosenProject;
   const routedProject = projectItems.find(
     (project) => project.id === routeProjectId || project.name === routeProjectId,
   );
+  const routedProjectId = routedProject?.id;
+  useRoutedChoice(routedProjectId, setChosenProjectId);
   const activeProjectId =
     routeProjectId !== ''
       ? routedProject?.id ?? routeProjectId
@@ -851,7 +865,7 @@ export function AccountEntry({
   const location = useLocation();
   const name = principalName(session);
 
-  useEffect(() => setOpen(false), [location.pathname]);
+  useResetOnChange(location.pathname, () => setOpen(false));
 
   useEffect(() => {
     if (!open) {

@@ -79,3 +79,5 @@ storybook-static
 # `graphify update .` (free, AST-only). See graphify-out/README.md.
 /graphify-out/*
 !/graphify-out/README.md
+# The web workspace grows its own graph; same policy, never commit the artifact.
+/web/graphify-out/

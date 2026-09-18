@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { expect } from 'storybook/test';
 
 import { TOKEN_FAMILIES } from './tokens.ts';
@@ -12,15 +12,17 @@ import { TOKEN_FAMILIES } from './tokens.ts';
  * stylesheet states a size that is not one of them.
  */
 function TokensPage() {
-  const [values, setValues] = useState<Record<string, string>>({});
-  useEffect(() => {
+  // Read the live token values once at mount: they come straight off
+  // :root computed style, so lazy state init does it during render without a
+  // reset effect (and without the one blank frame an effect would paint).
+  const [values] = useState<Record<string, string>>(() => {
     const style = getComputedStyle(document.documentElement);
     const next: Record<string, string> = {};
     for (const family of TOKEN_FAMILIES) {
       for (const token of family.tokens) next[token.name] = style.getPropertyValue(token.name).trim();
     }
-    setValues(next);
-  }, []);
+    return next;
+  });
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxWidth: 760 }}>
       {TOKEN_FAMILIES.map((family) => (

@@ -557,7 +557,7 @@ func runRetentionGCC6(t *testing.T, db *store.DB) {
 	// still works. `Show` refuses a collected revision outright, which is why
 	// the history drawer (#59) can only gate its diff/restore/pin actions if
 	// `listRevisions` carries the bit and the stamped policy through.
-	history, err := revisions.History(t.Context(), actor, scopeEnv(orgA, prjA1, domain.EnvID("env_gc")))
+	history, err := revisions.History(t.Context(), actor, scopeEnv(orgA, prjA1, domain.EnvID("env_gc")), service.HistoryFromNewest, service.DefaultHistoryLimit)
 	if err != nil {
 		t.Fatalf("history after collection: %v", err)
 	}

@@ -86,6 +86,8 @@ import {
 import { useMachineReveal, useSetMachineReveal } from '../api/machineReveal.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { writeClipboard } from '../app/clipboard.ts';
+import { useNavigationGuard } from '../app/useNavigationGuard.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { runPasskeyCeremony, useEnvironments } from '../api/values.ts';
 import {
   type IsMintSubmitting,
@@ -270,11 +272,11 @@ function MachineAccessPage() {
   // target the new project (its form still mounted, now reading the new prop) or
   // act under a replaced session. The mint has its own lifecycle clear above;
   // this covers the setDialog-based dialogs.
-  useEffect(() => {
+  useResetOnChange(`${project.org} ${project.project} ${liveSessionId}`, () => {
     setDialog(null);
     setLeaseMintOpen(false);
     setLeaseAction(null);
-  }, [project.org, project.project, liveSessionId]);
+  });
 
   const revoke = useRevokeCredential(project);
   const now = useMemo(() => new Date(), []);
@@ -1781,45 +1783,6 @@ function requestPinText(pin: FederatedClaimPin): string {
 }
 
 /**
- * useNavigationGuard keeps navigation from destroying what dismissal is not
- * allowed to.
- *
- * `dismissDecision` gates Escape and the buttons, but the browser has two more
- * ways to unmount this dialog: unload (reload, tab close, external navigation)
- * and the Back button, which pops the route out from under the component. The
- * first gets the platform's `beforeunload` confirmation; the second gets a
- * history sentinel, a duplicate entry pushed while the guard is active, so a
- * Back press consumes the sentinel instead of the route, the URL never changes,
- * and the press is surfaced as a dismissal ATTEMPT routed through the same
- * gate as Escape. Deactivating consumes the sentinel again so Back is not a
- * double-press afterwards.
- */
-export function useNavigationGuard(active: boolean, onAttempt: () => void) {
-  const attempt = useRef(onAttempt);
-  attempt.current = onAttempt;
-  useEffect(() => {
-    if (!active) {
-      return;
-    }
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-    };
-    const onPopState = () => {
-      history.pushState(null, '', window.location.href);
-      attempt.current();
-    };
-    history.pushState(null, '', window.location.href);
-    window.addEventListener('beforeunload', onBeforeUnload);
-    window.addEventListener('popstate', onPopState);
-    return () => {
-      window.removeEventListener('beforeunload', onBeforeUnload);
-      window.removeEventListener('popstate', onPopState);
-      history.back();
-    };
-  }, [active]);
-}
-
-/**
  * MintDialog renders the display-once ceremony. Its parent lifecycle is the
  * only SPA state that can ever hold a credential value, and only while that
  * lifecycle is `disclosed`.
@@ -2565,7 +2528,7 @@ function GrantDialog({
           scope={scope}
           machineReveal={machineReveal}
           liveCredentials={liveCredentials}
-          inFlight={inFlight}
+          inFlightRef={inFlight}
           onClose={onClose}
           onGranted={onGranted}
         />
@@ -2586,7 +2549,7 @@ function GrantBody({
   scope,
   machineReveal,
   liveCredentials,
-  inFlight,
+  inFlightRef,
   onClose,
   onGranted,
 }: {
@@ -2596,7 +2559,7 @@ function GrantBody({
   machineReveal: boolean;
   liveCredentials: number;
   /** GrantDialog's Escape gate, held while the mutation is in flight. */
-  inFlight: MutableRefObject<boolean>;
+  inFlightRef: MutableRefObject<boolean>;
   onClose: () => void;
   onGranted: (environment: string, result: GrantResult) => void;
 }) {
@@ -2607,22 +2570,23 @@ function GrantBody({
   const [capability, setCapability] = useState<'read' | 'reveal'>(
     grantableFor(scope, 'read', machineReveal).length > 0 ? 'read' : 'reveal',
   );
-  const grantable = grantableFor(scope, capability, machineReveal);
+  // The inputs can move under an open dialog (the opt-in withdrawn, the
+  // account's scope refreshed). Derive the effective selection during render so
+  // no stale choice survives to the submit, rather than folding it back with an
+  // effect. A withdrawn opt-in collapses a stale `reveal` to `read`; grantable
+  // follows the effective capability (grantableFor('reveal', false) is empty,
+  // so read's list is what a withdrawn opt-in must fall back to), and an
+  // environment no longer in that list snaps to its head.
+  const effectiveCapability: 'read' | 'reveal' =
+    capability === 'reveal' && !machineReveal ? 'read' : capability;
+  const grantable = grantableFor(scope, effectiveCapability, machineReveal);
   const [environment, setEnvironment] = useState(grantable[0]?.id ?? '');
+  const effectiveEnvironment =
+    environment !== '' && !grantable.some((s) => s.id === environment)
+      ? (grantable[0]?.id ?? '')
+      : environment;
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // The inputs can move under an open dialog (the opt-in withdrawn, the
-  // account's scope refreshed). Fold the selection back onto what is still
-  // grantable so no stale choice survives to the submit.
-  useEffect(() => {
-    if (capability === 'reveal' && !machineReveal) {
-      setCapability('read');
-      return;
-    }
-    if (environment !== '' && !grantable.some((s) => s.id === environment)) {
-      setEnvironment(grantable[0]?.id ?? '');
-    }
-  }, [capability, environment, grantable, machineReveal]);
 
   // An in-flight grant is not dismissible by Back or unload either: a widening
   // that commits behind a dismissed dialog is invisible at the moment it most
@@ -2645,19 +2609,21 @@ function GrantBody({
   // sentence says "when set" rather than claiming plaintext for every row.
   const catalogue = values.data?.items ?? [];
   const reachable =
-    capability === 'reveal' ? catalogue.filter((key) => key.classification === 'secret') : catalogue;
-  const chosen = grantable.find((s) => s.id === environment);
+    effectiveCapability === 'reveal'
+      ? catalogue.filter((key) => key.classification === 'secret')
+      : catalogue;
+  const chosen = grantable.find((s) => s.id === effectiveEnvironment);
   // The opt-in can be withdrawn while this dialog is open: the capability
   // select disappears, but a stale reveal choice or a stale environment must
   // not stay submittable.
-  const submittable = grantSubmittable(scope, environment, capability, machineReveal);
+  const submittable = grantSubmittable(scope, effectiveEnvironment, effectiveCapability, machineReveal);
   // The mint formula's conjunct for a WIDENING is the delta, not the whole
   // post-state, which is what the server computes in checkMachineWidening.
-  const widening = grantWideningReach(scope, environment, capability);
+  const widening = grantWideningReach(scope, effectiveEnvironment, effectiveCapability);
 
   const submit = async () => {
     setBusy(true);
-    inFlight.current = true;
+    inFlightRef.current = true;
     setFailure(null);
     // Issued-vs-nothing-happened, the mint's line: once the request leaves, a
     // failure does not mean the widening did not land, and a widening that
@@ -2676,11 +2642,11 @@ function GrantBody({
       }
       issued = true;
       const result = await grant.mutateAsync({
-        environment,
+        environment: effectiveEnvironment,
         principal: account.principal_id,
-        capability,
+        capability: effectiveCapability,
       });
-      onGranted(chosen?.name ?? environment, result);
+      onGranted(chosen?.name ?? effectiveEnvironment, result);
     } catch (error) {
       if (issued) {
         refreshGrants();
@@ -2689,7 +2655,7 @@ function GrantBody({
         setFailure(identityRefusalText(error));
       }
     } finally {
-      inFlight.current = false;
+      inFlightRef.current = false;
       setBusy(false);
     }
   };
@@ -2706,7 +2672,7 @@ function GrantBody({
           <label htmlFor="grant-capability">Capability</label>
           <select
             id="grant-capability"
-            value={capability}
+            value={effectiveCapability}
             onChange={(event) =>
               chooseCapability(event.target.value === 'reveal' ? 'reveal' : 'read')
             }
@@ -2717,10 +2683,10 @@ function GrantBody({
         </div>
       ) : null}
       <div className="field">
-        <label htmlFor="grant-environment">{`Environment (${capability})`}</label>
+        <label htmlFor="grant-environment">{`Environment (${effectiveCapability})`}</label>
         <select
           id="grant-environment"
-          value={environment}
+          value={effectiveEnvironment}
           onChange={(event) => setEnvironment(event.target.value)}
         >
           {grantable.length === 0 ? <option value="">Nothing left to widen</option> : null}
@@ -2738,7 +2704,7 @@ function GrantBody({
         </span>
         <span>
           {`This grant re-scopes every credential already in circulation. ${account.name} has ${String(liveCredentials)} live credential${liveCredentials === 1 ? '' : 's'}, and each one gains ${
-            capability === 'read'
+            effectiveCapability === 'read'
               ? 'read (configuration and secret presence)'
               : 'reveal (standing secret plaintext decryption)'
           } on ${chosen?.name ?? 'that environment'} the moment this lands.`}
@@ -2767,10 +2733,10 @@ function GrantBody({
         <>
           <p className="ceremony__scope">
             {reachable.length === 0
-              ? capability === 'reveal' && catalogue.length > 0
+              ? effectiveCapability === 'reveal' && catalogue.length > 0
                 ? 'This project declares no secrets today, so the grant decrypts nothing yet, and every secret declared later.'
                 : 'This project declares no keys, so the grant reaches an empty catalogue today, and every key declared later.'
-              : capability === 'read'
+              : effectiveCapability === 'read'
                 ? 'Newly reachable: every key below, by name and classification. A read grant delivers configuration values and secret presence; plaintext needs reveal.'
                 : 'Newly decryptable: every secret below, as standing authority over its value wherever it is set. Configuration keys are not listed: read already reaches them.'}
           </p>
@@ -2813,7 +2779,7 @@ function GrantBody({
           disabled={busy || !submittable || !values.isSuccess}
           onClick={() => void submit()}
         >
-          {busy ? 'Granting…' : `Grant ${capability}`}
+          {busy ? 'Granting…' : `Grant ${effectiveCapability}`}
         </button>
         <button className="btn" type="button" onClick={onClose} disabled={busy}>
           Cancel

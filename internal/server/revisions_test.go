@@ -158,7 +158,7 @@ type historyRevisionService struct {
 	history []service.RevisionView
 }
 
-func (s historyRevisionService) History(context.Context, service.Actor, domain.Scope) ([]service.RevisionView, error) {
+func (s historyRevisionService) History(context.Context, service.Actor, domain.Scope, int64, int) ([]service.RevisionView, error) {
 	return s.history, nil
 }
 func (historyRevisionService) PublishPlanned(context.Context, service.Actor, domain.Scope, service.PublishRequest) (service.PublishResult, error) {

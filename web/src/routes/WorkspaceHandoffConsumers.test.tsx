@@ -14,8 +14,14 @@ import { Reconnect } from './WorkspaceScope.tsx';
 const workspace = vi.hoisted(() => ({
   workspaceBearer: vi.fn<(origin: string) => WorkspaceBearer | undefined>(),
   prepareWorkspace:
-    vi.fn<(origin: string, stepUp?: StepUpParams) => Promise<PreparedWorkspace>>(),
-  openPrepared: vi.fn<(prepared: PreparedWorkspace) => Promise<void>>(),
+    vi.fn<
+      (
+        origin: string,
+        request: { signal: AbortSignal; stepUp?: StepUpParams },
+      ) => Promise<PreparedWorkspace>
+    >(),
+  openPrepared:
+    vi.fn<(prepared: PreparedWorkspace, request: { signal: AbortSignal }) => Promise<void>>(),
 }));
 
 vi.mock('../api/workspace.ts', async (importOriginal) => {

@@ -29,7 +29,7 @@ import type { z } from 'zod';
 import { useSensitiveMutation, useSensitiveState } from './sensitiveMutation.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { ApiError, parsed } from './client.ts';
-import { fromBase64URL, toBase64URL } from './values.ts';
+import { fromBase64URL, optionParsers, toBase64URL } from './webauthnOptions.ts';
 
 /**
  * Account & security (#60), riding the endpoints #54 shipped.
@@ -187,11 +187,26 @@ export function useRemoveTotp() {
   });
 }
 
+/**
+ * AccountSecurityProof is the proof a passkey mutation carries, selected
+ * possession-first by the server: the confirmed authenticator code where the
+ * account holds a factor, the password where it does not. The panel picks the
+ * class from `useTotpStatus` so the form asks for the one the server will
+ * accept; the server enforces it either way.
+ */
+export type AccountSecurityProof =
+  | { readonly kind: 'password'; readonly password: string }
+  | { readonly kind: 'code'; readonly code: string };
+
+function proofBody(proof: AccountSecurityProof): { password: string } | { code: string } {
+  return proof.kind === 'code' ? { code: proof.code } : { password: proof.password };
+}
+
 export function useRemovePasskey() {
   const after = useAfterAccountMutation();
   return useSensitiveMutation({
-    mutationFn: (input: { id: string; password: string }) =>
-      parsed(removePasskeyOp, { path: { id: input.id }, body: { password: input.password } }),
+    mutationFn: (input: { id: string; proof: AccountSecurityProof }) =>
+      parsed(removePasskeyOp, { path: { id: input.id }, body: proofBody(input.proof) }),
     onSettled: after,
   });
 }
@@ -264,9 +279,9 @@ export function useLinkIdentity() {
 export function useEnrolPasskey() {
   const after = useAfterAccountMutation();
   return useSensitiveMutation({
-    mutationFn: async (input: { password: string }) => {
+    mutationFn: async (input: { proof: AccountSecurityProof }) => {
       const epoch = captureSessionEpoch();
-      const options = await parsed(enrolPasskeyStartOp, { body: { password: input.password } });
+      const options = await parsed(enrolPasskeyStartOp, { body: proofBody(input.proof) });
       const credential = await navigator.credentials.create({
         publicKey: passkeyCreationOptions(options),
       });
@@ -294,19 +309,7 @@ export function useEnrolPasskey() {
   });
 }
 
-function record(value: unknown, what: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null) {
-    throw new Error(`the enrolment options carried no ${what}`);
-  }
-  return { ...value };
-}
-
-function requiredString(value: unknown, what: string): string {
-  if (typeof value !== 'string') {
-    throw new Error(`the enrolment options carried no ${what}`);
-  }
-  return value;
-}
+const { record, requiredString, publicKeyType, descriptors } = optionParsers('the enrolment options');
 
 function optionalNumber(value: unknown, what: string): number | undefined {
   if (value === undefined) {
@@ -316,42 +319,6 @@ function optionalNumber(value: unknown, what: string): number | undefined {
     throw new Error(`the enrolment options carried an invalid ${what}`);
   }
   return value;
-}
-
-function publicKeyType(value: unknown, what: string): 'public-key' {
-  if (value !== 'public-key') {
-    throw new Error(`the enrolment options carried an invalid ${what}`);
-  }
-  return 'public-key';
-}
-
-function transport(value: unknown): AuthenticatorTransport {
-  if (value === 'ble' || value === 'hybrid' || value === 'internal' || value === 'nfc' || value === 'usb') {
-    return value;
-  }
-  throw new Error('the enrolment options carried an invalid credential transport');
-}
-
-function excludedCredentials(value: unknown): PublicKeyCredentialDescriptor[] | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    throw new Error('the enrolment options carried invalid excluded credentials');
-  }
-  return value.map((entry, index) => {
-    const source = record(entry, `excluded credential ${String(index + 1)}`);
-    const id = requiredString(source['id'], `excluded credential ${String(index + 1)} id`);
-    const transports = source['transports'];
-    if (transports !== undefined && !Array.isArray(transports)) {
-      throw new Error(`the enrolment options carried invalid excluded credential ${String(index + 1)} transports`);
-    }
-    return {
-      id: fromBase64URL(id),
-      type: publicKeyType(source['type'], `excluded credential ${String(index + 1)} type`),
-      ...(transports === undefined ? {} : { transports: transports.map(transport) }),
-    };
-  });
 }
 
 function authenticatorSelection(value: unknown): AuthenticatorSelectionCriteria | undefined {
@@ -525,7 +492,7 @@ export function passkeyCreationOptions(blob: unknown): PublicKeyCredentialCreati
   if (selection !== undefined) {
     options.authenticatorSelection = selection;
   }
-  const excluded = excludedCredentials(source['excludeCredentials']);
+  const excluded = descriptors(source['excludeCredentials'], 'excluded credential');
   if (excluded !== undefined) {
     options.excludeCredentials = excluded;
   }

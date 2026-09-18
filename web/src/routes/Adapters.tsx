@@ -1009,9 +1009,9 @@ export function TargetForm({
   const [exclude, setExclude] = useState('');
   const [classification, setClassification] = useState<'' | 'secret' | 'config'>('');
 
-  useEffect(() => {
-    if (environmentId === '' && environments[0] !== undefined) setEnvironmentId(environments[0].id);
-  }, [environmentId, environments]);
+  // Default to the first environment until the operator picks one, derived
+  // during render so no state write is needed when environments load late.
+  const effectiveEnvironmentId = environmentId || environments[0]?.id || '';
 
   const patterns = (raw: string): string[] =>
     raw
@@ -1039,7 +1039,7 @@ export function TargetForm({
             ...(classification === '' ? {} : { classification }),
           };
     void onSubmit({
-      environment_id: environmentId,
+      environment_id: effectiveEnvironmentId,
       destination_kind: kind,
       destination_owner: owner,
       destination_name: kind === 'organization' ? '' : name,
@@ -1073,7 +1073,7 @@ export function TargetForm({
         <label className="field">
           <span className="field__label">Environment</span>
           <select
-            value={environmentId}
+            value={effectiveEnvironmentId}
             disabled={lockRouting === true}
             onChange={(event) => setEnvironmentId(event.target.value)}
           >

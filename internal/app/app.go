@@ -651,18 +651,21 @@ func (s *Server) Close() error {
 }
 
 // approvalMetricsSource adapts the change-approval service to the metrics
-// collector's synchronous ApprovalSnapshot contract (#151): a bounded read that
-// reports zeros on any error rather than failing the scrape.
+// collector's synchronous ApprovalSnapshot contract (#151): a bounded read
+// whose failure is logged and returned, so the collector marks the gauges
+// unknown for that scrape rather than rendering zeros.
 type approvalMetricsSource struct {
 	svc *service.Approvals
+	log *slog.Logger
 }
 
-func (s approvalMetricsSource) ApprovalSnapshot() server.ApprovalStats {
+func (s approvalMetricsSource) ApprovalSnapshot() (server.ApprovalStats, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	active, expired, err := s.svc.OperationalCounts(ctx)
 	if err != nil {
-		return server.ApprovalStats{}
+		s.log.Warn("change-approval gauge scrape failed", "err", err)
+		return server.ApprovalStats{}, err
 	}
-	return server.ApprovalStats{Open: float64(active), Expired: float64(expired)}
+	return server.ApprovalStats{Open: float64(active), Expired: float64(expired)}, nil
 }

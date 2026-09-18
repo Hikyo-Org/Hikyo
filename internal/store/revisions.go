@@ -258,24 +258,33 @@ type SnapshotReader interface {
 	Latest(ctx context.Context, p authz.Proof) (Snapshot, error)
 	// AtRevision returns one named revision, or ErrNotFound.
 	AtRevision(ctx context.Context, p authz.Proof, revision int64) (Snapshot, error)
-	// List returns the environment's revision history, newest first.
+	// List returns the environment's revision headers, newest first: the pin
+	// retention-consequence read, which ranks one snapshot against every
+	// sibling. History surfaces never use it; they page through ListPage.
 	List(ctx context.Context, p authz.Proof) ([]Snapshot, error)
-	// ListPage is the bounded keyset read (#629): one page of revision history
-	// ordered by the UNIQUE revision column descending, strictly below
-	// beforeRevision (a sentinel above the newest for the first page), fetching
-	// at most limit rows.
+	// ListPage is the bounded keyset read behind revision history (#629): one
+	// page of revision headers ordered by the UNIQUE revision column
+	// descending, strictly below beforeRevision (a sentinel above the newest
+	// for the first page), fetching at most limit rows.
 	ListPage(ctx context.Context, p authz.Proof, beforeRevision int64, limit int) ([]Snapshot, error)
 	// Entries returns one snapshot's resolved map, ordered by key name.
 	Entries(ctx context.Context, p authz.Proof, snapshot Snapshot) ([]SnapshotEntry, error)
-	// SecretValueOccurrenceIDs returns the payload-free sticky sensitivity
-	// lineage for this environment.
-	SecretValueOccurrenceIDs(ctx context.Context, p authz.Proof) ([]string, error)
+	// SecretValueOccurrenceIDsIn reports which of the named value entries
+	// carry the payload-free sticky sensitivity lineage in this environment.
+	// It answers only for the candidates it is handed; the lifetime occurrence
+	// history is never enumerated.
+	SecretValueOccurrenceIDsIn(ctx context.Context, p authz.Proof, valueEntryIDs []string) (map[string]bool, error)
 	// Changes returns one revision's lineage rows.
 	Changes(ctx context.Context, p authz.Proof, revision int64) ([]RevisionKeyChange, error)
+	// ChangesInRange returns the lineage rows of every revision in
+	// [minRevision, maxRevision], newest revision first then key name: one
+	// read serves a whole history page.
+	ChangesInRange(ctx context.Context, p authz.Proof, minRevision, maxRevision int64) ([]RevisionKeyChange, error)
 	// ProjectRevisions returns the latest published revision per environment
-	// across the whole project, under a PROJECT proof — the definitions
+	// across the whole project, under a PROJECT proof, the definitions
 	// plan/apply value-snapshot pin (#70). Environments with no snapshot are
-	// absent from the map (revision 0).
+	// absent from the map (revision 0). The maximum is aggregated in SQL; only
+	// one row per environment crosses the wire.
 	ProjectRevisions(ctx context.Context, p authz.Proof) (map[string]int64, error)
 	// PayloadBytesForProject sums the ciphertext bytes of the proof's project's
 	// published snapshot entries across every environment and revision — the

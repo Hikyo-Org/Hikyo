@@ -31,7 +31,7 @@ import {
   zValueOccurrenceList,
 } from '@hikyo/zod';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { z } from 'zod';
 
 import { useSensitiveMutation } from './sensitiveMutation.ts';
@@ -59,7 +59,11 @@ import {
   windowKey,
   type MatrixRef,
 } from './keys.ts';
-import { environmentSettingsQueryOptions, useEnvironments } from './settings.ts';
+import {
+  environmentSettingsPrefix,
+  environmentSettingsQueryOptions,
+  useEnvironments,
+} from './settings.ts';
 import { useTransport } from './transport.tsx';
 
 /**
@@ -433,6 +437,26 @@ export function advisoryInvalidations(
 }
 
 /**
+ * advisoryRecoveryInvalidations is the catch-up a RECOVERED stream owes the
+ * matrix (system-architecture ADR § Real-time): the channel replays nothing,
+ * so whatever happened while it was lost is refetched, not reconstructed. The
+ * whole working set, by project-wide prefix so no environment list is needed:
+ * keys, groups, and every environment's values, signals, pending drafts and
+ * settings. The fallback poll already kept signals and drafts fresh in the
+ * dark; the rest had no other way back.
+ */
+export function advisoryRecoveryInvalidations(ref: MatrixRef): readonly (readonly string[])[] {
+  return [
+    matrixKeysKey(ref),
+    matrixGroupsKey(ref),
+    valuesMatrixKey(ref),
+    signalsMatrixKey(ref),
+    pendingMatrixKey(ref),
+    environmentSettingsPrefix(ref.org, ref.project),
+  ];
+}
+
+/**
  * The caller's own drafts, as the publish sheet previews them.
  *
  * Previews come from the server (`listPendingDrafts`), bound to the immutable
@@ -519,10 +543,11 @@ export function useMatrixProject(ref: MatrixRef) {
   const environments = useEnvironments(ref.org, ref.project);
   // The live channel (#510): one advisory stream for the whole project. An
   // event invalidates exactly the caches its payload names; the connection
-  // state gates the signals fallback poll below. Subscribing here, inside
-  // the same hook that owns the matrix's queries, is what makes the
+  // state gates the signals and pending drafts fallback polls below; and
+  // every recovery refetches the whole working set once. Subscribing here,
+  // inside the same hook that owns the matrix's queries, is what makes the
   // subscription die with the route and never outlive its ref.
-  const signalsStream = useAdvisoryStream(
+  const stream = useAdvisoryStream(
     ref,
     transport,
     (event) => {
@@ -532,6 +557,18 @@ export function useMatrixProject(ref: MatrixRef) {
     },
     ref.org !== '' && ref.project !== '',
   );
+  const signalsStream = stream.connection;
+  const { org, project } = ref;
+  useEffect(() => {
+    if (stream.recoveries === 0) {
+      return;
+    }
+    for (const queryKey of advisoryRecoveryInvalidations({ org, project })) {
+      void queries.invalidateQueries({ queryKey });
+    }
+    // The counter, not the ref: a ref change re-subscribes and resets the
+    // counter to zero, so it cannot smuggle a stale project into this effect.
+  }, [org, project, queries, stream.recoveries]);
   const keys = useQuery({
     queryKey: matrixKeysKey(ref),
     queryFn: () => parsed(listKeysOp, { path: ref, ...transport }),
@@ -542,7 +579,7 @@ export function useMatrixProject(ref: MatrixRef) {
     queryFn: () => parsed(listKeyGroupsOp, { path: ref, ...transport }),
     enabled: ref.org !== '' && ref.project !== '',
   });
-  const environmentItems = environments.data === undefined ? [] : environments.data.items;
+  const environmentItems = useMemo(() => environments.data?.items ?? [], [environments.data]);
   const values = useQueries({
     queries: environmentItems.map((environment) => ({
       queryKey: valuesKey({ ...ref, environment: environment.id }),
@@ -615,6 +652,10 @@ export function useMatrixProject(ref: MatrixRef) {
           }),
         ),
       select: (value: MatrixPendingDraftList) => ({ environmentId: environment.id, value }),
+      // Same fallback as signals: a pending marker refreshed by the poll
+      // needs its draft preview refreshed by the same cadence, or the sheet
+      // shows a marker without the draft behind it until the stream is back.
+      refetchInterval: signalsPollInterval(signalsStream),
     })),
   });
 

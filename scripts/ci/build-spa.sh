@@ -16,6 +16,7 @@ pnpm --dir ../clients/ts install --frozen-lockfile
 pnpm install --frozen-lockfile
 if [ "$verify" = true ]; then
 	pnpm run typecheck
+	pnpm run lint
 	pnpm run test
 fi
 pnpm run build

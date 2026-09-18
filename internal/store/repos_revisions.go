@@ -354,6 +354,39 @@ func (r sqliteSnapshots) Latest(ctx context.Context, p authz.Proof) (Snapshot, e
 	return snapshot, nil
 }
 
+func (r sqliteSnapshots) List(ctx context.Context, p authz.Proof) ([]Snapshot, error) {
+	chain, err := authz.Verify(p, authz.StoreSnapshotsList, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	env, err := envOf(chain, authz.StoreSnapshotsList)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListSnapshots(ctx, sqlitegen.ListSnapshotsParams{
+		OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: env,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Snapshot, 0, len(rows))
+	for _, row := range rows {
+		// Header projection widened to the model row for the shared
+		// conversion; the contract field stays empty and unread.
+		snap, err := revisionSnapshotFromSQLite(sqlitegen.Snapshot{
+			ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: row.EnvironmentID,
+			Revision: row.Revision, SchemaRevision: row.SchemaRevision, PublishedBy: row.PublishedBy,
+			PublishedAt: row.PublishedAt, PayloadPresent: row.PayloadPresent,
+			CollectedAt: row.CollectedAt, CollectedPolicy: row.CollectedPolicy,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, snap)
+	}
+	return out, nil
+}
+
 func (r sqliteSnapshots) ProjectRevisions(ctx context.Context, p authz.Proof) (map[string]int64, error) {
 	chain, err := authz.Verify(p, authz.StoreSnapshotsProjectRevisions, r.tok)
 	if err != nil {
@@ -367,9 +400,7 @@ func (r sqliteSnapshots) ProjectRevisions(ctx context.Context, p authz.Proof) (m
 	}
 	out := make(map[string]int64, len(rows))
 	for _, row := range rows {
-		if row.Revision > out[row.EnvironmentID] {
-			out[row.EnvironmentID] = row.Revision
-		}
+		out[row.EnvironmentID] = row.Revision
 	}
 	return out, nil
 }
@@ -441,34 +472,6 @@ func (r sqliteSnapshots) atRevision(ctx context.Context, orgID, projectID, envID
 	return revisionSnapshotFromSQLite(row)
 }
 
-func (r sqliteSnapshots) List(ctx context.Context, p authz.Proof) ([]Snapshot, error) {
-	chain, err := authz.Verify(p, authz.StoreSnapshotsList, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	env, err := envOf(chain, authz.StoreSnapshotsList)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := r.q.ListSnapshots(ctx, sqlitegen.ListSnapshotsParams{
-		OrgID:         string(chain.Org),
-		ProjectID:     string(chain.Project),
-		EnvironmentID: env,
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Snapshot, 0, len(rows))
-	for _, row := range rows {
-		snap, err := revisionSnapshotFromSQLite(row)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, snap)
-	}
-	return out, nil
-}
-
 func (r sqliteSnapshots) Entries(ctx context.Context, p authz.Proof, snapshot Snapshot) ([]SnapshotEntry, error) {
 	chain, err := authz.Verify(p, authz.StoreSnapshotsEntries, r.tok)
 	if err != nil {
@@ -516,18 +519,31 @@ func (r sqliteSnapshots) Entries(ctx context.Context, p authz.Proof, snapshot Sn
 	return out, nil
 }
 
-func (r sqliteSnapshots) SecretValueOccurrenceIDs(ctx context.Context, p authz.Proof) ([]string, error) {
-	chain, err := authz.Verify(p, authz.StoreSnapshotsSecretValueOccurrenceIDs, r.tok)
+func (r sqliteSnapshots) SecretValueOccurrenceIDsIn(ctx context.Context, p authz.Proof, valueEntryIDs []string) (map[string]bool, error) {
+	chain, err := authz.Verify(p, authz.StoreSnapshotsSecretValueOccurrenceIDsIn, r.tok)
 	if err != nil {
 		return nil, err
 	}
-	env, err := envOf(chain, authz.StoreSnapshotsSecretValueOccurrenceIDs)
+	env, err := envOf(chain, authz.StoreSnapshotsSecretValueOccurrenceIDsIn)
 	if err != nil {
 		return nil, err
 	}
-	return r.q.ListSecretValueOccurrenceIDs(ctx, sqlitegen.ListSecretValueOccurrenceIDsParams{
-		OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: env,
-	})
+	// ponytail: one point read per candidate, bounded by the keys of one
+	// environment; batch through an array predicate once the analyzer can
+	// prove that chain shape.
+	out := make(map[string]bool, len(valueEntryIDs))
+	for _, id := range valueEntryIDs {
+		n, err := r.q.CountSecretValueOccurrence(ctx, sqlitegen.CountSecretValueOccurrenceParams{
+			OrgID: string(chain.Org), ProjectID: string(chain.Project), EnvironmentID: env, ValueEntryID: id,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			out[id] = true
+		}
+	}
+	return out, nil
 }
 
 func (r sqliteSnapshots) Changes(ctx context.Context, p authz.Proof, revision int64) ([]RevisionKeyChange, error) {
@@ -544,6 +560,36 @@ func (r sqliteSnapshots) Changes(ctx context.Context, p authz.Proof, revision in
 		ProjectID:     string(chain.Project),
 		EnvironmentID: env,
 		Revision:      revision,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RevisionKeyChange, 0, len(rows))
+	for _, row := range rows {
+		change, err := revisionChange(row.Change)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, RevisionKeyChange{
+			EnvironmentID: row.EnvironmentID, Revision: row.Revision,
+			KeyID: row.KeyID, KeyName: row.KeyName, Change: change,
+		})
+	}
+	return out, nil
+}
+
+func (r sqliteSnapshots) ChangesInRange(ctx context.Context, p authz.Proof, minRevision, maxRevision int64) ([]RevisionKeyChange, error) {
+	chain, err := authz.Verify(p, authz.StoreSnapshotsChangesInRange, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	env, err := envOf(chain, authz.StoreSnapshotsChangesInRange)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListRevisionKeyChangesInRange(ctx, sqlitegen.ListRevisionKeyChangesInRangeParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
+		MinRevision: minRevision, MaxRevision: maxRevision,
 	})
 	if err != nil {
 		return nil, err
@@ -1173,6 +1219,37 @@ func (r pgSnapshots) Latest(ctx context.Context, p authz.Proof) (Snapshot, error
 	return revisionSnapshotFromPG(row)
 }
 
+func (r pgSnapshots) List(ctx context.Context, p authz.Proof) ([]Snapshot, error) {
+	chain, err := authz.Verify(p, authz.StoreSnapshotsList, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	env, err := envOf(chain, authz.StoreSnapshotsList)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListSnapshots(ctx, pggen.ListSnapshotsParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Snapshot, 0, len(rows))
+	for _, row := range rows {
+		snap, err := revisionSnapshotFromPG(pggen.Snapshot{
+			ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: row.EnvironmentID,
+			Revision: row.Revision, SchemaRevision: row.SchemaRevision, PublishedBy: row.PublishedBy,
+			PublishedAt: row.PublishedAt, PayloadPresent: row.PayloadPresent,
+			CollectedAt: row.CollectedAt, CollectedPolicy: row.CollectedPolicy,
+		})
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, snap)
+	}
+	return out, nil
+}
+
 func (r pgSnapshots) ProjectRevisions(ctx context.Context, p authz.Proof) (map[string]int64, error) {
 	chain, err := authz.Verify(p, authz.StoreSnapshotsProjectRevisions, r.tok)
 	if err != nil {
@@ -1186,9 +1263,7 @@ func (r pgSnapshots) ProjectRevisions(ctx context.Context, p authz.Proof) (map[s
 	}
 	out := make(map[string]int64, len(rows))
 	for _, row := range rows {
-		if row.Revision > out[row.EnvironmentID] {
-			out[row.EnvironmentID] = row.Revision
-		}
+		out[row.EnvironmentID] = row.Revision
 	}
 	return out, nil
 }
@@ -1259,34 +1334,6 @@ func (r pgSnapshots) atRevision(ctx context.Context, orgID, projectID, envID str
 	return revisionSnapshotFromPG(row)
 }
 
-func (r pgSnapshots) List(ctx context.Context, p authz.Proof) ([]Snapshot, error) {
-	chain, err := authz.Verify(p, authz.StoreSnapshotsList, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	env, err := envOf(chain, authz.StoreSnapshotsList)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := r.q.ListSnapshots(ctx, pggen.ListSnapshotsParams{
-		ChainOrgID:     string(chain.Org),
-		ChainProjectID: string(chain.Project),
-		ChainEnvID:     env,
-	})
-	if err != nil {
-		return nil, err
-	}
-	out := make([]Snapshot, 0, len(rows))
-	for _, row := range rows {
-		snapshot, err := revisionSnapshotFromPG(row)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, snapshot)
-	}
-	return out, nil
-}
-
 func (r pgSnapshots) Entries(ctx context.Context, p authz.Proof, snapshot Snapshot) ([]SnapshotEntry, error) {
 	chain, err := authz.Verify(p, authz.StoreSnapshotsEntries, r.tok)
 	if err != nil {
@@ -1330,18 +1377,31 @@ func (r pgSnapshots) Entries(ctx context.Context, p authz.Proof, snapshot Snapsh
 	return out, nil
 }
 
-func (r pgSnapshots) SecretValueOccurrenceIDs(ctx context.Context, p authz.Proof) ([]string, error) {
-	chain, err := authz.Verify(p, authz.StoreSnapshotsSecretValueOccurrenceIDs, r.tok)
+func (r pgSnapshots) SecretValueOccurrenceIDsIn(ctx context.Context, p authz.Proof, valueEntryIDs []string) (map[string]bool, error) {
+	chain, err := authz.Verify(p, authz.StoreSnapshotsSecretValueOccurrenceIDsIn, r.tok)
 	if err != nil {
 		return nil, err
 	}
-	env, err := envOf(chain, authz.StoreSnapshotsSecretValueOccurrenceIDs)
+	env, err := envOf(chain, authz.StoreSnapshotsSecretValueOccurrenceIDsIn)
 	if err != nil {
 		return nil, err
 	}
-	return r.q.ListSecretValueOccurrenceIDs(ctx, pggen.ListSecretValueOccurrenceIDsParams{
-		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
-	})
+	// ponytail: one point read per candidate, bounded by the keys of one
+	// environment; batch through an array predicate once the analyzer can
+	// prove that chain shape.
+	out := make(map[string]bool, len(valueEntryIDs))
+	for _, id := range valueEntryIDs {
+		n, err := r.q.CountSecretValueOccurrence(ctx, pggen.CountSecretValueOccurrenceParams{
+			ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env, ValueEntryID: id,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			out[id] = true
+		}
+	}
+	return out, nil
 }
 
 func (r pgSnapshots) Changes(ctx context.Context, p authz.Proof, revision int64) ([]RevisionKeyChange, error) {
@@ -1358,6 +1418,36 @@ func (r pgSnapshots) Changes(ctx context.Context, p authz.Proof, revision int64)
 		ChainProjectID: string(chain.Project),
 		ChainEnvID:     env,
 		Revision:       revision,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]RevisionKeyChange, 0, len(rows))
+	for _, row := range rows {
+		change, err := revisionChange(row.Change)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, RevisionKeyChange{
+			EnvironmentID: row.EnvironmentID, Revision: row.Revision,
+			KeyID: row.KeyID, KeyName: row.KeyName, Change: change,
+		})
+	}
+	return out, nil
+}
+
+func (r pgSnapshots) ChangesInRange(ctx context.Context, p authz.Proof, minRevision, maxRevision int64) ([]RevisionKeyChange, error) {
+	chain, err := authz.Verify(p, authz.StoreSnapshotsChangesInRange, r.tok)
+	if err != nil {
+		return nil, err
+	}
+	env, err := envOf(chain, authz.StoreSnapshotsChangesInRange)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListRevisionKeyChangesInRange(ctx, pggen.ListRevisionKeyChangesInRangeParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: env,
+		MinRevision: minRevision, MaxRevision: maxRevision,
 	})
 	if err != nil {
 		return nil, err

@@ -39,9 +39,9 @@ import {
 } from '../api/scim.ts';
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { writeClipboard } from '../app/clipboard.ts';
+import { useNavigationGuard } from '../app/useNavigationGuard.ts';
 import { Alert, Done, Explain, JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 import { useFeedback, useModalDialog } from './useModalDialog.ts';
-import { useNavigationGuard } from './MachineAccess.tsx';
 import { gateSystemScope } from './SystemScope.tsx';
 
 /**

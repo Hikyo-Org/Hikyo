@@ -270,7 +270,7 @@ func TestMCPRevisionsPageMatchesList(t *testing.T) {
 				t.Fatalf("publish %d: %v", i, err)
 			}
 		}
-		full, err := revisions.History(t.Context(), service.LocalPrincipal(custodian), scope)
+		full, err := revisions.History(t.Context(), service.LocalPrincipal(custodian), scope, service.HistoryFromNewest, service.MaxHistoryLimit)
 		if err != nil {
 			t.Fatal(err)
 		}

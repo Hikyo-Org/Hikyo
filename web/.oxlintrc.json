@@ -1,0 +1,45 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  // Enabling the react plugin turns on its whole correctness set, not just the
+  // two hooks rules F22 asked for: refs, globals, immutability, purity,
+  // jsx-key and set-state-in-effect are the Rules of React and stay on. The
+  // two below only describe how React Compiler would treat a component, and
+  // this build has no React Compiler (vite.config.ts uses plain plugin-react).
+  "plugins": ["react"],
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    // Compiler-only: reports that the compiler would skip auto-memoizing the
+    // component. Meaningless without the compiler.
+    "react/preserve-manual-memoization": "off",
+    // Compiler-only: flags libraries whose hooks the compiler cannot memoize
+    // (@tanstack/react-virtual's useVirtualizer in Matrix.tsx).
+    "react/incompatible-library": "off",
+    // Playwright requires the first fixture parameter to be an object pattern,
+    // so `async ({}, testInfo)` is the documented form, not a mistake.
+    "no-empty-pattern": ["error", { "allowObjectPatternsAsParameters": true }]
+  },
+  "overrides": [
+    {
+      // No React in the Playwright suite. Its fixture callback is named `use`
+      // by Playwright convention, which the hooks heuristic mistakes for
+      // React's `use`.
+      "files": ["e2e/**"],
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "react/exhaustive-deps": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "node_modules",
+    "storybook-static",
+    "dist",
+    "playwright-report",
+    "test-results",
+    "design/exports"
+  ]
+}

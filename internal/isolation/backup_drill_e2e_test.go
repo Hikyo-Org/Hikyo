@@ -300,6 +300,11 @@ func buildInstance(t *testing.T, target drillTarget, c custody) (*store.DB, arti
 	// A live TOTP factor: its seed is envelope-encrypted, so the base32 secret
 	// is a PLANTED PLAINTEXT for K3's dump scan as well as a re-establishment
 	// subject for K2.
+	// The factor's steps are the proof for everything after its confirmation
+	// (possession-first), so the setup pins the clock and advances it a step at
+	// a time; it is released once the passkey is enrolled.
+	clk := time.Now().UTC()
+	auth.Now = func() time.Time { return clk }
 	uri, err := auth.EnrolTOTPStart(ctx, rotated.SessionToken, a.password)
 	if err != nil {
 		t.Fatalf("enrol totp: %v", err)
@@ -312,16 +317,18 @@ func buildInstance(t *testing.T, target drillTarget, c custody) (*store.DB, arti
 	if a.totpSecret == "" {
 		t.Fatal("enrolment produced no TOTP secret to plant")
 	}
-	confirmed, err := auth.EnrolTOTPConfirm(ctx, rotated.SessionToken,
-		totpCode(t, uri, time.Now().UTC().Add(30*time.Second)))
+	clk = clk.Add(30 * time.Second)
+	confirmed, err := auth.EnrolTOTPConfirm(ctx, rotated.SessionToken, totpCode(t, uri, clk))
 	if err != nil {
 		t.Fatalf("confirm totp: %v", err)
 	}
 	// A live passkey, enrolled BEFORE the backup: K2's passkey leg. The device
 	// itself rides in the artifacts so the post-restore probe can present a
-	// REAL assertion, not inspect a row.
+	// REAL assertion, not inspect a row. The confirmed factor is the proof.
+	clk = clk.Add(30 * time.Second)
 	a.passkey = webauthntest.New(waRPID, waOrigin)
-	withPasskey := enrolPasskey(t, auth, ctx, confirmed.SessionToken, a.password, a.passkey)
+	withPasskey := enrolPasskeyWithCode(t, auth, ctx, confirmed.SessionToken, totpCode(t, uri, clk), a.passkey)
+	auth.Now = nil
 	a.session = withPasskey
 	// Every token the setup rotated past left the client at some point; the
 	// plaintext scan covers them all, not only the survivor.

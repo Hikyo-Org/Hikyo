@@ -23,6 +23,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/filedurability"
 	"github.com/Hikyo-Org/hikyo/internal/hostupgrade"
 	"github.com/Hikyo-Org/hikyo/internal/releaseidentity"
+	"github.com/Hikyo-Org/hikyo/internal/securefile"
 	"github.com/Hikyo-Org/hikyo/internal/selfupdate"
 	"github.com/Hikyo-Org/hikyo/internal/storagehealth"
 	"github.com/Hikyo-Org/hikyo/internal/store"
@@ -440,20 +441,10 @@ func prepareAutomaticEvidence(ctx context.Context, host *hostupgrade.Host, datab
 	return nil
 }
 
+// writeAutomaticFile is securefile.WriteAtomic: the mode is applied before any
+// byte lands, and the rename plus directory sync make the publication durable.
 func writeAutomaticFile(path string, raw []byte, mode os.FileMode) error {
-	f, err := os.CreateTemp(filepath.Dir(path), ".upgrade-write-")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	_, err = f.Write(raw)
-	if err = errors.Join(err, f.Chmod(mode), f.Sync(), f.Close()); err != nil {
-		return err
-	}
-	if err := os.Rename(f.Name(), path); err != nil {
-		return err
-	}
-	return filedurability.SyncDirectory(filepath.Dir(path))
+	return securefile.WriteAtomic(path, raw, mode)
 }
 
 // cleanupAutomaticUnpublishedBundle receives only this invocation's newly

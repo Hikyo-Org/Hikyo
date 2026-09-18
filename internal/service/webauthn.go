@@ -143,31 +143,24 @@ func (s *Auth) ConfigureWebAuthnRP() error {
 	return nil
 }
 
-// EnrolPasskeyStart verifies the account-security proof (the pre-existing
-// password or confirmed TOTP code — never the passkey being added, B7/B1) and
-// stages an enrolment ceremony bound to the acting session, recording the proof
-// class so the finish can reissue the session solely from it (B3). It returns
-// the credential-creation options once.
+// EnrolPasskeyStart verifies the account-security proof possession-first (the
+// confirmed TOTP code where one stands, else the pre-existing password; never
+// the passkey being added, B7/B1) and stages an enrolment ceremony bound to the
+// acting session, recording the proof class so the finish can reissue the
+// session solely from it (B3). The proof is SPENT in the same write transaction
+// that creates the ceremony: a TOTP step is advanced under CAS there, so a
+// replay of the same code cannot open a second ceremony, and a password proof
+// is re-checked against the live row and epoch. It returns the
+// credential-creation options once.
 func (s *Auth) EnrolPasskeyStart(ctx context.Context, presented, password, code string) ([]byte, error) {
 	if err := s.requireRP(); err != nil {
 		return nil, err
 	}
-	account, cred, confirmed, hasTOTP, proofClass, err := s.readAccountSecurityProof(ctx, presented, password, code)
+	account, evidence, err := s.verifyAccountSecurityProof(ctx, presented, password, code)
 	if err != nil {
 		return nil, err
 	}
-
-	release, err := s.enterFactorBudget(ctx, account.ID)
-	if err != nil {
-		return nil, err
-	}
-	defer release()
-
-	if !s.verifyProof(ctx, account, cred, confirmed, hasTOTP, proofClass, password, code) {
-		s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-		return nil, domain.ErrUnauthenticated
-	}
-	s.Admission.RecordSuccess(account.ID)
+	proofClass := evidence.factorClass()
 
 	var options []byte
 	err = tx.Write(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
@@ -178,6 +171,9 @@ func (s *Auth) EnrolPasskeyStart(ctx context.Context, presented, password, code 
 		}
 		if live.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
+		}
+		if err := s.ConsumeReauthEvidence(ctx, az, evidence, live.Principal); err != nil {
+			return err
 		}
 		epoch, err := az.CredentialEpoch(ctx)
 		if err != nil {
@@ -1023,31 +1019,26 @@ func (s *Auth) finishAssertionElevation(ctx context.Context, presented string, r
 // passkey-only invariant is checked on the POST-removal state first, so an
 // impossible removal (the second-to-last discoverable authenticator of a
 // passwordless account) is refused structurally before any proof is asked for.
-// A valid removal is then proven by the pre-existing password or TOTP code
-// (never the credential being removed, B7) and reissues the acting session.
+// A valid removal is then proven possession-first by a pre-existing credential
+// (the confirmed TOTP code where one stands, else the password; never the
+// credential being removed, B7), the proof spent inside the removal's own write
+// transaction, and the acting session reissued from that proof alone.
 func (s *Auth) RemovePasskey(ctx context.Context, presented, credentialID, password, code string) (LoginResult, error) {
 	if err := s.requireRP(); err != nil {
 		return LoginResult{}, err
 	}
-	// Phase 1 — read the target, the inventory and the available proof.
-	var (
-		account    authz.Account
-		target     authz.WebAuthnCredential
-		cred       authz.PasswordCredential
-		confirmed  authz.TOTPCredential
-		hasTOTP    bool
-		proofClass string
-	)
+	// Phase 1, read the target and the inventory; the structural refusal comes
+	// before any proof is asked for.
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		id, err := az.Authenticate(ctx, presented, s.now())
 		if err != nil {
 			return err
 		}
-		account, err = az.AccountByPrincipal(ctx, id.Principal)
+		account, err := az.AccountByPrincipal(ctx, id.Principal)
 		if err != nil {
 			return err
 		}
-		target, err = az.WebAuthnCredentialByID(ctx, credentialID)
+		target, err := az.WebAuthnCredentialByID(ctx, credentialID)
 		if errors.Is(err, domain.ErrNotFound) || (err == nil && target.AccountID != account.ID) {
 			return ErrNoPasskey
 		}
@@ -1056,27 +1047,17 @@ func (s *Auth) RemovePasskey(ctx context.Context, presented, credentialID, passw
 		}
 		// Post-state structural check: would removing this credential leave a
 		// passwordless account below the passkey-only floor? Refuse before proof.
-		if serr := s.assertRemovalKeepsInvariant(ctx, az, account.ID, target); serr != nil {
-			return serr
-		}
-		cred, confirmed, hasTOTP, proofClass, err = s.proofSelection(ctx, az, account.ID, password, code)
-		return err
+		return s.assertRemovalKeepsInvariant(ctx, az, account.ID, target)
 	})
 	if err != nil {
 		return LoginResult{}, err
 	}
 
-	release, err := s.enterFactorBudget(ctx, account.ID)
+	account, evidence, err := s.verifyAccountSecurityProof(ctx, presented, password, code)
 	if err != nil {
 		return LoginResult{}, err
 	}
-	defer release()
-
-	if !s.verifyProof(ctx, account, cred, confirmed, hasTOTP, proofClass, password, code) {
-		s.recordFactorFailure(ctx, account.PrincipalID, account.ID)
-		return LoginResult{}, domain.ErrUnauthenticated
-	}
-	s.Admission.RecordSuccess(account.ID)
+	proofClass := evidence.factorClass()
 
 	result, err := writeCommittedLoginResult(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, result *LoginResult) error {
 		now := s.now()
@@ -1086,6 +1067,9 @@ func (s *Auth) RemovePasskey(ctx context.Context, presented, credentialID, passw
 		}
 		if live.Principal != account.PrincipalID {
 			return domain.ErrUnauthenticated
+		}
+		if err := s.ConsumeReauthEvidence(ctx, az, evidence, live.Principal); err != nil {
+			return err
 		}
 		current, err := az.WebAuthnCredentialByID(ctx, credentialID)
 		if err != nil {
@@ -1159,73 +1143,6 @@ func (s *Auth) ListPasskeys(ctx context.Context, presented string) ([]PasskeyVie
 		return nil, err
 	}
 	return out, nil
-}
-
-// --- account-security proof helpers ---
-
-// readAccountSecurityProof loads the account and the proof material for an enrol
-// mutation: the password where the account has one, else the confirmed TOTP
-// factor. A passwordless account with no TOTP has only passkeys, which cannot
-// prove their own enrolment here (documented limitation of this vertical).
-func (s *Auth) readAccountSecurityProof(ctx context.Context, presented, password, code string) (authz.Account, authz.PasswordCredential, authz.TOTPCredential, bool, string, error) {
-	var (
-		account    authz.Account
-		cred       authz.PasswordCredential
-		confirmed  authz.TOTPCredential
-		hasTOTP    bool
-		proofClass string
-	)
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
-		id, err := az.Authenticate(ctx, presented, s.now())
-		if err != nil {
-			return err
-		}
-		account, err = az.AccountByPrincipal(ctx, id.Principal)
-		if err != nil {
-			return err
-		}
-		cred, confirmed, hasTOTP, proofClass, err = s.proofSelection(ctx, az, account.ID, password, code)
-		return err
-	})
-	return account, cred, confirmed, hasTOTP, proofClass, err
-}
-
-// proofSelection picks the proof class for an account-security mutation over the
-// pre-existing credentials: the password where the account has one, else the
-// confirmed TOTP factor (B7 excludes the credential being mutated, which for a
-// passkey mutation is never a password/TOTP).
-func (s *Auth) proofSelection(ctx context.Context, az *authz.TxAuthorizer, accountID, password, code string) (authz.PasswordCredential, authz.TOTPCredential, bool, string, error) {
-	cred, err := az.PasswordCredentialFor(ctx, accountID)
-	switch {
-	case err == nil:
-		return cred, authz.TOTPCredential{}, false, "password", nil
-	case !errors.Is(err, domain.ErrNotFound):
-		return authz.PasswordCredential{}, authz.TOTPCredential{}, false, "", err
-	}
-	confirmed, err := az.ConfirmedTOTP(ctx, accountID)
-	if err == nil {
-		return authz.PasswordCredential{}, confirmed, true, "totp", nil
-	}
-	if errors.Is(err, domain.ErrNotFound) {
-		return authz.PasswordCredential{}, authz.TOTPCredential{}, false, "", ErrNoProofCredential
-	}
-	return authz.PasswordCredential{}, authz.TOTPCredential{}, false, "", err
-}
-
-// verifyProof checks the selected proof outside any transaction (Argon2 for a
-// password), returning whether it holds.
-func (s *Auth) verifyProof(ctx context.Context, account authz.Account, cred authz.PasswordCredential, confirmed authz.TOTPCredential, hasTOTP bool, proofClass, password, code string) bool {
-	if hasTOTP {
-		seed, err := s.Keyring.ForInstance().OpenField(totpSeedAAD(confirmed.ID), confirmed.Seed)
-		if err != nil {
-			s.logFault(ctx, "opening a TOTP seed failed", err, account.ID)
-			return false
-		}
-		_, ok := crypto.ValidateTOTP(seed, code, s.now(), crypto.TOTPSkewSteps)
-		crypto.Zero(seed)
-		return ok
-	}
-	return s.verifyPassword(ctx, account.ID, cred, password)
 }
 
 // --- passkey-only invariant (B4/B13) ---

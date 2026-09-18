@@ -340,6 +340,55 @@ func runSelfAuthorize(t *testing.T, db *store.DB) {
 	}
 }
 
+func TestTOTPEnrolStartRevalidatesSession(t *testing.T) {
+	forEngines(t, runTOTPEnrolStartRevalidatesSession)
+}
+
+// runTOTPEnrolStartRevalidatesSession: the staging write of a TOTP enrolment
+// re-authenticates the session inside its own transaction. The session is
+// live when phase 1 reads it and dead by the time phase 3 writes (the clock is
+// the interposition: the write-phase read of it lands past the session's
+// absolute life), so the pending row the first start staged must survive
+// untouched rather than be cleared and replaced by a request whose session no
+// longer exists.
+func runTOTPEnrolStartRevalidatesSession(t *testing.T, db *store.DB) {
+	factorAdmin := bootstrapFactorAdmin(t, db)
+	auth, password, accountID := factorAdmin.auth, factorAdmin.password, factorAdmin.accountID
+	ctx := t.Context()
+	base := time.Now().UTC()
+	auth.Now = func() time.Time { return base }
+
+	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password); err != nil {
+		t.Fatalf("first enrol start: %v", err)
+	}
+	pendingQuery := "SELECT id FROM totp_credentials WHERE account_id = '" + accountID + "' AND confirmed_at IS NULL"
+	staged := queryString(t, db, pendingQuery)
+
+	// Phase 1 authenticates at base; every later read of the clock, the first
+	// of which is the write transaction's, sees the session expired.
+	calls := 0
+	auth.Now = func() time.Time {
+		calls++
+		if calls == 1 {
+			return base
+		}
+		return base.Add(service.CLISessionAbsolute + time.Hour)
+	}
+	if _, err := auth.EnrolTOTPStart(ctx, login.SessionToken, password); !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("enrol start whose session died between phases = %v, want %v", err, domain.ErrUnauthenticated)
+	}
+	if calls < 2 {
+		t.Fatalf("the write phase never read the clock (%d reads): the interposition did not happen", calls)
+	}
+	if got := queryString(t, db, pendingQuery); got != staged {
+		t.Fatalf("the dead session replaced the pending enrolment (%s -> %s)", staged, got)
+	}
+}
+
 func TestStepUpElevates(t *testing.T) {
 	forEngines(t, runStepUpElevates)
 }

@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -86,8 +87,17 @@ type WriteServices struct {
 // bound the length; a service refusal collapses to the safe error.
 type (
 	changeOperationInput  string
-	valueInput            string
 	acknowledgementsInput []string
+
+	// valueInput tracks presence separately from content: a set whose value
+	// is missing or JSON null is an incomplete request, not a proposal of the
+	// empty string, while an explicit "" is a deliberate empty proposal. It is
+	// a value type rather than a pointer because the SDK's schema inference
+	// rewrites a pointer's TypeSchemas entry to accept only null.
+	valueInput struct {
+		present bool
+		text    string
+	}
 
 	changeInput struct {
 		OrgID         string               `json:"org_id" jsonschema:"required,the organization immutable id"`
@@ -119,11 +129,16 @@ var (
 )
 
 func (v *valueInput) UnmarshalJSON(data []byte) error {
+	// encoding/json accepts null for a string by leaving it unchanged, which
+	// would collapse null into the empty proposal; only a JSON string is a value.
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return errValueNotString
+	}
 	var value string
 	if err := json.Unmarshal(data, &value); err != nil {
 		return errValueNotString
 	}
-	*v = valueInput(value)
+	*v = valueInput{present: true, text: value}
 	return nil
 }
 
@@ -229,8 +244,11 @@ func registerWrite[In, Out any](registry *Registry, spec ToolSpec, handler func(
 func (in changeInput) validate() (domain.Scope, error) {
 	switch in.Operation {
 	case changeOperationSet:
+		if !in.Value.present {
+			return domain.Scope{}, ErrInvalidArgument
+		}
 	case changeOperationUnset:
-		if in.Value != "" {
+		if in.Value.present {
 			return domain.Scope{}, ErrInvalidArgument
 		}
 	default:
@@ -287,7 +305,7 @@ func registerStageChange(registry *Registry, services WriteServices) error {
 	return registerWrite(registry, spec, func(ctx context.Context, bearer Bearer, in stageInput) (stageOutput, error) {
 		staged, err := runChange(ctx, bearer, services.Admission, in.changeInput, authz.OpValueStage,
 			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.StagedChange, error) {
-				return services.Staging.Set(ctx, actor, scope, in.KeyName, string(in.Value), in.Acknowledgements)
+				return services.Staging.Set(ctx, actor, scope, in.KeyName, in.Value.text, in.Acknowledgements)
 			},
 			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.StagedChange, error) {
 				return services.Staging.Unset(ctx, actor, scope, in.KeyName)
@@ -315,7 +333,7 @@ func registerValidateChange(registry *Registry, services WriteServices) error {
 	return registerWrite(registry, spec, func(ctx context.Context, bearer Bearer, in changeInput) (validateOutput, error) {
 		verdict, err := runChange(ctx, bearer, services.Admission, in, authz.OpValueValidate,
 			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.ValidatedChange, error) {
-				return services.Validation.ValidateSet(ctx, actor, scope, in.KeyName, string(in.Value))
+				return services.Validation.ValidateSet(ctx, actor, scope, in.KeyName, in.Value.text)
 			},
 			func(ctx context.Context, actor service.Actor, scope domain.Scope) (service.ValidatedChange, error) {
 				return services.Validation.ValidateUnset(ctx, actor, scope, in.KeyName)

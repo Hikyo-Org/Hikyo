@@ -1,5 +1,5 @@
 import { QueryClientContext, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 
 // This registry contains only lifetime counters and cleanup callbacks, never
 // request variables, results, credentials, or retryable work.
@@ -117,6 +117,9 @@ export function useSensitiveMutation<Result, Input = void, Context = undefined>(
         requireCurrent();
         const finalizerError = cause instanceof Error ? cause : new Error('The operation could not finish.');
         setState({ status: 'error', error: finalizerError });
+        // The override IS the point: a finalizer refusal revokes the pending
+        // result, not just the callbacks.
+        // oxlint-disable-next-line no-unsafe-finally -- deliberate override of the pending return
         throw finalizerError;
       }
     }
@@ -156,13 +159,20 @@ export function useSensitiveState<Value>(empty: Value | (() => Value)): [
       lifetime?.listeners.delete(clear);
     };
   }, [lifetime]);
-  const set: Dispatch<SetStateAction<Value>> = (next) => {
+  // Stable identity across renders, like React's own useState setter. Callers
+  // put these in effect dependency arrays; exhaustive-deps cannot see through a
+  // custom hook, so an unstable setter there re-runs the effect every render and
+  // an unconditional setState updater turns that into an unbounded loop. Identity
+  // only changes when the retirement generation does, and each closure captures
+  // the generation current when it was made, so the revocation checks are
+  // unchanged.
+  const set = useCallback<Dispatch<SetStateAction<Value>>>((next) => {
     if (mounted.current && lifetime?.generation === generation) {
       revision.current += 1;
       setValue(next);
     }
-  };
-  const prepareTransfer = (next: Value, target: SensitiveSessionOwner): SensitiveStateTransfer => {
+  }, [lifetime, generation]);
+  const prepareTransfer = useCallback((next: Value, target: SensitiveSessionOwner): SensitiveStateTransfer => {
     const sourceRevision = revision.current;
     const sessionId = target.sessionId;
     const principalId = target.principalId;
@@ -185,6 +195,6 @@ export function useSensitiveState<Value>(empty: Value | (() => Value)): [
         return true;
       },
     };
-  };
+  }, [queries, lifetime, generation]);
   return [value, set, prepareTransfer];
 }

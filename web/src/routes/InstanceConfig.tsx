@@ -7,6 +7,7 @@ import { useSensitiveState } from '../api/sensitiveMutation.ts';
 import { useTransport, useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import { rememberWorkspace, workspaceSession } from '../api/workspace.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { uuid } from '../lib/uuid.ts';
 import { Alert, Done, Panel } from './Sections.tsx';
 import { useModalDialog } from './useModalDialog.ts';
@@ -49,7 +50,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
   const actions = useSelfConfigActions();
   const workspace = useWorkspaceContext();
   const remote = workspace?.remote ?? '';
-  const [revision, setRevision] = useState('');
+  const [revision, setRevision] = useState(status.latest_revision === null ? '' : String(status.latest_revision));
   const [revisionChosen, setRevisionChosen] = useState(false);
   const [recipient, setRecipient] = useState('');
   const [confirmRestored, setConfirmRestored] = useState(false);
@@ -57,7 +58,9 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
   const [preparation, setPreparation] = useState<Preparation | null>(null);
   const current = useRef(true);
   const latestStatus = useRef(status);
-  latestStatus.current = status;
+  useEffect(() => {
+    latestStatus.current = status;
+  }, [status]);
   useEffect(() => { current.current = true; return () => { current.current = false; }; }, []);
   const [failure, setFailure] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -69,7 +72,7 @@ function ConfigurationOwner({ status, stale }: { status: SelfConfigStatus; stale
   const rolloutUnresolved = status.job?.state === 'partial' && status.job.plan_digest !== undefined && status.job.deployment_restored !== true;
   const unsettled = rolloutUnresolved || status.job !== null && (status.job.state === 'preparing' || status.job.state === 'pending');
   const recovering = status.state === 'recovery_required';
-  useEffect(() => { if (!revisionChosen && status.latest_revision !== null) setRevision(String(status.latest_revision)); }, [status.latest_revision, revisionChosen]);
+  useResetOnChange(String(status.latest_revision), () => { if (!revisionChosen && status.latest_revision !== null) setRevision(String(status.latest_revision)); });
   const prepare = async (selected: Decision, expectedJobID?: string) => {
     setDone(null); setFailure(null);
     const intent = selected.intent;

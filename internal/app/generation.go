@@ -192,7 +192,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// Secret-change approvals (#151): the two label-free approval gauges read
 	// their counts at scrape time under scheduler authority (#151, mirroring the
 	// storage high-water gauge's shared-door read).
-	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc})
+	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc, log: log})
 	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
 	// The hierarchy, value, and revision services are named here so the read-only
 	// MCP tools (#629) map onto the SAME instances the REST surface uses: one

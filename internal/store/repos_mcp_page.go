@@ -292,7 +292,15 @@ func (r sqliteSnapshots) ListPage(ctx context.Context, p authz.Proof, beforeRevi
 	}
 	out := make([]Snapshot, 0, len(rows))
 	for _, row := range rows {
-		snap, err := revisionSnapshotFromSQLite(row)
+		// The page is the header projection: no parameter contract, which is
+		// payload with its own point read. Widen to the model row for the
+		// shared conversion; the contract field stays empty and unread.
+		snap, err := revisionSnapshotFromSQLite(sqlitegen.Snapshot{
+			ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: row.EnvironmentID,
+			Revision: row.Revision, SchemaRevision: row.SchemaRevision, PublishedBy: row.PublishedBy,
+			PublishedAt: row.PublishedAt, PayloadPresent: row.PayloadPresent,
+			CollectedAt: row.CollectedAt, CollectedPolicy: row.CollectedPolicy,
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -319,7 +327,12 @@ func (r pgSnapshots) ListPage(ctx context.Context, p authz.Proof, beforeRevision
 	}
 	out := make([]Snapshot, 0, len(rows))
 	for _, row := range rows {
-		snap, err := revisionSnapshotFromPG(row)
+		snap, err := revisionSnapshotFromPG(pggen.Snapshot{
+			ID: row.ID, OrgID: row.OrgID, ProjectID: row.ProjectID, EnvironmentID: row.EnvironmentID,
+			Revision: row.Revision, SchemaRevision: row.SchemaRevision, PublishedBy: row.PublishedBy,
+			PublishedAt: row.PublishedAt, PayloadPresent: row.PayloadPresent,
+			CollectedAt: row.CollectedAt, CollectedPolicy: row.CollectedPolicy,
+		})
 		if err != nil {
 			return nil, err
 		}

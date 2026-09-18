@@ -1527,6 +1527,13 @@ export type RevisionDiffRow = {
 export type RevisionList = {
     items: Array<Revision>;
     count: number;
+    /**
+     * Present when the page was full: the smallest revision on it, to
+     * pass as `before` for the next page. Absent once the page reached
+     * the oldest revision.
+     *
+     */
+    next_before?: number;
 };
 
 export type Revision = {
@@ -3613,18 +3620,23 @@ export type WebauthnResponse = {
 };
 
 /**
- * The account-security proof, where the account has one to give. Both
- * members are optional so a passwordless, factorless account can open a
- * ceremony; the service enforces which proof it requires.
+ * The account-security proof, selected possession-first over the
+ * account's pre-existing credentials: where a confirmed TOTP factor
+ * stands, `code` is required and a password alone is refused (400);
+ * where none does, `password` is required. Never the passkey being
+ * added. Both members are optional on the wire because the client may
+ * not know the factor state; the service enforces the selection, and
+ * the field it did not select is ignored. A TOTP code is spent when the
+ * ceremony is staged, so the same code cannot open a second ceremony.
  *
  */
 export type WebauthnEnrolStartRequest = {
     /**
-     * The pre-existing password proof.
+     * The pre-existing password proof (an account with no confirmed factor).
      */
     password?: string;
     /**
-     * A confirmed TOTP code proof.
+     * The confirmed TOTP code proof (an account holding a factor).
      */
     code?: string;
 };
@@ -3651,9 +3663,13 @@ export type WebauthnReauthStartRequest = {
 export type ReauthPurpose = 'reveal' | 'copy' | 'publish' | 'mint' | 'adapter' | 'self-config' | 'approve' | 'reject' | 'bypass';
 
 /**
- * The account-security proof for removing a credential — the pre-existing
- * password or a TOTP code, never the credential being removed (B7). Both
- * optional; the service selects and enforces the required proof.
+ * The account-security proof for removing a credential, selected
+ * possession-first over the pre-existing credentials: where a confirmed
+ * TOTP factor stands, `code` is required and a password alone is refused
+ * (400); where none does, `password` is required. Never the credential
+ * being removed (B7). Both optional on the wire; the service enforces
+ * the selection and spends a TOTP code inside the removal itself, so the
+ * same code cannot remove a second credential.
  *
  */
 export type WebauthnCredentialProofRequest = {
@@ -4760,6 +4776,19 @@ export type AuditToSeq = number;
  *
  */
 export type AuditLimit = number;
+
+/**
+ * Page cursor, exclusive: return revisions strictly below this number.
+ * Omit it for the first page (the newest revisions); pass the previous
+ * page's `next_before` to continue.
+ *
+ */
+export type RevisionBefore = number;
+
+/**
+ * Maximum revisions returned on this page.
+ */
+export type RevisionLimit = number;
 
 /**
  * Match only events whose acting principal has this id (exact).
@@ -20715,7 +20744,19 @@ export type ListRevisionsData = {
          */
         environment: Id;
     };
-    query?: never;
+    query?: {
+        /**
+         * Page cursor, exclusive: return revisions strictly below this number.
+         * Omit it for the first page (the newest revisions); pass the previous
+         * page's `next_before` to continue.
+         *
+         */
+        before?: number;
+        /**
+         * Maximum revisions returned on this page.
+         */
+        limit?: number;
+    };
     url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions';
 };
 

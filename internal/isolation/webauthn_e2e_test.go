@@ -61,11 +61,24 @@ func bootstrapWebAuthnAdmin(t *testing.T, db *store.DB) admin {
 	return administrator
 }
 
-// enrolPasskey runs a full enrolment with the given device and returns the
-// reissued session token (the mutation reissues the acting session).
+// enrolPasskey runs a full enrolment proven by the password (an account with
+// no confirmed factor) with the given device and returns the reissued session
+// token (the mutation reissues the acting session).
 func enrolPasskey(t *testing.T, auth *service.Auth, ctx context.Context, token, password string, dev *webauthntest.Device) string {
 	t.Helper()
-	opts, err := auth.EnrolPasskeyStart(ctx, token, password, "")
+	return enrolPasskeyWith(t, auth, ctx, token, password, "", dev)
+}
+
+// enrolPasskeyWithCode runs a full enrolment proven by a confirmed TOTP code
+// (the possession-first selection on an account holding a factor).
+func enrolPasskeyWithCode(t *testing.T, auth *service.Auth, ctx context.Context, token, code string, dev *webauthntest.Device) string {
+	t.Helper()
+	return enrolPasskeyWith(t, auth, ctx, token, "", code, dev)
+}
+
+func enrolPasskeyWith(t *testing.T, auth *service.Auth, ctx context.Context, token, password, code string, dev *webauthntest.Device) string {
+	t.Helper()
+	opts, err := auth.EnrolPasskeyStart(ctx, token, password, code)
 	if err != nil {
 		t.Fatalf("enrol start: %v", err)
 	}
@@ -346,8 +359,9 @@ func TestWebAuthnEnrolProof(t *testing.T) {
 }
 
 // runWebAuthnEnrolProof: a new passkey cannot authorize its own enrolment — the
-// proof is the pre-existing credential (the password), verified before any
-// ceremony. A wrong password is refused, and the removal that follows a
+// proof is a pre-existing credential, verified before any ceremony. An account
+// with no confirmed factor proves with its password: a wrong one is refused, a
+// missing one is a named incomplete request, and the removal that follows a
 // successful enrol proves with the password, never the passkey.
 func runWebAuthnEnrolProof(t *testing.T, db *store.DB) {
 	administrator := bootstrapWebAuthnAdmin(t, db)
@@ -355,18 +369,137 @@ func runWebAuthnEnrolProof(t *testing.T, db *store.DB) {
 	ctx := t.Context()
 
 	// Enrolment demands the pre-existing password up front; a wrong one refuses
-	// before any credential is created.
+	// before any credential is created, an absent one is the named refusal.
 	if _, err := auth.EnrolPasskeyStart(ctx, token, "not the password", ""); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("enrol start with a wrong password must refuse, got %v", err)
 	}
+	if _, err := auth.EnrolPasskeyStart(ctx, token, "", ""); !errors.Is(err, service.ErrReauthProofRequired) {
+		t.Fatalf("enrol start with no proof must name the missing proof, got %v", err)
+	}
 
-	// A correct proof enrols; the account still holds the password, so removing
-	// the passkey later is proven by it (the passkey never proves its own removal).
+	// A correct proof enrols; the account still holds the password and no
+	// factor, so removing the passkey later is proven by it (the passkey never
+	// proves its own removal).
 	dev := webauthntest.New(waRPID, waOrigin)
 	token = enrolPasskey(t, auth, ctx, token, waPassword, dev)
 	credID := queryString(t, db, "SELECT id FROM webauthn_credentials LIMIT 1")
 	if _, err := auth.RemovePasskey(ctx, token, credID, waPassword, ""); err != nil {
 		t.Fatalf("removing a passkey with the password proof must succeed: %v", err)
+	}
+}
+
+func TestWebAuthnProofPossessionFirst(t *testing.T) {
+	forEngines(t, runWebAuthnProofPossessionFirst)
+}
+
+// runWebAuthnProofPossessionFirst encodes human-auth ADR § Account-security
+// mutations step 1 for the passkey mutations: where the account holds a
+// confirmed TOTP factor, that factor is the proof (the password alone is
+// refused by name), the code is spent inside the mutation's write transaction
+// so a replay of the same step cannot open a second ceremony or remove a second
+// credential, and the reissued session carries only the proving class. Removing
+// the factor itself is proven by the password (B7: the target is excluded), and
+// the account then falls back to password proof.
+func runWebAuthnProofPossessionFirst(t *testing.T, db *store.DB) {
+	administrator := bootstrapWebAuthnAdmin(t, db)
+	auth, accountID, token := administrator.auth, administrator.accountID, administrator.token
+	ctx := t.Context()
+	clk := time.Now().UTC()
+	auth.Now = func() time.Time { return clk }
+	ceremonies := func() int64 {
+		return queryInt(t, db, "SELECT count(*) FROM webauthn_ceremonies WHERE account_id = '"+accountID+"'")
+	}
+
+	uri, err := auth.EnrolTOTPStart(ctx, token, waPassword)
+	if err != nil {
+		t.Fatalf("totp enrol start: %v", err)
+	}
+	clk = clk.Add(30 * time.Second)
+	confirmed, err := auth.EnrolTOTPConfirm(ctx, token, totpCode(t, uri, clk))
+	if err != nil {
+		t.Fatalf("totp enrol confirm: %v", err)
+	}
+	token = confirmed.SessionToken
+
+	// The password alone no longer proves: the factor stands, so the code is
+	// the required proof and its absence is the named incomplete request.
+	if _, err := auth.EnrolPasskeyStart(ctx, token, waPassword, ""); !errors.Is(err, service.ErrReauthProofRequired) {
+		t.Fatalf("enrol start with only the password on a TOTP account must refuse by name, got %v", err)
+	}
+	if n := ceremonies(); n != 0 {
+		t.Fatalf("a refused proof staged %d ceremonies, want 0", n)
+	}
+	// A wrong code is the uniform refusal.
+	clk = clk.Add(30 * time.Second)
+	if _, err := auth.EnrolPasskeyStart(ctx, token, "", "000000"); !errors.Is(err, domain.ErrUnauthenticated) {
+		t.Fatalf("enrol start with a wrong code must refuse, got %v", err)
+	}
+
+	// A valid code enrols and the reissued session carries only that class.
+	code := totpCode(t, uri, clk)
+	devA := webauthntest.New(waRPID, waOrigin)
+	opts, err := auth.EnrolPasskeyStart(ctx, token, "", code)
+	if err != nil {
+		t.Fatalf("enrol start with the code: %v", err)
+	}
+	// The step was spent when the ceremony was staged: the same code cannot
+	// open a second ceremony, even before the first finishes.
+	if _, err := auth.EnrolPasskeyStart(ctx, token, "", code); !errors.Is(err, service.ErrTOTPCodeAlreadyUsed) {
+		t.Fatalf("replaying the code into a second enrol start must refuse as already used, got %v", err)
+	}
+	if n := ceremonies(); n != 1 {
+		t.Fatalf("the replay staged a ceremony: %d rows, want 1", n)
+	}
+	att, err := devA.Enrol(opts)
+	if err != nil {
+		t.Fatalf("device enrol: %v", err)
+	}
+	enrolled, err := auth.EnrolPasskeyFinish(ctx, token, att)
+	if err != nil {
+		t.Fatalf("enrol finish: %v", err)
+	}
+	if len(enrolled.Assurance.Factors) != 1 || enrolled.Assurance.Factors[0] != "totp" {
+		t.Fatalf("the reissued session carries %v, want exactly [totp]: the proof class alone", enrolled.Assurance.Factors)
+	}
+	token = enrolled.SessionToken
+	credA := queryString(t, db, "SELECT id FROM webauthn_credentials WHERE account_id = '"+accountID+"'")
+
+	// A second passkey, proven by the next step.
+	clk = clk.Add(30 * time.Second)
+	token = enrolPasskeyWithCode(t, auth, ctx, token, totpCode(t, uri, clk), webauthntest.New(waRPID, waOrigin))
+	if n := queryInt(t, db, "SELECT count(*) FROM webauthn_credentials WHERE account_id = '"+accountID+"'"); n != 2 {
+		t.Fatalf("passkeys after two enrolments = %d, want 2", n)
+	}
+
+	// Removal is proven the same way: never by the password while the factor
+	// stands, once per step.
+	if _, err := auth.RemovePasskey(ctx, token, credA, waPassword, ""); !errors.Is(err, service.ErrReauthProofRequired) {
+		t.Fatalf("remove with only the password on a TOTP account must refuse by name, got %v", err)
+	}
+	clk = clk.Add(30 * time.Second)
+	code = totpCode(t, uri, clk)
+	removed, err := auth.RemovePasskey(ctx, token, credA, "", code)
+	if err != nil {
+		t.Fatalf("remove with the code: %v", err)
+	}
+	token = removed.SessionToken
+	credB := queryString(t, db, "SELECT id FROM webauthn_credentials WHERE account_id = '"+accountID+"'")
+	if _, err := auth.RemovePasskey(ctx, token, credB, "", code); !errors.Is(err, service.ErrTOTPCodeAlreadyUsed) {
+		t.Fatalf("replaying the code into a second removal must refuse as already used, got %v", err)
+	}
+	if n := queryInt(t, db, "SELECT count(*) FROM webauthn_credentials WHERE account_id = '"+accountID+"'"); n != 1 {
+		t.Fatalf("the replayed removal deleted a credential: %d left, want 1", n)
+	}
+
+	// The factor itself is excluded from its own removal (B7): the password
+	// proves that, and afterwards the account is back to password proof.
+	dropped, err := auth.RemoveTOTP(ctx, token, waPassword)
+	if err != nil {
+		t.Fatalf("remove totp with the password: %v", err)
+	}
+	token = dropped.SessionToken
+	if _, err := auth.RemovePasskey(ctx, token, credB, waPassword, ""); err != nil {
+		t.Fatalf("remove with the password once no factor stands: %v", err)
 	}
 }
 

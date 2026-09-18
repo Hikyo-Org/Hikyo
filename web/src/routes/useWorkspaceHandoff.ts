@@ -65,6 +65,12 @@ export function workspaceHandoffAction(
  * Owns one cross-origin workspace handoff from eager preparation through the
  * popup wait. `authorise` deliberately calls `openPrepared` synchronously: no
  * promise or effect may sit between the click and `window.open`.
+ *
+ * Every attempt owns one AbortController. Retry, supersession by a changed
+ * target, and unmount all abort the attempt they replace, which stops its
+ * requests rather than merely ignoring their answers. A disposed attempt's
+ * settlement is dropped without touching state; a deadline inside a live
+ * attempt surfaces as `failed` with a retry.
  */
 export function useWorkspaceHandoff(
   origin: string,
@@ -76,12 +82,13 @@ export function useWorkspaceHandoff(
       : { kind: 'contacting' },
   );
   const phaseRef = useRef(phase);
-  const liveRef = useRef(true);
-  const operationRef = useRef(0);
+  const attemptRef = useRef<AbortController | undefined>(undefined);
   const onFailMessageRef = useRef(options.onFailMessage);
   const onAuthorisedRef = useRef(options.onAuthorised);
-  onFailMessageRef.current = options.onFailMessage;
-  onAuthorisedRef.current = options.onAuthorised;
+  useEffect(() => {
+    onFailMessageRef.current = options.onFailMessage;
+    onAuthorisedRef.current = options.onAuthorised;
+  }, [options.onFailMessage, options.onAuthorised]);
 
   const preparationKind = options.preparation.kind;
   const session =
@@ -99,21 +106,13 @@ export function useWorkspaceHandoff(
       ? { kind: 'failed', message: unavailableMessage ?? 'Workspace handoff is unavailable.' }
       : phase;
 
-  const retry = useCallback(() => {
-    const attempt = ++operationRef.current;
-    if (preparationKind === 'refused') {
-      const failed: HandoffPhase = {
-        kind: 'failed',
-        message: unavailableMessage ?? 'Workspace handoff is unavailable.',
-      };
-      phaseRef.current = failed;
-      setPhase(failed);
-      return;
-    }
-
-    const contacting: HandoffPhase = { kind: 'contacting' };
-    phaseRef.current = contacting;
-    setPhase(contacting);
+  // The async attempt only. The mount effect runs this directly, so it must not
+  // set phase synchronously: the initial phase is already seeded 'contacting'
+  // (or 'failed' when refused), and only the button retry below transitions a
+  // visible phase back to 'contacting'. Supersession rides this callback's deps.
+  const kickoff = useCallback(() => {
+    const { signal } = beginAttempt(attemptRef);
+    if (preparationKind === 'refused') return;
 
     const stepUp =
       session === undefined || operation === undefined || environment === undefined
@@ -124,15 +123,15 @@ export function useWorkspaceHandoff(
             environment,
             keySet: keySetKey === '' || keySetKey === undefined ? [] : keySetKey.split(','),
           };
-    void prepareWorkspace(origin, stepUp)
+    void prepareWorkspace(origin, { signal, stepUp })
       .then((prepared) => {
-        if (!liveRef.current || operationRef.current !== attempt) return;
+        if (signal.aborted) return;
         const ready: HandoffPhase = { kind: 'ready', prepared };
         phaseRef.current = ready;
         setPhase(ready);
       })
       .catch((error: unknown) => {
-        if (!liveRef.current || operationRef.current !== attempt) return;
+        if (signal.aborted) return;
         const failed: HandoffPhase = {
           kind: 'failed',
           message: onFailMessageRef.current(error, 'prepare'),
@@ -140,37 +139,48 @@ export function useWorkspaceHandoff(
         phaseRef.current = failed;
         setPhase(failed);
       });
-  }, [environment, keySetKey, operation, origin, preparationKind, session, unavailableMessage]);
+  }, [environment, keySetKey, operation, origin, preparationKind, session]);
+
+  const retry = useCallback(() => {
+    if (preparationKind === 'refused') {
+      const failed: HandoffPhase = {
+        kind: 'failed',
+        message: unavailableMessage ?? 'Workspace handoff is unavailable.',
+      };
+      phaseRef.current = failed;
+      setPhase(failed);
+      beginAttempt(attemptRef);
+      return;
+    }
+    const contacting: HandoffPhase = { kind: 'contacting' };
+    phaseRef.current = contacting;
+    setPhase(contacting);
+    kickoff();
+  }, [kickoff, preparationKind, unavailableMessage]);
+
+  useEffect(() => () => attemptRef.current?.abort(), []);
 
   useEffect(() => {
-    liveRef.current = true;
-    return () => {
-      liveRef.current = false;
-      operationRef.current += 1;
-    };
-  }, []);
-
-  useEffect(() => {
-    retry();
-  }, [retry]);
+    kickoff();
+  }, [kickoff]);
 
   const authorise = useCallback(() => {
     const ready = phaseRef.current;
     if (ready.kind !== 'ready') return;
 
-    const attempt = ++operationRef.current;
+    const { signal } = beginAttempt(attemptRef);
     const authorising: HandoffPhase = { kind: 'authorising', prepared: ready.prepared };
     phaseRef.current = authorising;
     setPhase(authorising);
 
     // Load-bearing popup invariant: this call remains in the click's stack.
-    void openPrepared(ready.prepared)
+    void openPrepared(ready.prepared, { signal })
       .then(() => {
-        if (!liveRef.current || operationRef.current !== attempt) return;
+        if (signal.aborted) return;
         onAuthorisedRef.current?.();
       })
       .catch((error: unknown) => {
-        if (!liveRef.current || operationRef.current !== attempt) return;
+        if (signal.aborted) return;
         const failed: HandoffPhase = {
           kind: 'failed',
           message: onFailMessageRef.current(error, 'authorise'),
@@ -181,4 +191,12 @@ export function useWorkspaceHandoff(
   }, []);
 
   return { phase: visiblePhase, retry, authorise };
+}
+
+/** Aborts the attempt in flight, if any, and installs the next one. */
+function beginAttempt(attemptRef: { current: AbortController | undefined }): AbortController {
+  attemptRef.current?.abort();
+  const attempt = new AbortController();
+  attemptRef.current = attempt;
+  return attempt;
 }

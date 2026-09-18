@@ -3,7 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { PreparedWorkspace, StepUpParams } from '../api/workspace.ts';
+import { WorkspaceError, type PreparedWorkspace, type StepUpParams } from '../api/workspace.ts';
 import {
   useWorkspaceHandoff,
   workspaceHandoffAction,
@@ -12,8 +12,14 @@ import {
 
 const workspace = vi.hoisted(() => ({
   prepareWorkspace:
-    vi.fn<(origin: string, stepUp?: StepUpParams) => Promise<PreparedWorkspace>>(),
-  openPrepared: vi.fn<(prepared: PreparedWorkspace) => Promise<void>>(),
+    vi.fn<
+      (
+        origin: string,
+        request: { signal: AbortSignal; stepUp?: StepUpParams },
+      ) => Promise<PreparedWorkspace>
+    >(),
+  openPrepared:
+    vi.fn<(prepared: PreparedWorkspace, request: { signal: AbortSignal }) => Promise<void>>(),
 }));
 
 vi.mock('../api/workspace.ts', async (importOriginal) => {
@@ -191,19 +197,122 @@ describe('useWorkspaceHandoff', () => {
     expect(workspace.prepareWorkspace).toHaveBeenCalledTimes(2);
     await unmount(mounted.root);
   });
+
+  // Each attempt owns an AbortController. Disposal and supersession abort the
+  // requests themselves, and a disposed attempt's outcome is dropped without a
+  // state write; only a live attempt's deadline becomes a retryable failure.
+  describe('attempt ownership', () => {
+    it('aborts the in-flight prepare on unmount and writes no state', async () => {
+      workspace.prepareWorkspace.mockImplementation((_origin, { signal }) => abortsWith(signal));
+      const onFailMessage = vi.fn(() => 'unexpected');
+
+      const mounted = await renderHandoff(vi.fn(), { onFailMessage });
+      const request = workspace.prepareWorkspace.mock.calls[0]?.[1];
+      expect(request?.signal.aborted).toBe(false);
+
+      await unmount(mounted.root);
+      await settle();
+
+      expect(request?.signal.aborted).toBe(true);
+      expect(onFailMessage).not.toHaveBeenCalled();
+    });
+
+    it('aborts the previous attempt when the target changes and a retry supersedes it', async () => {
+      workspace.prepareWorkspace.mockImplementation((_origin, { signal }) => abortsWith(signal));
+      const onFailMessage = vi.fn(() => 'unexpected');
+      const params: StepUpParams = {
+        session: 'session-1',
+        operation: 'reveal',
+        environment: 'environment-1',
+        keySet: ['key-1'],
+      };
+      const mounted = await renderHandoff(vi.fn(), {
+        onFailMessage,
+        preparation: { kind: 'step-up', params },
+      });
+
+      await act(async () =>
+        mounted.root.render(
+          <HandoffHarness
+            onAuthorised={vi.fn()}
+            onFailMessage={onFailMessage}
+            preparation={{ kind: 'step-up', params: { ...params, keySet: ['key-2'] } }}
+          />,
+        ),
+      );
+
+      expect(workspace.prepareWorkspace).toHaveBeenCalledTimes(2);
+      expect(workspace.prepareWorkspace.mock.calls[0]?.[1].signal.aborted).toBe(true);
+      expect(workspace.prepareWorkspace.mock.calls[1]?.[1].signal.aborted).toBe(false);
+      expect(onFailMessage).not.toHaveBeenCalled();
+      expect(action(mounted.container).textContent).toBe('Contacting…');
+      await unmount(mounted.root);
+    });
+
+    it('lands a deadline failure in the failed phase with retry available', async () => {
+      const deadline = new WorkspaceError(`${origin} did not answer within 15 seconds. Try again.`);
+      workspace.prepareWorkspace
+        .mockRejectedValueOnce(deadline)
+        .mockReturnValueOnce(deferred<PreparedWorkspace>().promise);
+      const onFailMessage = vi.fn((error: unknown) =>
+        error instanceof WorkspaceError ? error.message : 'unexpected',
+      );
+
+      const mounted = await renderHandoff(vi.fn(), { onFailMessage });
+      await settle();
+
+      expect(onFailMessage).toHaveBeenCalledExactlyOnceWith(deadline, 'prepare');
+      expect(mounted.container.querySelector('[role="alert"]')?.textContent).toBe(deadline.message);
+      expect(action(mounted.container)).toMatchObject({ disabled: false, textContent: 'Try again' });
+
+      act(() => action(mounted.container).click());
+      expect(action(mounted.container)).toMatchObject({ disabled: true, textContent: 'Contacting…' });
+      expect(workspace.prepareWorkspace).toHaveBeenCalledTimes(2);
+      await unmount(mounted.root);
+    });
+
+    it('aborts the ceremony when its consumer unmounts while authorising', async () => {
+      workspace.prepareWorkspace.mockResolvedValue(prepared);
+      workspace.openPrepared.mockImplementation((_prepared, { signal }) => abortsWith(signal));
+      const onFailMessage = vi.fn(() => 'unexpected');
+      const authorised = vi.fn();
+
+      const mounted = await renderHandoff(authorised, { onFailMessage });
+      await settle();
+      act(() => action(mounted.container).click());
+      const request = workspace.openPrepared.mock.calls[0]?.[1];
+      expect(request?.signal.aborted).toBe(false);
+
+      await unmount(mounted.root);
+      await settle();
+
+      expect(request?.signal.aborted).toBe(true);
+      expect(authorised).not.toHaveBeenCalled();
+      expect(onFailMessage).not.toHaveBeenCalled();
+    });
+  });
 });
+
+/** Settles the way a real request does: only when its signal aborts. */
+function abortsWith<T>(signal: AbortSignal): Promise<T> {
+  return new Promise<T>((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+}
 
 function HandoffHarness({
   onAuthorised,
+  onFailMessage = (_error, stage) =>
+    stage === 'prepare' ? 'Could not contact remote.' : 'Sign-in did not complete.',
   preparation = { kind: 'establishment' },
 }: {
   onAuthorised: () => void;
+  onFailMessage?: (error: unknown, stage: 'prepare' | 'authorise') => string;
   preparation?: WorkspaceHandoffPreparation;
 }) {
   const handoff = useWorkspaceHandoff(origin, {
     preparation,
-    onFailMessage: (_error, stage) =>
-      stage === 'prepare' ? 'Could not contact remote.' : 'Sign-in did not complete.',
+    onFailMessage,
     onAuthorised,
   });
   const button = workspaceHandoffAction(handoff, {
@@ -227,7 +336,10 @@ function HandoffHarness({
 
 async function renderHandoff(
   onAuthorised: () => void,
-  options?: { readonly preparation?: WorkspaceHandoffPreparation },
+  options?: {
+    readonly preparation?: WorkspaceHandoffPreparation;
+    readonly onFailMessage?: (error: unknown, stage: 'prepare' | 'authorise') => string;
+  },
 ) {
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -236,6 +348,7 @@ async function renderHandoff(
     root.render(
       <HandoffHarness
         onAuthorised={onAuthorised}
+        onFailMessage={options?.onFailMessage}
         preparation={options?.preparation}
       />,
     ),

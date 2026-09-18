@@ -40,35 +40,36 @@ afterEach(() => {
   hoisted.script.length = 0;
 });
 
+/** scripted yields the events in order, then settles however `end` does. */
+async function* scripted(
+  events: readonly unknown[],
+  end: () => Promise<void>,
+): AsyncGenerator<unknown> {
+  for (const event of events) {
+    yield event;
+  }
+  await end();
+}
+
 /** hang mirrors a stream the server never ends: iteration blocks until abort. */
 function hang(options: unknown): { stream: AsyncGenerator<unknown> } {
   const signal = (options as { signal?: AbortSignal }).signal;
   return {
-    stream: (async function* () {
-      await new Promise<void>((resolve) => {
-        signal?.addEventListener('abort', () => resolve(), { once: true });
-      });
-    })(),
+    stream: scripted([], () => new Promise<void>((resolve) => {
+      signal?.addEventListener('abort', () => resolve(), { once: true });
+    })),
   };
 }
 
 /** script queues one stream that yields the events, then ends cleanly. */
 function script(...events: readonly unknown[]): void {
-  hoisted.script.push(() => ({
-    stream: (async function* () {
-      for (const event of events) {
-        yield event;
-      }
-    })(),
-  }));
+  hoisted.script.push(() => ({ stream: scripted(events, () => Promise.resolve()) }));
 }
 
 /** failingScript queues one stream whose iteration throws immediately. */
 function failingScript(): void {
   hoisted.script.push(() => ({
-    stream: (async function* () {
-      throw new Error('connection refused');
-    })(),
+    stream: scripted([], () => Promise.reject(new Error('connection refused'))),
   }));
 }
 

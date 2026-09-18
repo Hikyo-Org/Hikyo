@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -47,7 +47,9 @@ let latestController: Controller | undefined;
 
 function Harness() {
   const ceremony = useCeremonyTask(['values']);
-  latestController = ceremony;
+  useEffect(() => {
+    latestController = ceremony;
+  }, [ceremony]);
   return ceremony.request === null ? null : (
     <Ceremony
       key={ceremony.requestKey}

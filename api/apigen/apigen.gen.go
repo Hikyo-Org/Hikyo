@@ -6857,6 +6857,11 @@ type RevisionDiffRowStatus string
 type RevisionList struct {
 	Count int        `json:"count"`
 	Items []Revision `json:"items"`
+
+	// NextBefore Present when the page was full: the smallest revision on it, to
+	// pass as `before` for the next page. Absent once the page reached
+	// the oldest revision.
+	NextBefore *int64 `json:"next_before,omitempty"`
 }
 
 // RevisionPin defines model for RevisionPin.
@@ -8109,22 +8114,31 @@ type ValueOccurrencesRequest struct {
 	Candidates []ValueOccurrenceCandidate `json:"candidates"`
 }
 
-// WebauthnCredentialProofRequest The account-security proof for removing a credential — the pre-existing
-// password or a TOTP code, never the credential being removed (B7). Both
-// optional; the service selects and enforces the required proof.
+// WebauthnCredentialProofRequest The account-security proof for removing a credential, selected
+// possession-first over the pre-existing credentials: where a confirmed
+// TOTP factor stands, `code` is required and a password alone is refused
+// (400); where none does, `password` is required. Never the credential
+// being removed (B7). Both optional on the wire; the service enforces
+// the selection and spends a TOTP code inside the removal itself, so the
+// same code cannot remove a second credential.
 type WebauthnCredentialProofRequest struct {
 	Code     *string `json:"code,omitempty"`
 	Password *string `json:"password,omitempty"`
 }
 
-// WebauthnEnrolStartRequest The account-security proof, where the account has one to give. Both
-// members are optional so a passwordless, factorless account can open a
-// ceremony; the service enforces which proof it requires.
+// WebauthnEnrolStartRequest The account-security proof, selected possession-first over the
+// account's pre-existing credentials: where a confirmed TOTP factor
+// stands, `code` is required and a password alone is refused (400);
+// where none does, `password` is required. Never the passkey being
+// added. Both members are optional on the wire because the client may
+// not know the factor state; the service enforces the selection, and
+// the field it did not select is ignored. A TOTP code is spent when the
+// ceremony is staged, so the same code cannot open a second ceremony.
 type WebauthnEnrolStartRequest struct {
-	// Code A confirmed TOTP code proof.
+	// Code The confirmed TOTP code proof (an account holding a factor).
 	Code *string `json:"code,omitempty"`
 
-	// Password The pre-existing password proof.
+	// Password The pre-existing password proof (an account with no confirmed factor).
 	Password *string `json:"password,omitempty"`
 }
 
@@ -8430,6 +8444,12 @@ type RemoteName = EntityName
 
 // ResetTargetPrincipal A prefixed UUIDv7, e.g. `org_0198…`.
 type ResetTargetPrincipal = ID
+
+// RevisionBefore defines model for RevisionBefore.
+type RevisionBefore = int64
+
+// RevisionLimit defines model for RevisionLimit.
+type RevisionLimit = int
 
 // ScimBindingID A prefixed UUIDv7, e.g. `org_0198…`.
 type ScimBindingID = ID
@@ -8958,6 +8978,17 @@ type ChangeEnvironmentParameterJSONBody struct {
 
 // ChangeEnvironmentParameterJSONBodyAction defines parameters for ChangeEnvironmentParameter.
 type ChangeEnvironmentParameterJSONBodyAction string
+
+// ListRevisionsParams defines parameters for ListRevisions.
+type ListRevisionsParams struct {
+	// Before Page cursor, exclusive: return revisions strictly below this number.
+	// Omit it for the first page (the newest revisions); pass the previous
+	// page's `next_before` to continue.
+	Before *RevisionBefore `form:"before,omitempty" json:"before,omitempty"`
+
+	// Limit Maximum revisions returned on this page.
+	Limit *RevisionLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // RevokeProjectGrantParams defines parameters for RevokeProjectGrant.
 type RevokeProjectGrantParams struct {
@@ -10233,9 +10264,9 @@ type ServerInterface interface {
 	// GetRevealWindow The reveal guard's state for this environment and session.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window)
 	GetRevealWindow(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
-	// ListRevisions One environment's revision history, newest first.
+	// ListRevisions One page of an environment's revision history, newest first.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions)
-	ListRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	ListRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRevisionsParams)
 	// DiffRevisions Compare two revisions with secret write-presence only.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff)
 	DiffRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -11640,9 +11671,9 @@ func (_ Unimplemented) GetRevealWindow(w http.ResponseWriter, r *http.Request, o
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ListRevisions One environment's revision history, newest first.
+// ListRevisions One page of an environment's revision history, newest first.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions)
-func (_ Unimplemented) ListRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+func (_ Unimplemented) ListRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRevisionsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -18664,8 +18695,37 @@ func (siw *ServerInterfaceWrapper) ListRevisions(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRevisionsParams
+
+	// ------------- Optional query parameter "before" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "before", r.URL.Query(), &params.Before, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "before"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListRevisions(w, r, org, project, environment)
+		siw.Handler.ListRevisions(w, r, org, project, environment, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -44036,6 +44096,7 @@ type ListRevisionsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
 	Environment EnvironmentID `json:"environment"`
+	Params      ListRevisionsParams
 }
 
 type ListRevisionsResponseObject interface {
@@ -55086,7 +55147,7 @@ type StrictServerInterface interface {
 	// GetRevealWindow The reveal guard's state for this environment and session.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/reveal-window)
 	GetRevealWindow(ctx context.Context, request GetRevealWindowRequestObject) (GetRevealWindowResponseObject, error)
-	// ListRevisions One environment's revision history, newest first.
+	// ListRevisions One page of an environment's revision history, newest first.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions)
 	ListRevisions(ctx context.Context, request ListRevisionsRequestObject) (ListRevisionsResponseObject, error)
 	// DiffRevisions Compare two revisions with secret write-presence only.
@@ -60873,12 +60934,13 @@ func (sh *strictHandler) GetRevealWindow(w http.ResponseWriter, r *http.Request,
 }
 
 // ListRevisions operation middleware
-func (sh *strictHandler) ListRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+func (sh *strictHandler) ListRevisions(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ListRevisionsParams) {
 	var request ListRevisionsRequestObject
 
 	request.Org = org
 	request.Project = project
 	request.Environment = environment
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListRevisions(ctx, request.(ListRevisionsRequestObject))

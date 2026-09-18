@@ -339,7 +339,7 @@ definitions:                                       reviewable Git-managed catalo
       [--commit C] [--ref R] [--actor A] [-o table|json]
 
 revisions:                                         --env selects the environment
-  hikyo revision list                               lineage only, never values
+  hikyo revision list [--limit N] [--before N]      lineage only, never values; one page per call
   hikyo revision show [<N>|latest]                  carries the change token
   hikyo revision rollback <N> [--key KEY]           stage a restore as ordinary drafts
   hikyo pin create --workload ID --revision N       create, re-pin, or renew

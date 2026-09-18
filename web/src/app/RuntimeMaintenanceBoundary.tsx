@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { retireSensitiveOperations } from '../api/sensitiveMutation.ts';
 import { useModalDialog } from '../routes/useModalDialog.ts';
+import { useResetOnChange } from './useResetOnChange.ts';
 
 const runtimeStatus = z.discriminatedUnion('state', [
   z.object({ state: z.literal('ready'), phase: z.null() }),
@@ -29,17 +30,29 @@ export function RuntimeMaintenanceBoundary({ children, failure, refreshSession, 
   refreshSession: (signal?: AbortSignal) => Promise<void>;
   queries: QueryClient;
 }) {
-  const [status, setStatus] = useState<DisplayStatus>({ state: 'ready', phase: null });
+  // Seed reconnecting when mounting with an outstanding failure: useResetOnChange
+  // only handles later transitions, so the mount case must be seeded here.
+  const [status, setStatus] = useState<DisplayStatus>(
+    () => failure === null ? { state: 'ready', phase: null } : { state: 'reconnecting' },
+  );
   const latest = useRef({ failure, refreshSession });
   const interrupted = useRef(false);
-  latest.current = { failure, refreshSession };
+  useEffect(() => {
+    latest.current = { failure, refreshSession };
+  }, [failure, refreshSession]);
 
+  // An independent auth retry may clear failure before the next status poll.
+  // Only complete runtime/session/cache recovery may release this fence. Raise
+  // it during render as failure appears; the ref write is the sole side effect
+  // and stays in a layout effect.
+  useResetOnChange(failure === null ? '' : 'failed', () => {
+    if (failure !== null) {
+      setStatus((current) => current.state === 'ready' ? { state: 'reconnecting' } : current);
+    }
+  });
   useLayoutEffect(() => {
     if (failure !== null) {
-      // An independent auth retry may clear failure before the next status poll.
-      // Only complete runtime/session/cache recovery may release this fence.
       interrupted.current = true;
-      setStatus((current) => current.state === 'ready' ? { state: 'reconnecting' } : current);
     }
   }, [failure]);
 

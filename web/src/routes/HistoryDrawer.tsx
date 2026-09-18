@@ -33,6 +33,7 @@ import {
 import type { EnvRef, MatrixRef } from '../api/keys.ts';
 import type { EnvironmentList, ValueCell } from '../api/values.ts';
 import { surfaceById } from '../app/navigation.ts';
+import { useResetOnChange } from '../app/useResetOnChange.ts';
 import { Ceremony } from './Ceremony.tsx';
 import {
   defaultPinExpiry,
@@ -181,7 +182,9 @@ export function HistoryDrawer({
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const selectedRow = useRef<HTMLButtonElement>(null);
   const currentEnvironment = useRef(environmentId);
-  currentEnvironment.current = environmentId;
+  useEffect(() => {
+    currentEnvironment.current = environmentId;
+  }, [environmentId]);
 
   // The clock is read once per mount rather than per row: a timeline
   // whose rows disagree about "now" by a few milliseconds can render two
@@ -243,11 +246,11 @@ export function HistoryDrawer({
   )}#project-policy`;
   const environmentNames = new Map(environments.map((candidate) => [candidate.id, candidate.name]));
 
-  useEffect(() => {
+  useResetOnChange(`${environmentId} ${keyFilter}`, () => {
     setSheet(null);
     setOutcome(null);
     setRefusal(null);
-  }, [environmentId, keyFilter]);
+  });
 
   useEffect(() => {
     // Snapshot the opener at MOUNT: the matrix stays interactive behind a desktop

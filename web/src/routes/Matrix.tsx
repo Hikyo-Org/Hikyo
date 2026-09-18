@@ -168,8 +168,8 @@ export function Matrix({
     () => environments.filter((environment) => !degradedByEnvironment.has(environment.id)),
     [degradedByEnvironment, environments],
   );
-  const keys = matrix.keys.data?.items ?? [];
-  const keyGroups = matrix.groups.data?.items ?? [];
+  const keys = useMemo(() => matrix.keys.data?.items ?? [], [matrix.keys.data]);
+  const keyGroups = useMemo(() => matrix.groups.data?.items ?? [], [matrix.groups.data]);
   const [visibleEnvironmentIds, setVisibleEnvironmentIds] = useState<readonly string[]>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(() => new Set());
   const [filter, setFilter] = useState<MatrixFilter>('all');
@@ -299,7 +299,7 @@ export function Matrix({
 
   const environmentSignature = environments.map((environment) => environment.id).join('/');
   useEffect(() => {
-    setVisibleEnvironmentIds(environments.map((environment) => environment.id));
+    setVisibleEnvironmentIds(environmentSignature === '' ? [] : environmentSignature.split('/'));
     setCollapsedGroups(new Set());
     setFilter('all');
     setSelection(null);
@@ -1335,6 +1335,11 @@ export function Matrix({
 
       {selection === null || selectedKey === undefined || selectedEnvironment === undefined ? null : (
         <MatrixRowEditor
+          // Remount per cell and per degraded-column set: a fresh editor resets
+          // the sensitive disclosure (re-masks) on a cell change, and drops any
+          // copy destination or bulk edit for a column that has since degraded
+          // (#451), so no stale target can reach the copy or apply call.
+          key={`${selectedKey.id} ${selectedEnvironment.id} ${[...degradedByEnvironment.keys()].sort().join(',')}`}
           refData={ref}
           keyRecord={selectedKey}
           environmentId={selectedEnvironment.id}

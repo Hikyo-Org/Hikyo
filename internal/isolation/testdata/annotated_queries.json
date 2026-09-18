@@ -1083,7 +1083,7 @@
     "engine": "postgres",
     "name": "ListEligibleSnapshotPayloads",
     "annotation": "instance-scoped",
-    "hash": "79d654a024da4d873c76169492e70017e691283405b6efaba19310f8aaf706b8"
+    "hash": "9fb2e2e85cf2778f6d9365e106d47d284bbf3a80bd04f2837d2a4c3a6393d07b"
   },
   {
     "engine": "postgres",
@@ -1407,7 +1407,7 @@
     "engine": "postgres",
     "name": "MarkSnapshotCollected",
     "annotation": "instance-scoped",
-    "hash": "b51ed9feac2e5a44d6798576f3a757eb84d2bbb03972ec979cd140a4a0c446ae"
+    "hash": "707494ac5399906fe0f07b2455f1da5037265b32c27eb07b7b3a8746fefb04d0"
   },
   {
     "engine": "postgres",
@@ -3033,7 +3033,7 @@
     "engine": "sqlite",
     "name": "ListEligibleSnapshotPayloads",
     "annotation": "instance-scoped",
-    "hash": "34b8d37d570af22e70862dc4f5d51f4ca3dc014889d9774e714d52ee11bd9ed5"
+    "hash": "64888cbe63024e2aaf7064c027c68b1581bb408fe6af9e3fb42014bdc4409c18"
   },
   {
     "engine": "sqlite",
@@ -3357,7 +3357,7 @@
     "engine": "sqlite",
     "name": "MarkSnapshotCollected",
     "annotation": "instance-scoped",
-    "hash": "76afd957b7f4f706dc931a1dd07ccf1120a3f21a064d302636a07c64e1472dc8"
+    "hash": "451ddb5d07769d79204289ce8cbadf83086e44eb147c9954812d400c61b5f1d6"
   },
   {
     "engine": "sqlite",
