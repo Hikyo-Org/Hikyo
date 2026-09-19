@@ -1,0 +1,70 @@
+---
+title: Deploy on AWS
+description: Provision an EC2 host with CloudFormation, then install Hikyo with verified artifacts.
+---
+
+Start with the [cloud deployment prerequisites](/docs/cloud-deployment/#before-provisioning).
+This recipe provisions a single Ubuntu EC2 instance and a separate encrypted
+data volume. It does not start Hikyo. The template creates an instance role for
+Systems Manager and no inbound security-group rules.
+
+## Provision the host
+
+1. Download the [CloudFormation template](https://raw.githubusercontent.com/Hikyo-Org/Hikyo/main/install/cloud/aws/cloudformation.json)
+   and [read its resource definitions](https://github.com/Hikyo-Org/Hikyo/tree/main/install/cloud/aws).
+2. Open [Create a CloudFormation stack](https://console.aws.amazon.com/cloudformation/home#/stacks/create/template).
+   Choose **Upload a template file** and select the downloaded JSON.
+3. Select your existing VPC and subnet. The host needs outbound HTTPS for
+   Systems Manager and release downloads. Use the networking conditions listed
+   in the template README; a public IP alone does not create an internet route.
+4. Review the instance size, encrypted storage, IAM role, and charges. Acknowledge
+   IAM resource creation and create the stack. Wait for `CREATE_COMPLETE`.
+5. Connect using the instance's **Session Manager** option, then complete the
+   [host installation](/docs/cloud-deployment/#complete-the-host-installation).
+
+AWS's prefilled CloudFormation launch URL requires an **S3-hosted template**.
+The repository and docs site are not S3 template endpoints, so this guide uses
+upload instead of presenting a broken one-click link. An operator who publishes
+the reviewed template to their own S3 bucket can use AWS's
+[quick-create link format](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cfn-console-create-stacks-quick-create-links.html).
+
+## Network and storage
+
+Use an Elastic IP or your own stable load-balancer address for persistent DNS;
+the instance's automatically assigned public address may change after stop/start.
+The template does not provision a load balancer or DNS zone. For the native TLS
+example, add TCP 8443 ingress to the created security group only from intended
+client CIDRs. Do not add public SSH or operational-port access. Session Manager
+also requires the operator's IAM permissions and a registered, reachable SSM agent.
+
+Identify the retained data volume by its volume ID, including on Nitro instances
+where Linux uses NVMe device names instead of the attachment label. Follow
+[AWS's EBS filesystem guidance](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-using-volumes.html)
+and never reformat a disk containing an existing installation.
+
+For a managed database, use RDS PostgreSQL in private subnets. Permit its database
+port from the Hikyo security group, install the current
+[RDS CA bundle](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/UsingWithRDS.SSL.html),
+and use the RDS hostname with `sslmode=verify-full`. Do not expose RDS publicly.
+
+## Recovery and removal
+
+The template retains the separate data volume when the stack is deleted or the
+volume is replaced. The boot disk is disposable; preserve the root key and
+public artifacts separately before replacing the VM. Retained EBS volumes and
+any separately allocated Elastic IP continue to incur charges. A retained volume
+is not an off-account backup and is not automatically reattached by a new stack.
+Record its availability zone and volume ID for deliberate recovery.
+
+Return to [cloud deployment](/docs/cloud-deployment/) for readiness, backup, and
+upgrade requirements. See [AWS pricing](https://aws.amazon.com/ec2/pricing/) before
+approving the stack.
+
+## Nightlies and upgrades
+
+For a new Docker-based nightly on this host, follow
+[deploy and upgrade cloud nightlies](/docs/cloud-nightlies/). It includes durable
+storage, native HTTPS, first administrator creation, and image replacement.
+For native installations, stable releases, and recovery, use
+[upgrade a cloud installation](/docs/cloud-upgrades/). Keep the same data volume,
+root key, and installation custody; do not redeploy infrastructure to update Hikyo.

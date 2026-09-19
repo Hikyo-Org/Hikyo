@@ -1,0 +1,58 @@
+# Fresh empty installations only. This explicitly enrolls local upgrade custody.
+# See README.md and docs/operations/unattended-container-upgrades.md.
+services:
+  server:
+    restart: unless-stopped
+    image: ${HIKYO_SERVER_IMAGE:?set the signed nightly image or verified image digest}
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command:
+      - server
+      - --auto-migrate=true
+      - --listen=0.0.0.0:8443
+      - --operational-listen=0.0.0.0:8081
+      - --root-key-file=/run/hikyo-root/root-key
+      - --tls-cert-file=/run/hikyo-tls/tls.crt
+      - --tls-key-file=/run/hikyo-tls/tls.key
+    environment:
+      HIKYO_DB: sqlite:/var/lib/hikyo/hikyo.db
+      HIKYO_ROOT_KEY_FILE: /run/hikyo-root/root-key
+      HIKYO_EXTERNAL_ORIGIN: ${HIKYO_EXTERNAL_ORIGIN:?set the HTTPS browser origin including port 8443}
+      HIKYO_UPGRADE_UNATTENDED: "true"
+      HIKYO_UPGRADE_STATE_DIR: /var/lib/hikyo-upgrade
+    ports:
+      - "8443:8443"
+      - "127.0.0.1:8081:8081"
+    tmpfs:
+      - /tmp:mode=1777
+    volumes:
+      - type: bind
+        source: ${HIKYO_UPGRADE_INSTALLATION_DIR:?set persistent private upgrade state}
+        target: /var/lib/hikyo-upgrade
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIKYO_SERVER_DATA_DIR:?set the SQLite data directory}
+        target: /var/lib/hikyo
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIKYO_SERVER_ROOT_KEY_FILE:?set the persistent root-key file}
+        target: /run/hikyo-root/root-key
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIKYO_TLS_CERT_FILE:?set the TLS certificate file}
+        target: /run/hikyo-tls/tls.crt
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIKYO_TLS_KEY_FILE:?set the TLS private-key file}
+        target: /run/hikyo-tls/tls.key
+        read_only: true
+        bind:
+          create_host_path: false

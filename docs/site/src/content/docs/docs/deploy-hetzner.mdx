@@ -1,0 +1,95 @@
+---
+title: Deploy on Hetzner Cloud
+description: Launch a Docker host for Hikyo nightlies, or create an Ubuntu server for a native installation.
+---
+
+Start with the [cloud deployment prerequisites](/docs/cloud-deployment/#before-provisioning).
+Choose Hetzner's Docker App for the [nightly container installation](/docs/cloud-nightlies/),
+or a plain Ubuntu 24.04 LTS amd64 server for the native installation below.
+**The launch button creates a Docker host; it does not install Hikyo.**
+
+<Cards>
+  <Card title="Create a Docker host on Hetzner" href="https://console.hetzner.com/deploy/docker-ce">
+    Review Hetzner's Docker App image, server configuration, and costs before creation.
+  </Card>
+</Cards>
+
+Hetzner's [native deploy links](https://docs.hetzner.com/cloud/apps/overview/)
+preselect existing listed Apps. This button selects `docker-ce`; it does not
+load a Hikyo template. Review the App's current OS and setup instructions;
+the plain Ubuntu version below applies only to the manual native option.
+Hikyo does not publish a Hetzner App or a Hikyo-specific one-click installer.
+SSH keys, a scoped firewall, and a durable data Volume still need configuration.
+Review current [server and storage pricing](https://www.hetzner.com/cloud/)
+before creating resources.
+
+## Provision the host
+
+1. Open [Hetzner Console](https://console.hetzner.cloud/), create or select a
+   project, and add your operator SSH **public** key under **Security**.
+   Keep the private key on your own machine.
+2. Create a Cloud Firewall with inbound TCP `22` allowed only from your
+   operator public IPv4 address with `/32`, or your VPN egress CIDR. If using
+   IPv6 SSH, add your operator IPv6 address with `/128`. Remove any broad SSH
+   rule suggested by the console. Leave outbound traffic allowed for setup.
+3. For a container installation, use the button, choose your project, and
+   keep the reviewed Docker App selected. For a native installation, create
+   a server with Ubuntu 24.04 LTS. Choose your location and an
+   **x86 (amd64)** instance type, starting with at least 2 vCPUs and 4 GiB RAM
+   for a small pilot. Select your SSH key and attach the firewall during
+   creation. Enable a public IPv4 address for this recipe; check its separate
+   charge. Leave cloud-init/user-data empty.
+4. Create and attach a separate Volume in the server's location. Use manual
+   formatting/mounting so you can identify the correct device first. Connect
+   with `ssh root@<server-ipv4>` and inspect `lsblk -f` plus the Volume's
+   device identifier shown in the console. Follow Hetzner's
+   [Volume creation guide](https://docs.hetzner.com/cloud/volumes/getting-started/creating-a-volume/).
+   Only format a confirmed new empty Volume. Never format an existing or
+   restored Volume. Mount persistently by filesystem UUID and verify after reboot.
+5. On a Docker host, complete the [fresh nightly container installation](/docs/cloud-nightlies/).
+   For a native installation, complete the [host installation](/docs/cloud-deployment/#complete-the-host-installation).
+   Keep application data on the mounted Volume. Configure the root key and TLS,
+   and verify the service before permitting clients.
+
+## Network and access
+
+Once the shared installation checks pass, add inbound TCP `8443` from your
+intended client CIDRs for its native TLS example. Keep TCP `8081` and database
+ports private. If you add a reverse proxy on `443`, follow the
+[reverse-proxy configuration](/docs/self-hosting/) and open that port deliberately.
+Remove temporary SSH access after setup if your management path permits it.
+
+Hetzner firewalls use an implicit inbound deny for traffic without a matching
+allow rule. Configure IPv4 and IPv6 sources explicitly: an IPv4 `/32` rule
+does not authorize an IPv6 client. Never add `::/0` for SSH. Publish an AAAA
+record only when you have intentionally configured and tested the IPv6
+listener, firewall, and TLS path. Apply equivalent restrictions in the host
+firewall and verify the Cloud Firewall remains attached to the server.
+See the [Cloud Firewall FAQ](https://docs.hetzner.com/cloud/firewalls/faq/).
+For a Docker App host, also review the App's existing host firewall and any
+published container ports; retain only access needed for Hikyo and management.
+
+## Updates
+
+Use [nightly container upgrades](/docs/cloud-nightlies/#upgrade-a-nightly-container)
+for the Docker App path. Use [cloud upgrade guidance](/docs/cloud-upgrades/) for
+stable and native installations, including backup and recovery checks.
+
+## Recovery and removal
+
+Hetzner's server Backups and Snapshots **do not include attached Volumes**.
+The [Backups and Snapshots FAQ](https://docs.hetzner.com/cloud/servers/backups-snapshots/faq/)
+also warns that taking a backup of a running server cannot guarantee data
+consistency. Configure application-consistent backups of the mounted data,
+root key, and required configuration to a separate failure domain, and test
+restoration onto a replacement host before relying on the installation.
+
+Record the Volume ID and location. Preserve the Volume deliberately during
+server replacement; check the console's deletion selection before confirming.
+Deleting the Volume destroys its data. A retained Volume is not a backup and
+continues to incur charges. Review retained Volumes, Primary IPs, and snapshots
+after removing a server rather than assuming server deletion stops all charges.
+
+Return to [cloud deployment](/docs/cloud-deployment/) for readiness, backup,
+and upgrade requirements. This single-server recipe does not provide high
+availability.

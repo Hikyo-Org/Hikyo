@@ -1,0 +1,109 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Hikyo host infrastructure only: Ubuntu 24.04 amd64 EC2, encrypted retained data volume, and Session Manager. Does not install Hikyo or expose inbound ports. Requires outbound access to AWS Systems Manager over HTTPS through a public subnet, NAT, or VPC endpoints.",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "Existing VPC with DNS support enabled. Select a subnet in this VPC."
+    },
+    "SubnetId": {
+      "Type": "AWS::EC2::Subnet::Id",
+      "Description": "Existing subnet in the selected VPC. Public IP requires an internet gateway route; private subnets require NAT or Systems Manager VPC endpoints."
+    },
+    "AssociatePublicIp": {
+      "Type": "String",
+      "Default": "true",
+      "AllowedValues": ["true", "false"],
+      "Description": "Allocate a chargeable public IPv4 address. Set false for private subnets with NAT or Systems Manager VPC endpoints. This does not open inbound ports."
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.small",
+      "AllowedValues": ["t3.small", "t3.medium", "t3.large", "t3a.small", "t3a.medium", "t3a.large"],
+      "Description": "x86_64 instance type; availability depends on region and subnet Availability Zone. Size for your workload."
+    },
+    "UbuntuAmi": {
+      "Type": "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>",
+      "Default": "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
+      "Description": "Canonical public SSM parameter for Ubuntu Server 24.04 amd64. Resolving a newer image during stack update can replace the host; plan data migration before updating."
+    },
+    "DataVolumeSize": {
+      "Type": "Number",
+      "Default": 30,
+      "MinValue": 10,
+      "MaxValue": 16384,
+      "Description": "Data volume size in GiB. Retained and billed after stack deletion or volume replacement. Never shrink an existing volume."
+    }
+  },
+  "Conditions": {
+    "UsePublicIp": { "Fn::Equals": [{ "Ref": "AssociatePublicIp" }, "true"] }
+  },
+  "Resources": {
+    "HostSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Hikyo host: no inbound access until operator configures TLS",
+        "VpcId": { "Ref": "VpcId" },
+        "SecurityGroupIngress": [],
+        "SecurityGroupEgress": [{ "IpProtocol": "-1", "CidrIp": "0.0.0.0/0", "Description": "Outbound access for Systems Manager, updates, and operator installation" }],
+        "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "${AWS::StackName}-host" } }]
+      }
+    },
+    "HostRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [{ "Effect": "Allow", "Principal": { "Service": ["ec2.amazonaws.com"] }, "Action": ["sts:AssumeRole"] }]
+        },
+        "ManagedPolicyArns": [{ "Fn::Sub": "arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore" }]
+      }
+    },
+    "HostInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": { "Roles": [{ "Ref": "HostRole" }] }
+    },
+    "Host": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "ImageId": { "Ref": "UbuntuAmi" },
+        "InstanceType": { "Ref": "InstanceType" },
+        "IamInstanceProfile": { "Ref": "HostInstanceProfile" },
+        "MetadataOptions": { "HttpEndpoint": "enabled", "HttpTokens": "required", "HttpPutResponseHopLimit": 1 },
+        "NetworkInterfaces": [{
+          "DeviceIndex": "0",
+          "AssociatePublicIpAddress": { "Fn::If": ["UsePublicIp", true, false] },
+          "SubnetId": { "Ref": "SubnetId" },
+          "GroupSet": [{ "Ref": "HostSecurityGroup" }],
+          "DeleteOnTermination": true
+        }],
+        "BlockDeviceMappings": [{ "DeviceName": "/dev/sda1", "Ebs": { "VolumeSize": 16, "VolumeType": "gp3", "Encrypted": true, "DeleteOnTermination": true } }],
+        "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "${AWS::StackName}-host" } }]
+      }
+    },
+    "DataVolume": {
+      "Type": "AWS::EC2::Volume",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "AvailabilityZone": { "Fn::GetAtt": ["Host", "AvailabilityZone"] },
+        "Encrypted": true,
+        "Size": { "Ref": "DataVolumeSize" },
+        "VolumeType": "gp3",
+        "Tags": [{ "Key": "Name", "Value": { "Fn::Sub": "${AWS::StackName}-data" } }]
+      }
+    },
+    "DataAttachment": {
+      "Type": "AWS::EC2::VolumeAttachment",
+      "Properties": { "Device": "/dev/sdf", "InstanceId": { "Ref": "Host" }, "VolumeId": { "Ref": "DataVolume" } }
+    }
+  },
+  "Outputs": {
+    "InstanceId": { "Description": "Ubuntu host; wait for Systems Manager registration before connecting", "Value": { "Ref": "Host" } },
+    "SessionManagerUrl": { "Description": "Open an authenticated AWS console session; caller needs Session Manager permissions", "Value": { "Fn::Sub": "https://${AWS::Region}.console.aws.amazon.com/systems-manager/session-manager/${Host}?region=${AWS::Region}" } },
+    "DataVolumeId": { "Description": "Retained encrypted data volume. Identify by EBS volume ID before formatting or mounting", "Value": { "Ref": "DataVolume" } },
+    "DataVolumeAvailabilityZone": { "Description": "The volume can attach only to an instance in this Availability Zone", "Value": { "Fn::GetAtt": ["Host", "AvailabilityZone"] } },
+    "DataDeviceRequested": { "Description": "Requested device; Nitro presents it as an NVMe device with a different name", "Value": "/dev/sdf" },
+    "SecurityGroupId": { "Description": "No inbound rules. Configure HTTPS only after installing and securing Hikyo", "Value": { "Ref": "HostSecurityGroup" } }
+  }
+}
