@@ -40,7 +40,7 @@ func inspectMaintenanceConfiguration(ctx context.Context, session *upgrade.Sessi
 		}
 		return request.CheckConfiguration(ctx, projection, values)
 	}
-	if err := checkExistingConfiguration(ctx, keys, request.RootKey, check); err != nil {
+	if err := checkUpgradeableConfiguration(ctx, keys, request.RootKey, check); err != nil {
 		return Result{}, err
 	}
 	return Result{State: current, SchemaOnly: true}, nil

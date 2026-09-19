@@ -20,6 +20,14 @@ type configurationReader interface {
 }
 
 func checkExistingConfiguration(ctx context.Context, keys configurationReader, root []byte, check ConfigurationCheck) error {
+	return checkConfigurationProjection(ctx, keys, root, check, false)
+}
+
+func checkUpgradeableConfiguration(ctx context.Context, keys configurationReader, root []byte, check ConfigurationCheck) error {
+	return checkConfigurationProjection(ctx, keys, root, check, true)
+}
+
+func checkConfigurationProjection(ctx context.Context, keys configurationReader, root []byte, check ConfigurationCheck, preview bool) error {
 	if check == nil {
 		return nil
 	}
@@ -32,6 +40,13 @@ func checkExistingConfiguration(ctx context.Context, keys configurationReader, r
 		values, err = crypto.OpenExistingProjectFields(ctx, keys, bytes.Clone(root), projection.OrgID, projection.ProjectID, projection.Fields)
 		if err != nil {
 			return errors.New("candidate configuration cannot authenticate its saved values")
+		}
+		defer clear(values)
+	}
+	if preview && projection != nil {
+		projection, values, err = upgrade.PreviewConfigurationMigrations(projection, values)
+		if err != nil {
+			return err
 		}
 		defer clear(values)
 	}
