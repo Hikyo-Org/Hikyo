@@ -121,6 +121,7 @@ func NewPublic(ready ReadyChecker, a *API, ui fs.FS, publicOptions PublicOptions
 
 	if publicOptions.MCP != nil {
 		r.Handle("/mcp", publicOptions.MCP)
+		r.Handle("/mcp/codex", publicOptions.MCP)
 	}
 
 	if a != nil {

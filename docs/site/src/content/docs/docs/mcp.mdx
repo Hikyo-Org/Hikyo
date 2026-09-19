@@ -1,13 +1,14 @@
 ---
 title: MCP operations
-description: Deploy, authorize, validate, rotate, and troubleshoot Hikyo's read-only MCP endpoint.
+description: Connect native Codex and T3, authorize scoped MCP tools, and troubleshoot both transport profiles.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/mcp.mdx
 ---
 
-Hikyo exposes one opt-in, stateless JSON endpoint at the canonical public URL
-`https://hikyo.example.com/mcp`. It implements MCP `2026-07-28` and five
-bounded read tools. It does not expose resources, prompts, subscriptions,
-write tools, secret plaintext, or secret draft material.
+Hikyo exposes two opt-in, stateless JSON transport profiles: `/mcp` implements
+MCP `2026-07-28`; `/mcp/codex` supports native Codex with MCP `2025-06-18`.
+Both expose five bounded read tools, plus stage and validate when the write
+flag is enabled. Neither exposes resources, prompts, subscriptions, publish,
+Apply, secret plaintext reads, or secret draft material.
 
 MCP authentication is a Hikyo-managed service-account bearer. Hikyo does not
 publish OAuth authorization-server metadata and does not perform automatic
@@ -35,7 +36,7 @@ startup.
 The reverse proxy must:
 
 - terminate valid public HTTPS and preserve the canonical `Host`;
-- forward `POST /mcp` without rewriting the path;
+- forward `POST /mcp` and `POST /mcp/codex` without rewriting either path;
 - pass `Authorization`, `Mcp-Protocol-Version`, `Mcp-Method`, and `Mcp-Name`;
 - allow request bodies up to 256 KiB and responses up to 256 KiB;
 - pass Hikyo security headers unchanged.
@@ -90,7 +91,7 @@ balancer may send every request to any ready replica.
 Use the executable fixture at `deploy/mcp/compose.yaml` with its exact
 `deploy/mcp/nginx.conf` reverse proxy. It pins the proxy image by digest,
 requires a digest-pinned Hikyo image, publishes only HTTPS publicly, preserves
-the exact `/mcp` route and MCP headers, and configures no session affinity.
+the exact `/mcp` and `/mcp/codex` routes and MCP headers, and configures no session affinity.
 Its one-shot staging service copies the root key into an owner-only file for
 the image's nonroot process; Hikyo never consumes Compose's group-readable
 file-backed secret directly. Keep the DSN, root key, and TLS key outside the
@@ -178,7 +179,7 @@ describe credential channels; a listed profile is not a passing client claim.
 | --- | --- | --- |
 | Official Go SDK | `github.com/modelcontextprotocol/go-sdk v1.7.0` | HTTP transport injects an environment-loaded bearer |
 | MCP Inspector | `@modelcontextprotocol/inspector 2.5.0` | Transient Authorization header, not a saved catalog |
-| Codex CLI | `0.153.2` | `bearer_token_env_var` |
+| Codex CLI | `0.155.0`, `/mcp/codex` | `bearer_token_env_var` |
 | Claude Code | `2.1.261` | `.mcp.json` environment expansion in `headers` |
 | OpenAI Responses API | remote MCP tool | request-time `authorization`, restricted `allowed_tools` |
 
@@ -200,8 +201,9 @@ unverified because the disposable ingress failed its network preflight. No
 model turns or paid provider requests were used. See the
 [redacted rehearsal evidence](https://github.com/Hikyo-Org/hikyo/blob/main/docs/reports/1.0/mcp-production-proof.html)
 for image identity, limitations, and the excluded invalid endpoint attempt.
-Issue #651 remains open for the missing remote/client evidence. Do not enable a
-legacy protocol or weaken TLS/authentication to make these examples connect.
+Those historical observations do not cover the compatibility profile added
+for #781. Use the explicit Codex route below; do not weaken TLS or global
+modern endpoint validation.
 
 Set the credential only in the launching process:
 
@@ -210,11 +212,20 @@ export HIKYO_MCP_URL=https://hikyo.example.com/mcp
 export HIKYO_MCP_TOKEN="$(</run/credentials/hikyo-mcp-token)"
 ```
 
-### Codex
+### Codex and T3
+
+Use `/mcp/codex`, not `/mcp`, for native Codex. A static header override cannot
+translate the initialization lifecycle. The profile pins `2025-06-18`, accepts
+initialization and notification messages, and returns ordinary JSON. It creates
+no session, requires no affinity, and supports no server-initiated streams.
+Other protocol versions receive an actionable error. Tool calls retain the
+same bearer, grant, scope, redaction, audit and size checks as the modern route.
+Cancellation propagates when the HTTP request is cancelled; cancellation
+notifications are acknowledged without creating connection state.
 
 ```toml
 [mcp_servers.hikyo]
-url = "https://hikyo.example.com/mcp"
+url = "https://hikyo.example.com/mcp/codex"
 bearer_token_env_var = "HIKYO_MCP_TOKEN"
 ```
 
@@ -222,9 +233,31 @@ The equivalent command is:
 
 ```bash
 codex mcp add hikyo \
-  --url "$HIKYO_MCP_URL" \
+  --url "https://hikyo.example.com/mcp/codex" \
   --bearer-token-env-var HIKYO_MCP_TOKEN
 ```
+
+Codex `0.155.0` was tested against a disposable SQLite datastore using actual
+`codex app-server`, `mcpServerStatus/list` and `mcpServer/tool/call`, without a
+model turn or provider request. It discovered all seven tools, read a scoped
+definition, validated without staging, then staged exactly one inert draft.
+The test verifies `origin=mcp` audit rows and absence of publication. Reproduce:
+
+```bash
+HIKYO_TEST_CODEX_NATIVE=1 go test ./internal/isolation \
+  -run '^TestMCPCodexNative$' -count=1 -v
+```
+
+For T3, configure the same file in the Codex home selected by its provider
+settings. Set `HIKYO_MCP_TOKEN` in T3's provider environment, or inherit it from
+the process launching T3. A desktop launch does not automatically inherit an
+export from an unrelated terminal. T3's Codex `homePath` overrides `CODEX_HOME`;
+editing a different home's config will not affect that provider. Restart the
+provider session after changing its environment or MCP configuration. Do not
+put a bearer literal in TOML, tool arguments, prompts, or screenshots.
+
+The separate T3 verification scope and exact source identity are recorded in
+[the #781 evidence](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/reports/mcp-codex-781.md).
 
 ### Claude Code
 

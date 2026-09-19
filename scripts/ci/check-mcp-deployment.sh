@@ -160,7 +160,7 @@ required = [
     r"(?m)^\s*zone hikyo_backend 64k;$",
     r"(?m)^\s*server hikyo:8080 resolve;$",
     r"(?m)^\s*listen 443 ssl;$",
-    r"(?m)^\s*location = /mcp \{$",
+    r"(?m)^\s*location ~ \^/mcp\(/codex\)\?\$ \{$",
     r"(?m)^\s*client_max_body_size 256k;$",
     r"(?m)^\s*proxy_pass http://hikyo_backend;$",
     r"(?m)^\s*proxy_set_header Host \$host;$",

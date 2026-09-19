@@ -196,6 +196,16 @@ func extractNextCursor(t *testing.T, body []byte) string {
 }
 
 func TestMCPToolsEndToEndCanaryAndDenial(t *testing.T) {
+	for _, codex := range []bool{false, true} {
+		name := "modern"
+		if codex {
+			name = "codex"
+		}
+		t.Run(name, func(t *testing.T) { runTestMCPToolsEndToEndCanaryAndDenial(t, codex) })
+	}
+}
+
+func runTestMCPToolsEndToEndCanaryAndDenial(t *testing.T, codex bool) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
 		kr := probeKeyring(t, db)
@@ -249,7 +259,7 @@ func TestMCPToolsEndToEndCanaryAndDenial(t *testing.T) {
 			Definitions: keys, Environments: environments, Configuration: values,
 			Pending: revisions, Revisions: revisions,
 		}
-		mcpHandler := setupMCPHandler(t, sealer, services)
+		mcpHandler := mcpProfile(setupMCPHandler(t, sealer, services), codex)
 		var logs bytes.Buffer
 		metrics := server.NewMetrics(nil)
 		handler := server.NewPublic(nil, &server.API{
@@ -407,7 +417,7 @@ func TestMCPToolsEndToEndCanaryAndDenial(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		other := setupMCPHandler(t, replicaSealer, replicaServices)
+		other := mcpProfile(setupMCPHandler(t, replicaSealer, replicaServices), codex)
 		first := mcpCall(t, handler, granted.token, mcpserver.ToolListDefinitions,
 			`{"org_id":"org_a","project_id":"prj_a1","page_size":1}`)
 		cursor := extractNextCursor(t, first.Body.Bytes())
