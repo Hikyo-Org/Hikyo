@@ -582,6 +582,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// cannot honestly prove readable escrow. Both trails remain actual emitters.
 		recovered := runBackupLifecycle(t, db.Engine())
 		managed := runSelfConfigAuditLifecycle(t, db.Engine())
+		migrated := runManagedMigrationAuditLifecycle(t, db.Engine())
 
 		for _, typ := range audit.Types() {
 			spec, _ := audit.Spec(typ)
@@ -595,6 +596,7 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 				seen += queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, recovered, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
 				seen += queryInt(t, managed, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
+				seen += queryInt(t, migrated, "SELECT COUNT(*) FROM audit_instance_events WHERE type = '"+string(typ)+"'")
 			}
 			if seen == 0 {
 				t.Errorf("registered event type %s was never emitted — declaration without an emitter", typ)

@@ -35,6 +35,7 @@ var driverFiles = map[string]bool{
 	"internal/conformance/values_test.go":                        true,
 	"internal/isolation/approval_acceptance_test.go":             true,
 	"internal/isolation/audit_e2e_test.go":                       true,
+	"internal/isolation/managed_migration_audit_fixture_test.go": true, // signed gate fixture exercises the actual fenced migration audit emitter
 	"internal/isolation/backup_drill_e2e_test.go":                true,
 	"internal/isolation/forgejo_e2e_test.go":                     true,
 	"internal/isolation/harness_test.go":                         true,
