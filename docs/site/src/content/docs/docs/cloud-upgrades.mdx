@@ -1,0 +1,135 @@
+---
+title: Upgrade a cloud installation
+description: Upgrade stable releases and signed nightlies without replacing persistent data or bypassing recovery checks.
+---
+
+The cloud provider does not determine the upgrade command. Use the procedure
+matching how Hikyo was installed. Do not redeploy the infrastructure template,
+recreate the VM, or regenerate its keys just to update Hikyo.
+
+| Installation | Upgrade procedure |
+| --- | --- |
+| Fresh Docker installation enrolled for unattended upgrades | [Replace the selected image](/docs/cloud-nightlies/#upgrade-a-nightly-container); Hikyo verifies, backs up, drills, and migrates before readiness |
+| Supported native Linux systemd server, nightly, local SQLite | [`sudo hikyo upgrade`](#native-systemd-nightlies) |
+| Native or Compose manual installation, including stable releases | [Manual verified upgrade](#manual-installations-and-stable-releases) |
+| Singleton Kubernetes enrolled for unattended upgrades | Replace the verified chart image digest using the [container-upgrade runbook](/docs/container-upgrades/); retain the root key, upgrade PVC, and scratch DB |
+| HA or manually managed Kubernetes | Stop all writers and use the [manual deployment runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md#compose-and-kubernetes) |
+
+## Before every upgrade
+
+1. Record the running version, target release, and deployment inputs. Verify the
+   exact signed artifacts for the chosen channel and all required intermediate
+   releases. `nightly` means signed prereleases; `latest` is not its alias.
+2. Confirm an off-host recovery copy of encrypted data and separate root-key
+   recovery. Preserve the installation journal independently of database
+   restores and retain any encrypted local operator vault required by your mode.
+3. Check free disk space for downloaded artifacts, encrypted backup, and scratch
+   restoration. Allow a maintenance window and suspend competing image updaters
+   or reconcilers. Never run two SQLite writers from separate containers.
+
+## Native systemd nightlies
+
+For the supported single-host SQLite deployment, run on the server:
+
+```sh
+sudo hikyo upgrade
+```
+
+The coordinator verifies the signed nightly and forward route, stops writers,
+exports a backup, proves scratch restoration, migrates, and checks the exact
+running executable before reporting success. It manages root-owned encrypted
+local operator custody. Read its [custody and recovery behavior](/docs/upgrades/#one-command-nightly-upgrade)
+before selecting this mode.
+
+**The default config is not a discovery mechanism.** It expects `hikyo.service`,
+the `hikyo` user/group, `/usr/bin/hikyo`, working directory `/var/lib/hikyo`,
+`/etc/hikyo/hikyo.env`, and `/etc/hikyo/root.key`. The manually configured cloud
+example uses `/srv/hikyo` and `/usr/local/bin/hikyo`; do not assume it matches.
+Custom layouts require a root-owned config and a compatible systemd unit:
+
+```sh
+sudo hikyo upgrade --config /etc/hikyo/upgrade.json
+```
+
+The [configuration schema](https://github.com/Hikyo-Org/Hikyo/blob/main/internal/hostupgrade/config.go)
+defines the exact path and ownership contract. The unit must use its configured
+environment file and `LoadCredential` root-key source, with a bounded
+`ExecStart` containing only `server`, optional `--auto-migrate=false`, and the
+root-key credential flag. Extra listener/TLS arguments from a hand-written unit
+are not accepted by this adapter. Unsupported units fail preflight before the
+service stops. Use the manual procedure below if your deployment does not meet
+this contract; do not disable those checks.
+
+If the installed nightly is too old to include `upgrade`, the first-use bridge
+downloads and verifies the coordinator before operating on the existing server:
+
+```sh
+curl --fail --silent --show-error --proto '=https' \
+  https://hikyo.app/upgrade-nightly.sh | sudo sh
+```
+
+This is an **upgrade bridge, not an initial installer**. It requires an existing
+supported systemd/SQLite deployment and the authorized route from its current
+version. PostgreSQL, HA, Docker, and stable native deployments use their own
+procedure. Future upgrades on the supported host use `sudo hikyo upgrade`.
+
+## Manual installations and stable releases
+
+There is no published stable release yet. Once one is published, select it from
+[GitHub releases](https://github.com/Hikyo-Org/Hikyo/releases) and follow its
+[signed installation instructions](/docs/installation/). Do not use an example
+`1.0.0` filename as evidence that an artifact exists.
+
+The same manual sequence applies to a manually installed nightly, using its
+distinct signed-nightly artifacts:
+
+1. Verify the target binary/image and assemble an authenticated runtime bundle
+   containing the source, intermediate releases, and target. Keep the existing
+   operator pin and persistent installation state. Follow the
+   [artifact preparation runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md#required-public-artifacts).
+2. Stop every writer and suspend any reconciler that might restart it. Use the
+   exact preparation binary with the instance's public trust to run
+   `hikyo backup upgrade-export`. On the custody host, run
+   `hikyo backup upgrade-drill` against an empty scratch database of the same
+   engine. The [complete commands](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md#populated-upgrade)
+   bind the encrypted backup and proof to this installation and target route.
+3. Stage the public receipt, signed attestation, and exact encrypted backup.
+   Keep private signing and decryption keys on the custody host. Set the bundle,
+   evidence, backup, operator-pin, and installation-state paths from that runbook.
+4. With all writers stopped, run the exact verified target's `hikyo migrate`,
+   then start that target with `server --auto-migrate=false`. Execute required
+   intermediate hops in order without exposing tenant traffic between them.
+5. Check `/readyz`, the running version, external HTTPS, sign-in, and an authorized
+   known value. Remove one-time evidence settings for subsequent ordinary starts,
+   retaining the bundle, operator pin, and persistent installation state.
+
+For Docker, use the manual Compose runbook's explicit stop, migrate, and start
+sequence. Do not switch a populated manual installation to the unattended
+nightly recipe. For Kubernetes, use `Recreate` and prove other writers stopped;
+do not use Helm `--atomic` or an automatic GitOps rollback after SQL writes.
+
+## Moving between nightly and stable
+
+Changing a tag is not permission to change release tracks or reverse migrations.
+A nightly based on stable `1.1.0` is newer than that stable base: it cannot
+downgrade to `1.1.0`; `1.1.1` or higher is only eligible when the authenticated
+forward route also authorizes it. Both directions require the appropriate signed
+compatibility route and any recovery-authorized bridge. An absent route must
+stop the upgrade. See [release channels](/docs/upgrades/#release-channels).
+
+`hikyo update check` can discover/stage signed downloads. It is not a replacement
+for the server's backup, migration, and restart procedure. The server UI reports
+updates but does not remotely apply them.
+
+## Interrupted or failed upgrade
+
+Keep the journal, target artifacts, and backup. Resume the same authorized
+operation only when its coordinator or manual runbook permits it. An uncertain
+schema write requires [operator recovery](/docs/backup-and-restore/), not an old
+container, reverse SQL, restored historical journal, or regenerated root key.
+Restore into an empty target through the recovery procedure and preserve current
+installation authority. A cloud snapshot by itself cannot prove an authorized
+Hikyo rollback.
+
+Return to [cloud deployment](/docs/cloud-deployment/) or
+[nightly deployment](/docs/cloud-nightlies/).

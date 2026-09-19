@@ -1,0 +1,104 @@
+---
+title: Deploy on Google Cloud
+description: Create a Compute Engine host and persistent disk for a verified Hikyo installation.
+---
+
+Start with the [cloud deployment prerequisites](/docs/cloud-deployment/#before-provisioning).
+This recipe uses Compute Engine, a dedicated VPC, and a persistent data disk.
+It provisions infrastructure only. Google Cloud has no Hikyo Marketplace
+listing or preconfigured one-click deployment in this repository.
+
+## Provision the host
+
+Use an authenticated [gcloud CLI](https://cloud.google.com/sdk/docs/install),
+a billing-enabled project, and permissions to create Compute Engine resources
+and use IAP TCP forwarding. Replace the project, region, and zone below.
+These commands create billable resources; inspect them before running.
+
+```sh
+gcloud config set project YOUR_PROJECT_ID
+gcloud services enable compute.googleapis.com iap.googleapis.com
+
+gcloud compute networks create hikyo --subnet-mode=custom
+gcloud compute networks subnets create hikyo \
+  --network=hikyo --region=europe-west4 --range=10.80.0.0/24
+gcloud compute addresses create hikyo --region=europe-west4
+gcloud compute disks create hikyo-data \
+  --zone=europe-west4-a --type=pd-balanced --size=30GB
+
+gcloud compute instances create hikyo \
+  --zone=europe-west4-a --machine-type=e2-small \
+  --image-family=ubuntu-2404-lts-amd64 --image-project=ubuntu-os-cloud \
+  --boot-disk-size=20GB --boot-disk-type=pd-balanced \
+  --network=hikyo --subnet=hikyo --address=hikyo \
+  --disk=name=hikyo-data,device-name=hikyo-data,mode=rw,boot=no,auto-delete=no \
+  --no-service-account --no-scopes \
+  --metadata=enable-oslogin=TRUE --tags=hikyo
+```
+
+This uses Google's encryption at rest and gives the VM no service-account
+credentials. Choose a customer-managed encryption key separately if your policy
+requires one. The Ubuntu image family resolves to its current image; record the
+resolved image for repeatability. Confirm sizes and regional availability with
+[Compute Engine pricing](https://cloud.google.com/compute/all-pricing).
+
+## Connect through IAP
+
+Grant the operator the required
+[IAP TCP forwarding permissions](https://cloud.google.com/iap/docs/using-tcp-forwarding)
+and [OS Login role](https://cloud.google.com/compute/docs/oslogin/set-up-oslogin).
+OS Admin Login is needed for the host setup steps requiring sudo. Create a
+firewall rule for IAP's TCP forwarding range, not for public SSH:
+
+```sh
+gcloud compute firewall-rules create hikyo-ssh-iap \
+  --network=hikyo --direction=INGRESS --action=ALLOW \
+  --rules=tcp:22 --source-ranges=35.235.240.0/20 --target-tags=hikyo
+gcloud compute ssh hikyo --zone=europe-west4-a --tunnel-through-iap
+```
+
+Identify the data disk through `/dev/disk/by-id/google-hikyo-data` and inspect it
+with `lsblk -f` before formatting or mounting. Complete the
+[host installation](/docs/cloud-deployment/#complete-the-host-installation).
+The IAP firewall rule alone is not authorization to connect; IAM and OS Login
+must both permit the operator.
+
+## Enable HTTPS after installation
+
+Point DNS at the reserved regional address. After configuring TLS, replace
+`CLIENT_CIDR` with the intended clients' source range and allow the native HTTPS
+port. Keep the operational listener on loopback.
+
+```sh
+gcloud compute firewall-rules create hikyo-https \
+  --network=hikyo --direction=INGRESS --action=ALLOW \
+  --rules=tcp:8443 --source-ranges=CLIENT_CIDR --target-tags=hikyo
+```
+
+For a managed database, configure Cloud SQL for PostgreSQL with
+[private IP connectivity](https://cloud.google.com/sql/docs/postgres/configure-private-ip)
+and an explicitly trusted, hostname-verified TLS connection. The recipe does
+not install the Cloud SQL Auth Proxy or configure IAM database authentication;
+do not assume the VM has either. Follow Cloud SQL's current certificate and DNS
+requirements before constructing the DSN.
+
+## Recovery and removal
+
+`auto-delete=no` preserves the data disk when this VM is deleted. It does not
+protect against explicit disk or project deletion. The boot disk is disposable;
+recover root keys and public artifacts independently. The retained disk and
+reserved external IP continue to incur charges until deliberately removed.
+
+Before cleanup, perform the [backup and recovery steps](/docs/cloud-deployment/#managed-databases-and-recovery).
+Record the disk's zone, VM configuration, and exact Hikyo release. Reattach the
+existing disk deliberately during recovery; do not rerun disk-creation or
+formatting commands over an existing installation.
+
+## Nightlies and upgrades
+
+For a new Docker-based nightly on this host, follow
+[deploy and upgrade cloud nightlies](/docs/cloud-nightlies/). It includes durable
+storage, native HTTPS, first administrator creation, and image replacement.
+For native installations, stable releases, and recovery, use
+[upgrade a cloud installation](/docs/cloud-upgrades/). Keep the same data volume,
+root key, and installation custody; do not redeploy infrastructure to update Hikyo.

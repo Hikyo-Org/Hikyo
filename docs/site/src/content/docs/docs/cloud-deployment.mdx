@@ -1,0 +1,169 @@
+---
+title: Cloud deployment
+description: Deploy Hikyo on AWS, Azure, Google Cloud, DigitalOcean, or Hetzner with verified installation and recovery boundaries.
+---
+
+Deploy Hikyo into your own cloud account. Start with one Ubuntu 24.04 LTS VM,
+SQLite on a persistent data disk, and native HTTPS. This is a single-node
+installation, not high availability. For an existing Kubernetes platform, use
+the [Helm guide](/docs/kubernetes-operator/) and the
+[manual installation runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md#compose-and-kubernetes).
+
+For a fresh nightly on any of these hosts, follow
+[deploy and upgrade cloud nightlies](/docs/cloud-nightlies/). That Docker recipe
+includes native HTTPS and explicit unattended upgrade custody. For an existing
+instance or stable releases, use [upgrade a cloud installation](/docs/cloud-upgrades/).
+
+<Cards>
+  <Card title="AWS" href="/docs/deploy-aws/">
+    Provision an EC2 host with CloudFormation and connect through Session Manager.
+  </Card>
+  <Card title="Azure" href="/docs/deploy-azure/">
+    Open the Deploy to Azure wizard with a prepared VM template.
+  </Card>
+  <Card title="Google Cloud" href="/docs/deploy-gcp/">
+    Create a Compute Engine VM and persistent disk with gcloud.
+  </Card>
+  <Card title="DigitalOcean" href="/docs/deploy-digitalocean/">
+    Launch a Docker host or create an Ubuntu Droplet with persistent storage.
+  </Card>
+  <Card title="Hetzner" href="/docs/deploy-hetzner/">
+    Launch a Docker host or create an Ubuntu server with persistent storage.
+  </Card>
+</Cards>
+
+## What the deployment button does
+
+The Azure button opens the provider's template review screen. You choose the
+subscription, region, VM size, and public SSH key, review the billable resources,
+then approve deployment in your own account. AWS uses a downloadable
+CloudFormation template. Google Cloud uses the commands in its guide.
+DigitalOcean and Hetzner buttons select their published Docker host images;
+complete the [nightly installation](/docs/cloud-nightlies/) after provisioning.
+
+These paths provision **infrastructure only**. They do not install Hikyo, create
+an administrator, generate operator custody, or expose an unconfigured server.
+Provider deployment success means the infrastructure exists; it does not mean
+Hikyo is ready. No cloud credentials are sent to this documentation site.
+
+Hikyo is still in `0.x` development. Signed nightlies are prereleases, not
+supported stable releases. The cloud recipes have local validation, not a
+completed deployment test in each provider account. Check current regional
+availability and pricing before deploying. VM, disks, public IPs, snapshots,
+and network traffic can incur charges, including while the VM is stopped.
+
+## Before provisioning
+
+Choose a region and DNS name, and prepare these inputs:
+
+The list below is for the **manual native installation**. The fresh unattended
+Docker path has its own [prerequisites](/docs/cloud-nightlies/#prepare-the-host)
+and generates local encrypted operator custody instead of using an off-host
+operator key and manually staged public bundle.
+
+1. A verified Linux amd64 release and its authenticated offline release bundle.
+   Follow [installation](/docs/installation/) and the
+   [signed nightly runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/signed-nightlies.md)
+   for the selected channel. Do not run the installer template from source or
+   substitute an unsigned build for a verified release.
+2. An independently held operator signing key and its public key. Keep private
+   operator custody and backup decryption keys off the server for the manual
+   installation path. Copy only the public runtime artifacts to it.
+3. A TLS certificate and key for the chosen DNS name, and an age backup recipient
+   whose private identity has a separate recovery location.
+
+## Complete the host installation
+
+Use the same process after provisioning on any provider:
+
+1. Connect through the provider's documented management path. Identify the
+   attached **data** disk with `lsblk -f`, inspect it for existing filesystems,
+   and mount it persistently by UUID at `/srv/hikyo`. Format only a confirmed
+   empty disk. Never format an existing disk during redeployment or recovery.
+   Put the database in `/srv/hikyo/data` and independent installation state in
+   `/srv/hikyo/installation`; mount before starting the service. Keep both
+   directories owned by the dedicated runtime user with mode `0700`.
+2. Install the verified binary, public bundle, and separately pinned
+   `operator.pub` following
+   [fresh native installation](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/manual-upgrades.md#fresh-native-installation).
+   The public bundle must remain available at every boot. Installation state
+   must persist independently of database restores; never overwrite it with an
+   old database backup. Keep the runtime root key protected, with a recovery copy
+   separate from database backups.
+3. Configure a dedicated service user and systemd service using the settings
+   below. Run `hikyo migrate` with the same datastore, bundle, operator public
+   key, and installation-state settings before `server --auto-migrate=false`.
+   Missing or unauthenticated artifacts must stop setup, not trigger `--dev`.
+4. Point DNS at the host's stable address. Open only the chosen HTTPS port after
+   TLS configuration is ready. Create the first administrator locally with
+   `hikyo admin create --username admin --output-file /protected/path/admin-authority`
+   under the same production configuration. Establish its credential through
+   the HTTPS instance using `hikyo account establish-credential`; keep the
+   single-use authority out of logs and cloud template outputs.
+5. Check readiness locally and HTTPS from another network. Configure encrypted
+   exports and perform a [restore drill](/docs/backup-and-restore/) before storing
+   real secret material. Save the exact deployed release and infrastructure inputs.
+
+Use these paths as the host configuration contract, replacing the example
+origin and backup recipient. They are configuration inputs, not a complete
+installer:
+
+```ini
+HIKYO_DB=sqlite:/srv/hikyo/data/hikyo.db
+HIKYO_EXTERNAL_ORIGIN=https://hikyo.example.com:8443
+HIKYO_ROOT_KEY_FILE=/etc/hikyo/root.key
+HIKYO_UPGRADE_BUNDLE=/srv/hikyo-public/bundle
+HIKYO_UPGRADE_OPERATOR_PUBLIC_KEY=/srv/hikyo-public/operator.pub
+HIKYO_UPGRADE_STATE_DIR=/srv/hikyo/installation
+HIKYO_BACKUP_RECIPIENTS=age1REPLACE_WITH_YOUR_RECIPIENT
+HIKYO_BACKUP_DIR=/srv/hikyo/backups
+```
+
+The server command uses an unprivileged HTTPS port:
+
+```sh
+/usr/local/bin/hikyo server --auto-migrate=false \
+  --listen=0.0.0.0:8443 \
+  --operational-listen=127.0.0.1:8081 \
+  --root-key-file=/etc/hikyo/root.key \
+  --tls-cert-file=/etc/hikyo/tls.crt \
+  --tls-key-file=/etc/hikyo/tls.key
+```
+
+Set `RequiresMountsFor=/srv/hikyo` in the systemd unit so a missing disk cannot
+silently create a second database on the boot disk. Provision the backup
+directory for the runtime user. Root key and TLS private key permissions must
+permit that user and exclude group/other access. Use a protected environment
+file or service-manager credentials; do not place secret values in cloud-init,
+template parameters, shell history, or deployment outputs.
+
+```sh
+curl --fail http://127.0.0.1:8081/healthz
+curl --fail http://127.0.0.1:8081/readyz
+# Run from outside the VM, with the real DNS name:
+curl --fail https://hikyo.example.com:8443/
+```
+
+Never open port 8081 publicly. For standard HTTPS on port 443, use a separately
+configured reverse proxy and the exact trusted-proxy CIDRs described in
+[self-hosting](/docs/self-hosting/). Update `HIKYO_EXTERNAL_ORIGIN` to match the
+browser-visible origin. Certificate renewal uses the managed configuration
+publish-and-Apply workflow; replacing the initial certificate files alone does
+not reload them.
+
+## Managed databases and recovery
+
+AWS RDS, Azure Database for PostgreSQL, and Google Cloud SQL require an explicit
+PostgreSQL DSN, private connectivity, a dedicated database role, and a trusted
+server CA with hostname verification. Start with `sslmode=verify-full`; do not
+relax TLS to work around networking or certificate errors. Provider identity
+authentication is not configured by these recipes. Keep the DSN in protected
+configuration, never in deployment outputs.
+
+Provider disk snapshots are supplementary. They do not replace Hikyo encrypted
+exports, root-key recovery, or the independent installation journal. Copy
+encrypted exports off the VM and test recovery. Follow [upgrades](/docs/upgrades/)
+and the [cloud upgrade procedures](/docs/cloud-upgrades/)
+for migrations; do not automatically roll back to an older image after database
+writes. Before deleting infrastructure, recover the database, root key, and
+installation custody through their documented separate paths.

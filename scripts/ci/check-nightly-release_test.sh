@@ -53,6 +53,9 @@ grep -F 'gh api --method POST "repos/$REPOSITORY/git/refs"' "$workflow" >/dev/nu
 grep -F 'gh release create "$TAG"' "$workflow" >/dev/null || fail 'nightly prerelease publication is missing'
 grep -F -- '--verify-tag' "$workflow" >/dev/null || fail 'nightly release can create an unverified tag through GITHUB_TOKEN'
 grep -F -- '--prerelease' "$workflow" >/dev/null || fail 'nightly is not marked prerelease'
+grep -F './scripts/release/nightly-changelog.sh "$previous_commit" "$COMMIT"' "$workflow" >/dev/null || fail 'nightly release notes lack the commit range'
+grep -F 'git/ref/tags/$previous_tag' "$workflow" >/dev/null || fail 'changelog does not resolve the published predecessor commit'
+grep -F -- '--notes-file "$RUNNER_TEMP/nightly-notes.md"' "$workflow" >/dev/null || fail 'generated nightly notes are not published'
 grep -F 'dist/hikyo_*_Darwin_*.tar.gz' "$workflow" >/dev/null || fail 'macOS assets are missing'
 grep -F 'dist/hikyo_*_Linux_*.tar.gz' "$workflow" >/dev/null || fail 'Linux assets are missing'
 grep -F 'dist/hikyo_*_Windows_*.zip' "$workflow" >/dev/null || fail 'Windows assets are missing'
@@ -140,4 +143,5 @@ fi
 "$repo_root/scripts/release/latest-nightly-tag_test.sh"
 "$repo_root/scripts/release/nightly-run-tag_test.sh"
 "$repo_root/scripts/release/require-green-main_test.sh"
+"$repo_root/scripts/release/nightly-changelog_test.sh"
 printf 'nightly release fixture: CI-gated archives, packages and retryable images stay outside official signing\n'

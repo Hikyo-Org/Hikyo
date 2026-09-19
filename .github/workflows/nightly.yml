@@ -289,6 +289,23 @@ jobs:
             >nightly-payloads/NIGHTLY-BUILD.txt
           cp nightly-payloads/NIGHTLY-BUILD.txt "$RUNNER_TEMP/nightly-notes.md"
           ./scripts/release/create-nightly-manifest.sh "$VERSION" "$COMMIT" "$GITHUB_RUN_NUMBER" nightly-payloads
+      - name: Append changes since the previous published nightly
+        if: steps.identity.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          set -o pipefail
+          previous_tag=$(gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/releases?per_page=100" | \
+            ./scripts/release/latest-nightly-tag.sh)
+          previous_commit=
+          if [ -n "$previous_tag" ]; then
+            previous_commit=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$previous_tag" \
+              --jq '.object.sha')
+          fi
+          ./scripts/release/nightly-changelog.sh "$previous_commit" "$COMMIT" \
+            >>"$RUNNER_TEMP/nightly-notes.md"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         if: steps.identity.outputs.skip != 'true'
         with:
