@@ -318,3 +318,23 @@ func (r *candidateKeys) Configuration(ctx context.Context) (*CandidateConfigurat
 	}
 	return projection, nil
 }
+
+// ActiveProjectVersion selects a write key explicitly; retiring wrappers remain
+// available only for opening historical fields. Session/phase checks match the
+// wrapper inventory and this method cannot provision a missing project DEK.
+func (r *candidateKeys) ActiveProjectVersion(ctx context.Context, org, project string) (uint32, error) {
+	if err := r.check(ctx); err != nil {
+		return 0, err
+	}
+	var version int64
+	if err := r.session.conn.QueryRowContext(ctx, "SELECT version FROM tier3_keys WHERE purpose='project' AND org_id=$1 AND project_id=$2 AND state='active'", org, project).Scan(&version); err != nil {
+		return 0, err
+	}
+	if version < 1 || version > math.MaxUint32 {
+		return 0, ErrConflict
+	}
+	if err := r.check(ctx); err != nil {
+		return 0, err
+	}
+	return uint32(version), nil
+}

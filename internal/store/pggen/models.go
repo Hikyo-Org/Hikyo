@@ -1059,6 +1059,7 @@ type SelfConfigBinding struct {
 	Suspended          bool
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
+	MigrationVersion   int64
 }
 
 type SelfConfigJob struct {

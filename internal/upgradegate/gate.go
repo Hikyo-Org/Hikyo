@@ -551,6 +551,9 @@ func candidateHealth(ctx context.Context, session *upgrade.Session, state upgrad
 	if err := crypto.VerifyExistingHierarchy(ctx, keys, bytes.Clone(root)); err != nil {
 		return err
 	}
+	if err := session.MigrateConfiguration(ctx, state, bytes.Clone(root), check); err != nil {
+		return err
+	}
 	return checkExistingConfiguration(ctx, keys, root, check)
 }
 

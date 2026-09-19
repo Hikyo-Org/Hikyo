@@ -19,6 +19,7 @@ type EventType string
 // the surfaces that replace them — #47/#48/#54/#55 — under the completeness
 // invariant, which forces every newly registered operation to map here).
 const (
+	EventSelfConfigMigrated                   EventType = "self_config.migrated"
 	EventSelfConfigResumed                    EventType = "self_config.resumed"
 	EventSelfConfigTargetCommitted            EventType = "self_config.target_committed"
 	EventSelfConfigRecovered                  EventType = "self_config.recovered"
@@ -858,6 +859,9 @@ var pinMutationSchema = Schema{
 // the new type (completeness is CI invariant 2, wired to the
 // probe-classification registry).
 var registry = map[EventType]TypeSpec{
+	EventSelfConfigMigrated: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{
+		"migration_version": {Kind: KindInt, Required: true, NonNegative: true}, "owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, Required: true, NonNegative: true}, "generation": {Kind: KindInt, Required: true, NonNegative: true},
+	}},
 	EventSelfConfigRecovered: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true}, Trails: map[Trail]bool{TrailTenant: true}, Schema: Schema{"owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, Required: true, NonNegative: true}, "generation": {Kind: KindInt, Required: true, NonNegative: true}}},
 	EventSelfConfigStatusRead: {SchemaVersion: 1, Retention: RetentionSecurity, Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true}, Trails: map[Trail]bool{TrailInstance: true}, Schema: Schema{
 		"owner_instance_id": {Kind: KindString, Required: true}, "revision": {Kind: KindInt, NonNegative: true}, "generation": {Kind: KindInt, NonNegative: true}, "job_id": {Kind: KindString}, "node_id": {Kind: KindString}, "error_code": {Kind: KindString, Enum: []string{"invalid_config", "incompatible_schema", "preparation_failed", "preparation_timeout", "convergence_timeout", "restored", "transport_failed", "none"}},

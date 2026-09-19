@@ -177,6 +177,11 @@ jobs:
         run: ./scripts/ci/check-mcp-deployment.sh
       - name: Release trust and refusal fixtures
         run: ./scripts/release/test-fixtures.sh
+      - name: Managed configuration upgrade rehearsal fixtures
+        run: |
+          python3 -m venv "$RUNNER_TEMP/managed-config-rehearsal"
+          "$RUNNER_TEMP/managed-config-rehearsal/bin/pip" install -r scripts/ci/managed-config-upgrade/requirements.txt
+          "$RUNNER_TEMP/managed-config-rehearsal/bin/python" -m unittest discover -s scripts/ci/managed-config-upgrade -p 'test_*.py'
       - name: Interactive release ceremony fixture
         run: ./scripts/release/ceremony_test.sh
       - name: Release candidate resolver fixture

@@ -225,7 +225,7 @@ func (q *Queries) GetLatestSelfConfigTopology(ctx context.Context) (string, erro
 }
 
 const getSelfConfigBinding = `-- name: GetSelfConfigBinding :one
-SELECT id, owner_instance_id, adoption_key, adopted_by, org_id, project_id, environment_id, schema_version, generation, desired_revision, desired_snapshot_id, previous_snapshot_id, incarnation, suspended, created_at, updated_at FROM self_config_binding WHERE id = 1
+SELECT id, owner_instance_id, adoption_key, adopted_by, org_id, project_id, environment_id, schema_version, generation, desired_revision, desired_snapshot_id, previous_snapshot_id, incarnation, suspended, created_at, updated_at, migration_version FROM self_config_binding WHERE id = 1
 `
 
 // Every query is singleton owner-local metadata; no secret material lives here.
@@ -250,6 +250,7 @@ func (q *Queries) GetSelfConfigBinding(ctx context.Context) (SelfConfigBinding, 
 		&i.Suspended,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MigrationVersion,
 	)
 	return i, err
 }
@@ -600,7 +601,7 @@ func (q *Queries) ListSelfConfigSeedInputs(ctx context.Context) ([]ListSelfConfi
 }
 
 const lockSelfConfigBinding = `-- name: LockSelfConfigBinding :one
-SELECT id, owner_instance_id, adoption_key, adopted_by, org_id, project_id, environment_id, schema_version, generation, desired_revision, desired_snapshot_id, previous_snapshot_id, incarnation, suspended, created_at, updated_at FROM self_config_binding WHERE id = 1 FOR UPDATE
+SELECT id, owner_instance_id, adoption_key, adopted_by, org_id, project_id, environment_id, schema_version, generation, desired_revision, desired_snapshot_id, previous_snapshot_id, incarnation, suspended, created_at, updated_at, migration_version FROM self_config_binding WHERE id = 1 FOR UPDATE
 `
 
 // hikyo:instance-scoped
@@ -624,6 +625,7 @@ func (q *Queries) LockSelfConfigBinding(ctx context.Context) (SelfConfigBinding,
 		&i.Suspended,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MigrationVersion,
 	)
 	return i, err
 }

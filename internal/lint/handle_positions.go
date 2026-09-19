@@ -16,6 +16,7 @@ var driverFiles = map[string]bool{
 	"internal/isolation/ops_floor_test.go":                       true, // isolated admitted SQLite health accounting for native O2 acceptance
 	"internal/store/timestamps_postgres_test.go":                 true, // existing exact PostgreSQL connection timestamp regression
 	"internal/upgradegate/gate_populated_process_test.go":        true, // actual admitted transactions seed crash-recovery acceptance
+	"internal/upgradegate/configuration_test.go":                 true, // admitted old-catalogue fixture verifies read-only upgrade preview
 	"internal/isolation/mcp_deployment_fixture_test.go":          true, // isolated exact-build deployment seed, after production admission
 	"internal/store/upgrade/operator_rotation.go":                true, // canonical credential invalidation on migration-owned connection
 	"internal/store/upgrade/migration_history.go":                true,
@@ -34,6 +35,7 @@ var driverFiles = map[string]bool{
 	"internal/conformance/values_test.go":                        true,
 	"internal/isolation/approval_acceptance_test.go":             true,
 	"internal/isolation/audit_e2e_test.go":                       true,
+	"internal/isolation/managed_migration_audit_fixture_test.go": true, // signed gate fixture exercises the actual fenced migration audit emitter
 	"internal/isolation/backup_drill_e2e_test.go":                true,
 	"internal/isolation/forgejo_e2e_test.go":                     true,
 	"internal/isolation/harness_test.go":                         true,
@@ -89,6 +91,8 @@ var driverFiles = map[string]bool{
 	"internal/store/upgrade/candidate_initialize_test.go":        true,
 	"internal/store/upgrade/candidate_keys.go":                   true,
 	"internal/store/upgrade/candidate_keys_test.go":              true,
+	"internal/store/upgrade/configuration_migrate.go":            true, // exact schema-applied session owns atomic encrypted managed-data migration
+	"internal/store/upgrade/configuration_migrate_test.go":       true, // isolated both-engine migration, rollback and ciphertext preservation fixtures
 	"internal/store/upgrade/control_schema.go":                   true,
 	"internal/store/upgrade/crash_test.go":                       true,
 	"internal/store/upgrade/domain_catalog.go":                   true,

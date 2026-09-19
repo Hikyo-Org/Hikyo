@@ -4349,6 +4349,9 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 }
 
 var systemSiteEvents = map[SystemSite][]audit.EventType{
+	// Managed-data migration emits below the runtime store surface, under the
+	// exact SchemaApplied session fence. SiteMigration retains no runtime doors.
+	SiteMigration:          {audit.EventSelfConfigMigrated},
 	SiteSelfConfigRecovery: {audit.EventSelfConfigRecovered},
 	SiteSelfConfigRuntime:  {audit.EventSelfConfigApplied, audit.EventSelfConfigRecoveryFenced, audit.EventSelfConfigTestCompleted},
 	SiteEscrow:             {audit.EventRootEscrowVerified},

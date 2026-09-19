@@ -1057,6 +1057,7 @@ type SelfConfigBinding struct {
 	Suspended          int64
 	CreatedAt          string
 	UpdatedAt          string
+	MigrationVersion   int64
 }
 
 type SelfConfigJob struct {

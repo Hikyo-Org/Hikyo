@@ -46,7 +46,7 @@ func prepareUnattendedRoute(ctx context.Context, session *upgrade.Session, reque
 		if err := crypto.VerifyExistingHierarchy(ctx, keys, bytes.Clone(request.RootKey)); err != nil {
 			return Result{}, err
 		}
-		if err := checkExistingConfiguration(ctx, keys, request.RootKey, request.CheckConfiguration); err != nil {
+		if err := checkUpgradeableConfiguration(ctx, keys, request.RootKey, request.CheckConfiguration); err != nil {
 			return Result{}, err
 		}
 		state, err := session.FenceBackup(ctx, current, intent)
