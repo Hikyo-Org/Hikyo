@@ -1,0 +1,119 @@
+---
+title: Deploy on DigitalOcean
+description: Launch a Docker host for Hikyo nightlies, or provision an Ubuntu Droplet for a native installation.
+---
+
+Start with the [cloud deployment prerequisites](/docs/cloud-deployment/#before-provisioning).
+Choose a provider Docker host for the [nightly container installation](/docs/cloud-nightlies/),
+or a plain Ubuntu 24.04 LTS amd64 Droplet for the native installation below.
+Both paths require a separate block storage volume, SSH key, and scoped firewall.
+**The launch button creates a Docker host; it does not install Hikyo.**
+
+<Cards>
+  <Card title="Create a Docker host on DigitalOcean" href="https://marketplace.digitalocean.com/apps/docker?action=deploy">
+    Review DigitalOcean's Docker Marketplace image and Droplet costs before creation.
+  </Card>
+</Cards>
+
+The button opens the published [Docker Marketplace app](https://marketplace.digitalocean.com/apps/docker).
+Review its current image, operating system, and setup instructions; its base OS
+may differ from the manual Ubuntu option. A Hikyo-specific one-click application
+would require a Hikyo Marketplace image accepted through DigitalOcean's
+[vendor review process](https://github.com/digitalocean/marketplace-partners#getting-started-creating-your-droplet-based-1-click-app),
+which this project does not currently publish. This guide uses Droplets with
+durable block storage, not App Platform.
+
+## Provision the host
+
+1. For a container installation, use the button and keep the reviewed Docker
+   Marketplace image selected. For a native installation, open **Create**,
+   **Droplets** and select Ubuntu **24.04 LTS x64**. Select amd64 architecture,
+   a region that supports volumes, and a plan
+   with at least 2 GiB RAM as an initial sizing choice. Review regional pricing
+   and resize for your workload. Select your intended project and VPC.
+2. Under authentication, choose **SSH keys** and select or upload your SSH
+   **public** key. Keep the private key on your own device. Do not paste Hikyo
+   secrets into user data. Create the Droplet and record its public address.
+3. Create a Cloud Firewall and attach it to this Droplet. Replace the default
+   SSH source with your current public IP as a `/32` IPv4 or `/128` IPv6 CIDR.
+   Keep TCP 22 limited to that management source, with no other inbound TCP
+   rules yet. Retain outbound access needed for DNS, OS updates, time sync,
+   and release downloads. A Droplet does not have these restrictions until
+   the firewall is attached; do not start Hikyo before configuring it.
+4. From **Volumes Block Storage**, create a volume in the Droplet's region
+   and attach it to this Droplet. Choose an initial size such as 30 GiB,
+   name it `hikyo-data`, and select **Manually Format & Mount**. Record the
+   volume ID and region. This option attaches the disk without preparing a
+   filesystem, allowing the installation path below to control its mount.
+5. Connect with `ssh root@YOUR_DROPLET_IP` using your selected key. Inspect and
+   mount the volume as described below. On a Docker host, follow the
+   [fresh nightly container installation](/docs/cloud-nightlies/). For the
+   native path, complete the [host installation](/docs/cloud-deployment/#complete-the-host-installation)
+   with a dedicated runtime user, verified release artifacts, and native TLS.
+
+DigitalOcean documents [Droplet creation](https://docs.digitalocean.com/products/droplets/how-to/create/),
+[volume creation](https://docs.digitalocean.com/products/volumes/how-to/create/),
+and [firewall rules](https://docs.digitalocean.com/products/networking/firewalls/how-to/configure-rules/).
+Use those provider instructions if console labels change.
+
+## Mount the persistent data volume
+
+Inspect `lsblk -f` and the DigitalOcean volume's device path under
+`/dev/disk/by-id/` before changing any disk. Match the path to the attached
+volume in the control panel. Format only a confirmed new, empty volume;
+an existing filesystem must be mounted without formatting. Follow
+[DigitalOcean's mount instructions](https://docs.digitalocean.com/products/volumes/how-to/mount/),
+using `/srv/hikyo` as the mount point instead of the example `/mnt/...` path.
+Persist the mount by filesystem UUID in `/etc/fstab` and verify it is mounted
+before creating `/srv/hikyo/data` and `/srv/hikyo/installation`.
+
+For the native installation, keep those directories owned by the runtime user with mode `0700`. Configure
+`RequiresMountsFor=/srv/hikyo` in the service unit, as in the shared host guide,
+so a missing volume cannot cause the service to write a new database to the
+Droplet's boot disk. The attached volume does not automatically move files
+from the boot disk or install any application. For a container installation,
+use the ownership, mount checks, and runtime configuration in the nightly guide.
+
+## DNS and HTTPS access
+
+Point your DNS name at the Droplet's public address, or provision a Reserved IP
+if you need an address that can move between Droplets. A replacement Droplet
+does not automatically keep the original address. Install a certificate for
+your DNS name before adding a Cloud Firewall inbound rule for **TCP 8443**
+from the intended client CIDRs. Apply the same restrictions to any IPv6 rules
+and host firewall. Keep SSH scoped to your management IP, and keep **8081**
+bound to loopback with no public firewall rule.
+
+The shared guide uses `https://hikyo.example.com:8443`. For port 443, configure
+the documented reverse proxy path and update the external origin. Verify
+readiness locally and HTTPS from an allowed client before storing real data.
+On a Docker Marketplace host, also review its existing host firewall and
+published container ports; retain only access needed for this installation.
+
+## Updates
+
+Use [nightly container upgrades](/docs/cloud-nightlies/#upgrade-a-nightly-container)
+for the Docker path. Use [cloud upgrade guidance](/docs/cloud-upgrades/) for
+stable and native installations, including backup and recovery checks.
+
+## Backups, recovery, and removal
+
+Treat the boot disk, block volume, and root key as separate recovery concerns.
+Droplet backups or snapshots do not include attached volume contents. Configure
+Hikyo encrypted exports and off-Droplet copies, plus application-consistent
+[volume snapshots](https://docs.digitalocean.com/products/images/snapshots/how-to/snapshot-volumes/)
+where useful. Keep root-key recovery and private operator custody separate
+from database backups; preserve the installation journal independently of
+database restores. Test the complete restore procedure before relying on it.
+
+Before replacing a Droplet, stop Hikyo and unmount the volume before detaching
+it. Reattach within its supported region and mount its existing filesystem
+without reformatting. Restore the verified binary, public release artifacts,
+protected root key, service configuration, and DNS/firewall association as
+needed. Attaching a volume alone does not recreate a working installation.
+
+Review deletion options carefully: deleting a Droplet can leave separately
+managed volumes, snapshots, and other resources billable. Retain recovery
+material intentionally, then remove only resources you have confirmed are no
+longer needed. Check [DigitalOcean pricing](https://www.digitalocean.com/pricing)
+for compute, storage, backups, IP addresses, and transfer charges.

@@ -1,0 +1,73 @@
+---
+title: Deploy on Azure
+description: Launch the Azure VM template, then complete Hikyo's verified host installation.
+---
+
+Start with the [cloud deployment prerequisites](/docs/cloud-deployment/#before-provisioning).
+The button opens Azure's custom deployment wizard with this repository's ARM
+template. It provisions a single Ubuntu VM, virtual network, network security
+group, public IP, and managed data disk. **It does not install or activate Hikyo.**
+
+<Cards>
+  <Card title="Deploy infrastructure to Azure" href="https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FHikyo-Org%2FHikyo%2Fmain%2Finstall%2Fcloud%2Fazure%2Fazuredeploy.json">
+    Review resources and costs in your Azure account before deployment.
+  </Card>
+</Cards>
+
+The button loads the template from `main`; it becomes available when that
+template is published there. Review the
+[template source](https://github.com/Hikyo-Org/Hikyo/blob/main/install/cloud/azure/azuredeploy.json)
+first. For a reproducible deployment, download it from a reviewed commit and
+use Azure's **Build your own template in the editor** option to upload that copy.
+
+## Provision and connect
+
+1. Choose a subscription, a dedicated resource group, and a region supporting
+   the selected VM size. Supply your existing **public** SSH key; never paste
+   its private half. Review the template's VM and disk settings.
+2. Select **Review + create**, inspect the billable resources and validation
+   result, and approve deployment. Wait for Azure deployment completion.
+3. In the VM's network security group, add a TCP 22 rule scoped to your current
+   management IP as a `/32`. The template adds no inbound allow rules. Connect
+   with the configured admin user and corresponding private key, or use an
+   approved Azure management path. Do not open SSH to the internet.
+4. Inspect and mount the data disk, then complete the
+   [host installation](/docs/cloud-deployment/#complete-the-host-installation).
+5. Point DNS at the static public IP. Once Hikyo has its TLS configuration, add
+   TCP 8443 access only for intended clients. Keep 8081 private. Close the
+   temporary SSH rule when using an alternative management path.
+
+The template adds an explicit deny-all inbound rule at priority 4096, including
+traffic that Azure's default virtual-network rules would otherwise allow. Put
+the scoped SSH and HTTPS allow rules at a lower priority number, such as 100 and
+110. Review effective network rules before introducing additional workloads.
+
+## Database, backups, and removal
+
+For a managed database, use Azure Database for PostgreSQL Flexible Server with
+[private networking](https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-networking-private),
+working private DNS, and TLS hostname verification. Use the server hostname in
+the DSN and the current trusted certificate chain. The VM template does not
+provision a database server or database credentials.
+
+Follow [Azure's data-disk guidance](https://learn.microsoft.com/en-us/azure/virtual-machines/linux/attach-disk-portal)
+to identify and mount the disk. Do not mistake the temporary disk for durable
+storage. Keep encrypted backups outside the VM and preserve root-key recovery
+separately.
+
+The data disk is detached when the VM is deleted, but **deleting the resource
+group deletes its disks too**. Review deletion locks and export recovery
+material before removing resources. Stopped/deallocated VMs can still incur
+disk and public-IP charges. Check [Azure pricing](https://azure.microsoft.com/en-us/pricing/calculator/).
+
+Return to [cloud deployment](/docs/cloud-deployment/) for activation, readiness,
+and upgrade requirements.
+
+## Nightlies and upgrades
+
+For a new Docker-based nightly on this host, follow
+[deploy and upgrade cloud nightlies](/docs/cloud-nightlies/). It includes durable
+storage, native HTTPS, first administrator creation, and image replacement.
+For native installations, stable releases, and recovery, use
+[upgrade a cloud installation](/docs/cloud-upgrades/). Keep the same data volume,
+root key, and installation custody; do not redeploy infrastructure to update Hikyo.

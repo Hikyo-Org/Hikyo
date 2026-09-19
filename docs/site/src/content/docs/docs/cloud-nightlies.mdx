@@ -1,0 +1,238 @@
+---
+title: Deploy and upgrade cloud nightlies
+description: Run a signed nightly on a cloud VM with persistent Docker storage, native HTTPS, and verified upgrades.
+---
+
+This guide works on the hosts in the [cloud provider guides](/docs/cloud-deployment/),
+including the DigitalOcean and Hetzner Docker-host launch buttons. It installs
+a **new, empty, single-container SQLite instance** with unattended upgrade
+custody. Nightlies are signed prereleases, not supported stable releases.
+
+Choose this mode before first startup. The container creates encrypted local
+backup and attestation custody protected by its root key. A process with access
+to the runtime and root key also has recovery authority. This replaces the
+manual path's off-host operator signing workflow; it does not provide an
+off-host backup. Existing manually managed databases cannot enroll simply by
+turning this option on. See [the custody contract](/docs/container-upgrades/).
+
+## Prepare the host
+
+Use a Linux amd64 or arm64 host with Docker Engine and the Docker Compose plugin.
+The provider Docker image is a convenience, not a Hikyo image. Check its image
+details and patch level before use. For a plain Ubuntu host, follow
+[Docker's installation instructions](https://docs.docker.com/engine/install/ubuntu/).
+Keep cloud SSH access restricted to your management IP.
+
+Prepare a persistent data volume mounted at `/srv/hikyo`, a DNS name pointing
+to the host, and a trusted TLS certificate for that name. The example serves
+HTTPS on **8443**. Keep that port closed until TLS is configured; never expose
+8081. The TLS files below must be regular files, not symlinks into a certificate
+manager's private directories. Certificate issuance is operator-owned; this
+recipe does not open an ACME HTTP challenge listener.
+
+On the host, inspect the mount and storage before creating anything:
+
+```sh
+sudo docker version
+sudo docker compose version
+findmnt --mountpoint /srv/hikyo
+```
+
+Stop if `/srv/hikyo` is not your mounted data volume. The filesystem must support
+private Unix permissions, durable file operations, and execution of intermediate
+upgrade binaries; do not mount it `noexec`. On a fresh volume only:
+
+```sh
+sudo install -d -m 0700 -o 65532 -g 65532 \
+  /srv/hikyo/data /srv/hikyo/upgrade /srv/hikyo/tls
+sudo sh -c 'set -eu; umask 077; set -C; openssl rand -hex 32 > /srv/hikyo/root-key'
+sudo chown 65532:65532 /srv/hikyo/root-key
+sudo chmod 0600 /srv/hikyo/root-key
+```
+
+The key-generation command refuses an existing file. Do not replace an existing
+root key or reuse this fresh-install procedure on a populated volume. Install
+the certificate and private key from your protected local files:
+
+```sh
+sudo install -m 0600 -o 65532 -g 65532 ./tls.crt /srv/hikyo/tls/tls.crt
+sudo install -m 0600 -o 65532 -g 65532 ./tls.key /srv/hikyo/tls/tls.key
+```
+
+## Choose and verify the nightly
+
+Choose an exact signed nightly from
+[GitHub releases](https://github.com/Hikyo-Org/Hikyo/releases) and its matching
+container digest from the successful
+[nightly workflow](https://github.com/Hikyo-Org/Hikyo/actions/workflows/nightly.yml).
+The version tag omits the release tag's leading `v`; `:nightly` follows the
+newest successfully published nightly image. Use a release containing the
+[unattended-container feature](/docs/container-upgrades/), not an older image
+that predates it. Never use `:latest` to select nightlies.
+
+For a repeatable deployment, install Cosign using its official distribution,
+replace the digest below, and verify before starting the image:
+
+```sh
+image='ghcr.io/hikyo-org/hikyo@sha256:REPLACE_WITH_VERIFIED_NIGHTLY_DIGEST'
+cosign verify \
+  --certificate-identity='https://github.com/Hikyo-Org/Hikyo/.github/workflows/nightly.yml@refs/heads/main' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  "$image"
+sudo docker pull "$image"
+sudo docker run --rm "$image" --version
+```
+
+Stop if verification fails. Runtime also authenticates the actual release and
+its allowed upgrade route. In unattended mode it obtains its own public release
+artifacts; do **not** mount the manual installation's bundle or operator key.
+Allow outbound HTTPS/DNS to the release, registry, and trust endpoints.
+
+## Start the empty installation
+
+Use the [cloud Compose file](https://github.com/Hikyo-Org/Hikyo/blob/main/install/cloud/compose/nightly.yaml)
+from a reviewed checkout. Copy it from that checkout into a root-owned deployment
+directory on the host:
+
+```sh
+sudo install -d -m 0755 /opt/hikyo
+sudo install -d -m 0700 /etc/hikyo
+sudo install -m 0644 install/cloud/compose/nightly.yaml /opt/hikyo/compose.yaml
+sudoedit /etc/hikyo/compose.env
+```
+
+Set these values in the environment file. Replace the image digest with the
+one verified above and use your actual DNS name:
+
+```dotenv
+HIKYO_SERVER_IMAGE=ghcr.io/hikyo-org/hikyo@sha256:REPLACE_WITH_VERIFIED_NIGHTLY_DIGEST
+HIKYO_SERVER_DATA_DIR=/srv/hikyo/data
+HIKYO_UPGRADE_INSTALLATION_DIR=/srv/hikyo/upgrade
+HIKYO_SERVER_ROOT_KEY_FILE=/srv/hikyo/root-key
+HIKYO_TLS_CERT_FILE=/srv/hikyo/tls/tls.crt
+HIKYO_TLS_KEY_FILE=/srv/hikyo/tls/tls.key
+HIKYO_EXTERNAL_ORIGIN=https://hikyo.example.com:8443
+```
+
+```sh
+sudo chmod 0600 /etc/hikyo/compose.env
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml config --quiet
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml up -d
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml logs --tail=100 server
+curl --fail http://127.0.0.1:8081/readyz
+```
+
+Initial release verification may take several minutes. An unsuccessful readiness
+check means setup is not complete; inspect the logs and retry after preflight.
+Once ready, create the first administrator locally:
+
+```sh
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml exec server \
+  /usr/local/bin/hikyo admin create --output-file /var/lib/hikyo/admin-authority --username admin
+```
+
+The CLI needs the same root-key source as the server. The cloud Compose recipe
+sets `HIKYO_ROOT_KEY_FILE` for local operator commands as well as the server flag.
+Transfer the single-use authority securely to the administrator; the image is
+distroless and has no `cat` or shell. Use `docker compose cp` to copy it to a
+protected local directory, then use a matching verified CLI's
+`hikyo account establish-credential --instance https://hikyo.example.com:8443 --as admin`
+on the administrator's machine. Enter the authority at its prompt, never in an
+argument, environment variable, or cloud output. Remove the authority files
+after use through your protected host access.
+
+For example, copy the authority without printing it into deployment logs:
+
+```sh
+sudo install -d -m 0700 /root/hikyo-bootstrap
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml cp \
+  server:/var/lib/hikyo/admin-authority /root/hikyo-bootstrap/admin-authority
+sudo chmod 0600 /root/hikyo-bootstrap/admin-authority
+```
+
+Allow TCP 8443 from intended clients, verify HTTPS externally, and test an
+[encrypted backup and restore](/docs/backup-and-restore/) before real use. Back up
+the root key and encrypted upgrade custody through separate protected recovery
+paths, and copy encrypted database exports off the VM. Provider snapshots alone
+are insufficient. If the host can boot without its data volume, configure its
+Docker service to require that mount before restoring containers. On a dedicated
+systemd Docker host, use `sudo systemctl edit docker.service` to add:
+
+```ini
+[Unit]
+RequiresMountsFor=/srv/hikyo
+```
+
+Run `sudo systemctl daemon-reload` and verify the mount and service ordering
+before the next reboot. On a shared Docker host, this affects every container;
+use your platform's equivalent storage ordering policy.
+
+## Upgrade a nightly container
+
+For a digest-pinned installation, select and verify the new nightly as above,
+then edit **only** `HIKYO_SERVER_IMAGE` in `/etc/hikyo/compose.env`. Retain the
+same root key, data, upgrade state, TLS inputs, and Compose project name.
+Ensure sufficient free space for downloaded route artifacts, backup, and scratch
+restore. Preserve an off-host recovery copy before the maintenance window.
+
+```sh
+sudoedit /etc/hikyo/compose.env
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml config --quiet
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml pull server
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml up -d --no-deps server
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml logs --tail=100 server
+```
+
+Hikyo excludes writers, authenticates the exact target and migration route,
+exports an encrypted backup, restores it to scratch, and applies migrations
+before readiness becomes true. This path does not use `sudo hikyo upgrade`,
+which is the native systemd adapter. Do not run a second container against the
+same SQLite database.
+
+Check readiness and version after the operation:
+
+```sh
+curl --fail http://127.0.0.1:8081/readyz
+sudo docker compose --project-name hikyo --env-file /etc/hikyo/compose.env \
+  -f /opt/hikyo/compose.yaml exec server /usr/local/bin/hikyo --version
+curl --fail https://hikyo.example.com:8443/
+```
+
+Readiness plus external HTTPS and the expected version are the completion
+criteria; `up -d` alone is not. Verify sign-in and a known authorized read too.
+
+## Following the nightly tag
+
+You may explicitly choose `HIKYO_SERVER_IMAGE=ghcr.io/hikyo-org/hikyo:nightly`
+instead of a digest. The same `pull` then `up -d` commands replace it with the
+current nightly. A restart alone does not pull a new image. This is a moving
+channel choice, not a reproducible version pin; the runtime still verifies the
+release it actually starts. The recipe installs no scheduler or image updater.
+An external updater can perform replacement if you choose one, but must preserve
+the mounts and must not run a second writer or automatically revert the image.
+
+## Native binaries, stable releases, and recovery
+
+To deploy a nightly without Docker, download its complete signed artifacts,
+verify and assemble the runtime bundle using the
+[signed-nightly installation runbook](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/operations/signed-nightlies.md#download-and-install),
+then follow the [manual host installation](/docs/cloud-deployment/#complete-the-host-installation).
+The upgrade bootstrap script is for an already installed systemd server, not a
+fresh host installer.
+
+See [cloud upgrades](/docs/cloud-upgrades/) for native systemd, manual deployments,
+and stable transitions. If a migration fails or its outcome is uncertain, retain
+the same target image, journal, and backup for recovery. Do not delete upgrade
+state, run `down --volumes`, or select an older image to force readiness. Root
+keys are never regenerated on upgrade. Renew TLS through managed configuration
+publish-and-Apply; replacing the bootstrap files alone does not reload a running
+instance's managed certificate.
