@@ -22,6 +22,16 @@ import (
 // reports publish-time refusals and scanner findings without staging, nothing
 // publishes, and the secret canary never crosses the transport or the trail.
 func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
+	for _, codex := range []bool{false, true} {
+		name := "modern"
+		if codex {
+			name = "codex"
+		}
+		t.Run(name, func(t *testing.T) { runTestMCPWriteSurfaceEndToEnd(t, codex) })
+	}
+}
+
+func runTestMCPWriteSurfaceEndToEnd(t *testing.T, codex bool) {
 	forEngines(t, func(t *testing.T, db *store.DB) {
 		ctx := t.Context()
 		kr := probeKeyring(t, db)
@@ -82,7 +92,7 @@ func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			return h
+			return mcpProfile(h, codex)
 		}
 		toolNames := func(h http.Handler) map[string]bool {
 			rec := mcpRequest(t, h, "", "tools/list", "", "", mcpserver.ProtocolVersion)
@@ -238,7 +248,7 @@ func TestMCPWriteSurfaceEndToEnd(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			return h, stager
+			return mcpProfile(h, codex), stager
 		}
 		cancelling, stager := cancelHandler()
 		cancelCtx, cancel := context.WithCancel(ctx)

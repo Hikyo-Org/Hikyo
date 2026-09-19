@@ -62,6 +62,7 @@ type Options struct {
 }
 
 type handler struct {
+	version        string
 	sdk            http.Handler
 	externalScheme string
 	externalHost   string
@@ -162,7 +163,8 @@ func New(options Options) (http.Handler, error) {
 		PropagateRequestCancellation: true,
 	})
 	return &handler{
-		sdk: sdk, externalScheme: origin.Scheme, externalHost: origin.Host,
+		version: options.Version,
+		sdk:     sdk, externalScheme: origin.Scheme, externalHost: origin.Host,
 		allowedOrigins: slices.Clone(options.AllowedOrigins),
 		trustedProxies: slices.Clone(options.TrustedProxies),
 		admission:      options.Admission, slots: make(chan struct{}, concurrency),
@@ -183,6 +185,10 @@ type requestMeta struct {
 }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == CodexPath {
+		h.serveCodex(w, r)
+		return
+	}
 	if !h.validHost(r) || !h.validOrigin(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
@@ -219,7 +225,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestedVersion, requestedName := metadataFrom(envelope.Params)
 	headerVersions := r.Header.Values("Mcp-Protocol-Version")
 	if len(headerVersions) != 1 || (requestedVersion != "" && headerVersions[0] != requestedVersion) {
-		writeRPCError(w, http.StatusBadRequest, envelope.ID, -32020, "protocol mirror headers do not match request", nil)
+		message := "protocol mirror headers do not match request"
+		if envelope.Method == "initialize" {
+			message += "; native Codex clients must use /mcp/codex"
+		}
+		writeRPCError(w, http.StatusBadRequest, envelope.ID, -32020, message, nil)
 		return
 	}
 	methodHeaders := r.Header.Values("Mcp-Method")
@@ -491,9 +501,14 @@ func writeRPCError(w http.ResponseWriter, status int, id json.RawMessage, code i
 	payload.Error.Code = code
 	payload.Error.Message = message
 	payload.Error.Data = data
+	body, err := json.Marshal(payload)
+	if err != nil || len(body) > MaxStaticResponseBytes {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	_, _ = w.Write(body)
 }
 
 func (h *handler) validHost(r *http.Request) bool {

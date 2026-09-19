@@ -102,6 +102,10 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /readyz":                            {Class: ClassUnauthenticated},
 	"mcp:server/discover":                         {Class: ClassUnauthenticated},
 	"mcp:tools/list":                              {Class: ClassUnauthenticated},
+	"mcp:initialize":                              {Class: ClassUnauthenticated},
+	"mcp:ping":                                    {Class: ClassUnauthenticated},
+	"mcp:notifications/initialized":               {Class: ClassUnauthenticated},
+	"mcp:notifications/cancelled":                 {Class: ClassUnauthenticated},
 
 	// The contract surface (#47). Every entry below exists in
 	// api/openapi.yaml and carries the same class there under

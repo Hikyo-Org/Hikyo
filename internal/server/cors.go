@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -65,7 +66,7 @@ func workspaceCORS(allowed func(context.Context, string) bool) func(http.Handler
 			// MCP has its own exact Origin admission and deliberately emits no
 			// browser CORS grant. Keep the workspace tier off that surface even
 			// when the same origin is allowed to read /api/v1.
-			if r.URL.Path == "/mcp" {
+			if r.URL.Path == "/mcp" || strings.HasPrefix(r.URL.Path, "/mcp/") {
 				next.ServeHTTP(w, r)
 				return
 			}
