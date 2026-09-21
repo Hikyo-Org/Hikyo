@@ -27,10 +27,39 @@ func (a *TxAuthorizer) AdmitOperation(ctx context.Context, caller Identity) erro
 		return nil
 	}
 	class := ContractArtifactClass(caller)
-	if op.AdmitsArtifact(class) {
-		return nil
+	if !op.AdmitsArtifact(class) {
+		return a.refuseAdmission(ctx, caller, op.ID, class, "class-mismatch")
 	}
 
+	// The enrolment gate (#760): a password-assured session minted for an
+	// unenrolled account under a `required` second-factor policy is confined to
+	// the enrolment allowlist. Deny-by-default — every other operation is refused
+	// with the same uniform nonexistent shape until a factor stands and a
+	// reissued session lifts the flag.
+	if caller.EnrolmentRequired && !enrolmentGateAllows(op.ID) {
+		return a.refuseAdmission(ctx, caller, op.ID, class, "enrolment-required")
+	}
+	return nil
+}
+
+// enrolmentGateAllows is the closed set of operations a session flagged
+// enrolment_required may still reach: the factor-enrolment ceremonies plus the
+// recovery-code, whoami and logout endpoints the SPA needs to complete or escape
+// the gate. Deny-by-default (#760).
+func enrolmentGateAllows(id string) bool {
+	switch id {
+	case "enrolTotpStart", "enrolTotpConfirm", "enrolPasskeyStart", "enrolPasskeyFinish",
+		"regenerateRecoveryCodes", "whoami", "logout":
+		return true
+	default:
+		return false
+	}
+}
+
+// refuseAdmission records a named admission refusal on the security trail and
+// returns the uniform nonexistent shape. The wire response never distinguishes a
+// class mismatch from the enrolment gate; the cause lives only in the trail.
+func (a *TxAuthorizer) refuseAdmission(ctx context.Context, caller Identity, operationID, class, cause string) error {
 	id, err := audit.NewEventID()
 	if err != nil {
 		a.captureErr = errors.Join(a.captureErr, err)
@@ -50,15 +79,15 @@ func (a *TxAuthorizer) AdmitOperation(ctx context.Context, caller Identity) erro
 			ID:           string(caller.Principal),
 			CredentialID: credentialID,
 		},
-		Object:    audit.Object{Type: "api-operation", ID: op.ID},
+		Object:    audit.Object{Type: "api-operation", ID: operationID},
 		Outcome:   audit.OutcomeFailure,
 		SourceIP:  wire.SourceIP,
 		UserAgent: wire.UserAgent,
 		Origin:    wire.Origin,
 		Payload: audit.Payload{
-			"operation":      op.ID,
+			"operation":      operationID,
 			"artifact_class": class,
-			"cause":          "class-mismatch",
+			"cause":          cause,
 		},
 	})
 	return domain.ErrNotFound

@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+11 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 55 only")
+	if len(current.Entries) != len(legacy.Entries)+12 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 56 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -328,6 +328,28 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		}
 		drillExec(t, db, "DROP TABLE adapters")
 		drillExec(t, db, "CREATE TABLE adapters"+adapterDecl)
+		// Reverse 00056's webauthn_ceremonies rebuild: SQLite cannot drop the
+		// widened purpose CHECK, so restore the table from its immutable 00008
+		// declaration (created by name, so the stored text matches the legacy
+		// genesis byte-for-byte). The ceremonies table is pristine in this
+		// fixture, so the implicit DELETE discards nothing.
+		ceremonyMigration, err := store.MigrationsFS.ReadFile("migrations/sqlite/00008_webauthn.sql")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, ceremonyDecl, ok := strings.Cut(string(ceremonyMigration), "CREATE TABLE webauthn_ceremonies")
+		if !ok {
+			t.Fatal("missing legacy webauthn_ceremonies declaration")
+		}
+		// Cut on the table's own closing "\n);" rather than the first ";": a
+		// comment inside the body ("(B21); reauth binds …") carries a semicolon
+		// that would truncate the declaration.
+		ceremonyDecl, _, ok = strings.Cut(ceremonyDecl, "\n);")
+		if !ok {
+			t.Fatal("unterminated legacy webauthn_ceremonies declaration")
+		}
+		drillExec(t, db, "DROP TABLE webauthn_ceremonies")
+		drillExec(t, db, "CREATE TABLE webauthn_ceremonies"+ceremonyDecl+"\n)")
 	} else {
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs DROP CONSTRAINT cli_reauth_handoffs_operation_check")
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_operation_check CHECK (operation IN ('adapter.configure','adapter.credential-set','adapter.adopt','adapter.sync','value.reveal','value.copy-source'))")
@@ -338,6 +360,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the legacy genesis declaration.
 		drillExec(t, db, "DROP INDEX adapters_active_origin")
 		drillExec(t, db, "ALTER TABLE adapters ADD CONSTRAINT adapters_org_id_project_id_origin_key UNIQUE (org_id, project_id, origin)")
+		// Reverse 00056's webauthn_ceremonies purpose CHECK widening.
+		drillExec(t, db, "ALTER TABLE webauthn_ceremonies DROP CONSTRAINT webauthn_ceremonies_purpose_check")
+		drillExec(t, db, "ALTER TABLE webauthn_ceremonies ADD CONSTRAINT webauthn_ceremonies_purpose_check CHECK (purpose IN ('enrol', 'login', 'reauth', 'step-up', 'account-security'))")
 	}
 	for _, query := range []string{
 		"DROP INDEX audit_tenant_events_env_seq",
@@ -362,7 +387,11 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"DROP INDEX audit_instance_retention_unit",
 		"DROP TABLE audit_retention_policy",
 		"DROP TABLE ops_diagnostics",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55)",
+		// Reverse 00056 (second factor at sign-in): the login challenge table and
+		// the enrolment gate column.
+		"DROP TABLE login_challenges",
+		"ALTER TABLE sessions DROP COLUMN enrolment_required",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56)",
 	} {
 		drillExec(t, db, query)
 	}

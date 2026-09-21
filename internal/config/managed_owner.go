@@ -42,6 +42,9 @@ func (c *Config) ManagedOwnerValues() map[string]string {
 		"HIKYO_DIRECTORY_PROXY":     c.DirectoryProxy,
 		"HIKYO_MCP_ALLOWED_ORIGINS": strings.Join(c.MCPAllowedOrigins, ","),
 		"HIKYO_BACKUP_RECIPIENTS":   strings.Join(c.BackupRecipients, ","),
+		// Omitted when a config path did not set it (e.g. the CLI compose paths):
+		// the runtimeconfig migration supplies the effective default (#760).
+		"HIKYO_SECOND_FACTOR": c.SecondFactor,
 	} {
 		if value != "" {
 			values[key] = value
@@ -160,6 +163,7 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	result.ExternalOrigin, result.DirectoryProxy = parsed.ExternalOrigin, parsed.DirectoryProxy
 	result.MCPEnabled, result.MCPAllowedOrigins = parsed.MCPEnabled, slices.Clone(parsed.MCPAllowedOrigins)
 	result.MCPWriteEnabled = parsed.MCPWriteEnabled
+	result.SecondFactor = parsed.SecondFactor
 	result.BackupRecipients = slices.Clone(parsed.BackupRecipients)
 	result.BackupInterval, result.BackupRPO = parsed.BackupInterval, parsed.BackupRPO
 	result.BackupRetainCount, result.BackupRetainDays = parsed.BackupRetainCount, parsed.BackupRetainDays

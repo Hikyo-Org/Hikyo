@@ -9,9 +9,16 @@ type Migration struct {
 	Default *string
 }
 
-const MigrationVersion int64 = 1
+const MigrationVersion int64 = 2
 
 func Migrations() []Migration {
 	disabled := "false"
-	return []Migration{{Version: 1, Name: "HIKYO_MCP_WRITE_ENABLED", Default: &disabled}}
+	optional := "optional"
+	return []Migration{
+		{Version: 1, Name: "HIKYO_MCP_WRITE_ENABLED", Default: &disabled},
+		// #760: an upgraded instance keeps today's posture — a password login on
+		// an unenrolled account still mints a session — until an operator opts in.
+		// Fresh installs default to `required` in config parsing (greenfield strict).
+		{Version: 2, Name: "HIKYO_SECOND_FACTOR", Default: &optional},
+	}
 }

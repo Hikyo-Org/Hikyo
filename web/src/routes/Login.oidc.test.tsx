@@ -37,6 +37,7 @@ type Mocks = {
   login: LegMock;
   oidc: LegMock;
   passkey: LegMock;
+  challengeTotp: LegMock;
   methods: {
     data: {
       local_login_enabled: boolean;
@@ -53,6 +54,7 @@ const mocks = vi.hoisted((): Mocks => ({
   login: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
   oidc: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
   passkey: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
+  challengeTotp: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
   methods: {
     data: {
       local_login_enabled: true,
@@ -76,6 +78,7 @@ vi.mock('../api/session.ts', () => ({
   // Echoes the cause so a test can tell WHICH leg's refusal reached the slot.
   loginFailureText: (error?: Error | null) => error?.message ?? 'Sign-in failed.',
   useLogin: () => mocks.login,
+  useLoginChallengeTotp: () => mocks.challengeTotp,
   useOIDCLogin: () => mocks.oidc,
 }));
 

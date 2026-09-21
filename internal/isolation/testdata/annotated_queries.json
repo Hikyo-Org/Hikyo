@@ -109,6 +109,12 @@
   },
   {
     "engine": "postgres",
+    "name": "ConsumeLoginChallenge",
+    "annotation": "authn-resolution",
+    "hash": "f61988c769ff22b6f1a95ab3df49c59cf0059a487ea8257a75eded80db8db171"
+  },
+  {
+    "engine": "postgres",
     "name": "ConsumeOIDCTransaction",
     "annotation": "authn-resolution",
     "hash": "5092ad40148ea127795ed830bc02bef07e0cd51f0e4c2dde80d837712e9d6a45"
@@ -637,6 +643,12 @@
   },
   {
     "engine": "postgres",
+    "name": "GetLoginChallengeByID",
+    "annotation": "authn-resolution",
+    "hash": "a39a38c26fb30cf0f6e3b3c28ad523bbd4f850cbee7ff57760a241ec2b071fe0"
+  },
+  {
+    "engine": "postgres",
     "name": "GetOIDCProviderBySlug",
     "annotation": "authn-resolution",
     "hash": "b66498471767d6825ae3c10138ca67e0cc10367b97eb434b6603262cf03884c6"
@@ -819,13 +831,13 @@
     "engine": "postgres",
     "name": "GetSessionByID",
     "annotation": "authn-resolution",
-    "hash": "8c67ea1024708ae9f79b9e67f271072ae5d5928ebea92ae4e85e76af3069c4ff"
+    "hash": "8ed5b42d3ffb2417e87a175f2558eb6028d4ce465b93b5964dc4f02164ada1a5"
   },
   {
     "engine": "postgres",
     "name": "GetSessionByVerifier",
     "annotation": "authn-resolution",
-    "hash": "f70bdbf0811f5e52ec2d5ef34d38d4de32154b0e748598d53a7313fd402c646d"
+    "hash": "3e42499f4e21392d1c55c8378667ea772ee526d7b314f9f445f570bb21180911"
   },
   {
     "engine": "postgres",
@@ -916,6 +928,12 @@
     "name": "InsertGrantOrigin",
     "annotation": "authn-resolution",
     "hash": "2f08b8fae2c231983cd82a25028027e2e494cc7913f965c3a9ad63cfd438939f"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertLoginChallenge",
+    "annotation": "authn-resolution",
+    "hash": "558e2cbdf29c461dbd021f4f117d01bdb6a9f66224f062b36283b69094217988"
   },
   {
     "engine": "postgres",
@@ -1011,7 +1029,7 @@
     "engine": "postgres",
     "name": "InsertSession",
     "annotation": "authn-resolution",
-    "hash": "d5d7f4db9dda1d999aaf063f32b90e91ce3d0207ab6e72899a0058ca6773efb5"
+    "hash": "36dcb5de896dc9717cec641ad485772435048a1dd426a58d9656f0078ad54574"
   },
   {
     "engine": "postgres",
@@ -1731,7 +1749,7 @@
     "engine": "postgres",
     "name": "RotateSessionFactors",
     "annotation": "authn-resolution",
-    "hash": "923e9ee53ea03a85a0c33d5584f419c19a6d1596962d994f9274bf04516f8c15"
+    "hash": "fd146bb87047fd21ef8aa065b02e48c5b1f19b4e0ffd5394a026b1528279dadf"
   },
   {
     "engine": "postgres",
@@ -2056,6 +2074,12 @@
     "name": "ConsumeCredentialAuthority",
     "annotation": "authn-resolution",
     "hash": "b55a467fd6ffe3d3f4bdce5f99f1536bcdd0213151e4f170fab088a938a11ec8"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ConsumeLoginChallenge",
+    "annotation": "authn-resolution",
+    "hash": "896ea987dd89e0e06a13a8668a88de687aa8a992a47b561305d415540695ad1f"
   },
   {
     "engine": "sqlite",
@@ -2587,6 +2611,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetLoginChallengeByID",
+    "annotation": "authn-resolution",
+    "hash": "2164b777f332eae71a98c5b6be1477fc405f39f38f314fd5da0360415471752a"
+  },
+  {
+    "engine": "sqlite",
     "name": "GetOIDCProviderBySlug",
     "annotation": "authn-resolution",
     "hash": "269c40d6785a85cd15f79517706927a8cd40f13fe3f77efcda91e97f23cf5f5c"
@@ -2769,13 +2799,13 @@
     "engine": "sqlite",
     "name": "GetSessionByID",
     "annotation": "authn-resolution",
-    "hash": "8bd302f1aa0e62a2d2ed86dd7601b58113ba9cee3374656af3a7c5c3dc923f7b"
+    "hash": "464e09b952fb4cb854f2178936981a9e4098475c87d6a4828e3522b4fd8c5ac3"
   },
   {
     "engine": "sqlite",
     "name": "GetSessionByVerifier",
     "annotation": "authn-resolution",
-    "hash": "431fd0ae3d7ad1a6210b0aba5daac4f7d2d3468018b886c700c5868856c7e1e1"
+    "hash": "6e844a0e7ed3f02ef0cec88a8d08b6a161643972f78d9f40bdb125fc8aaa9aae"
   },
   {
     "engine": "sqlite",
@@ -2866,6 +2896,12 @@
     "name": "InsertGrantOrigin",
     "annotation": "authn-resolution",
     "hash": "2359ffc25b54cdf4af56069aa89b8bda0779dc7ee711eda707fcb09718d65e4c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertLoginChallenge",
+    "annotation": "authn-resolution",
+    "hash": "8f6f833e28cb7a8f5b28b11e45791408927aef3d1fad90520a70aa8d889664a5"
   },
   {
     "engine": "sqlite",
@@ -2961,7 +2997,7 @@
     "engine": "sqlite",
     "name": "InsertSession",
     "annotation": "authn-resolution",
-    "hash": "9ef184559b2a5ad0bd27c1f7d5b59f0209507550564e03bf388d4e5f644187c8"
+    "hash": "468ef16655878634370ff848362266ec82019ab981bab22ed8cd5f49cc68de35"
   },
   {
     "engine": "sqlite",
@@ -3681,7 +3717,7 @@
     "engine": "sqlite",
     "name": "RotateSessionFactors",
     "annotation": "authn-resolution",
-    "hash": "309615e6b1914ebde4c26a3d2ace561f9fe2c1256a182caca3196a1247f82352"
+    "hash": "7b657d72d590c757f8ff97a6ce19a015d434dedd618878fc2eef6ee31d5e63c5"
   },
   {
     "engine": "sqlite",

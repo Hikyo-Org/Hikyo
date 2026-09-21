@@ -245,6 +245,12 @@ func (r reissuedSessionResponse) VisitUnlinkIdentityResponse(w http.ResponseWrit
 func (r reissuedSessionResponse) VisitLocalLoginResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }
+func (r reissuedSessionResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
+func (r reissuedSessionResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+	return r.write(w)
+}
 func (r reissuedSessionResponse) VisitOidcCallbackResponse(w http.ResponseWriter) error {
 	return r.write(w)
 }

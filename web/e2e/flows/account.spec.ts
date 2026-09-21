@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { zLoginResult, zWhoAmI } from '@hikyo/zod';
+import { zLoginChallenge, zLoginResult, zWhoAmI } from '@hikyo/zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
@@ -188,9 +188,18 @@ test.describe('account and security', () => {
     try {
       const second = await context.newPage();
       await second.goto(BASE_URL);
-      const login = await second.request.post(`${BASE_URL}/api/v1/auth/local/login`, {
+      // ADMIN carries a factor, so the password answers a login challenge, not a
+      // session (#760): present the authenticator code to mint the second
+      // browser session this test then revokes.
+      const challengeResp = await second.request.post(`${BASE_URL}/api/v1/auth/local/login`, {
         data: { username: ADMIN.username, password: ADMIN.password, artifact: 'browser' },
       });
+      expect(challengeResp.status()).toBe(202);
+      const challenge = zLoginChallenge.parse(await challengeResp.json());
+      const login = await second.request.post(
+        `${BASE_URL}/api/v1/auth/login/challenge/${challenge.challenge_id}/totp`,
+        { data: { code: await nextTotpCode() } },
+      );
       expect(login.status()).toBe(200);
       const minted = zLoginResult.parse(await login.json());
 

@@ -5787,6 +5787,23 @@ type LocalLoginRequest struct {
 // than the server guessing from a header.
 type LocalLoginRequestArtifact string
 
+// LoginChallenge A single-use, expiring authority proving the password step passed for
+// one account, issued by `localLogin` (202) when a factor stands and a
+// browser session was requested. No session and no cookie exist until a
+// finish operation at `/api/v1/auth/login/challenge/{challenge}/...`
+// consumes it. Discloses nothing beyond which factor classes may satisfy
+// it.
+type LoginChallenge struct {
+	// ChallengeId A prefixed UUIDv7, e.g. `org_0198…`.
+	ChallengeId ID `json:"challenge_id"`
+
+	// ExpiresAt RFC 3339 UTC, microsecond precision.
+	ExpiresAt Timestamp `json:"expires_at"`
+
+	// Factors The factor classes that can satisfy this challenge.
+	Factors []FactorClass `json:"factors"`
+}
+
 // LoginResult defines model for LoginResult.
 type LoginResult struct {
 	Principal Principal `json:"principal"`
@@ -8176,8 +8193,16 @@ type WebauthnResponse map[string]interface{}
 type WhoAmI struct {
 	// Capabilities UI-gating hints for the calling principal: what instance surfaces this session may even attempt, so the SPA does not fire an operator-only request it will only be refused. These are disclosure-safe reflections of the caller's own grants — never authorization itself, which is still evaluated per request at the server chokepoint.
 	Capabilities PrincipalCapabilities `json:"capabilities"`
-	Principal    Principal             `json:"principal"`
-	Session      Session               `json:"session"`
+
+	// EnrolmentRequired True when this session authenticated by password on an instance
+	// whose `second_factor` policy is `required` and the account had no
+	// factor enrolled. Such a session is confined to factor enrolment,
+	// recovery-code generation, `whoami`, and `logout` at the
+	// authorization chokepoint until a factor stands. Absent or false
+	// otherwise.
+	EnrolmentRequired *bool     `json:"enrolment_required,omitempty"`
+	Principal         Principal `json:"principal"`
+	Session           Session   `json:"session"`
 }
 
 // WorkspaceHandoffApproved defines model for WorkspaceHandoffApproved.
@@ -8356,6 +8381,9 @@ type AuditTo = time.Time
 
 // AuditToSeq defines model for AuditToSeq.
 type AuditToSeq = int64
+
+// ChallengeId A prefixed UUIDv7, e.g. `org_0198…`.
+type ChallengeId = ID
 
 // ConnectionID A prefixed UUIDv7, e.g. `org_0198…`.
 type ConnectionID = ID
@@ -9123,6 +9151,12 @@ type UnlinkIdentityJSONRequestBody = IdentityUnlinkRequest
 // LocalLoginJSONRequestBody defines body for LocalLogin for application/json ContentType.
 type LocalLoginJSONRequestBody = LocalLoginRequest
 
+// LoginChallengeTotpJSONRequestBody defines body for LoginChallengeTotp for application/json ContentType.
+type LoginChallengeTotpJSONRequestBody = TotpCodeRequest
+
+// LoginChallengeWebauthnFinishJSONRequestBody defines body for LoginChallengeWebauthnFinish for application/json ContentType.
+type LoginChallengeWebauthnFinishJSONRequestBody = WebauthnResponse
+
 // OidcStartJSONRequestBody defines body for OidcStart for application/json ContentType.
 type OidcStartJSONRequestBody = OidcStartRequest
 
@@ -9733,6 +9767,15 @@ type ServerInterface interface {
 	// LocalLogin Local password login; mints a CLI or browser session artifact.
 	// (POST /api/v1/auth/local/login)
 	LocalLogin(w http.ResponseWriter, r *http.Request)
+	// LoginChallengeTotp Satisfy a login challenge with a TOTP code; mints the session.
+	// (POST /api/v1/auth/login/challenge/{challenge}/totp)
+	LoginChallengeTotp(w http.ResponseWriter, r *http.Request, challenge ChallengeId)
+	// LoginChallengeWebauthnFinish Complete a passkey assertion against a login challenge; mints the session.
+	// (POST /api/v1/auth/login/challenge/{challenge}/webauthn/finish)
+	LoginChallengeWebauthnFinish(w http.ResponseWriter, r *http.Request, challenge ChallengeId)
+	// LoginChallengeWebauthnStart Begin a passkey assertion against a login challenge.
+	// (POST /api/v1/auth/login/challenge/{challenge}/webauthn/start)
+	LoginChallengeWebauthnStart(w http.ResponseWriter, r *http.Request, challenge ChallengeId)
 	// Logout Revoke the presented session.
 	// (POST /api/v1/auth/logout)
 	Logout(w http.ResponseWriter, r *http.Request)
@@ -10606,6 +10649,24 @@ func (_ Unimplemented) UnlinkIdentity(w http.ResponseWriter, r *http.Request, id
 // LocalLogin Local password login; mints a CLI or browser session artifact.
 // (POST /api/v1/auth/local/login)
 func (_ Unimplemented) LocalLogin(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// LoginChallengeTotp Satisfy a login challenge with a TOTP code; mints the session.
+// (POST /api/v1/auth/login/challenge/{challenge}/totp)
+func (_ Unimplemented) LoginChallengeTotp(w http.ResponseWriter, r *http.Request, challenge ChallengeId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// LoginChallengeWebauthnFinish Complete a passkey assertion against a login challenge; mints the session.
+// (POST /api/v1/auth/login/challenge/{challenge}/webauthn/finish)
+func (_ Unimplemented) LoginChallengeWebauthnFinish(w http.ResponseWriter, r *http.Request, challenge ChallengeId) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// LoginChallengeWebauthnStart Begin a passkey assertion against a login challenge.
+// (POST /api/v1/auth/login/challenge/{challenge}/webauthn/start)
+func (_ Unimplemented) LoginChallengeWebauthnStart(w http.ResponseWriter, r *http.Request, challenge ChallengeId) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -12405,6 +12466,84 @@ func (siw *ServerInterfaceWrapper) LocalLogin(w http.ResponseWriter, r *http.Req
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LocalLogin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LoginChallengeTotp operation middleware
+func (siw *ServerInterfaceWrapper) LoginChallengeTotp(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "challenge" -------------
+	var challenge ChallengeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "challenge", chi.URLParam(r, "challenge"), &challenge, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "challenge", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoginChallengeTotp(w, r, challenge)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LoginChallengeWebauthnFinish operation middleware
+func (siw *ServerInterfaceWrapper) LoginChallengeWebauthnFinish(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "challenge" -------------
+	var challenge ChallengeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "challenge", chi.URLParam(r, "challenge"), &challenge, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "challenge", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoginChallengeWebauthnFinish(w, r, challenge)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LoginChallengeWebauthnStart operation middleware
+func (siw *ServerInterfaceWrapper) LoginChallengeWebauthnStart(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "challenge" -------------
+	var challenge ChallengeId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "challenge", chi.URLParam(r, "challenge"), &challenge, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "challenge", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LoginChallengeWebauthnStart(w, r, challenge)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -22719,6 +22858,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/auth/local/login", wrapper.LocalLogin)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/totp", wrapper.LoginChallengeTotp)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/webauthn/start", wrapper.LoginChallengeWebauthnStart)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/auth/login/challenge/{challenge}/webauthn/finish", wrapper.LoginChallengeWebauthnFinish)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/auth/logout", wrapper.Logout)
 	})
 	r.Group(func(r chi.Router) {
@@ -24504,6 +24652,20 @@ func (response LocalLogin200JSONResponse) VisitLocalLoginResponse(w http.Respons
 	return err
 }
 
+type LocalLogin202JSONResponse LoginChallenge
+
+func (response LocalLogin202JSONResponse) VisitLocalLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type LocalLogin400JSONResponse struct{ BadRequestJSONResponse }
 
 func (response LocalLogin400JSONResponse) VisitLocalLoginResponse(w http.ResponseWriter) error {
@@ -24564,6 +24726,346 @@ func (response LocalLogin500JSONResponse) VisitLocalLoginResponse(w http.Respons
 type LocalLogin503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response LocalLogin503JSONResponse) VisitLocalLoginResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeTotpRequestObject struct {
+	Challenge ChallengeId `json:"challenge"`
+	Body      *LoginChallengeTotpJSONRequestBody
+}
+
+type LoginChallengeTotpResponseObject interface {
+	VisitLoginChallengeTotpResponse(w http.ResponseWriter) error
+}
+
+type LoginChallengeTotp200JSONResponse LoginResult
+
+func (response LoginChallengeTotp200JSONResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeTotp400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response LoginChallengeTotp400JSONResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeTotp401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response LoginChallengeTotp401JSONResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeTotp404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response LoginChallengeTotp404JSONResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeTotp409JSONResponse struct{ ConflictJSONResponse }
+
+func (response LoginChallengeTotp409JSONResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeTotp429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response LoginChallengeTotp429JSONResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeTotp500JSONResponse struct{ InternalJSONResponse }
+
+func (response LoginChallengeTotp500JSONResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeTotp503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response LoginChallengeTotp503JSONResponse) VisitLoginChallengeTotpResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnFinishRequestObject struct {
+	Challenge ChallengeId `json:"challenge"`
+	Body      *LoginChallengeWebauthnFinishJSONRequestBody
+}
+
+type LoginChallengeWebauthnFinishResponseObject interface {
+	VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error
+}
+
+type LoginChallengeWebauthnFinish200JSONResponse LoginResult
+
+func (response LoginChallengeWebauthnFinish200JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnFinish400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response LoginChallengeWebauthnFinish400JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnFinish401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response LoginChallengeWebauthnFinish401JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnFinish404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response LoginChallengeWebauthnFinish404JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnFinish429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response LoginChallengeWebauthnFinish429JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnFinish500JSONResponse struct{ InternalJSONResponse }
+
+func (response LoginChallengeWebauthnFinish500JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnFinish503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response LoginChallengeWebauthnFinish503JSONResponse) VisitLoginChallengeWebauthnFinishResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnStartRequestObject struct {
+	Challenge ChallengeId `json:"challenge"`
+}
+
+type LoginChallengeWebauthnStartResponseObject interface {
+	VisitLoginChallengeWebauthnStartResponse(w http.ResponseWriter) error
+}
+
+type LoginChallengeWebauthnStart200JSONResponse WebauthnOptions
+
+func (response LoginChallengeWebauthnStart200JSONResponse) VisitLoginChallengeWebauthnStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnStart400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response LoginChallengeWebauthnStart400JSONResponse) VisitLoginChallengeWebauthnStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnStart401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response LoginChallengeWebauthnStart401JSONResponse) VisitLoginChallengeWebauthnStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnStart404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response LoginChallengeWebauthnStart404JSONResponse) VisitLoginChallengeWebauthnStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnStart429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response LoginChallengeWebauthnStart429JSONResponse) VisitLoginChallengeWebauthnStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnStart500JSONResponse struct{ InternalJSONResponse }
+
+func (response LoginChallengeWebauthnStart500JSONResponse) VisitLoginChallengeWebauthnStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LoginChallengeWebauthnStart503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response LoginChallengeWebauthnStart503JSONResponse) VisitLoginChallengeWebauthnStartResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -54616,6 +55118,15 @@ type StrictServerInterface interface {
 	// LocalLogin Local password login; mints a CLI or browser session artifact.
 	// (POST /api/v1/auth/local/login)
 	LocalLogin(ctx context.Context, request LocalLoginRequestObject) (LocalLoginResponseObject, error)
+	// LoginChallengeTotp Satisfy a login challenge with a TOTP code; mints the session.
+	// (POST /api/v1/auth/login/challenge/{challenge}/totp)
+	LoginChallengeTotp(ctx context.Context, request LoginChallengeTotpRequestObject) (LoginChallengeTotpResponseObject, error)
+	// LoginChallengeWebauthnFinish Complete a passkey assertion against a login challenge; mints the session.
+	// (POST /api/v1/auth/login/challenge/{challenge}/webauthn/finish)
+	LoginChallengeWebauthnFinish(ctx context.Context, request LoginChallengeWebauthnFinishRequestObject) (LoginChallengeWebauthnFinishResponseObject, error)
+	// LoginChallengeWebauthnStart Begin a passkey assertion against a login challenge.
+	// (POST /api/v1/auth/login/challenge/{challenge}/webauthn/start)
+	LoginChallengeWebauthnStart(ctx context.Context, request LoginChallengeWebauthnStartRequestObject) (LoginChallengeWebauthnStartResponseObject, error)
 	// Logout Revoke the presented session.
 	// (POST /api/v1/auth/logout)
 	Logout(ctx context.Context, request LogoutRequestObject) (LogoutResponseObject, error)
@@ -55755,6 +56266,98 @@ func (sh *strictHandler) LocalLogin(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LocalLoginResponseObject); ok {
 		if err := validResponse.VisitLocalLoginResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LoginChallengeTotp operation middleware
+func (sh *strictHandler) LoginChallengeTotp(w http.ResponseWriter, r *http.Request, challenge ChallengeId) {
+	var request LoginChallengeTotpRequestObject
+
+	request.Challenge = challenge
+
+	var body LoginChallengeTotpJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoginChallengeTotp(ctx, request.(LoginChallengeTotpRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoginChallengeTotp")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginChallengeTotpResponseObject); ok {
+		if err := validResponse.VisitLoginChallengeTotpResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LoginChallengeWebauthnFinish operation middleware
+func (sh *strictHandler) LoginChallengeWebauthnFinish(w http.ResponseWriter, r *http.Request, challenge ChallengeId) {
+	var request LoginChallengeWebauthnFinishRequestObject
+
+	request.Challenge = challenge
+
+	var body LoginChallengeWebauthnFinishJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoginChallengeWebauthnFinish(ctx, request.(LoginChallengeWebauthnFinishRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoginChallengeWebauthnFinish")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginChallengeWebauthnFinishResponseObject); ok {
+		if err := validResponse.VisitLoginChallengeWebauthnFinishResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LoginChallengeWebauthnStart operation middleware
+func (sh *strictHandler) LoginChallengeWebauthnStart(w http.ResponseWriter, r *http.Request, challenge ChallengeId) {
+	var request LoginChallengeWebauthnStartRequestObject
+
+	request.Challenge = challenge
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LoginChallengeWebauthnStart(ctx, request.(LoginChallengeWebauthnStartRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LoginChallengeWebauthnStart")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LoginChallengeWebauthnStartResponseObject); ok {
+		if err := validResponse.VisitLoginChallengeWebauthnStartResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

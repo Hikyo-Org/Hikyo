@@ -635,10 +635,38 @@ export type LoginResult = {
     principal: Principal;
 };
 
+/**
+ * A single-use, expiring authority proving the password step passed for
+ * one account, issued by `localLogin` (202) when a factor stands and a
+ * browser session was requested. No session and no cookie exist until a
+ * finish operation at `/api/v1/auth/login/challenge/{challenge}/...`
+ * consumes it. Discloses nothing beyond which factor classes may satisfy
+ * it.
+ *
+ */
+export type LoginChallenge = {
+    challenge_id: Id;
+    expires_at: Timestamp;
+    /**
+     * The factor classes that can satisfy this challenge.
+     */
+    factors: Array<FactorClass>;
+};
+
 export type WhoAmI = {
     session: Session;
     principal: Principal;
     capabilities: PrincipalCapabilities;
+    /**
+     * True when this session authenticated by password on an instance
+     * whose `second_factor` policy is `required` and the account had no
+     * factor enrolled. Such a session is confined to factor enrolment,
+     * recovery-code generation, `whoami`, and `logout` at the
+     * authorization chokepoint until a factor stands. Absent or false
+     * otherwise.
+     *
+     */
+    enrolment_required?: boolean;
 };
 
 /**
@@ -4507,6 +4535,11 @@ export type ScimCapabilityOrigin = {
 };
 
 /**
+ * Login-challenge identifier returned by `localLogin` (202).
+ */
+export type ChallengeId = Id;
+
+/**
  * Organisation identifier.
  */
 export type OrgId = Id;
@@ -5008,9 +5041,210 @@ export type LocalLoginResponses = {
      * Session minted. The token is displayed once and never again.
      */
     200: LoginResult;
+    /**
+     * A second factor stands on this account and a browser session was
+     * requested. No session is minted and no cookie is set; the response
+     * carries a single-use, expiring login challenge that must be
+     * satisfied at `/api/v1/auth/login/challenge/{id}/...` before a
+     * session exists. The factor is never skippable (human-auth ADR
+     * § Assurance). Only a `browser` artifact request receives this; a
+     * `cli` request mints a `password`-assurance session and steps up on
+     * demand at the authorization chokepoint.
+     *
+     */
+    202: LoginChallenge;
 };
 
 export type LocalLoginResponse = LocalLoginResponses[keyof LocalLoginResponses];
+
+export type LoginChallengeTotpData = {
+    body: TotpCodeRequest;
+    path: {
+        /**
+         * Login-challenge identifier returned by `localLogin` (202).
+         */
+        challenge: Id;
+    };
+    query?: never;
+    url: '/api/v1/auth/login/challenge/{challenge}/totp';
+};
+
+export type LoginChallengeTotpErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type LoginChallengeTotpError = LoginChallengeTotpErrors[keyof LoginChallengeTotpErrors];
+
+export type LoginChallengeTotpResponses = {
+    /**
+     * The minted browser session.
+     */
+    200: LoginResult;
+};
+
+export type LoginChallengeTotpResponse = LoginChallengeTotpResponses[keyof LoginChallengeTotpResponses];
+
+export type LoginChallengeWebauthnStartData = {
+    body?: never;
+    path: {
+        /**
+         * Login-challenge identifier returned by `localLogin` (202).
+         */
+        challenge: Id;
+    };
+    query?: never;
+    url: '/api/v1/auth/login/challenge/{challenge}/webauthn/start';
+};
+
+export type LoginChallengeWebauthnStartErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type LoginChallengeWebauthnStartError = LoginChallengeWebauthnStartErrors[keyof LoginChallengeWebauthnStartErrors];
+
+export type LoginChallengeWebauthnStartResponses = {
+    /**
+     * Opaque WebAuthn request options for the browser.
+     */
+    200: WebauthnOptions;
+};
+
+export type LoginChallengeWebauthnStartResponse = LoginChallengeWebauthnStartResponses[keyof LoginChallengeWebauthnStartResponses];
+
+export type LoginChallengeWebauthnFinishData = {
+    body: WebauthnResponse;
+    path: {
+        /**
+         * Login-challenge identifier returned by `localLogin` (202).
+         */
+        challenge: Id;
+    };
+    query?: never;
+    url: '/api/v1/auth/login/challenge/{challenge}/webauthn/finish';
+};
+
+export type LoginChallengeWebauthnFinishErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type LoginChallengeWebauthnFinishError = LoginChallengeWebauthnFinishErrors[keyof LoginChallengeWebauthnFinishErrors];
+
+export type LoginChallengeWebauthnFinishResponses = {
+    /**
+     * The minted browser session.
+     */
+    200: LoginResult;
+};
+
+export type LoginChallengeWebauthnFinishResponse = LoginChallengeWebauthnFinishResponses[keyof LoginChallengeWebauthnFinishResponses];
 
 export type LogoutData = {
     body?: never;

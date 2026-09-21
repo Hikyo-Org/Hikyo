@@ -1,6 +1,7 @@
 import {
   listMyOrgsOp,
   localLoginOp,
+  loginChallengeTotpOp,
   logoutOp,
   oidcStartOp,
   beginRecoveryOp,
@@ -88,15 +89,51 @@ export function useLogin() {
       const result = await parsed(localLoginOp, {
           body: { username: input.username, password: input.password, artifact: 'browser' },
         });
+      // A second factor stands on this account: the server minted no session and
+      // answered a login challenge (#760). The route presents the second factor
+      // against it; the session mints on the finish op.
+      if ('challenge_id' in result) {
+        return { kind: 'challenge' as const, challenge: result, username: input.username };
+      }
       // B2 restated on the client: a browser artifact must never carry its
       // token in a script-readable body. If one ever does, that is a server
       // regression and it stops here rather than being quietly stored.
       if (result.session.artifact === 'browser' && result.session_token !== undefined) {
         throw new Error('the server returned a browser session token in the response body');
       }
-      return result;
+      return { kind: 'session' as const, identity: result };
     },
-    onSuccess: (identity, _input, guard) => {
+    onSuccess: (outcome, _input, guard) => {
+      // A challenge is not a session: the route reads it from `data` and presents
+      // the second factor. Only a minted session is accepted here.
+      if (outcome.kind !== 'session') return;
+      if (guard === undefined) throw new Error('Missing session transition guard.');
+      auth.acceptSession(outcome.identity, guard);
+    },
+  });
+}
+
+/**
+ * useLoginChallengeTotp presents an authenticator code against a live login
+ * challenge (#760) and, on success, establishes the browser session exactly as
+ * `useLogin` does — the session arrives on cookies, the parsed body binds the
+ * cache epoch. The webauthn second factor lands with the `/login` gate (#785).
+ */
+export function useLoginChallengeTotp(challengeId: string) {
+  const auth = useAuth();
+  return useSensitiveMutation({
+    onMutate: auth.captureTransition,
+    mutationFn: async (code: string) => {
+      const identity = await parsed(loginChallengeTotpOp, {
+        path: { challenge: challengeId },
+        body: { code },
+      });
+      if (identity.session.artifact === 'browser' && identity.session_token !== undefined) {
+        throw new Error('the server returned a browser session token in the response body');
+      }
+      return identity;
+    },
+    onSuccess: (identity, _code, guard) => {
       if (guard === undefined) throw new Error('Missing session transition guard.');
       auth.acceptSession(identity, guard);
     },

@@ -204,6 +204,9 @@ import {
   listValues,
   listWorkspaceOrigins,
   localLogin,
+  loginChallengeTotp,
+  loginChallengeWebauthnFinish,
+  loginChallengeWebauthnStart,
   logout,
   mintInstanceConnection,
   mintLease,
@@ -482,6 +485,9 @@ import type {
   ListValuesData,
   ListWorkspaceOriginsData,
   LocalLoginData,
+  LoginChallengeTotpData,
+  LoginChallengeWebauthnFinishData,
+  LoginChallengeWebauthnStartData,
   LogoutData,
   MintInstanceConnectionData,
   MintLeaseData,
@@ -746,6 +752,9 @@ import {
   zListValuesResponse,
   zListWorkspaceOriginsResponse,
   zLocalLoginResponse,
+  zLoginChallengeTotpResponse,
+  zLoginChallengeWebauthnFinishResponse,
+  zLoginChallengeWebauthnStartResponse,
   zMintInstanceConnectionResponse,
   zMintLeaseResponse,
   zMintMachineCredentialResponse,
@@ -992,7 +1001,10 @@ export const listServiceAccountsOp: BodyOperation<ListServiceAccountsData, typeo
 export const listValueOccurrencesOp: BodyOperation<ListValueOccurrencesData, typeof zListValueOccurrencesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listValueOccurrences, [200], zListValueOccurrencesResponse);
 export const listValuesOp: BodyOperation<ListValuesData, typeof zListValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listValues, [200], zListValuesResponse);
 export const listWorkspaceOriginsOp: BodyOperation<ListWorkspaceOriginsData, typeof zListWorkspaceOriginsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listWorkspaceOrigins, [200], zListWorkspaceOriginsResponse);
-export const localLoginOp: BodyOperation<LocalLoginData, typeof zLocalLoginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(localLogin, [200], zLocalLoginResponse);
+export const localLoginOp: BodyOperation<LocalLoginData, typeof zLocalLoginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(localLogin, [200, 202], zLocalLoginResponse);
+export const loginChallengeTotpOp: BodyOperation<LoginChallengeTotpData, typeof zLoginChallengeTotpResponse> = /* @__PURE__ */ new GeneratedBodyOperation(loginChallengeTotp, [200], zLoginChallengeTotpResponse);
+export const loginChallengeWebauthnFinishOp: BodyOperation<LoginChallengeWebauthnFinishData, typeof zLoginChallengeWebauthnFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(loginChallengeWebauthnFinish, [200], zLoginChallengeWebauthnFinishResponse);
+export const loginChallengeWebauthnStartOp: BodyOperation<LoginChallengeWebauthnStartData, typeof zLoginChallengeWebauthnStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(loginChallengeWebauthnStart, [200], zLoginChallengeWebauthnStartResponse);
 export const mintInstanceConnectionOp: BodyOperation<MintInstanceConnectionData, typeof zMintInstanceConnectionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintInstanceConnection, [201], zMintInstanceConnectionResponse);
 export const mintLeaseOp: BodyOperation<MintLeaseData, typeof zMintLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintLease, [200], zMintLeaseResponse);
 export const mintMachineCredentialOp: BodyOperation<MintMachineCredentialData, typeof zMintMachineCredentialResponse> = /* @__PURE__ */ new GeneratedBodyOperation(mintMachineCredential, [200], zMintMachineCredentialResponse);

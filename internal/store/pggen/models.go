@@ -624,6 +624,15 @@ type KeyPresenceEnvironment struct {
 	Rule          string
 }
 
+type LoginChallenge struct {
+	ID         string
+	AccountID  string
+	Factors    string
+	ExpiresAt  pgtype.Timestamptz
+	ConsumedAt pgtype.Timestamptz
+	CreatedAt  pgtype.Timestamptz
+}
+
 type MachineCredential struct {
 	ID               string
 	ServiceAccountID string
@@ -1162,6 +1171,7 @@ type Session struct {
 	SamlProviderID    pgtype.Text
 	RequestingOrigin  pgtype.Text
 	HandoffID         pgtype.Text
+	EnrolmentRequired bool
 }
 
 type SingletonLease struct {

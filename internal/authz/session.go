@@ -71,6 +71,11 @@ type Identity struct {
 	// out of the transaction is safe and lets the transport enforce the CSRF
 	// contract it owns (#54 A10, #56).
 	CSRFVerifier []byte
+	// EnrolmentRequired confines a password-assured session minted for an
+	// unenrolled account under a `required` second-factor policy (#760). The
+	// authorization chokepoint refuses every operation for such a session except
+	// the enrolment allowlist until a factor stands.
+	EnrolmentRequired bool
 }
 
 // MFAMandatory is the closed set of capabilities the human-auth ADR makes
@@ -428,6 +433,7 @@ func (a *TxAuthorizer) authenticateResolvedSession(ctx context.Context, row auth
 		IdleExpiresAt:     row.IdleExpiresAt,
 		AbsoluteExpiresAt: row.AbsoluteExpiresAt,
 		CSRFVerifier:      row.CSRFVerifier,
+		EnrolmentRequired: row.EnrolmentRequired,
 	}, nil
 }
 

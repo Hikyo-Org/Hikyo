@@ -8,6 +8,7 @@ import {
   zEnvironmentList,
   zGrantResult,
   zInvitationResult,
+  zLoginChallenge,
   zLoginResult,
   zPendingChange,
   zTotpEnrolStartResult,
@@ -1546,11 +1547,28 @@ test.describe('change approvals', () => {
       { code: totpCode(enrolled.otpauth_uri) },
     );
 
-    const reviewerBrowserLogin = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
+    // The reviewer now carries a factor, so the password answers a login
+    // challenge, not a session (#760). Land in a fresh time step first — the
+    // enrol-confirm above spent the current one, and the reviewer's authenticator
+    // has no cross-code bookkeeping — then present the current-step code. The
+    // later approval reauth (a `+30s` code) is therefore always on a strictly
+    // later step, so nothing collides.
+    await new Promise((resolve) => setTimeout(resolve, (30 - (Math.floor(Date.now() / 1000) % 30) + 1) * 1000));
+    const reviewerChallengeResponse = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, artifact: 'browser' }),
     });
+    expect(reviewerChallengeResponse.status).toBe(202);
+    const reviewerChallenge = zLoginChallenge.parse(await reviewerChallengeResponse.json());
+    const reviewerBrowserLogin = await fetch(
+      `${BASE_URL}/api/v1/auth/login/challenge/${reviewerChallenge.challenge_id}/totp`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: totpCode(enrolled.otpauth_uri) }),
+      },
+    );
     expect(reviewerBrowserLogin.status).toBe(200);
 
     const policy = await approvalState.ensurePolicy();

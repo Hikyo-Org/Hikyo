@@ -168,6 +168,25 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 		audit.EventAuthReauthenticated,
 		audit.EventAuthThrottleCrossed,
 	}},
+	// Login-challenge finish endpoints (#760). A browser password login on an
+	// account with an enrolled factor mints no session; these present the factor
+	// against the single-use challenge and mint. Unauthenticated-class like the
+	// step-up endpoints: they take a challenge id, not a session, and a
+	// spent/expired challenge is exactly the case they must not distinguish. The
+	// mint discharges its audit obligation through the same login/session events
+	// as `local/login`; the webauthn finish also carries the clone event.
+	"http:POST /api/v1/auth/login/challenge/{challenge}/totp": {Class: ClassUnauthenticated, Events: []audit.EventType{
+		audit.EventAuthLogin,
+		audit.EventAuthSessionCreated,
+		audit.EventAuthThrottleCrossed,
+	}},
+	"http:POST /api/v1/auth/login/challenge/{challenge}/webauthn/start": {Class: ClassUnauthenticated},
+	"http:POST /api/v1/auth/login/challenge/{challenge}/webauthn/finish": {Class: ClassUnauthenticated, Events: []audit.EventType{
+		audit.EventAuthLogin,
+		audit.EventAuthSessionCreated,
+		audit.EventAuthPasskeyCloned,
+		audit.EventAuthThrottleCrossed,
+	}},
 	"http:GET /api/v1/me/profile":   {Class: ClassUnauthenticated},
 	"http:PATCH /api/v1/me/profile": {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventAuthProfileUpdated, audit.EventAuthThrottleCrossed}},
 	"http:GET /api/v1/auth/totp":    {Class: ClassUnauthenticated},

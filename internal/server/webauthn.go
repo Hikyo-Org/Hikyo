@@ -136,6 +136,47 @@ func (a *API) PasskeyLoginFinish(ctx context.Context, req apigen.PasskeyLoginFin
 }
 
 // ---------------------------------------------------------------------------
+// Login challenge — passkey as the second factor (#760)
+// ---------------------------------------------------------------------------
+//
+// These present a passkey against a live login challenge, so the ceremony is
+// account-bound (not discoverable) and session-less. Only the instance-wide
+// "WebAuthn not configured" refusal is a loud 400; a missing/expired/consumed
+// challenge is 404 and a bad assertion is the uniform 401, both mapped through
+// the shared wire policy.
+
+func (a *API) LoginChallengeWebauthnStart(ctx context.Context, req apigen.LoginChallengeWebauthnStartRequestObject) (apigen.LoginChallengeWebauthnStartResponseObject, error) {
+	raw, err := a.Auth.LoginChallengeWebauthnStart(ctx, string(req.Challenge))
+	if err != nil {
+		if loginPrecondition(err) {
+			return apigen.LoginChallengeWebauthnStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+		}
+		return nil, err
+	}
+	m, err := webauthnOptions(raw)
+	if err != nil {
+		a.fault(ctx, "login challenge webauthn start options", err)
+		return apigen.LoginChallengeWebauthnStart500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
+	}
+	return apigen.LoginChallengeWebauthnStart200JSONResponse(m), nil
+}
+
+func (a *API) LoginChallengeWebauthnFinish(ctx context.Context, req apigen.LoginChallengeWebauthnFinishRequestObject) (apigen.LoginChallengeWebauthnFinishResponseObject, error) {
+	raw, ok := finishBody(req.Body)
+	if !ok {
+		return apigen.LoginChallengeWebauthnFinish400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+	}
+	result, err := a.Auth.LoginChallengeWebauthnFinish(ctx, string(req.Challenge), raw)
+	if err != nil {
+		if loginPrecondition(err) {
+			return apigen.LoginChallengeWebauthnFinish400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+		}
+		return nil, err
+	}
+	return sessionResponse(result), nil
+}
+
+// ---------------------------------------------------------------------------
 // Step-up
 // ---------------------------------------------------------------------------
 

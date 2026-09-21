@@ -172,6 +172,11 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"UpdateRecoveryCodes":           true,
 	"RotateSessionFactors":          true,
 	"ConsumeOutstandingAuthorities": true,
+	// Login challenge (#760): the single-use authority that proves the password
+	// step passed before a session mints. Proof-free by design — no session
+	// exists yet — and part of how a caller authenticates, which is resolution.
+	"CreateLoginChallenge":  true,
+	"ConsumeLoginChallenge": true,
 	// OIDC (#54): the transaction, external-identity, federated-session-sweep
 	// and reauth-window writers. None can hold a proof - they mutate the
 	// artifacts that decide who a caller is and how they authenticated, which is

@@ -209,6 +209,21 @@ func (s stubAuth) PasskeyLoginFinish(ctx context.Context, response []byte) (serv
 	return s.passkeyFinish(ctx, response)
 }
 
+// Login-challenge finish ops (#760): the TOTP and webauthn finishes mint the
+// browser session, so they share the reissue hook; the webauthn start returns
+// ceremony options like every other start.
+func (s stubAuth) LoginChallengeTOTP(context.Context, string, string) (service.LoginResult, error) {
+	return s.reissued()
+}
+
+func (s stubAuth) LoginChallengeWebauthnStart(context.Context, string) ([]byte, error) {
+	return nil, domain.ErrUnauthenticated
+}
+
+func (s stubAuth) LoginChallengeWebauthnFinish(context.Context, string, []byte) (service.LoginResult, error) {
+	return s.reissued()
+}
+
 func (s stubAuth) StepUpPasskeyStart(context.Context, string) ([]byte, error) {
 	return nil, domain.ErrUnauthenticated
 }

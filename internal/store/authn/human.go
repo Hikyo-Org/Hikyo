@@ -131,6 +131,10 @@ type SessionRow struct {
 	// revocation and listing, as this row did before, left that comparison
 	// with nothing to compare against.
 	RequestingOrigin string
+	// EnrolmentRequired confines a password-assured session minted for an
+	// unenrolled account under a `required` second_factor policy to factor
+	// enrolment until a factor stands (#760). The chokepoint reads it.
+	EnrolmentRequired bool
 }
 
 // NewSession is the insert carrier for a freshly minted session.
@@ -164,6 +168,10 @@ type NewSession struct {
 	// RequestingOrigin is what makes origin removal an atomic kill switch.
 	RequestingOrigin string
 	HandoffID        string
+	// EnrolmentRequired stamps the enrolment gate on a password-assured session
+	// minted for an unenrolled account under a `required` second_factor policy
+	// (#760). Only localLogin's password branch sets it true.
+	EnrolmentRequired bool
 }
 
 // CredentialAuthority is a resolved credential-establishment authority.
@@ -359,6 +367,7 @@ func (r *Resolver) SessionByVerifier(ctx context.Context, verifier []byte) (Sess
 		CreatedAt: row.CreatedAt.Time, LastSeenAt: row.LastSeenAt.Time,
 		IdleExpiresAt: row.IdleExpiresAt.Time, AbsoluteExpiresAt: row.AbsoluteExpiresAt.Time,
 		CSRFVerifier: row.CsrfVerifier, RequestingOrigin: row.RequestingOrigin.String, ProviderID: row.ProviderID.String,
+		EnrolmentRequired: row.EnrolmentRequired,
 	}, nil
 }
 
@@ -386,6 +395,7 @@ func (r *Resolver) SessionByID(ctx context.Context, id string) (SessionRow, erro
 		CreatedAt: row.CreatedAt.Time, LastSeenAt: row.LastSeenAt.Time,
 		IdleExpiresAt: row.IdleExpiresAt.Time, AbsoluteExpiresAt: row.AbsoluteExpiresAt.Time,
 		CSRFVerifier: row.CsrfVerifier, RequestingOrigin: row.RequestingOrigin.String, ProviderID: row.ProviderID.String,
+		EnrolmentRequired: row.EnrolmentRequired,
 	}, nil
 }
 
@@ -629,9 +639,10 @@ func (r *Resolver) CreateSession(ctx context.Context, s NewSession) error {
 			CreatedAt: encodeTime(s.CreatedAt), LastSeenAt: encodeTime(s.CreatedAt),
 			IdleExpiresAt: encodeTime(s.IdleExpiresAt), AbsoluteExpiresAt: encodeTime(s.AbsoluteExpiresAt),
 			SourceIp: s.SourceIP, UserAgent: s.UserAgent, ProviderID: nullString(s.ProviderID),
-			CsrfVerifier:     s.CSRFVerifier,
-			RequestingOrigin: nullString(s.RequestingOrigin),
-			HandoffID:        nullString(s.HandoffID),
+			CsrfVerifier:      s.CSRFVerifier,
+			RequestingOrigin:  nullString(s.RequestingOrigin),
+			HandoffID:         nullString(s.HandoffID),
+			EnrolmentRequired: boolInt(s.EnrolmentRequired),
 		})
 	}
 	return r.pg.InsertSession(ctx, pggen.InsertSessionParams{
@@ -642,9 +653,10 @@ func (r *Resolver) CreateSession(ctx context.Context, s NewSession) error {
 		CreatedAt: pgTimestamp(s.CreatedAt), LastSeenAt: pgTimestamp(s.CreatedAt),
 		IdleExpiresAt: pgTimestamp(s.IdleExpiresAt), AbsoluteExpiresAt: pgTimestamp(s.AbsoluteExpiresAt),
 		SourceIp: s.SourceIP, UserAgent: s.UserAgent, ProviderID: pgText(s.ProviderID),
-		CsrfVerifier:     s.CSRFVerifier,
-		RequestingOrigin: pgText(s.RequestingOrigin),
-		HandoffID:        pgText(s.HandoffID),
+		CsrfVerifier:      s.CSRFVerifier,
+		RequestingOrigin:  pgText(s.RequestingOrigin),
+		HandoffID:         pgText(s.HandoffID),
+		EnrolmentRequired: s.EnrolmentRequired,
 	})
 }
 
@@ -726,20 +738,20 @@ func sqliteSession(row sqlitegen.GetSessionByVerifierRow) (SessionRow, error) {
 	return sqliteSessionFields(row.ID, row.PrincipalID, row.Artifact, row.SessionGeneration,
 		row.CredentialEpoch, row.AuthMethod, row.Factors, row.AuthenticatedAt,
 		row.CeremonyID, row.CreatedAt, row.LastSeenAt, row.IdleExpiresAt, row.AbsoluteExpiresAt,
-		row.CsrfVerifier, row.RequestingOrigin, row.ProviderID)
+		row.CsrfVerifier, row.RequestingOrigin, row.ProviderID, row.EnrolmentRequired)
 }
 
 func sqliteSessionByID(row sqlitegen.GetSessionByIDRow) (SessionRow, error) {
 	return sqliteSessionFields(row.ID, row.PrincipalID, row.Artifact, row.SessionGeneration,
 		row.CredentialEpoch, row.AuthMethod, row.Factors, row.AuthenticatedAt,
 		row.CeremonyID, row.CreatedAt, row.LastSeenAt, row.IdleExpiresAt, row.AbsoluteExpiresAt,
-		row.CsrfVerifier, row.RequestingOrigin, row.ProviderID)
+		row.CsrfVerifier, row.RequestingOrigin, row.ProviderID, row.EnrolmentRequired)
 }
 
 func sqliteSessionFields(id, principalID, artifact string, sessionGeneration, credentialEpoch int64,
 	authMethod, factors, authenticatedAt string, ceremonyID sql.NullString,
 	createdAt, lastSeenAt, idleExpiresAt, absoluteExpiresAt string, csrfVerifier []byte,
-	requestingOrigin, providerID sql.NullString,
+	requestingOrigin, providerID sql.NullString, enrolmentRequired int64,
 ) (SessionRow, error) {
 	var (
 		out SessionRow
@@ -750,6 +762,7 @@ func sqliteSessionFields(id, principalID, artifact string, sessionGeneration, cr
 		SessionGeneration: sessionGeneration, CredentialEpoch: credentialEpoch,
 		AuthMethod: authMethod, Factors: factors, CeremonyID: ceremonyID.String,
 		CSRFVerifier: csrfVerifier, RequestingOrigin: requestingOrigin.String, ProviderID: providerID.String,
+		EnrolmentRequired: enrolmentRequired != 0,
 	}
 	for _, f := range []struct {
 		src string

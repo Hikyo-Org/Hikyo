@@ -28,14 +28,16 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// #723 adds two local parameter-declaration routes and their operation links.
 	// Container maintenance adds one unauthenticated runtime status route.
 	// #781 adds four unauthenticated, stateless Codex lifecycle methods.
-	if got := len(facts.Wire()); got != 334 {
-		t.Fatalf("wire entries = %d, want 334", got)
+	// #760 adds three unauthenticated login-challenge finish routes (two carrying
+	// login/session/clone events, the webauthn start carrying none).
+	if got := len(facts.Wire()); got != 337 {
+		t.Fatalf("wire entries = %d, want 337", got)
 	}
 	if got := len(facts.WireRoutes()); got != 234 {
 		t.Fatalf("operation-linked entries = %d, want 234", got)
 	}
-	if got := len(facts.WireEvents()); got != 70 {
-		t.Fatalf("direct-event entries = %d, want 70", got)
+	if got := len(facts.WireEvents()); got != 72 {
+		t.Fatalf("direct-event entries = %d, want 72", got)
 	}
 }
 

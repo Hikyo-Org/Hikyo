@@ -1310,6 +1310,12 @@ func validCeremony(c authz.WebAuthnCeremony, purpose, accountID, sessionID, bind
 	if purpose == "login" {
 		return true
 	}
+	// login-2fa (#760) is account-bound but session-less: the account is known
+	// from the live login challenge, not an acting session. It carries no session
+	// binding to check (the schema CHECK does not require one), only the account.
+	if purpose == "login-2fa" {
+		return accountID != "" && c.AccountID == accountID
+	}
 	if accountID == "" || c.AccountID != accountID {
 		return false
 	}

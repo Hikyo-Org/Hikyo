@@ -188,9 +188,11 @@ func seedConfigurationMigration(t *testing.T, s *Session, scenario string) (Stat
 	if scenario == "existing-true" {
 		values["HIKYO_MCP_ENABLED"] = "true"
 		values["HIKYO_MCP_WRITE_ENABLED"] = "true"
+		values["HIKYO_SECOND_FACTOR"] = "optional"
 	}
 	if scenario == "existing-false" {
 		values["HIKYO_MCP_WRITE_ENABLED"] = "false"
+		values["HIKYO_SECOND_FACTOR"] = "optional"
 	}
 	if scenario == "invalid-value" {
 		values["HIKYO_MCP_ENABLED"] = "invalid"
@@ -312,6 +314,9 @@ func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
 					if _, ok := want["HIKYO_MCP_WRITE_ENABLED"]; !ok {
 						want["HIKYO_MCP_WRITE_ENABLED"] = "false"
 					}
+					if _, ok := want["HIKYO_SECOND_FACTOR"]; !ok {
+						want["HIKYO_SECOND_FACTOR"] = "optional"
+					}
 					if !reflect.DeepEqual(got, want) {
 						return errors.New("operator values changed")
 					}
@@ -324,7 +329,7 @@ func TestManagedConfigurationMigrationBothDatabases(t *testing.T) {
 					if changed {
 						wantRevision = 2
 					}
-					if generation != wantRevision || revision != wantRevision || version != 1 {
+					if generation != wantRevision || revision != wantRevision || version != int(runtimeconfig.MigrationVersion) {
 						return fmt.Errorf("revision semantics %d %d %d", generation, revision, version)
 					}
 					var schemaRevision int
