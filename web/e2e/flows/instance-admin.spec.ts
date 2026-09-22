@@ -2,6 +2,7 @@ import { expect, type Browser, type Page } from '@playwright/test';
 import {
   zAuthMethods,
   zInstanceConfigStatus,
+  zInvitationResult,
   zUpdateStatus,
   zGrantList,
   zOrg,
@@ -766,18 +767,48 @@ test.describe('instance administration', () => {
 
   test('answers a password-only session with the second-factor state, not an empty list', async ({
     browser,
-  }) => {
-    // Its own context, with an EMPTY jar: `browser.newContext()` still picks
-    // up the describe's `storageState`, and a live session cookie on a login
-    // POST is refused 401 by the CSRF gate before the handler ever sees it , 
-    // which looks exactly like a wrong password. This session is deliberately
-    // weaker than the suite's, and it must not replace it.
+    page,
+  }, testInfo) => {
+    // Since #760 the factor-bearing bootstrap admin can no longer hold a
+    // password-only browser session — its login answers a second-factor
+    // challenge — so this invites a fresh instance operator (the `operator`
+    // template's instance authority, no factor) and signs in as it. Under the
+    // suite's `optional` policy an unenrolled account logs straight in at
+    // password assurance, so each MFA-mandatory panel refuses it with the
+    // step-up gate (grant held, assurance short) rather than a plain forbidden —
+    // exactly the state this flow exists to prove. The invitation runs on the
+    // describe's stepped-up admin session (`manage-members` is itself MFA-mandatory).
+    const suffix = `${testInfo.project.name}-${Date.now()}`.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    const username = `weak-operator-${suffix}`;
+    const displayName = `Weaker Operator ${suffix}`;
+    const password = `correct horse battery staple ${suffix}`;
+    const invitation = await browserApi(
+      page,
+      'POST',
+      '/api/v1/instance/invitations',
+      zInvitationResult,
+      { username, display_name: displayName, template: 'operator' },
+    );
+    const established = await fetch(`${BASE_URL}/api/v1/auth/credential/establish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authority: invitation.authority, password }),
+    });
+    expect(established.status).toBe(204);
+
+    // Its own context, with an EMPTY jar: this session is deliberately weaker
+    // than the suite's, and it must not replace it.
     const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     try {
-      const page = await context.newPage();
-      await page.goto('/');
-      await establishSession(page, false);
-      await page.goto('/instance');
+      const operatorPage = await context.newPage();
+      await operatorPage.goto('/login');
+      await operatorPage.getByLabel('Username').fill(username);
+      await operatorPage.getByLabel('Password').fill(password);
+      await operatorPage.getByRole('button', { name: 'Sign in' }).click();
+      // The account entry is shell chrome that renders even for an operator with
+      // no organisations of its own, so it is the honest "signed in" settle point.
+      await expect(operatorPage.getByRole('button', { name: `Account: ${displayName}` })).toBeVisible();
+      await operatorPage.goto('/instance');
 
       const panels = [
         ['#instance-orgs', 'needs a second factor', 'organisations on this instance'],
@@ -789,17 +820,17 @@ test.describe('instance administration', () => {
         ['#instance-federation', 'needs a second factor', 'Configure issuer'],
       ] as const;
       for (const [selector, refusalText, forbiddenText] of panels) {
-        const panel = page.locator(selector);
+        const panel = operatorPage.locator(selector);
         await expect(panel.getByRole('alert')).toContainText(refusalText);
         await expect(panel).not.toContainText(forbiddenText);
       }
       // The members pair answers the same session the same way (#567).
-      await page.goto('/instance/members');
+      await operatorPage.goto('/instance/members');
       // Scoped to the page: the step-up banner above the well is an alert too.
-      await expect(page.locator('.page--members').getByRole('alert')).toContainText(
+      await expect(operatorPage.locator('.page--members').getByRole('alert')).toContainText(
         'Instance grants require a second factor',
       );
-      await expect(page.locator('#members-list')).not.toContainText('No instance-scope grants');
+      await expect(operatorPage.locator('#members-list')).not.toContainText('No instance-scope grants');
     } finally {
       await context.close();
     }
