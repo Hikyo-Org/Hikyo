@@ -736,6 +736,21 @@ export const zAuthMethod = z.string();
 export const zFactorClass = z.string();
 
 /**
+ * A single-use, expiring authority proving the password step passed for
+ * one account, issued by `localLogin` (202) when a factor stands and a
+ * browser session was requested. No session and no cookie exist until a
+ * finish operation at `/api/v1/auth/login/challenge/{challenge}/...`
+ * consumes it. Discloses nothing beyond which factor classes may satisfy
+ * it.
+ *
+ */
+export const zLoginChallenge = z.object({
+    challenge_id: zId,
+    expires_at: zTimestamp,
+    factors: z.array(zFactorClass)
+});
+
+/**
  * How **this session** authenticated — not what the account owns.
  * Authorization of an MFA-mandatory capability consults this record at
  * the same chokepoint as `authorize()`, in the same transaction,
@@ -779,7 +794,8 @@ export const zLoginResult = z.object({
 export const zWhoAmI = z.object({
     session: zSession,
     principal: zPrincipal,
-    capabilities: zPrincipalCapabilities
+    capabilities: zPrincipalCapabilities,
+    enrolment_required: z.boolean().optional()
 });
 
 export const zRecoveryCodesResult = z.object({
@@ -3333,6 +3349,11 @@ export const zScimMappingResult = z.object({
 });
 
 /**
+ * Login-challenge identifier returned by `localLogin` (202).
+ */
+export const zChallengeId = zId;
+
+/**
  * Organisation identifier.
  */
 export const zOrgId = zId;
@@ -3707,10 +3728,41 @@ export const zEstablishCredentialResponse = z.void();
 
 export const zLocalLoginBody = zLocalLoginRequest;
 
+export const zLocalLoginResponse = z.union([
+    zLoginResult,
+    zLoginChallenge
+]);
+
+export const zLoginChallengeTotpBody = zTotpCodeRequest;
+
+export const zLoginChallengeTotpPath = z.object({
+    challenge: zId
+});
+
 /**
- * Session minted. The token is displayed once and never again.
+ * The minted browser session.
  */
-export const zLocalLoginResponse = zLoginResult;
+export const zLoginChallengeTotpResponse = zLoginResult;
+
+export const zLoginChallengeWebauthnStartPath = z.object({
+    challenge: zId
+});
+
+/**
+ * Opaque WebAuthn request options for the browser.
+ */
+export const zLoginChallengeWebauthnStartResponse = zWebauthnOptions;
+
+export const zLoginChallengeWebauthnFinishBody = zWebauthnResponse;
+
+export const zLoginChallengeWebauthnFinishPath = z.object({
+    challenge: zId
+});
+
+/**
+ * The minted browser session.
+ */
+export const zLoginChallengeWebauthnFinishResponse = zLoginResult;
 
 /**
  * Session revoked.

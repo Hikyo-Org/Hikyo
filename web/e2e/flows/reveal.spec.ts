@@ -10,6 +10,7 @@ import {
   nextTotpCode,
   OIDC_PROVIDER,
   readSeed,
+  STORAGE_STATE,
 } from '../fixtures/instance.ts';
 import { test } from '../fixtures/passkey.ts';
 
@@ -710,16 +711,17 @@ test.describe('write-only editing', () => {
  * it are the same act.
  */
 test.describe('pinned assertion set', () => {
-  test.use({ storageState: { cookies: [], origins: [] } });
+  // The shared authenticated session, like every other pinned assertion set
+  // (members' Audit sweep is the twin). This asserts the DESIGN TOKENS of the
+  // `read`-class Values surface, so it needs an ordinary signed-in session and
+  // nothing else — no ceremony, no authenticator. A freshly minted session is
+  // beside the point here, and since #760 a browser session for a factor-bearing
+  // account always carries its second factor, so there is no lighter one to mint.
+  test.use({ storageState: STORAGE_STATE });
 
   for (const scheme of ['dark', 'light'] as const) {
     test(`meets the pinned assertion set on Values (${scheme})`, async ({ page }) => {
       await page.emulateMedia({ colorScheme: scheme });
-      await page.goto(VALUES_PATH);
-      // No ceremony here, so no second factor and no authenticator: the
-      // surface itself is `read`, and asking for more would make this assert
-      // the login path instead of the design tokens.
-      await establishSession(page, false);
       await page.goto(VALUES_PATH);
       await expect(page.getByRole('heading', { name: 'Values', level: 1 })).toBeVisible();
 

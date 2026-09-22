@@ -59,6 +59,7 @@ func Catalogue() []Key {
 		"HIKYO_MCP_ENABLED":                "Enable the MCP endpoint. Requires an HTTPS public origin outside loopback development.",
 		"HIKYO_MCP_WRITE_ENABLED":          "Install the MCP stage-and-validate write tools. Requires MCP enabled; grants no authority by itself.",
 		"HIKYO_REAUTH_WINDOW_SECONDS":      "Disclosure reauthentication window in seconds, from 0 to 86400. Apply still requires its own ceremony.",
+		"HIKYO_SECOND_FACTOR":              "Sign-in second-factor policy. `required` gates a password login on an account with no factor into enrolment; `optional` keeps the local floor.",
 	}
 	for _, name := range config.ManagedOwnerKeys() {
 		key := text(name, descriptions[name], name == "HIKYO_DIRECTORY_PROXY")
@@ -67,6 +68,9 @@ func Catalogue() []Key {
 			key.Declaration.Rule.Type = schema.TypeInteger
 		case "HIKYO_MCP_ENABLED", "HIKYO_MCP_WRITE_ENABLED":
 			key.Declaration.Rule.Type = schema.TypeBoolean
+		case "HIKYO_SECOND_FACTOR":
+			key.Declaration.Rule.Type = schema.TypeEnum
+			key.Declaration.Rule.Members = []string{"required", "optional"}
 		}
 		keys = append(keys, key)
 	}

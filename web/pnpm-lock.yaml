@@ -48,9 +48,6 @@ importers:
       '@open-pencil/cli':
         specifier: 0.15.0
         version: 0.15.0(typescript@7.0.2)
-      '@open-pencil/mcp':
-        specifier: 0.15.0
-        version: 0.15.0(typescript@7.0.2)
       '@playwright/test':
         specifier: 1.62.1
         version: 1.62.1

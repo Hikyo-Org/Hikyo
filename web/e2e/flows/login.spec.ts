@@ -230,11 +230,21 @@ test.describe('login', () => {
     await expect(page.getByRole('navigation', { name: 'Organisations' })).toHaveCount(0);
   });
 
-  test('signs in and establishes a browser session on cookies alone', async ({ page }) => {
+  test('presents the second factor after a password and establishes a browser session on cookies alone', async ({
+    page,
+  }) => {
     await page.goto('/login');
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
+
+    // ADMIN carries an enrolled authenticator, so the password answers a login
+    // challenge, not a session (#760). The factor is never skippable: the code
+    // field is presented and the session mints only once it is satisfied. This
+    // is the `PasswordThenAuthenticator` flow the story asserts, end to end.
+    await expect(page.getByRole('heading', { name: 'Present your second factor' })).toBeVisible();
+    await page.getByLabel('Authenticator code').fill(await nextTotpCode());
+    await page.getByRole('button', { name: 'Present code' }).click();
 
     // The org rail is desktop chrome, a phone reaches organisations through
     // the drawer, so the rail is `display:none` there. What proves the shell

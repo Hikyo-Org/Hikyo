@@ -5,10 +5,11 @@ import { Link } from 'react-router';
 import { useAuthMethods } from '../api/account.ts';
 import { parsed } from '../api/client.ts';
 import { useSensitiveMutation } from '../api/sensitiveMutation.ts';
-import { loginFailureText, useLogin, useOIDCLogin } from '../api/session.ts';
+import { loginFailureText, useLogin, useLoginChallengeTotp, useOIDCLogin } from '../api/session.ts';
 import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { LoginForm, type SignInBusy } from '../ui/auth/LoginForm.tsx';
+import { SecondFactorChallenge } from '../ui/auth/SecondFactorChallenge.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
 /**
@@ -42,6 +43,18 @@ export function Login() {
   const oidc = useOIDCLogin();
   const saml = useSAMLLogin();
   const methods = useAuthMethods();
+  // A password login on an account with an enrolled factor answers a challenge,
+  // not a session (#760): the route then presents the second factor. The
+  // sensitive-mutation surface retains no result, so the challenge is captured
+  // from the mutate callback into route state. The whoami-driven `/login` gate
+  // and the enrolment setup step land with the migration series (#785); this is
+  // the password-then-factor hop only.
+  const [challenge, setChallenge] = useState<{
+    id: string;
+    factors: string[];
+    username: string;
+  } | null>(null);
+  const challengeTotp = useLoginChallengeTotp(challenge?.id ?? '');
   // The provider being contacted, so only ITS button shows the busy label.
   const [contacting, setContacting] = useState<string | null>(null);
   // The kind discriminator is open (zIdentityProviderKind is a string), so the
@@ -80,6 +93,24 @@ export function Login() {
         ? loginFailureText(oidc.isError ? oidc.error : saml.error)
         : null;
 
+  if (challenge !== null) {
+    return (
+      <main className="login">
+        <SecondFactorChallenge
+          username={challenge.username}
+          totp={challenge.factors.includes('totp')}
+          /* The passkey-as-second-factor button lands with the /login gate
+             (#785); the authenticator code is the hop this change wires. */
+          passkey={false}
+          busy={challengeTotp.isPending ? 'code' : null}
+          error={challengeTotp.isError ? stepUpFailureText(challengeTotp.error) : null}
+          onCode={(code) => challengeTotp.mutate(code)}
+          onPasskey={() => undefined}
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="login">
       <LoginForm
@@ -89,7 +120,17 @@ export function Login() {
         error={error}
         onPassword={(credentials) => {
           retireEveryLeg();
-          login.mutate(credentials);
+          login.mutate(credentials, {
+            onSuccess: (outcome) => {
+              if (outcome.kind === 'challenge') {
+                setChallenge({
+                  id: outcome.challenge.challenge_id,
+                  factors: outcome.challenge.factors,
+                  username: outcome.username,
+                });
+              }
+            },
+          });
         }}
         onPasskey={() => {
           retireEveryLeg();

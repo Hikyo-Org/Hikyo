@@ -207,10 +207,11 @@ func TestSelfConfigCLIReauthPreservesExactDecision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		browser, err := auth.LocalLogin(t.Context(), "factor-admin", fixture.password, service.ArtifactBrowser)
-		if err != nil {
-			t.Fatal(err)
-		}
+		// The account is enrolled now, so a browser password login issues a
+		// challenge instead of a session (#760). Advance one step so the challenge
+		// code is fresh; every downstream step shifts uniformly and stays distinct.
+		clock = clock.Add(30 * time.Second)
+		browser := browserLoginWithTOTP(t, auth, t.Context(), "factor-admin", fixture.password, uri, clock)
 		csrf := browser.CSRFToken
 		clock = clock.Add(30 * time.Second)
 		browser, err = auth.StepUpTOTP(t.Context(), browser.SessionToken, totpCode(t, uri, clock))

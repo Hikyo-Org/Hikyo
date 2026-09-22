@@ -40,6 +40,12 @@ type NewCredentialAuthority = authn.NewCredentialAuthority
 // NewSession is the session-mint carrier.
 type NewSession = authn.NewSession
 
+// LoginChallenge is a resolved login challenge (#760).
+type LoginChallenge = authn.LoginChallenge
+
+// NewLoginChallenge is the login-challenge insert carrier.
+type NewLoginChallenge = authn.NewLoginChallenge
+
 // AccountByUsername resolves a login handle inside this transaction.
 func (a *TxAuthorizer) AccountByUsername(ctx context.Context, username string) (Account, error) {
 	return a.r.AccountByUsername(ctx, username)
@@ -119,6 +125,22 @@ func (a *TxAuthorizer) ReplacePasswordCredential(ctx context.Context, c Password
 // MintSession writes a session row.
 func (a *TxAuthorizer) MintSession(ctx context.Context, s NewSession) error {
 	return a.r.CreateSession(ctx, s)
+}
+
+// CreateLoginChallenge writes a single-use, expiring login challenge (#760).
+func (a *TxAuthorizer) CreateLoginChallenge(ctx context.Context, c NewLoginChallenge) error {
+	return a.r.CreateLoginChallenge(ctx, c)
+}
+
+// LoginChallengeByID resolves a login challenge, or domain.ErrNotFound.
+func (a *TxAuthorizer) LoginChallengeByID(ctx context.Context, id string) (LoginChallenge, error) {
+	return a.r.LoginChallengeByID(ctx, id)
+}
+
+// ConsumeLoginChallenge claims a login challenge atomically; false means it was
+// already consumed and the caller must fail closed.
+func (a *TxAuthorizer) ConsumeLoginChallenge(ctx context.Context, id string, at time.Time) (bool, error) {
+	return a.r.ConsumeLoginChallenge(ctx, id, at)
 }
 
 // SlideSession advances the idle clock only. The absolute lifetime is never

@@ -224,6 +224,26 @@ func (q *Queries) ConsumeCredentialAuthority(ctx context.Context, arg ConsumeCre
 	return result.RowsAffected(), nil
 }
 
+const consumeLoginChallenge = `-- name: ConsumeLoginChallenge :execrows
+UPDATE login_challenges SET consumed_at = $1 WHERE id = $2 AND consumed_at IS NULL
+`
+
+type ConsumeLoginChallengeParams struct {
+	ConsumedAt pgtype.Timestamptz
+	ID         string
+}
+
+// hikyo:authn-resolution
+// Single-use: claims the row only if not already consumed. Zero rows affected
+// means the challenge was already spent — fail closed.
+func (q *Queries) ConsumeLoginChallenge(ctx context.Context, arg ConsumeLoginChallengeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, consumeLoginChallenge, arg.ConsumedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const consumeOIDCTransaction = `-- name: ConsumeOIDCTransaction :execrows
 UPDATE oidc_transactions SET consumed_at = $1
 WHERE id = $2 AND consumed_at IS NULL
@@ -804,6 +824,26 @@ func (q *Queries) GetExternalIdentityByID(ctx context.Context, id string) (Exter
 	return i, err
 }
 
+const getLoginChallengeByID = `-- name: GetLoginChallengeByID :one
+SELECT id, account_id, factors, expires_at, consumed_at, created_at
+FROM login_challenges WHERE id = $1
+`
+
+// hikyo:authn-resolution
+func (q *Queries) GetLoginChallengeByID(ctx context.Context, id string) (LoginChallenge, error) {
+	row := q.db.QueryRow(ctx, getLoginChallengeByID, id)
+	var i LoginChallenge
+	err := row.Scan(
+		&i.ID,
+		&i.AccountID,
+		&i.Factors,
+		&i.ExpiresAt,
+		&i.ConsumedAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getOIDCTransactionByState = `-- name: GetOIDCTransactionByState :one
 SELECT id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
        purpose, binding_kind, initiating_session_id, browser_binding_verifier,
@@ -1087,7 +1127,7 @@ const getSessionByID = `-- name: GetSessionByID :one
 SELECT id, principal_id, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id
+       requesting_origin, provider_id, enrolment_required
 FROM sessions WHERE id = $1
 `
 
@@ -1108,6 +1148,7 @@ type GetSessionByIDRow struct {
 	CsrfVerifier      []byte
 	RequestingOrigin  pgtype.Text
 	ProviderID        pgtype.Text
+	EnrolmentRequired bool
 }
 
 // hikyo:authn-resolution
@@ -1131,6 +1172,7 @@ func (q *Queries) GetSessionByID(ctx context.Context, id string) (GetSessionByID
 		&i.CsrfVerifier,
 		&i.RequestingOrigin,
 		&i.ProviderID,
+		&i.EnrolmentRequired,
 	)
 	return i, err
 }
@@ -1139,7 +1181,7 @@ const getSessionByVerifier = `-- name: GetSessionByVerifier :one
 SELECT id, principal_id, verifier, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id
+       requesting_origin, provider_id, enrolment_required
 FROM sessions WHERE verifier = $1
 `
 
@@ -1161,6 +1203,7 @@ type GetSessionByVerifierRow struct {
 	CsrfVerifier      []byte
 	RequestingOrigin  pgtype.Text
 	ProviderID        pgtype.Text
+	EnrolmentRequired bool
 }
 
 // hikyo:authn-resolution
@@ -1185,6 +1228,7 @@ func (q *Queries) GetSessionByVerifier(ctx context.Context, verifier []byte) (Ge
 		&i.CsrfVerifier,
 		&i.RequestingOrigin,
 		&i.ProviderID,
+		&i.EnrolmentRequired,
 	)
 	return i, err
 }
@@ -1341,6 +1385,32 @@ func (q *Queries) InsertGrant(ctx context.Context, arg InsertGrantParams) error 
 		arg.OrgID,
 		arg.ProjectID,
 		arg.EnvID,
+		arg.CreatedAt,
+	)
+	return err
+}
+
+const insertLoginChallenge = `-- name: InsertLoginChallenge :exec
+INSERT INTO login_challenges
+    (id, account_id, factors, expires_at, created_at)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type InsertLoginChallengeParams struct {
+	ID        string
+	AccountID string
+	Factors   string
+	ExpiresAt pgtype.Timestamptz
+	CreatedAt pgtype.Timestamptz
+}
+
+// hikyo:authn-resolution
+func (q *Queries) InsertLoginChallenge(ctx context.Context, arg InsertLoginChallengeParams) error {
+	_, err := q.db.Exec(ctx, insertLoginChallenge,
+		arg.ID,
+		arg.AccountID,
+		arg.Factors,
+		arg.ExpiresAt,
 		arg.CreatedAt,
 	)
 	return err
@@ -1574,8 +1644,8 @@ INSERT INTO sessions
     (id, principal_id, verifier, artifact, session_generation, credential_epoch,
      auth_method, factors, authenticated_at, ceremony_id, created_at,
      last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent,
-     provider_id, csrf_verifier, requesting_origin, handoff_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+     provider_id, csrf_verifier, requesting_origin, handoff_id, enrolment_required)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 `
 
 type InsertSessionParams struct {
@@ -1599,6 +1669,7 @@ type InsertSessionParams struct {
 	CsrfVerifier      []byte
 	RequestingOrigin  pgtype.Text
 	HandoffID         pgtype.Text
+	EnrolmentRequired bool
 }
 
 // hikyo:authn-resolution
@@ -1630,6 +1701,7 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 		arg.CsrfVerifier,
 		arg.RequestingOrigin,
 		arg.HandoffID,
+		arg.EnrolmentRequired,
 	)
 	return err
 }
@@ -2412,7 +2484,7 @@ func (q *Queries) ResolveProjectChain(ctx context.Context, arg ResolveProjectCha
 }
 
 const rotateSessionFactors = `-- name: RotateSessionFactors :exec
-UPDATE sessions SET verifier = $1, factors = $2 WHERE id = $3
+UPDATE sessions SET verifier = $1, factors = $2, enrolment_required = FALSE WHERE id = $3
 `
 
 type RotateSessionFactorsParams struct {
@@ -2425,6 +2497,9 @@ type RotateSessionFactorsParams struct {
 // authenticated_at and ceremony_id are preserved so absolute-age attribution
 // cannot be reset by repeated step-ups.
 // hikyo:authn-resolution
+// enrolment_required is cleared on every rotation: a rotation follows a factor
+// action (step-up or enrolment confirm), so the account now has a factor and
+// the enrolment gate lifts (#760).
 func (q *Queries) RotateSessionFactors(ctx context.Context, arg RotateSessionFactorsParams) error {
 	_, err := q.db.Exec(ctx, rotateSessionFactors, arg.Verifier, arg.Factors, arg.ID)
 	return err

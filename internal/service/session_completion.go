@@ -176,6 +176,17 @@ func (s *Auth) createCompletedSession(ctx context.Context, az *authz.TxAuthorize
 	if err != nil {
 		return LoginResult{}, err
 	}
+	// The enrolment gate (#760) is stamped from LIVE state, not a caller flag, so
+	// every password mint — the login itself and every reissue after a
+	// confirm/remove/regenerate — is judged the same way and a new credential can
+	// never mint itself an ungated session. It restricts only a local-password
+	// session (the store column "confines a password-assured session") on a
+	// `required` instance whose account still holds no factor; a factor then
+	// standing (or an OIDC/SAML/passkey method) reads as false.
+	enrolmentRequired, err := s.computeEnrolmentRequired(ctx, az, completion.assurance.Method, completion.account.ID)
+	if err != nil {
+		return LoginResult{}, err
+	}
 	wire := audit.FromContext(ctx)
 	session := authz.NewSession{
 		ID: sessionID, PrincipalID: completion.account.PrincipalID, Verifier: verifier,
@@ -186,6 +197,7 @@ func (s *Auth) createCompletedSession(ctx context.Context, az *authz.TxAuthorize
 		AbsoluteExpiresAt: now.Add(completion.artifact.absolute()),
 		SourceIP:          wire.SourceIP, UserAgent: wire.UserAgent,
 		ProviderID: completion.providerID, CSRFVerifier: csrfVerifier,
+		EnrolmentRequired: enrolmentRequired,
 	}
 	if err := az.MintSession(ctx, session); err != nil {
 		return LoginResult{}, err

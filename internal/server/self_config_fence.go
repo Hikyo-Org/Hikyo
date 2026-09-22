@@ -63,6 +63,7 @@ func (a *API) requireCurrentRuntime(w http.ResponseWriter, r *http.Request) bool
 func runtimeRecoveryOperation(id string) bool {
 	switch id {
 	case "getMeta", "authMethods", "localLogin", "logout", "whoami", "establishCredential",
+		"loginChallengeTotp", "loginChallengeWebauthnStart", "loginChallengeWebauthnFinish",
 		"enrolTotpStart", "enrolTotpConfirm", "stepUpTotp", "reauthTotp", "getTotpStatus",
 		"passkeyLoginStart", "passkeyLoginFinish", "enrolPasskeyStart", "enrolPasskeyFinish",
 		"stepUpPasskeyStart", "stepUpPasskeyFinish", "reauthPasskeyStart", "reauthPasskeyFinish", "listPasskeys",

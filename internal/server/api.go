@@ -34,6 +34,9 @@ type AuthService interface {
 	MyProfile(ctx context.Context, presented string) (service.AccountProfile, error)
 	UpdateMyProfile(ctx context.Context, presented string, profile service.AccountProfile, proof string) (service.AccountProfile, error)
 	LocalLogin(ctx context.Context, username, password string, artifact service.Artifact) (service.LoginResult, error)
+	LoginChallengeTOTP(ctx context.Context, challengeID, code string) (service.LoginResult, error)
+	LoginChallengeWebauthnStart(ctx context.Context, challengeID string) ([]byte, error)
+	LoginChallengeWebauthnFinish(ctx context.Context, challengeID string, responseJSON []byte) (service.LoginResult, error)
 	EstablishCredential(ctx context.Context, authority, password string) error
 	Identity(ctx context.Context, presented string) (service.Identity, error)
 	Logout(ctx context.Context, presented string) error
@@ -282,6 +285,16 @@ func (a *API) LocalLogin(ctx context.Context, req apigen.LocalLoginRequestObject
 	if err != nil {
 		return nil, err
 	}
+	// A browser login on an account with an enrolled factor mints no session: it
+	// returns a 202 login challenge and no cookie (#760). The finish ops present
+	// the second factor against it.
+	if result.Challenge != nil {
+		return apigen.LocalLogin202JSONResponse{
+			ChallengeId: result.Challenge.ID,
+			ExpiresAt:   result.Challenge.ExpiresAt,
+			Factors:     result.Challenge.Factors,
+		}, nil
+	}
 	return sessionResponse(result), nil
 }
 
@@ -297,7 +310,7 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 	if err != nil {
 		return nil, err
 	}
-	return apigen.Whoami200JSONResponse{
+	resp := apigen.Whoami200JSONResponse{
 		Session: apigen.Session{
 			Id:                id.SessionID,
 			Artifact:          id.Artifact.String(),
@@ -314,7 +327,13 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 		Capabilities: apigen.PrincipalCapabilities{
 			InstanceOperator: id.InstanceOperator,
 		},
-	}, nil
+	}
+	// Surface the enrolment gate so the SPA renders it (#760); absent otherwise.
+	if id.EnrolmentRequired {
+		gated := true
+		resp.EnrolmentRequired = &gated
+	}
+	return resp, nil
 }
 
 // logoutResponse clears the browser cookies alongside the 204. The row is
@@ -366,6 +385,21 @@ func (a *API) EnrolTotpConfirm(ctx context.Context, req apigen.EnrolTotpConfirmR
 
 func (a *API) StepUpTotp(ctx context.Context, req apigen.StepUpTotpRequestObject) (apigen.StepUpTotpResponseObject, error) {
 	result, err := a.Auth.StepUpTOTP(ctx, bearer(ctx), req.Body.Code)
+	if err != nil {
+		return nil, err
+	}
+	return sessionResponse(result), nil
+}
+
+// LoginChallengeTotp satisfies a login challenge with a TOTP code and mints the
+// browser session (#760). Refusals map through the shared wire policy exactly as
+// stepUpTotp does: a missing/expired/consumed challenge is 404, a wrong code 401,
+// a replayed time step 409, the factor budget 429.
+func (a *API) LoginChallengeTotp(ctx context.Context, req apigen.LoginChallengeTotpRequestObject) (apigen.LoginChallengeTotpResponseObject, error) {
+	if req.Body == nil {
+		return apigen.LoginChallengeTotp400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
+	}
+	result, err := a.Auth.LoginChallengeTOTP(ctx, string(req.Challenge), req.Body.Code)
 	if err != nil {
 		return nil, err
 	}

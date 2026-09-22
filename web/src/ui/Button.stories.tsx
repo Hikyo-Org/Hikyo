@@ -3,6 +3,7 @@ import { expect, fn, userEvent } from 'storybook/test';
 
 import { design } from '../../.storybook/design.ts';
 import { Button } from './Button.tsx';
+import { ThemeIcon } from './ThemeIcon.tsx';
 
 const meta = {
   component: Button,
@@ -20,7 +21,7 @@ export const Danger: Story = { args: { variant: 'danger', children: 'Delete adap
 export const Quiet: Story = { args: { variant: 'quiet', children: 'History' } };
 export const Disabled: Story = { args: { disabled: true }, parameters: { design: design('Button/Disabled') } };
 export const Icon: Story = {
-  args: { icon: true, 'aria-label': 'Toggle theme', children: '☾' },
+  args: { icon: true, 'aria-label': 'Toggle theme', children: <ThemeIcon dark /> },
   parameters: { design: design('Button/Icon') },
 };
 
@@ -45,8 +46,8 @@ export const AllVariants: Story = {
       <Button variant="primary" disabled>
         Primary disabled
       </Button>
-      <Button icon aria-label="Icon only">
-        ☾
+      <Button icon aria-label="Toggle theme">
+        <ThemeIcon dark />
       </Button>
       <Button icon variant="quiet" aria-label="Revoke">
         ✕

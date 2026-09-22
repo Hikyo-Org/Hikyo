@@ -135,6 +135,13 @@ type Config struct {
 	// per-operation authorization formula and audit event stay the gate.
 	MCPWriteEnabled bool
 
+	// SecondFactor is the instance's sign-in second-factor policy (#760):
+	// "required" gates a password login on an account with no factor into
+	// enrolment; "optional" keeps today's local floor. Fresh installs default to
+	// "required" (greenfield strict); an upgrade keeps "optional" via the
+	// runtimeconfig migration so an existing instance's posture is unchanged.
+	SecondFactor string
+
 	// Root-key source descriptor — never the key material itself; the crypto
 	// package reads and validates it at boot. Only `hikyo server` consults it.
 	RootKeyFile    string // --root-key-file (also covers systemd LoadCredential paths)
@@ -252,6 +259,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_EXTERNAL_ORIGIN":                true,
 	"HIKYO_MCP_ENABLED":                    true,
 	"HIKYO_MCP_WRITE_ENABLED":              true,
+	"HIKYO_SECOND_FACTOR":                  true,
 	"HIKYO_MCP_ALLOWED_ORIGINS":            true,
 	"HIKYO_TRUSTED_PROXY_CIDRS":            true,
 	"HIKYO_ROOT_KEY_FILE":                  true,
@@ -430,6 +438,19 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		cfg.UpdateChannel = updateChannel
 	default:
 		return nil, nil, fmt.Errorf("HIKYO_UPDATE_CHANNEL: channel must be stable, nightly, or off, got %q", updateChannel)
+	}
+	// Second-factor sign-in policy (#760). Fresh-install default is `required`
+	// (greenfield strict); an upgraded instance is seeded `optional` by the
+	// runtimeconfig migration so its posture is unchanged until an operator opts in.
+	secondFactor := strings.ToLower(strings.TrimSpace(getenv("HIKYO_SECOND_FACTOR")))
+	if secondFactor == "" {
+		secondFactor = "required"
+	}
+	switch secondFactor {
+	case "required", "optional":
+		cfg.SecondFactor = secondFactor
+	default:
+		return nil, nil, fmt.Errorf("HIKYO_SECOND_FACTOR: policy must be required or optional, got %q", secondFactor)
 	}
 	if raw := getenv("HIKYO_UPGRADE_LEGACY_WRITERS_STOPPED"); raw != "" {
 		stopped, err := strconv.ParseBool(raw)

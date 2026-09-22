@@ -622,6 +622,15 @@ type KeyPresenceEnvironment struct {
 	Rule          string
 }
 
+type LoginChallenge struct {
+	ID         string
+	AccountID  string
+	Factors    string
+	ExpiresAt  string
+	ConsumedAt sql.NullString
+	CreatedAt  string
+}
+
 type MachineCredential struct {
 	ID               string
 	ServiceAccountID string
@@ -1160,6 +1169,7 @@ type Session struct {
 	SamlProviderID    sql.NullString
 	RequestingOrigin  sql.NullString
 	HandoffID         sql.NullString
+	EnrolmentRequired int64
 }
 
 type SingletonLease struct {

@@ -218,11 +218,13 @@ func runCLIAdapterReauthHandoff(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	browser, err := auth.LocalLogin(t.Context(), "factor-admin", password, service.ArtifactBrowser)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clock = base.Add(time.Minute)
+	// The account is enrolled now, so a browser password login issues a challenge
+	// instead of a session (#760). Consume a fresh step (base+60) for the
+	// challenge code, then open the reauth window one step later (base+90) so its
+	// code is a distinct, unspent step — both well inside the 5m ReauthWindow.
+	clock = base.Add(60 * time.Second)
+	browser := browserLoginWithTOTP(t, auth, t.Context(), "factor-admin", password, uri, clock)
+	clock = base.Add(90 * time.Second)
 	adapterIntent := adapterReauthIntent(t, authz.OpAdapterSync, []string{"env_prod"})
 	browserWindows, err := auth.ReauthAdapterTOTP(t.Context(), browser.SessionToken, adapterIntent, totpCode(t, uri, clock))
 	if err != nil {
@@ -1037,7 +1039,11 @@ func runCLIDisclosureReauthHandoff(t *testing.T, db *store.DB) {
 		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('`+row[1]+`','`+string(boot.PrincipalID)+`','`+row[0]+`','org_a','prj_a1','env_a1',`+ts+`)`)
 		execRaw(t, db, `INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gor_`+row[1]+`','`+row[1]+`','manual','`+string(boot.PrincipalID)+`',`+ts+`)`)
 	}
-	base := time.Date(2026, 8, 21, 3, 0, 0, 0, time.UTC)
+	// base is anchored to the real clock, not a fixed calendar date: the reveal
+	// leg below resolves the session against wall-clock time (values.read uses
+	// time.Now, not the injected Auth.Now), so a session minted under a fixed
+	// past base would be idle-expired by the time this test runs.
+	base := time.Now().UTC()
 	clock := base
 	auth.Now = func() time.Time { return clock }
 	auth.ReauthWindow = 5 * time.Minute
@@ -1054,11 +1060,13 @@ func runCLIDisclosureReauthHandoff(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	browser, err := auth.LocalLogin(t.Context(), "factor-admin", password, service.ArtifactBrowser)
-	if err != nil {
-		t.Fatal(err)
-	}
-	clock = base.Add(time.Minute)
+	// The account is enrolled now, so a browser password login issues a challenge
+	// instead of a session (#760). Consume a fresh step (base+60) for the
+	// challenge code, then open the reauth window one step later (base+90) so its
+	// code is a distinct, unspent step — both well inside the 5m ReauthWindow.
+	clock = base.Add(60 * time.Second)
+	browser := browserLoginWithTOTP(t, auth, t.Context(), "factor-admin", password, uri, clock)
+	clock = base.Add(90 * time.Second)
 	browserWindow, err := auth.ReauthTOTP(t.Context(), browser.SessionToken, unboundReauthIntent(t, "env_a1"), totpCode(t, uri, clock))
 	if err != nil {
 		t.Fatal(err)

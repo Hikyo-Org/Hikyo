@@ -556,8 +556,16 @@ function parseSetCookie(raw: string[], host: string): Cookie[] {
   });
 }
 
-/** signIn mints a browser session the same way the SPA does. */
-async function signIn(instance: Jar): Promise<void> {
+/**
+ * signIn mints a browser session for the seeded administrator.
+ *
+ * ADMIN carries a real TOTP factor, so a browser password login answers a 202
+ * login challenge and mints no session (#760): the factor is presented against
+ * the challenge to mint the session — the same sequence the `/login` gate will
+ * drive once it is wired (#785). `nextTotpCode` keeps the single-use-per-step
+ * bookkeeping honest across workers.
+ */
+async function signIn(instance: Jar, otpauth?: string): Promise<void> {
   const resp = await fetch(`${instance.base}/api/v1/auth/local/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -570,11 +578,69 @@ async function signIn(instance: Jar): Promise<void> {
   if (!resp.ok) {
     throw new Error(`signing in at ${instance.base} answered ${resp.status}`);
   }
-  const cookies = parseSetCookie(resp.headers.getSetCookie(), instance.host);
+  const minting = resp.status === 202 ? await mintFromLoginChallenge(instance, resp, otpauth) : resp;
+  const cookies = parseSetCookie(minting.headers.getSetCookie(), instance.host);
   if (cookies.length !== 2) {
     throw new Error(`the login set ${cookies.length} cookies, want the session and CSRF pair`);
   }
   instance.cookies = cookies;
+}
+
+/**
+ * mintFromLoginChallenge presents the TOTP factor against a 202 login challenge
+ * (#760) and returns the minting response, whose Set-Cookie carries the session.
+ * A wrong code leaves the challenge live, so a step already spent this window is
+ * retried on the next step. During seeding the caller passes the otpauth
+ * directly (the shared seed file does not exist yet); afterwards `nextTotpCode`
+ * reserves a fresh, unspent step through the cross-worker bookkeeping.
+ */
+async function mintFromLoginChallenge(instance: Jar, challenge: Response, otpauth?: string): Promise<Response> {
+  const { challenge_id } = z.object({ challenge_id: z.string() }).parse(await challenge.json());
+  const path = `${instance.base}/api/v1/auth/login/challenge/${challenge_id}/totp`;
+  const finish = (code: string): Promise<Response> =>
+    fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+  if (otpauth === undefined) {
+    // Viewing administrator (A): draw through `nextTotpCode` (keeps the shared
+    // step counter in sync so a later reveal-by-code reauth does not collide),
+    // and retry — each draw advances past a skew-refused or replayed step.
+    let last = 0;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const resp = await finish(await nextTotpCode());
+      if (resp.ok) {
+        return resp;
+      }
+      last = resp.status;
+      if (resp.status !== 401 && resp.status !== 409) {
+        throw new Error(`the login challenge at ${instance.base} answered ${resp.status}`);
+      }
+    }
+    throw new Error(`the login challenge at ${instance.base} answered ${last}`);
+  }
+  const deadline = Date.now() + 3 * TOTP_PERIOD * 1000;
+  let last = '';
+  for (;;) {
+    for (const steps of [0, 1, 2]) {
+      const resp = await finish(totpCode(otpauth, new Date(Date.now() + steps * TOTP_PERIOD * 1000)));
+      if (resp.ok) {
+        return resp;
+      }
+      last = `${resp.status}: ${await resp.text()}`;
+      if (resp.status === 409 && last.includes('already used for its time step')) {
+        break;
+      }
+      if (resp.status !== 401) {
+        throw new Error(`the login challenge at ${instance.base} answered ${last}`);
+      }
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`no TOTP code was accepted for the login challenge at ${instance.base}; last ${last}`);
+    }
+    await waitForNextStep();
+  }
 }
 
 /**
@@ -766,6 +832,13 @@ async function startInstanceAt(
         // keeps every other part of the path real (ceremony, outbox, ledger,
         // audit) and is refused outside --dev.
         HIKYO_DEV_ADAPTER_FAKE_PROVIDER: 'true',
+        // Second-factor policy `optional` (#760): the flows exercise the login
+        // CHALLENGE through the enrolled administrator (a factor that stands is
+        // never skippable regardless of policy), while unenrolled accounts — the
+        // recovery invitee, say — sign in without the enrolment gate, whose SPA
+        // lands with the migration series (#785). The gate's server enforcement
+        // has its own isolation coverage. Fresh installs still default `required`.
+        HIKYO_SECOND_FACTOR: 'optional',
       },
     },
   );
@@ -990,8 +1063,10 @@ async function seedServingProject(
 
   const org = await created('/api/v1/orgs', { name: 'serving-co' });
   // The atomic creator-admin grant invalidates the creating session. A fresh
-  // MFA session is required before building inside the organisation.
-  await signIn(serving);
+  // MFA session is required before building inside the organisation. The seed
+  // file does not exist yet, so the login challenge is satisfied with the local
+  // otpauth rather than the cross-worker `nextTotpCode` bookkeeping.
+  await signIn(serving, otpauth);
   await presentTotp(serving, otpauth, '/api/v1/auth/totp/step-up');
   const project = await created(`/api/v1/orgs/${org}/projects`, { name: 'vault' });
   const dev = await created(`/api/v1/orgs/${org}/projects/${project}/environments`, {
@@ -1156,8 +1231,10 @@ export async function startInstance(): Promise<void> {
   // A fresh sign-in before the step-up: the enrolment's confirm REISSUES the
   // session, and re-presenting the credential is both cheaper to reason about
   // than tracking a rotation across two ceremonies and closer to what a human
-  // does, enrol, then sign in again and present the new factor.
-  await signIn(serving);
+  // does, enrol, then sign in again and present the new factor. B now carries a
+  // factor, so the login answers a challenge (#760); it is satisfied with B's
+  // own otpauth, not A's `nextTotpCode` seed.
+  await signIn(serving, servingOtpauth);
   await presentTotp(serving, servingOtpauth, '/api/v1/auth/totp/step-up');
 
   // The operable project on B. Organisation creation grants the creator admin
@@ -1340,6 +1417,66 @@ const zStorageState = z.object({
  * are: a re-mint that dropped B's session would kill the workspace flow
  * halfway through the suite, from a cause several tests in the past.
  */
+/**
+ * beginBrowserChallenge performs the PASSWORD half of a browser sign-in in Node
+ * and returns the #760 login-challenge id its second factor completes against,
+ * or '' when the server minted a session outright (the account holds no factor,
+ * or the instance does not require one). The challenge is completed with the
+ * shared passkey in-page (see sessionScript) so a per-test login spends NO
+ * single-use TOTP step: TOTP is one code per account per 30s, and a serial file
+ * whose tests each run in under 30s would otherwise reserve steps faster than the
+ * clock frees them until a `beforeEach` login waits out the whole test budget.
+ */
+async function beginBrowserChallenge(page: Page): Promise<string> {
+  const login = await page.request.post(`${BASE_URL}/api/v1/auth/local/login`, {
+    data: { username: ADMIN.username, password: ADMIN.password, artifact: 'browser' },
+  });
+  if (login.status() !== 202) {
+    if (!login.ok()) {
+      throw new Error(`login answered ${login.status()}`);
+    }
+    return '';
+  }
+  return z.object({ challenge_id: z.string() }).parse(await login.json()).challenge_id;
+}
+
+/**
+ * establishChallengeSession completes the #760 login challenge with TOTP in Node,
+ * through the page's request context so the session cookie lands in the browser
+ * context before any in-page ceremony runs. Used ONLY by the initial mint, where
+ * the passkey the later logins present does not yet exist, so the challenge can
+ * only be answered with the seeded TOTP factor — once per suite, off the hot
+ * path, so its single-use step accounting stays cheap.
+ *
+ * It draws through `nextTotpCode`, so every step the login spends is recorded in
+ * the shared `lastTotpStep` file and a later `nextTotpCode` stays in sync with
+ * the server's single-use accounting. Each draw also advances the counter, so a
+ * wrong-step refusal under clock skew is recovered by drawing the next one.
+ */
+async function establishChallengeSession(page: Page): Promise<void> {
+  const challengeId = await beginBrowserChallenge(page);
+  if (challengeId === '') {
+    return;
+  }
+  let last = '';
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const resp = await page.request.post(
+      `${BASE_URL}/api/v1/auth/login/challenge/${challengeId}/totp`,
+      { data: { code: await nextTotpCode() } },
+    );
+    if (resp.ok()) {
+      return;
+    }
+    last = String(resp.status());
+    // 401 wrong-step under skew, 409 replayed step: the next `nextTotpCode`
+    // advances past it. Anything else is a real fault.
+    if (resp.status() !== 401 && resp.status() !== 409) {
+      throw new Error(`login challenge answered ${last}`);
+    }
+  }
+  throw new Error(`no code accepted for the login challenge; last ${last}`);
+}
+
 async function mintStorageState(keepForeign?: readonly Cookie[]): Promise<void> {
   const initialMint = keepForeign !== undefined;
   const foreign =
@@ -1370,11 +1507,19 @@ async function mintStorageState(keepForeign?: readonly Cookie[]): Promise<void> 
       });
     }
 
+    // Initial mint: no passkey exists yet, so complete the challenge with TOTP in
+    // Node before the in-page enrol. Every later re-mint completes the challenge
+    // with the now-enrolled passkey, in-page, spending no TOTP step.
+    let challengeId = '';
+    if (initialMint) {
+      await establishChallengeSession(page);
+    } else {
+      challengeId = await beginBrowserChallenge(page);
+    }
     const failure = await page.evaluate(sessionScript, {
-      username: ADMIN.username,
-      password: ADMIN.password,
-      // Only the initial mint enrols, and enrolment is proved by the TOTP code
-      // for the shared account's confirmed factor, not its password.
+      challengeId,
+      // Only the initial mint enrols, and enrolment is proved by a TOTP code for
+      // the shared account's confirmed factor, drawn fresh AFTER the challenge.
       code: initialMint ? await nextTotpCode() : '',
       enrol: initialMint,
       stepUp: true,
@@ -1495,11 +1640,23 @@ export async function installPasskeyAuthenticator(
 }
 
 export async function establishSession(page: Page, stepUp = true): Promise<void> {
+  // No step-up means the page carries NO passkey authenticator: the read-only
+  // surfaces that assert design tokens on a clean session, and the deliberately
+  // single-factor session that proves the instance-config second-factor gate.
+  // Its #760 challenge can only be answered with TOTP, in Node — a handful of
+  // calls, off the per-test hot path, so the single-use step accounting stays
+  // cheap. The session it mints carries [password, totp] and never steps up.
+  if (!stepUp) {
+    await establishChallengeSession(page);
+    return;
+  }
+  // Every other login runs in a per-test `beforeEach`, so it must stay off the
+  // single-use-per-30s TOTP rate limit: complete the #760 challenge in-page with
+  // the shared passkey (already loaded into the authenticator), which spends no
+  // TOTP step. The same passkey then answers the step-up.
+  const challengeId = await beginBrowserChallenge(page);
   const failure = await page.evaluate(sessionScript, {
-    username: ADMIN.username,
-    password: ADMIN.password,
-    // This path never enrols, so no TOTP code is spent; the shared passkey is
-    // loaded into the authenticator instead.
+    challengeId,
     code: '',
     enrol: false,
     stepUp,
@@ -1520,14 +1677,21 @@ export async function establishSession(page: Page, stepUp = true): Promise<void>
  * ceremony.
  */
 const sessionScript = async ({
-  username,
-  password,
+  challengeId,
   code,
   enrol,
   stepUp,
 }: {
-  username: string;
-  password: string;
+  /**
+   * A live #760 login challenge to complete with the shared passkey, in-page,
+   * before anything else. Empty when the session is already minted (the initial
+   * mint completes its challenge with TOTP in Node, because the passkey it will
+   * enrol does not yet exist). A passkey completion spends NO TOTP step, which is
+   * what keeps a per-test `beforeEach` login off the single-use-per-30s TOTP rate
+   * limit.
+   */
+  challengeId: string;
+  /** The authenticator code proving possession for the passkey enrol. */
   code: string;
   enrol: boolean;
   stepUp: boolean;
@@ -1583,16 +1747,45 @@ const sessionScript = async ({
   };
 
   try {
-    const login = await fetch('/api/v1/auth/local/login', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, artifact: 'browser' }),
-    });
-    if (!login.ok) {
-      return `login answered ${String(login.status)}`;
+    // Complete the #760 login challenge with the shared passkey when one was
+    // issued (every per-test login). `navigator.credentials.get` needs the
+    // browsing context, so this runs in-page; the finish op mints the browser
+    // session on this context's cookies, so the enrol/step-up below run
+    // authenticated. The initial mint passes an empty id: it has no passkey yet
+    // and completed its challenge with TOTP in Node before this script ran.
+    if (challengeId !== '') {
+      const assertOptions = options(
+        await post(`/api/v1/auth/login/challenge/${challengeId}/webauthn/start`, {}),
+      );
+      const assertion = await navigator.credentials.get({
+        publicKey: {
+          challenge: unb64u(String(assertOptions['challenge'])),
+          rpId: String(assertOptions['rpId']),
+          userVerification: 'required',
+        },
+      });
+      if (!(assertion instanceof PublicKeyCredential)) {
+        return 'the login challenge produced no assertion';
+      }
+      const challengeResponse = assertion.response;
+      if (!(challengeResponse instanceof AuthenticatorAssertionResponse)) {
+        return 'the login challenge produced the wrong response type';
+      }
+      await post(`/api/v1/auth/login/challenge/${challengeId}/webauthn/finish`, {
+        id: assertion.id,
+        rawId: b64u(assertion.rawId),
+        type: assertion.type,
+        response: {
+          clientDataJSON: b64u(challengeResponse.clientDataJSON),
+          authenticatorData: b64u(challengeResponse.authenticatorData),
+          signature: b64u(challengeResponse.signature),
+          userHandle: challengeResponse.userHandle === null ? null : b64u(challengeResponse.userHandle),
+        },
+      });
     }
 
+    // The passkey enrol and step-up run on the live session's cookies (minted
+    // just above, or by the Node TOTP completion for the initial mint).
     if (enrol) {
       // The shared account carries a confirmed TOTP factor (global setup enrols
       // it), so enrolling a passkey is proved possession-first: the service
@@ -1728,6 +1921,27 @@ export async function nextTotpCode(): Promise<string> {
   return totpCode(seed.otpauth, new Date(want * TOTP_PERIOD * 1000));
 }
 
+/**
+ * completeSecondFactor drives the SPA login challenge (#760): after a password
+ * "Sign in", an account with an enrolled authenticator lands on the second-
+ * factor step. It fills a code and presents it, leaving the page on the
+ * authenticated shell. The viewing administrator (A) uses the cross-worker
+ * `nextTotpCode` bookkeeping; the serving administrator (B) has no such
+ * bookkeeping, so its `otpauth` is passed and a fresh time step is waited into
+ * first, so the code is neither the enrol/step-up step nor a replay.
+ */
+export async function completeSecondFactor(page: Page, otpauth?: string): Promise<void> {
+  const code = page.getByLabel('Authenticator code');
+  await code.waitFor();
+  if (otpauth === undefined) {
+    await code.fill(await nextTotpCode());
+  } else {
+    await new Promise((resolve) => setTimeout(resolve, (30 - (Math.floor(Date.now() / 1000) % 30) + 1) * 1000));
+    await code.fill(totpCode(otpauth));
+  }
+  await page.getByRole('button', { name: 'Present code' }).click();
+}
+
 /** Decide from the file-cookie probe whether re-minting is necessary. */
 export async function refreshSharedSessionFromProbe(
   probe: () => Promise<number>,
@@ -1799,7 +2013,9 @@ export async function refreshServingSession(): Promise<void> {
     },
     async () => {
       const jar: Jar = { base: BASE_URL_B, host: HOST_B, cookies: [] };
-      await signIn(jar);
+      // B carries its own factor: the login answers a challenge (#760) satisfied
+      // with B's otpauth, not A's `nextTotpCode` seed.
+      await signIn(jar, readServing().otpauth);
       await presentTotp(jar, readServing().otpauth, '/api/v1/auth/totp/step-up');
       const state = zStorageState.parse(JSON.parse(readFileSync(STORAGE_STATE, 'utf8')));
       const kept = state.cookies.filter(

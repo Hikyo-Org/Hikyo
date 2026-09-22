@@ -7,7 +7,7 @@ import {
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
 } from '../fixtures/assertions.ts';
-import { ADMIN, STORAGE_STATE } from '../fixtures/instance.ts';
+import { ADMIN, completeSecondFactor, STORAGE_STATE } from '../fixtures/instance.ts';
 import { surfacesForFlow } from '../registry.ts';
 
 
@@ -531,6 +531,7 @@ test.describe('sign out', () => {
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
+    await completeSecondFactor(page);
     await expect(page.getByRole('button', { name: /^Account:/ })).toBeVisible();
 
     await page.getByRole('button', { name: /^Account:/ }).click();
@@ -554,6 +555,7 @@ test.describe('sign out', () => {
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in' }).click();
+    await completeSecondFactor(page);
 
     await expect(page.getByRole('button', { name: /^Account:/ })).toBeVisible();
     await expect(other.getByRole('button', { name: /^Account:/ })).toBeVisible();

@@ -256,10 +256,146 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LoginResult"
+        "202":
+          description: |
+            A second factor stands on this account and a browser session was
+            requested. No session is minted and no cookie is set; the response
+            carries a single-use, expiring login challenge that must be
+            satisfied at `/api/v1/auth/login/challenge/{id}/...` before a
+            session exists. The factor is never skippable (human-auth ADR
+            § Assurance). Only a `browser` artifact request receives this; a
+            `cli` request mints a `password`-assurance session and steps up on
+            demand at the authorization chokepoint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginChallenge"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/auth/login/challenge/{challenge}/totp:
+    post:
+      operationId: loginChallengeTotp
+      tags: [auth]
+      summary: Satisfy a login challenge with a TOTP code; mints the session.
+      description: |
+        Consumes the single-use login challenge (single-use, expiring, bound to
+        the account) and mints the browser session the login asked for, with
+        `totp` recorded alongside `password` in the assurance. Refusals mirror
+        the step-up path: `401` for a wrong code, `409` for a code already used
+        for its time step, `429` for the factor budget.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/ChallengeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TotpCodeRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The minted browser session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/auth/login/challenge/{challenge}/webauthn/start:
+    post:
+      operationId: loginChallengeWebauthnStart
+      tags: [auth]
+      summary: Begin a passkey assertion against a login challenge.
+      description: |
+        Resolves the login challenge to its account and opens a WebAuthn
+        assertion ceremony for that account's registered passkeys. Mints
+        nothing; the ceremony is completed at `.../webauthn/finish`.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/ChallengeId"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: Opaque WebAuthn request options for the browser.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebauthnOptions"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/auth/login/challenge/{challenge}/webauthn/finish:
+    post:
+      operationId: loginChallengeWebauthnFinish
+      tags: [auth]
+      summary: Complete a passkey assertion against a login challenge; mints the session.
+      description: |
+        Validates the assertion against the live ceremony, consumes the login
+        challenge, and mints the browser session with `webauthn` recorded
+        alongside `password` in the assurance. A signature-count regression
+        disables the cloned credential (audited) and refuses.
+      security: []
+      x-hikyo-class: unauthenticated
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      parameters:
+        - $ref: "#/components/parameters/ChallengeId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WebauthnResponse"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The minted browser session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "429":
           $ref: "#/components/responses/TooManyRequests"
         "500":
@@ -11034,6 +11170,13 @@ components:
         credential epoch are read from the row the verifier resolves to.
 
   parameters:
+    ChallengeId:
+      name: challenge
+      in: path
+      required: true
+      description: Login-challenge identifier returned by `localLogin` (202).
+      schema:
+        $ref: "#/components/schemas/ID"
     OrgID:
       name: org
       in: path
@@ -12477,6 +12620,28 @@ components:
         principal:
           $ref: "#/components/schemas/Principal"
 
+    LoginChallenge:
+      type: object
+      additionalProperties: false
+      description: |
+        A single-use, expiring authority proving the password step passed for
+        one account, issued by `localLogin` (202) when a factor stands and a
+        browser session was requested. No session and no cookie exist until a
+        finish operation at `/api/v1/auth/login/challenge/{challenge}/...`
+        consumes it. Discloses nothing beyond which factor classes may satisfy
+        it.
+      required: [challenge_id, expires_at, factors]
+      properties:
+        challenge_id:
+          $ref: "#/components/schemas/ID"
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+        factors:
+          type: array
+          description: The factor classes that can satisfy this challenge.
+          items:
+            $ref: "#/components/schemas/FactorClass"
+
     WhoAmI:
       type: object
       required: [session, principal, capabilities]
@@ -12487,6 +12652,15 @@ components:
           $ref: "#/components/schemas/Principal"
         capabilities:
           $ref: "#/components/schemas/PrincipalCapabilities"
+        enrolment_required:
+          type: boolean
+          description: |
+            True when this session authenticated by password on an instance
+            whose `second_factor` policy is `required` and the account had no
+            factor enrolled. Such a session is confined to factor enrolment,
+            recovery-code generation, `whoami`, and `logout` at the
+            authorization chokepoint until a factor stands. Absent or false
+            otherwise.
 
     PrincipalCapabilities:
       type: object

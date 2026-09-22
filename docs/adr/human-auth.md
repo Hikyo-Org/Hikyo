@@ -118,7 +118,16 @@ Every session therefore carries an **assurance record**: the authentication meth
 
 **Authorization of any MFA-mandatory capability requires adequate assurance *in the current session*** — evaluated at the same chokepoint as `authorize()`, in the same transaction, uncached. What the account *could* have presented is irrelevant.
 
-**MFA-mandatory capabilities are `reveal`, `reveal-history`, `manage-members`, `credential-reset`, and every instance capability.** A `viewer` on a development environment is not forced to enrol.
+**MFA-mandatory capabilities are `reveal`, `reveal-history`, `manage-members`, `credential-reset`, and every instance capability.** Whether an account is forced to enrol a factor *at all* is a separate, instance-level decision (§ *Second-factor policy*): under `second_factor: optional` a `viewer` on a development environment is not forced to enrol, and the local floor works with no second factor enrolled; under `required` every password login is gated into enrolment before anything else is reachable.
+
+### Second-factor policy
+
+An instance carries a `second_factor` policy, `required` or `optional`, operator-set (`HIKYO_SECOND_FACTOR`). A **fresh install defaults to `required`** (greenfield is strict); an **upgrade defaults to `optional`** so an existing instance's posture is unchanged until an operator opts in. It governs two things and no more:
+
+- **A factor that stands is never skippable.** A password login on an account with an enrolled factor (TOTP or passkey) returns a single-use, expiring *login challenge* bound to that account, not a session — no cookie is set — and a session mints only when the challenge is satisfied by the factor. This holds under both policies: the policy does not decide whether an *enrolled* factor is asked, only whether an *unenrolled* account is gated. (Browser sign-in only; a CLI login mints a `password`-assurance session and steps up on demand at the chokepoint, so the factor is deferred, not skipped.)
+- **An unenrolled account under `required` is gated into enrolment.** Its password login mints a session flagged `enrolment_required`; the authorization chokepoint refuses every capability for such a session except factor enrolment, recovery-code generation, `whoami` and `logout`, until a factor stands.
+
+This does **not** weaken *§ Account-security mutations*. The enrolment gate runs on a session that has just presented a password — exactly the authority the enrolment endpoints already require (rule 1: "the password where the account does not yet [have a possession factor]"). The `enrolment_required` flag **restricts** that session; it grants nothing. **A new credential still may never authorize its own enrolment.**
 
 **Provider assurance policy is not a boolean.** Each provider records the **accepted `acr` values and/or the required `amr` combinations**; a session authenticated through that provider gains multi-factor assurance only when the ID token carries them. `acr`/`amr` are context-specific by specification, so a global "this IdP does MFA" flag asserts something the protocol does not define. A provider with no assurance policy configured yields single-factor assurance — sufficient to log in, insufficient to reveal.
 

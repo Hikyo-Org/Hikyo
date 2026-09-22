@@ -82,6 +82,12 @@ operations:
   enrolTotpStart:              {webui: settings}
   enrolTotpConfirm:            {webui: settings}
   stepUpTotp:                  {webui: overview}
+  # The password-then-authenticator hop landed in #760: /login presents the
+  # challenge and calls loginChallengeTotpOp. The passkey-as-second-factor UI
+  # and the whoami-driven enrolment gate are the remaining #785 slice.
+  loginChallengeTotp:          {webui: login}
+  loginChallengeWebauthnStart: {issue: 785}
+  loginChallengeWebauthnFinish: {issue: 785}
   reauthTotp:                  {webui: values}
   startCLIReauth:              {exception: identity-protocol}
   showCLIReauthTransaction:    {webui: cli-reauth}

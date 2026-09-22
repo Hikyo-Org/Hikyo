@@ -161,6 +161,13 @@ type Auth struct {
 	// unreadable belongs in the process log and nowhere else.
 	Log *slog.Logger
 
+	// SecondFactorRequired is the instance's second-factor policy (#760): true
+	// when HIKYO_SECOND_FACTOR is `required`, so a password login on an account
+	// with no factor mints a session confined to enrolment. The composition root
+	// wires it from config; the isolation harness leaves it false (optional),
+	// today's local floor.
+	SecondFactorRequired bool
+
 	// dummyRecoverySealed is a batch sealed once and opened on every
 	// non-matching recovery path, so a miss costs the same envelope decrypt +
 	// JSON decode + set scan as a hit — the recovery analogue of the login
@@ -203,6 +210,9 @@ type Identity struct {
 	CreatedAt         time.Time
 	IdleExpiresAt     time.Time
 	AbsoluteExpiresAt time.Time
+	// EnrolmentRequired mirrors the session flag (#760): whoami surfaces it so
+	// the SPA renders the enrolment gate a flagged session is confined to.
+	EnrolmentRequired bool
 	// InstanceOperator is a disclosure-safe UI hint: the caller holds the
 	// instance-config authority the operator-only reads (retention health,
 	// update status) require. It is a reflection of the caller's own grant, not
@@ -223,6 +233,7 @@ func identityOf(i authz.Identity) Identity {
 			AuthenticatedAt: i.Assurance.AuthenticatedAt, CeremonyID: i.Assurance.CeremonyID,
 		},
 		CreatedAt: i.CreatedAt, IdleExpiresAt: i.IdleExpiresAt, AbsoluteExpiresAt: i.AbsoluteExpiresAt,
+		EnrolmentRequired: i.EnrolmentRequired,
 	}
 }
 
@@ -242,6 +253,20 @@ type LoginResult struct {
 	// CSRFToken is the synchronizer token for a browser session, returned once
 	// at mint (A9). Empty for CLI sessions.
 	CSRFToken string
+	// Challenge is set instead of a session when a browser password login lands
+	// on an account with an enrolled factor (#760): no session and no cookie
+	// exist until a finish op consumes the challenge. When it is non-nil every
+	// session field above is empty.
+	Challenge *LoginChallengeIssued
+}
+
+// LoginChallengeIssued is the 202 outcome of a browser password login on an
+// account with an enrolled factor: the continuation handle, its expiry, and the
+// factor classes that can satisfy it. No session exists yet (#760).
+type LoginChallengeIssued struct {
+	ID        string
+	ExpiresAt time.Time
+	Factors   []string
 }
 
 // LocalLogin is the local floor: password verification against an
@@ -468,7 +493,24 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 				}
 			}
 		}
-		attempt.result, err = s.mintSession(ctx, az, account, artifact, now)
+		// A factor that stands is never skippable: a browser password login on an
+		// enrolled account issues a login challenge instead of a session, and the
+		// second factor is presented against it before any cookie is set (#760).
+		// The CLI keeps today's behaviour (O1): it mints a [password] session and
+		// the chokepoint refuses MFA-mandatory capabilities until it steps up.
+		factors, err := s.enrolledFactors(ctx, az, account.ID)
+		if err != nil {
+			return err
+		}
+		if len(factors) > 0 && artifact == ArtifactBrowser {
+			issued, err := s.issueLoginChallenge(ctx, az, account, factors, now)
+			if err != nil {
+				return err
+			}
+			attempt.result = LoginResult{Challenge: issued}
+			return nil
+		}
+		attempt.result, err = s.mintSession(ctx, az, account, artifact, []string{"password"}, "", now)
 		return err
 	})
 	if err != nil {
@@ -515,35 +557,43 @@ func accountIDOf(resolved bool, a authz.Account) string {
 	return ""
 }
 
-// mintSession creates the artifact and its two audit events. The assurance
-// record says single-factor password, truthfully: no factor exists in this
-// slice, and recording something stronger would be a lie the chokepoint later
-// acts on.
-func (s *Auth) mintSession(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, artifact Artifact, now time.Time) (LoginResult, error) {
+// secondFactorRequired reports the instance's second-factor policy: true means
+// HIKYO_SECOND_FACTOR is `required`, so an unenrolled password login is gated
+// into enrolment (#760).
+func (s *Auth) secondFactorRequired() bool { return s.SecondFactorRequired }
+
+// mintSession creates a local-password session artifact and its two audit
+// events, carrying the factor set the caller proved. LocalLogin mints
+// `[password]`; a login-challenge finish mints `[password, totp]` or
+// `[password, webauthn]`. The assurance method is always local-password — the
+// factors, not the method, record what was presented — and the assurance label
+// follows the factor count, truthfully, because the chokepoint later acts on it.
+func (s *Auth) mintSession(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, artifact Artifact, factors []string, ceremonyID string, now time.Time) (LoginResult, error) {
 	csrf := sessionWithoutCSRF
 	if artifact == ArtifactBrowser {
 		csrf = sessionWithCSRF
 	}
 	result, err := s.completeSession(ctx, az, CreateSession{
 		account: account, artifact: artifact,
-		assurance: Assurance{Method: MethodLocalPassword, Factors: []string{"password"}, AuthenticatedAt: now},
+		assurance: Assurance{Method: MethodLocalPassword, Factors: factors, AuthenticatedAt: now, CeremonyID: ceremonyID},
 		csrf:      csrf,
 	}, now)
 	if err != nil {
 		return LoginResult{}, err
 	}
 
+	assurance := assuranceLabelFor(factors)
 	for _, ev := range []struct {
 		typ     audit.EventType
 		payload audit.Payload
 	}{
 		{audit.EventAuthLogin, audit.Payload{
 			"method": MethodLocalPassword, "artifact": artifact.String(),
-			"subject_resolved": true, "account_id": account.ID, "assurance": "single-factor",
+			"subject_resolved": true, "account_id": account.ID, "assurance": assurance,
 		}},
 		{audit.EventAuthSessionCreated, audit.Payload{
 			"session_id": result.SessionID, "artifact": artifact.String(),
-			"method": MethodLocalPassword, "assurance": "single-factor",
+			"method": MethodLocalPassword, "assurance": assurance,
 		}},
 	} {
 		e, err := newAuditEvent(ctx, ev.typ, account.PrincipalID,
@@ -557,6 +607,15 @@ func (s *Auth) mintSession(ctx context.Context, az *authz.TxAuthorizer, account 
 	}
 
 	return result, nil
+}
+
+// assuranceLabelFor names the assurance tier a factor set carries for the audit
+// trail: more than one factor class is multi-factor, one is single-factor.
+func assuranceLabelFor(factors []string) string {
+	if len(factors) > 1 {
+		return "multi-factor"
+	}
+	return "single-factor"
 }
 
 // failLogin stages the failure event in the caller's transaction. It returns

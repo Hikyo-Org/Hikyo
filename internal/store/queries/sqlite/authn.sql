@@ -89,7 +89,7 @@ SELECT session_generation FROM principals WHERE id = ? AND privacy_state = 'acti
 SELECT id, principal_id, verifier, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id
+       requesting_origin, provider_id, enrolment_required
 FROM sessions WHERE verifier = ?;
 
 -- hikyo:authn-resolution
@@ -97,7 +97,7 @@ FROM sessions WHERE verifier = ?;
 SELECT id, principal_id, artifact, session_generation, credential_epoch,
        auth_method, factors, authenticated_at, ceremony_id, created_at,
        last_seen_at, idle_expires_at, absolute_expires_at, csrf_verifier,
-       requesting_origin, provider_id
+       requesting_origin, provider_id, enrolment_required
 FROM sessions WHERE id = ?;
 
 -- hikyo:authn-resolution
@@ -169,8 +169,8 @@ INSERT INTO sessions
     (id, principal_id, verifier, artifact, session_generation, credential_epoch,
      auth_method, factors, authenticated_at, ceremony_id, created_at,
      last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent,
-     provider_id, csrf_verifier, requesting_origin, handoff_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+     provider_id, csrf_verifier, requesting_origin, handoff_id, enrolment_required)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- The active-session listing (#71 criterion 5). A workspace session appears
 -- here as its own artifact type, beside the cli and browser rows, which is the
@@ -290,7 +290,27 @@ WHERE account_id = ? AND row_version = ?;
 -- cannot be reset by repeated step-ups.
 -- hikyo:authn-resolution
 -- name: RotateSessionFactors :exec
-UPDATE sessions SET verifier = ?, factors = ? WHERE id = ?;
+-- enrolment_required is cleared on every rotation: a rotation follows a factor
+-- action (step-up or enrolment confirm), so the account now has a factor and
+-- the enrolment gate lifts (#760).
+UPDATE sessions SET verifier = ?, factors = ?, enrolment_required = 0 WHERE id = ?;
+
+-- hikyo:authn-resolution
+-- name: InsertLoginChallenge :exec
+INSERT INTO login_challenges
+    (id, account_id, factors, expires_at, created_at)
+VALUES (?, ?, ?, ?, ?);
+
+-- hikyo:authn-resolution
+-- name: GetLoginChallengeByID :one
+SELECT id, account_id, factors, expires_at, consumed_at, created_at
+FROM login_challenges WHERE id = ?;
+
+-- hikyo:authn-resolution
+-- name: ConsumeLoginChallenge :execrows
+-- Single-use: claims the row only if not already consumed (fail closed).
+UPDATE login_challenges SET consumed_at = ?
+WHERE id = ? AND consumed_at IS NULL;
 
 -- Minting an establishment authority for an account consumes every other
 -- outstanding one, so a second live reset token cannot linger past the point

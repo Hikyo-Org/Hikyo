@@ -976,6 +976,10 @@ var registry = map[EventType]TypeSpec{
 			"account_id":       {Kind: KindString},
 			"assurance":        {Kind: KindString, Enum: []string{"single-factor", "multi-factor"}},
 			"cause":            {Kind: KindString}, // failures only, by class never by detail
+			// challenge_id names the login challenge issued when the password step
+			// passes but a second factor still stands (#760); the session it will
+			// mint is recorded by its own session_created event on the finish op.
+			"challenge_id": {Kind: KindString},
 		},
 	},
 	EventAuthLogout: {
@@ -997,7 +1001,7 @@ var registry = map[EventType]TypeSpec{
 			"operation":      {Kind: KindString, Required: true},
 			"artifact_class": {Kind: KindString, Required: true},
 			"cause": {Kind: KindString, Required: true,
-				Enum: []string{"class-mismatch"}},
+				Enum: []string{"class-mismatch", "enrolment-required"}},
 		},
 	},
 	EventAuthSessionCreated: {

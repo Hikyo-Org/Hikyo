@@ -83,7 +83,8 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	authSvc := &service.Auth{
 		DB: db, Keyring: kr, KDF: kdf, Admission: limiter, Log: log,
 		ExternalOrigin: cfg.ExternalOrigin, ReauthWindow: cfg.ReauthWindow,
-		FederationPolicy: federationPolicy,
+		FederationPolicy:     federationPolicy,
+		SecondFactorRequired: cfg.SecondFactor == "required",
 	}
 	selfConfig := owner.selfConfig
 	authSvc.SelfConfig = selfConfig
