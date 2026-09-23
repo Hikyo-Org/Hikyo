@@ -30,12 +30,12 @@ sensitivity inventory pin was refreshed for those two files with a review note.
 - Success states that navigate the frame away (OIDCDone login/link/reauth success, WorkspaceCallback close).
 - Real WebAuthn prompts and popups (Ceremony "waiting for your passkey", WorkspaceStepUp authorising); EnrolmentGate's codes/choose/totp steps need the verified-remint whoami handshake and are storied in `SecondFactorSetup.stories.tsx`.
 - `RuntimeMaintenanceBoundary.Ready`: the component seeds `ready` before its first poll, so a play could not tell fixture from seed.
-- One-sentence 404 "not disclosed" states on the instance panels, and refusal variants that render the same `Alert` as an existing story.
+- One-sentence 404 "not disclosed" states on the four identity panels (OIDC, SAML, SP keys, federation), and refusal variants that render the same `Alert` as an existing story. The instance pages do story their 404 (`NotDisclosed`) because it carries its own copy and controls.
 
 ## Component fixes made on the way (campsite rule)
 - `FederationIssuersPanel.tsx`: two `event.target.value as …` casts replaced by an option lookup (`optionById`).
 - `KeyDeclarationDetail.tsx`: `as PresenceMode` cast replaced by a narrowing helper like the existing `ruleType`.
-- `vite.config.ts`: throws with the fix in the message when `clients/ts/node_modules/zod` is missing. Before, the bundler only warned `UNRESOLVED_IMPORT` and treated zod as an external the SPA could never load. A `resolve.alias`/`dedupe` route was tried and dropped: it resolved the import but rolldown's native pre-resolve still printed the warning.
+- `vite.config.ts`: throws with the fix in the message when `clients/ts/node_modules/zod` is missing. Before, the bundler only warned `UNRESOLVED_IMPORT` and treated zod as an external the SPA could never load. With clients/ts installed the warning does not appear (verified: zero `UNRESOLVED_IMPORT` lines from `pnpm run build`). A `resolve.alias`/`dedupe` route was tried and dropped: it resolved the import but rolldown's native pre-resolve still printed the warning.
 - `app/useNavigationGuard.ts`: found by CI, not locally. Deactivating a guard calls `history.back()`, which settles after a guard mounted in the same tick has pushed its own sentinel (sibling dialogs, StrictMode effect replay, consecutive stories), so the new guard reported a dismissal nobody attempted. The sentinel entry now carries a marker and a pop landing on a marked entry is adopted, not routed to the callback. Unit test added. The MintDialog/LeaseMintDialog `move` spies now answer with a state as the contract requires; a bare `fn()` made that path throw.
 - No a11y fixes were needed: axe passed on every new story in both palettes.
 
@@ -51,6 +51,9 @@ sensitivity inventory pin was refreshed for those two files with a review note.
 
 ## zod/mini: measured, not adopted
 Measured with Vite on a representative schema (object, string, array of int, enum, url, boolean, record): classic 20.5 KB gzip, mini 6.4 KB gzip, so about 14 KB gzip saved. zod ships in the lazy `account` chunk, not the initial bundle, so first paint is unchanged. Cost: `@hey-api/openapi-ts` emits mini via `compatibilityVersion: 'mini'`, but 42 app files use the classic chained API and mini is functional (`z.optional(x)`, `z.parse(s, v)`, `.check(...)`), so every call site rewrites plus a regen and client-skew churn. Verdict: not worth it now; revisit if the account chunk becomes a measured problem.
+
+## Graph
+`graphify update .` was run at the end of the branch (graph.json is gitignored; `built_at_commit` should match HEAD after a fresh run).
 
 ## Open
 - Design links (`parameters.design`) stay Button-only per `openpencil-storybook.md`; link stories as they are touched.

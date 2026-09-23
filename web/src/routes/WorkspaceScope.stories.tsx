@@ -116,8 +116,9 @@ export const Checking: Story = {
   },
 };
 
-// The remote refused the compatibility read: named refusal, no children mounted.
-export const Refused: Story = {
+// The compatibility read failed on the remote: the gate closes with the
+// failure named, no children mounted.
+export const Failed: Story = {
   beforeEach: withBearer,
   parameters: {
     app: {
@@ -132,6 +133,7 @@ export const Refused: Story = {
     await expect(
       await canvas.findByRole('heading', { name: /cannot operate this remote/i }),
     ).toBeVisible();
+    await expect(canvas.getByRole('alert')).toHaveTextContent(/500/);
     await expect(canvas.getByRole('alert')).toHaveTextContent(`${ORIGIN} answered 500.`);
     await expect(canvas.queryByText(/the product surface/i)).toBeNull();
   },

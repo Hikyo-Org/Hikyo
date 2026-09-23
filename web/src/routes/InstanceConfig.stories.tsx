@@ -175,6 +175,17 @@ export const NotDisclosed: Story = {
   },
 };
 
+// The status read failed: the generic failure sentence with Refresh status,
+// and no adoption or apply control is offered on an unknown state.
+export const Failed: Story = {
+  parameters: { app: app({ status: 500 }) },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/could not confirm the result/i)).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Refresh status' })).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: 'Preview adoption' })).toBeNull();
+  },
+};
+
 // The reauthentication ceremony for a mail test: the decision is named, the
 // owner and generation are bound, and the code field waits. No network runs.
 export const TestMailCeremony: Story = {

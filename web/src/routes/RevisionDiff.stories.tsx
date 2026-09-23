@@ -158,8 +158,10 @@ export const Loading: Story = {
 
 // The comparison was refused: the dialog stays open and says so.
 export const Failed: Story = {
-  parameters: { app: { auth: true, responses: [diff({ status: 403, body: { error: 'revision diff refused' } })] } },
+  parameters: { app: { auth: true, responses: [diff({ status: 500, body: { error: 'revision diff failed' } })] } },
   play: async ({ canvas }) => {
-    await expect(await canvas.findByRole('alert')).toBeVisible();
+    // The status is part of the sentence, so a mis-routed request (the harness
+    // answers 404) cannot pass as this state.
+    await expect(await canvas.findByRole('alert')).toHaveTextContent('request failed with 500');
   },
 };
