@@ -72,8 +72,8 @@ Main push runs [35890214827](https://github.com/Hikyo-Org/Hikyo/actions/runs/358
 | | Before | Cold | Warm |
 |---|---|---|---|
 | Race test step, per shard | 814 to 1105s | 620 to 913s | 387 to 706s |
-| Web flow step, per leg | 7.4 to 11.8 min | 6.7 to 8.2 min job | 5.3 to 7.5 min |
-| `test_core` test step | 712s | 15.0 min job | 639s |
+| Web flow step, per leg | 7.4 to 11.8 min | 5.8 to 7.3 min | 5.3 to 7.5 min |
+| `test_core` test step | 712s | 663s | 639s |
 
 Race balance is short of the predicted ~648s per shard: in the cold run
 `internal/lint` took 446s against its 307s weight, sharing four vCPUs with the
@@ -87,5 +87,6 @@ these runs because main pushes (full plan, including `k8s-e2e` and
 `floor-bench`) overlapped PR runs under the 20-job cap. Main pushes stay
 independently queued by design; changing that is an open option.
 
-Not yet exercised: a failing fuzz shard uploading the merged
-`fuzz-reproducers-<run_id>-<attempt>` artifact from `ci-required`.
+Not yet exercised: the failure path where a fuzz shard uploads its
+shard-specific reproducer artifact and `ci-required` merges those into
+`fuzz-reproducers-<run_id>-<attempt>`.
