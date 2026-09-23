@@ -27,16 +27,15 @@ import {
   BASE_URL_B,
   establishSession,
   INSTANCE_GRANT_TARGET,
+  nextServingCode,
   nextTotpCode,
   OIDC_PROVIDER,
   passEnrolmentGate,
   readSeed,
-  readServing,
   STORAGE_STATE,
   WEBUI_OIDC,
 } from '../fixtures/instance.ts';
 import { test } from '../fixtures/passkey.ts';
-import { totpCode } from '../fixtures/seed.ts';
 
 /**
  * Flow: instance administration (registry surface `instance-admin`) , 
@@ -180,7 +179,7 @@ test.describe('instance administration', () => {
     await expect(page.getByLabel('Published revision to apply or test')).toHaveValue(String(published.latest_revision));
     await page.getByRole('button', { name: 'Apply selected revision', exact: true }).click();
     await expect(page.getByRole('dialog').getByText('Reload live', { exact: true })).toBeVisible();
-    await page.getByLabel('Fresh authenticator code').fill(totpCode(readServing().otpauth, new Date(Date.now() + 30_000)));
+    await page.getByLabel('Fresh authenticator code').fill(await nextServingCode());
     await page.getByRole('button', { name: 'Authorize with code', exact: true }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect.poll(async () => (await readRemote()).state).toBe('active');

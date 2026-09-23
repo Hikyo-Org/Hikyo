@@ -562,10 +562,13 @@ function parseSetCookie(raw: string[], host: string): Cookie[] {
  * ADMIN carries a real TOTP factor, so a browser password login answers a 202
  * login challenge and mints no session (#760): the factor is presented against
  * the challenge to mint the session — the same sequence the `/login` gate will
- * drive once it is wired (#785). `nextTotpCode` keeps the single-use-per-step
- * bookkeeping honest across workers.
+ * drive once it is wired (#785). `draw` is the administrator's step ledger
+ * (`nextTotpCode` for A, `nextServingCode` for B), which keeps the
+ * single-use-per-step bookkeeping honest across workers. The session it mints
+ * records `[password, totp]`, already adequate for every MFA-mandatory surface
+ * (`AdequateAssurance`), so nothing steps it up afterwards.
  */
-async function signIn(instance: Jar, otpauth?: string): Promise<void> {
+async function signIn(instance: Jar, draw: () => Promise<string> = nextTotpCode): Promise<void> {
   const resp = await fetch(`${instance.base}/api/v1/auth/local/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -578,7 +581,7 @@ async function signIn(instance: Jar, otpauth?: string): Promise<void> {
   if (!resp.ok) {
     throw new Error(`signing in at ${instance.base} answered ${resp.status}`);
   }
-  const minting = resp.status === 202 ? await mintFromLoginChallenge(instance, resp, otpauth) : resp;
+  const minting = resp.status === 202 ? await mintFromLoginChallenge(instance, resp, draw) : resp;
   const cookies = parseSetCookie(minting.headers.getSetCookie(), instance.host);
   if (cookies.length !== 2) {
     throw new Error(`the login set ${cookies.length} cookies, want the session and CSRF pair`);
@@ -589,12 +592,14 @@ async function signIn(instance: Jar, otpauth?: string): Promise<void> {
 /**
  * mintFromLoginChallenge presents the TOTP factor against a 202 login challenge
  * (#760) and returns the minting response, whose Set-Cookie carries the session.
- * A wrong code leaves the challenge live, so a step already spent this window is
- * retried on the next step. During seeding the caller passes the otpauth
- * directly (the shared seed file does not exist yet); afterwards `nextTotpCode`
- * reserves a fresh, unspent step through the cross-worker bookkeeping.
+ * A wrong code leaves the challenge live, so a refused step is retried with the
+ * next draw from the same ledger.
  */
-async function mintFromLoginChallenge(instance: Jar, challenge: Response, otpauth?: string): Promise<Response> {
+async function mintFromLoginChallenge(
+  instance: Jar,
+  challenge: Response,
+  draw: () => Promise<string>,
+): Promise<Response> {
   const { challenge_id } = z.object({ challenge_id: z.string() }).parse(await challenge.json());
   const path = `${instance.base}/api/v1/auth/login/challenge/${challenge_id}/totp`;
   const finish = (code: string): Promise<Response> =>
@@ -603,48 +608,24 @@ async function mintFromLoginChallenge(instance: Jar, challenge: Response, otpaut
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code }),
     });
-  if (otpauth === undefined) {
-    // Viewing administrator (A): draw through `nextTotpCode` (keeps the shared
-    // step counter in sync so a later reveal-by-code reauth does not collide),
-    // and retry — each draw advances past a skew-refused or replayed step.
-    let last = 0;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const resp = await finish(await nextTotpCode());
-      if (resp.ok) {
-        return resp;
-      }
-      last = resp.status;
-      if (resp.status !== 401 && resp.status !== 409) {
-        throw new Error(`the login challenge at ${instance.base} answered ${resp.status}`);
-      }
+  // Each draw advances past a skew-refused (401) or replayed (409) step.
+  let last = 0;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const resp = await finish(await draw());
+    if (resp.ok) {
+      return resp;
     }
-    throw new Error(`the login challenge at ${instance.base} answered ${last}`);
+    last = resp.status;
+    if (resp.status !== 401 && resp.status !== 409) {
+      throw new Error(`the login challenge at ${instance.base} answered ${resp.status}`);
+    }
   }
-  const deadline = Date.now() + 3 * TOTP_PERIOD * 1000;
-  let last = '';
-  for (;;) {
-    for (const steps of [0, 1, 2]) {
-      const resp = await finish(totpCode(otpauth, new Date(Date.now() + steps * TOTP_PERIOD * 1000)));
-      if (resp.ok) {
-        return resp;
-      }
-      last = `${resp.status}: ${await resp.text()}`;
-      if (resp.status === 409 && last.includes('already used for its time step')) {
-        break;
-      }
-      if (resp.status !== 401) {
-        throw new Error(`the login challenge at ${instance.base} answered ${last}`);
-      }
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`no TOTP code was accepted for the login challenge at ${instance.base}; last ${last}`);
-    }
-    await waitForNextStep();
-  }
+  throw new Error(`the login challenge at ${instance.base} answered ${last}`);
 }
 
 /**
- * enrolTotp gives the serving instance's administrator a real second factor.
+ * enrolTotp gives the serving instance's administrator a real second factor,
+ * and opens B's step ledger in the SERVING file with it.
  *
  * Only B needs this. A's administrator is enrolled by `seedTenant`, whose
  * provisioning URI and spent-step bookkeeping travel to the workers in the
@@ -654,85 +635,16 @@ async function mintFromLoginChallenge(instance: Jar, challenge: Response, otpaut
  * Every instance-scope capability is MFA-mandatory, so without this the setup
  * would be testing the refusal rather than the surface.
  */
-async function enrolTotp(instance: Instance): Promise<string> {
-  const started = await api(instance, 'POST', '/api/v1/auth/totp/enrol/start', {
-    password: ADMIN.password,
-  });
-  if (typeof started !== 'object' || started === null || !('otpauth_uri' in started)) {
-    throw new Error('TOTP enrolment did not disclose an otpauth URI');
-  }
-  const uri = started.otpauth_uri;
-  if (typeof uri !== 'string') {
-    throw new Error('the otpauth URI is not a string');
-  }
-  await presentTotp(instance, uri, '/api/v1/auth/totp/enrol/confirm');
-  return uri;
-}
-
-/**
- * presentTotp posts a TOTP code, after waiting for a step the server has not
- * already consumed.
- *
- * TRAP, recorded because it cost real time. A code is single-use PER STEP , 
- * `last_step < ?`, strictly, and the validation window is only +/-1 step wide,
- * so two ceremonies inside the same 30 seconds have NO code that is both fresh
- * and acceptable. The server names that case (409, "already used for its time
- * step") rather than answering the uniform `unauthenticated`; a wrong code is
- * still a 401, and the two implementations generate identical codes for
- * identical instants (checked against `pquerna/otp` directly).
- *
- * So every presentation waits for the step counter to advance and then sends
- * the code for NOW. That is deterministic, one request, no failed attempts to
- * feed the per-account backoff, at the cost of up to 30 seconds per ceremony.
- */
-async function presentTotp(instance: Jar, otpauth: string, path: string): Promise<void> {
-  const deadline = Date.now() + 3 * TOTP_PERIOD * 1000;
-  let last = '';
-  for (;;) {
-    for (const steps of [0, 1, 2]) {
-      const code = totpCode(otpauth, new Date(Date.now() + steps * TOTP_PERIOD * 1000));
-      const resp = await fetch(instance.base + path, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Cookie: cookieHeader(instance),
-          'X-Hikyo-CSRF': csrfToken(instance),
-        },
-        body: JSON.stringify({ code }),
-      });
-      if (resp.ok) {
-        adoptCookies(instance, resp);
-        return;
-      }
-      last = `${resp.status}: ${await resp.text()}`;
-      // 409 is the server naming a REPLAY: the code's step was already
-      // consumed by an earlier ceremony in this same 30-second window. That is
-      // the one refusal worth waiting out; everything else is a real fault.
-      if (resp.status === 409 && last.includes('already used for its time step')) {
-        break;
-      }
-      if (resp.status !== 401) {
-        throw new Error(`${path} at ${instance.base} answered ${last}`);
-      }
-    }
-    if (Date.now() > deadline) {
-      throw new Error(`no TOTP code was accepted for ${path} at ${instance.base}; last ${last}`);
-    }
-    await waitForNextStep();
-  }
+async function enrolTotp(instance: Instance): Promise<void> {
+  const { otpauth_uri: otpauth } = z
+    .object({ otpauth_uri: z.string() })
+    .parse(await api(instance, 'POST', '/api/v1/auth/totp/enrol/start', { password: ADMIN.password }));
+  writeFileSync(SERVING, JSON.stringify({ otpauth, lastTotpStep: -1 }));
+  await api(instance, 'POST', '/api/v1/auth/totp/enrol/confirm', { code: await nextServingCode() });
 }
 
 /** The server's TOTP step, in seconds. `seed.ts`'s generator assumes the same. */
 const TOTP_PERIOD = 30;
-
-/** waitForNextStep sleeps until the TOTP step counter has advanced. */
-async function waitForNextStep(): Promise<void> {
-  const step = () => Math.floor(Date.now() / 1000 / TOTP_PERIOD);
-  const from = step();
-  while (step() <= from) {
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-}
 
 /** portTaken reports whether anything accepts a connection on host:port. */
 function portTaken(host: string, port: number): Promise<boolean> {
@@ -1006,6 +918,7 @@ const zServing = z.object({
   value: z.string(),
   dbPath: z.string(),
   otpauth: z.string(),
+  lastTotpStep: z.number(),
 });
 
 export type ServingSeed = z.infer<typeof zServing>;
@@ -1053,19 +966,16 @@ function grantServingAdmin(serving: Instance): void {
  */
 async function seedServingProject(
   serving: Instance,
-  otpauth: string,
-): Promise<Omit<ServingSeed, 'dbPath'>> {
+): Promise<Omit<ServingSeed, 'dbPath' | 'otpauth' | 'lastTotpStep'>> {
   const zId = z.object({ id: z.string() });
   const created = async (path: string, body: unknown): Promise<string> =>
     zId.parse(await api(serving, 'POST', path, body)).id;
 
   const org = await created('/api/v1/orgs', { name: 'serving-co' });
   // The atomic creator-admin grant invalidates the creating session. A fresh
-  // MFA session is required before building inside the organisation. The seed
-  // file does not exist yet, so the login challenge is satisfied with the local
-  // otpauth rather than the cross-worker `nextTotpCode` bookkeeping.
-  await signIn(serving, otpauth);
-  await presentTotp(serving, otpauth, '/api/v1/auth/totp/step-up');
+  // MFA session, minted by B's login challenge, is required before building
+  // inside the organisation.
+  await signIn(serving, nextServingCode);
   const project = await created(`/api/v1/orgs/${org}/projects`, { name: 'vault' });
   const dev = await created(`/api/v1/orgs/${org}/projects/${project}/environments`, {
     name: 'development',
@@ -1090,7 +1000,7 @@ async function seedServingProject(
   await api(serving, 'POST', `/api/v1/orgs/${org}/projects/${project}/environments/${dev}/publish`, {
     version_ids: [staged.version_id],
   });
-  return { org, project, dev, key: 'API_URL', value, otpauth };
+  return { org, project, dev, key: 'API_URL', value };
 }
 
 /**
@@ -1188,8 +1098,6 @@ export async function startInstance(): Promise<void> {
     );
   }
 
-  // Concurrently, so the one unavoidable TOTP step-boundary wait is paid once
-  // rather than once per instance.
   const [viewing, serving] = await Promise.all([
     startInstanceAt(HOST, PORT, PORT_OPERATIONAL, BASE_URL),
     startInstanceAt(HOST_B, PORT_B, PORT_OPERATIONAL_B, BASE_URL_B),
@@ -1201,52 +1109,57 @@ export async function startInstance(): Promise<void> {
   // bootstrap operator already holds.
   seedDirectoryGrant(viewing.dir);
   await Promise.all([establishCredential(viewing), establishCredential(serving)]);
-
-  // The fixture tenant, on the VIEWING instance, the reveal flow's subject and
-  // the instance every non-#71 flow addresses. Break-glass grants run through
-  // the binary on the host, which is the only path that issues a grant without
-  // a session, and the bootstrap administrator holds no disclosure capability
-  // by design, so something has to. It also enrols the administrator's TOTP
-  // factor, which is why nothing here enrols a second one.
-  const seeded = await seedTenant((args) => {
-    run(viewing.binary, ['admin', '--dev', 'grant', ...args], {
-      cwd: viewing.dir,
-      env: adminEnv(viewing),
-    });
-  });
   mkdirSync(fileURLToPath(new URL('../.auth', import.meta.url)), { recursive: true });
-  writeFileSync(SEEDED, JSON.stringify({ ...seeded, dbPath: join(viewing.dir, 'hikyo-dev.db') }));
 
-  // The serving admin's operating capabilities, break-glass BEFORE any B
-  // session, so no session is invalidated (#71). This is what lets a workspace
-  // read and edit B's project once the human has authenticated over there.
-  grantServingAdmin(serving);
+  // The two administrators' TOTP ceremonies are the only waits in setup: a code
+  // is single-use per (account, step) and at most one step ahead of now is
+  // accepted, so each chain can outrun the clock by one step only. A and B are
+  // separate accounts with separate secrets and separate ledgers, so the chains
+  // run concurrently and B's waits hide inside A's longer one.
+  await Promise.all([
+    (async () => {
+      // The fixture tenant, on the VIEWING instance, the reveal flow's subject
+      // and the instance every non-#71 flow addresses. Break-glass grants run
+      // through the binary on the host, which is the only path that issues a
+      // grant without a session, and the bootstrap administrator holds no
+      // disclosure capability by design, so something has to. It also enrols
+      // the administrator's TOTP factor, which is why nothing here enrols a
+      // second one.
+      const seeded = await seedTenant((args) => {
+        run(viewing.binary, ['admin', '--dev', 'grant', ...args], {
+          cwd: viewing.dir,
+          env: adminEnv(viewing),
+        });
+      });
+      writeFileSync(SEEDED, JSON.stringify({ ...seeded, dbPath: join(viewing.dir, 'hikyo-dev.db') }));
+      // A's raw setup session, after seeding's grants, which would kill it.
+      await signIn(viewing);
+    })(),
+    (async () => {
+      // The serving admin's operating capabilities, break-glass BEFORE any B
+      // session, so no session is invalidated (#71). This is what lets a
+      // workspace read and edit B's project once the human has authenticated
+      // over there.
+      grantServingAdmin(serving);
 
-  // B enrols its own factor: it has no seeded tenant and no passkey, and every
-  // #71 act below it performs is instance-scope and therefore MFA-mandatory.
-  await signIn(serving);
-  const servingOtpauth = await enrolTotp(serving);
-  // A fresh sign-in before the step-up: the enrolment's confirm REISSUES the
-  // session, and re-presenting the credential is both cheaper to reason about
-  // than tracking a rotation across two ceremonies and closer to what a human
-  // does, enrol, then sign in again and present the new factor. B now carries a
-  // factor, so the login answers a challenge (#760); it is satisfied with B's
-  // own otpauth, not A's `nextTotpCode` seed.
-  await signIn(serving, servingOtpauth);
-  await presentTotp(serving, servingOtpauth, '/api/v1/auth/totp/step-up');
+      // B enrols its own factor: it has no seeded tenant and no passkey, and
+      // every #71 act below it performs is instance-scope and therefore
+      // MFA-mandatory. The enrolment's confirm REISSUES a password-only session,
+      // so B signs in again and answers the login challenge (#760) from its own
+      // ledger, not A's.
+      await signIn(serving, nextServingCode);
+      await enrolTotp(serving);
+      await signIn(serving, nextServingCode);
 
-  // The operable project on B. Organisation creation grants the creator admin
-  // access and invalidates that session; the helper reauthenticates before
-  // building the project. The resulting MFA session remains suitable for the
-  // workspace's later edit and publish operations.
-  const serving_ = await seedServingProject(serving, servingOtpauth);
-  writeFileSync(SERVING, JSON.stringify({ ...serving_, dbPath: join(serving.dir, 'hikyo-dev.db') }));
-
-  // A's raw setup session, stepped up with the factor `seedTenant` enrolled.
-  // `nextTotpCode` is what keeps the single-use-per-step bookkeeping honest
-  // across this process and the workers.
-  await signIn(viewing);
-  await stepUpWithSeededTotp(viewing);
+      // The operable project on B. Organisation creation grants the creator
+      // admin access and invalidates that session; the helper reauthenticates
+      // before building the project. The resulting MFA session remains
+      // suitable for the workspace's later edit and publish operations.
+      const served = await seedServingProject(serving);
+      const ledger = zLedger.parse(JSON.parse(readFileSync(SERVING, 'utf8')));
+      writeFileSync(SERVING, JSON.stringify({ ...ledger, ...served, dbPath: join(serving.dir, 'hikyo-dev.db') }));
+    })(),
+  ]);
 
   // B mints the connection credential A will hold. Display-once: this response
   // is the only time the value exists outside a verifier.
@@ -1288,26 +1201,6 @@ export async function startInstance(): Promise<void> {
   // the server has already disowned. It also carries B's jar, which the raw
   // setup above is the only thing that ever mints.
   await mintStorageState(serving.cookies);
-}
-
-/**
- * stepUpWithSeededTotp presents a code for a step nothing has spent, through
- * the browser-cookie surface rather than seed.ts's bearer one.
- */
-async function stepUpWithSeededTotp(instance: Instance): Promise<void> {
-  const resp = await fetch(`${instance.base}/api/v1/auth/totp/step-up`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Cookie: cookieHeader(instance),
-      'X-Hikyo-CSRF': csrfToken(instance),
-    },
-    body: JSON.stringify({ code: await nextTotpCode() }),
-  });
-  if (!resp.ok) {
-    throw new Error(`stepping up at ${instance.base} answered ${resp.status}`);
-  }
-  adoptCookies(instance, resp);
 }
 
 /**
@@ -1908,55 +1801,51 @@ const zCount = z.object({ n: z.number() });
  * pick "one step ahead of now" and expect all of them to be accepted. The
  * newest spent step lives in the same file the rest of the fixture does, for
  * the same reason the passkey's signature counter does: these are separate
- * processes sharing one account.
+ * processes sharing one account. The serving administrator's twin is
+ * `nextServingCode`, over the SERVING file.
  *
- * It never waits in practice: flows run well after setup, so the step after
- * the current one is already free.
+ * The server accepts a code for the step before, at, or after now, and only if
+ * that step is beyond the last one it consumed (`last_step < ?`, strictly; a
+ * replay is a 409, never fed to the per-account backoff). The ledger is every
+ * step this account has spent, so the current step is presentable whenever the
+ * ledger is behind it, and the step after it without waiting. Only a third
+ * ceremony inside one 30-second step waits, for exactly one boundary.
  */
 export async function nextTotpCode(): Promise<string> {
-  const seed = readSeed();
+  return drawTotpCode(SEEDED);
+}
+
+/** nextServingCode is `nextTotpCode` for the serving administrator (B). */
+export async function nextServingCode(): Promise<string> {
+  return drawTotpCode(SERVING);
+}
+
+/** The ledger half of the SEEDED and SERVING files; the rest passes through. */
+const zLedger = z.looseObject({ otpauth: z.string(), lastTotpStep: z.number() });
+
+async function drawTotpCode(file: string): Promise<string> {
+  const ledger = zLedger.parse(JSON.parse(readFileSync(file, 'utf8')));
   const step = () => Math.floor(Date.now() / 1000 / TOTP_PERIOD);
-  const want = Math.max(step() + 1, seed.lastTotpStep + 1);
-  while (step() < want - 1) {
+  const want = Math.max(step(), ledger.lastTotpStep + 1);
+  while (want - step() > 1) {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  writeFileSync(SEEDED, JSON.stringify({ ...seed, lastTotpStep: want }));
-  return totpCode(seed.otpauth, new Date(want * TOTP_PERIOD * 1000));
+  writeFileSync(file, JSON.stringify({ ...ledger, lastTotpStep: want }));
+  return totpCode(ledger.otpauth, new Date(want * TOTP_PERIOD * 1000));
 }
 
 /**
  * completeSecondFactor drives the SPA login challenge (#760): after a password
  * "Sign in", an account with an enrolled authenticator lands on the second-
- * factor step. It fills a code and presents it, leaving the page on the
- * authenticated shell. The viewing administrator (A) uses the cross-worker
- * `nextTotpCode` bookkeeping; the serving administrator (B) has no such
- * bookkeeping, so its `otpauth` is passed and a refused step is followed by
- * the next one inside the skew window.
+ * factor step. It fills a code drawn from the administrator's ledger
+ * (`nextTotpCode` for A, `nextServingCode` for B) and presents it, leaving the
+ * page on the authenticated shell.
  */
-export async function completeSecondFactor(page: Page, otpauth?: string): Promise<void> {
+export async function completeSecondFactor(page: Page, draw: () => Promise<string> = nextTotpCode): Promise<void> {
   const code = page.getByLabel('Authenticator code');
   await code.waitFor();
-  if (otpauth === undefined) {
-    await code.fill(await nextTotpCode());
-    await page.getByRole('button', { name: 'Present code' }).click();
-    return;
-  }
-  // B keeps no cross-process step ledger, so its current step may already be
-  // spent (setup, a sibling flow). Present the current step's code and, when the
-  // server refuses it, the next step's, which the skew window accepts now,
-  // rather than sleeping into a fresh step: that sleep alone could outlast a
-  // test's budget.
-  for (const ahead of [0, 1]) {
-    await code.fill(totpCode(otpauth, new Date(Date.now() + ahead * TOTP_PERIOD * 1000)));
-    const answered = page.waitForResponse(
-      (response) =>
-        response.request().method() === 'POST' &&
-        /\/api\/v1\/auth\/login\/challenge\/[^/]+\/totp$/.test(new URL(response.url()).pathname),
-    );
-    await page.getByRole('button', { name: 'Present code' }).click();
-    if ((await answered).ok()) return;
-  }
-  throw new Error('the serving administrator\'s challenge refused both the current and the next step');
+  await code.fill(await draw());
+  await page.getByRole('button', { name: 'Present code' }).click();
 }
 
 /**
@@ -2045,8 +1934,8 @@ export async function refreshSharedSession(): Promise<void> {
  * local run ever sees it.
  *
  * Probing first keeps the common live-session case to one request; a non-auth
- * status stays loud, and the re-mint signs in and steps up exactly as setup
- * did, because every instance-scope surface on B is MFA-mandatory.
+ * status stays loud, and the re-mint answers B's login challenge exactly as
+ * setup did, because every instance-scope surface on B is MFA-mandatory.
  */
 export async function refreshServingSession(): Promise<void> {
   await refreshSharedSessionFromProbe(
@@ -2058,10 +1947,9 @@ export async function refreshServingSession(): Promise<void> {
     },
     async () => {
       const jar: Jar = { base: BASE_URL_B, host: HOST_B, cookies: [] };
-      // B carries its own factor: the login answers a challenge (#760) satisfied
-      // with B's otpauth, not A's `nextTotpCode` seed.
-      await signIn(jar, readServing().otpauth);
-      await presentTotp(jar, readServing().otpauth, '/api/v1/auth/totp/step-up');
+      // B carries its own factor: the login answers a challenge (#760) from
+      // B's ledger, not A's.
+      await signIn(jar, nextServingCode);
       const state = zStorageState.parse(JSON.parse(readFileSync(STORAGE_STATE, 'utf8')));
       const kept = state.cookies.filter(
         (cookie) => cookie.domain !== HOST_B && cookie.domain !== `.${HOST_B}`,
