@@ -100,11 +100,7 @@ func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 		return true, 1
 	}
 
-	deadline := subprocessDeadline(spec, time.Now())
-	if !time.Now().Before(deadline) {
-		return true, subprocessExitTimeout
-	}
-	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	ctx, cancel := context.WithDeadline(context.Background(), subprocessDeadline(spec, time.Now()))
 	defer cancel()
 	commandArgs := append(append([]string{}, spec.Args...), args[1:]...)
 	cmd := exec.CommandContext(ctx, spec.Command, commandArgs...)
@@ -116,7 +112,16 @@ func RunInternalSubprocess(args []string, stdout io.Writer) (bool, int) {
 	tree := prepareProcessTree(cmd)
 	cmd.WaitDelay = subprocessWaitDelay
 	pipe, err := cmd.StdoutPipe()
-	if err != nil || cmd.Start() != nil {
+	if err != nil {
+		return true, 1
+	}
+	if err := cmd.Start(); err != nil {
+		// exec refuses to start under a done context: the deadline lapsed
+		// before the helper ran (possibly already at entry), which is the
+		// bound, not a helper failure.
+		if ctx.Err() != nil {
+			return true, subprocessExitTimeout
+		}
 		return true, 1
 	}
 	if err := tree.adopt(); err != nil {
