@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
 
+import { installMemoryStorage } from '../testkit/storage.ts';
 import { Login } from './Login.tsx';
 
 function mount(container: HTMLElement) {
@@ -121,8 +122,8 @@ beforeEach(() => {
   mocks.passkeysAvailable = false;
   mocks.methods.data.signup_paused = false;
   // The remembered way in is per-browser state; a test that starts a leg
-  // leaves it behind for the next one unless it is cleared here.
-  globalThis.localStorage.clear();
+  // would leave it behind for the next one, so each gets a fresh store.
+  installMemoryStorage();
 });
 
 afterEach(() => vi.unstubAllGlobals());
