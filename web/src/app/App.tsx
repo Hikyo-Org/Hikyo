@@ -21,6 +21,9 @@ const Login = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.Lo
 const EstablishCredential = lazy(() =>
   loadAuthRoutes().then((routes) => ({ default: routes.EstablishCredential })),
 );
+const EnrolmentGate = lazy(() =>
+  loadAuthRoutes().then((routes) => ({ default: routes.EnrolmentGate })),
+);
 const CLIReauth = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.CLIReauth })));
 const OIDCDone = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.OIDCDone })));
 const WorkspaceApprove = lazy(() => loadAuthRoutes().then((routes) => ({ default: routes.WorkspaceApprove })));
@@ -191,6 +194,16 @@ export function App() {
           {anonymousSurfaces.map((surface) => (
             <Route key={surface.id} path={surface.path} element={ELEMENTS[surface.id]} />
           ))}
+          <Route path="*" element={<Navigate to={surfaceById('login').path} replace />} />
+        </Routes>
+      ) : live.enrolment_required === true ? (
+        // The enrolment gate (#785): a session minted for an unenrolled account
+        // under a `required` policy reaches nothing but enrolment until a factor
+        // stands, so `/login` renders the gate and every other path lands there.
+        // The reissued session after enrolment carries no flag and this branch
+        // falls away on its own.
+        <Routes>
+          <Route path={surfaceById('login').path} element={withRouteFallback(<EnrolmentGate />)} />
           <Route path="*" element={<Navigate to={surfaceById('login').path} replace />} />
         </Routes>
       ) : (

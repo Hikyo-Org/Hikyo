@@ -3,10 +3,16 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 
 import { useAuthMethods } from '../api/account.ts';
-import { parsed } from '../api/client.ts';
+import { ApiError, parsed } from '../api/client.ts';
 import { useSensitiveMutation } from '../api/sensitiveMutation.ts';
 import { loginFailureText, useLogin, useLoginChallengeTotp, useOIDCLogin } from '../api/session.ts';
-import { passkeyFailureText, passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
+import {
+  passkeyFailureText,
+  passkeysAvailable,
+  stepUpFailureText,
+  useLoginChallengePasskey,
+  usePasskeyLogin,
+} from '../api/stepup.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { LoginForm, type SignInBusy } from '../ui/auth/LoginForm.tsx';
 import { SecondFactorChallenge } from '../ui/auth/SecondFactorChallenge.tsx';
@@ -37,6 +43,18 @@ function useSAMLLogin() {
   });
 }
 
+/**
+ * A challenge refusal reads like the factor's own refusal (`otherwise`),
+ * except the 404: the challenge is single-use and expiring, so a missing one
+ * means this sign-in is over.
+ */
+function challengeFailureText(error: unknown, otherwise: (error: unknown) => string): string {
+  if (error instanceof ApiError && error.status === 404) {
+    return 'This sign-in expired or was already completed. Reload the page and sign in again.';
+  }
+  return otherwise(error);
+}
+
 export function Login() {
   const login = useLogin();
   const passkey = usePasskeyLogin();
@@ -46,15 +64,15 @@ export function Login() {
   // A password login on an account with an enrolled factor answers a challenge,
   // not a session (#760): the route then presents the second factor. The
   // sensitive-mutation surface retains no result, so the challenge is captured
-  // from the mutate callback into route state. The whoami-driven `/login` gate
-  // and the enrolment setup step land with the migration series (#785); this is
-  // the password-then-factor hop only.
+  // from the mutate callback into route state. Either enrolled factor finishes
+  // it (#785); the enrolment gate for an account with none is EnrolmentGate.
   const [challenge, setChallenge] = useState<{
     id: string;
     factors: string[];
     username: string;
   } | null>(null);
   const challengeTotp = useLoginChallengeTotp(challenge?.id ?? '');
+  const challengePasskey = useLoginChallengePasskey(challenge?.id ?? '');
   // The provider being contacted, so only ITS button shows the busy label.
   const [contacting, setContacting] = useState<string | null>(null);
   // The kind discriminator is open (zIdentityProviderKind is a string), so the
@@ -94,18 +112,33 @@ export function Login() {
         : null;
 
   if (challenge !== null) {
+    // One refusal slot again: presenting either factor retires the other's.
+    const retireChallengeLegs = () => {
+      challengeTotp.reset();
+      challengePasskey.reset();
+    };
     return (
       <main className="login">
         <SecondFactorChallenge
           username={challenge.username}
           totp={challenge.factors.includes('totp')}
-          /* The passkey-as-second-factor button lands with the /login gate
-             (#785); the authenticator code is the hop this change wires. */
-          passkey={false}
-          busy={challengeTotp.isPending ? 'code' : null}
-          error={challengeTotp.isError ? stepUpFailureText(challengeTotp.error) : null}
-          onCode={(code) => challengeTotp.mutate(code)}
-          onPasskey={() => undefined}
+          passkey={challenge.factors.includes('webauthn') && passkeysAvailable()}
+          busy={challengeTotp.isPending ? 'code' : challengePasskey.isPending ? 'passkey' : null}
+          error={
+            challengeTotp.isError
+              ? challengeFailureText(challengeTotp.error, stepUpFailureText)
+              : challengePasskey.isError
+                ? challengeFailureText(challengePasskey.error, passkeyFailureText)
+                : null
+          }
+          onCode={(code) => {
+            retireChallengeLegs();
+            challengeTotp.mutate(code);
+          }}
+          onPasskey={() => {
+            retireChallengeLegs();
+            challengePasskey.mutate();
+          }}
         />
       </main>
     );

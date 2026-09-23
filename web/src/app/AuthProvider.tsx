@@ -155,6 +155,8 @@ function identityVersion(identity: WhoAmI | null): string | null {
     // treat a mid-session grant/revoke as no-op and leave the operator chrome
     // (all gated on this) stale until a blocking revalidate.
     String(identity.capabilities.instance_operator),
+    // The enrolment gate lifting (or landing) re-routes the whole app (#785).
+    String(identity.enrolment_required === true),
     ...identity.session.assurance.factors,
   ].join('\u001f');
 }
@@ -204,7 +206,20 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
   }, []);
 
   const settleIdentity = useCallback(
-    (identity: WhoAmI | null, publish: boolean, expectedRotation?: ExpectedSessionRotation, invalidateQueries = true) => {
+    (
+      identity: WhoAmI | null,
+      publish: boolean,
+      {
+        expectedRotation,
+        invalidateQueries = true,
+        awaitWhoami = false,
+      }: {
+        readonly expectedRotation?: ExpectedSessionRotation;
+        readonly invalidateQueries?: boolean;
+        /** Bind the identity but keep painting nothing until whoami answers. */
+        readonly awaitWhoami?: boolean;
+      } = {},
+    ) => {
       const current = snapshotRef.current;
       const sameSession =
         identity !== null &&
@@ -237,7 +252,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       if (sameOwner) {
         commit({
           ...current,
-          state: stateFor(identity),
+          state: awaitWhoami ? { status: 'transitioning' } : stateFor(identity),
           identity,
           failure: null,
           degraded: null,
@@ -248,7 +263,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
         const fresh = destroySessionCache(current);
         flushSync(() => commit({
           ...fresh,
-          state: stateFor(identity),
+          state: awaitWhoami ? { status: 'transitioning' } : stateFor(identity),
           identity,
           failure: null,
           degraded: null,
@@ -296,7 +311,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       try {
         const identity = await readIdentity(signal);
         if (mountedRef.current && requestRef.current === request) {
-          settleIdentity(identity, publish, expectedRotation, signal === undefined);
+          settleIdentity(identity, publish, { expectedRotation, invalidateQueries: signal === undefined });
         } else if (signal !== undefined) {
           // Runtime recovery needs a verified current answer, not merely a
           // completed request that lost authority to another session check.
@@ -478,10 +493,14 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
           identity.principal.id !== current.identity.principal.id ||
           identity.session.id !== current.identity.session.id || identity.session.artifact !== 'browser') return false;
       verifiedRemintRef.current = null;
+      // whoami already proved this remint, so its whoami-only fields carry
+      // over; a dropped `enrolment_required` would paint the shell over the
+      // gate (#785).
       const hydrated: WhoAmI = {
         session: identity.session,
         principal: identity.principal,
         capabilities: current.identity.capabilities,
+        enrolment_required: current.identity.enrolment_required,
       };
       const accepted = transferSensitiveState(transfer, current.queries, {
         sessionId: identity.session.id, principalId: identity.principal.id,
@@ -518,17 +537,25 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       const request = requestRef.current + 1;
       requestRef.current = request;
       const current = snapshotRef.current;
+      // A sign-in result also lacks `enrolment_required` (#785), and painting
+      // the shell before whoami says whether the session is gated would fire
+      // every surface's reads into the server's enrolment refusal. So a session
+      // established from anonymous stays on "Loading…" for that one round trip;
+      // a step-up of a live session keeps painting and refreshes quietly.
+      const awaitWhoami = hydrateCapabilities && current.identity === null;
       commit({ ...current, state: { status: 'transitioning' }, failure: null });
       queueMicrotask(() => {
         if (mountedRef.current && requestRef.current === request) {
-          settleIdentity(hydrated, true);
-          if (hydrateCapabilities) {
+          settleIdentity(hydrated, true, { awaitWhoami });
+          if (awaitWhoami) {
+            void checkSession('blocking');
+          } else if (hydrateCapabilities) {
             void refreshSession();
           }
         }
       });
     },
-    [commit, reconcileTransition, refreshSession, settleIdentity],
+    [checkSession, commit, reconcileTransition, refreshSession, settleIdentity],
   );
 
   const endSession = useCallback(

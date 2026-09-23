@@ -1,5 +1,7 @@
 import { assertSessionEpoch, captureSessionEpoch } from './sessionEpoch.ts';
 import {
+  loginChallengeWebauthnFinishOp,
+  loginChallengeWebauthnStartOp,
   passkeyLoginFinishOp,
   passkeyLoginStartOp,
   stepUpPasskeyFinishOp,
@@ -133,6 +135,35 @@ export function usePasskeyLogin() {
       const body = await assert(options);
       assertSessionEpoch(epoch);
       const result = await parsed(passkeyLoginFinishOp, { body });
+      if (result.session.artifact === 'browser' && result.session_token !== undefined) {
+        throw new Error('the server returned a browser session token in the response body');
+      }
+      return result;
+    },
+    onSuccess: (identity, _input, guard) => {
+      if (guard === undefined) throw new Error('Missing session transition guard.');
+      auth.acceptSession(identity, guard);
+    },
+  });
+}
+
+/**
+ * useLoginChallengePasskey presents a passkey as the SECOND factor of a password
+ * sign-in (#785): the challenge names the account, so the assertion is
+ * account-bound, and the session it mints records `webauthn` beside `password`.
+ * Same ceremony shape as usePasskeyLogin, against the challenge's endpoints.
+ */
+export function useLoginChallengePasskey(challengeId: string) {
+  const auth = useAuth();
+  return useSensitiveMutation({
+    onMutate: auth.captureTransition,
+    mutationFn: async () => {
+      const epoch = captureSessionEpoch();
+      const path = { challenge: challengeId };
+      const options = await parsed(loginChallengeWebauthnStartOp, { path });
+      const body = await assert(options);
+      assertSessionEpoch(epoch);
+      const result = await parsed(loginChallengeWebauthnFinishOp, { path, body });
       if (result.session.artifact === 'browser' && result.session_token !== undefined) {
         throw new Error('the server returned a browser session token in the response body');
       }

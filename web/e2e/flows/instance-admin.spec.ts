@@ -29,6 +29,7 @@ import {
   INSTANCE_GRANT_TARGET,
   nextTotpCode,
   OIDC_PROVIDER,
+  passEnrolmentGate,
   readSeed,
   readServing,
   STORAGE_STATE,
@@ -773,10 +774,12 @@ test.describe('instance administration', () => {
     // password-only browser session — its login answers a second-factor
     // challenge — so this invites a fresh instance operator (the `operator`
     // template's instance authority, no factor) and signs in as it. Under the
-    // suite's `optional` policy an unenrolled account logs straight in at
-    // password assurance, so each MFA-mandatory panel refuses it with the
-    // step-up gate (grant held, assurance short) rather than a plain forbidden —
-    // exactly the state this flow exists to prove. The invitation runs on the
+    // product-default `required` policy that account lands on the enrolment
+    // gate (#785); enrolling an authenticator there reissues the session at
+    // PASSWORD assurance (a factor enrolled is not a factor presented), so each
+    // MFA-mandatory panel refuses it with the step-up gate (grant held,
+    // assurance short) rather than a plain forbidden: exactly the state this
+    // flow exists to prove. The invitation runs on the
     // describe's stepped-up admin session (`manage-members` is itself MFA-mandatory).
     const suffix = `${testInfo.project.name}-${Date.now()}`.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
     const username = `weak-operator-${suffix}`;
@@ -805,6 +808,7 @@ test.describe('instance administration', () => {
       await operatorPage.getByLabel('Username').fill(username);
       await operatorPage.getByLabel('Password').fill(password);
       await operatorPage.getByRole('button', { name: 'Sign in' }).click();
+      await passEnrolmentGate(operatorPage, password);
       // The account entry is shell chrome that renders even for an operator with
       // no organisations of its own, so it is the honest "signed in" settle point.
       await expect(operatorPage.getByRole('button', { name: `Account: ${displayName}` })).toBeVisible();

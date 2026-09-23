@@ -14,6 +14,26 @@ import (
 	"time"
 )
 
+// A deadline that expires before the helper starts is a deadline, not a
+// failure: exec refuses to start under a done context, and that refusal must
+// map to the timeout exit. On a loaded runner the deadline can lapse between
+// any earlier "still in time" check and Start, which is the race this pins.
+func TestSubprocessDeadlineLapsedBeforeStartIsATimeout(t *testing.T) {
+	spec := subprocessSpec{
+		Command: "/bin/sh", Args: []string{"-c", "exit 0"},
+		MaxBytes: 1024, RunDeadlineUnixNano: time.Now().Add(-time.Second).UnixNano(),
+	}
+	encoded, err := encodeSubprocessSpec(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(subprocessSpecEnv, encoded)
+	handled, code := RunInternalSubprocess([]string{internalSubprocessMode}, io.Discard)
+	if !handled || code != subprocessExitTimeout {
+		t.Fatalf("handled=%v code=%d, want timeout exit %d", handled, code, subprocessExitTimeout)
+	}
+}
+
 // A helper that forks a grandchild and outlives the deadline must take the
 // grandchild down with it: the timeout kills the whole process group, not
 // just the direct child.

@@ -38,6 +38,7 @@ type Mocks = {
   oidc: LegMock;
   passkey: LegMock;
   challengeTotp: LegMock;
+  challengePasskey: LegMock;
   methods: {
     data: {
       local_login_enabled: boolean;
@@ -55,6 +56,7 @@ const mocks = vi.hoisted((): Mocks => ({
   oidc: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
   passkey: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
   challengeTotp: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
+  challengePasskey: { mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null },
   methods: {
     data: {
       local_login_enabled: true,
@@ -86,6 +88,7 @@ vi.mock('../api/stepup.ts', () => ({
   passkeysAvailable: () => mocks.passkeysAvailable,
   passkeyFailureText: () => 'Passkey failed.',
   stepUpFailureText: () => 'Code failed.',
+  useLoginChallengePasskey: () => mocks.challengePasskey,
   usePasskeyLogin: () => mocks.passkey,
 }));
 
@@ -93,6 +96,11 @@ beforeEach(() => {
   mocks.login.mutate.mockReset();
   mocks.oidc.mutate.mockReset();
   mocks.passkey.mutate.mockReset();
+  mocks.challengeTotp.mutate.mockReset();
+  mocks.challengePasskey.mutate.mockReset();
+  mocks.challengeTotp.isError = false;
+  mocks.challengePasskey.isError = false;
+  mocks.challengePasskey.isPending = false;
   mocks.methods.refetch.mockReset();
   mocks.login.reset.mockReset();
   mocks.oidc.reset.mockReset();
@@ -317,5 +325,78 @@ it('clears a SAML refusal when an OIDC attempt starts', async () => {
 
   expect(mocks.oidc.mutate).toHaveBeenCalledWith('strict');
   expect(container.querySelector('.login__card [role="alert"]')).toBeNull();
+  await unmount();
+});
+
+/** Submit the password form and answer it with a #760 login challenge. */
+async function answerWithChallenge(container: HTMLElement, factors: string[]) {
+  mocks.login.mutate.mockImplementation(
+    (_credentials: unknown, callbacks: { onSuccess: (outcome: unknown) => void }) =>
+      callbacks.onSuccess({
+        kind: 'challenge',
+        challenge: { challenge_id: 'lch_1', expires_at: '2026-09-23T00:05:00Z', factors },
+        username: 'alex',
+      }),
+  );
+  const form = container.querySelector('form');
+  await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+}
+
+const buttonNamed = (container: HTMLElement, text: string) =>
+  [...container.querySelectorAll('button')].find((button) => button.textContent === text);
+
+it('presents a passkey as the second factor when one is enrolled and the platform can assert', async () => {
+  mocks.passkeysAvailable = true;
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  await answerWithChallenge(container, ['totp', 'webauthn']);
+
+  expect(container.textContent).toContain('Present your second factor');
+  const passkey = buttonNamed(container, 'Use a passkey');
+  expect(passkey).toBeDefined();
+  await act(async () => passkey?.click());
+  expect(mocks.challengeTotp.reset).toHaveBeenCalled();
+  expect(mocks.challengePasskey.mutate).toHaveBeenCalled();
+  await unmount();
+});
+
+it('offers no passkey button when the challenge does not accept one', async () => {
+  mocks.passkeysAvailable = true;
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  await answerWithChallenge(container, ['totp']);
+
+  expect(container.textContent).toContain('Present your second factor');
+  expect(buttonNamed(container, 'Use a passkey')).toBeUndefined();
+  await unmount();
+});
+
+it('shows the passkey leg refusal in the challenge slot', async () => {
+  mocks.passkeysAvailable = true;
+  mocks.challengePasskey.isError = true;
+  mocks.challengePasskey.error = new Error('dismissed');
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  await answerWithChallenge(container, ['webauthn']);
+
+  expect(container.querySelector('.login__card [role="alert"]')?.textContent).toContain('Passkey failed.');
+  await unmount();
+});
+
+it('names an expired challenge instead of a server error', async () => {
+  const { ApiError } = await import('../api/client.ts');
+  mocks.challengeTotp.isError = true;
+  mocks.challengeTotp.error = new ApiError(404, 'not found');
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  await answerWithChallenge(container, ['totp']);
+
+  expect(container.querySelector('.login__card [role="alert"]')?.textContent).toContain(
+    'This sign-in expired or was already completed.',
+  );
   await unmount();
 });

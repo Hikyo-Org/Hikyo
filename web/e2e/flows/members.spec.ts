@@ -10,9 +10,14 @@ import {
   ADMIN,
   BASE_URL,
   nextTotpCode,
+  passEnrolmentGate,
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { totpCode } from '../fixtures/seed.ts';
+
+/** One TOTP time step: a code for `now + step` is the next step's, inside the skew window. */
+const TOTP_PERIOD_MS = 30_000;
 import { surfacesForFlow } from '../registry.ts';
 
 /**
@@ -486,12 +491,15 @@ test.describe('members and grants', () => {
         await invitee.getByLabel('Username').fill(username);
         await invitee.getByLabel('Password').fill(password);
         await invitee.getByRole('button', { name: 'Sign in' }).click();
-        await expect(invitee.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
       };
+      // The invitee has no factor, so under the product-default `required`
+      // policy its first sign-in lands on the enrolment gate (#785).
 
       await establish(authority, firstPassword);
       await expect(invitee.getByRole('heading', { name: 'Credential established' })).toBeVisible();
       await signIn(firstPassword);
+      const otpauth = await passEnrolmentGate(invitee, firstPassword);
+      await expect(invitee.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
 
       // A real viewer can read project metadata without being offered manager
       // policy mutations or typed-name deletion. The signal comes from the API.
@@ -525,6 +533,14 @@ test.describe('members and grants', () => {
       await establish(resetAuthority, secondPassword);
       await expect(invitee.getByRole('heading', { name: 'Credential established' })).toBeVisible();
       await signIn(secondPassword);
+      // A credential reset replaces the password, not the factor enrolled at
+      // the gate: the sign-in answers that factor's challenge. The gate's
+      // confirm spent its time step, so present the next step's code, which the
+      // skew window already accepts.
+      await expect(invitee.getByRole('heading', { name: 'Present your second factor' })).toBeVisible();
+      await invitee.getByLabel('Authenticator code').fill(totpCode(otpauth, new Date(Date.now() + TOTP_PERIOD_MS)));
+      await invitee.getByRole('button', { name: 'Present code' }).click();
+      await expect(invitee.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
     } finally {
       await fresh.close();
     }
