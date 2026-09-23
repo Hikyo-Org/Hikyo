@@ -1717,6 +1717,12 @@
   },
   {
     "engine": "postgres",
+    "name": "PurgeDeliveryTargetReport",
+    "annotation": "instance-scoped",
+    "hash": "8377f6d8459f6bd35db9df71b5a2c8592f4c2c34e521300f02b1bd16d5b4b65a"
+  },
+  {
+    "engine": "postgres",
     "name": "PutSelfConfigNode",
     "annotation": "instance-scoped",
     "hash": "3391c221f943f1719fedecb0ec91918013b339ad533ea834496d40492609f698"
@@ -1894,6 +1900,12 @@
     "name": "SelectExpiredApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "896064f8657efa87226742640506e246641372ce1425156e3f7ac1e2ad3d5d13"
+  },
+  {
+    "engine": "postgres",
+    "name": "SelectExpiredDeliveryTargetReports",
+    "annotation": "instance-scoped",
+    "hash": "89512acb7b7fe4889f5057b32615287163594609ccaa64c5d63a7a08371b4b72"
   },
   {
     "engine": "postgres",
@@ -3817,6 +3829,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "PurgeDeliveryTargetReport",
+    "annotation": "instance-scoped",
+    "hash": "40a1e1350b990edc9e745d998d873b0365fde154b334881fb86eb40dae14c69e"
+  },
+  {
+    "engine": "sqlite",
     "name": "PutSelfConfigNode",
     "annotation": "instance-scoped",
     "hash": "3391c221f943f1719fedecb0ec91918013b339ad533ea834496d40492609f698"
@@ -3994,6 +4012,12 @@
     "name": "SelectExpiredApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "40062b1fa416bebf73b53261fcbc18accb98220557ddf471cd5a59ddb410b727"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SelectExpiredDeliveryTargetReports",
+    "annotation": "instance-scoped",
+    "hash": "798618739719b531120e33fcf49a352a940fab8a85f61ef653a5050827139f2d"
   },
   {
     "engine": "sqlite",

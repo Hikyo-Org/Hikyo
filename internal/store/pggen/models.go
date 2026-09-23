@@ -441,6 +441,39 @@ type DefinitionsPlan struct {
 	ScanSnapshot       string
 }
 
+type DeliveryTargetQuotaNotice struct {
+	PrincipalID string
+	OrgID       string
+	ProjectID   string
+	RefusedAt   pgtype.Timestamptz
+}
+
+type DeliveryTargetReport struct {
+	ID                    string
+	OrgID                 string
+	ProjectID             string
+	EnvironmentID         string
+	PrincipalID           string
+	ClusterID             string
+	InstanceUid           string
+	TargetUid             string
+	Namespace             string
+	Name                  string
+	Vocabulary            int32
+	Generation            int64
+	ObservedGeneration    int64
+	ReportedAt            pgtype.Timestamptz
+	ReceivedAt            pgtype.Timestamptz
+	ReportIntervalSeconds int32
+	Lifecycle             string
+	Conditions            string
+	Reporter              string
+	ReporterVersion       string
+	RefusalCause          pgtype.Text
+	RefusedAt             pgtype.Timestamptz
+	CreatedAt             pgtype.Timestamptz
+}
+
 type DynamicEffect struct {
 	ID             string
 	OrgID          string

@@ -1285,6 +1285,11 @@ func checkPrincipalClass(class domain.PrincipalClass, capability domain.Capabili
 		return fmt.Errorf("%w: %q", ErrSystemCreatedOnly, capability)
 	}
 	if class == domain.ClassHuman {
+		if capability == domain.CapReportDeliveryStatus {
+			// Workload-only (condition-reporting ADR D1): a human never
+			// reports a delivery target.
+			return fmt.Errorf("%w: class %q may not hold %q", ErrMachineCapability, class, capability)
+		}
 		// `instance-directory` is deliberately NOT refused here. It is the
 		// multi-instance ADR's own grantable atom for the viewing side — "on a
 		// multi-user install the admin grants the hop to exactly the humans who

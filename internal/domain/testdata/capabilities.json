@@ -16,6 +16,7 @@
     { "id": "publish", "deepest": "environment" },
     { "id": "read", "deepest": "environment" },
     { "id": "reencrypt", "deepest": "instance" },
+    { "id": "report-delivery-status", "deepest": "environment" },
     { "id": "restore", "deepest": "instance" },
     { "id": "reveal", "deepest": "environment" },
     { "id": "reveal-history", "deepest": "environment" },

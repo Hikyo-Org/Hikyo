@@ -608,6 +608,13 @@ const (
 	// delivered nothing — never aggregated, never a counter, never a mutable
 	// last-seen field.
 	EventDeliveryFetched EventType = "identity.delivery_fetched"
+	// Delivery-target condition reporting (#788, k8s-condition-reporting ADR
+	// D8): a new row, a tombstone, a purge and each refused report. An
+	// accepted repeat report emits nothing.
+	EventDeliveryTargetCreated    EventType = "identity.delivery_target_created"
+	EventDeliveryTargetTombstoned EventType = "identity.delivery_target_tombstoned"
+	EventDeliveryTargetPurged     EventType = "identity.delivery_target_purged"
+	EventDeliveryTargetRefused    EventType = "identity.delivery_target_refused"
 	// identity.offline_records_reconciled is one access-class envelope per
 	// reconciliation call; per-key disclosures remain separate immutable events.
 	EventOfflineRecordsReconciled EventType = "identity.offline_records_reconciled"
@@ -2790,6 +2797,62 @@ var registry = map[EventType]TypeSpec{
 			"origin":     {Kind: KindString, Required: true},
 			"stage":      {Kind: KindString, Required: true, Enum: []string{"start", "callback", "redeem"}},
 			"cause":      {Kind: KindString, Required: true}, // by class, never by detail
+		},
+	},
+	EventDeliveryTargetCreated: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"target_id":     {Kind: KindString, Required: true},
+			"cluster_id":    {Kind: KindString, Required: true, MaxBytes: 36},
+			"instance_uid":  {Kind: KindString, Required: true, MaxBytes: 36},
+			"target_uid":    {Kind: KindString, Required: true, MaxBytes: 36},
+			"namespace":     {Kind: KindString, Required: true, MaxBytes: 63},
+			"name":          {Kind: KindString, Required: true, MaxBytes: 253},
+			"reporter":      {Kind: KindString, Required: true, Enum: []string{"kubernetes-operator"}},
+			"vocabulary":    {Kind: KindInt, Required: true, AtLeast: 1},
+			"credential_id": {Kind: KindString, Required: true},
+			"scope":         {Kind: KindString, Required: true},
+		},
+	},
+	EventDeliveryTargetTombstoned: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"target_id":     {Kind: KindString, Required: true},
+			"credential_id": {Kind: KindString, Required: true},
+			"scope":         {Kind: KindString, Required: true},
+		},
+	},
+	EventDeliveryTargetPurged: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"target_id":        {Kind: KindString, Required: true},
+			"principal_id":     {Kind: KindString, Required: true},
+			"last_received_at": {Kind: KindString, Required: true},
+		},
+	},
+	EventDeliveryTargetRefused: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeDenied: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			// The closed refusal cause; never the refused value.
+			"cause": {Kind: KindString, Required: true, Enum: []string{"authorization", "ordering", "quota", "size", "vocabulary"}},
+			// The JSON member a vocabulary refusal names.
+			"field": {Kind: KindString, MaxBytes: 64},
+			// Present only when the refusal is tied to an existing row.
+			"target_id":     {Kind: KindString},
+			"credential_id": {Kind: KindString, Required: true},
+			"scope":         {Kind: KindString, Required: true},
 		},
 	},
 	EventDeliveryFetched: {

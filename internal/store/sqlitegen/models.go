@@ -439,6 +439,39 @@ type DefinitionsPlan struct {
 	ScanSnapshot       string
 }
 
+type DeliveryTargetQuotaNotice struct {
+	PrincipalID string
+	OrgID       string
+	ProjectID   string
+	RefusedAt   string
+}
+
+type DeliveryTargetReport struct {
+	ID                    string
+	OrgID                 string
+	ProjectID             string
+	EnvironmentID         string
+	PrincipalID           string
+	ClusterID             string
+	InstanceUid           string
+	TargetUid             string
+	Namespace             string
+	Name                  string
+	Vocabulary            int64
+	Generation            int64
+	ObservedGeneration    int64
+	ReportedAt            string
+	ReceivedAt            string
+	ReportIntervalSeconds int64
+	Lifecycle             string
+	Conditions            string
+	Reporter              string
+	ReporterVersion       string
+	RefusalCause          sql.NullString
+	RefusedAt             sql.NullString
+	CreatedAt             string
+}
+
 type DynamicEffect struct {
 	ID             string
 	OrgID          string

@@ -130,7 +130,8 @@ type PrincipalClass string
 
 const (
 	ClassHuman PrincipalClass = "human"
-	// ClassWorkload — read-only delivery credentials.
+	// ClassWorkload — delivery credentials: read, plus the value-free
+	// delivery-target status report.
 	ClassWorkload PrincipalClass = "workload"
 	// ClassAutomation — CI `apply` credentials.
 	ClassAutomation PrincipalClass = "automation"
@@ -230,7 +231,10 @@ const (
 // pin requires historical delivery. Keeping both conditions live avoids
 // turning either disclosure atom into a standing class capability.
 var machineAllowlists = map[PrincipalClass]map[Capability]bool{
-	ClassWorkload: {CapRead: true},
+	// `report-delivery-status` is the condition-reporting ADR's declared
+	// amendment: the one machine write a workload may hold, and it writes no
+	// value, definition or grant.
+	ClassWorkload: {CapRead: true, CapReportDeliveryStatus: true},
 	ClassAutomation: {
 		CapRead: true, CapEdit: true, CapPublish: true, CapDefinitionsEdit: true,
 	},

@@ -458,6 +458,8 @@ type Repos interface {
 	// inside the publish transaction, and every read runs beside its own
 	// lifecycle event, so a read-only twin would have no caller.
 	Approvals() ApprovalRepo
+	// DeliveryTargets is the delivery-target condition-report surface (#788).
+	DeliveryTargets() DeliveryTargetRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,
@@ -506,6 +508,7 @@ type ReadRepos interface {
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
 	Definitions() DefinitionsReader
+	DeliveryTargets() DeliveryTargetReader
 }
 
 // DefinitionsPlan is a stored plan row (#70). Bundle holds the canonical bundle
