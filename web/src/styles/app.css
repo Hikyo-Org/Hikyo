@@ -6663,3 +6663,7 @@ label.chk:has(input:disabled) {
 }
 
 .self-config-plan { overflow-wrap: anywhere; }
+
+.instance-org-filter {
+  max-width: 24rem;
+}

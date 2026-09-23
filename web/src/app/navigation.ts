@@ -91,6 +91,17 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'public',
     chrome: 'none',
   },
+  // The sign-up door (#607): the login page opened on "Create an account",
+  // for the instance or, with `?org=<id>`, one org's registration policy
+  // (the link the Members panel hands out). Public and chromeless like login.
+  {
+    id: 'signup',
+    path: '/signup',
+    label: 'Create an account',
+    section: null,
+    mode: 'public',
+    chrome: 'none',
+  },
   // Credential establishment (#568): where an invitee, or the target of a
   // credential reset, turns a display-once authority into a password. Public
   // and chromeless like login, the holder has no session yet, and reached

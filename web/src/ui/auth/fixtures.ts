@@ -16,7 +16,8 @@ export const codesStep: SetupStep = {
 /**
  * The instance-enabled providers the prototype (social-signin/2) draws:
  * Google, one Entra row per tenant (#588 d1), GitHub, and a generic OIDC row.
- * `brand` is a story-side fact: the wire carries no brand yet.
+ * Google's and Entra's `brand` are what `GET /auth/methods` derives from the
+ * pinned issuer (#607); GitHub's is story-side until the OAuth2 kind (#609).
  */
 export const google: LoginProvider = { slug: 'google', display_name: 'Google', kind: 'oidc', brand: 'google' };
 export const contoso: LoginProvider = { slug: 'contoso', display_name: 'Contoso', kind: 'oidc', brand: 'microsoft' };

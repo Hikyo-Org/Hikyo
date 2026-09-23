@@ -8,7 +8,7 @@ import {
   expectStatusIsTextAndAria,
   measureSurfaceLuminance,
 } from '../fixtures/assertions.ts';
-import { zAuthMethods, zRegistrationPolicy } from '@hikyo/zod';
+import { zAuthMethods, zOrgList, zRegistrationPolicy } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { browserApi, fixtureApiCall, fixtureBearer } from '../fixtures/api.ts';
@@ -47,20 +47,51 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
   // Password row is matched by prefix: after a sign-in its name carries the
   // "Last used" badge.
   const card = page.locator('.login__card');
-  await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
-  await expect(page.getByText('Choose how you sign in.')).toBeVisible();
-  await expect(card.getByRole('button', { name: /^Password\b/ })).toBeVisible();
+  const heading = page.getByRole('heading', { name: 'Sign in to Hikyo' });
+  const lede = page.getByText('Choose how you sign in.');
+  const passwordRow = card.getByRole('button', { name: /^Password\b/ });
+  const provider = card.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` });
+  await expect(heading).toBeVisible();
+  await expect(lede).toBeVisible();
+  await expect(passwordRow).toBeVisible();
   await expect(card.getByRole('button', { name: 'Passkey', exact: true })).toBeVisible();
+  await expect(provider).toBeVisible();
   await expect(card.getByLabel('Username')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Create an account' })).toHaveCount(0);
-  await expectNoSeriousAxeViolations(page);
 
-  await card.getByRole('button', { name: /^Password\b/ }).click();
+  await expectPinnedAssertionSet(page, {
+    flow: 'login',
+    surface: 'login',
+    theme,
+    text: [heading, lede],
+    radii: [
+      [card, 'container'],
+      [passwordRow, 'control'],
+      [provider, 'control'],
+    ],
+    fonts: [
+      [heading, 'ui'],
+      [lede, 'ui'],
+    ],
+    colours: [
+      [heading, 'color', '--tx'],
+      [lede, 'color', '--tx-dim'],
+      [card, 'backgroundColor', '--bg-raise'],
+      [card, 'borderTopColor', '--line'],
+      // A generic provider row is the house secondary button.
+      [provider, 'backgroundColor', '--bg-panel'],
+    ],
+    hairlines: [card, provider],
+    density: [[passwordRow, '--touch'], [provider, '--touch']],
+  });
+
+  // Step two: only the chosen method's form.
+  await passwordRow.click();
   const submit = page.getByRole('button', { name: 'Sign in', exact: true });
   const username = page.getByLabel('Username');
   const password = page.getByLabel('Password');
-  const heading = page.getByRole('heading', { name: 'Sign in with a password' });
-  const lede = page.getByText('Use the credential you established');
+  const stepHeading = page.getByRole('heading', { name: 'Sign in with a password' });
+  const stepLede = page.getByText('Use the credential you established');
   // The way back is on the card, and it returns to the rows without a reload.
   await expect(card.getByRole('button', { name: 'Other ways to sign in' })).toBeVisible();
 
@@ -71,7 +102,7 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
     flow: 'login',
     surface: 'login',
     theme,
-    text: [heading, lede],
+    text: [stepHeading, stepLede],
     radii: [
       [card, 'container'],
       [submit, 'control'],
@@ -79,12 +110,12 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
       [password, 'control'],
     ],
     fonts: [
-      [heading, 'ui'],
-      [lede, 'ui'],
+      [stepHeading, 'ui'],
+      [stepLede, 'ui'],
     ],
     colours: [
-      [heading, 'color', '--tx'],
-      [lede, 'color', '--tx-dim'],
+      [stepHeading, 'color', '--tx'],
+      [stepLede, 'color', '--tx-dim'],
       [card, 'backgroundColor', '--bg-raise'],
       [card, 'borderTopColor', '--line'],
       [submit, 'backgroundColor', '--accent'],
@@ -715,5 +746,132 @@ test.describe('login', () => {
       await expectContrast(page, page.getByText('Use the credential you established'));
       await expectContrast(page, page.getByText('Username'));
     }
+  });
+});
+
+/**
+ * Flow: login, registry surface `signup` (#607): the staged entry's sign-up
+ * door, against real server state. An instance registration policy is opened
+ * over the API on the fixture provider (fresh-org landing), the door renders
+ * on `/login` and on `/signup`, the confirmation step names the provider and
+ * the landing, and the round-trip with a subject no account holds creates the
+ * account and its self-served org and lands signed in. Before the door opens,
+ * the same unknown subject on the sign-in door is refused: sign-in never
+ * creates an account (#604). The only interception is the fake IdP's
+ * authorize request, given a fresh subject the way a different person would
+ * bring one; the Hikyo server is never substituted.
+ */
+test.describe('sign-up door', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+  const policyPath = '/api/v1/instance/registration-policy';
+
+  /** Give the fake IdP's authorize request a subject no account holds. */
+  async function freshSubject(page: Page, subject: string) {
+    await page.route(/\/authorize\?/, async (route) => {
+      await route.continue({ url: `${route.request().url()}&sub=${encodeURIComponent(subject)}` });
+    });
+  }
+
+  test('opens only while registration is open, confirms, and lands a new account in its own org', async ({ page, browser }, testInfo) => {
+    testInfo.setTimeout(240_000);
+    const subject = `signup-${testInfo.project.name}-${Date.now().toString(36)}`;
+    const stepped = await fixtureApiCall(
+      await fixtureBearer('the sign-up door fixture'),
+      'POST',
+      '/api/v1/auth/totp/step-up',
+      z.object({ session_token: z.string() }),
+      { code: await nextTotpCode() },
+    );
+    const admin = stepped.session_token;
+    await freshSubject(page, subject);
+
+    // Closed: nothing hints at sign-up, and the sign-in door refuses an
+    // unknown identity instead of creating one.
+    await page.goto('/login');
+    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(page.getByText('New here?')).toHaveCount(0);
+    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+    await expect(page).toHaveURL(/error=unauthenticated/);
+    expect((await page.context().cookies()).find((c) => c.name === '__Host-hikyo')).toBeUndefined();
+
+    let created: string | undefined;
+    try {
+      await fixtureApiCall(admin, 'PUT', policyPath, zRegistrationPolicy, {
+        external: [{ provider: { kind: 'oidc', slug: OIDC_PROVIDER.slug } }],
+        landing: { kind: 'fresh-org', cap: 5 },
+        proof: await nextTotpCode(),
+      });
+
+      // The door on /login, and the pinned set on /signup in both schemes.
+      await page.goto('/login');
+      await page.getByRole('button', { name: 'Create an account' }).click();
+      await expect(page.getByRole('heading', { name: 'Create an account' })).toBeVisible();
+      for (const scheme of ['dark', 'light'] as const) {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.goto('/signup');
+        const card = page.locator('.login__card');
+        const heading = page.getByRole('heading', { name: 'Create an account' });
+        const landing = page.locator('.login__landing');
+        const provider = page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` });
+        await expect(landing).toHaveText('You’ll get your own organisation, with you as its first administrator.');
+        await expectPinnedAssertionSet(page, {
+          flow: 'login',
+          surface: 'signup',
+          theme: scheme,
+          text: [heading, landing],
+          radii: [[card, 'container'], [landing, 'container'], [provider, 'control']],
+          fonts: [[heading, 'ui'], [landing, 'ui']],
+          colours: [
+            [heading, 'color', '--tx'],
+            [landing, 'color', '--tx'],
+            [landing, 'borderTopColor', '--accent'],
+            [card, 'backgroundColor', '--bg-raise'],
+          ],
+          hairlines: [card, landing, provider],
+          density: [[provider, '--touch']],
+        });
+      }
+
+      // The confirmation step, then the real round-trip under `sign-up`.
+      await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+      await expect(page.getByRole('heading', { name: `Create an account with ${OIDC_PROVIDER.displayName}` })).toBeVisible();
+      await expect(page.locator('.login__card')).toContainText(
+        `This creates a new account. Already have one? Sign in with it first, then add ${OIDC_PROVIDER.displayName} under Settings › Security.`,
+      );
+      await page.getByRole('button', { name: `Continue to ${OIDC_PROVIDER.displayName}` }).click();
+      await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+      expect((await page.context().cookies()).find((c) => c.name === '__Host-hikyo')).toBeDefined();
+
+      // The self-served org the sign-up minted, on the operator's origin filter.
+      const selfServed = await fixtureApiCall(admin, 'GET', '/api/v1/orgs?origin=registration', zOrgList);
+      const minted = selfServed.items.filter((org) => org.origin === 'registration' && org.name === `org-${org.id}`);
+      expect(minted.length).toBeGreaterThan(0);
+      created = minted.at(-1)?.id;
+      const operator = await browser.newContext({ storageState: STORAGE_STATE });
+      try {
+        const operatorPage = await operator.newPage();
+        await operatorPage.goto('/instance');
+        const orgs = operatorPage.locator('#instance-orgs');
+        await orgs.getByLabel('Show').selectOption('registration');
+        await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toBeVisible();
+        await expect(orgs.getByText('self-serve').first()).toBeVisible();
+        await orgs.getByLabel('Show').selectOption('manual');
+        await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toHaveCount(0);
+      } finally {
+        await operator.close();
+      }
+    } finally {
+      if (created !== undefined) {
+        await fixtureApiCall(admin, 'DELETE', `/api/v1/orgs/${created}`, z.unknown()).catch(() => undefined);
+      }
+      await fixtureApiCall(admin, 'DELETE', policyPath, z.unknown(), { proof: await nextTotpCode() }).catch((error: unknown) => {
+        if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
+      });
+    }
+    // Closed again: the door is gone (a fresh, signed-out page).
+    await page.context().clearCookies();
+    await page.goto('/login');
+    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(page.getByText('New here?')).toHaveCount(0);
   });
 });

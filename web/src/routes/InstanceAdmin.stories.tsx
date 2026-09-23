@@ -26,9 +26,9 @@ const PANEL_URLS: readonly string[] = [
 const orgs = {
   count: 3,
   items: [
-    { id: 'org_123e4567-e89b-12d3-a456-426614174001', name: 'Acme', active: true, created_at: '2026-01-01T00:00:00Z' },
-    { id: 'org_123e4567-e89b-12d3-a456-426614174002', name: 'Globex Industrial Holdings (EMEA)', active: true, created_at: '2026-03-01T00:00:00Z' },
-    { id: 'org_123e4567-e89b-12d3-a456-426614174003', name: 'Initech', active: false, created_at: '2025-11-01T00:00:00Z' },
+    { id: 'org_123e4567-e89b-12d3-a456-426614174001', name: 'Acme', active: true, created_at: '2026-01-01T00:00:00Z', origin: 'manual' },
+    { id: 'org_123e4567-e89b-12d3-a456-426614174002', name: 'Globex Industrial Holdings (EMEA)', active: true, created_at: '2026-03-01T00:00:00Z', origin: 'registration' },
+    { id: 'org_123e4567-e89b-12d3-a456-426614174003', name: 'Initech', active: false, created_at: '2025-11-01T00:00:00Z', origin: 'manual' },
   ],
 } satisfies z.input<typeof zOrgList>;
 

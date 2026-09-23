@@ -11,12 +11,12 @@ export type SignInProvider = z.infer<typeof zAuthMethodProvider>;
 /**
  * The vendor whose brand rules the button follows. Absent for a generic OIDC
  * or SAML row, which reads "Continue with <display_name>" in the house style.
- * Not on the wire yet: `docs/spec/social-signin.md` section 3.1 pins only
- * `profile: [github]`, so the route offers no brand until #607/#609 decide.
+ * `GET /auth/methods` carries `google` and `microsoft`, derived server-side
+ * from the pinned issuer (#607); `github` arrives with the OAuth2 kind (#609).
  */
 export type ProviderBrand = 'google' | 'microsoft' | 'github';
 
-export type LoginProvider = SignInProvider & { brand?: ProviderBrand };
+export type LoginProvider = Omit<SignInProvider, 'brand'> & { brand?: ProviderBrand };
 
 /** Whether the row starts a sign-in or, from the sign-up door, a sign-up. */
 export type SignInIntent = 'sign-in' | 'sign-up';

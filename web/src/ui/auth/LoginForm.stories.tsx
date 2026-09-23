@@ -2,18 +2,17 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
 import { LoginForm, type LoginProvider, type SignupDoor } from './LoginForm.tsx';
-import { corp, github, google, socialProviders } from './fixtures.ts';
+import { contoso, corp, github, google, socialProviders } from './fixtures.ts';
 
 const providers: readonly LoginProvider[] = [
   { slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' },
   { slug: 'sso', display_name: 'SAML SSO', kind: 'saml' },
 ];
 
+const acmeLanding = "You'll join Acme Corp as Developer.";
+
 /** An org-scope policy (#579): Google, GitHub and one Entra tenant may sign up. */
-const orgDoor: SignupDoor = {
-  providers: ['google', 'github', 'contoso'],
-  landing: "You'll join Acme Corp as Developer.",
-};
+const orgDoor: SignupDoor = { providers: [google, github, contoso], landing: acmeLanding };
 
 const links = (
   <>
@@ -115,7 +114,7 @@ export const WaitingForPasskey: Story = {
 
 /** Only the provider being contacted wears the busy label; every control, the door included, is barred. */
 export const ContactingProvider: Story = {
-  args: { busy: { provider: 'corp' }, signup: { providers: ['corp'], landing: orgDoor.landing } },
+  args: { busy: { provider: 'corp' }, signup: { providers: [corp], landing: acmeLanding } },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('button', { name: 'Contacting identity provider…' })).toBeDisabled();
     await expect(canvas.getByRole('button', { name: 'Continue with SAML SSO' })).toBeDisabled();
@@ -154,12 +153,31 @@ export const SignUpDoor: Story = {
   play: async ({ canvas }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Create an account' }));
     await expect(canvas.getByRole('heading', { name: 'Create an account' })).toBeVisible();
-    await expect(canvas.getByText(orgDoor.landing)).toBeVisible();
+    await expect(canvas.getByText(acmeLanding)).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Sign up with Google' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Sign up with GitHub' })).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Sign in with Microsoft · Contoso' })).toBeVisible();
     await expect(canvas.queryByRole('button', { name: /fabrikam|corp sso/i })).toBeNull();
     await expect(canvas.queryByRole('button', { name: 'Password' })).toBeNull();
+  },
+};
+
+/** `/signup` opens the card on the door itself while registration is open. */
+export const OpensOnSignUp: Story = {
+  args: { providers: socialProviders, signup: orgDoor, initialIntent: 'sign-up' },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('heading', { name: 'Create an account' })).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Sign up with Google' })).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: /^password/i })).toBeNull();
+  },
+};
+
+/** A closed door opens `/signup` on the sign-in rows, with nothing hinting at sign-up. */
+export const OpensOnSignUpWhileClosed: Story = {
+  args: { providers: socialProviders, signup: null, initialIntent: 'sign-up' },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(canvas.queryByRole('button', { name: 'Create an account' })).toBeNull();
   },
 };
 

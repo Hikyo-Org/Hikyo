@@ -135,7 +135,7 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
           passkeys={scenario !== 'provider'}
           signup={
             scenario === 'sign-up'
-              ? { providers: [google.slug, github.slug], landing: "You'll join Acme Corp as Developer." }
+              ? { providers: [google, github], landing: "You'll join Acme Corp as Developer." }
               : null
           }
           paused={false}

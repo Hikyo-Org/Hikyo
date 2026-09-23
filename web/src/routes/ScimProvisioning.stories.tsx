@@ -27,7 +27,7 @@ const BINDING = 'bnd_123e4567-e89b-12d3-a456-426614174201';
 const BINDINGS_URL = `/api/v1/orgs/${ORG}/scim-bindings`;
 const bindingUrl = (tail: string) => `${BINDINGS_URL}/${BINDING}/${tail}`;
 
-const org = { id: ORG, name: 'Acme', active: true, created_at: '2026-01-01T00:00:00Z' } satisfies z.input<typeof zOrg>;
+const org = { id: ORG, name: 'Acme', active: true, created_at: '2026-01-01T00:00:00Z', origin: 'manual' } satisfies z.input<typeof zOrg>;
 const noProjects = { count: 0, items: [] } satisfies z.input<typeof zProjectList>;
 
 const GROUP_ENG = 'grp_123e4567-e89b-12d3-a456-426614174301';

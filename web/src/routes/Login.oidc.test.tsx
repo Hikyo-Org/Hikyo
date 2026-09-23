@@ -8,7 +8,7 @@ import { afterEach, beforeEach, expect, it, vi, type Mock } from 'vitest';
 import { installMemoryStorage } from '../testkit/storage.ts';
 import { Login } from './Login.tsx';
 
-function mount(container: HTMLElement) {
+function mount(container: HTMLElement, page: { intent?: 'sign-in' | 'sign-up'; url?: string } = {}) {
   const root = createRoot(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
@@ -16,8 +16,8 @@ function mount(container: HTMLElement) {
       act(async () =>
         root.render(
           <QueryClientProvider client={client}>
-            <MemoryRouter>
-              <Login />
+            <MemoryRouter initialEntries={[page.url ?? '/login']}>
+              <Login intent={page.intent} />
             </MemoryRouter>
           </QueryClientProvider>,
         ),
@@ -43,8 +43,11 @@ type Mocks = {
   methods: {
     data: {
       local_login_enabled: boolean;
-      providers: { kind: string; slug: string; display_name: string }[];
+      providers: { kind: string; slug: string; display_name: string; brand?: 'google' | 'microsoft' }[];
+      signup_open: boolean;
       signup_paused: boolean;
+      signup_methods: ({ kind: string; slug: string } | 'local')[];
+      signup_landing?: 'org-template' | 'none' | 'fresh-org';
     };
     isError: boolean;
     isPending: boolean;
@@ -66,7 +69,9 @@ const mocks = vi.hoisted((): Mocks => ({
         { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
         { kind: 'saml', slug: 'sso', display_name: 'SAML SSO' },
       ],
+      signup_open: false,
       signup_paused: false,
+      signup_methods: [],
     },
     isError: false,
     isPending: false,
@@ -75,8 +80,12 @@ const mocks = vi.hoisted((): Mocks => ({
   passkeysAvailable: false,
 }));
 
+const methodsFor = vi.hoisted(() => vi.fn());
 vi.mock('../api/account.ts', () => ({
-  useAuthMethods: () => mocks.methods,
+  useAuthMethods: (org?: string) => {
+    methodsFor(org);
+    return mocks.methods;
+  },
 }));
 
 vi.mock('../api/session.ts', () => ({
@@ -124,7 +133,21 @@ beforeEach(() => {
   // The remembered way in is per-browser state; a test that starts a leg
   // would leave it behind for the next one, so each gets a fresh store.
   installMemoryStorage();
+  mocks.methods.data.signup_open = false;
+  mocks.methods.data.signup_methods = [];
+  mocks.methods.data.signup_landing = undefined;
+  mocks.methods.data.providers = [
+    { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
+    { kind: 'saml', slug: 'sso', display_name: 'SAML SSO' },
+  ];
+  methodsFor.mockReset();
 });
+
+/** The staged entry's step one names the password row; step two is its form. */
+async function openPassword(container: HTMLElement) {
+  const row = [...container.querySelectorAll('button')].find((button) => button.textContent?.startsWith('Password'));
+  await act(async () => row?.click());
+}
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -139,7 +162,8 @@ it('offers each configured OIDC and SAML provider and starts the selected login'
   expect(button).toBeDefined();
   expect(container.textContent).toContain('Continue with SAML SSO');
   await act(async () => button?.click());
-  expect(mocks.oidc.mutate).toHaveBeenCalledWith('strict');
+  // The sign-in door's rows start `sign-in`, which never creates an account.
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', intent: 'sign-in', signupOrg: undefined });
   await unmount();
 });
 
@@ -217,6 +241,7 @@ it.each([
   for (const button of buttons) {
     expect(button.disabled).toBe(true);
   }
+  expect(container.querySelectorAll('input').length).toBe(0);
 
   await unmount();
 });
@@ -376,7 +401,7 @@ it('clears a SAML refusal when an OIDC attempt starts', async () => {
   await act(async () => named('Continue with Corporate IdP')?.click());
   await render();
 
-  expect(mocks.oidc.mutate).toHaveBeenCalledWith('strict');
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', intent: 'sign-in', signupOrg: undefined });
   expect(container.querySelector('.login__card [role="alert"]')).toBeNull();
   await unmount();
 });
@@ -395,6 +420,7 @@ async function answerWithChallenge(container: HTMLElement, factors: string[]) {
         username: 'alex',
       }),
   );
+  await openPassword(container);
   const form = container.querySelector('form');
   await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 }
@@ -452,5 +478,137 @@ it('names an expired challenge instead of a server error', async () => {
   expect(container.querySelector('.login__card [role="alert"]')?.textContent).toContain(
     'This sign-in expired or was already completed.',
   );
+  await unmount();
+});
+
+it('shows the password form only after the password row is chosen, and goes back', async () => {
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  expect(container.querySelector('input')).toBeNull();
+  await openPassword(container);
+  expect(container.querySelectorAll('input').length).toBe(2);
+  expect(container.textContent).toContain('Sign in with a password');
+  await act(async () => buttonNamed(container, '‹ Other ways to sign in')?.click());
+  expect(container.querySelector('input')).toBeNull();
+  await unmount();
+});
+
+it('renders no sign-up door while registration is closed', async () => {
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  expect(container.textContent).not.toContain('Create an account');
+  expect(container.textContent).not.toContain('New here?');
+  await unmount();
+});
+
+it('opens the door, confirms, and starts a sign-up only from the confirmation step', async () => {
+  mocks.methods.data.signup_open = true;
+  mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'strict' }];
+  mocks.methods.data.signup_landing = 'fresh-org';
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+
+  await act(async () => buttonNamed(container, 'Create an account')?.click());
+  expect(container.querySelector('h1')?.textContent).toBe('Create an account');
+  expect(container.textContent).toContain('You’ll get your own organisation, with you as its first administrator.');
+  // Only the providers the policy admits: SAML never signs up.
+  expect(container.textContent).not.toContain('SAML SSO');
+  await act(async () => buttonNamed(container, 'Continue with Corporate IdP')?.click());
+  expect(mocks.oidc.mutate).not.toHaveBeenCalled();
+
+  expect(container.querySelector('h1')?.textContent).toBe('Create an account with Corporate IdP');
+  expect(container.textContent).toContain(
+    'This creates a new account. Already have one? Sign in with it first, then add Corporate IdP under Settings › Security.',
+  );
+  await act(async () => buttonNamed(container, 'Continue to Corporate IdP')?.click());
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', intent: 'sign-up', signupOrg: undefined });
+  await unmount();
+});
+
+it('addresses the org door from /signup?org= and carries the org into the start', async () => {
+  mocks.methods.data.signup_open = true;
+  mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'strict' }, 'local'];
+  mocks.methods.data.signup_landing = 'org-template';
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container, { intent: 'sign-up', url: '/signup?org=org_acme' });
+  await render();
+
+  expect(methodsFor).toHaveBeenCalledWith('org_acme');
+  expect(container.querySelector('h1')?.textContent).toBe('Create an account');
+  expect(container.textContent).toContain('You’ll join this organisation.');
+  await act(async () => buttonNamed(container, 'Continue with Corporate IdP')?.click());
+  await act(async () => buttonNamed(container, 'Continue to Corporate IdP')?.click());
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'strict', intent: 'sign-up', signupOrg: 'org_acme' });
+  await unmount();
+});
+
+it('starts an OIDC sign-up even when a SAML provider shares the slug', async () => {
+  // Slugs are unique per kind only; the door admits the OIDC kind alone.
+  mocks.methods.data.providers = [
+    { kind: 'saml', slug: 'corp', display_name: 'Corp SAML' },
+    { kind: 'oidc', slug: 'corp', display_name: 'Corp OIDC' },
+  ];
+  mocks.methods.data.signup_open = true;
+  mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'corp' }];
+  mocks.methods.data.signup_landing = 'none';
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+
+  await act(async () => buttonNamed(container, 'Create an account')?.click());
+  expect(container.textContent).not.toContain('Corp SAML');
+  await act(async () => buttonNamed(container, 'Continue with Corp OIDC')?.click());
+  expect(container.querySelector('h1')?.textContent).toBe('Create an account with Corp OIDC');
+  await act(async () => buttonNamed(container, 'Continue to Corp OIDC')?.click());
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'corp', intent: 'sign-up', signupOrg: undefined });
+  await unmount();
+});
+
+it('opens /signup on sign-in when the addressed door is closed', async () => {
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container, { intent: 'sign-up', url: '/signup?org=org_nope' });
+  await render();
+  expect(container.querySelector('h1')?.textContent).toBe('Sign in to Hikyo');
+  await unmount();
+});
+
+it('follows the providers’ published button rules', async () => {
+  mocks.methods.data.providers = [
+    { kind: 'oidc', slug: 'google', display_name: 'Google', brand: 'google' },
+    { kind: 'oidc', slug: 'contoso', display_name: 'Contoso', brand: 'microsoft' },
+    { kind: 'oidc', slug: 'fabrikam', display_name: 'Fabrikam', brand: 'microsoft' },
+    { kind: 'oidc', slug: 'corp', display_name: 'Corp SSO' },
+  ];
+  mocks.methods.data.signup_open = true;
+  mocks.methods.data.signup_methods = [{ kind: 'oidc', slug: 'google' }, { kind: 'oidc', slug: 'contoso' }];
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+
+  // The tenant span is inline-block, so the accessible name reads "Microsoft ·
+  // Contoso" while the raw text runs together; the rows are compared as read.
+  const labels = () =>
+    [...container.querySelectorAll('.login__methods .login__brand')].map((button) =>
+      (button.textContent ?? '').replace(/\s*·\s*/, ' · '),
+    );
+  // One Microsoft row per Entra tenant row, the tenant named after the mark.
+  expect(labels()).toEqual([
+    'Continue with Google',
+    'Sign in with Microsoft · Contoso',
+    'Sign in with Microsoft · Fabrikam',
+    'Continue with Corp SSO',
+  ]);
+  expect(container.querySelector('.login__brand--google svg')).not.toBeNull();
+  expect(container.textContent).toContain('Microsoft: work or school account');
+
+  await act(async () => buttonNamed(container, 'Create an account')?.click());
+  // Google permits "Sign up with"; Microsoft keeps "Sign in with Microsoft".
+  expect(labels()).toEqual([
+    'Sign up with Google',
+    'Sign in with Microsoft · Contoso',
+  ]);
   await unmount();
 });

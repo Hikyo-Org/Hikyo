@@ -16,14 +16,15 @@ export type SignInBusy = 'password' | 'passkey' | { provider: string } | null;
 
 /**
  * The open sign-up door: the providers the scope's registration policy admits
- * (`signup_methods` of `GET /auth/methods`, by slug into `providers`) and
- * where a new account lands, already worded. `null` while registration is
- * closed: the door is then absent, not disabled (#579 d6).
+ * (`signup_methods` of `GET /auth/methods`, matched by `{kind, slug}` into
+ * `providers`, since a slug is unique per kind only) and where a new account
+ * lands, already worded. `null` while registration is closed: the door is then
+ * absent, not disabled (#579 d6).
  */
 export type SignupDoor = {
-  readonly providers: readonly string[];
-  /** "You'll join Acme Corp as Developer." and the like. */
-  readonly landing: string;
+  readonly providers: readonly LoginProvider[];
+  /** "You'll join this organisation." and the like; null when the wire names no landing. */
+  readonly landing: string | null;
 };
 
 type Stage =
@@ -64,6 +65,7 @@ export function LoginForm({
   onPasskey,
   onProvider,
   links,
+  initialIntent = 'sign-in',
 }: {
   providers: readonly LoginProvider[];
   /** Whether the platform can perform a WebAuthn assertion at all. */
@@ -81,8 +83,10 @@ export function LoginForm({
   onProvider: (slug: string, intent: SignInIntent) => void;
   /** The quiet links under the card (establish a credential, recover). */
   links?: ReactNode;
+  /** The door the card opens on: `/signup` opens on "Create an account" while it is open. */
+  initialIntent?: SignInIntent;
 }) {
-  const [chosen, setStage] = useState<Stage>({ at: 'choose' });
+  const [chosen, setStage] = useState<Stage>({ at: initialIntent === 'sign-up' ? 'sign-up' : 'choose' });
   // The door and its confirmation exist only while `signup` stands: the link
   // that opens them renders only then, and a door that closes underneath
   // (discovery refetched, policy gone) falls back to the first step.
@@ -110,13 +114,12 @@ export function LoginForm({
   // setter captured before a session change cannot repopulate the field.
   const [password, setPassword] = useSensitiveState('');
   const anyBusy = busy !== null;
-  const byProvider = (slug: string) => providers.find((candidate) => candidate.slug === slug);
   const providerBusy = (slug: string) => typeof busy === 'object' && busy !== null && busy.provider === slug;
   const alert = error !== null ? <Alert>{error}</Alert> : null;
   // The hint says "work or school account" once the door has an Entra row
   // (research section 3.7); one line for every tenant row, not one each.
-  const microsoftHint = (slugs: readonly string[]) =>
-    slugs.some((slug) => byProvider(slug)?.brand === 'microsoft') ? (
+  const microsoftHint = (rows: readonly LoginProvider[]) =>
+    rows.some((provider) => provider.brand === 'microsoft') ? (
       <p className="login__brand-hint">Microsoft: work or school account</p>
     ) : null;
   const back = (label: string, to: Stage) => (
@@ -178,21 +181,18 @@ export function LoginForm({
         <div className="login__card">
           {back('Sign in instead', { at: 'choose' })}
           {title('Create an account')}
-          <p className="login__landing">{signup.landing}</p>
+          {signup.landing !== null ? <p className="login__landing">{signup.landing}</p> : null}
           <div className="login__methods">
-            {signup.providers.map((slug) => {
-              const provider = byProvider(slug);
-              return provider === undefined ? null : (
-                <ProviderButton
-                  key={slug}
-                  provider={provider}
-                  intent="sign-up"
-                  busy={false}
-                  disabled={anyBusy}
-                  onClick={() => setStage({ at: 'confirm', slug })}
-                />
-              );
-            })}
+            {signup.providers.map((provider) => (
+              <ProviderButton
+                key={`${provider.kind}:${provider.slug}`}
+                provider={provider}
+                intent="sign-up"
+                busy={false}
+                disabled={anyBusy}
+                onClick={() => setStage({ at: 'confirm', slug: provider.slug })}
+              />
+            ))}
           </div>
           {microsoftHint(signup.providers)}
         </div>
@@ -200,7 +200,7 @@ export function LoginForm({
     }
 
     case 'confirm': {
-      const provider = byProvider(stage.slug);
+      const provider = signup?.providers.find((candidate) => candidate.slug === stage.slug);
       if (signup === null || provider === undefined) return null;
       return (
         <div className="login__card">
@@ -210,7 +210,7 @@ export function LoginForm({
             This creates a new account. Already have one? Sign in with it first, then add{' '}
             {provider.display_name} under Settings › Security.
           </p>
-          <p className="login__landing">{signup.landing}</p>
+          {signup.landing !== null ? <p className="login__landing">{signup.landing}</p> : null}
           {alert}
           <Button
             variant="primary"
@@ -260,7 +260,7 @@ export function LoginForm({
             ) : null}
             {providers.map((provider) => (
               <ProviderButton
-                key={provider.slug}
+                key={`${provider.kind}:${provider.slug}`}
                 provider={provider}
                 intent="sign-in"
                 busy={providerBusy(provider.slug)}
@@ -270,7 +270,7 @@ export function LoginForm({
               />
             ))}
           </div>
-          {microsoftHint(providers.map((provider) => provider.slug))}
+          {microsoftHint(providers)}
           {paused ? (
             <p className="login__paused" role="status">
               <Glyph name="warn" />

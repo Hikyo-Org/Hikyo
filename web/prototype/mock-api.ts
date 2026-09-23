@@ -326,6 +326,7 @@ type PrototypeOrgRow = {
   readonly active: boolean;
   readonly metadata: object | null;
   readonly created_at: string;
+  readonly origin: 'manual' | 'registration';
 };
 type PrototypeProjectRow = {
   readonly id: string;
@@ -582,6 +583,7 @@ export function prototypeReadFixture(
         active: true,
         metadata: null,
         created_at: fixtureTime,
+        origin: 'manual',
       },
       ]),
       {
@@ -590,6 +592,7 @@ export function prototypeReadFixture(
         active: true,
         metadata: null,
         created_at: fixtureTime,
+        origin: 'manual',
       },
       ...prototypeExtraOrgs,
     ];
@@ -820,6 +823,7 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
         active: input.active,
         metadata: input.metadata ?? null,
         created_at: fixtureTime,
+        origin: 'manual',
       };
       prototypeExtraOrgs = [...prototypeExtraOrgs, org];
       send(response, 201, org);
@@ -837,6 +841,7 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
         active: true,
         metadata: null,
         created_at: fixtureTime,
+        origin: 'manual',
       });
       return true;
     });
@@ -1173,6 +1178,7 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
       active: true,
       metadata: null,
       created_at: fixtureTime,
+      origin: 'manual',
     });
     return true;
   }

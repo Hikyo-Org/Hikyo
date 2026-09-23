@@ -1,6 +1,6 @@
 import { samlStartOp } from '@hikyo/operations';
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 
 import { useAuthMethods } from '../api/account.ts';
 import { ApiError, parsed } from '../api/client.ts';
@@ -15,12 +15,13 @@ import {
   usePasskeyLogin,
 } from '../api/stepup.ts';
 import { surfaceById } from '../app/navigation.ts';
-import { LoginForm, type SignInBusy } from '../ui/auth/LoginForm.tsx';
+import { LoginForm, type SignInBusy, type SignInIntent, type SignupDoor } from '../ui/auth/LoginForm.tsx';
 import { SecondFactorChallenge } from '../ui/auth/SecondFactorChallenge.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
 /**
- * The local password login page.
+ * The login page: the staged entry (#587 d1) and, while the addressed
+ * scope's registration policy is open, its sign-up door (#607).
  *
  * Local credentials and every configured OIDC provider establish the same
  * browser-session artifact. The provider callback returns through OIDCDone.
@@ -56,12 +57,50 @@ function challengeFailureText(error: unknown, otherwise: (error: unknown) => str
   return otherwise(error);
 }
 
-export function Login() {
+type AuthMethods = NonNullable<ReturnType<typeof useAuthMethods>['data']>;
+
+/** The landing line on the sign-up door and its confirmation step (#585 d5). */
+function landingText(landing: AuthMethods['signup_landing']): string | null {
+  switch (landing) {
+    case 'org-template':
+      return 'You’ll join this organisation.';
+    case 'none':
+      return 'You’ll get an account with no organisation yet. An administrator grants access afterwards.';
+    case 'fresh-org':
+      return 'You’ll get your own organisation, with you as its first administrator.';
+    case undefined:
+      return null;
+  }
+}
+
+/**
+ * The page's sign-up door (#607): the open door of the addressed scope,
+ * reduced to the configured providers it admits. Only the OIDC kind signs up
+ * here; the local entry (#608) and the OAuth2 kind (#609) join it later.
+ */
+function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
+  if (methods === undefined || !methods.signup_open) return null;
+  const admitted = methods.providers.filter((provider) =>
+    provider.kind === 'oidc' &&
+    methods.signup_methods.some((method) => method !== 'local' && method.kind === provider.kind && method.slug === provider.slug),
+  );
+  return admitted.length === 0 ? null : { providers: admitted, landing: landingText(methods.signup_landing) };
+}
+
+/**
+ * `intent` is the door the page opens on: `/login` opens on sign-in, and
+ * `/signup` (optionally `?org=<id>`, the link the Members panel hands out)
+ * opens on the addressed scope's sign-up door when it is open.
+ */
+export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
+  const [search] = useSearchParams();
+  const signupOrg = intent === 'sign-up' ? (search.get('org') ?? undefined) : undefined;
   const login = useLogin();
   const passkey = usePasskeyLogin();
   const oidc = useOIDCLogin();
   const saml = useSAMLLogin();
-  const methods = useAuthMethods();
+  const methods = useAuthMethods(signupOrg);
+  const door = signupDoor(methods.data);
   // A password login on an account with an enrolled factor answers a challenge,
   // not a session (#760): the route then presents the second factor. The
   // sensitive-mutation surface retains no result, so the challenge is captured
@@ -153,12 +192,11 @@ export function Login() {
       <LoginForm
         providers={providers}
         passkeys={passkeysAvailable()}
-        /* The sign-up door lands with #607: the start request has no intent
-           yet, so a provider chosen to create an account would only be refused
-           at the callback as an unknown identity. Until then the card offers
-           no door, whatever `signup_open` says. Paused is #606's one public
-           fact about an inactive policy, said and never explained (#587 d3). */
-        signup={null}
+        /* The open door of the addressed scope (#607). Paused is #606's one
+           public fact about an inactive policy, said and never explained
+           (#587 d3); the cause renders on the Members panel. */
+        signup={door}
+        initialIntent={intent}
         paused={methods.data?.signup_paused === true}
         lastUsed={lastUsed}
         busy={busy}
@@ -182,14 +220,15 @@ export function Login() {
           retireEveryLeg();
           passkey.mutate(undefined, { onSuccess: () => rememberLastSignIn({ kind: 'passkey' }) });
         }}
-        onProvider={(slug) => {
+        onProvider={(slug, startIntent) => {
           retireEveryLeg();
           setContacting(slug);
           // The round-trip leaves no later moment: remembered at the start.
           rememberLastSignIn({ kind: 'provider', slug });
+          // A slug is unique per kind only; the door admits the OIDC kind alone.
           const provider = providers.find((candidate) => candidate.slug === slug);
-          if (provider?.kind === 'saml') saml.mutate(slug);
-          else oidc.mutate(slug);
+          if (startIntent === 'sign-in' && provider?.kind === 'saml') saml.mutate(slug);
+          else oidc.mutate({ provider: slug, intent: startIntent, signupOrg });
         }}
         /* Quiet links, demoted from buttons: the CSS keeps them on the 44px
            touch floor (#567) without reading as a third way to sign in. */

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -25,6 +26,7 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:0", "listener address")
 	authTimeSkew := flag.Duration("auth-time-skew", 0, "age applied to auth_time at token mint")
 	amr := flag.String("amr", "mfa,otp", "comma-separated AMR values")
+	claims := flag.String("claims", "", "JSON object merged into every ID token (e.g. email, email_verified)")
 	var redirects redirectFlags
 	flag.Var(&redirects, "redirect-uri", "exact registered callback URI; repeatable")
 	flag.Parse()
@@ -37,6 +39,11 @@ func main() {
 	for _, redirect := range redirects {
 		if err := idp.RegisterRedirectURI(redirect); err != nil {
 			fatal(err)
+		}
+	}
+	if *claims != "" {
+		if err := json.Unmarshal([]byte(*claims), &idp.Claims); err != nil {
+			fatal(fmt.Errorf("-claims: %w", err))
 		}
 	}
 	idp.AuthTimeNow = true

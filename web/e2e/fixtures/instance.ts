@@ -277,7 +277,13 @@ async function spawnIdP(
   } else {
     run('go', ['build', '-o', binary, './internal/oidctest/cmd'], { cwd: repoRoot });
   }
-  const args = ['-listen', `127.0.0.1:${String(port)}`, '-amr', 'mfa,otp'];
+  // Every token asserts a provider-verified address (#598), so a sign-up
+  // through the registration door (#607) is admitted; the address is never
+  // stored and never a linking key, so sign-in is unaffected.
+  const args = [
+    '-listen', `127.0.0.1:${String(port)}`, '-amr', 'mfa,otp',
+    '-claims', JSON.stringify({ email: 'e2e-signup@hikyo.test', email_verified: true }),
+  ];
   for (const redirect of redirects) {
     args.push('-redirect-uri', redirect);
   }

@@ -116,10 +116,12 @@ export function useIdentities(): UseQueryResult<IdentityList> {
  * an instance has none the surface says so instead of offering a button that
  * could only ever 400.
  */
-export function useAuthMethods(): UseQueryResult<AuthMethods> {
+export function useAuthMethods(org?: string): UseQueryResult<AuthMethods> {
   return useQuery({
-    queryKey: authMethodsKey,
-    queryFn: () => parsed(authMethodsOp, {}),
+    // `?org=` addresses that org's sign-up door (#606); the providers and the
+    // local login bit are instance-wide either way.
+    queryKey: org === undefined ? authMethodsKey : [...authMethodsKey, org],
+    queryFn: () => parsed(authMethodsOp, org === undefined ? {} : { query: { org } }),
     // This public discovery read is invalidated when login establishes a new
     // session. A nearby whoami can consume the shared rate-limit budget first;
     // unlike an authorization refusal, that 429 is safe to retry once and the
