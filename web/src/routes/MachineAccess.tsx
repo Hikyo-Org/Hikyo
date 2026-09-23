@@ -202,7 +202,7 @@ export function accountsRefusalText(error: unknown): string {
 /** Deep links into the Hikyo system project answer with the profile refusal. */
 export const MachineAccess = gateSystemScope('machine-access', MachineAccessPage);
 
-function MachineAccessPage() {
+export function MachineAccessPage() {
   const params = useParams();
   const project: ProjectRef = {
     org: params['org'] ?? '',
@@ -1125,7 +1125,7 @@ function PolicyStrip({ project }: { project: ProjectRef }) {
   );
 }
 
-function MachineRevealDialog({
+export function MachineRevealDialog({
   enable,
   busy,
   failure,
@@ -1503,7 +1503,7 @@ function JourneyActionButton({
   );
 }
 
-function BindingCard({
+export function BindingCard({
   account,
   credential,
   now,

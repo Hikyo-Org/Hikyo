@@ -29,6 +29,16 @@ const ISSUER_TYPES: ReadonlyArray<{ readonly id: FederationIssuerType; readonly 
   { id: 'github-actions', label: 'GitHub Actions' },
 ];
 
+// A <select> only ever reports one of the option values it was rendered with,
+// so the lookup is the parse; a miss is a programming error, not user input.
+function optionById<T extends string>(options: ReadonlyArray<{ readonly id: T }>, value: string): T {
+  const entry = options.find((candidate) => candidate.id === value);
+  if (entry === undefined) {
+    throw new Error(`unknown option ${value}`);
+  }
+  return entry.id;
+}
+
 const JWKS_MODES: ReadonlyArray<{ readonly id: FederationJwksMode; readonly label: string }> = [
   { id: 'discovery', label: 'Discovery: fetch and cache the keys' },
   { id: 'static', label: 'Static: supply the JWKS document' },
@@ -383,7 +393,7 @@ function IssuerForm({
           <select
             id={typeId}
             value={type}
-            onChange={(event) => setType(event.target.value as FederationIssuerType)}
+            onChange={(event) => setType(optionById(ISSUER_TYPES, event.target.value))}
           >
             {ISSUER_TYPES.map((entry) => (
               <option key={entry.id} value={entry.id}>
@@ -406,7 +416,7 @@ function IssuerForm({
           id={modeId}
           value={mode}
           onChange={(event) => {
-            const next = event.target.value as FederationJwksMode;
+            const next = optionById(JWKS_MODES, event.target.value);
             setMode(next);
             // Do not carry a JWKS document out of static mode: under discovery
             // it is not sent (the wire schema refuses it), and holding it in

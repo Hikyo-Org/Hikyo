@@ -71,7 +71,7 @@ import { gateSystemScope } from './SystemScope.tsx';
 /** Deep links into the Hikyo system organisation answer with the profile refusal. */
 export const ScimProvisioning = gateSystemScope('scim', ScimProvisioningPage);
 
-function ScimProvisioningPage() {
+export function ScimProvisioningPage() {
   const params = useParams();
   const org = params['org'] ?? '';
   const [search, setSearch] = useSearchParams();
