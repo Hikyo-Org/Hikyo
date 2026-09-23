@@ -120,6 +120,10 @@ type Grants struct {
 	// start now.
 	Auth *Auth
 	Now  func() time.Time
+	// originKind is the origin a template application records; empty means
+	// manual. Only the registration sign-up (#607) sets it, to registration,
+	// with the policy's authority principal as the granting caller.
+	originKind domain.OriginKind
 }
 
 func (s *Grants) now() time.Time {
@@ -313,6 +317,9 @@ func (s *Grants) grantOneWithInvalidation(
 	}
 
 	origin := authz.Origin{Kind: domain.OriginManual, Subject: string(grantor)}
+	if s.originKind != "" {
+		origin.Kind = s.originKind
+	}
 	out, err := writeGrantRowState(ctx, az, spec, origin, now)
 	if err != nil {
 		return zero, nil, err

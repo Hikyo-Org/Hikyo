@@ -168,6 +168,14 @@ type Auth struct {
 	// today's local floor.
 	SecondFactorRequired bool
 
+	// Registration is the registration policy surface a sign-up-intent OIDC
+	// login consults for an unknown identity (#607). Nil means every sign-up
+	// door is closed: the callback refuses `closed`, uncharged.
+	Registration *Registration
+	// Budget charges the instance-wide `signup` category at the federated
+	// charge point (#579 d7 as amended). Nil is the no-op budget.
+	Budget *Budget
+
 	// dummyRecoverySealed is a batch sealed once and opened on every
 	// non-matching recovery path, so a miss costs the same envelope decrypt +
 	// JSON decode + set scan as a hit — the recovery analogue of the login

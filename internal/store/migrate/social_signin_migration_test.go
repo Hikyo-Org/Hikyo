@@ -188,6 +188,8 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 		}
 	}
 
+	// Pinned to 00057: 00058 (#607) then makes a login's intent required,
+	// which this file checks at its end against the rows accepted here.
 	if err := RunUpTo(ctx, cfg, 57); err != nil {
 		t.Fatal(err)
 	}
@@ -394,6 +396,48 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 	}
 	if exec("second org policy", socialPolicy("rp_dup2", "org_social", "org-template", "member", "")) == nil {
 		t.Error("a second policy for one org was accepted")
+	}
+
+	// 00058, the registration switch (#607): in-flight transactions are
+	// purged (the accepted rows above include a NULL-intent login), and a
+	// login must now record its intent. Every other purpose is unchanged.
+	if n := count("SELECT COUNT(*) FROM oidc_transactions"); n == 0 {
+		t.Fatal("the 00058 fixture needs in-flight transactions to purge")
+	}
+	if err := RunUpTo(ctx, cfg, 58); err != nil {
+		t.Fatal(err)
+	}
+	if n := count("SELECT COUNT(*) FROM oidc_transactions"); n != 0 {
+		t.Fatalf("00058 left %d in-flight OIDC transactions", n)
+	}
+	if n := count("SELECT COUNT(*) FROM oauth2_transactions"); n == 0 {
+		t.Fatal("00058 touched oauth2_transactions")
+	}
+	for _, c := range []struct{ label, stmt string }{
+		{"sign-in login", socialTx("oidc", "otx_s1", "30", "login", "sign-in", "", "browser-cookie", "", "", "", "")},
+		{"sign-up login with org scope", socialTx("oidc", "otx_s2", "31", "login", "sign-up", "org_social", "browser-cookie", "", "", "", "")},
+		{"link", socialTx("oidc", "otx_s3", "32", "link", "", "", "session", "acc_social", "", "cer_s3", "")},
+		{"reauth", socialTx("oidc", "otx_s4", "33", "reauth", "", "", "session", "acc_social", "env_x", "", "")},
+		{"establish", socialTx("oidc", "otx_s5", "34", "establish", "", "", "session", "acc_social", "", "", "")},
+		{"claim", socialTx("oidc", "otx_s6", "35", "claim", "", "", "browser-cookie", "acc_social", "", "", "cra_social")},
+	} {
+		if err := exec(c.label, c.stmt); err != nil {
+			t.Fatalf("after 00058, valid row refused: %v", err)
+		}
+	}
+	for _, c := range []struct{ label, stmt string }{
+		{"login without intent", socialTx("oidc", "otx_s7", "36", "login", "", "", "browser-cookie", "", "", "", "")},
+		{"signup scope on a sign-in login", socialTx("oidc", "otx_s8", "37", "login", "sign-in", "org_social", "browser-cookie", "", "", "", "")},
+		{"intent on a link", socialTx("oidc", "otx_s9", "38", "link", "sign-in", "", "session", "acc_social", "", "cer_s9", "")},
+	} {
+		err := exec(c.label, c.stmt)
+		if err == nil {
+			t.Errorf("after 00058, %s: accepted, want a CHECK refusal", c.label)
+			continue
+		}
+		if !strings.Contains(strings.ToLower(err.Error()), "check constraint") {
+			t.Errorf("after 00058, %s: refused by something other than a CHECK: %v", c.label, err)
+		}
 	}
 }
 

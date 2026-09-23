@@ -847,7 +847,7 @@ const getOIDCTransactionByState = `-- name: GetOIDCTransactionByState :one
 SELECT id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
        purpose, binding_kind, initiating_session_id, browser_binding_verifier,
        account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
-       expires_at, consumed_at
+       expires_at, consumed_at, intent, signup_scope_org_id
 FROM oidc_transactions WHERE state_verifier = ?
 `
 
@@ -871,6 +871,8 @@ type GetOIDCTransactionByStateRow struct {
 	CreatedAt              string
 	ExpiresAt              string
 	ConsumedAt             sql.NullString
+	Intent                 sql.NullString
+	SignupScopeOrgID       sql.NullString
 }
 
 // hikyo:authn-resolution
@@ -897,6 +899,8 @@ func (q *Queries) GetOIDCTransactionByState(ctx context.Context, stateVerifier [
 		&i.CreatedAt,
 		&i.ExpiresAt,
 		&i.ConsumedAt,
+		&i.Intent,
+		&i.SignupScopeOrgID,
 	)
 	return i, err
 }
@@ -1420,8 +1424,8 @@ INSERT INTO oidc_transactions
     (id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
      purpose, binding_kind, initiating_session_id, browser_binding_verifier,
      account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
-     expires_at, consumed_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+     expires_at, consumed_at, intent, signup_scope_org_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
 `
 
 type InsertOIDCTransactionParams struct {
@@ -1443,6 +1447,8 @@ type InsertOIDCTransactionParams struct {
 	CredentialEpoch        int64
 	CreatedAt              string
 	ExpiresAt              string
+	Intent                 sql.NullString
+	SignupScopeOrgID       sql.NullString
 }
 
 // hikyo:authn-resolution
@@ -1466,6 +1472,8 @@ func (q *Queries) InsertOIDCTransaction(ctx context.Context, arg InsertOIDCTrans
 		arg.CredentialEpoch,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.Intent,
+		arg.SignupScopeOrgID,
 	)
 	return err
 }

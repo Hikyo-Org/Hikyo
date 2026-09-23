@@ -88,8 +88,12 @@ func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) 
 	if req.Body.Proof != nil {
 		proof = *req.Body.Proof
 	}
+	intent, signupOrg := "", strDeref(req.Body.SignupOrg)
+	if req.Body.Intent != nil {
+		intent = string(*req.Body.Intent)
+	}
 	browser := req.Body.Browser != nil && *req.Body.Browser
-	result, err := a.Auth.OIDCStart(ctx, string(req.Provider), string(req.Body.Purpose), env, bearer(ctx), proof, browser)
+	result, err := a.Auth.OIDCStart(ctx, string(req.Provider), string(req.Body.Purpose), intent, signupOrg, env, bearer(ctx), proof, browser)
 	if err != nil {
 		return oidcStartError(a, ctx, err), nil
 	}
@@ -115,6 +119,12 @@ func oidcStartError(a *API, ctx context.Context, err error) apigen.OidcStartResp
 	// runs before provider resolution in the service).
 	if errors.Is(err, service.ErrEnvironmentNotForPurpose) {
 		return apigen.OidcStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "environment_id is only valid with purpose reauth"))}
+	}
+	// A reauth on a policy-less row is refused by name with its remedy
+	// (#588 d4). It is reached only after the caller authenticated a session
+	// through this very provider, so it is not an enumeration answer.
+	if errors.Is(err, service.ErrReauthNoPolicy) {
+		return apigen.OidcStart409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(errorBody(apigen.ErrorCodeConflict, safeDetailOf(err)))}
 	}
 	policy := wireErrorFor(err)
 	switch policy.code {
@@ -249,7 +259,7 @@ func (a *API) LinkIdentity(ctx context.Context, req apigen.LinkIdentityRequestOb
 		return apigen.LinkIdentity400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 	}
 	browser := req.Body.Browser != nil && *req.Body.Browser
-	result, err := a.Auth.OIDCStart(ctx, req.Body.Provider, "link", "", bearer(ctx), req.Body.Proof, browser)
+	result, err := a.Auth.OIDCStart(ctx, req.Body.Provider, "link", "", "", "", bearer(ctx), req.Body.Proof, browser)
 	if err != nil {
 		return nil, err
 	}

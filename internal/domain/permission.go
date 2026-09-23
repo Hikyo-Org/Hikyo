@@ -341,17 +341,21 @@ const (
 	OriginLockoutRetention OriginKind = "lockout-retention"
 	// OriginRegistration holds the template grant a registration policy
 	// applied at sign-up (social-signin spec 2.2); its subject is the policy's
-	// authority principal. Declared with the widened grant_origins CHECK (#605);
-	// neither mintable nor a system origin until its writer lands (#607).
+	// authority principal. Its writer is the sign-up transaction (#607); the
+	// grant API takes no origin parameter, so it cannot be forged there.
 	OriginRegistration OriginKind = "registration"
 )
 
-// mintableOrigins is the subset the grant surface may write today. The rest
-// are refused at the writer, so a #73-shaped origin cannot be forged through
-// the #55 API before #73 defines what holds it.
+// mintableOrigins is the subset the human grant surface owns: the origins an
+// administrator's revoke releases (permission-model 2026-09-03 (b): a
+// registration grant is "inspected and revoked per capability line like
+// every other origin") and hasManualOrigin counts as a human remainder. The
+// rest are refused at the writer, so a #73-shaped origin cannot be forged
+// through the #55 API before #73 defines what holds it.
 var mintableOrigins = map[OriginKind]bool{
-	OriginManual:     true,
-	OriginBreakGlass: true,
+	OriginManual:       true,
+	OriginBreakGlass:   true,
+	OriginRegistration: true,
 }
 
 // IsMintableOrigin reports whether the grant API may write this origin kind.

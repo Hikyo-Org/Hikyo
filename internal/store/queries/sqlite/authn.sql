@@ -348,15 +348,15 @@ INSERT INTO oidc_transactions
     (id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
      purpose, binding_kind, initiating_session_id, browser_binding_verifier,
      account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
-     expires_at, consumed_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL);
+     expires_at, consumed_at, intent, signup_scope_org_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?);
 
 -- hikyo:authn-resolution
 -- name: GetOIDCTransactionByState :one
 SELECT id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri,
        purpose, binding_kind, initiating_session_id, browser_binding_verifier,
        account_id, environment_id, ceremony_id, browser, credential_epoch, created_at,
-       expires_at, consumed_at
+       expires_at, consumed_at, intent, signup_scope_org_id
 FROM oidc_transactions WHERE state_verifier = ?;
 
 -- Single-use consumption: the NULL guard is the atomic claim, so a callback

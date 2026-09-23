@@ -78,7 +78,7 @@ func runSCIMProvisionThenLoginOIDC(t *testing.T, db *store.DB) {
 	// BYTE-EXACT: a case variant is a DIFFERENT identity. It
 	// matches nothing and is refused, which is the observable form of "consumed
 	// as opaque bytes".
-	start, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", false)
+	start, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,7 +572,7 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	// session to carry across it — the artifact a stale backup would restore
 	// alongside the stale grant, and the one thing a human actually holds.
 	// A fabricated token proves only that nonsense is refused.
-	goesStart, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", false)
+	goesStart, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -668,7 +668,7 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	}
 	// Re-assertion does NOT re-bless a link: a login through the provider is
 	// still refused, because the link's epoch is the operator's to reconcile.
-	start, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", false)
+	start, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -692,7 +692,7 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 	if err := protectedOp(goesSession); !isUnauth(err) {
 		t.Fatalf("a RESTORED session of a post-backup-deprovisioned user must be refused, got %v", err)
 	}
-	relogin, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", false)
+	relogin, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -814,7 +814,7 @@ func runSCIMRestoreDrill(t *testing.T, db *store.DB) {
 		t.Fatalf("re-assertion must not revive a restored session, got %v", err)
 	}
 	// And the link is still inert: the login is refused after re-assertion too.
-	postStart, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", false)
+	postStart, err := auth.OIDCStart(ctx, "okta", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}

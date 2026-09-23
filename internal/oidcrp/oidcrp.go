@@ -13,10 +13,11 @@ package oidcrp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-
+	"slices"
 	"strings"
 	"time"
 
@@ -43,9 +44,6 @@ const allowedSkew = 2 * time.Minute
 var (
 	// ErrDiscovery is a discovery/JWKS fetch or issuer-mismatch failure.
 	ErrDiscovery = errors.New("oidcrp: discovery failed")
-	// ErrIssuer is a token whose issuer is not the pinned one (belt over
-	// go-oidc's own check, A11).
-	ErrIssuer = errors.New("oidcrp: token issuer mismatch")
 	// ErrEmptySubject is a token with no subject (A15).
 	ErrEmptySubject = errors.New("oidcrp: token carries no subject")
 	// ErrAudience is a token whose azp, when present, is not this client.
@@ -58,12 +56,29 @@ var (
 	ErrExchange = errors.New("oidcrp: code exchange failed")
 )
 
+// IssuerMismatchError is a discovery document whose `issuer` differs from
+// the configured string. It carries the document's issuer because that value
+// is the remedy for the one deployment mistake it exists for (#588 d1): an
+// Entra `common`, `organizations` or domain-name authority discovers to the
+// tenant's GUID issuer (or the `{tenantid}` placeholder), and the row must be
+// configured with the GUID form. It unwraps to ErrDiscovery.
+type IssuerMismatchError struct {
+	Discovered string
+}
+
+func (e *IssuerMismatchError) Error() string {
+	return fmt.Sprintf("oidcrp: the discovery document names issuer %q", e.Discovered)
+}
+
+func (e *IssuerMismatchError) Unwrap() error { return ErrDiscovery }
+
 // Provider is a discovered OpenID Provider pinned to a byte-exact issuer.
 type Provider struct {
-	issuer      string
-	op          *oidc.Provider
-	client      *http.Client
-	tokenClient *http.Client
+	issuer       string
+	op           *oidc.Provider
+	client       *http.Client
+	tokenClient  *http.Client
+	subjectTypes []string
 }
 
 // Discover reconstructs a provider via go-oidc NewProvider, which re-asserts
@@ -93,13 +108,18 @@ func DiscoverWithPolicy(ctx context.Context, issuer string, policy federationhtt
 	defer cancel()
 	op, err := oidc.NewProvider(ctx, issuer)
 	if err != nil {
+		var mismatch *oidc.IssuerMismatchError
+		if errors.As(err, &mismatch) {
+			return nil, &IssuerMismatchError{Discovered: mismatch.Discovered}
+		}
 		return nil, ErrDiscovery
 	}
 	if op.Endpoint().AuthURL == "" || op.Endpoint().TokenURL == "" {
 		return nil, fmt.Errorf("%w: discovery document is missing an authorization or token endpoint", ErrDiscovery)
 	}
 	var metadata struct {
-		JWKS string `json:"jwks_uri"`
+		JWKS         string   `json:"jwks_uri"`
+		SubjectTypes []string `json:"subject_types_supported"`
 	}
 	if err := op.Claims(&metadata); err != nil {
 		return nil, ErrDiscovery
@@ -109,11 +129,19 @@ func DiscoverWithPolicy(ctx context.Context, issuer string, policy federationhtt
 			return nil, ErrDiscovery
 		}
 	}
-	return &Provider{issuer: issuer, op: op, client: client, tokenClient: tokenClient}, nil
+	return &Provider{issuer: issuer, op: op, client: client, tokenClient: tokenClient, subjectTypes: metadata.SubjectTypes}, nil
 }
 
 // Issuer returns the byte-exact issuer this provider is pinned to.
 func (p *Provider) Issuer() string { return p.issuer }
+
+// PairwiseSubjectsOnly reports whether the discovery document advertises
+// `subject_types_supported` as pairwise only (#588 d2): its `sub` values are
+// bound to the client registration. Provider-asserted, never keyed on the
+// issuer host.
+func (p *Provider) PairwiseSubjectsOnly() bool {
+	return len(p.subjectTypes) > 0 && !slices.ContainsFunc(p.subjectTypes, func(t string) bool { return t != "pairwise" })
+}
 
 func (p *Provider) config(clientID, clientSecret, redirectURI, scopes string) oauth2.Config {
 	return oauth2.Config{
@@ -170,8 +198,15 @@ func (p *Provider) Exchange(ctx context.Context, clientID string, clientSecret [
 // is returned raw for the caller to compare against the hashed transaction
 // value (A19); the AMR/ACR/auth_time are what the provider asserted, recorded
 // verbatim in the assurance record (A12). No unverified claims leave this boundary.
+//
+// Issuer is the PINNED issuer, never the token's `iss` (#588 d3): go-oidc
+// tolerates Google's bare `accounts.google.com`, and no caller may see it.
+// Raw is every claim of the signed token, undecoded, for the policy reads that
+// consult the token itself (the verified-email assertion and the allowlist
+// claim, #598 d5): parse, don't cast.
 type Claims struct {
 	Issuer          string
+	Raw             map[string]json.RawMessage
 	Subject         string
 	Nonce           string
 	ACR             string
@@ -181,8 +216,10 @@ type Claims struct {
 	HasAuthTime     bool
 }
 
-// Verify validates an ID token completely: exact issuer against the pinned one,
-// signature with an algorithm from the allowlist (never none), audience
+// Verify validates an ID token completely: the issuer by go-oidc's own
+// unconditional check (SkipIssuerCheck is never set; its only relaxation is
+// Google's documented bare `accounts.google.com`, #588 d3, so Hikyo keeps no
+// duplicate belt), signature with an algorithm from the allowlist (never none), audience
 // contains this client, azp when present equals this client, exp/iat within
 // skew. Empty subject is refused (A15). Nonce equality is the caller's, because
 // the transaction stores it hashed.
@@ -197,9 +234,6 @@ func (p *Provider) Verify(ctx context.Context, clientID, rawIDToken string, now 
 	tok, err := verifier.Verify(ctx, rawIDToken)
 	if err != nil {
 		return Claims{}, ErrTokenInvalid
-	}
-	if tok.Issuer != p.issuer {
-		return Claims{}, ErrIssuer
 	}
 	if tok.Subject == "" {
 		return Claims{}, ErrEmptySubject
@@ -221,14 +255,18 @@ func (p *Provider) Verify(ctx context.Context, clientID, rawIDToken string, now 
 		AZP      string   `json:"azp"`
 		AuthTime *int64   `json:"auth_time"`
 	}
+	var raw map[string]json.RawMessage
 	if err := tok.Claims(&extra); err != nil {
+		return Claims{}, ErrTokenInvalid
+	}
+	if err := tok.Claims(&raw); err != nil {
 		return Claims{}, ErrTokenInvalid
 	}
 	if extra.AZP != "" && extra.AZP != clientID {
 		return Claims{}, ErrAudience
 	}
 	c := Claims{
-		Issuer: tok.Issuer, Subject: tok.Subject, Nonce: tok.Nonce,
+		Issuer: p.issuer, Raw: raw, Subject: tok.Subject, Nonce: tok.Nonce,
 		ACR: extra.ACR, AMR: extra.AMR, AuthorizedParty: extra.AZP,
 	}
 	if extra.AuthTime != nil {

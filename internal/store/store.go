@@ -63,6 +63,12 @@ type Org struct {
 	Metadata  json.RawMessage
 	CreatedAt time.Time
 	Retention RetentionPolicy
+	// Origin is how the org came to exist (#585 d8): `manual` (an operator's
+	// org.create) or `registration` (a sign-up). Empty on create means manual.
+	// RegistrationPolicyID is the minting policy's id, a trail pointer with no
+	// foreign key; empty for a manual org.
+	Origin               string
+	RegistrationPolicyID string
 }
 
 // Project is a tenant-owned aggregate (chain: org). OrgID appears on reads

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -37,6 +38,10 @@ const (
 	sessionRefusedUnauthenticated
 	sessionRefusedWindowClosed
 	sessionRefusedAlreadyLinked
+	// sessionRefusedOverloaded is a refusal whose audit event commits but
+	// whose answer is the shared pre-auth 429: the `signup` budget overflow
+	// of a federated sign-up (#607).
+	sessionRefusedOverloaded
 )
 
 func (r sessionRefusal) err() error {
@@ -49,6 +54,8 @@ func (r sessionRefusal) err() error {
 		return ErrReauthWindowClosed
 	case sessionRefusedAlreadyLinked:
 		return ErrAlreadyLinked
+	case sessionRefusedOverloaded:
+		return admission.ErrOverloaded
 	default:
 		return fmt.Errorf("%w: unknown committed session refusal", domain.ErrInvalid)
 	}

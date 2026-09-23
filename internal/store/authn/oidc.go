@@ -324,6 +324,11 @@ type OIDCTransaction struct {
 	CreatedAt              time.Time
 	ExpiresAt              time.Time
 	Consumed               bool
+	// Intent is `sign-in` or `sign-up` on a login transaction (#604), empty
+	// on every other purpose; SignupScopeOrgID names the org whose policy a
+	// sign-up addresses, empty for the instance scope (spec 2.1).
+	Intent           string
+	SignupScopeOrgID string
 }
 
 // NewOIDCTransaction is the transaction insert carrier.
@@ -346,6 +351,8 @@ type NewOIDCTransaction struct {
 	CredentialEpoch        int64
 	CreatedAt              time.Time
 	ExpiresAt              time.Time
+	Intent                 string
+	SignupScopeOrgID       string
 }
 
 // CreateOIDCTransaction writes a single-use transaction row.
@@ -363,6 +370,8 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 			Browser:                boolInt(t.Browser),
 			CredentialEpoch:        t.CredentialEpoch,
 			CreatedAt:              encodeTime(t.CreatedAt), ExpiresAt: encodeTime(t.ExpiresAt),
+			Intent:                 nullString(t.Intent),
+			SignupScopeOrgID:       nullString(t.SignupScopeOrgID),
 		})
 	}
 	return r.pg.InsertOIDCTransaction(ctx, pggen.InsertOIDCTransactionParams{
@@ -377,6 +386,8 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 		Browser:                t.Browser,
 		CredentialEpoch:        t.CredentialEpoch,
 		CreatedAt:              pgTimestamp(t.CreatedAt), ExpiresAt: pgTimestamp(t.ExpiresAt),
+		Intent:                 pgText(t.Intent),
+		SignupScopeOrgID:       pgText(t.SignupScopeOrgID),
 	})
 }
 
@@ -406,7 +417,7 @@ func (r *Resolver) OIDCTransactionByState(ctx context.Context, stateVerifier []b
 			BrowserBindingVerifier: row.BrowserBindingVerifier, AccountID: row.AccountID.String,
 			EnvironmentID: row.EnvironmentID.String, CeremonyID: row.CeremonyID.String, Browser: row.Browser != 0,
 			CredentialEpoch: row.CredentialEpoch, CreatedAt: created, ExpiresAt: expires,
-			Consumed: row.ConsumedAt.Valid,
+			Consumed: row.ConsumedAt.Valid, Intent: row.Intent.String, SignupScopeOrgID: row.SignupScopeOrgID.String,
 		}, nil
 	}
 	row, err := r.pg.GetOIDCTransactionByState(ctx, stateVerifier)
@@ -423,7 +434,7 @@ func (r *Resolver) OIDCTransactionByState(ctx context.Context, stateVerifier []b
 		BrowserBindingVerifier: row.BrowserBindingVerifier, AccountID: row.AccountID.String,
 		EnvironmentID: row.EnvironmentID.String, CeremonyID: row.CeremonyID.String, Browser: row.Browser,
 		CredentialEpoch: row.CredentialEpoch, CreatedAt: row.CreatedAt.Time, ExpiresAt: row.ExpiresAt.Time,
-		Consumed: row.ConsumedAt.Valid,
+		Consumed: row.ConsumedAt.Valid, Intent: row.Intent.String, SignupScopeOrgID: row.SignupScopeOrgID.String,
 	}, nil
 }
 

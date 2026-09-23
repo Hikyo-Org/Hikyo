@@ -265,6 +265,10 @@ func (o sqliteOrgs) Create(ctx context.Context, p authz.Proof, org Org) error {
 		Active:    active,
 		Metadata:  string(org.Metadata),
 		CreatedAt: CanonTime(org.CreatedAt).Format(timeFormat),
+		Origin:    orgOrigin(org.Origin),
+		RegistrationPolicyID: sql.NullString{
+			String: org.RegistrationPolicyID, Valid: org.RegistrationPolicyID != "",
+		},
 	}))
 }
 
@@ -305,7 +309,7 @@ func (o sqliteOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	}
 	out := make([]Org, 0, len(rows))
 	for _, row := range rows {
-		org, err := orgFromSQLite(sqlitegen.GetOrgRow(row))
+		org, err := orgFromSQLite(row)
 		if err != nil {
 			return nil, err
 		}
@@ -356,7 +360,7 @@ func (o sqliteOrgs) Delete(ctx context.Context, p authz.Proof) error {
 }
 
 // orgFromSQLite converts a queried organization into the shared store model.
-func orgFromSQLite(row sqlitegen.GetOrgRow) (Org, error) {
+func orgFromSQLite(row sqlitegen.Org) (Org, error) {
 	created, err := parseTime("org", row.ID, row.CreatedAt)
 	if err != nil {
 		return Org{}, err
@@ -381,6 +385,7 @@ func orgFromSQLite(row sqlitegen.GetOrgRow) (Org, error) {
 		Metadata:  metadata,
 		CreatedAt: created,
 		Retention: retention,
+		Origin:    row.Origin, RegistrationPolicyID: row.RegistrationPolicyID.String,
 	}, nil
 }
 
@@ -932,6 +937,10 @@ func (o pgOrgs) Create(ctx context.Context, p authz.Proof, org Org) error {
 		Active:    org.Active,
 		Metadata:  string(org.Metadata),
 		CreatedAt: pgtype.Timestamptz{Time: CanonTime(org.CreatedAt), Valid: true},
+		Origin:    orgOrigin(org.Origin),
+		RegistrationPolicyID: pgtype.Text{
+			String: org.RegistrationPolicyID, Valid: org.RegistrationPolicyID != "",
+		},
 	}))
 }
 
@@ -972,7 +981,7 @@ func (o pgOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	}
 	out := make([]Org, 0, len(rows))
 	for _, row := range rows {
-		org, err := orgFromPG(pggen.GetOrgRow(row))
+		org, err := orgFromPG(row)
 		if err != nil {
 			return nil, err
 		}
@@ -1023,7 +1032,7 @@ func (o pgOrgs) Delete(ctx context.Context, p authz.Proof) error {
 }
 
 // orgFromPG converts a queried organization into the shared store model.
-func orgFromPG(row pggen.GetOrgRow) (Org, error) {
+func orgFromPG(row pggen.Org) (Org, error) {
 	if !row.CreatedAt.Valid {
 		return Org{}, fmt.Errorf("store: org %s: null created_at", row.ID)
 	}
@@ -1042,7 +1051,18 @@ func orgFromPG(row pggen.GetOrgRow) (Org, error) {
 		Metadata:  metadata,
 		CreatedAt: row.CreatedAt.Time.UTC(),
 		Retention: retention,
+		Origin:    row.Origin, RegistrationPolicyID: row.RegistrationPolicyID.String,
 	}, nil
+}
+
+// orgOrigin defaults an unset origin to manual: every writer but the
+// registration sign-up (#607) is an operator's org.create. The column CHECK
+// refuses anything outside the closed set.
+func orgOrigin(origin string) string {
+	if origin == "" {
+		return "manual"
+	}
+	return origin
 }
 
 type pgProjects struct {

@@ -162,7 +162,7 @@ func (s stubAuth) AuthMethods(context.Context) ([]service.AuthMethodProvider, bo
 	return nil, true, nil
 }
 
-func (s stubAuth) OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error) {
+func (s stubAuth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error) {
 	if s.oidcStart != nil {
 		return s.oidcStart(ctx, slug, purpose, environmentID, presented, proof, browser)
 	}

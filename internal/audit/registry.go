@@ -234,6 +234,15 @@ const (
 	EventRegistrationPolicyUpdated EventType = "registration.policy_updated"
 	EventRegistrationPolicyDeleted EventType = "registration.policy_deleted"
 	EventRegistrationSignupExpired EventType = "registration.signup_expired"
+	// The sign-up outcomes (#607 federated; #608 local): admitted (the
+	// admission predicate passed, written before the account exists, actor
+	// unauthenticated), refused by one closed cause (uncharged before the
+	// `signup` budget, charged after it), and completed (actor = the new
+	// principal). They land on the instance trail, the pre-authentication
+	// plane the auth.* refusals share, carrying the policy id and scope.
+	EventRegistrationSignupAdmitted  EventType = "registration.signup_admitted"
+	EventRegistrationSignupRefused   EventType = "registration.signup_refused"
+	EventRegistrationSignupCompleted EventType = "registration.signup_completed"
 
 	// settings.reauthentication_window_changed and
 	// settings.protected_flag_changed are the `project-settings` security
@@ -1194,6 +1203,10 @@ var registry = map[EventType]TypeSpec{
 			"acr":                  {Kind: KindString},              // provider-asserted, raw (A12)
 			"amr":                  {Kind: KindString},              // provider-asserted, raw joined (A12)
 			"provider_row_version": {Kind: KindInt, Required: true}, // policy read in the mint tx (A12)
+			// The login's recorded intent and sign-up scope (#604 d8);
+			// absent on reauth.
+			"intent":     {Kind: KindString, Enum: []string{"sign-in", "sign-up"}},
+			"signup_org": {Kind: KindString},
 		},
 	},
 	EventOIDCRefused: {
@@ -1209,6 +1222,9 @@ var registry = map[EventType]TypeSpec{
 				"reconciliation", "window-zero", "no-possession", "downgrade",
 			}},
 			"provider_id": {Kind: KindString},
+			// A refused login's recorded intent and sign-up scope (#604 d8).
+			"intent":     {Kind: KindString, Enum: []string{"sign-in", "sign-up"}},
+			"signup_org": {Kind: KindString},
 		},
 	},
 	EventIdentityLinked: {
@@ -1363,6 +1379,10 @@ var registry = map[EventType]TypeSpec{
 		Schema: Schema{
 			"org_id":   {Kind: KindString, Required: true},
 			"org_name": {Kind: KindFreeText, Required: true},
+			// How the org came to exist (#585 d11): an operator's create, or
+			// a sign-up under a registration policy (actor = its authority).
+			"origin":    {Kind: KindString, Required: true, Enum: []string{"manual", "registration"}},
+			"policy_id": {Kind: KindString},
 		},
 	},
 	EventProjectCreated: {
@@ -1829,6 +1849,60 @@ var registry = map[EventType]TypeSpec{
 			"signup_id": {Kind: KindString, Required: true},
 			"policy_id": {Kind: KindString, Required: true},
 			"cause":     {Kind: KindString, Required: true, Enum: []string{"expired", "policy-deleted"}},
+		},
+	},
+	EventRegistrationSignupAdmitted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"policy_id": {Kind: KindString, Required: true},
+			"scope":     {Kind: KindString, Required: true},
+			"landing":   {Kind: KindString, Required: true, Enum: []string{"org-template", "none", "fresh-org"}},
+			// Federated: the kind, the pinned issuer, the provider row, the
+			// asserted address and which assertion admitted it (#598 d9).
+			"kind":        {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"issuer":      {Kind: KindString},
+			"provider_id": {Kind: KindString},
+			"address":     {Kind: KindFreeText},
+			"verified_by": {Kind: KindString, Enum: []string{"email_verified", "xms_edov", "github-primary"}},
+		},
+	},
+	EventRegistrationSignupRefused: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			// The closed cause enum of the audit-model banner (2026-09-03).
+			"cause": {Kind: KindString, Required: true, Enum: []string{
+				"closed", "predicate", "precondition", "budget", "authority-lost", "identity-exists",
+				"cap", "email-exists", "no-verified-email", "malformed", "unknown", "expired",
+				"epoch-superseded",
+			}},
+			"scope":       {Kind: KindString, Required: true},
+			"policy_id":   {Kind: KindString},
+			"kind":        {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"provider_id": {Kind: KindString},
+			// Set on a no-verified-email refusal only (#598 d9).
+			"verified_by": {Kind: KindString, Enum: []string{"none"}},
+		},
+	},
+	EventRegistrationSignupCompleted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"policy_id":   {Kind: KindString, Required: true},
+			"account_id":  {Kind: KindString, Required: true},
+			"landing":     {Kind: KindString, Required: true, Enum: []string{"org-template", "none", "fresh-org"}},
+			"org_id":      {Kind: KindString},
+			"kind":        {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"provider_id": {Kind: KindString},
+			"address":     {Kind: KindFreeText},
+			"verified_by": {Kind: KindString, Enum: []string{"email_verified", "xms_edov", "github-primary"}},
 		},
 	},
 	EventGrantTemplateApplied: {

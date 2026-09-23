@@ -1541,6 +1541,24 @@ func (e LocalSignupMethod) Valid() bool {
 	}
 }
 
+// Defines values for OidcStartRequestIntent.
+const (
+	SignIn OidcStartRequestIntent = "sign-in"
+	SignUp OidcStartRequestIntent = "sign-up"
+)
+
+// Valid indicates whether the value is a known member of the OidcStartRequestIntent enum.
+func (e OidcStartRequestIntent) Valid() bool {
+	switch e {
+	case SignIn:
+		return true
+	case SignUp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OpsDiagnosticFindingSeverity.
 const (
 	OpsDiagnosticFindingSeverityError   OpsDiagnosticFindingSeverity = "error"
@@ -6192,10 +6210,30 @@ type OidcStartRequest struct {
 	// EnvironmentId Required for reauth; the window scope. Refused (400) on any other purpose.
 	EnvironmentId *string `json:"environment_id,omitempty"`
 
+	// Intent Valid only with purpose `login` (#604); absent = `sign-in`. It
+	// decides only what happens to an unknown identity at the callback:
+	// `sign-in` refuses it uniformly, `sign-up` enters the registration
+	// policy of the addressed scope. A known identity signs in under
+	// either. Supplied on any other purpose, the start refuses uniformly.
+	Intent *OidcStartRequestIntent `json:"intent,omitempty"`
+
 	// Proof Required for link; the pre-existing password.
 	Proof   *string `json:"proof,omitempty"`
 	Purpose string  `json:"purpose"`
+
+	// SignupOrg The org whose registration policy a `sign-up` addresses; absent =
+	// the instance scope. Valid only with intent `sign-up`. The start
+	// reads no policy: an unknown org refuses at the callback as a closed
+	// door.
+	SignupOrg *string `json:"signup_org,omitempty"`
 }
+
+// OidcStartRequestIntent Valid only with purpose `login` (#604); absent = `sign-in`. It
+// decides only what happens to an unknown identity at the callback:
+// `sign-in` refuses it uniformly, `sign-up` enters the registration
+// policy of the addressed scope. A known identity signs in under
+// either. Supplied on any other purpose, the start refuses uniformly.
+type OidcStartRequestIntent string
 
 // OidcStartResult defines model for OidcStartResult.
 type OidcStartResult struct {
@@ -25913,6 +25951,20 @@ func (response OidcStart404JSONResponse) VisitOidcStartResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcStart409JSONResponse struct{ ConflictJSONResponse }
+
+func (response OidcStart409JSONResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }

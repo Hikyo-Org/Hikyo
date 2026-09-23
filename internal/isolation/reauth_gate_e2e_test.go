@@ -45,7 +45,7 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 	configureProvider(t, auth, ctx, principal, "gate-idp", service.ProviderInput{
 		DisplayName: "Gate IdP", ClientID: "client", ClientSecret: "secret", Scopes: "openid", Enabled: true,
 	})
-	start, err := auth.OIDCStart(ctx, "gate-idp", "link", "", token, password, false)
+	start, err := auth.OIDCStart(ctx, "gate-idp", "link", "", "", "", token, password, false)
 	if err != nil {
 		t.Fatalf("link start: %v", err)
 	}
@@ -112,11 +112,11 @@ func runReauthGatedOperationsRefuseWithoutProof(t *testing.T, db *store.DB) {
 		},
 		// linkIdentity is the OIDC alias of oidcStart {purpose: link}.
 		"linkIdentity": func() error {
-			_, err := auth.OIDCStart(ctx, "gate-idp", "link", "", token, "", false)
+			_, err := auth.OIDCStart(ctx, "gate-idp", "link", "", "", "", token, "", false)
 			return err
 		},
 		"oidcStart": func() error {
-			_, err := auth.OIDCStart(ctx, "gate-idp", "link", "", token, "", false)
+			_, err := auth.OIDCStart(ctx, "gate-idp", "link", "", "", "", token, "", false)
 			return err
 		},
 		"samlStart": func() error {

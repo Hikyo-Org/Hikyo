@@ -93,7 +93,7 @@ func runOIDCLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, adm
 	if err != nil {
 		t.Fatalf("local login: %v", err)
 	}
-	start, err := auth.OIDCStart(ctx, "lifecycle-idp", "link", "", login.SessionToken, password, false)
+	start, err := auth.OIDCStart(ctx, "lifecycle-idp", "link", "", "", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatalf("oidc link start: %v", err)
 	}
@@ -129,7 +129,7 @@ func runOIDCLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, adm
 // the resulting session.
 func oidcLogin(t *testing.T, auth *service.Auth, ctx context.Context, slug, subject string) service.LoginResult {
 	t.Helper()
-	start, err := auth.OIDCStart(ctx, slug, "login", "", "", "", false)
+	start, err := auth.OIDCStart(ctx, slug, "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("oidc login start: %v", err)
 	}
@@ -171,7 +171,7 @@ func runOIDCMixup(t *testing.T, db *store.DB) {
 	})
 
 	// Begin a transaction at A; obtain a code from A's authorize.
-	startA, err := auth.OIDCStart(ctx, "prov-a", "login", "", "", "", false)
+	startA, err := auth.OIDCStart(ctx, "prov-a", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func runOIDCMixup(t *testing.T, db *store.DB) {
 
 	// The other direction: begin at B, deliver to A's callback. The tx is pinned
 	// to B, so assert B's counter is untouched.
-	startB, err := auth.OIDCStart(ctx, "prov-b", "login", "", "", "", false)
+	startB, err := auth.OIDCStart(ctx, "prov-b", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +261,7 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 
 	// Anonymous login is browser-cookie-bound (A2): a callback with the absent ob
 	// cookie is refused, audited cause=binding.
-	start, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", false)
+	start, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 
 	// The correct binding cookie completes the same flow (positive control) - a
 	// fresh transaction, since the first was consumed.
-	start2, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", false)
+	start2, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +286,7 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 	}
 	// environment_id scopes a reauth window only; on any other purpose the
 	// start refuses it by name (the transaction CHECK would refuse the row).
-	if _, err := auth.OIDCStart(ctx, "idp", "login", "env_stray", "", "", false); !errors.Is(err, service.ErrEnvironmentNotForPurpose) {
+	if _, err := auth.OIDCStart(ctx, "idp", "login", "", "", "env_stray", "", "", false); !errors.Is(err, service.ErrEnvironmentNotForPurpose) {
 		t.Fatalf("login start with an environment_id: %v, want ErrEnvironmentNotForPurpose", err)
 	}
 
@@ -296,7 +296,7 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lstart, err := auth.OIDCStart(ctx, "idp", "link", "", login.SessionToken, password, false)
+	lstart, err := auth.OIDCStart(ctx, "idp", "link", "", "", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ls, err := auth.OIDCStart(ctx, "strict", "link", "", login.SessionToken, password, false)
+	ls, err := auth.OIDCStart(ctx, "strict", "link", "", "", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,18 +345,18 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", localSession.SessionToken, "", false); !isUnauth(err) {
+	if _, err := auth.OIDCStart(ctx, "strict", "reauth", "", "", "env_prod", localSession.SessionToken, "", false); !isUnauth(err) {
 		t.Fatalf("local session starting OIDC reauth should refuse: %v", err)
 	}
 	relogin := oidcLogin(t, auth, ctx, "strict", "reauth-user")
-	if _, err := auth.OIDCStart(ctx, "strict", "reauth", "", relogin.SessionToken, "", false); err != service.ErrReauthNoEnvironment {
+	if _, err := auth.OIDCStart(ctx, "strict", "reauth", "", "", "", relogin.SessionToken, "", false); err != service.ErrReauthNoEnvironment {
 		t.Fatalf("reauth with no environment: want ErrReauthNoEnvironment, got %v", err)
 	}
 
 	// reauth whose token carries amr=mfa but NO auth_time is refused (A7),
 	// audited cause=no-auth-time. (The IdP asserts amr but leaves auth_time zero.)
 	strict.AMR = []string{"mfa"}
-	rs, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", relogin.SessionToken, "", false)
+	rs, err := auth.OIDCStart(ctx, "strict", "reauth", "", "", "env_prod", relogin.SessionToken, "", false)
 	if err != nil {
 		t.Fatalf("reauth start: %v", err)
 	}
@@ -374,7 +374,7 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 	strict.AuthTime = time.Now().Add(-6 * time.Minute)
 	strict.AMR = []string{"mfa", "otp"}
 	staleSession := oidcLogin(t, auth, ctx, "strict", "reauth-user")
-	rs, err = auth.OIDCStart(ctx, "strict", "reauth", "env_prod", staleSession.SessionToken, "", false)
+	rs, err = auth.OIDCStart(ctx, "strict", "reauth", "", "", "env_prod", staleSession.SessionToken, "", false)
 	if err != nil {
 		t.Fatalf("stale reauth start: %v", err)
 	}
@@ -396,7 +396,7 @@ func runOIDCReauthRefusals(t *testing.T, db *store.DB) {
 	loose.AuthTime = time.Now()
 	loose.AMR = []string{"mfa", "otp"}
 	looseSession := oidcLogin(t, auth, ctx, "loose", "loose-user")
-	if _, err := auth.OIDCStart(ctx, "loose", "reauth", "env_prod", looseSession.SessionToken, "", false); err != service.ErrReauthNoPolicy {
+	if _, err := auth.OIDCStart(ctx, "loose", "reauth", "", "", "env_prod", looseSession.SessionToken, "", false); err != service.ErrReauthNoPolicy {
 		t.Fatalf("policy-less reauth: want ErrReauthNoPolicy, got %v", err)
 	}
 }
@@ -418,7 +418,7 @@ func runOIDCReauthZeroWindow(t *testing.T, db *store.DB) {
 	idp.AMR = []string{"mfa", "otp"}
 	session := oidcLogin(t, auth, ctx, "strict", "zero-user")
 
-	started, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", session.SessionToken, "", true)
+	started, err := auth.OIDCStart(ctx, "strict", "reauth", "", "", "env_prod", session.SessionToken, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func runOIDCBrowserOverloadMetadata(t *testing.T, db *store.DB) {
 	idp.AuthTime = time.Now()
 	idp.AMR = []string{"mfa", "otp"}
 	session := oidcLogin(t, auth, ctx, "strict", "overload-user")
-	started, err := auth.OIDCStart(ctx, "strict", "reauth", "env_prod", session.SessionToken, "", true)
+	started, err := auth.OIDCStart(ctx, "strict", "reauth", "", "", "env_prod", session.SessionToken, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func runOIDCDisclosureAndCLIHandoff(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 
-	started, err := auth.OIDCStart(ctx, "strict", "reauth", "env_a1", browser.SessionToken, "", true)
+	started, err := auth.OIDCStart(ctx, "strict", "reauth", "", "", "env_a1", browser.SessionToken, "", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -647,7 +647,7 @@ func linkOn(t *testing.T, auth *service.Auth, ctx context.Context, slug, subject
 	if err != nil {
 		t.Fatalf("login for link: %v", err)
 	}
-	ls, err := auth.OIDCStart(ctx, slug, "link", "", login.SessionToken, password, false)
+	ls, err := auth.OIDCStart(ctx, slug, "link", "", "", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatalf("link start: %v", err)
 	}
@@ -661,7 +661,7 @@ func linkOn(t *testing.T, auth *service.Auth, ctx context.Context, slug, subject
 // slug with the given acting session, returning the callback error.
 func reauthOn(t *testing.T, auth *service.Auth, ctx context.Context, slug, subject, session string) error {
 	t.Helper()
-	rs, err := auth.OIDCStart(ctx, slug, "reauth", "env_prod", session, "", false)
+	rs, err := auth.OIDCStart(ctx, slug, "reauth", "", "", "env_prod", session, "", false)
 	if err != nil {
 		t.Fatalf("reauth start: %v", err)
 	}
@@ -956,7 +956,7 @@ func runOIDCLoginProviderRace(t *testing.T, db *store.DB) {
 		}
 	}
 	before := oidcRefusedCount(t, db, "reconciliation")
-	start, err := auth.OIDCStart(ctx, "race-login", "login", "", "", "", false)
+	start, err := auth.OIDCStart(ctx, "race-login", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("login start: %v", err)
 	}
@@ -1014,7 +1014,7 @@ func runOIDCLoginProviderDeleteRace(t *testing.T, db *store.DB) {
 		}
 	}
 	before := oidcRefusedCount(t, db, "reconciliation")
-	start, err := auth.OIDCStart(ctx, "race-del", "login", "", "", "", false)
+	start, err := auth.OIDCStart(ctx, "race-del", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatalf("login start: %v", err)
 	}
@@ -1086,7 +1086,7 @@ func runOIDCIATRejected(t *testing.T, db *store.DB) {
 	})
 	// (a) iat far beyond the 2m skew.
 	idp.IAT = time.Now().Add(time.Hour)
-	start, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", false)
+	start, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1103,7 +1103,7 @@ func runOIDCIATRejected(t *testing.T, db *store.DB) {
 	// relying party's zero-check).
 	idp.IAT = time.Time{}
 	idp.OmitIAT = true
-	start2, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", false)
+	start2, err := auth.OIDCStart(ctx, "idp", "login", "", "", "", "", "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1138,7 +1138,7 @@ func inviteOIDCIdentity(t *testing.T, auth *service.Auth, ctx context.Context, a
 	if err != nil {
 		t.Fatal(err)
 	}
-	start, err := auth.OIDCStart(ctx, slug, "link", "", login.SessionToken, password, false)
+	start, err := auth.OIDCStart(ctx, slug, "link", "", "", "", login.SessionToken, password, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1162,7 +1162,7 @@ func TestOIDCUnknownIdentityNeverCreatesAccount(t *testing.T) {
 		sessions := queryInt(t, db, "SELECT COUNT(*) FROM sessions")
 		for _, subject := range []string{"unknown-user", "oidc-admin", "Unknown-User"} {
 			before := oidcRefusedCount(t, db, "unknown-identity")
-			start, err := auth.OIDCStart(ctx, "known-provider", "login", "", "", "", false)
+			start, err := auth.OIDCStart(ctx, "known-provider", "login", "", "", "", "", "", false)
 			if err != nil {
 				t.Fatal(err)
 			}

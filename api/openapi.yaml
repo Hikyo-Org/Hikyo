@@ -4350,7 +4350,10 @@ paths:
         returns the IdP authorization URL. `login` is anonymous and bound by a
         `__Host-` browser-binding cookie set on this response (A2/A16); `link`
         and `reauth` require an authenticated session and are session-bound, and
-        `link` verifies the account-security proof up front (A6).
+        `link` verifies the account-security proof up front (A6). A `login`
+        records its `intent` (absent = `sign-in`) and, for a `sign-up`, the
+        addressed scope (`signup_org`, absent = instance); the start reads no
+        registration policy (#604 d5).
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
       x-hikyo-reauth: {class: account-security, proof: [proof], presence: when-value, member: purpose, values: [link]}
@@ -4376,11 +4379,17 @@ paths:
         # cannot enumerate provider config. 429/500 are the cross-cutting
         # admission and fault responses. The one exception is a request-shape
         # refusal that depends on nothing but the body: `environment_id` on a
-        # purpose other than `reauth` is a 400 naming the field.
+        # purpose other than `reauth` is a 400 naming the field. A `reauth`
+        # on a provider row with no assurance policy is refused by name (409,
+        # the remedy in `detail`) before any round-trip (#588 d4): the caller
+        # has already authenticated a session through that very provider, so
+        # naming the row's policy state discloses nothing to a prober.
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
@@ -16919,6 +16928,23 @@ components:
         purpose:
           type: string
           x-extensible-enum: [login, link, reauth]
+        intent:
+          type: string
+          enum: [sign-in, sign-up]
+          description: |
+            Valid only with purpose `login` (#604); absent = `sign-in`. It
+            decides only what happens to an unknown identity at the callback:
+            `sign-in` refuses it uniformly, `sign-up` enters the registration
+            policy of the addressed scope. A known identity signs in under
+            either. Supplied on any other purpose, the start refuses uniformly.
+        signup_org:
+          type: string
+          maxLength: 64
+          description: |
+            The org whose registration policy a `sign-up` addresses; absent =
+            the instance scope. Valid only with intent `sign-up`. The start
+            reads no policy: an unknown org refuses at the callback as a closed
+            door.
         environment_id:
           type: string
           maxLength: 64

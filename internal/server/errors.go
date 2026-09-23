@@ -196,7 +196,7 @@ var wireErrorRules = []struct {
 	// OIDC and SAML provider administration.
 	{service.ErrProviderNotFound, apigen.ErrorCodeNotFound},
 	{service.ErrBadPurpose, apigen.ErrorCodeBadRequest},
-	{service.ErrReauthNoPolicy, apigen.ErrorCodeBadRequest},
+	{service.ErrReauthNoPolicy, apigen.ErrorCodeConflict},
 	{service.ErrReauthNoEnvironment, apigen.ErrorCodeBadRequest},
 	{service.ErrIdentityNotFound, apigen.ErrorCodeBadRequest},
 	{service.ErrLastCredential, apigen.ErrorCodeBadRequest},
