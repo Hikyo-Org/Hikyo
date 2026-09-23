@@ -3,7 +3,9 @@ import { zKeyList } from '@hikyo/zod';
 import { expect, fn, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
-import type { MachineEnvScope, ServiceAccount } from '../api/identities.ts';
+import type { MachineEnvScope } from '../api/identities.ts';
+import { ORG, PRJ } from '../testkit/ids.ts';
+import { serviceAccount as account } from '../testkit/machineAccess.ts';
 import { GrantDialog } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -11,8 +13,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // The widening ceremony. Its one load-time read is the key catalogue (names
 // and classifications, never a value), which the harness answers; the grant
 // itself has no story route, so the plays stop short of submitting.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const KEYS_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/keys`;
 
 const key = (
@@ -43,16 +43,6 @@ const catalogue = {
     key(2, 'LOG_LEVEL', 'config'),
   ],
 } satisfies z.input<typeof zKeyList>;
-
-const account: ServiceAccount = {
-  id: 'msa_123e4567-e89b-12d3-a456-426614174020',
-  principal_id: 'prn_123e4567-e89b-12d3-a456-426614174020',
-  name: 'api-gateway',
-  kind: 'workload',
-  created_at: '2026-08-01T00:00:00Z',
-  created_by: 'prn_123e4567-e89b-12d3-a456-426614174010',
-  live_credentials: 2,
-};
 
 const env = (n: number, name: string, read: boolean, reveal: boolean): MachineEnvScope => ({
   id: `env_123e4567-e89b-12d3-a456-4266141740${String(10 + n)}`,

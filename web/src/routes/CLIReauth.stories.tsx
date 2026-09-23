@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import type { WhoAmI } from '../app/AuthProvider.tsx';
 import { authenticatedIdentity } from '../testkit/identity.ts';
+import { withSearchParams } from '../testkit/searchParams.ts';
 import { CLIReauth } from './CLIReauth.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -17,23 +18,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // passkey/TOTP/OIDC ceremony; the play never fires it. Bodies use the wire
 // (input) shape of the transaction schema: int64 fields travel as numbers.
 const STATE = 'txn-195';
-
-/**
- * Put the transaction on the story frame's URL for this story's lifetime. The
- * cleanup removes only that parameter: Storybook has moved the frame's own
- * `id`/`globals` on by the time it runs, and restoring a captured href would
- * drag the canvas back to this story.
- */
-const withTransaction = () => {
-  const next = new URL(globalThis.location.href);
-  next.searchParams.set('transaction', STATE);
-  globalThis.history.replaceState(null, '', next);
-  return () => {
-    const current = new URL(globalThis.location.href);
-    current.searchParams.delete('transaction');
-    globalThis.history.replaceState(null, '', current);
-  };
-};
 
 const sliding = {
   environment_id: 'env_01989abc-def0-7123-8123-000000000001',
@@ -96,14 +80,14 @@ const transaction = (rest: Partial<MockRoute>): MockRoute => ({
 });
 const totpConfirmed: MockRoute = {
   url: '/api/v1/auth/totp',
-  body: { confirmed: true, pending: false } satisfies z.infer<typeof zTotpStatus>,
+  body: { confirmed: true, pending: false } satisfies z.input<typeof zTotpStatus>,
 };
 const methods: MockRoute = {
   url: '/api/v1/auth/methods',
   body: {
     local_login_enabled: true,
     providers: [{ slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' }],
-  } satisfies z.infer<typeof zAuthMethods>,
+  } satisfies z.input<typeof zAuthMethods>,
 };
 
 // A session signed in through the configured OIDC provider.
@@ -134,7 +118,7 @@ type Story = StoryObj<typeof meta>;
 // A disclosure handoff over two keys: the locked environment takes a passkey,
 // the sliding one also accepts a code from the enrolled authenticator.
 export const Disclosure: Story = {
-  beforeEach: withTransaction,
+  beforeEach: withSearchParams({ transaction: STATE }),
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/the terminal asks to/i)).toBeVisible();
     await expect(canvas.getByText(/passkey required/)).toBeVisible();
@@ -149,7 +133,7 @@ export const Disclosure: Story = {
 // The same handoff from an OIDC session: the sliding environment can be
 // re-authenticated at the identity provider instead.
 export const DisclosureOIDC: Story = {
-  beforeEach: withTransaction,
+  beforeEach: withSearchParams({ transaction: STATE }),
   parameters: { app: app(oidcIdentity, transaction({ body: disclosure })) },
   play: async ({ canvas }) => {
     await expect(
@@ -162,7 +146,7 @@ export const DisclosureOIDC: Story = {
 // An adapter operation over a sliding environment: the code is required, so
 // the authorize button waits for it.
 export const Adapter: Story = {
-  beforeEach: withTransaction,
+  beforeEach: withSearchParams({ transaction: STATE }),
   parameters: { app: app(authenticatedIdentity, transaction({ body: adapter })) },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText('adapter.configure')).toBeVisible();
@@ -174,7 +158,7 @@ export const Adapter: Story = {
 // A self-configuration decision: the revision, generation and the exact plan
 // digest the authorization is bound to.
 export const SelfConfig: Story = {
-  beforeEach: withTransaction,
+  beforeEach: withSearchParams({ transaction: STATE }),
   parameters: { app: app(authenticatedIdentity, transaction({ body: selfConfig })) },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText(/revision r3, generation 7/)).toBeVisible();
@@ -185,7 +169,7 @@ export const SelfConfig: Story = {
 
 // The transaction read never settles: the card holds its loading status.
 export const Loading: Story = {
-  beforeEach: withTransaction,
+  beforeEach: withSearchParams({ transaction: STATE }),
   parameters: { app: app(authenticatedIdentity, transaction({ pending: true })) },
   play: async ({ canvas }) => {
     await waitFor(() => expect(canvas.getByText(/loading authorization policy/i)).toBeVisible());
@@ -194,7 +178,7 @@ export const Loading: Story = {
 
 // An expired, spent or unknown transaction: one sentence, back to the terminal.
 export const Failed: Story = {
-  beforeEach: withTransaction,
+  beforeEach: withSearchParams({ transaction: STATE }),
   parameters: {
     app: app(authenticatedIdentity, transaction({ status: 410, body: { error: 'transaction spent' } })),
   },

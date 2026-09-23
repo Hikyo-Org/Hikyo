@@ -38,7 +38,7 @@ const methods: MockRoute = {
   body: {
     local_login_enabled: true,
     providers: [{ slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' }],
-  } satisfies z.infer<typeof zAuthMethods>,
+  } satisfies z.input<typeof zAuthMethods>,
 };
 
 const oidcIdentity: WhoAmI = {

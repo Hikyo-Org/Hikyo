@@ -12,6 +12,8 @@ import { expect, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
+import { dynamicProvider } from '../testkit/machineAccess.ts';
 import { MachineAccessPage } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -24,14 +26,10 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // one credential listing per account and one lease listing per environment.
 // Wire fixtures are `z.input` shapes: int64 fields travel as JSON numbers (a
 // bigint cannot be stringified), and `parsed()` coerces them on the way in.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const PATH = `/orgs/${ORG}/projects/${PRJ}/machine-access`;
 const ROUTE = '/orgs/:org/projects/:project/machine-access';
 const BASE = `/api/v1/orgs/${ORG}/projects/${PRJ}`;
 
-const PROD = 'env_123e4567-e89b-12d3-a456-426614174010';
-const STAGING = 'env_123e4567-e89b-12d3-a456-426614174011';
 const environments = {
   count: 2,
   items: [
@@ -141,21 +139,10 @@ const reportCredentials = {
 } satisfies z.input<typeof zMachineCredentialList>;
 const noCredentials = { count: 0, items: [] } satisfies z.input<typeof zMachineCredentialList>;
 
-const PROVIDER = 'dpv_123e4567-e89b-12d3-a456-426614174050';
+const PROVIDER = dynamicProvider.id;
 const providers = {
   items: [
-    {
-      id: PROVIDER,
-      kind: 'postgres',
-      origin: 'db.internal.example.com:5432',
-      tls_mode: 'verify-full',
-      grant_role: 'hikyo_leases',
-      credential_present: true,
-      credential_set_at: '2026-09-01T00:00:00Z',
-      authority_principal_id: OPERATOR,
-      state: 'active',
-      created_at: '2026-08-20T00:00:00Z',
-    },
+    dynamicProvider,
     {
       id: 'dpv_123e4567-e89b-12d3-a456-426614174051',
       kind: 'postgres',

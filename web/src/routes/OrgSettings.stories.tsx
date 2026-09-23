@@ -4,6 +4,7 @@ import { expect, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG } from '../testkit/ids.ts';
 import { OrgSettings } from './OrgSettings.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -13,7 +14,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // one retention read per project. Its mutations (rename, delete, retention
 // save) have no story route, so the plays assert read-only state. The route is
 // `surfaceById('org-settings')`.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
 const PATH = `/orgs/${ORG}/settings`;
 const ROUTE = '/orgs/:org/settings';
 
@@ -28,13 +28,13 @@ const org = {
   name: 'Acme',
   active: true,
   created_at: '2026-01-01T00:00:00Z',
-} satisfies z.infer<typeof zOrg>;
+} satisfies z.input<typeof zOrg>;
 
 const retention = {
   mode: 'keep-if-either',
   max_age_seconds: 7_776_000,
   last_revisions: 10,
-} satisfies z.infer<typeof zRetentionPolicy>;
+} satisfies z.input<typeof zRetentionPolicy>;
 
 const grants = {
   count: 2,
@@ -58,7 +58,7 @@ const grants = {
       created_at: '2026-03-01T00:00:00Z',
     },
   ],
-} satisfies z.infer<typeof zGrantList>;
+} satisfies z.input<typeof zGrantList>;
 
 // One project per branch the retention list renders: inheriting the org
 // default, a custom value under the cap, a custom value the org cap clamps,
@@ -77,10 +77,10 @@ const projects = {
     project(CAPPED, 'warehouse-telemetry'),
     project(UNREADABLE, 'legacy-erp'),
   ],
-} satisfies z.infer<typeof zProjectList>;
+} satisfies z.input<typeof zProjectList>;
 
 const projectPolicy = (inherited: boolean, revisions: number) =>
-  ({ inherited, mode: 'keep-if-either', max_age_seconds: 7_776_000, last_revisions: revisions }) satisfies z.infer<typeof zProjectRetentionPolicy>;
+  ({ inherited, mode: 'keep-if-either', max_age_seconds: 7_776_000, last_revisions: revisions }) satisfies z.input<typeof zProjectRetentionPolicy>;
 
 const populated: readonly MockRoute[] = [
   { url: ORG_URL, body: org },

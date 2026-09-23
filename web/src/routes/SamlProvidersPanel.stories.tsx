@@ -96,7 +96,7 @@ const providers = {
       updated_at: '2026-07-01T00:00:00Z',
     },
   ],
-} satisfies z.infer<typeof zSamlProviderList>;
+} satisfies z.input<typeof zSamlProviderList>;
 
 // A preview answer: the fetched metadata rotates a certificate and adds an
 // endpoint, so nothing applies until the operator confirms exactly this diff.

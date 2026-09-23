@@ -20,7 +20,7 @@ const metaBody = {
   server_version: '1.4.0',
   api_revision: 1,
   protocol_capabilities: [],
-} satisfies z.infer<typeof zMeta>;
+} satisfies z.input<typeof zMeta>;
 const started: MockRoute = {
   url: /\/api\/v1\/auth\/workspace\/start$/,
   method: 'POST',
@@ -28,7 +28,7 @@ const started: MockRoute = {
     handoff: 'wsh_01989abc-def0-7123-8123-000000000001',
     state: 'state-195',
     expires_at: '2099-08-23T12:00:00Z',
-  } satisfies z.infer<typeof zWorkspaceHandoffStarted>,
+  } satisfies z.input<typeof zWorkspaceHandoffStarted>,
 };
 
 const meta = {

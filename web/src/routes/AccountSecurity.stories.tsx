@@ -27,7 +27,7 @@ const profile = {
   email: 'alice@example.com',
   managed: false,
   username_editable: true,
-} satisfies z.infer<typeof zAccountProfile>;
+} satisfies z.input<typeof zAccountProfile>;
 
 const passkeys = {
   passkeys: [
@@ -48,7 +48,7 @@ const passkeys = {
       last_used_at: '2026-08-30T17:00:00Z',
     },
   ],
-} satisfies z.infer<typeof zPasskeyList>;
+} satisfies z.input<typeof zPasskeyList>;
 
 const identities = {
   identities: [
@@ -61,7 +61,7 @@ const identities = {
       created_at: '2026-06-02T08:00:00Z',
     },
   ],
-} satisfies z.infer<typeof zIdentityList>;
+} satisfies z.input<typeof zIdentityList>;
 
 const providers = {
   local_login_enabled: true,
@@ -69,7 +69,7 @@ const providers = {
     { slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' },
     { slug: 'sso', display_name: 'SAML SSO', kind: 'saml' },
   ],
-} satisfies z.infer<typeof zAuthMethods>;
+} satisfies z.input<typeof zAuthMethods>;
 
 const sessions = {
   items: [
@@ -106,9 +106,9 @@ const sessions = {
     },
   ],
   count: 3,
-} satisfies z.infer<typeof zSessionList>;
+} satisfies z.input<typeof zSessionList>;
 
-const totp = (body: z.infer<typeof zTotpStatus>): MockRoute => ({ url: '/api/v1/auth/totp', body });
+const totp = (body: z.input<typeof zTotpStatus>): MockRoute => ({ url: '/api/v1/auth/totp', body });
 
 const reads = {
   profile: '/api/v1/me/profile',

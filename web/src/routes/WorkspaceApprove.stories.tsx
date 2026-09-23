@@ -5,6 +5,7 @@ import { expect, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { withSearchParams } from '../testkit/searchParams.ts';
 import { WorkspaceApprove } from './WorkspaceApprove.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -16,17 +17,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // passkey/TOTP ceremony (step-up); the play never fires either. The fixture's
 // `state` MUST equal the URL's, or the page refuses it as a wrong-state answer.
 const STATE = 'state-195';
-
-/** Put the handoff state on the story frame's URL for this story's lifetime. */
-const withState = () => {
-  const original = globalThis.location.href;
-  const next = new URL(original);
-  next.searchParams.set('state', STATE);
-  globalThis.history.replaceState(null, '', next);
-  return () => {
-    globalThis.history.replaceState(null, '', original);
-  };
-};
 
 const establishment: WorkspaceHandoffEstablishment = {
   state: STATE,
@@ -58,7 +48,7 @@ const transaction = (rest: Partial<MockRoute>): MockRoute => ({
 // The anonymous branch renders Login in place, which reads the sign-in methods.
 const methods: MockRoute = {
   url: '/api/v1/auth/methods',
-  body: { local_login_enabled: true, providers: [] } satisfies z.infer<typeof zAuthMethods>,
+  body: { local_login_enabled: true, providers: [] } satisfies z.input<typeof zAuthMethods>,
 };
 
 const meta = {
@@ -82,7 +72,7 @@ export const NothingToAuthorize: Story = {
 
 // The transaction read never settles: the loading status stands.
 export const Loading: Story = {
-  beforeEach: withState,
+  beforeEach: withSearchParams({ state: STATE }),
   parameters: { app: { auth: true, responses: [transaction({ pending: true })] } },
   play: async ({ canvas }) => {
     await waitFor(() => expect(canvas.getByRole('status')).toHaveTextContent(/loading/i));
@@ -91,7 +81,7 @@ export const Loading: Story = {
 
 // A first workspace: the requesting origin and a plain Authorize / Cancel.
 export const Establishment: Story = {
-  beforeEach: withState,
+  beforeEach: withSearchParams({ state: STATE }),
   parameters: { app: { auth: true, responses: [transaction({ body: establishment })] } },
   play: async ({ canvas }) => {
     await expect(
@@ -105,7 +95,7 @@ export const Establishment: Story = {
 // An elevation of an open workspace: the bound scope and this instance's own
 // reauthentication (passkey or authenticator code) before the approval.
 export const StepUp: Story = {
-  beforeEach: withState,
+  beforeEach: withSearchParams({ state: STATE }),
   parameters: { app: { auth: true, responses: [transaction({ body: stepUp })] } },
   play: async ({ canvas }) => {
     await expect(
@@ -121,7 +111,7 @@ export const StepUp: Story = {
 
 // The transaction could not be read (expired, consumed, or unknown): no button.
 export const Failed: Story = {
-  beforeEach: withState,
+  beforeEach: withSearchParams({ state: STATE }),
   parameters: {
     app: { auth: true, responses: [transaction({ status: 403, body: { error: 'expired' } })] },
   },
@@ -136,7 +126,7 @@ export const Failed: Story = {
 // No session on this instance: the sign-in form renders in place so the URL,
 // and with it the state, survives.
 export const SignIn: Story = {
-  beforeEach: withState,
+  beforeEach: withSearchParams({ state: STATE }),
   parameters: {
     app: {
       auth: true,

@@ -35,7 +35,7 @@ const providers = {
       enabled: false,
     },
   ],
-} satisfies z.infer<typeof zOidcProviderList>;
+} satisfies z.input<typeof zOidcProviderList>;
 
 const list = (rest: Partial<MockRoute>): MockRoute => ({ url: LIST_URL, ...rest });
 

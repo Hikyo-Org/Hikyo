@@ -2,7 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ComponentProps } from 'react';
 import { expect, fn, userEvent } from 'storybook/test';
 
-import type { DynamicProvider } from '../api/dynamic.ts';
+import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
+import { dynamicProvider as provider } from '../testkit/machineAccess.ts';
 import { LeaseMintDialog } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -13,23 +14,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // the machine's own variants and `move` is a spy; no ceremony runs. The dialog
 // reads a query client for its post-mint refresh, so an empty `parameters.app`
 // mounts the harness providers; it fires no request on render.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
-const PROD = 'env_123e4567-e89b-12d3-a456-426614174010';
-const STAGING = 'env_123e4567-e89b-12d3-a456-426614174011';
-
-const provider: DynamicProvider = {
-  id: 'dpv_123e4567-e89b-12d3-a456-426614174050',
-  kind: 'postgres',
-  origin: 'db.internal.example.com:5432',
-  tls_mode: 'verify-full',
-  grant_role: 'hikyo_leases',
-  credential_present: true,
-  credential_set_at: '2026-09-01T00:00:00Z',
-  authority_principal_id: 'prn_123e4567-e89b-12d3-a456-426614174010',
-  state: 'active',
-  created_at: '2026-08-20T00:00:00Z',
-};
 
 type Lifecycle = ComponentProps<typeof LeaseMintDialog>['lifecycle'];
 const request: Extract<Lifecycle, { kind: 'submitting' }>['request'] = {

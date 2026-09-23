@@ -4,6 +4,7 @@ import { expect } from 'storybook/test';
 import type { z } from 'zod';
 
 import { authenticatedIdentity } from '../testkit/identity.ts';
+import { ORG } from '../testkit/ids.ts';
 import { Members } from './Members.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -18,7 +19,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // `useInstanceGrants(false)` is disabled at org scope and needs no row. See
 // .storybook/withApp.tsx. Revoke/Reset/New grant/Invite are mutations or dialogs
 // the read-only play never fires.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
 const ORG_URL = `/api/v1/orgs/${ORG}`;
 const GRANTS_URL = `/api/v1/orgs/${ORG}/grants`;
 const PROJECTS_URL = `/api/v1/orgs/${ORG}/projects`;
@@ -28,9 +28,9 @@ const org = {
   name: 'Acme',
   active: true,
   created_at: '2026-01-01T00:00:00Z',
-} satisfies z.infer<typeof zOrg>;
+} satisfies z.input<typeof zOrg>;
 
-const noProjects = { count: 0, items: [] } satisfies z.infer<typeof zProjectList>;
+const noProjects = { count: 0, items: [] } satisfies z.input<typeof zProjectList>;
 
 // Two members at organisation scope. Principal ids differ from the operator's
 // (prn_…174010), so the "you" badge and the self-reset guard stay out of the way.
@@ -70,7 +70,7 @@ const grants = {
       created_at: '2026-01-01T00:00:00Z',
     },
   ],
-} satisfies z.infer<typeof zGrantList>;
+} satisfies z.input<typeof zGrantList>;
 
 const meta = {
   component: Members,

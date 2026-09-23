@@ -12,6 +12,7 @@ import { expect } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG } from '../testkit/ids.ts';
 import { ScimProvisioningPage } from './ScimProvisioning.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -22,13 +23,12 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // mounts three more panels, each with its own reads, plus the org (mapping
 // scope labels) and the org's projects (scope options): an EMPTY project list
 // keeps the topology ready without a per-environment fan-out.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
 const BINDING = 'bnd_123e4567-e89b-12d3-a456-426614174201';
 const BINDINGS_URL = `/api/v1/orgs/${ORG}/scim-bindings`;
 const bindingUrl = (tail: string) => `${BINDINGS_URL}/${BINDING}/${tail}`;
 
-const org = { id: ORG, name: 'Acme', active: true, created_at: '2026-01-01T00:00:00Z' } satisfies z.infer<typeof zOrg>;
-const noProjects = { count: 0, items: [] } satisfies z.infer<typeof zProjectList>;
+const org = { id: ORG, name: 'Acme', active: true, created_at: '2026-01-01T00:00:00Z' } satisfies z.input<typeof zOrg>;
+const noProjects = { count: 0, items: [] } satisfies z.input<typeof zProjectList>;
 
 const GROUP_ENG = 'grp_123e4567-e89b-12d3-a456-426614174301';
 const GROUP_OPS = 'grp_123e4567-e89b-12d3-a456-426614174302';
@@ -69,7 +69,7 @@ const bindings = {
       ],
     },
   ],
-} satisfies z.infer<typeof zScimBindingList>;
+} satisfies z.input<typeof zScimBindingList>;
 
 const MAPPING_ENG = 'map_123e4567-e89b-12d3-a456-426614174401';
 const mappings = {
@@ -98,7 +98,7 @@ const mappings = {
       capabilities: ['read', 'manage-members'],
     },
   ],
-} satisfies z.infer<typeof zScimMappingList>;
+} satisfies z.input<typeof zScimMappingList>;
 
 const credentials = {
   count: 3,
@@ -127,7 +127,7 @@ const credentials = {
       live: false,
     },
   ],
-} satisfies z.infer<typeof zScimCredentialList>;
+} satisfies z.input<typeof zScimCredentialList>;
 
 const users = {
   count: 3,
@@ -172,7 +172,7 @@ const users = {
       attention: [],
     },
   ],
-} satisfies z.infer<typeof zScimDirectoryUserList>;
+} satisfies z.input<typeof zScimDirectoryUserList>;
 
 const groups = {
   count: 2,
@@ -180,7 +180,7 @@ const groups = {
     { id: GROUP_ENG, display_name: 'Engineering', external_id: '00g1', member_count: 2, created_at: '2026-06-02T00:00:00Z', updated_at: '2026-09-20T00:00:00Z' },
     { id: GROUP_OPS, display_name: 'Operations', member_count: 1, created_at: '2026-06-02T00:00:00Z', updated_at: '2026-09-20T00:00:00Z' },
   ],
-} satisfies z.infer<typeof zScimDirectoryGroupList>;
+} satisfies z.input<typeof zScimDirectoryGroupList>;
 
 const administering: readonly MockRoute[] = [
   { url: BINDINGS_URL, body: bindings },

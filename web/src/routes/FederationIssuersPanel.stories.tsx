@@ -52,7 +52,7 @@ const issuers = {
       live_bindings: 1,
     },
   ],
-} satisfies z.infer<typeof zFederationIssuerList>;
+} satisfies z.input<typeof zFederationIssuerList>;
 
 const list = (rest: Partial<MockRoute>): MockRoute => ({ url: LIST_URL, ...rest });
 

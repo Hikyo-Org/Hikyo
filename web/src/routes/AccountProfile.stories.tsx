@@ -18,7 +18,7 @@ const local = {
   email: 'alice@example.com',
   managed: false,
   username_editable: true,
-} satisfies z.infer<typeof zAccountProfile>;
+} satisfies z.input<typeof zAccountProfile>;
 
 const profile = (rest: Partial<MockRoute>): MockRoute => ({ url: '/api/v1/me/profile', ...rest });
 

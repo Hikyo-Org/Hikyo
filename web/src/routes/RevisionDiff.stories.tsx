@@ -4,6 +4,7 @@ import { expect, fn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { RevisionDiffDialog } from './RevisionDiff.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -15,8 +16,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // dialog holds for 30 seconds and drops on blur. The screen calls `useAuth`
 // for the session id its ceremony task is keyed on, so the harness runs it
 // with `auth: true`.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const ENV = 'env_123e4567-e89b-12d3-a456-426614174012';
 const ENV_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/environments/${ENV}`;
 const DIFF_URL = `${ENV_URL}/revisions/diff`;

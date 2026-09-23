@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { CreateAccountDialog } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -10,8 +11,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // the in-flight state, a refusal status renders the failure alert. The 409 is
 // asserted by its own sentence, not "an alert", so a mis-routed request (which
 // 404s into a different, plausible sentence) fails the play.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const CREATE_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/service-accounts`;
 
 const meta = {

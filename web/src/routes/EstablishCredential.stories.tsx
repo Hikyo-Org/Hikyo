@@ -27,7 +27,7 @@ const recovered: MockRoute = {
   body: {
     authority: 'hik_cea_recovered_authority_value',
     expires_at: '2099-08-23T12:00:00Z',
-  } satisfies z.infer<typeof zRecoveryBeginResult>,
+  } satisfies z.input<typeof zRecoveryBeginResult>,
 };
 
 const app = (rest: { path?: string; responses?: MockRoute[] } = {}) => ({

@@ -4,6 +4,7 @@ import { expect, fn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { CatalogueManageDialog } from './CatalogueManageDialog.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -11,8 +12,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // The folder and linked-key lifecycle dialog. It reads the project's folders,
 // key groups and definitions source; a Git-managed source makes every write
 // read-only behind the standing notice.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const PROJECT_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}`;
 
 const stamp = { org_id: ORG, project_id: PRJ, created_at: '2026-01-01T00:00:00Z' };

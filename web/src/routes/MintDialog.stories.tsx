@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ComponentProps } from 'react';
 import { expect, fn } from 'storybook/test';
 
+import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { MintDialog } from './MachineAccess.tsx';
 import type { MintLifecycle, MintRequest } from './mintLifecycle.ts';
 
@@ -14,14 +15,14 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 const request: MintRequest = {
   id: 1,
   sessionId: 'ses_123e4567-e89b-12d3-a456-426614174000',
-  org: 'org_123e4567-e89b-12d3-a456-426614174001',
-  project: 'prj_123e4567-e89b-12d3-a456-426614174000',
+  org: ORG,
+  project: PRJ,
   accountId: 'msa_123e4567-e89b-12d3-a456-426614174020',
   accountName: 'api-gateway',
   rotating: false,
   reach: [
-    { id: 'env_123e4567-e89b-12d3-a456-426614174010', name: 'production' },
-    { id: 'env_123e4567-e89b-12d3-a456-426614174011', name: 'staging' },
+    { id: PROD, name: 'production' },
+    { id: STAGING, name: 'staging' },
   ],
 };
 

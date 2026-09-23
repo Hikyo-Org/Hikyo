@@ -1,6 +1,7 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { Meta, StoryContext, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { CreateProviderDialog } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -9,11 +10,9 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // plays fill all three fields and submit against the harness; the 400 is the
 // load-bearing refusal (the server probes the origin before storing) and is
 // asserted by its own sentence, so a mis-routed request cannot pass as it.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const CREATE_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/dynamic-providers`;
 
-const fill = async (canvas: Parameters<NonNullable<Story['play']>>[0]['canvas']) => {
+const fill = async (canvas: StoryContext['canvas']) => {
   await userEvent.type(canvas.getByLabelText('Origin (host:port/dbname)'), 'db.internal:5432/app');
   await userEvent.type(canvas.getByLabelText('Grant role'), 'hikyo_leases');
   await userEvent.type(canvas.getByLabelText('Admin credential (write-only)'), 'pg-admin-secret');

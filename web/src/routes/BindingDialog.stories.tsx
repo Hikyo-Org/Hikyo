@@ -1,7 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { Meta, StoryContext, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
 import type { MachineCredential, ServiceAccount } from '../api/identities.ts';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { BindingDialog } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -12,8 +13,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // empty, so no passkey ceremony runs, exactly as today's contract. The 409 is
 // asserted by its own sentence, so a mis-routed request (a harness 404 reads
 // "no longer here") fails the play.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const OPERATOR = 'prn_123e4567-e89b-12d3-a456-426614174010';
 
 const account = (id: string, name: string, live: number): ServiceAccount => ({
@@ -52,7 +51,7 @@ const predecessor: MachineCredential = {
 
 const UID_LABEL = 'ServiceAccount UID (/kubernetes.io/serviceaccount/uid)';
 
-const fill = async (canvas: Parameters<NonNullable<Story['play']>>[0]['canvas']) => {
+const fill = async (canvas: StoryContext['canvas']) => {
   await userEvent.type(canvas.getByLabelText('Audience'), 'hikyo');
   await userEvent.type(canvas.getByLabelText(UID_LABEL), '5d3b2a1c-0f9e-4d8c-b7a6-543210fedcba');
   await userEvent.click(canvas.getByRole('button', { name: 'Bind this identity' }));

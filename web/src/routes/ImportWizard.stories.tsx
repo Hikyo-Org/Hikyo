@@ -4,6 +4,7 @@ import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { ImportWizard } from './ImportWizard.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -13,8 +14,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // occurrence read (phase 1a, POST per environment) opens the classify step,
 // the declare (POST keys) and import (POST per environment) writes produce the
 // result step. Each write has a canned row; a refused row is the failed state.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const PROJECT_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}`;
 const DEV = 'env_123e4567-e89b-12d3-a456-426614174010';
 const PRD = 'env_123e4567-e89b-12d3-a456-426614174012';

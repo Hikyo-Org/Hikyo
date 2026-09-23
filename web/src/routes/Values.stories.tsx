@@ -4,6 +4,7 @@ import { expect, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG, PRJ, PROD as ENV, STAGING } from '../testkit/ids.ts';
 import { Values } from './Values.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -14,9 +15,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // window, whose `can_reveal` decides whether a secret gets Reveal/Copy controls
 // or the write-only editor. Reveal/copy/publish run the ceremony and are not
 // driven here; the stories cover what the page looks like before any of that.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
-const ENV = 'env_123e4567-e89b-12d3-a456-426614174010';
 const PATH = `/orgs/${ORG}/projects/${PRJ}/environments/${ENV}/values`;
 const ROUTE = '/orgs/:org/projects/:project/environments/:environment/values';
 const PROJECT_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}`;
@@ -24,17 +22,17 @@ const VALUES_URL = `${PROJECT_URL}/environments/${ENV}/values`;
 const WINDOW_URL = `${PROJECT_URL}/environments/${ENV}/reveal-window`;
 const ENVIRONMENTS_URL = `${PROJECT_URL}/environments`;
 
-type ValueList = z.infer<typeof zValueList>;
-type RevealWindow = z.infer<typeof zRevealWindow>;
+type ValueList = z.input<typeof zValueList>;
+type RevealWindow = z.input<typeof zRevealWindow>;
 
 const environments = {
   count: 3,
   items: [
     { id: ENV, name: 'production', display_order: 0 },
-    { id: 'env_123e4567-e89b-12d3-a456-426614174011', name: 'staging', display_order: 1 },
+    { id: STAGING, name: 'staging', display_order: 1 },
     { id: 'env_123e4567-e89b-12d3-a456-426614174012', name: 'development', display_order: 2 },
   ].map((item) => ({ ...item, org_id: ORG, project_id: PRJ, created_at: '2026-01-01T00:00:00Z' })),
-} satisfies z.infer<typeof zEnvironmentList>;
+} satisfies z.input<typeof zEnvironmentList>;
 
 const keyId = (n: number) => `key_123e4567-e89b-12d3-a456-4266141740${String(n).padStart(2, '0')}`;
 const cell = (

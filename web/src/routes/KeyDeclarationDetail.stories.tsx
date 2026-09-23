@@ -5,6 +5,7 @@ import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { KEY_GONE_REFUSAL } from '../api/matrix.ts';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { KeyDeclarationDetail } from './KeyDeclarationDetail.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -14,8 +15,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // confirmed `db`. It reads the key, the definitions source, the instance config
 // (to spot the system project; a non-operator's 403 keeps it quiet and stops
 // the poll) and, in db mode, the key groups for the linked-keys editor.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const KEY = 'key_123e4567-e89b-12d3-a456-426614174004';
 const GROUP = 'kgr_123e4567-e89b-12d3-a456-426614174050';
 const PROJECT_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}`;

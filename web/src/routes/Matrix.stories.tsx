@@ -14,6 +14,7 @@ import { expect, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { Matrix } from './Matrix.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -26,8 +27,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // read degrades that column in place (#451). Wire bodies here are `z.input`
 // shapes: int64 fields ride as plain numbers and are coerced to bigint by the
 // generated schemas when the screen parses them.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const PATH = `/orgs/${ORG}/projects/${PRJ}/matrix`;
 const ROUTE = '/orgs/:org/projects/:project/matrix';
 const PROJECT_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}`;

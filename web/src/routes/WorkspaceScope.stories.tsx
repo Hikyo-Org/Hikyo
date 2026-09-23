@@ -46,7 +46,7 @@ const directory = {
     },
   ],
   count: 1,
-} satisfies z.infer<typeof zRemoteList>;
+} satisfies z.input<typeof zRemoteList>;
 
 const remotes = (rest: Partial<MockRoute>): MockRoute => ({
   url: '/api/v1/instance/remotes',
@@ -57,10 +57,10 @@ const metaBody = {
   server_version: '1.4.0',
   api_revision: 1,
   protocol_capabilities: [],
-} satisfies z.infer<typeof zMeta>;
+} satisfies z.input<typeof zMeta>;
 const liveness: MockRoute = {
   url: /\/api\/v1\/me\/sessions$/,
-  body: { items: [], count: 0 } satisfies z.infer<typeof zSessionList>,
+  body: { items: [], count: 0 } satisfies z.input<typeof zSessionList>,
 };
 
 const meta = {

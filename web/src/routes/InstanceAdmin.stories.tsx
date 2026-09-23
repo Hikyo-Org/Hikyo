@@ -30,13 +30,13 @@ const orgs = {
     { id: 'org_123e4567-e89b-12d3-a456-426614174002', name: 'Globex Industrial Holdings (EMEA)', active: true, created_at: '2026-03-01T00:00:00Z' },
     { id: 'org_123e4567-e89b-12d3-a456-426614174003', name: 'Initech', active: false, created_at: '2025-11-01T00:00:00Z' },
   ],
-} satisfies z.infer<typeof zOrgList>;
+} satisfies z.input<typeof zOrgList>;
 
 const policy = {
   max_finite_lifetime_seconds: 7_776_000,
   allow_indefinite: false,
   max_live_credentials: 5,
-} satisfies z.infer<typeof zCredentialPolicy>;
+} satisfies z.input<typeof zCredentialPolicy>;
 
 const health = {
   last_prune_success: '2026-09-22T03:00:00Z',
@@ -61,7 +61,7 @@ const health = {
   adapter_targets_paused: 0,
   adapter_targets_attention: 0,
   adapter_jobs_queued: 0,
-} satisfies z.infer<typeof zRetentionHealth>;
+} satisfies z.input<typeof zRetentionHealth>;
 
 // The child panels' populated bodies are storied in their own files; here they
 // just need to resolve so the page reads as a whole.

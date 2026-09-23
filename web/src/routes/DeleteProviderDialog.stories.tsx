@@ -1,7 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { Meta, StoryContext, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
-import type { DynamicProvider } from '../api/dynamic.ts';
+import { ORG, PRJ } from '../testkit/ids.ts';
+import { dynamicProvider as provider } from '../testkit/machineAccess.ts';
 import { DeleteProviderDialog } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -11,25 +12,11 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // failed and the server-demanded cascade live in the dialog's own state, so
 // those plays type the origin and submit against the harness (a DELETE on the
 // provider; the `revoke_all` query is ignored by the path match).
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 
-const provider: DynamicProvider = {
-  id: 'dpv_123e4567-e89b-12d3-a456-426614174050',
-  kind: 'postgres',
-  origin: 'db.internal.example.com:5432',
-  tls_mode: 'verify-full',
-  grant_role: 'hikyo_leases',
-  credential_present: true,
-  credential_set_at: '2026-09-01T00:00:00Z',
-  authority_principal_id: 'prn_123e4567-e89b-12d3-a456-426614174010',
-  state: 'active',
-  created_at: '2026-08-20T00:00:00Z',
-};
 const DELETE_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/dynamic-providers/${provider.id}`;
 const CASCADE = 'Revoke every live lease of this provider as part of the delete.';
 
-const arm = async (canvas: Parameters<NonNullable<Story['play']>>[0]['canvas']) => {
+const arm = async (canvas: StoryContext['canvas']) => {
   await userEvent.type(canvas.getByLabelText('Confirm the provider origin to delete it'), provider.origin);
   await expect(canvas.getByRole('button', { name: 'Delete provider' })).toBeEnabled();
   await userEvent.click(canvas.getByRole('button', { name: 'Delete provider' }));

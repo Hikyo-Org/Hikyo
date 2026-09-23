@@ -11,6 +11,7 @@ import { expect, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { HistoryDrawer } from './HistoryDrawer.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -22,8 +23,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // service accounts (to name pinned workloads), and the selected revision's
 // delivered key set. The restore / pin / release sheets are `<dialog>`s that
 // open from the detail pane; two stories open one without submitting it.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const PROJECT_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}`;
 const ROUTE = '/orgs/:org/projects/:project/matrix/history';
 const BASE = `/orgs/${ORG}/projects/${PRJ}/matrix/history`;

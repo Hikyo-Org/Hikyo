@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn } from 'storybook/test';
 
-import type { MachineCredential, ServiceAccount } from '../api/identities.ts';
+import type { MachineCredential } from '../api/identities.ts';
+import { serviceAccount as account } from '../testkit/machineAccess.ts';
 import { BindingCard } from './MachineAccess.tsx';
 
 // One federated binding as the Federation tab and a row expansion list it: the
@@ -9,16 +10,6 @@ import { BindingCard } from './MachineAccess.tsx';
 // in words, and the quarantine notice a restore leaves behind. `now` is fixed
 // so the expiry text is the same on every run.
 const now = new Date('2026-09-23T00:00:00Z');
-
-const account: ServiceAccount = {
-  id: 'msa_123e4567-e89b-12d3-a456-426614174020',
-  principal_id: 'prn_123e4567-e89b-12d3-a456-426614174020',
-  name: 'api-gateway',
-  kind: 'workload',
-  created_at: '2026-08-01T00:00:00Z',
-  created_by: 'prn_123e4567-e89b-12d3-a456-426614174010',
-  live_credentials: 2,
-};
 
 const credential: MachineCredential = {
   id: 'mcr_123e4567-e89b-12d3-a456-426614174041',

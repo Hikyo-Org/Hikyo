@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
 import type { DynamicLease } from '../api/dynamic.ts';
+import { ORG, PRJ, PROD } from '../testkit/ids.ts';
+import { dynamicProvider } from '../testkit/machineAccess.ts';
 import { LeaseActionDialog } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -11,13 +13,10 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // mutation state, so the plays submit against the harness (a POST per verb);
 // the 409 is asserted by its verb-specific sentence, so a mis-routed request
 // (a harness 404 reads "no longer here") fails the play.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
-const PROD = 'env_123e4567-e89b-12d3-a456-426614174010';
 
 const lease: DynamicLease = {
   id: 'dls_123e4567-e89b-12d3-a456-426614174060',
-  provider_id: 'dpv_123e4567-e89b-12d3-a456-426614174050',
+  provider_id: dynamicProvider.id,
   environment_id: PROD,
   principal_id: 'prn_123e4567-e89b-12d3-a456-426614174020',
   principal_class: 'workload',

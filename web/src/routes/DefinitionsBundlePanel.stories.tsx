@@ -5,6 +5,7 @@ import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import type { DefinitionsSettings } from '../api/definitions.ts';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { DefinitionsBundlePanel } from './DefinitionsBundlePanel.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -13,8 +14,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // states are reached by driving the real flow in `play`: a bundle file is
 // chosen, checked (POST check) and planned (POST plans, then GET the stored
 // plan). A refused or never-settling check row is the failed / busy state.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const PROJECT_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}`;
 const PLAN = 'pln_123e4567-e89b-12d3-a456-426614174000';
 

@@ -9,6 +9,7 @@ import {
 import { expect } from 'storybook/test';
 import type { z } from 'zod';
 
+import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
 import { ProjectSettings } from './ProjectSettings.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -26,8 +27,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // project body, not the identity, so the default operator whoami is left as is.
 // The route pattern is `surfaceById('project-settings').path` in
 // `src/app/navigation.ts`. See .storybook/withApp.tsx.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 const PATH = `/orgs/${ORG}/projects/${PRJ}/settings`;
 const ROUTE = '/orgs/:org/projects/:project/settings';
 
@@ -41,18 +40,18 @@ const orgRetention = {
   mode: 'keep-if-either',
   max_age_seconds: 7_776_000,
   last_revisions: 10,
-} satisfies z.infer<typeof zRetentionPolicy>;
+} satisfies z.input<typeof zRetentionPolicy>;
 const projectRetention = {
   inherited: true,
   mode: 'keep-if-either',
   max_age_seconds: 7_776_000,
   last_revisions: 10,
-} satisfies z.infer<typeof zProjectRetentionPolicy>;
-const definitions = { definitions_source: 'db' } satisfies z.infer<typeof zDefinitionsSettings>;
+} satisfies z.input<typeof zProjectRetentionPolicy>;
+const definitions = { definitions_source: 'db' } satisfies z.input<typeof zDefinitionsSettings>;
 
-const noEnvironments = { count: 0, items: [] } satisfies z.infer<typeof zEnvironmentList>;
-const environment: z.infer<typeof zEnvironmentList>['items'][number] = {
-  id: 'env_123e4567-e89b-12d3-a456-426614174010',
+const noEnvironments = { count: 0, items: [] } satisfies z.input<typeof zEnvironmentList>;
+const environment: z.input<typeof zEnvironmentList>['items'][number] = {
+  id: PROD,
   org_id: ORG,
   project_id: PRJ,
   name: 'production',
@@ -63,9 +62,9 @@ const twoEnvironments = {
   count: 2,
   items: [
     environment,
-    { ...environment, id: 'env_123e4567-e89b-12d3-a456-426614174011', name: 'staging', display_order: 1 },
+    { ...environment, id: STAGING, name: 'staging', display_order: 1 },
   ],
-} satisfies z.infer<typeof zEnvironmentList>;
+} satisfies z.input<typeof zEnvironmentList>;
 
 const administrableProject = {
   id: PRJ,
@@ -74,12 +73,12 @@ const administrableProject = {
   created_at: '2026-01-01T00:00:00Z',
   can_manage_policy: true,
   can_delete: true,
-} satisfies z.infer<typeof zProject>;
+} satisfies z.input<typeof zProject>;
 const memberProject = {
   ...administrableProject,
   can_manage_policy: false,
   can_delete: false,
-} satisfies z.infer<typeof zProject>;
+} satisfies z.input<typeof zProject>;
 
 // The four capability-independent rows every story needs, over the empty
 // environment list unless a story replaces it.

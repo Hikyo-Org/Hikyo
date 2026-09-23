@@ -1,7 +1,8 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { Meta, StoryContext, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent } from 'storybook/test';
 
-import type { ServiceAccount } from '../api/identities.ts';
+import { ORG, PRJ } from '../testkit/ids.ts';
+import { serviceAccount as account } from '../testkit/machineAccess.ts';
 import { DeleteAccountDialog } from './MachineAccess.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -10,21 +11,10 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // the dialog's own mutation state, so the plays type the name and submit
 // against the harness; the refusal is asserted by its own sentence so a
 // mis-routed request (a harness 404 reads "no longer here") fails the play.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
-const PRJ = 'prj_123e4567-e89b-12d3-a456-426614174000';
 
-const account: ServiceAccount = {
-  id: 'msa_123e4567-e89b-12d3-a456-426614174020',
-  principal_id: 'prn_123e4567-e89b-12d3-a456-426614174020',
-  name: 'api-gateway',
-  kind: 'workload',
-  created_at: '2026-08-01T00:00:00Z',
-  created_by: 'prn_123e4567-e89b-12d3-a456-426614174010',
-  live_credentials: 2,
-};
 const DELETE_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/service-accounts/${account.id}`;
 
-const arm = async (canvas: Parameters<NonNullable<Story['play']>>[0]['canvas']) => {
+const arm = async (canvas: StoryContext['canvas']) => {
   await userEvent.type(canvas.getByLabelText('Confirm the account name to delete it'), account.name);
   await expect(canvas.getByRole('button', { name: 'Delete service account' })).toBeEnabled();
   await userEvent.click(canvas.getByRole('button', { name: 'Delete service account' }));

@@ -20,7 +20,7 @@ const keys = {
     { fingerprint: ACTIVE, state: 'active', created_at: '2026-09-01T09:00:00Z' },
     { fingerprint: RETIRING, state: 'retiring', created_at: '2026-03-01T09:00:00Z' },
   ],
-} satisfies z.infer<typeof zSamlSpKeyList>;
+} satisfies z.input<typeof zSamlSpKeyList>;
 
 const list = (rest: Partial<MockRoute>): MockRoute => ({ url: LIST_URL, ...rest });
 
