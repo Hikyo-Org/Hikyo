@@ -148,6 +148,14 @@ under `login.spec.ts`. The instance org list shows an origin badge
 - The staged entry adds a click to every password sign-in (#587 d1's accepted
   cost); every Playwright password sign-in goes through `choosePassword`.
 
+- The `sign out` flows in `shell.spec.ts` now run under `test.slow()`: their
+  second factor draws the next step from the shared TOTP ledger and can wait
+  out a full period (the `account.spec.ts` precedent); on mobile, back to back,
+  they sat at the 30 s default.
+- `GET /orgs` gained the shared `BadRequest` response (for `?origin=`); the
+  generated TS client therefore repeats that response's existing description,
+  which carries an em-dash. No new prose here contains one.
+
 No spec-versus-resolution contradiction was found.
 
 ## For the next tickets
