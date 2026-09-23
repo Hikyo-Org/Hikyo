@@ -23,7 +23,7 @@ import { ADMIN } from './instance.ts';
  *
  * It is seeded through the REAL API with a real session, never by writing to
  * the datastore: a value is a sealed envelope bound to its own row, and a
- * fixture that inserted bytes directly would produce cells nothing can open , 
+ * fixture that inserted bytes directly would produce cells nothing can open;
  * a flow that then "passed" would be proving something about a broken row.
  *
  * Two capabilities on the seeding path are MFA-mandatory (`instance-config`
@@ -644,7 +644,7 @@ export async function seedTenant(
     zStaged,
   );
 
-  // Development gets an explicit sliding window. The INSTANCE default is 0 , 
+  // Development gets an explicit sliding window. The INSTANCE default is 0,
   // fail-closed, and the concrete default is the operations spec's to fix, so
   // without this every environment would take a ceremony per disclosure and
   // the sliding half of the guard would have no subject.

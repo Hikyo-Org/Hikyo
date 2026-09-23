@@ -561,7 +561,7 @@ function parseSetCookie(raw: string[], host: string): Cookie[] {
  *
  * ADMIN carries a real TOTP factor, so a browser password login answers a 202
  * login challenge and mints no session (#760): the factor is presented against
- * the challenge to mint the session — the same sequence the `/login` gate will
+ * the challenge to mint the session, the same sequence the `/login` gate will
  * drive once it is wired (#785). `draw` is the administrator's step ledger
  * (`nextTotpCode` for A, `nextServingCode` for B), which keeps the
  * single-use-per-step bookkeeping honest across workers. The session it mints
@@ -1336,7 +1336,7 @@ async function beginBrowserChallenge(page: Page): Promise<string> {
  * through the page's request context so the session cookie lands in the browser
  * context before any in-page ceremony runs. Used ONLY by the initial mint, where
  * the passkey the later logins present does not yet exist, so the challenge can
- * only be answered with the seeded TOTP factor — once per suite, off the hot
+ * only be answered with the seeded TOTP factor: once per suite, off the hot
  * path, so its single-use step accounting stays cheap.
  *
  * It draws through `nextTotpCode`, so every step the login spends is recorded in
@@ -1534,7 +1534,7 @@ export async function establishSession(page: Page, stepUp = true): Promise<void>
   // No step-up means the page carries NO passkey authenticator: the read-only
   // surfaces that assert design tokens on a clean session, and the deliberately
   // single-factor session that proves the instance-config second-factor gate.
-  // Its #760 challenge can only be answered with TOTP, in Node — a handful of
+  // Its #760 challenge can only be answered with TOTP, in Node: a handful of
   // calls, off the per-test hot path, so the single-use step accounting stays
   // cheap. The session it mints carries [password, totp] and never steps up.
   if (!stepUp) {
@@ -1563,7 +1563,7 @@ export async function establishSession(page: Page, stepUp = true): Promise<void>
  *
  * `enrol` is true exactly once per suite, in global setup. The only other
  * subtlety is the synchronizer token: enrolment rotates the session AND its
- * token, so the cookie is re-read on every request instead of captured once , 
+ * token, so the cookie is re-read on every request instead of captured once;
  * a stale token is refused, which from out here looks exactly like a failed
  * ceremony.
  */
@@ -1972,7 +1972,7 @@ export function stopInstance(): void {
   }
   for (const instance of instances) {
     // SIGKILL, not SIGTERM: a server still inside boot may not have installed
-    // its signal handler yet, and a survivor holds the port for the NEXT run , 
+    // its signal handler yet, and a survivor holds the port for the NEXT run,
     // where it answers /healthz from another datastore and turns every
     // authenticated call into a 401 that looks like a credential bug.
     instance.expectedExit = true;

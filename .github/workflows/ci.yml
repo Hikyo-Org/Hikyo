@@ -639,13 +639,13 @@ jobs:
         run: ./scripts/compose-demo.sh
 
   # The SPA and its flow suite (#56). The flows run against the GO BINARY
-  # app-build already produced, so this job no longer builds anything — it boots
+  # app-build already produced, so this job no longer builds anything; it boots
   # instances and drives a browser.
   #
   # PARALLELISED ON TWO AXES: viewport project (desktop / mobile) AND a flow
-  # GROUP. The harness holds one administrator per run — a TOTP ledger where a
+  # GROUP. The harness holds one administrator per run (a TOTP ledger where a
   # code is single-use per step, a passkey whose signature counter must advance,
-  # a shared browser session flows re-mint — so two workers inside one process
+  # a shared browser session flows re-mint), so two workers inside one process
   # would race all three (see playwright.config.ts). But each MATRIX LEG is its
   # own runner with its own pair of instances, its own seeded tenant and its own
   # passkey, so splitting the FLOWS across legs races nothing: a leg runs a
@@ -655,7 +655,7 @@ jobs:
   # A flow that only passes at 1280px has not passed, so every group runs on both
   # viewports; `fail-fast: false` keeps the broken viewport named.
   #
-  # Adding a flow to e2e/registry.ts REQUIRES adding its spec to one group here —
+  # Adding a flow to e2e/registry.ts REQUIRES adding its spec to one group here:
   # a flow in no group never runs, and the aggregator fails the build by name.
   web:
     needs: [changes, app-build]
@@ -719,8 +719,8 @@ jobs:
             pnpm-store-v1-${{ runner.os }}-
 
       # The SPA consumes clients/ts generated sources through aliases, so the
-      # generated Zod schemas resolve `zod` from clients/ts's own node_modules
-      # — without this install, typecheck and build fail on TS2307.
+      # generated Zod schemas resolve `zod` from clients/ts's own node_modules;
+      # without this install, typecheck and build fail on TS2307.
       - name: Install client package (generated sources' own deps)
         working-directory: clients/ts
         run: pnpm install --frozen-lockfile
@@ -770,7 +770,7 @@ jobs:
   # merges the eight legs' run logs and asserts every flow×surface×theme claim ran
   # for BOTH viewports. Also `needs: storybook` so it doubles as the web plan's
   # enforcement gate for that indirect job (a red story blocks closure). `needs:
-  # web` so it runs only when all legs passed — a
+  # web` so it runs only when all legs passed: a
   # failed leg already fails the gate, and a partial log here would be a false
   # negative. No pnpm install: the checker imports only registry.ts and the pure
   # surface list, so Node's native type stripping runs it with zero deps.
@@ -802,14 +802,13 @@ jobs:
 
   # Storybook stories run as vitest browser tests (chromium via
   # @vitest/browser-playwright), so they need this container's browsers but not
-  # the app binary, a viewport, or the e2e flow legs — story coverage is theme-
+  # the app binary, a viewport, or the e2e flow legs; story coverage is theme-
   # and prop-driven. Its own job keeps it off the app-build artifact and out of
   # the web job's frontend-work fixture (whose guard forbids a browser shard
   # repeating app-build frontend work). Registered `indirect` in
   # ci-job-registry.json and enforced transitively: web-closure `needs` it, so a
   # red story fails the web plan's closure gate without touching
-  # ci-required.needs (a directly-required job cannot be introduced in its own PR
-  # — the base-pinned governance check would reject it).
+  # ci-required.needs.
   storybook:
     needs: [changes]
     if: ${{ fromJSON(needs.changes.outputs.plan).web }}
@@ -869,7 +868,7 @@ jobs:
   # The ui-tagged Go coverage the browser suite used to carry inline: the
   # release-shaped binary's govulncheck pass and the ui-tagged server/webui
   # tests. Split into its own job so it runs CONCURRENTLY with the two browser
-  # legs instead of serially inside each of them — both legs paid it before, and
+  # legs instead of serially inside each of them; both legs paid it before, and
   # neither is browser work. Keep it on its own `web-go` plan so Go/API/client
   # changes still validate the release-shaped app while skipping browser legs;
   # web changes select both plans.
@@ -1042,7 +1041,7 @@ jobs:
       - name: Verify operations floor preflight refusals
         run: ./scripts/ci/ops-floor_test.sh
       # The secret-scanning benchmark regression guard (#74, SS1). Relative, not
-      # absolute-ms — CI runners are not the Pi-class calibration floor, so this
+      # absolute-ms: CI runners are not the Pi-class calibration floor, so this
       # only proves BenchmarkScan compiles and runs to completion; the absolute
       # p99/boot envelope is asserted by the committed Pi artifact under `go test`.
       - name: Secret-scanning benchmark runs (relative regression guard)
@@ -1069,7 +1068,7 @@ jobs:
   # The operator's kind end-to-end suite (#64, mvp-boundary M3): the Hikyo
   # server runs in-process over TLS, the operator reconciler in-process against a
   # real kind API server, and the CRDs are applied from chart/hikyo/crds. The
-  # runner script (scripts/ci/k8s-e2e.sh) owns the cluster lifecycle — it creates
+  # runner script (scripts/ci/k8s-e2e.sh) owns the cluster lifecycle; it creates
   # a fresh `hikyo-e2e` cluster and deletes it in a trap.
   k8s-e2e:
     needs: changes
@@ -1104,7 +1103,7 @@ jobs:
             go-k8s-e2e-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       # A pinned, checksummed binary download (the shellcheck pattern above):
       # the repository's Actions allowlist is deliberately narrow, and kind is
-      # a single static binary — no third-party action needed.
+      # a single static binary, no third-party action needed.
       - name: Install kind (pinned archive)
         env:
           KIND_VERSION: v0.32.0
@@ -1444,7 +1443,7 @@ jobs:
             ran=$((ran + 1))
           done <"$targets"
           if [ "$ran" -eq 0 ]; then
-            echo "fuzz: shard $FUZZ_SHARD has no target — the pass cannot be vacuous" >&2
+            echo "fuzz: shard $FUZZ_SHARD has no target; the pass cannot be vacuous" >&2
             exit 1
           fi
           echo "fuzz: shard $FUZZ_SHARD ran $ran targets"
@@ -1511,7 +1510,7 @@ jobs:
   # Fuzz findings are reported out-of-band by fuzz-report.yml (workflow_run), so
   # no job here requests issue/PR write. That keeps this reusable workflow's
   # permission surface read-only (contents/actions), which is all its caller
-  # (trusted-ci) grants — a write request here would startup-fail every PR's
+  # (trusted-ci) grants: a write request here would startup-fail every PR's
   # trusted-ci run.
 
   # The headline guarantee, as its own named context (#76, mvp-boundary K3):
