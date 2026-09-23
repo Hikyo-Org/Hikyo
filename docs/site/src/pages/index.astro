@@ -227,11 +227,11 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
               <div class="crumb"><span class="avatar">{avatar}</span> <strong>{project.organisation}</strong><span>/</span> {project.name}</div>
               <div class="environment-chips" aria-label="Visible environments" data-env-tabs>
                 {environments.map((env) => (
-                  <button type="button" data-env={env} disabled>{env}</button>
+                  <button type="button" id={`matrix-tab-${env}`} data-env={env} disabled>{env}</button>
                 ))}
               </div>
             </div>
-            <div class="matrix-scroll">
+            <div class="matrix-scroll" id="matrix-panel" data-matrix-panel>
               <table class="matrix" data-matrix>
                 <caption class="sr-only">Example configuration matrix for three environments</caption>
                 <thead>
@@ -730,6 +730,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
       const table = surface?.querySelector<HTMLTableElement>('[data-matrix]');
       const chips = surface?.querySelector<HTMLElement>('[data-env-tabs]');
       const tabs = chips ? Array.from(chips.querySelectorAll<HTMLButtonElement>('button[data-env]')) : [];
+      const panel = surface?.querySelector<HTMLElement>('[data-matrix-panel]');
       const groupHeads = table ? Array.from(table.querySelectorAll<HTMLTableCellElement>('[data-group]')) : [];
       const mobile = matchMedia('(max-width: 43rem)');
       const settleMs = (visible: number) => visible * 35 + 160 + 240 + 60;
@@ -741,6 +742,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
           const on = tab.dataset.env === env;
           tab.setAttribute('aria-selected', on ? 'true' : 'false');
           tab.tabIndex = on ? 0 : -1;
+          if (on) panel?.setAttribute('aria-labelledby', tab.id);
         }
         if (animate && motionOk) {
           surface.classList.remove('is-pending', 'is-switching');
@@ -755,19 +757,26 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
         if (mobile.matches) {
           surface.classList.add('has-tabs');
           chips.setAttribute('role', 'tablist');
+          panel?.setAttribute('role', 'tabpanel');
+          panel?.setAttribute('tabindex', '0');
           for (const head of groupHeads) head.colSpan = 2;
           for (const tab of tabs) {
             tab.disabled = false;
             tab.setAttribute('role', 'tab');
+            tab.setAttribute('aria-controls', 'matrix-panel');
           }
           showEnv(table.dataset.env ?? 'production', false);
         } else {
           surface.classList.remove('has-tabs');
           chips.removeAttribute('role');
+          panel?.removeAttribute('role');
+          panel?.removeAttribute('tabindex');
+          panel?.removeAttribute('aria-labelledby');
           for (const head of groupHeads) head.colSpan = 4;
           for (const tab of tabs) {
             tab.disabled = true;
             tab.removeAttribute('role');
+            tab.removeAttribute('aria-controls');
             tab.removeAttribute('aria-selected');
             tab.removeAttribute('tabindex');
           }
