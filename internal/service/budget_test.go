@@ -381,19 +381,41 @@ func TestBudgetDevelopmentEnforcementRetainsRateAndOutstandingSlots(t *testing.T
 func TestBudgetSignupInstanceWide(t *testing.T) {
 	c := &clock{t: time.Unix(1_700_000_000, 0)}
 	b := newTestBudget(c)
+	var refunds []func()
 	for i := range BudgetSignupPerHour {
-		if err := b.chargeSignup(); err != nil {
+		refund, err := b.chargeSignup()
+		if err != nil {
 			t.Fatalf("sign-up charge %d/%d refused early: %v", i+1, BudgetSignupPerHour, err)
 		}
+		refunds = append(refunds, refund)
+		c.add(time.Millisecond)
 	}
-	if err := b.chargeSignup(); !errors.Is(err, admission.ErrOverloaded) {
+	if _, err := b.chargeSignup(); !errors.Is(err, admission.ErrOverloaded) {
 		t.Fatalf("sign-up charge %d = %v, want ErrOverloaded", BudgetSignupPerHour+1, err)
 	}
+	// A refunded charge (its attempt rolled back) frees exactly one slot,
+	// once, however often the refund runs.
+	refunds[3]()
+	refunds[3]()
+	if _, err := b.chargeSignup(); err != nil {
+		t.Fatalf("after one refund: %v", err)
+	}
+	if _, err := b.chargeSignup(); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("a refund freed more than one slot: %v", err)
+	}
 	c.add(time.Hour + time.Second)
-	if err := b.chargeSignup(); err != nil {
+	if _, err := b.chargeSignup(); err != nil {
 		t.Fatalf("after the window: %v", err)
 	}
 	if len(budgetSignup.concs) != 0 {
 		t.Fatal("the signup budget is rate-only")
+	}
+	// No budget wired is a refusal, never an unbudgeted sign-up.
+	var none *Budget
+	if _, err := none.chargeSignup(); err == nil {
+		t.Fatal("a nil signup budget charged")
+	}
+	if err := (&Auth{}).EnableSignup(&Registration{}, nil); err == nil {
+		t.Fatal("EnableSignup accepted a nil budget")
 	}
 }

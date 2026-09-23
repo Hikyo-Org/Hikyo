@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -346,9 +347,34 @@ func noopBudgetRelease() {}
 // chargeSignup charges one sign-up against the instance-wide `signup` budget.
 // Rate-only, so there is nothing to release; never refunded. The charge sites
 // are the sign-up legs of #607 and #608.
-func (b *Budget) chargeSignup() error {
-	_, err := b.acquire(budgetSignup, budgetKeys{})
-	return err
+//
+// It returns the charge's refund: the federated sign-up charges inside a
+// retried transaction, and a charge made by an attempt that rolled back must
+// not stay counted, or the budget would record sign-ups that never happened.
+func (b *Budget) chargeSignup() (refund func(), err error) {
+	if b == nil {
+		return func() {}, errors.New("service: no signup budget is wired; sign-up refuses rather than run unbudgeted")
+	}
+	at := b.clock()
+	if _, err := b.acquireAt(budgetSignup, budgetKeys{}, at); err != nil {
+		return nil, err
+	}
+	key := budgetMapKey(budgetSignup.name, dimInstance, "")
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			bucket := b.rate[key]
+			for i, t := range bucket.hits {
+				if t.Equal(at) {
+					bucket.hits = append(append([]time.Time{}, bucket.hits[:i]...), bucket.hits[i+1:]...)
+					b.rate[key] = bucket
+					return
+				}
+			}
+		})
+	}, nil
 }
 
 // acquire charges the category's rate rules and takes its concurrency slots
@@ -360,11 +386,19 @@ func (b *Budget) acquire(cat budgetCategory, keys budgetKeys) (func(), error) {
 	if b == nil {
 		return noopBudgetRelease, nil
 	}
-	now := time.Now
+	return b.acquireAt(cat, keys, b.clock())
+}
+
+func (b *Budget) clock() time.Time {
 	if b.now != nil {
-		now = b.now
+		return b.now()
 	}
-	at := now()
+	return time.Now()
+}
+
+// acquireAt is acquire at a stated instant, so a caller can later identify
+// the one rate hit it recorded (chargeSignup's refund).
+func (b *Budget) acquireAt(cat budgetCategory, keys budgetKeys, at time.Time) (func(), error) {
 
 	b.mu.Lock()
 	defer b.mu.Unlock()

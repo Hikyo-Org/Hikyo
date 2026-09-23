@@ -218,8 +218,9 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	}
 	// The federated sign-up leg (#607) consults the policy from the OIDC
 	// callback and charges the one `signup` budget.
-	authSvc.Registration = registrationSvc
-	authSvc.Budget = budget
+	if err := authSvc.EnableSignup(registrationSvc, budget); err != nil {
+		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+	}
 	api := &server.API{
 		Runtime:  &service.System{DB: db, Store: sc},
 		Auth:     authSvc,

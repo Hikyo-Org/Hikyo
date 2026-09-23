@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -112,7 +113,11 @@ func DiscoverWithPolicy(ctx context.Context, issuer string, policy federationhtt
 		if errors.As(err, &mismatch) {
 			return nil, &IssuerMismatchError{Discovered: mismatch.Discovered}
 		}
-		return nil, ErrDiscovery
+		// The operator log gets the class of the cause; callers answer on
+		// errors.Is(ErrDiscovery) alone, so the wire is unchanged. go-oidc's
+		// own error is not wrapped: it carries the provider's response body,
+		// which must never reach a log (TestAllOIDCLegsUseBoundedClient).
+		return nil, fmt.Errorf("%w: %s", ErrDiscovery, discoveryCause(err))
 	}
 	if op.Endpoint().AuthURL == "" || op.Endpoint().TokenURL == "" {
 		return nil, fmt.Errorf("%w: discovery document is missing an authorization or token endpoint", ErrDiscovery)
@@ -122,7 +127,7 @@ func DiscoverWithPolicy(ctx context.Context, issuer string, policy federationhtt
 		SubjectTypes []string `json:"subject_types_supported"`
 	}
 	if err := op.Claims(&metadata); err != nil {
-		return nil, ErrDiscovery
+		return nil, fmt.Errorf("%w: the discovery document's metadata does not decode", ErrDiscovery)
 	}
 	for _, endpoint := range []string{op.Endpoint().AuthURL, op.Endpoint().TokenURL, metadata.JWKS} {
 		if _, err := federationhttp.ValidateURL(endpoint, policy.Development); err != nil {
@@ -130,6 +135,17 @@ func DiscoverWithPolicy(ctx context.Context, issuer string, policy federationhtt
 		}
 	}
 	return &Provider{issuer: issuer, op: op, client: client, tokenClient: tokenClient, subjectTypes: metadata.SubjectTypes}, nil
+}
+
+// discoveryCause classifies a discovery failure for the operator log without
+// quoting it: a transport failure (unreachable, refused by egress policy, a
+// deadline) or a provider answer that is not a usable document.
+func discoveryCause(err error) string {
+	var transport *url.Error
+	if errors.As(err, &transport) || errors.Is(err, context.DeadlineExceeded) {
+		return "the discovery request did not complete"
+	}
+	return "the provider answered without a usable discovery document"
 }
 
 // Issuer returns the byte-exact issuer this provider is pinned to.

@@ -78,8 +78,13 @@ func TestSignupDisplayName(t *testing.T) {
 		`{"name":7}`:             "oidc-acc_x",
 		`{}`:                     "oidc-acc_x",
 	} {
-		if got := signupDisplayName(rawClaims(t, doc), "oidc-acc_x"); got != want {
-			t.Errorf("%s display name = %q, want %q", doc, got, want)
+		got, from := signupDisplayName(rawClaims(t, doc), "oidc-acc_x")
+		wantFrom := "name-claim"
+		if want == "oidc-acc_x" {
+			wantFrom = "handle"
+		}
+		if got != want || from != wantFrom {
+			t.Errorf("%s display name = (%q, %q), want (%q, %q)", doc, got, from, want, wantFrom)
 		}
 	}
 }

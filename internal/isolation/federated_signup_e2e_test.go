@@ -28,6 +28,47 @@ func TestFederatedSignupOneQueryPath(t *testing.T) {
 }
 func TestOIDCProviderIssuerDepartures(t *testing.T) { forEngines(t, runOIDCProviderIssuerDepartures) }
 func TestOrgRenameFormula(t *testing.T)             { forEngines(t, runOrgRenameFormula) }
+func TestFederatedSignupRetryRefundsCharge(t *testing.T) {
+	forEngines(t, runFederatedSignupRetryRefundsCharge)
+}
+
+// runFederatedSignupRetryRefundsCharge pins the charge per attempt: a
+// sign-up attempt that charged the `signup` budget and then rolled back for a
+// serialization retry must not stay counted. The retried attempt charges once
+// and commits, so exactly BudgetSignupPerHour admitted sign-ups fit in the
+// window, the retried one included, and the next overflows.
+func runFederatedSignupRetryRefundsCharge(t *testing.T, db *store.DB) {
+	ctx := t.Context()
+	h := newSignupHarness(t, db)
+	h.provider("google", service.ProviderInput{})
+	if _, err := h.reg.Put(ctx, service.LocalPrincipal(root), instanceReg, service.RegistrationPolicyInput{
+		External: []service.RegistrationExternalEntry{oidcEntry("google")},
+		Landing:  service.RegistrationLanding{Kind: service.LandingNone},
+	}, ""); err != nil {
+		t.Fatal(err)
+	}
+	induced := 0
+	restore := authn.SetMutationFailureObserver(func(query string) error {
+		if induced == 0 && strings.Contains(query, "-- name: InsertExternalIdentity ") {
+			induced++
+			return fmt.Errorf("%w: induced serialization retry", store.ErrRetrySerialization)
+		}
+		return nil
+	})
+	_, err := h.login("google", h.fresh(), "sign-up", "", googleClaims("retry@acme.example"))
+	restore()
+	if err != nil || induced != 1 {
+		t.Fatalf("retried sign-up = %v (induced %d), want success after one retry", err, induced)
+	}
+	for i := 1; i < service.BudgetSignupPerHour; i++ {
+		if _, err := h.login("google", h.fresh(), "sign-up", "", googleClaims("more@acme.example")); err != nil {
+			t.Fatalf("admitted sign-up %d/%d after the retried one: %v", i+1, service.BudgetSignupPerHour, err)
+		}
+	}
+	if _, err := h.login("google", h.fresh(), "sign-up", "", googleClaims("late@acme.example")); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("sign-up past the budget = %v, want the shared 429", err)
+	}
+}
 
 // signupHarness is one engine's auth surface with the registration policy and
 // the `signup` budget wired, as internal/app wires them.
@@ -45,8 +86,9 @@ func newSignupHarness(t *testing.T, db *store.DB) *signupHarness {
 	auth := authService(t, db)
 	auth.ExternalOrigin = "https://hikyo.test"
 	reg := newRegistration(t, service.RegistrationConfig{DB: db, Auth: auth, PublicOriginExplicit: true})
-	auth.Registration = reg
-	auth.Budget = service.NewBudget()
+	if err := auth.EnableSignup(reg, service.NewBudget()); err != nil {
+		t.Fatal(err)
+	}
 	return &signupHarness{t: t, db: db, auth: auth, reg: reg, idps: map[string]*oidctest.IdP{}}
 }
 
@@ -327,7 +369,9 @@ func runFederatedSignup(t *testing.T, db *store.DB) {
 	// The identity-exists race (spec section 9): the UNIQUE key refusing the
 	// identity insert leaves nothing of the sign-up (no account, no org) and
 	// records `identity-exists`. Induced at the insert on both engines.
-	h.auth.Budget = service.NewBudget()
+	if err := h.auth.EnableSignup(h.reg, service.NewBudget()); err != nil {
+		t.Fatal(err)
+	}
 	accounts = h.accounts()
 	restore := authn.SetMutationFailureObserver(func(query string) error {
 		if strings.Contains(query, "-- name: InsertExternalIdentity ") {
@@ -364,6 +408,17 @@ func runFederatedSignupLandings(t *testing.T, db *store.DB) {
 	if n := h.count("SELECT COUNT(*) FROM grants g JOIN grant_origins o ON o.grant_id = g.id WHERE g.principal_id = '" + principal +
 		"' AND g.org_id = 'org_a' AND g.capability = 'read' AND o.kind = 'registration' AND o.subject = 'usr_orgadmin'"); n != 1 {
 		t.Fatalf("org-landing template grant with origin registration(orgAdmin) = %d, want 1", n)
+	}
+	// Org A's own trail shows who joined: the template grant lines carry the
+	// registration origin and the new principal (the outcome itself is on the
+	// instance trail, where the display name's source is recorded).
+	if n := h.count("SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'grant.created' AND org_id = 'org_a' " +
+		"AND payload LIKE '%\"origin_kind\":\"registration\"%' AND payload LIKE '%" + principal + "%'"); n == 0 {
+		t.Fatal("org_a's tenant trail does not show the sign-up's grants")
+	}
+	if n := h.count("SELECT COUNT(*) FROM audit_instance_events WHERE type = 'registration.signup_completed' " +
+		"AND actor_id = '" + principal + "' AND payload LIKE '%\"display_name_from\":\"handle\"%'"); n != 1 {
+		t.Fatalf("signup_completed recording the display name's source = %d, want 1", n)
 	}
 	// An administrator's revoke releases a registration origin like a manual
 	// one (permission-model 2026-09-03 (b)).
@@ -504,9 +559,9 @@ func runFederatedSignupOneQueryPath(t *testing.T, db *store.DB) {
 	if _, err := h.login("google", known, "sign-up", "", googleClaims("k@acme.example")); err != nil {
 		t.Fatal(err)
 	}
-	trace := func(subject string) []string {
+	trace := func(subject, intent string) []string {
 		t.Helper()
-		start, err := h.auth.OIDCStart(ctx, "google", "login", "sign-up", "", "", "", "", false)
+		start, err := h.auth.OIDCStart(ctx, "google", "login", intent, "", "", "", "", false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -521,8 +576,12 @@ func runFederatedSignupOneQueryPath(t *testing.T, db *store.DB) {
 		}
 		return seen
 	}
-	knownTrace := trace(known)
-	freshTrace := trace(h.fresh())
+	// The banner compares "a known-identity login and a fresh sign-up": the
+	// login leg is the ordinary sign-in (tx.Write); the sign-up leg is a
+	// known identity under sign-up intent (WriteSerialized) and a fresh one.
+	signInTrace := trace(known, "sign-in")
+	knownTrace := trace(known, "sign-up")
+	freshTrace := trace(h.fresh(), "sign-up")
 	const decider = "GetExternalIdentity"
 	at := func(trace []string) int {
 		for i, q := range trace {
@@ -536,15 +595,24 @@ func runFederatedSignupOneQueryPath(t *testing.T, db *store.DB) {
 	if len(knownTrace) < 5 || len(freshTrace) < 5 {
 		t.Fatalf("the traces are too short to be real: known=%v fresh=%v", knownTrace, freshTrace)
 	}
-	k, f := at(knownTrace), at(freshTrace)
-	if k != f || strings.Join(knownTrace[:k+1], "\n") != strings.Join(freshTrace[:f+1], "\n") {
-		t.Fatalf("the known and fresh legs diverge at or before the resolution:\n  known: %v\n  fresh: %v", knownTrace[:k+1], freshTrace[:f+1])
+	f := at(freshTrace)
+	for label, other := range map[string][]string{"known sign-in": signInTrace, "known sign-up": knownTrace} {
+		k := at(other)
+		if k != f || strings.Join(other[:k+1], "\n") != strings.Join(freshTrace[:f+1], "\n") {
+			t.Fatalf("the %s and fresh sign-up legs diverge at or before the resolution:\n  %s: %v\n  fresh: %v", label, label, other[:k+1], freshTrace[:f+1])
+		}
+	}
+	// And the known legs are one conversation to the end: intent never
+	// changes what a known identity's login does.
+	if strings.Join(signInTrace, "\n") != strings.Join(knownTrace, "\n") {
+		t.Fatalf("a known identity's login differs by intent:\n  sign-in: %v\n  sign-up: %v", signInTrace, knownTrace)
 	}
 }
 
 // runOIDCProviderIssuerDepartures covers #588 on the provider surface and
-// at start: an Entra `common`-style authority is refused naming the GUID
-// issuer its document carries; a client_id change is refused on a pairwise-
+// at start: an Entra `common` authority is refused naming the `{tenantid}`
+// placeholder its document publishes, a domain-name authority naming its
+// tenant GUID; a client_id change is refused on a pairwise-
 // subject row with linked identities and allowed otherwise; a reauth on a
 // policy-less row is refused by name at start with no round-trip.
 func runOIDCProviderIssuerDepartures(t *testing.T, db *store.DB) {
@@ -552,21 +620,29 @@ func runOIDCProviderIssuerDepartures(t *testing.T, db *store.DB) {
 	h := newSignupHarness(t, db)
 	providers := &service.Providers{DB: db, Keyring: h.auth.Keyring, ExternalOrigin: h.auth.ExternalOrigin}
 
-	const guid = "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0"
-	common, err := oidctest.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(common.Close)
-	common.IssuerOverride = guid
+	// An Entra authority that is not tenant-specific is refused by discovery,
+	// naming the issuer its document carries (#588 d1): the `common` and
+	// `organizations` documents publish the literal `{tenantid}` placeholder;
+	// a domain-name authority's document carries the tenant GUID to use.
 	providers.FederationPolicy = h.auth.FederationPolicy
 	providers.FederationPolicy.Development = true
-	_, err = providers.Put(ctx, service.LocalPrincipal(root), "entra-common", service.ProviderInput{
-		DisplayName: "Contoso", Issuer: common.Server.URL, ClientID: "c", ClientSecret: "s", Scopes: "openid email", Enabled: true,
-	})
-	var sd interface{ SafeDetail() string }
-	if !errors.Is(err, service.ErrProviderDiscovery) || !errors.As(err, &sd) || !strings.Contains(sd.SafeDetail(), guid) {
-		t.Fatalf("common-authority provider = %v, want a discovery refusal naming %q", err, guid)
+	for label, published := range map[string]string{
+		"common":      "https://login.microsoftonline.com/{tenantid}/v2.0",
+		"domain-name": "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0",
+	} {
+		authority, err := oidctest.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(authority.Close)
+		authority.IssuerOverride = published
+		_, err = providers.Put(ctx, service.LocalPrincipal(root), "entra-"+label, service.ProviderInput{
+			DisplayName: "Contoso", Issuer: authority.Server.URL, ClientID: "c", ClientSecret: "s", Scopes: "openid email", Enabled: true,
+		})
+		var sd interface{ SafeDetail() string }
+		if !errors.Is(err, service.ErrProviderDiscovery) || !errors.As(err, &sd) || !strings.Contains(sd.SafeDetail(), published) {
+			t.Fatalf("%s authority = %v, want a discovery refusal naming %q", label, err, published)
+		}
 	}
 
 	// Pairwise subjects: the guard bites only with linked identities.
@@ -621,6 +697,7 @@ func runOIDCProviderIssuerDepartures(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var sd interface{ SafeDetail() string }
 	hits, rows := pairwise.TokenEndpointHits, h.count("SELECT COUNT(*) FROM oidc_transactions")
 	_, err = h.auth.OIDCStart(ctx, "entra", "reauth", "", "", "env_prod", session.Login.SessionToken, "", false)
 	if !errors.Is(err, service.ErrReauthNoPolicy) || !errors.As(err, &sd) || !strings.Contains(sd.SafeDetail(), "enrol WebAuthn or TOTP") {

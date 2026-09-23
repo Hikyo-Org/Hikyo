@@ -90,21 +90,26 @@ func TestGoogleBareIssuerIsTheLibraryCheck(t *testing.T) {
 	}
 }
 
-// #588 d1: an Entra `common`, `organizations` or domain-name authority
-// discovers to a document whose issuer is the tenant GUID form (or the
-// `{tenantid}` placeholder); discovery refuses and names that issuer.
+// #588 d1: an Entra authority that is not tenant-specific is refused by
+// discovery, naming the document's issuer: `common` and `organizations`
+// publish the literal `{tenantid}` placeholder, a domain-name authority the
+// tenant GUID.
 func TestDiscoveryIssuerMismatchNamesTheDocumentIssuer(t *testing.T) {
-	const guid = "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0"
-	idp, err := oidctest.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer idp.Close()
-	idp.IssuerOverride = guid
-	_, err = DiscoverWithPolicy(context.Background(), idp.Server.URL, federationhttp.Policy{Development: true})
-	var mismatch *IssuerMismatchError
-	if !errors.As(err, &mismatch) || mismatch.Discovered != guid || !errors.Is(err, ErrDiscovery) {
-		t.Fatalf("discovery = %v, want an IssuerMismatchError naming %q", err, guid)
+	for _, published := range []string{
+		"https://login.microsoftonline.com/{tenantid}/v2.0",
+		"https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0",
+	} {
+		idp, err := oidctest.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		idp.IssuerOverride = published
+		_, err = DiscoverWithPolicy(context.Background(), idp.Server.URL, federationhttp.Policy{Development: true})
+		idp.Close()
+		var mismatch *IssuerMismatchError
+		if !errors.As(err, &mismatch) || mismatch.Discovered != published || !errors.Is(err, ErrDiscovery) {
+			t.Fatalf("discovery = %v, want an IssuerMismatchError naming %q", err, published)
+		}
 	}
 }
 

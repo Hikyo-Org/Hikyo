@@ -56,18 +56,28 @@ const (
 var errSignupIdentityRace = errors.New("service: sign-up identity lost the uniqueness race")
 
 // oidcSignup is one sign-up-intent callback's registration leg. It is built
-// once per callback, outside the retried transaction, so the budget charge is
-// idempotent across retries (chargeSignup is never refunded, and a retry must
-// not charge twice).
+// once per callback, outside the retried transaction, and carries the refund
+// of the budget charge its current attempt made: the charge is in memory and
+// survives a rolled-back attempt, so every retry (and a transaction that fails
+// outright) refunds it first. A committed attempt's charge is exactly what its
+// committed events say: charged from the budget step on, never before it.
 type oidcSignup struct {
-	auth    *Auth
-	prov    authz.OIDCProvider
-	txn     authz.OIDCTransaction
-	claims  oidcrp.Claims
-	charged bool
+	auth   *Auth
+	prov   authz.OIDCProvider
+	txn    authz.OIDCTransaction
+	claims oidcrp.Claims
+	refund func()
 	// policyID is the policy the last attempt resolved, for the refusal
 	// written after an identity race.
 	policyID string
+}
+
+// rollback refunds the charge of an attempt that did not commit.
+func (g *oidcSignup) rollback() {
+	if g.refund != nil {
+		g.refund()
+		g.refund = nil
+	}
 }
 
 func newOIDCSignup(s *Auth, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims) *oidcSignup {
@@ -129,7 +139,7 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	refuse := func(cause, policyID string) (authz.Account, error) {
 		return g.refusal(ctx, az, attempt, cause, policyID)
 	}
-	reg := g.auth.Registration
+	reg := g.auth.registration
 	if reg == nil {
 		return refuse(signupCauseClosed, "")
 	}
@@ -168,17 +178,16 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	entry := policy.Entries[entryAt]
 
 	// 2. The `signup` budget: the first leg that would create state
-	// (#585 d3 as amended by #604). Charged once per callback, never
-	// refunded; overflow is the shared pre-auth 429.
-	if !g.charged {
-		if err := g.auth.Budget.chargeSignup(); err != nil {
-			if errors.Is(err, admission.ErrOverloaded) {
-				return refuse(signupCauseBudget, policy.ID)
-			}
-			return authz.Account{}, err
+	// (#585 d3 as amended by #604). Once committed, never refunded; overflow
+	// is the shared pre-auth 429.
+	refund, err := g.auth.signupBudget.chargeSignup()
+	if err != nil {
+		if errors.Is(err, admission.ErrOverloaded) {
+			return refuse(signupCauseBudget, policy.ID)
 		}
-		g.charged = true
+		return authz.Account{}, err
 	}
+	g.refund = refund
 
 	// 3. The verified-email assertion (#598), from the signed ID token only,
 	// evaluated before the allowlist so the cause is deterministic.
@@ -232,9 +241,10 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 		return authz.Account{}, err
 	}
 	username := "oidc-" + accountID
+	displayName, displayFrom := signupDisplayName(g.claims.Raw, username)
 	if err := az.CreateAccount(ctx, authz.Account{
 		ID: accountID, PrincipalID: domain.PrincipalID(principalID),
-		Username: username, DisplayName: signupDisplayName(g.claims.Raw, username), CreatedAt: now,
+		Username: username, DisplayName: displayName, CreatedAt: now,
 	}); err != nil {
 		return authz.Account{}, err
 	}
@@ -253,7 +263,7 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 		}
 		return authz.Account{}, err
 	}
-	orgID, err := g.land(ctx, r, az, policy, domain.PrincipalID(principalID), now)
+	landing, err := g.land(ctx, r, az, policy, domain.PrincipalID(principalID), now)
 	if err != nil {
 		return authz.Account{}, err
 	}
@@ -265,9 +275,10 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 		"policy_id": policy.ID, "account_id": accountID, "landing": policy.Landing,
 		"kind": OIDCKind, "provider_id": g.prov.ID,
 		"address": audit.SanitizeFreeText(address), "verified_by": verifiedBy,
+		"display_name_from": displayFrom,
 	}
-	if orgID != "" {
-		payload["org_id"] = orgID
+	if landing.orgID != "" {
+		payload["org_id"] = landing.orgID
 	}
 	completed, err := newAuditEvent(ctx, audit.EventRegistrationSignupCompleted, domain.PrincipalID(principalID),
 		audit.Object{Type: "account", ID: accountID}, audit.OutcomeSuccess, "", payload)
@@ -277,34 +288,39 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	return account, az.RecordAuthEvent(ctx, completed)
 }
 
+// landed is where a sign-up arrived: the fresh org's id, if one was minted.
+type landed struct {
+	orgID string
+}
+
 // land mints the landing under the policy's authority principal (#585 d1,
 // permission-model 2026-09-03 (a)): the authority is the caller for
 // org.create and for the template grant targeting the new principal, re-
 // authorized here against its current grants; grant origin `registration`
-// with the authority as subject. It returns the fresh org's id, if any.
-func (g *oidcSignup) land(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, policy authz.RegistrationPolicy, target domain.PrincipalID, now time.Time) (string, error) {
+// with the authority as subject.
+func (g *oidcSignup) land(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, policy authz.RegistrationPolicy, target domain.PrincipalID, now time.Time) (landed, error) {
 	authority := authz.Identity{Principal: policy.AuthorityPrincipalID}
 	grants := &Grants{DB: g.auth.DB, Now: func() time.Time { return now }, originKind: domain.OriginRegistration}
 	switch LandingKind(policy.Landing) {
 	case LandingNone:
 		// A zero-grant account (the retired provisioning's semantics).
-		return "", nil
+		return landed{}, nil
 	case LandingOrgTemplate:
 		scope := domain.Scope{Org: policy.OrgID}
 		p, err := az.Authorize(ctx, authority, authz.OpTemplateApplyOrg, scope)
 		if err != nil {
-			return "", err
+			return landed{}, err
 		}
 		_, err = grants.applyTemplate(ctx, r, az, p, authority, domain.Template(policy.Template), target, scope, domain.LevelOrg)
-		return "", err
+		return landed{}, err
 	case LandingFreshOrg:
 		p, err := az.Authorize(ctx, authority, authz.OpOrgCreate, domain.Scope{})
 		if err != nil {
-			return "", err
+			return landed{}, err
 		}
 		orgID, err := newID("org")
 		if err != nil {
-			return "", err
+			return landed{}, err
 		}
 		org := store.Org{
 			ID: orgID, Name: "org-" + orgID, Active: true, Metadata: json.RawMessage(`{}`),
@@ -312,7 +328,7 @@ func (g *oidcSignup) land(ctx context.Context, r store.Repos, az *authz.TxAuthor
 			RegistrationPolicyID: policy.ID,
 		}
 		if err := r.Orgs().Create(ctx, p, org); err != nil {
-			return "", err
+			return landed{}, err
 		}
 		ev, err := domainEvent(ctx, audit.EventOrgCreated, authority.Principal,
 			audit.Object{Type: "org", ID: orgID},
@@ -321,24 +337,24 @@ func (g *oidcSignup) land(ctx context.Context, r store.Repos, az *authz.TxAuthor
 				"origin": string(domain.OriginRegistration), "policy_id": policy.ID,
 			})
 		if err != nil {
-			return "", err
+			return landed{}, err
 		}
 		if err := r.Audit().InsertInstance(ctx, p, ev); err != nil {
-			return "", err
+			return landed{}, err
 		}
 		scope := domain.Scope{Org: domain.OrgID(orgID)}
 		ops, level, err := opsFor(scope)
 		if err != nil {
-			return "", err
+			return landed{}, err
 		}
 		grantProof, err := az.Authorize(ctx, authority, ops.template, scope)
 		if err != nil {
-			return "", err
+			return landed{}, err
 		}
 		_, err = grants.applyTemplate(ctx, r, az, grantProof, authority, domain.TemplateAdmin, target, scope, level)
-		return orgID, err
+		return landed{orgID: orgID}, err
 	default:
-		return "", errors.New("service: registration policy has an unknown landing " + policy.Landing)
+		return landed{}, errors.New("service: registration policy has an unknown landing " + policy.Landing)
 	}
 }
 
@@ -385,16 +401,17 @@ func claimAdmitted(raw map[string]json.RawMessage, claim string, values []string
 }
 
 // signupDisplayName is the token's `name` claim when it is a string the
-// profile itself would accept, else the opaque handle. It is display text
-// only; the handle stays `oidc-<account id>` (no provider text in a UNIQUE
-// column, the #585 d4 naming rule).
-func signupDisplayName(raw map[string]json.RawMessage, handle string) string {
+// profile itself would accept, else the opaque handle; the second result says
+// which (`name-claim` or `handle`), for the signup_completed trail. It is
+// display text only; the handle stays `oidc-<account id>` (no provider text in
+// a UNIQUE column, the #585 d4 naming rule).
+func signupDisplayName(raw map[string]json.RawMessage, handle string) (string, string) {
 	var name string
 	if err := json.Unmarshal(raw["name"], &name); err != nil || name == "" {
-		return handle
+		return handle, "handle"
 	}
 	if validateAccountProfile(ProfileUpdate{Username: handle, DisplayName: name}) != nil {
-		return handle
+		return handle, "handle"
 	}
-	return name
+	return name, "name-claim"
 }

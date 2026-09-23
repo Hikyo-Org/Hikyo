@@ -239,7 +239,9 @@ const (
 	// unauthenticated), refused by one closed cause (uncharged before the
 	// `signup` budget, charged after it), and completed (actor = the new
 	// principal). They land on the instance trail, the pre-authentication
-	// plane the auth.* refusals share, carrying the policy id and scope.
+	// plane the auth.* refusals share, carrying the policy id and scope. The
+	// landing org's own trail records the grants the sign-up received
+	// (grant.created / grant.template_applied, origin_kind registration).
 	EventRegistrationSignupAdmitted  EventType = "registration.signup_admitted"
 	EventRegistrationSignupRefused   EventType = "registration.signup_refused"
 	EventRegistrationSignupCompleted EventType = "registration.signup_completed"
@@ -1903,6 +1905,10 @@ var registry = map[EventType]TypeSpec{
 			"provider_id": {Kind: KindString},
 			"address":     {Kind: KindFreeText},
 			"verified_by": {Kind: KindString, Enum: []string{"email_verified", "xms_edov", "github-primary"}},
+			// Where the new account's display name came from: the token's
+			// `name` claim, or the opaque handle when that was absent or not
+			// valid profile text.
+			"display_name_from": {Kind: KindString, Enum: []string{"name-claim", "handle"}},
 		},
 	},
 	EventGrantTemplateApplied: {

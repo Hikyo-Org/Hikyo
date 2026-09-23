@@ -519,6 +519,8 @@ func (s *Auth) revalidateProvider(ctx context.Context, az *authz.TxAuthorizer, s
 func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims) (OIDCCallbackResult, error) {
 	signup := newOIDCSignup(s, prov, txn, claims)
 	fn := func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt) error {
+		// A rerun means the previous attempt rolled back: its charge goes.
+		signup.rollback()
 		now := s.now()
 		refuse := func(cause string) error {
 			if aerr := s.stageLoginRefuse(ctx, az, cause, prov.ID, txn); aerr != nil {
@@ -587,6 +589,9 @@ func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn a
 		})
 	} else {
 		attempt, err = writeCommittedSessionAttempt(ctx, s.DB, fn)
+	}
+	if err != nil {
+		signup.rollback()
 	}
 	if errors.Is(err, errSignupIdentityRace) {
 		// The UNIQUE key arbitrated a concurrent bind of the same identity:
