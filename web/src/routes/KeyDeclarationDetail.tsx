@@ -1654,6 +1654,13 @@ function ruleType(value: string, fallback: RuleType): RuleType {
   return RULE_TYPES.find((type) => type === value) ?? fallback;
 }
 
+const PRESENCE_MODES: readonly PresenceMode[] = ['none', 'all', 'explicit'];
+
+/** presenceMode narrows the mode select's value the same way, no cast. */
+function presenceMode(value: string, fallback: PresenceMode): PresenceMode {
+  return PRESENCE_MODES.find((mode) => mode === value) ?? fallback;
+}
+
 /** draftSummary is one alternative as a hint: its type and the constraints set. */
 function draftSummary(draft: RuleDraft): string {
   const parts: string[] = [];
@@ -1815,7 +1822,7 @@ function PresenceControl({
     <div className="key-detail__presence-control">
       <label className="field">
         <span>{label}</span>
-        <select value={mode} onChange={(event) => onMode(event.currentTarget.value as PresenceMode)}>
+        <select value={mode} onChange={(event) => onMode(presenceMode(event.currentTarget.value, mode))}>
           <option value="none">none</option>
           <option value="all">all</option>
           <option value="explicit">explicit</option>
