@@ -1325,12 +1325,15 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      # The planner hash re-keys the cache when shard assignments change: saves
+      # run only on an exact-key miss, so a reshuffle would otherwise keep each
+      # shard compiling its newly assigned suites until go.sum next changed.
       - name: Restore race Go cache
         id: race-go-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
-          key: go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}
+          key: go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ hashFiles('scripts/ci/analysis-shards-go/main.go') }}
           restore-keys: go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Race detector (all packages except the isolation suite)
         env:

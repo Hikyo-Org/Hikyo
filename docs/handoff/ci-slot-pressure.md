@@ -46,7 +46,9 @@ PR #793, against `feat/605-social-signin-migration`). Three independent causes:
   the two-wide pool; app and service stay sequential after it. Predicted test
   time is ~648s on every shard (was 473 to 988s). Regeneration commands sit
   above `racePackageSeconds` and `raceTargetSeconds`; `main_test.go` fails when
-  a shard predicts over 110% of the mean.
+  a shard predicts over 110% of the mean. The race shard cache key includes
+  the planner's hash: saves run only on an exact-key miss, so without it the
+  reshuffled shards would recompile their new suites until go.sum changed.
 
 ## Not done, on purpose
 
@@ -54,8 +56,6 @@ PR #793, against `feat/605-social-signin-migration`). Three independent causes:
 - Server-side step-up grace after login: rejected, product auth change.
 - Passkey for the serving admin: moot once its chain overlaps the viewing one.
 - Enrolling the viewing admin's passkey earlier would save ~30s per leg more.
-- Bumping the race cache key: the cache policy pins `-v2-`, and the Go build
-  cache is content-addressed, so reshuffled shards still hit their deps.
 
 ## Verification still required after merge
 
