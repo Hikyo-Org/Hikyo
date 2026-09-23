@@ -10,8 +10,9 @@ Decision LOCKED 2026-09-23 via grilling; the owner chose the recommended
 option on every question. Cross-provider review WAIVED by the owner on
 2026-09-23 ("Waive" on the governance-review question). Operative upon the
 governance PR merging. Per [oss-mechanics.md](../adr/oss-mechanics.md)
-§ Governance, the ADR is amended only by reopening #683 and recording the
-amendment in the ADR.
+§ Governance, the ADR is amended only by reopening #683, running the same
+adversarial cross-model review that locks decisions, and recording the
+amendment in the ADR. That review was waived here, not satisfied.
 
 No code changed. This design ticket authorizes no implementation; each
 follow-up ticket lands under its own review.
@@ -27,7 +28,21 @@ follow-up ticket lands under its own review.
 | D5 ordering | generation monotonic, then `reported_at` monotonic within a generation |
 | D7 readers | environment `read` |
 | D9 default | `operator.statusReporting` on, capability probed |
+| D6, D8, D10, D11 | no open alternative; locked with the above |
 | Review | cross-provider review waived |
+
+## Same-provider review fixes (2026-09-23)
+
+Standards and Spec review (same provider, not a cross-provider pass) found and
+this change fixed: a 404 disabling reporting instance-wide (now per-CR
+suppression; the capability probe owns route existence), refusal audit volume
+(bounded by suppression), a budget below the row quota (60/min, 5 min
+heartbeat floor), deleted-principal contradiction (rows are deleted), a free
+`reporter` string (closed enum plus SemVer), missing `refused` state and 401
+behavior, unstated CRD impact (no CRD change), operator-newer vocabulary
+(skip report, never drop a condition), a threat-model misquote, and gaps in
+the validation plan (revoked credential, same-generation and future-skew
+ordering).
 
 ## What landed in this change
 

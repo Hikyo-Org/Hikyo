@@ -57,7 +57,7 @@ new availability coupling". This ADR designs that channel.
   delivery-target report any integration (Compose, a future ESO provider) could
   use.
 - **Workload allowlist is closed** (permission-model § Machine principals;
-  threat-model: "read-only, the only v1 workload capability"). Any machine
+  threat-model: "read-only (only v1 workload capability)"). Any machine
   write is an allowlist amendment and must be declared as one.
 - **Unauthorized is indistinguishable from nonexistent** (permission-model).
 - **Missing or stale must never read as healthy** (#683 acceptance).
@@ -129,17 +129,21 @@ The report body is **closed and value-free**:
 | `target` | cluster id, `HikyoInstance` UID, namespace, name, CR UID |
 | `generation`, `observed_generation` | from CR metadata and status |
 | `reported_at` | operator clock, RFC 3339 |
-| `resync_interval_seconds` | the CR's effective interval, so staleness is per target |
+| `report_interval_seconds` | the CR's heartbeat interval, `max(spec.resyncInterval, 5 min)` capped at 24 h (D9), so staleness is per target |
 | `lifecycle` | closed enum from `status.lifecycle` |
 | `conditions[]` | `{type, status, reason, observed_generation}` from the closed set |
-| `reporter` | `hikyo-operator/<version>` |
+| `reporter` | closed integration enum (`kubernetes-operator` in vocabulary 1) plus a SemVer 2.0 `version`; never a free string |
 
 **Excluded, normatively:** condition `message` text, Event text, secret values,
 key names (including undelivered-key lists), mapping, cursor, cursor binding,
 stamp, managed Secret UID/resourceVersion, credential material, credential
 expiry (the server already knows it), and any free text. A `type` or `reason`
 outside the advertised vocabulary refuses the **whole** report (422, field
-named); the server never stores an unrecognized string.
+named); the server never stores an unrecognized string. An operator whose own
+vocabulary is newer than the advertised one and holds a condition outside it
+**skips the report** and emits an Event; it never drops the condition and
+sends the rest, because omitting a failing condition could read as healthy.
+The row then goes `stale`, never healthy.
 
 Key names are excluded even though a condition like
 `Delivery=False/UndeliveredSecrets` is less useful without them: they are
@@ -154,8 +158,9 @@ Derived UI state per row, computed at read time, never stored as "healthy":
 | State | Rule |
 | --- | --- |
 | `unknown` | no row, or server/operator lacks the capability |
-| `stale` | `now - received_at > 2 * resync_interval + 5 min` (5 min = max backoff), `resync_interval` clamped server-side to [30 s, 24 h] |
-| `reporter-revoked` | the principal is deleted or holds no `report-delivery-status` now |
+| `stale` | `now - received_at > 2 * report_interval + 5 min` (5 min = max error backoff), `report_interval` clamped server-side to [5 min, 24 h] |
+| `refused` | the most recent report for an existing row was refused after the last accepted one (vocabulary, ordering or size); the row carries the closed refusal cause and time |
+| `reporter-revoked` | the principal no longer holds `report-delivery-status`, or holds no live credential (every `hikyo-token` revoked or expired and no active federation binding) |
 | `reported` | fresh; shows the conditions exactly as asserted, with "reported by controller, `<age>` ago" |
 
 Ordering, per row:
@@ -171,19 +176,26 @@ Ordering, per row:
 **Recommendation: (a).** Out-of-order refusals are answered 409 and are not
 retried.
 
+The `refused` state records only refusals the server may attribute to an
+existing row under a principal that holds the grant. An authorization refusal
+is never recorded on a row (it is indistinguishable from nonexistent), and a
+quota refusal has no row to record on; the principal's list view instead shows
+a closed `quota-refused` notice with its last time. Precedence when several
+rules hold: `reporter-revoked`, then `refused`, then `stale`, then `reported`.
+
 ### D6. Deletion, retention and bounds
 
 - **No finalizer.** A finalizer would make CR deletion depend on server
   reachability. On CR deletion the operator sends one best-effort tombstone;
   failure is an Event, nothing more.
-- A row with no report for **7 days** is `stale` (already, by D5) and is
-  **purged at 30 days**; tombstoned rows are purged immediately after the
-  tombstone audit event. Principal deletion deletes its rows in the same
-  transaction.
+- A row with no accepted report for **30 days** is purged; tombstoned rows are
+  purged immediately after the tombstone audit event. Principal deletion
+  deletes its rows in the same transaction, so a deleted principal has no
+  rows to show.
 - **Latest-state table, not a log.** One row per key; history lives in the
   cluster.
-- **Quota: 100 rows per service-account principal** (pins precedent), named
-  409 refusal beyond it. Report size capped at 8 KiB.
+- **Quota: 100 rows per service-account principal**, named 409 refusal
+  beyond it. Report size capped at 8 KiB (413).
 
 ### D7. Human read capability
 
@@ -196,23 +208,39 @@ redacted.
 
 ### D8. Audit and budget
 
-- **No audit event per report**: at a 5 min resync that doubles the
+- **No audit event per report**: at a 5 min heartbeat that doubles the
   conditional-fetch record volume for no accountability gain.
 - Events: first report for a new row, tombstone, purge, and every refusal
-  (authorization, vocabulary, ordering, quota), per audit-model conventions.
-  Grant and revoke of `report-delivery-status` are grant-mutation events like
-  any other.
-- **Separate budget bucket**: 12/min per principal, 300/min per org, charged
-  after authorization, so a report storm cannot starve fetches.
+  (authorization, vocabulary, ordering, quota, size), per audit-model
+  conventions. Refusal volume is bounded by the operator's per-CR suppression
+  (D9): an ungranted CR produces at most one refusal per hour, not one per
+  heartbeat. Grant and revoke of `report-delivery-status` are grant-mutation
+  events like any other.
+- **Separate budget bucket**: 60/min per principal, 300/min per org, charged
+  after authorization, so a report storm cannot starve fetches. Sized to the
+  quota: 100 rows at the 5 min heartbeat floor is 20/min, leaving room for
+  change-driven reports. A 429 is a failed report (D9); a persistently
+  throttled row reads `stale`, never healthy.
 
 ### D9. Operator behavior and failure
 
-- Report **after** the cursor is persisted, once per reconcile outcome, and on
-  CR deletion (tombstone). Every reconcile reports, so the periodic resync is
-  the heartbeat.
+- Report **after** the cursor is persisted, and on CR deletion (tombstone).
+  A reconcile reports when the reportable content (D4 fields other than
+  `reported_at`) changed, or when the heartbeat is due: `report_interval =
+  max(spec.resyncInterval, 5 min)`, capped at 24 h. The 5 min floor keeps a
+  30 s requeue from becoming a 30 s report rate.
 - **Fire-and-forget.** One attempt per reconcile, 5 s timeout, no requeue, no
   faster retry. Failure emits a rate-limited Event; **no CR condition**
   (reporting about reporting is recursive and would perturb `Ready`).
+- **Per-CR suppression, never instance-wide.** A 401, 404, 413 or 422 on a
+  CR's report suppresses reporting **for that CR only** for 1 h, or until its
+  generation, credential reference or reportable content changes. A 401 is the
+  same dead credential the fetch path already surfaces through
+  `Synced=False/FetchFailed`; the server shows the row `reporter-revoked`
+  when no live credential remains, or `stale` otherwise. Because the
+  capability probe (D10) already established that the route exists, a 404
+  always means "not authorized for this target" and says nothing about the
+  instance.
 - Reports use the same credential as the fetch; a federation token is reused
   within its 600 s life rather than minted twice.
 - Helm value `operator.statusReporting`: **(a) default on**, capability-probed;
@@ -227,8 +255,13 @@ redacted.
   `HikyoInstance` (cached 10 min) and reports only when advertised, sending
   only the advertised vocabulary.
 - **Old operator, new server**: no rows, UI `unknown`. **New operator, old
-  server**: capability absent, no reports, no errors. A 404 on the report path
-  disables reporting for that instance until the next `/meta` refresh.
+  server**: capability absent, no reports, no errors. Capability absence is the
+  only instance-wide switch; a per-report status never disables reporting for
+  other CRs.
+- **No CRD change.** `HikyoSecret` spec and status gain no field: reporting
+  state is not written back to the CR, and there is no per-CR opt-out. The
+  per-service-account opt-out is withholding `report-delivery-status`; the
+  per-install opt-out is `operator.statusReporting: false`.
 - Vocabulary grows additively; a new condition type needs a new vocabulary
   version, and servers keep accepting older versions.
 - Migrations: new closed capability atom, report table, audit event kinds,
@@ -237,7 +270,7 @@ redacted.
 ### D11. UI and remote transport
 
 - Kubernetes tab lists rows grouped by cluster and namespace, each with the
-  D5 state, the server-observed last contact (D2), and the asserted
+  D5 state (including `refused` with its closed cause), the server-observed last contact (D2), and the asserted
   conditions. Copy says "reported by the controller"; nothing reads as
   independently verified cluster health. Empty list copy stays "no reports",
   never "healthy".
@@ -286,12 +319,13 @@ redacted.
    on delete, Helm value, Namespace `get`. Depends on 2's OpenAPI contract.
    Acceptance: reporting failure never changes conditions, Secret or cursor;
    no report contains message text.
-4. **Web UI** ([#790](https://github.com/Hikyo-Org/Hikyo/issues/790)): Kubernetes tab rows and states, remote workspace mapping.
-   Depends on 2. Acceptance: missing, stale and reporter-revoked never render
+4. **Web UI** ([#790](https://github.com/Hikyo-Org/Hikyo/issues/790)): Kubernetes tab rows and states, setup-journey grant checkbox, remote workspace mapping.
+   Depends on 2. Acceptance: missing, stale, refused and reporter-revoked never render
    as healthy; Storybook states for each.
 5. **Validation** ([#791](https://github.com/Hikyo-Org/Hikyo/issues/791)): end-to-end from a real operator (kind/k3d) to the browser:
-   cross-tenant refusal, revoked credential, out-of-order update, stale after
-   stop, deletion tombstone, secret-safe payload capture. Depends on 2, 3, 4.
+   cross-tenant refusal, revoked grant and revoked credential, out-of-order
+   updates (older generation, same-generation older time, future skew), stale
+   after stop, deletion tombstone, secret-safe payload capture. Depends on 2, 3, 4.
 
 ## Locked decisions (grilling 2026-09-23)
 
@@ -299,4 +333,6 @@ D1 b (new `report-delivery-status` atom), D2 c (server-observed and
 controller-reported layers, never merged), D3 a (namespace and CR name shown),
 D4 key names excluded, D5 a (generation then timestamp ordering), D7 a
 (environment `read` views status), D9 a (reporting default on, capability
-probed). Every other section follows from these and is locked with them.
+probed). D6, D8, D10 and D11 carried no open alternative and are locked with
+them, including the review fixes of 2026-09-23 (per-CR suppression, `refused`
+state, 5 min heartbeat floor, budget sized to quota, closed `reporter`).
