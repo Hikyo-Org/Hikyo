@@ -14,14 +14,17 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // would hit the network or the WebAuthn prompt). See .storybook/withApp.tsx.
 // The methods body is `useAuthMethods`'s parsed payload, so it is typed against
 // its schema — tsc catches contract drift before the browser run.
+// Registration closed: no policy at the instance scope (#606).
+const closedDoor = { signup_open: false, signup_paused: false, signup_methods: [] };
 const withProviders = {
   local_login_enabled: true,
   providers: [
     { slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' },
     { slug: 'sso', display_name: 'SAML SSO', kind: 'saml' },
   ],
+  ...closedDoor,
 } satisfies z.input<typeof zAuthMethods>;
-const localOnly = { local_login_enabled: true, providers: [] } satisfies z.input<typeof zAuthMethods>;
+const localOnly = { local_login_enabled: true, providers: [], ...closedDoor } satisfies z.input<typeof zAuthMethods>;
 
 const meta = {
   component: Login,

@@ -235,7 +235,14 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// identity surface: the reauthentication conjunct a machine widening
 		// carries is the SAME window machinery human disclosure consumes, so
 		// they cannot come from two configurations.
-		Grants:     &service.Grants{DB: db, Auth: authSvc},
+		Grants: &service.Grants{DB: db, Auth: authSvc},
+		// The registration policy (#606): reauth through the one Auth; the
+		// `no-public-origin` and `mailer-unconfigured` preconditions read the
+		// operator's explicit origin and the active runtime mail transport.
+		Registration: &service.Registration{
+			DB: db, Auth: authSvc, PublicOriginExplicit: cfg.ExternalOriginExplicit,
+			MailConfigured: service.SelfConfigMailConfigured(selfConfig),
+		},
 		Identities: &service.Identities{DB: db, Auth: authSvc},
 		// One Federation across the issuer surface and the delivery surface, and
 		// one JWKS cache inside it: the cache's staleness bound is an instance

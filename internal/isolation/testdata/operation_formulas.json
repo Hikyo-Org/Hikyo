@@ -1090,6 +1090,54 @@
     ]
   },
   {
+    "operation": "registration-policy.delete-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "registration-policy.delete-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "registration-policy.get-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "registration-policy.get-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "registration-policy.put-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "registration-policy.put-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
     "operation": "remote-credential.create",
     "class": "instance",
     "level": "instance",

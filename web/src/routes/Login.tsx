@@ -189,6 +189,14 @@ export function Login() {
           </>
         }
       />
+      {/* An inactive registration policy (#606): the public page says only
+          this, never the cause, which renders on the Members panel (#587 d3).
+          The sign-up door itself lands with #607. */}
+      {methods.data?.signup_paused === true ? (
+        <p className="login__paused" role="status">
+          Sign-up is paused.
+        </p>
+      ) : null}
       {methods.isPending ? <p role="status">Loading sign-in methods…</p> : null}
       {methods.isError ? <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} /> : null}
     </main>

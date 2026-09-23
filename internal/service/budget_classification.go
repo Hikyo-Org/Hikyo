@@ -189,6 +189,11 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// authority mint; frequency governed by the §10 authenticated-API budget
 		// exactly as the template and credential-reset operations beside it.
 		authz.OpMemberInviteOrg, authz.OpMemberInviteInstance,
+		// registration policy (#606): one policy row and its child rows per
+		// scope. The sign-up legs the policy opens are charged to the named
+		// `signup` category at their own charge points (#607, #608), never here.
+		authz.OpRegistrationPolicyGetOrg, authz.OpRegistrationPolicyPutOrg, authz.OpRegistrationPolicyDeleteOrg,
+		authz.OpRegistrationPolicyGetInstance, authz.OpRegistrationPolicyPutInstance, authz.OpRegistrationPolicyDeleteInstance,
 		// instance operational reads
 		authz.OpRetentionHealthRead, authz.OpUpdateStatusRead, authz.OpUpdateRequest, authz.OpUpdateJobRead,
 		// dynamic secrets: reads, revoke/delete, and the enqueue-only lease

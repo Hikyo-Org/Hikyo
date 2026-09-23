@@ -156,6 +156,9 @@ const (
 	BudgetDefaultOrgConcurrency = 8
 	// § 151 (§ 8) schema-revision rate limit, per project.
 	BudgetSchemaRevisionPerHour = 60
+	// § 10 signup (ops-spec banner 2026-09-03, #579 d7): rate-only and
+	// instance-wide, shared by the `none` and `fresh-org` landings.
+	BudgetSignupPerHour = 20
 
 	// budgetMaxTrackedSubjects bounds how many rate buckets are remembered.
 	// Rate keys carry attacker-influenced values (a principal id, an org id), so
@@ -265,6 +268,17 @@ var (
 		name:  "schema-revision",
 		rates: []budgetRateRule{{dimProject, BudgetSchemaRevisionPerHour, time.Hour}},
 	}
+	// budgetSignup is the sign-up budget (#579 d7 as amended by #584, #585,
+	// #604 and the spec's admission gate): one instance-wide bucket, rate
+	// only, charged once at the first leg that would create state (the local
+	// sign-up request, #608; an unknown identity on a sign-up callback, #607),
+	// after the admission gate and before any write. Overflow is the uniform
+	// 429. It is not an authz operation's budget, so the totality map has no
+	// row for it: the pre-auth legs that charge it are not registry operations.
+	budgetSignup = budgetCategory{
+		name:  "signup",
+		rates: []budgetRateRule{{dimInstance, BudgetSignupPerHour, time.Hour}},
+	}
 	// budgetDefault is the §179 fail-closed default: 60/min per principal, 8
 	// concurrent per org, applied to expensive operations that have no named
 	// category above. There is no once-per-operation post-authorization
@@ -328,6 +342,14 @@ func budgetMapKey(cat string, dim budgetDimension, value string) string {
 }
 
 func noopBudgetRelease() {}
+
+// chargeSignup charges one sign-up against the instance-wide `signup` budget.
+// Rate-only, so there is nothing to release; never refunded. The charge sites
+// are the sign-up legs of #607 and #608.
+func (b *Budget) chargeSignup() error {
+	_, err := b.acquire(budgetSignup, budgetKeys{})
+	return err
+}
 
 // acquire charges the category's rate rules and takes its concurrency slots
 // atomically: it records nothing unless every rule passes, so a refusal on one

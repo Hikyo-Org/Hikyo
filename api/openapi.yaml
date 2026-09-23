@@ -2035,6 +2035,131 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/instance/registration-policy:
+    get:
+      operationId: getInstanceRegistrationPolicy
+      tags: [access]
+      summary: Read the instance registration policy.
+      description: |
+        The instance's open-registration policy (#579), or `404` when the
+        scope has none: registration is closed. The standing delegation and
+        the preconditions are re-checked on this read, so `state` is live: an
+        authority principal who no longer holds the landing's grants, or a
+        failing precondition, reads `inactive` with its cause. Recorded as a
+        membership-surface read.
+      x-hikyo-class: instance
+      x-hikyo-operation: registration-policy.get-instance
+      x-hikyo-formula: [manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The policy with its live state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: putInstanceRegistrationPolicy
+      tags: [access]
+      summary: Create or replace the instance registration policy.
+      description: |
+        A full replacement; the caller becomes the authority principal (any
+        edit reassigns it, #579 d4). Reauthentication-gated: `proof` carries a
+        TOTP code, or the password where no factor is enrolled, consumed in
+        the write transaction. No session is purged. Write-time preconditions
+        refuse `400` naming the failing item in `detail`: `no-public-origin`,
+        `mailer-unconfigured`, `provider-disabled`,
+        `provider-missing-email-scope`, `cap-zero`,
+        `template-not-org-applicable`, with the provider as `<kind>:<slug>`
+        where one is involved. `email` is never an allowlist claim.
+      x-hikyo-class: instance
+      x-hikyo-operation: registration-policy.put-instance
+      x-hikyo-formula: [manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationPolicyPutRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The saved policy with its live state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteInstanceRegistrationPolicy
+      tags: [access]
+      summary: Close registration at this scope.
+      description: |
+        Deletes the policy and, in the same transaction, the pending local
+        sign-ups it admitted (each audited `registration.signup_expired`,
+        cause `policy-deleted`). Orgs the policy minted keep their origin and
+        policy pointer. Reauthentication-gated like `put`; no session is
+        purged.
+      x-hikyo-class: instance
+      x-hikyo-operation: registration-policy.delete-instance
+      x-hikyo-formula: [manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationPolicyDeleteRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Registration is closed at this scope.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/grants:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -2238,6 +2363,133 @@ paths:
           $ref: "#/components/responses/NotFound"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/registration-policy:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: getOrgRegistrationPolicy
+      tags: [access]
+      summary: Read the organisation registration policy.
+      description: |
+        The organisation's open-registration policy (#579), or `404` when the
+        scope has none: registration is closed. The standing delegation and
+        the preconditions are re-checked on this read, so `state` is live: an
+        authority principal who no longer holds the landing's grants, or a
+        failing precondition, reads `inactive` with its cause. Recorded as a
+        membership-surface read.
+      x-hikyo-class: tenant
+      x-hikyo-operation: registration-policy.get-org
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The policy with its live state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: putOrgRegistrationPolicy
+      tags: [access]
+      summary: Create or replace the organisation registration policy.
+      description: |
+        A full replacement; the caller becomes the authority principal (any
+        edit reassigns it, #579 d4). Reauthentication-gated: `proof` carries a
+        TOTP code, or the password where no factor is enrolled, consumed in
+        the write transaction. No session is purged. Write-time preconditions
+        refuse `400` naming the failing item in `detail`: `no-public-origin`,
+        `mailer-unconfigured`, `provider-disabled`,
+        `provider-missing-email-scope`, `cap-zero`,
+        `template-not-org-applicable`, with the provider as `<kind>:<slug>`
+        where one is involved. `email` is never an allowlist claim.
+      x-hikyo-class: tenant
+      x-hikyo-operation: registration-policy.put-org
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationPolicyPutRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The saved policy with its live state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteOrgRegistrationPolicy
+      tags: [access]
+      summary: Close registration at this scope.
+      description: |
+        Deletes the policy and, in the same transaction, the pending local
+        sign-ups it admitted (each audited `registration.signup_expired`,
+        cause `policy-deleted`). Orgs the policy minted keep their origin and
+        policy pointer. Reauthentication-gated like `put`; no session is
+        purged.
+      x-hikyo-class: tenant
+      x-hikyo-operation: registration-policy.delete-org
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationPolicyDeleteRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Registration is closed at this scope.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "429":
@@ -4053,6 +4305,18 @@ paths:
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [none]
       x-hikyo-min-revision: 1
+      parameters:
+        - name: org
+          in: query
+          required: false
+          description: |
+            The organisation whose sign-up door to render (`signup_open`,
+            `signup_paused`, `signup_methods`); absent means the instance
+            scope. An unknown organisation and one without a policy are the
+            same closed door.
+          schema:
+            type: string
+            maxLength: 128
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -16435,7 +16699,7 @@ components:
     AuthMethods:
       type: object
       additionalProperties: false
-      required: [providers, local_login_enabled]
+      required: [providers, local_login_enabled, signup_open, signup_paused, signup_methods]
       properties:
         providers:
           type: array
@@ -16443,6 +16707,183 @@ components:
             $ref: "#/components/schemas/AuthMethodProvider"
         local_login_enabled:
           type: boolean
+        signup_open:
+          type: boolean
+          description: |
+            The addressed scope (the instance, or `?org=`) has an active
+            registration policy: the sign-up door is open.
+        signup_paused:
+          type: boolean
+          description: |
+            The addressed scope has a policy that is inactive. The public page
+            renders only "Sign-up is paused."; the cause renders on the
+            Members panel (#587 d3). False when the scope has no policy.
+        signup_methods:
+          type: array
+          description: |
+            The methods the open door admits, empty unless `signup_open`.
+            Federated entries carry `{kind, slug}`; the local entry is
+            `{kind: local}`.
+          items:
+            $ref: "#/components/schemas/SignupMethod"
+
+    SignupMethod:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          x-extensible-enum: [oidc, oauth2, local]
+        slug:
+          type: string
+          description: The provider slug; absent for `local`.
+
+    ProviderRef:
+      type: object
+      additionalProperties: false
+      description: A federated provider named by kind and slug (slugs are unique per kind only).
+      required: [kind, slug]
+      properties:
+        kind:
+          $ref: "#/components/schemas/IdentityProviderKind"
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+    RegistrationExternalEntry:
+      type: object
+      additionalProperties: false
+      required: [provider]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ProviderRef"
+        display_name:
+          type: string
+          description: The provider's display name; on responses only, ignored on input.
+        claim:
+          type: string
+          maxLength: 256
+          description: |
+            One issuer-specific string claim the signed ID token must carry,
+            with a value in `values`. Never `email`.
+        values:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            maxLength: 512
+
+    RegistrationLocalEntry:
+      type: object
+      additionalProperties: false
+      description: Email + password sign-up; present means enabled.
+      properties:
+        domains:
+          type: array
+          maxItems: 64
+          description: Admitted address domains; empty or absent admits any address.
+          items:
+            type: string
+            maxLength: 253
+
+    RegistrationLanding:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      description: |
+        Where a sign-up lands. An organisation policy is `org-template` with a
+        template applicable at organisation scope; an instance policy is
+        `none` (zero grants) or `fresh-org` (a new organisation with the
+        signer as its first administrator) with a cap on live orgs minted.
+      properties:
+        kind:
+          type: string
+          enum: [org-template, none, fresh-org]
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        cap:
+          type: integer
+
+    RegistrationPolicyPutRequest:
+      type: object
+      additionalProperties: false
+      required: [external, landing]
+      properties:
+        external:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/RegistrationExternalEntry"
+        local:
+          $ref: "#/components/schemas/RegistrationLocalEntry"
+        landing:
+          $ref: "#/components/schemas/RegistrationLanding"
+        proof:
+          type: string
+          maxLength: 1024
+          description: |
+            The reauthentication proof: a TOTP code, or the account password
+            where no factor is enrolled.
+
+    RegistrationPolicyDeleteRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        proof:
+          type: string
+          maxLength: 1024
+          description: The reauthentication proof, as on `put`.
+
+    RegistrationPolicy:
+      type: object
+      additionalProperties: false
+      required: [id, external, landing, authority_principal_id, state, row_version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        org:
+          type: string
+          description: The organisation; absent for the instance policy.
+        external:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegistrationExternalEntry"
+        local:
+          $ref: "#/components/schemas/RegistrationLocalEntry"
+        landing:
+          $ref: "#/components/schemas/RegistrationLanding"
+        authority_principal_id:
+          type: string
+          description: |
+            The standing delegation's authority principal (empty when
+            unassigned); re-checked against its current grants on every read
+            and every sign-up.
+        state:
+          type: string
+          enum: [active, inactive]
+        inactive_cause:
+          type: string
+          enum: [authority-lost, authority-unassigned, precondition]
+        inactive_precondition:
+          type: string
+          description: |
+            When `inactive_cause` is `precondition`, the failing precondition
+            by name, with the provider as `<kind>:<slug>` where one is involved.
+        fresh_org_count:
+          type: integer
+          minimum: 0
+          description: For a `fresh-org` landing, the live orgs this policy minted (the `n` of `n / cap`).
+        row_version:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     AuthMethodProvider:
       type: object

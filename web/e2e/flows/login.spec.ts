@@ -231,6 +231,30 @@ test.describe('login', () => {
     expect(await page.context().cookies()).toEqual([]);
   });
 
+  // An inactive registration policy (#606, #587 d3): the public page says
+  // only "Sign-up is paused." and nothing about why. The inactive state is
+  // substituted on the public discovery read (the real causes, a lost
+  // authority or a missing mailer, are the Members panel's and the service
+  // suite's); with registration closed there is no line at all.
+  test('says only "Sign-up is paused." while registration is inactive', async ({ page }) => {
+    await page.goto('/login');
+    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(page.getByText('Sign-up is paused.')).toHaveCount(0);
+
+    await page.route((url) => url.pathname === '/api/v1/auth/methods', async (route) => {
+      const real = z.record(z.string(), z.unknown()).parse(await (await route.fetch()).json());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...real, signup_open: false, signup_paused: true, signup_methods: [] }),
+      });
+    });
+    await page.reload();
+    const paused = page.getByText('Sign-up is paused.', { exact: true });
+    await expect(paused).toBeVisible();
+    await expect(page.locator('main')).not.toContainText(/authority-lost|no longer holds|mailer|precondition|inactive/i);
+  });
+
   test('redirects an anonymous authenticated-route deep link to login', async ({ page }) => {
     await page.goto('/projects');
 

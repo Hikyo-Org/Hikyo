@@ -2447,6 +2447,39 @@ export const zRenameKeyGroupRequest = z.object({
     acknowledgements: zAcknowledgements.optional()
 });
 
+export const zSignupMethod = z.object({
+    kind: z.string(),
+    slug: z.string().optional()
+});
+
+/**
+ * Email + password sign-up; present means enabled.
+ */
+export const zRegistrationLocalEntry = z.object({
+    domains: z.array(z.string().max(253)).max(64).optional()
+});
+
+/**
+ * Where a sign-up lands. An organisation policy is `org-template` with a
+ * template applicable at organisation scope; an instance policy is
+ * `none` (zero grants) or `fresh-org` (a new organisation with the
+ * signer as its first administrator) with a cap on live orgs minted.
+ *
+ */
+export const zRegistrationLanding = z.object({
+    kind: z.enum([
+        'org-template',
+        'none',
+        'fresh-org'
+    ]),
+    template: zRoleTemplate.optional(),
+    cap: z.int().optional()
+});
+
+export const zRegistrationPolicyDeleteRequest = z.object({
+    proof: z.string().max(1024).optional()
+});
+
 export const zOidcStartRequest = z.object({
     purpose: z.string(),
     environment_id: z.string().max(64).optional(),
@@ -2513,6 +2546,48 @@ export const zOidcProviderList = z.object({
  */
 export const zIdentityProviderKind = z.string();
 
+/**
+ * A federated provider named by kind and slug (slugs are unique per kind only).
+ */
+export const zProviderRef = z.object({
+    kind: zIdentityProviderKind,
+    slug: z.string().min(1).max(128)
+});
+
+export const zRegistrationExternalEntry = z.object({
+    provider: zProviderRef,
+    display_name: z.string().optional(),
+    claim: z.string().max(256).optional(),
+    values: z.array(z.string().max(512)).max(64).optional()
+});
+
+export const zRegistrationPolicyPutRequest = z.object({
+    external: z.array(zRegistrationExternalEntry).max(64),
+    local: zRegistrationLocalEntry.optional(),
+    landing: zRegistrationLanding,
+    proof: z.string().max(1024).optional()
+});
+
+export const zRegistrationPolicy = z.object({
+    id: z.string(),
+    org: z.string().optional(),
+    external: z.array(zRegistrationExternalEntry),
+    local: zRegistrationLocalEntry.optional(),
+    landing: zRegistrationLanding,
+    authority_principal_id: z.string(),
+    state: z.enum(['active', 'inactive']),
+    inactive_cause: z.enum([
+        'authority-lost',
+        'authority-unassigned',
+        'precondition'
+    ]).optional(),
+    inactive_precondition: z.string().optional(),
+    fresh_org_count: z.int().gte(0).optional(),
+    row_version: z.int().gte(1),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime()
+});
+
 export const zAuthMethodProvider = z.object({
     slug: z.string(),
     display_name: z.string(),
@@ -2521,7 +2596,10 @@ export const zAuthMethodProvider = z.object({
 
 export const zAuthMethods = z.object({
     providers: z.array(zAuthMethodProvider),
-    local_login_enabled: z.boolean()
+    local_login_enabled: z.boolean(),
+    signup_open: z.boolean(),
+    signup_paused: z.boolean(),
+    signup_methods: z.array(zSignupMethod)
 });
 
 export const zExternalIdentity = z.object({
@@ -4167,6 +4245,25 @@ export const zInviteInstanceMemberBody = zInviteMemberRequest;
  */
 export const zInviteInstanceMemberResponse = zInvitationResult;
 
+export const zDeleteInstanceRegistrationPolicyBody = zRegistrationPolicyDeleteRequest;
+
+/**
+ * Registration is closed at this scope.
+ */
+export const zDeleteInstanceRegistrationPolicyResponse = z.void();
+
+/**
+ * The policy with its live state.
+ */
+export const zGetInstanceRegistrationPolicyResponse = zRegistrationPolicy;
+
+export const zPutInstanceRegistrationPolicyBody = zRegistrationPolicyPutRequest;
+
+/**
+ * The saved policy with its live state.
+ */
+export const zPutInstanceRegistrationPolicyResponse = zRegistrationPolicy;
+
 export const zRevokeOrgGrantPath = z.object({
     org: zId
 });
@@ -4222,6 +4319,37 @@ export const zInviteOrgMemberPath = z.object({
  * The invited principal and its single-use authority.
  */
 export const zInviteOrgMemberResponse = zInvitationResult;
+
+export const zDeleteOrgRegistrationPolicyBody = zRegistrationPolicyDeleteRequest;
+
+export const zDeleteOrgRegistrationPolicyPath = z.object({
+    org: zId
+});
+
+/**
+ * Registration is closed at this scope.
+ */
+export const zDeleteOrgRegistrationPolicyResponse = z.void();
+
+export const zGetOrgRegistrationPolicyPath = z.object({
+    org: zId
+});
+
+/**
+ * The policy with its live state.
+ */
+export const zGetOrgRegistrationPolicyResponse = zRegistrationPolicy;
+
+export const zPutOrgRegistrationPolicyBody = zRegistrationPolicyPutRequest;
+
+export const zPutOrgRegistrationPolicyPath = z.object({
+    org: zId
+});
+
+/**
+ * The saved policy with its live state.
+ */
+export const zPutOrgRegistrationPolicyResponse = zRegistrationPolicy;
 
 export const zRevokeProjectGrantPath = z.object({
     org: zId,
@@ -4773,6 +4901,10 @@ export const zRevealValueDiffPath = z.object({
  * One row per declared key, plaintext included.
  */
 export const zRevealValueDiffResponse = zValueDiff;
+
+export const zAuthMethodsQuery = z.object({
+    org: z.string().max(128).optional()
+});
 
 /**
  * The enabled login methods.

@@ -361,6 +361,15 @@ const (
 	// per depth exactly as grant.create does; each route names one.
 	OpMemberInviteOrg      Operation = "member.invite-org"
 	OpMemberInviteInstance Operation = "member.invite-instance"
+	// Registration policy (#606, #579): one policy per scope, administered by
+	// the scope's manage-members holder. One operation per depth and verb,
+	// the member.invite shape; the mutations are reauth-gated in the service.
+	OpRegistrationPolicyGetOrg         Operation = "registration-policy.get-org"
+	OpRegistrationPolicyPutOrg         Operation = "registration-policy.put-org"
+	OpRegistrationPolicyDeleteOrg      Operation = "registration-policy.delete-org"
+	OpRegistrationPolicyGetInstance    Operation = "registration-policy.get-instance"
+	OpRegistrationPolicyPutInstance    Operation = "registration-policy.put-instance"
+	OpRegistrationPolicyDeleteInstance Operation = "registration-policy.delete-instance"
 
 	OpGrantRevokeOrg      Operation = "grant.revoke-org"
 	OpGrantRevokeProject  Operation = "grant.revoke-project"
@@ -3379,6 +3388,53 @@ var operationTable = map[Operation]opSpec{
 			audit.EventMemberInvited, audit.EventGrantTemplateApplied,
 			audit.EventGrantCreated, audit.EventGrantModified,
 		}, grantCureEvents...),
+	},
+
+	// Registration policy (#606). The policy tables are class=authn, so the
+	// read and the mutation ride the proof-free resolution surface AFTER the
+	// operation authorizes the caller (provider administration's shape); only
+	// the audit write is a store op. Neither read may be audited-none (the
+	// formula is manage-members, not read), and the audit-model banner names
+	// no registration read event, so the reads record the membership-surface
+	// read the Members panel is part of.
+	OpRegistrationPolicyGetOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
+	},
+	OpRegistrationPolicyPutOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRegistrationPolicyCreated, audit.EventRegistrationPolicyUpdated},
+	},
+	OpRegistrationPolicyDeleteOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRegistrationPolicyDeleted, audit.EventRegistrationSignupExpired},
+	},
+	OpRegistrationPolicyGetInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
+	},
+	OpRegistrationPolicyPutInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventRegistrationPolicyCreated, audit.EventRegistrationPolicyUpdated},
+	},
+	OpRegistrationPolicyDeleteInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventRegistrationPolicyDeleted, audit.EventRegistrationSignupExpired},
 	},
 
 	// The protected flag and the per-environment reauthentication window.

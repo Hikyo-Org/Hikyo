@@ -1564,6 +1564,93 @@ func (s stubGrants) InviteMember(context.Context, service.Actor, service.InviteS
 	return service.InvitationResult{}, s.outcome()
 }
 
+// stubRegistration is the registration surface's fixture (#606): the policy
+// verbs answer the uniformity outcome, the public door answers door, and put
+// answers putErr when set so a precondition refusal can be rendered.
+type stubRegistration struct {
+	stubHierarchy
+	door    service.SignupDoor
+	putErr  error
+	doorOrg *domain.OrgID
+}
+
+func (s stubRegistration) Get(context.Context, service.Actor, domain.OrgID) (*service.RegistrationPolicyView, error) {
+	return nil, s.outcome()
+}
+
+func (s stubRegistration) Put(context.Context, service.Actor, domain.OrgID, service.RegistrationPolicyInput, string) (service.RegistrationPolicyView, error) {
+	if s.putErr != nil {
+		return service.RegistrationPolicyView{}, s.putErr
+	}
+	return service.RegistrationPolicyView{}, s.outcome()
+}
+
+func (s stubRegistration) Delete(context.Context, service.Actor, domain.OrgID, string) error {
+	return s.outcome()
+}
+
+func (s stubRegistration) SignupDoor(_ context.Context, org domain.OrgID) (service.SignupDoor, error) {
+	if s.doorOrg != nil {
+		*s.doorOrg = org
+	}
+	return s.door, nil
+}
+
+// namedRefusal is a precondition refusal as the service shapes it: invalid,
+// with a caller-safe detail naming the failing item.
+type namedRefusal struct{ detail string }
+
+func (e namedRefusal) Error() string      { return "refused: " + e.detail }
+func (e namedRefusal) Unwrap() error      { return domain.ErrInvalid }
+func (e namedRefusal) SafeDetail() string { return e.detail }
+
+// A write-time precondition refuses 400 and names the failing item and the
+// provider row in `detail`, the one member a bad_request may carry (#606).
+func TestRegistrationPolicyPreconditionIsNamedOnTheWire(t *testing.T) {
+	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, Version: "test",
+		Registration: stubRegistration{putErr: namedRefusal{detail: "provider-disabled: oidc:off"}},
+	}, nil))
+	t.Cleanup(srv.Close)
+	body := apigen.RegistrationPolicyPutRequest{
+		External: []apigen.RegistrationExternalEntry{{Provider: apigen.ProviderRef{Kind: "oidc", Slug: "off"}}},
+		Landing:  apigen.RegistrationLanding{Kind: apigen.RegistrationLandingKindNone},
+	}
+	resp, payload := call(t, srv, http.MethodPut, api.PathPrefix+"/instance/registration-policy", "hik_1_cli_x", body)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("precondition refusal answered %d, want 400", resp.StatusCode)
+	}
+	e := decodeError(t, payload)
+	if e.Error.Code != apigen.ErrorCodeBadRequest || e.Error.Detail == nil || *e.Error.Detail != "provider-disabled: oidc:off" {
+		t.Fatalf("refusal body = %s, want bad_request naming provider-disabled: oidc:off", payload)
+	}
+}
+
+// `/auth/methods?org=<id>` renders that org's door (#606): the org reaches
+// the service unchanged and the door fields are on the contract.
+func TestAuthMethodsRendersTheAddressedSignupDoor(t *testing.T) {
+	var seen domain.OrgID
+	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, Version: "test",
+		Registration: stubRegistration{doorOrg: &seen, door: service.SignupDoor{Open: true, Methods: []service.SignupMethod{
+			{Kind: "oidc", Slug: "corp"}, {Kind: "local"},
+		}}},
+	}, nil))
+	t.Cleanup(srv.Close)
+	resp, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/methods?org="+testOrgID, "", nil)
+	if resp.StatusCode != http.StatusOK || seen != testOrgID {
+		t.Fatalf("auth methods ?org answered %d for org %q", resp.StatusCode, seen)
+	}
+	var methods apigen.AuthMethods
+	if err := json.Unmarshal(payload, &methods); err != nil {
+		t.Fatal(err)
+	}
+	if !methods.SignupOpen || methods.SignupPaused || len(methods.SignupMethods) != 2 ||
+		methods.SignupMethods[0].Slug == nil || *methods.SignupMethods[0].Slug != "corp" || methods.SignupMethods[1].Slug != nil {
+		t.Fatalf("door = %s", payload)
+	}
+}
+
 type stubSettings struct{ stubHierarchy }
 
 func (s stubSettings) GetEnvironment(context.Context, service.Actor, domain.Scope) (service.EnvironmentSettings, error) {
@@ -1630,14 +1717,15 @@ func hierarchyServer(t *testing.T, outcome error) *httptest.Server {
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{},
 		Projects:     stubHierarchy{err: outcome},
 		Environments: stubEnvs{stubHierarchy{err: outcome}}, Values: stubValues{stubHierarchy{err: outcome}},
-		Folders:   stubFolders{stubHierarchy{err: outcome}},
-		Keys:      stubKeys{stubHierarchy{err: outcome}},
-		KeyGroups: stubKeyGroups{stubHierarchy{err: outcome}},
-		Grants:    stubGrants{stubHierarchy{err: outcome}},
-		Settings:  stubSettings{stubHierarchy{err: outcome}},
-		SCIM:      stubSCIM{stubHierarchy{err: outcome}},
-		Revisions: stubRevisions{stubHierarchy{err: outcome}},
-		Version:   "test",
+		Folders:      stubFolders{stubHierarchy{err: outcome}},
+		Keys:         stubKeys{stubHierarchy{err: outcome}},
+		KeyGroups:    stubKeyGroups{stubHierarchy{err: outcome}},
+		Grants:       stubGrants{stubHierarchy{err: outcome}},
+		Settings:     stubSettings{stubHierarchy{err: outcome}},
+		SCIM:         stubSCIM{stubHierarchy{err: outcome}},
+		Revisions:    stubRevisions{stubHierarchy{err: outcome}},
+		Registration: stubRegistration{stubHierarchy: stubHierarchy{err: outcome}},
+		Version:      "test",
 	}, nil))
 	t.Cleanup(srv.Close)
 	return srv
@@ -1656,6 +1744,10 @@ func hierarchyRoutes() []struct {
 	grantBody := apigen.CreateGrantRequest{Principal: testPrincipalID, Capability: "read"}
 	templateBody := apigen.ApplyTemplateRequest{Principal: testPrincipalID, Template: apigen.Viewer}
 	inviteBody := apigen.InviteMemberRequest{Username: "dana"}
+	registrationBody := apigen.RegistrationPolicyPutRequest{
+		External: []apigen.RegistrationExternalEntry{{Provider: apigen.ProviderRef{Kind: "oidc", Slug: "corp"}}},
+		Landing:  apigen.RegistrationLanding{Kind: apigen.RegistrationLandingKindNone},
+	}
 	scimBase := base + "/scim-bindings"
 	scimBinding := scimBase + "/" + testBindingID
 	mappingBody := apigen.ScimMappingRequest{GroupId: testSCIMGroupID, Template: "viewer"}
@@ -1698,6 +1790,11 @@ func hierarchyRoutes() []struct {
 		// Member invitation (#568): a refused invitation is the uniform 404,
 		// never a 409 that would confirm the username or the organisation.
 		{http.MethodPost, base + "/invitations", inviteBody},
+		// Registration policy (#606): an org the caller may not manage has no
+		// policy to read, write or close, byte for byte.
+		{http.MethodGet, base + "/registration-policy", nil},
+		{http.MethodPut, base + "/registration-policy", registrationBody},
+		{http.MethodDelete, base + "/registration-policy", apigen.RegistrationPolicyDeleteRequest{}},
 		{http.MethodGet, project + "/grants", nil},
 		{http.MethodPost, project + "/grants", grantBody},
 		{http.MethodDelete, project + "/grants?principal=" + testPrincipalID + "&capability=read", nil},

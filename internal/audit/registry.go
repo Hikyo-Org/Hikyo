@@ -224,6 +224,16 @@ const (
 	// lives on the scope's trail so an org administrator can answer "who
 	// invited whom" without instance access.
 	EventMemberInvited EventType = "member.invited"
+	// registration.* (#606, audit-model banner 2026-09-03). The policy events
+	// land on the scope's trail (tenant for an org policy, instance for the
+	// instance policy) and carry the authority reassignment every edit makes.
+	// registration.signup_expired records a pending local sign-up removed
+	// before verification: by the reaper (#608) or, here, by deleting the
+	// policy that admitted it.
+	EventRegistrationPolicyCreated EventType = "registration.policy_created"
+	EventRegistrationPolicyUpdated EventType = "registration.policy_updated"
+	EventRegistrationPolicyDeleted EventType = "registration.policy_deleted"
+	EventRegistrationSignupExpired EventType = "registration.signup_expired"
 
 	// settings.reauthentication_window_changed and
 	// settings.protected_flag_changed are the `project-settings` security
@@ -1807,6 +1817,20 @@ var registry = map[EventType]TypeSpec{
 			"delivery":       {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
 		},
 	},
+	EventRegistrationPolicyCreated: registrationPolicySpec(),
+	EventRegistrationPolicyUpdated: registrationPolicySpec(),
+	EventRegistrationPolicyDeleted: registrationPolicySpec(),
+	EventRegistrationSignupExpired: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"signup_id": {Kind: KindString, Required: true},
+			"policy_id": {Kind: KindString, Required: true},
+			"cause":     {Kind: KindString, Required: true, Enum: []string{"expired", "policy-deleted"}},
+		},
+	},
 	EventGrantTemplateApplied: {
 		SchemaVersion: 1,
 		Retention:     RetentionSecurity,
@@ -3277,6 +3301,25 @@ func hierarchyFailureEvent(schema Schema) TypeSpec {
 		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
 		Trails:        map[Trail]bool{TrailTenant: true},
 		Schema:        schema,
+	}
+}
+
+// registrationPolicySpec is the shared row of the three policy events (spec
+// section 5): the policy, its landing, and the authority the write recorded,
+// with the authority it replaced when an edit reassigned it.
+func registrationPolicySpec() TypeSpec {
+	return TypeSpec{
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"policy_id":                       {Kind: KindString, Required: true},
+			"scope":                           {Kind: KindString, Required: true},
+			"landing":                         {Kind: KindString, Required: true, Enum: []string{"org-template", "none", "fresh-org"}},
+			"authority_principal_id":          {Kind: KindString, Required: true},
+			"previous_authority_principal_id": {Kind: KindString},
+		},
 	}
 }
 

@@ -108,10 +108,12 @@ import {
   deleteEnvironment,
   deleteFederationIssuer,
   deleteFolder,
+  deleteInstanceRegistrationPolicy,
   deleteKey,
   deleteKeyGroup,
   deleteOidcProvider,
   deleteOrg,
+  deleteOrgRegistrationPolicy,
   deleteProject,
   deleteSamlProvider,
   deleteScimBinding,
@@ -139,6 +141,7 @@ import {
   getEnvironmentSignals,
   getFolder,
   getInstanceConfig,
+  getInstanceRegistrationPolicy,
   getInstanceUpdateJob,
   getKey,
   getKeyGroup,
@@ -147,6 +150,7 @@ import {
   getMyProfile,
   getOidcProvider,
   getOrg,
+  getOrgRegistrationPolicy,
   getOrgRetention,
   getProject,
   getProjectRetention,
@@ -221,7 +225,9 @@ import {
   planAdapterTarget,
   previewInstanceConfigAdoption,
   publishPendingChanges,
+  putInstanceRegistrationPolicy,
   putOidcProvider,
+  putOrgRegistrationPolicy,
   putSamlProvider,
   queryEnvAudit,
   queryOrgAudit,
@@ -389,10 +395,12 @@ import type {
   DeleteEnvironmentData,
   DeleteFederationIssuerData,
   DeleteFolderData,
+  DeleteInstanceRegistrationPolicyData,
   DeleteKeyData,
   DeleteKeyGroupData,
   DeleteOidcProviderData,
   DeleteOrgData,
+  DeleteOrgRegistrationPolicyData,
   DeleteProjectData,
   DeleteSamlProviderData,
   DeleteScimBindingData,
@@ -420,6 +428,7 @@ import type {
   GetEnvironmentSignalsData,
   GetFolderData,
   GetInstanceConfigData,
+  GetInstanceRegistrationPolicyData,
   GetInstanceUpdateJobData,
   GetKeyData,
   GetKeyGroupData,
@@ -428,6 +437,7 @@ import type {
   GetMyProfileData,
   GetOidcProviderData,
   GetOrgData,
+  GetOrgRegistrationPolicyData,
   GetOrgRetentionData,
   GetProjectData,
   GetProjectRetentionData,
@@ -502,7 +512,9 @@ import type {
   PlanAdapterTargetData,
   PreviewInstanceConfigAdoptionData,
   PublishPendingChangesData,
+  PutInstanceRegistrationPolicyData,
   PutOidcProviderData,
+  PutOrgRegistrationPolicyData,
   PutSamlProviderData,
   QueryEnvAuditData,
   QueryOrgAuditData,
@@ -687,6 +699,7 @@ import {
   zGetEnvironmentSignalsResponse,
   zGetFolderResponse,
   zGetInstanceConfigResponse,
+  zGetInstanceRegistrationPolicyResponse,
   zGetInstanceUpdateJobResponse,
   zGetKeyGroupResponse,
   zGetKeyResponse,
@@ -694,6 +707,7 @@ import {
   zGetMetaResponse,
   zGetMyProfileResponse,
   zGetOidcProviderResponse,
+  zGetOrgRegistrationPolicyResponse,
   zGetOrgResponse,
   zGetOrgRetentionResponse,
   zGetProjectResponse,
@@ -768,7 +782,9 @@ import {
   zPlanAdapterTargetResponse,
   zPreviewInstanceConfigAdoptionResponse,
   zPublishPendingChangesResponse,
+  zPutInstanceRegistrationPolicyResponse,
   zPutOidcProviderResponse,
+  zPutOrgRegistrationPolicyResponse,
   zPutSamlProviderResponse,
   zQueryEnvAuditResponse,
   zQueryOrgAuditResponse,
@@ -937,6 +953,7 @@ export const getEnvironmentSettingsOp: BodyOperation<GetEnvironmentSettingsData,
 export const getEnvironmentSignalsOp: BodyOperation<GetEnvironmentSignalsData, typeof zGetEnvironmentSignalsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getEnvironmentSignals, [200], zGetEnvironmentSignalsResponse);
 export const getFolderOp: BodyOperation<GetFolderData, typeof zGetFolderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getFolder, [200], zGetFolderResponse);
 export const getInstanceConfigOp: BodyOperation<GetInstanceConfigData, typeof zGetInstanceConfigResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceConfig, [200], zGetInstanceConfigResponse);
+export const getInstanceRegistrationPolicyOp: BodyOperation<GetInstanceRegistrationPolicyData, typeof zGetInstanceRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceRegistrationPolicy, [200], zGetInstanceRegistrationPolicyResponse);
 export const getInstanceUpdateJobOp: BodyOperation<GetInstanceUpdateJobData, typeof zGetInstanceUpdateJobResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getInstanceUpdateJob, [200], zGetInstanceUpdateJobResponse);
 export const getKeyOp: BodyOperation<GetKeyData, typeof zGetKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKey, [200], zGetKeyResponse);
 export const getKeyGroupOp: BodyOperation<GetKeyGroupData, typeof zGetKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getKeyGroup, [200], zGetKeyGroupResponse);
@@ -945,6 +962,7 @@ export const getMetaOp: BodyOperation<GetMetaData, typeof zGetMetaResponse> = /*
 export const getMyProfileOp: BodyOperation<GetMyProfileData, typeof zGetMyProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getMyProfile, [200], zGetMyProfileResponse);
 export const getOidcProviderOp: BodyOperation<GetOidcProviderData, typeof zGetOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOidcProvider, [200], zGetOidcProviderResponse);
 export const getOrgOp: BodyOperation<GetOrgData, typeof zGetOrgResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrg, [200], zGetOrgResponse);
+export const getOrgRegistrationPolicyOp: BodyOperation<GetOrgRegistrationPolicyData, typeof zGetOrgRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRegistrationPolicy, [200], zGetOrgRegistrationPolicyResponse);
 export const getOrgRetentionOp: BodyOperation<GetOrgRetentionData, typeof zGetOrgRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getOrgRetention, [200], zGetOrgRetentionResponse);
 export const getProjectOp: BodyOperation<GetProjectData, typeof zGetProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProject, [200], zGetProjectResponse);
 export const getProjectRetentionOp: BodyOperation<GetProjectRetentionData, typeof zGetProjectRetentionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(getProjectRetention, [200], zGetProjectRetentionResponse);
@@ -1018,7 +1036,9 @@ export const pauseAdapterTargetOp: BodyOperation<PauseAdapterTargetData, typeof 
 export const planAdapterTargetOp: BodyOperation<PlanAdapterTargetData, typeof zPlanAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(planAdapterTarget, [200], zPlanAdapterTargetResponse);
 export const previewInstanceConfigAdoptionOp: BodyOperation<PreviewInstanceConfigAdoptionData, typeof zPreviewInstanceConfigAdoptionResponse> = /* @__PURE__ */ new GeneratedBodyOperation(previewInstanceConfigAdoption, [200], zPreviewInstanceConfigAdoptionResponse);
 export const publishPendingChangesOp: BodyOperation<PublishPendingChangesData, typeof zPublishPendingChangesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(publishPendingChanges, [200, 202], zPublishPendingChangesResponse);
+export const putInstanceRegistrationPolicyOp: BodyOperation<PutInstanceRegistrationPolicyData, typeof zPutInstanceRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putInstanceRegistrationPolicy, [200], zPutInstanceRegistrationPolicyResponse);
 export const putOidcProviderOp: BodyOperation<PutOidcProviderData, typeof zPutOidcProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOidcProvider, [200], zPutOidcProviderResponse);
+export const putOrgRegistrationPolicyOp: BodyOperation<PutOrgRegistrationPolicyData, typeof zPutOrgRegistrationPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putOrgRegistrationPolicy, [200], zPutOrgRegistrationPolicyResponse);
 export const putSamlProviderOp: BodyOperation<PutSamlProviderData, typeof zPutSamlProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(putSamlProvider, [200], zPutSamlProviderResponse);
 export const queryEnvAuditOp: BodyOperation<QueryEnvAuditData, typeof zQueryEnvAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryEnvAudit, [200], zQueryEnvAuditResponse);
 export const queryOrgAuditOp: BodyOperation<QueryOrgAuditData, typeof zQueryOrgAuditResponse> = /* @__PURE__ */ new GeneratedBodyOperation(queryOrgAudit, [200], zQueryOrgAuditResponse);
@@ -1123,10 +1143,12 @@ export const deleteApprovalPolicyOp: BodylessOperation<DeleteApprovalPolicyData>
 export const deleteEnvironmentOp: BodylessOperation<DeleteEnvironmentData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteEnvironment, [204]);
 export const deleteFederationIssuerOp: BodylessOperation<DeleteFederationIssuerData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFederationIssuer, [204]);
 export const deleteFolderOp: BodylessOperation<DeleteFolderData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFolder, [204]);
+export const deleteInstanceRegistrationPolicyOp: BodylessOperation<DeleteInstanceRegistrationPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteInstanceRegistrationPolicy, [204]);
 export const deleteKeyOp: BodylessOperation<DeleteKeyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteKey, [204]);
 export const deleteKeyGroupOp: BodylessOperation<DeleteKeyGroupData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteKeyGroup, [204]);
 export const deleteOidcProviderOp: BodylessOperation<DeleteOidcProviderData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteOidcProvider, [204]);
 export const deleteOrgOp: BodylessOperation<DeleteOrgData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteOrg, [204]);
+export const deleteOrgRegistrationPolicyOp: BodylessOperation<DeleteOrgRegistrationPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteOrgRegistrationPolicy, [204]);
 export const deleteProjectOp: BodylessOperation<DeleteProjectData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteProject, [204]);
 export const deleteSamlProviderOp: BodylessOperation<DeleteSamlProviderData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteSamlProvider, [204]);
 export const deleteScimBindingOp: BodylessOperation<DeleteScimBindingData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteScimBinding, [204]);

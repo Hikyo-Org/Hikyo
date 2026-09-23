@@ -6,6 +6,7 @@ import {
   zUpdateStatus,
   zGrantList,
   zOrg,
+  zRegistrationPolicy,
   zSamlProviderMutationResult,
   zSamlSpKeyList,
   zScimBinding,
@@ -1182,4 +1183,68 @@ test.describe('instance administration', () => {
       }
     });
   }
+});
+
+/**
+ * Open registration at instance scope (#606): the instance Members panel's
+ * editor lands `none` or `fresh-org` (no organisation to pick), and a
+ * fresh-org policy renders `n / cap`. Every mutation takes the blue proof
+ * step; the policy is closed again afterwards so no other flow sees a door.
+ */
+test.describe('open registration at instance scope', () => {
+  test.use({ storageState: STORAGE_STATE });
+  const POLICY = '/api/v1/instance/registration-policy';
+
+  async function closeInstancePolicy(page: Page) {
+    try {
+      await browserApi(page, 'GET', POLICY, zRegistrationPolicy);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('answered 404:')) return;
+      throw error;
+    }
+    await browserApi(page, 'DELETE', POLICY, z.null(), { proof: await nextTotpCode() });
+  }
+
+  test('opens a fresh-org policy with n / cap and closes it', async ({ page }, testInfo) => {
+    testInfo.setTimeout(90_000);
+    await page.goto('/instance/members');
+    await closeInstancePolicy(page);
+    await page.reload();
+    const panel = page.locator('#members-registration');
+    try {
+      await expect(panel).toContainText('No one can sign up on this instance without an invitation.');
+      await panel.getByRole('button', { name: 'Open registration…' }).click();
+      const editor = page.getByRole('dialog');
+      await expect(editor.getByRole('heading', { level: 2 })).toHaveText('Instance · open registration');
+      // Instance scope has no organisation to land in: none or a fresh org.
+      await expect(editor.getByLabel(/^Role template/)).toHaveCount(0);
+      await editor.getByLabel(OIDC_PROVIDER.displayName).check();
+      await editor.getByLabel(/^A new organisation per sign-up/).check();
+      await editor.getByLabel('Cap on organisations minted').fill('0');
+      await editor.getByRole('button', { name: 'Save' }).click();
+      // A zero cap is refused before any proof is asked.
+      await expect(editor.getByText('A cap of at least 1 is required for this landing.')).toBeVisible();
+      await editor.getByLabel('Cap on organisations minted').fill('5');
+      await editor.getByRole('button', { name: 'Save' }).click();
+      const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
+      await proof.getByLabel('Authenticator code or password').fill(await nextTotpCode());
+      await proof.getByRole('button', { name: 'Confirm' }).click();
+      await expect(page.locator('.notice').filter({ hasText: 'registration.policy_created' })).toBeVisible();
+      await expect(panel).toContainText('0 / 5 minted');
+      await expect(panel.getByText('active', { exact: true })).toBeVisible();
+      // No org sign-up link at instance scope: the login page is that door.
+      await expect(panel.getByRole('button', { name: 'Copy sign-up link' })).toHaveCount(0);
+      const door = zAuthMethods.parse(await (await page.request.get(`${BASE_URL}/api/v1/auth/methods`)).json());
+      expect(door.signup_open).toBe(true);
+      expect(door.signup_methods).toEqual([{ kind: 'oidc', slug: OIDC_PROVIDER.slug }]);
+
+      await panel.getByRole('button', { name: 'Close registration' }).click();
+      const closing = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
+      await closing.getByLabel('Authenticator code or password').fill(await nextTotpCode());
+      await closing.getByRole('button', { name: 'Confirm' }).click();
+      await expect(panel).toContainText('No one can sign up on this instance without an invitation.');
+    } finally {
+      await closeInstancePolicy(page);
+    }
+  });
 });

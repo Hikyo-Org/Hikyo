@@ -375,3 +375,25 @@ func TestBudgetDevelopmentEnforcementRetainsRateAndOutstandingSlots(t *testing.T
 		release()
 	}
 }
+
+// The signup budget (#606, ops-spec banner 2026-09-03): 20/h for the whole
+// instance, rate only. Every caller shares one bucket, whoever they are.
+func TestBudgetSignupInstanceWide(t *testing.T) {
+	c := &clock{t: time.Unix(1_700_000_000, 0)}
+	b := newTestBudget(c)
+	for i := range BudgetSignupPerHour {
+		if err := b.chargeSignup(); err != nil {
+			t.Fatalf("sign-up charge %d/%d refused early: %v", i+1, BudgetSignupPerHour, err)
+		}
+	}
+	if err := b.chargeSignup(); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("sign-up charge %d = %v, want ErrOverloaded", BudgetSignupPerHour+1, err)
+	}
+	c.add(time.Hour + time.Second)
+	if err := b.chargeSignup(); err != nil {
+		t.Fatalf("after the window: %v", err)
+	}
+	if len(budgetSignup.concs) != 0 {
+		t.Fatal("the signup budget is rate-only")
+	}
+}

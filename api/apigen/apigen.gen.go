@@ -1679,6 +1679,66 @@ func (e ReencryptResultScope) Valid() bool {
 	}
 }
 
+// Defines values for RegistrationLandingKind.
+const (
+	RegistrationLandingKindFreshOrg    RegistrationLandingKind = "fresh-org"
+	RegistrationLandingKindNone        RegistrationLandingKind = "none"
+	RegistrationLandingKindOrgTemplate RegistrationLandingKind = "org-template"
+)
+
+// Valid indicates whether the value is a known member of the RegistrationLandingKind enum.
+func (e RegistrationLandingKind) Valid() bool {
+	switch e {
+	case RegistrationLandingKindFreshOrg:
+		return true
+	case RegistrationLandingKindNone:
+		return true
+	case RegistrationLandingKindOrgTemplate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegistrationPolicyInactiveCause.
+const (
+	AuthorityLost       RegistrationPolicyInactiveCause = "authority-lost"
+	AuthorityUnassigned RegistrationPolicyInactiveCause = "authority-unassigned"
+	Precondition        RegistrationPolicyInactiveCause = "precondition"
+)
+
+// Valid indicates whether the value is a known member of the RegistrationPolicyInactiveCause enum.
+func (e RegistrationPolicyInactiveCause) Valid() bool {
+	switch e {
+	case AuthorityLost:
+		return true
+	case AuthorityUnassigned:
+		return true
+	case Precondition:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegistrationPolicyState.
+const (
+	RegistrationPolicyStateActive   RegistrationPolicyState = "active"
+	RegistrationPolicyStateInactive RegistrationPolicyState = "inactive"
+)
+
+// Valid indicates whether the value is a known member of the RegistrationPolicyState enum.
+func (e RegistrationPolicyState) Valid() bool {
+	switch e {
+	case RegistrationPolicyStateActive:
+		return true
+	case RegistrationPolicyStateInactive:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RemoteState.
 const (
 	RemoteStateCredentialRejected RemoteState = "credential-rejected"
@@ -3742,6 +3802,20 @@ type AuthMethodProvider struct {
 type AuthMethods struct {
 	LocalLoginEnabled bool                 `json:"local_login_enabled"`
 	Providers         []AuthMethodProvider `json:"providers"`
+
+	// SignupMethods The methods the open door admits, empty unless `signup_open`.
+	// Federated entries carry `{kind, slug}`; the local entry is
+	// `{kind: local}`.
+	SignupMethods []SignupMethod `json:"signup_methods"`
+
+	// SignupOpen The addressed scope (the instance, or `?org=`) has an active
+	// registration policy: the sign-up door is open.
+	SignupOpen bool `json:"signup_open"`
+
+	// SignupPaused The addressed scope has a policy that is inactive. The public page
+	// renders only "Sign-up is paused."; the cause renders on the
+	// Members panel (#587 d3). False when the scope has no policy.
+	SignupPaused bool `json:"signup_paused"`
 }
 
 // BackupHealth Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
@@ -6324,6 +6398,13 @@ type ProjectRetentionPolicyMode string
 // unknown value rather than reject the response.
 type ProtocolCapability = string
 
+// ProviderRef A federated provider named by kind and slug (slugs are unique per kind only).
+type ProviderRef struct {
+	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
+	Kind IdentityProviderKind `json:"kind"`
+	Slug string               `json:"slug"`
+}
+
 // PublishRequest defines model for PublishRequest.
 type PublishRequest struct {
 	// ApprovalRequestId Secret-change approvals (#151). Merge or bypass this approval
@@ -6481,6 +6562,105 @@ type ReencryptResult struct {
 
 // ReencryptResultScope defines model for ReencryptResult.Scope.
 type ReencryptResultScope string
+
+// RegistrationExternalEntry defines model for RegistrationExternalEntry.
+type RegistrationExternalEntry struct {
+	// Claim One issuer-specific string claim the signed ID token must carry,
+	// with a value in `values`. Never `email`.
+	Claim *string `json:"claim,omitempty"`
+
+	// DisplayName The provider's display name; on responses only, ignored on input.
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// Provider A federated provider named by kind and slug (slugs are unique per kind only).
+	Provider ProviderRef `json:"provider"`
+	Values   *[]string   `json:"values,omitempty"`
+}
+
+// RegistrationLanding Where a sign-up lands. An organisation policy is `org-template` with a
+// template applicable at organisation scope; an instance policy is
+// `none` (zero grants) or `fresh-org` (a new organisation with the
+// signer as its first administrator) with a cap on live orgs minted.
+type RegistrationLanding struct {
+	Cap  *int                    `json:"cap,omitempty"`
+	Kind RegistrationLandingKind `json:"kind"`
+
+	// Template The closed v1 role template set.
+	Template *RoleTemplate `json:"template,omitempty"`
+}
+
+// RegistrationLandingKind defines model for RegistrationLanding.Kind.
+type RegistrationLandingKind string
+
+// RegistrationLocalEntry Email + password sign-up; present means enabled.
+type RegistrationLocalEntry struct {
+	// Domains Admitted address domains; empty or absent admits any address.
+	Domains *[]string `json:"domains,omitempty"`
+}
+
+// RegistrationPolicy defines model for RegistrationPolicy.
+type RegistrationPolicy struct {
+	// AuthorityPrincipalId The standing delegation's authority principal (empty when
+	// unassigned); re-checked against its current grants on every read
+	// and every sign-up.
+	AuthorityPrincipalId string                      `json:"authority_principal_id"`
+	CreatedAt            time.Time                   `json:"created_at"`
+	External             []RegistrationExternalEntry `json:"external"`
+
+	// FreshOrgCount For a `fresh-org` landing, the live orgs this policy minted (the `n` of `n / cap`).
+	FreshOrgCount *int                             `json:"fresh_org_count,omitempty"`
+	Id            string                           `json:"id"`
+	InactiveCause *RegistrationPolicyInactiveCause `json:"inactive_cause,omitempty"`
+
+	// InactivePrecondition When `inactive_cause` is `precondition`, the failing precondition
+	// by name, with the provider as `<kind>:<slug>` where one is involved.
+	InactivePrecondition *string `json:"inactive_precondition,omitempty"`
+
+	// Landing Where a sign-up lands. An organisation policy is `org-template` with a
+	// template applicable at organisation scope; an instance policy is
+	// `none` (zero grants) or `fresh-org` (a new organisation with the
+	// signer as its first administrator) with a cap on live orgs minted.
+	Landing RegistrationLanding `json:"landing"`
+
+	// Local Email + password sign-up; present means enabled.
+	Local *RegistrationLocalEntry `json:"local,omitempty"`
+
+	// Org The organisation; absent for the instance policy.
+	Org        *string                 `json:"org,omitempty"`
+	RowVersion int                     `json:"row_version"`
+	State      RegistrationPolicyState `json:"state"`
+	UpdatedAt  time.Time               `json:"updated_at"`
+}
+
+// RegistrationPolicyInactiveCause defines model for RegistrationPolicy.InactiveCause.
+type RegistrationPolicyInactiveCause string
+
+// RegistrationPolicyState defines model for RegistrationPolicy.State.
+type RegistrationPolicyState string
+
+// RegistrationPolicyDeleteRequest defines model for RegistrationPolicyDeleteRequest.
+type RegistrationPolicyDeleteRequest struct {
+	// Proof The reauthentication proof, as on `put`.
+	Proof *string `json:"proof,omitempty"`
+}
+
+// RegistrationPolicyPutRequest defines model for RegistrationPolicyPutRequest.
+type RegistrationPolicyPutRequest struct {
+	External []RegistrationExternalEntry `json:"external"`
+
+	// Landing Where a sign-up lands. An organisation policy is `org-template` with a
+	// template applicable at organisation scope; an instance policy is
+	// `none` (zero grants) or `fresh-org` (a new organisation with the
+	// signer as its first administrator) with a cap on live orgs minted.
+	Landing RegistrationLanding `json:"landing"`
+
+	// Local Email + password sign-up; present means enabled.
+	Local *RegistrationLocalEntry `json:"local,omitempty"`
+
+	// Proof The reauthentication proof: a TOTP code, or the account password
+	// where no factor is enrolled.
+	Proof *string `json:"proof,omitempty"`
+}
 
 // Remote One connection entry and its last-known state. There is deliberately no
 // credential field: the stored credential is write-only after storage and
@@ -7666,6 +7846,14 @@ type SetValueRequest struct {
 	Value string `json:"value"`
 }
 
+// SignupMethod defines model for SignupMethod.
+type SignupMethod struct {
+	Kind string `json:"kind"`
+
+	// Slug The provider slug; absent for `local`.
+	Slug *string `json:"slug,omitempty"`
+}
+
 // SnapshotKey defines model for SnapshotKey.
 type SnapshotKey struct {
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
@@ -8552,6 +8740,15 @@ type TooManyRequests = Error
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
 
+// AuthMethodsParams defines parameters for AuthMethods.
+type AuthMethodsParams struct {
+	// Org The organisation whose sign-up door to render (`signup_open`,
+	// `signup_paused`, `signup_methods`); absent means the instance
+	// scope. An unknown organisation and one without a policy are the
+	// same closed door.
+	Org *string `form:"org,omitempty" json:"org,omitempty"`
+}
+
 // OidcCallbackParams defines parameters for OidcCallback.
 type OidcCallbackParams struct {
 	Code  *string `form:"code,omitempty" json:"code,omitempty"`
@@ -9252,6 +9449,12 @@ type InviteInstanceMemberJSONRequestBody = InviteMemberRequest
 // PutOidcProviderJSONRequestBody defines body for PutOidcProvider for application/json ContentType.
 type PutOidcProviderJSONRequestBody = OidcProviderInput
 
+// DeleteInstanceRegistrationPolicyJSONRequestBody defines body for DeleteInstanceRegistrationPolicy for application/json ContentType.
+type DeleteInstanceRegistrationPolicyJSONRequestBody = RegistrationPolicyDeleteRequest
+
+// PutInstanceRegistrationPolicyJSONRequestBody defines body for PutInstanceRegistrationPolicy for application/json ContentType.
+type PutInstanceRegistrationPolicyJSONRequestBody = RegistrationPolicyPutRequest
+
 // AddRemoteJSONRequestBody defines body for AddRemote for application/json ContentType.
 type AddRemoteJSONRequestBody = AddRemoteRequest
 
@@ -9473,6 +9676,12 @@ type DeclareValuesJSONRequestBody = DeclareValuesRequest
 
 // RevealValueDiffJSONRequestBody defines body for RevealValueDiff for application/json ContentType.
 type RevealValueDiffJSONRequestBody = RevealDiffRequest
+
+// DeleteOrgRegistrationPolicyJSONRequestBody defines body for DeleteOrgRegistrationPolicy for application/json ContentType.
+type DeleteOrgRegistrationPolicyJSONRequestBody = RegistrationPolicyDeleteRequest
+
+// PutOrgRegistrationPolicyJSONRequestBody defines body for PutOrgRegistrationPolicy for application/json ContentType.
+type PutOrgRegistrationPolicyJSONRequestBody = RegistrationPolicyPutRequest
 
 // SetOrgRetentionJSONRequestBody defines body for SetOrgRetention for application/json ContentType.
 type SetOrgRetentionJSONRequestBody = RetentionPolicy
@@ -9783,7 +9992,7 @@ type ServerInterface interface {
 	Logout(w http.ResponseWriter, r *http.Request)
 	// AuthMethods Enabled login methods for this instance.
 	// (GET /api/v1/auth/methods)
-	AuthMethods(w http.ResponseWriter, r *http.Request)
+	AuthMethods(w http.ResponseWriter, r *http.Request, params AuthMethodsParams)
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams)
@@ -9946,6 +10155,15 @@ type ServerInterface interface {
 	// ReencryptInstance Walk the instance credential ciphertext onto the active DEK version.
 	// (POST /api/v1/instance/reencrypt)
 	ReencryptInstance(w http.ResponseWriter, r *http.Request)
+	// DeleteInstanceRegistrationPolicy Close registration at this scope.
+	// (DELETE /api/v1/instance/registration-policy)
+	DeleteInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request)
+	// GetInstanceRegistrationPolicy Read the instance registration policy.
+	// (GET /api/v1/instance/registration-policy)
+	GetInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request)
+	// PutInstanceRegistrationPolicy Create or replace the instance registration policy.
+	// (PUT /api/v1/instance/registration-policy)
+	PutInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request)
 	// ListRemotes The directory of connected instances.
 	// (GET /api/v1/instance/remotes)
 	ListRemotes(w http.ResponseWriter, r *http.Request)
@@ -10480,6 +10698,15 @@ type ServerInterface interface {
 	// RevealValueDiff Compare two environments with `secret` plaintext.
 	// (POST /api/v1/orgs/{org}/projects/{project}/values/diff/reveal)
 	RevealValueDiff(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// DeleteOrgRegistrationPolicy Close registration at this scope.
+	// (DELETE /api/v1/orgs/{org}/registration-policy)
+	DeleteOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID)
+	// GetOrgRegistrationPolicy Read the organisation registration policy.
+	// (GET /api/v1/orgs/{org}/registration-policy)
+	GetOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID)
+	// PutOrgRegistrationPolicy Create or replace the organisation registration policy.
+	// (PUT /api/v1/orgs/{org}/registration-policy)
+	PutOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID)
 	// GetOrgRetention Read the organisation retention cap.
 	// (GET /api/v1/orgs/{org}/retention)
 	GetOrgRetention(w http.ResponseWriter, r *http.Request, org OrgID)
@@ -10680,7 +10907,7 @@ func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
 
 // AuthMethods Enabled login methods for this instance.
 // (GET /api/v1/auth/methods)
-func (_ Unimplemented) AuthMethods(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) AuthMethods(w http.ResponseWriter, r *http.Request, params AuthMethodsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -11005,6 +11232,24 @@ func (_ Unimplemented) PutOidcProvider(w http.ResponseWriter, r *http.Request, s
 // ReencryptInstance Walk the instance credential ciphertext onto the active DEK version.
 // (POST /api/v1/instance/reencrypt)
 func (_ Unimplemented) ReencryptInstance(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteInstanceRegistrationPolicy Close registration at this scope.
+// (DELETE /api/v1/instance/registration-policy)
+func (_ Unimplemented) DeleteInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetInstanceRegistrationPolicy Read the instance registration policy.
+// (GET /api/v1/instance/registration-policy)
+func (_ Unimplemented) GetInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PutInstanceRegistrationPolicy Create or replace the instance registration policy.
+// (PUT /api/v1/instance/registration-policy)
+func (_ Unimplemented) PutInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -12076,6 +12321,24 @@ func (_ Unimplemented) RevealValueDiff(w http.ResponseWriter, r *http.Request, o
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// DeleteOrgRegistrationPolicy Close registration at this scope.
+// (DELETE /api/v1/orgs/{org}/registration-policy)
+func (_ Unimplemented) DeleteOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetOrgRegistrationPolicy Read the organisation registration policy.
+// (GET /api/v1/orgs/{org}/registration-policy)
+func (_ Unimplemented) GetOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PutOrgRegistrationPolicy Create or replace the organisation registration policy.
+// (PUT /api/v1/orgs/{org}/registration-policy)
+func (_ Unimplemented) PutOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // GetOrgRetention Read the organisation retention cap.
 // (GET /api/v1/orgs/{org}/retention)
 func (_ Unimplemented) GetOrgRetention(w http.ResponseWriter, r *http.Request, org OrgID) {
@@ -12572,8 +12835,27 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 // AuthMethods operation middleware
 func (siw *ServerInterfaceWrapper) AuthMethods(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AuthMethodsParams
+
+	// ------------- Optional query parameter "org" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "org", r.URL.Query(), &params.Org, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "org"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AuthMethods(w, r)
+		siw.Handler.AuthMethods(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13585,6 +13867,48 @@ func (siw *ServerInterfaceWrapper) ReencryptInstance(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReencryptInstance(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInstanceRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInstanceRegistrationPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInstanceRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInstanceRegistrationPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInstanceRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) PutInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInstanceRegistrationPolicy(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -21263,6 +21587,84 @@ func (siw *ServerInterfaceWrapper) RevealValueDiff(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteOrgRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOrgRegistrationPolicy(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrgRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrgRegistrationPolicy(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutOrgRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) PutOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutOrgRegistrationPolicy(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetOrgRetention operation middleware
 func (siw *ServerInterfaceWrapper) GetOrgRetention(w http.ResponseWriter, r *http.Request) {
 
@@ -23004,6 +23406,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/instance/invitations", wrapper.InviteInstanceMember)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.DeleteInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.GetInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.PutInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.RevokeOrgGrant)
 	})
 	r.Group(func(r chi.Router) {
@@ -23017,6 +23428,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/invitations", wrapper.InviteOrgMember)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.DeleteOrgRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.GetOrgRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.PutOrgRegistrationPolicy)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.RevokeProjectGrant)
@@ -25168,6 +25588,7 @@ func (response Logout503JSONResponse) VisitLogoutResponse(w http.ResponseWriter)
 }
 
 type AuthMethodsRequestObject struct {
+	Params AuthMethodsParams
 }
 
 type AuthMethodsResponseObject interface {
@@ -31314,6 +31735,379 @@ func (response ReencryptInstance500JSONResponse) VisitReencryptInstanceResponse(
 type ReencryptInstance503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ReencryptInstance503JSONResponse) VisitReencryptInstanceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicyRequestObject struct {
+	Body *DeleteInstanceRegistrationPolicyJSONRequestBody
+}
+
+type DeleteInstanceRegistrationPolicyResponseObject interface {
+	VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type DeleteInstanceRegistrationPolicy204Response struct {
+}
+
+func (response DeleteInstanceRegistrationPolicy204Response) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInstanceRegistrationPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy400JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy401JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy403JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy404JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy409JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy429JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy500JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy503JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicyRequestObject struct {
+}
+
+type GetInstanceRegistrationPolicyResponseObject interface {
+	VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetInstanceRegistrationPolicy200JSONResponse RegistrationPolicy
+
+func (response GetInstanceRegistrationPolicy200JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetInstanceRegistrationPolicy401JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetInstanceRegistrationPolicy403JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetInstanceRegistrationPolicy404JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetInstanceRegistrationPolicy429JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetInstanceRegistrationPolicy500JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetInstanceRegistrationPolicy503JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicyRequestObject struct {
+	Body *PutInstanceRegistrationPolicyJSONRequestBody
+}
+
+type PutInstanceRegistrationPolicyResponseObject interface {
+	VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type PutInstanceRegistrationPolicy200JSONResponse RegistrationPolicy
+
+func (response PutInstanceRegistrationPolicy200JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutInstanceRegistrationPolicy400JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PutInstanceRegistrationPolicy401JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutInstanceRegistrationPolicy403JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutInstanceRegistrationPolicy404JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PutInstanceRegistrationPolicy409JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PutInstanceRegistrationPolicy429JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response PutInstanceRegistrationPolicy500JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PutInstanceRegistrationPolicy503JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -51028,6 +51822,382 @@ func (response RevealValueDiff503JSONResponse) VisitRevealValueDiffResponse(w ht
 	return err
 }
 
+type DeleteOrgRegistrationPolicyRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *DeleteOrgRegistrationPolicyJSONRequestBody
+}
+
+type DeleteOrgRegistrationPolicyResponseObject interface {
+	VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type DeleteOrgRegistrationPolicy204Response struct {
+}
+
+func (response DeleteOrgRegistrationPolicy204Response) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteOrgRegistrationPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy400JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy401JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy403JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy404JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy409JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy429JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy500JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy503JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicyRequestObject struct {
+	Org OrgID `json:"org"`
+}
+
+type GetOrgRegistrationPolicyResponseObject interface {
+	VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetOrgRegistrationPolicy200JSONResponse RegistrationPolicy
+
+func (response GetOrgRegistrationPolicy200JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetOrgRegistrationPolicy401JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetOrgRegistrationPolicy403JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetOrgRegistrationPolicy404JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetOrgRegistrationPolicy429JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetOrgRegistrationPolicy500JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetOrgRegistrationPolicy503JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicyRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *PutOrgRegistrationPolicyJSONRequestBody
+}
+
+type PutOrgRegistrationPolicyResponseObject interface {
+	VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type PutOrgRegistrationPolicy200JSONResponse RegistrationPolicy
+
+func (response PutOrgRegistrationPolicy200JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutOrgRegistrationPolicy400JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PutOrgRegistrationPolicy401JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutOrgRegistrationPolicy403JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutOrgRegistrationPolicy404JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PutOrgRegistrationPolicy409JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PutOrgRegistrationPolicy429JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response PutOrgRegistrationPolicy500JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PutOrgRegistrationPolicy503JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetOrgRetentionRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -55311,6 +56481,15 @@ type StrictServerInterface interface {
 	// ReencryptInstance Walk the instance credential ciphertext onto the active DEK version.
 	// (POST /api/v1/instance/reencrypt)
 	ReencryptInstance(ctx context.Context, request ReencryptInstanceRequestObject) (ReencryptInstanceResponseObject, error)
+	// DeleteInstanceRegistrationPolicy Close registration at this scope.
+	// (DELETE /api/v1/instance/registration-policy)
+	DeleteInstanceRegistrationPolicy(ctx context.Context, request DeleteInstanceRegistrationPolicyRequestObject) (DeleteInstanceRegistrationPolicyResponseObject, error)
+	// GetInstanceRegistrationPolicy Read the instance registration policy.
+	// (GET /api/v1/instance/registration-policy)
+	GetInstanceRegistrationPolicy(ctx context.Context, request GetInstanceRegistrationPolicyRequestObject) (GetInstanceRegistrationPolicyResponseObject, error)
+	// PutInstanceRegistrationPolicy Create or replace the instance registration policy.
+	// (PUT /api/v1/instance/registration-policy)
+	PutInstanceRegistrationPolicy(ctx context.Context, request PutInstanceRegistrationPolicyRequestObject) (PutInstanceRegistrationPolicyResponseObject, error)
 	// ListRemotes The directory of connected instances.
 	// (GET /api/v1/instance/remotes)
 	ListRemotes(ctx context.Context, request ListRemotesRequestObject) (ListRemotesResponseObject, error)
@@ -55845,6 +57024,15 @@ type StrictServerInterface interface {
 	// RevealValueDiff Compare two environments with `secret` plaintext.
 	// (POST /api/v1/orgs/{org}/projects/{project}/values/diff/reveal)
 	RevealValueDiff(ctx context.Context, request RevealValueDiffRequestObject) (RevealValueDiffResponseObject, error)
+	// DeleteOrgRegistrationPolicy Close registration at this scope.
+	// (DELETE /api/v1/orgs/{org}/registration-policy)
+	DeleteOrgRegistrationPolicy(ctx context.Context, request DeleteOrgRegistrationPolicyRequestObject) (DeleteOrgRegistrationPolicyResponseObject, error)
+	// GetOrgRegistrationPolicy Read the organisation registration policy.
+	// (GET /api/v1/orgs/{org}/registration-policy)
+	GetOrgRegistrationPolicy(ctx context.Context, request GetOrgRegistrationPolicyRequestObject) (GetOrgRegistrationPolicyResponseObject, error)
+	// PutOrgRegistrationPolicy Create or replace the organisation registration policy.
+	// (PUT /api/v1/orgs/{org}/registration-policy)
+	PutOrgRegistrationPolicy(ctx context.Context, request PutOrgRegistrationPolicyRequestObject) (PutOrgRegistrationPolicyResponseObject, error)
 	// GetOrgRetention Read the organisation retention cap.
 	// (GET /api/v1/orgs/{org}/retention)
 	GetOrgRetention(ctx context.Context, request GetOrgRetentionRequestObject) (GetOrgRetentionResponseObject, error)
@@ -56406,8 +57594,10 @@ func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // AuthMethods operation middleware
-func (sh *strictHandler) AuthMethods(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) AuthMethods(w http.ResponseWriter, r *http.Request, params AuthMethodsParams) {
 	var request AuthMethodsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.AuthMethods(ctx, request.(AuthMethodsRequestObject))
@@ -57970,6 +59160,92 @@ func (sh *strictHandler) ReencryptInstance(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReencryptInstanceResponseObject); ok {
 		if err := validResponse.VisitReencryptInstanceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInstanceRegistrationPolicy operation middleware
+func (sh *strictHandler) DeleteInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	var request DeleteInstanceRegistrationPolicyRequestObject
+
+	var body DeleteInstanceRegistrationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInstanceRegistrationPolicy(ctx, request.(DeleteInstanceRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInstanceRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInstanceRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitDeleteInstanceRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInstanceRegistrationPolicy operation middleware
+func (sh *strictHandler) GetInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	var request GetInstanceRegistrationPolicyRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInstanceRegistrationPolicy(ctx, request.(GetInstanceRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInstanceRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInstanceRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitGetInstanceRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInstanceRegistrationPolicy operation middleware
+func (sh *strictHandler) PutInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	var request PutInstanceRegistrationPolicyRequestObject
+
+	var body PutInstanceRegistrationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInstanceRegistrationPolicy(ctx, request.(PutInstanceRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInstanceRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInstanceRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitPutInstanceRegistrationPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -63328,6 +64604,98 @@ func (sh *strictHandler) RevealValueDiff(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RevealValueDiffResponseObject); ok {
 		if err := validResponse.VisitRevealValueDiffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteOrgRegistrationPolicy operation middleware
+func (sh *strictHandler) DeleteOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request DeleteOrgRegistrationPolicyRequestObject
+
+	request.Org = org
+
+	var body DeleteOrgRegistrationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteOrgRegistrationPolicy(ctx, request.(DeleteOrgRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteOrgRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteOrgRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitDeleteOrgRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrgRegistrationPolicy operation middleware
+func (sh *strictHandler) GetOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request GetOrgRegistrationPolicyRequestObject
+
+	request.Org = org
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrgRegistrationPolicy(ctx, request.(GetOrgRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrgRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrgRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitGetOrgRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutOrgRegistrationPolicy operation middleware
+func (sh *strictHandler) PutOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request PutOrgRegistrationPolicyRequestObject
+
+	request.Org = org
+
+	var body PutOrgRegistrationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutOrgRegistrationPolicy(ctx, request.(PutOrgRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutOrgRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutOrgRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitPutOrgRegistrationPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -512,6 +512,9 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// expired and bypassed — driven through the real publish gate, vote
 		// path, expiry sweep and a reauthenticated bypass.
 		runApprovalLifecycle(t, db)
+		// Registration policy (#606): the three policy events and
+		// registration.signup_expired get a real emitter through the service.
+		runRegistrationLifecycle(t, db)
 		beforeUpdateReads := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'system.update_status_read'")
 		if _, err := (&service.Updates{
 			DB: db, Version: "1.0.0", Channel: updatecheck.ChannelStable,

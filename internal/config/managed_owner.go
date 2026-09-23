@@ -37,8 +37,15 @@ func (c *Config) ManagedOwnerValues() map[string]string {
 		"HIKYO_MCP_WRITE_ENABLED":          strconv.FormatBool(c.MCPWriteEnabled),
 		"HIKYO_BACKUP_RTO_TARGET":          c.BackupRTOTarget.String(),
 	}
+	// A listen-derived origin is not exported: persisting it would turn the
+	// default into an operator statement (#606 `no-public-origin`), and the
+	// importing node derives the same value from its own listen address.
+	origin := ""
+	if c.ExternalOriginExplicit {
+		origin = c.ExternalOrigin
+	}
 	for key, value := range map[string]string{
-		"HIKYO_EXTERNAL_ORIGIN":     c.ExternalOrigin,
+		"HIKYO_EXTERNAL_ORIGIN":     origin,
 		"HIKYO_DIRECTORY_PROXY":     c.DirectoryProxy,
 		"HIKYO_MCP_ALLOWED_ORIGINS": strings.Join(c.MCPAllowedOrigins, ","),
 		"HIKYO_BACKUP_RECIPIENTS":   strings.Join(c.BackupRecipients, ","),
@@ -161,6 +168,12 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 	result.ReauthWindow = parsed.ReauthWindow
 	result.TrustedProxyCIDRs = slices.Clone(parsed.TrustedProxyCIDRs)
 	result.ExternalOrigin, result.DirectoryProxy = parsed.ExternalOrigin, parsed.DirectoryProxy
+	result.ExternalOriginExplicit = parsed.ExternalOriginExplicit
+	if !parsed.ExternalOriginExplicit && !base.ExternalOriginExplicit {
+		// Neither side states an origin: keep this node's own derivation
+		// rather than the parser's --dev stand-in.
+		result.ExternalOrigin = base.ExternalOrigin
+	}
 	result.MCPEnabled, result.MCPAllowedOrigins = parsed.MCPEnabled, slices.Clone(parsed.MCPAllowedOrigins)
 	result.MCPWriteEnabled = parsed.MCPWriteEnabled
 	result.SecondFactor = parsed.SecondFactor

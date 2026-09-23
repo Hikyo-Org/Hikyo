@@ -138,6 +138,12 @@ operations:
   applyOrgTemplate:            {webui: members}
   inviteInstanceMember:        {webui: instance-members}
   inviteOrgMember:             {webui: members}
+  getInstanceRegistrationPolicy:    {webui: instance-members}
+  putInstanceRegistrationPolicy:    {webui: instance-members}
+  deleteInstanceRegistrationPolicy: {webui: instance-members}
+  getOrgRegistrationPolicy:         {webui: members}
+  putOrgRegistrationPolicy:         {webui: members}
+  deleteOrgRegistrationPolicy:      {webui: members}
   listProjectGrants:           {webui: machine-access}
   createProjectGrant:          {webui: members}
   revokeProjectGrant:          {webui: members}

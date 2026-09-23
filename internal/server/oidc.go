@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -19,7 +20,7 @@ import (
 // browser-binding and session cookies from the stashed raw request; the
 // security decisions all live in the service.
 
-func (a *API) AuthMethods(ctx context.Context, _ apigen.AuthMethodsRequestObject) (apigen.AuthMethodsResponseObject, error) {
+func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObject) (apigen.AuthMethodsResponseObject, error) {
 	if a.Admission != nil && !a.Admission.AllowDiscovery(audit.FromContext(ctx).SourceIP) {
 		return apigen.AuthMethods429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
 	}
@@ -37,6 +38,23 @@ func (a *API) AuthMethods(ctx context.Context, _ apigen.AuthMethodsRequestObject
 			Slug: p.Slug, DisplayName: p.DisplayName, Kind: apigen.IdentityProviderKind(p.Kind),
 		})
 	}
+	// The sign-up door of the addressed scope (#606): the instance, or
+	// `?org=`. An unknown org is the same closed door as one without a policy.
+	var org domain.OrgID
+	if req.Params.Org != nil {
+		org = domain.OrgID(*req.Params.Org)
+	}
+	door := service.SignupDoor{}
+	if a.Registration != nil {
+		// A transport built without the registration surface (focused test
+		// harnesses) renders every door closed; production always wires it.
+		door, err = a.Registration.SignupDoor(ctx, org)
+	}
+	if err != nil {
+		a.fault(ctx, "auth methods sign-up door", err)
+		return apigen.AuthMethods500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
+	}
+	wireSignupDoor(&out, door)
 	return apigen.AuthMethods200JSONResponse(out), nil
 }
 

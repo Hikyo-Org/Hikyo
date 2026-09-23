@@ -11,6 +11,8 @@ import {
   zEstablishCredentialRequest,
   zInviteMemberRequest,
   zPublishRequest,
+  zRegistrationPolicyDeleteRequest,
+  zRegistrationPolicyPutRequest,
   zRenameRequest,
   zRetentionPolicy,
   zRotateRootKeyRequest,
@@ -22,7 +24,7 @@ import {
   zRenameKeyRequest,
   zUpdateKeyMetadataRequest,
 } from '../../clients/ts/src/generated/zod.gen.ts';
-import type { Key } from '../../clients/ts/src/generated/types.gen.ts';
+import type { Key, RegistrationPolicy } from '../../clients/ts/src/generated/types.gen.ts';
 import { expandTemplate, type Level } from '../src/api/access-templates.ts';
 import type { Plugin } from 'vite';
 
@@ -332,6 +334,24 @@ type PrototypeProjectRow = {
   readonly created_at: string;
 };
 let prototypeExtraOrgs: PrototypeOrgRow[] = [];
+// Registration policies (#606), keyed 'instance' or the org id. The instance
+// starts with a fresh-org policy so the panel's n / cap renders; orgs start
+// closed.
+const prototypeInstancePolicy = (): RegistrationPolicy => ({
+  id: 'rpol_11111111-1111-4111-8111-111111111111',
+  external: [{ provider: { kind: 'oidc', slug: 'git' }, display_name: 'git.example.com' }],
+  local: { domains: [] },
+  landing: { kind: 'fresh-org', cap: 100 },
+  authority_principal_id: 'prn_11111111-1111-4111-8111-111111111111',
+  state: 'inactive',
+  inactive_cause: 'precondition',
+  inactive_precondition: 'mailer-unconfigured',
+  fresh_org_count: 12,
+  row_version: 1,
+  created_at: '2026-09-01T08:00:00Z',
+  updated_at: '2026-09-01T08:00:00Z',
+});
+let prototypePolicies = new Map<string, RegistrationPolicy>([['instance', prototypeInstancePolicy()]]);
 let prototypeExtraProjects: PrototypeProjectRow[] = [];
 
 function reset(): void {
@@ -384,6 +404,7 @@ function reset(): void {
   };
   prototypeExtraOrgs = [];
   prototypeExtraProjects = [];
+  prototypePolicies = new Map([['instance', prototypeInstancePolicy()]]);
 }
 
 function scenarioFrom(request: IncomingMessage): Scenario {
@@ -482,6 +503,11 @@ export function prototypeReadFixture(
       body: {
         local_login_enabled: true,
         providers: [{ slug: 'git', display_name: 'git.example.com', kind: 'oidc' }],
+        // The instance policy fixture is inactive: the login page says only
+        // "Sign-up is paused." (#606).
+        signup_open: false,
+        signup_paused: true,
+        signup_methods: [],
       },
     };
   }
@@ -711,6 +737,50 @@ function mockApi(request: IncomingMessage, response: ServerResponse): boolean | 
     return true;
   }
   if (!path.startsWith('/api/v1/')) return false;
+
+  // Registration policy (#606): one per scope, held in memory. A save makes
+  // the prototype principal the authority and reads active; the prototype
+  // verifies no proof.
+  const registrationMatch = /^\/api\/v1\/(?:instance|orgs\/([^/]+))\/registration-policy$/.exec(path);
+  if (registrationMatch !== null) {
+    const key = registrationMatch[1] ?? 'instance';
+    if (method === 'GET') {
+      const stored = prototypePolicies.get(key);
+      if (stored === undefined) send(response, 404, { error: { code: 'not_found', message: 'not found' } });
+      else send(response, 200, stored);
+      return true;
+    }
+    if (method === 'PUT') {
+      return body(request).then((raw) => {
+        const input = zRegistrationPolicyPutRequest.parse(JSON.parse(raw));
+        const previous = prototypePolicies.get(key);
+        const saved: RegistrationPolicy = {
+          id: previous?.id ?? `rpol_prototype_${key}`,
+          ...(key === 'instance' ? {} : { org: key }),
+          external: input.external.map((entry) => ({ ...entry, display_name: entry.provider.slug })),
+          ...(input.local === undefined ? {} : { local: { domains: input.local.domains ?? [] } }),
+          landing: input.landing,
+          authority_principal_id: ids.principal,
+          state: 'active',
+          ...(input.landing.kind === 'fresh-org' ? { fresh_org_count: previous?.fresh_org_count ?? 0 } : {}),
+          row_version: (previous?.row_version ?? 0) + 1,
+          created_at: previous?.created_at ?? fixtureTime,
+          updated_at: fixtureTime,
+        };
+        prototypePolicies.set(key, saved);
+        send(response, 200, saved);
+        return true;
+      });
+    }
+    if (method === 'DELETE') {
+      return body(request).then((raw) => {
+        zRegistrationPolicyDeleteRequest.parse(JSON.parse(raw));
+        prototypePolicies.delete(key);
+        send(response, 204);
+        return true;
+      });
+    }
+  }
 
   if (method === 'GET') {
     const fixture = prototypeReadFixture(path, scenario);

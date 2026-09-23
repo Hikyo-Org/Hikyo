@@ -468,8 +468,14 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:DELETE /api/v1/orgs/{org}/grants":        {Class: ClassTenant, Ops: []Operation{OpGrantRevokeOrg}},
 	"http:POST /api/v1/orgs/{org}/grants/template": {Class: ClassTenant, Ops: []Operation{OpTemplateApplyOrg}},
 	// Member invitation (#568): one route per depth, like grant.create.
-	"http:POST /api/v1/orgs/{org}/invitations": {Class: ClassTenant, Ops: []Operation{OpMemberInviteOrg}},
-	"http:POST /api/v1/instance/invitations":   {Class: ClassInstance, Ops: []Operation{OpMemberInviteInstance}},
+	"http:POST /api/v1/orgs/{org}/invitations":           {Class: ClassTenant, Ops: []Operation{OpMemberInviteOrg}},
+	"http:POST /api/v1/instance/invitations":             {Class: ClassInstance, Ops: []Operation{OpMemberInviteInstance}},
+	"http:GET /api/v1/orgs/{org}/registration-policy":    {Class: ClassTenant, Ops: []Operation{OpRegistrationPolicyGetOrg}},
+	"http:PUT /api/v1/orgs/{org}/registration-policy":    {Class: ClassTenant, Ops: []Operation{OpRegistrationPolicyPutOrg}},
+	"http:DELETE /api/v1/orgs/{org}/registration-policy": {Class: ClassTenant, Ops: []Operation{OpRegistrationPolicyDeleteOrg}},
+	"http:GET /api/v1/instance/registration-policy":      {Class: ClassInstance, Ops: []Operation{OpRegistrationPolicyGetInstance}},
+	"http:PUT /api/v1/instance/registration-policy":      {Class: ClassInstance, Ops: []Operation{OpRegistrationPolicyPutInstance}},
+	"http:DELETE /api/v1/instance/registration-policy":   {Class: ClassInstance, Ops: []Operation{OpRegistrationPolicyDeleteInstance}},
 
 	// Machine identities (#61). Tenant-class at project depth: an identity
 	// surface a caller may not administer answers exactly like a project

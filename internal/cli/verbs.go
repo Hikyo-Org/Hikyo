@@ -469,6 +469,9 @@ access:
   hikyo access member list [--org O] [--project P] [-o table|json]
   hikyo access member invite <username> [--display-name NAME] [--template T] [--org O | --instance-scope] [--output-file PATH | --dangerously-print]
   hikyo access member remove --principal <id>
+  hikyo access registration show [--org O | --instance-scope] [-o table|json]
+  hikyo access registration set [--org O | --instance-scope] --file <policy.json>
+  hikyo access registration delete [--org O | --instance-scope]
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false

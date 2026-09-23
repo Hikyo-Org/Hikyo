@@ -61,6 +61,7 @@ function wideningEnvironment(error: unknown): string | null {
 import { useOrg, useOrgTopology } from '../api/settings.ts';
 import { useAuth } from '../app/AuthProvider.tsx';
 import { InviteDialog, IssuedAuthorityDialog } from './InviteDialog.tsx';
+import { OpenRegistrationPanel } from './OpenRegistration.tsx';
 import { Explain, JumpIndex, Panel } from './Sections.tsx';
 import { useFeedback } from './useFeedback.ts';
 
@@ -237,6 +238,7 @@ export function Members({ scope }: { scope: MembersScope }) {
   // actions are absent rather than dead; the second-factor case keeps its
   // recovery path (the step-up banner) in the sentence above the list.
   const noManageMembers = secondFactorRefused || nondisclosed;
+  const registrationVisible = projectId === '' && grants.isSuccess && !noManageMembers;
 
   const [draft, setDraft] = useState<GrantDraft>({
     principal: '',
@@ -311,6 +313,7 @@ export function Members({ scope }: { scope: MembersScope }) {
       <JumpIndex
         sections={[
           { id: 'members-inspect', label: 'Who can…?' },
+          ...(registrationVisible ? [{ id: 'members-registration', label: 'Open registration' }] : []),
           { id: 'members-list', label: 'Members' },
         ]}
       />
@@ -344,6 +347,23 @@ export function Members({ scope }: { scope: MembersScope }) {
         projectContext={compactPresentation}
         level={instance ? 'instance' : 'org'}
       />
+
+      {/* Open registration (#606, #579 d10): beside invite, at organisation
+          and instance scope only (a project has no sign-up of its own), and
+          only for a caller the membership listing admitted. */}
+      {registrationVisible ? (
+        <OpenRegistrationPanel
+          scope={instance ? { kind: 'instance' } : { kind: 'org', org: orgQuery.data?.id ?? org }}
+          scopeName={scopeName}
+          origin={window.location.origin}
+          authorityName={(principal) =>
+            principal === '' ? 'no one' : principal === me ? 'you' : principalLabel(principal, lines)}
+          onChanged={(text) => {
+            feedback.clear();
+            feedback.ok(text);
+          }}
+        />
+      ) : null}
 
       <Panel id="members-list" title="Members">
         {instance ? (

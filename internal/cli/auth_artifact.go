@@ -84,6 +84,7 @@ var authRuleRows = []authRuleRow{
 		"rotate-root-key", "reencrypt", "doctor",
 		"access grant list", "access grant add", "access grant remove", "access grant template",
 		"access member list", "access member invite", "access member remove",
+		"access registration show", "access registration set", "access registration delete",
 		"project-settings get", "project-settings set",
 		"project-settings machine-reveal get", "project-settings machine-reveal set",
 		"sa list", "sa create", "sa delete", "sa credential list", "sa credential mint",

@@ -5221,6 +5221,112 @@ label.chk:has(input:disabled) {
   flex-basis: 100%;
 }
 
+/* "Sign-up is paused." (#606): the one public fact about an inactive
+   registration policy. The text carries the state; the colour only echoes. */
+.login__paused {
+  margin: var(--space-2) 0 0;
+  text-align: center;
+  color: var(--tx-dim);
+}
+
+/* The Open registration panel on Members (#606). */
+.registration {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.registration__status,
+.registration__note {
+  margin: 0;
+}
+
+.registration__note,
+.registration__requirement {
+  color: var(--tx-dim);
+}
+
+.registration__facts {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.registration__facts dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.registration__entries {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.registration__entries li,
+.registration-editor__entry {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.registration__link {
+  overflow-wrap: anywhere;
+}
+
+.registration-editor {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.registration-editor__group {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.registration-editor__group legend {
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+
+.registration-editor__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.registration-editor__sub {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+/* Reauth-gated actions are the CHANGED slate, like the step-up banner: the
+   ADR #16 distinction between "confirm it's you" and "disclose a secret". */
+.btn--reauth {
+  color: var(--changed);
+  border-color: var(--changed);
+}
+
+.btn--reauth:hover {
+  background: var(--changed-soft);
+}
+
+.dialog--reauth {
+  border-color: var(--changed);
+}
+
+@media (max-width: 40rem) {
+  .registration__facts {
+    grid-template-columns: 1fr;
+  }
+}
+
 .login__or {
   margin: var(--space-1) 0;
   text-align: center;

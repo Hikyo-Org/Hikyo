@@ -211,6 +211,12 @@
   },
   {
     "engine": "postgres",
+    "name": "CountRegistrationPolicyOrgs",
+    "annotation": "authn-resolution",
+    "hash": "018a36bad45e957cd9930702110b890a8a4f58b1aa03ddab29ea7ee7cf14665e"
+  },
+  {
+    "engine": "postgres",
     "name": "CountRemotes",
     "annotation": "instance-scoped",
     "hash": "d5c86aafdea3d0248b03a0b9b2b37bdf25fb8522464d0c62eb27cec9f9b20cc1"
@@ -370,6 +376,36 @@
     "name": "DeleteReauthWindowsForEnvironment",
     "annotation": "authn-resolution",
     "hash": "b9467726d5d8eaed94a629f6c4eb9cf55e7124e385876c361ec38981cf4c8edc"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "048b1c029dbabe591b94fed5269f27bdd051593abd82d5152957c93743875c4a"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationPolicyDomains",
+    "annotation": "authn-resolution",
+    "hash": "a3d1211320aa0d77537944909ca6e34eba06628e9e6f1a7d5d7809cf0ce51793"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationPolicyEntries",
+    "annotation": "authn-resolution",
+    "hash": "c35518d6b3a46627ea3a9881bd4b38629c7fa511454d5e0293646173d4254e2e"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationPolicyEntryValues",
+    "annotation": "authn-resolution",
+    "hash": "9ce6960f1e994592471b5d3e9d7be5695ff1b8b8f364198c6732cc3338592aa2"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "711b10f7414e521f246d8f9ce2e25f35aa842923a7618c0cd2fe623b8a894653"
   },
   {
     "engine": "postgres",
@@ -631,6 +667,12 @@
   },
   {
     "engine": "postgres",
+    "name": "GetInstanceRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "4d03873298192baa3f2482d9f7855c369141c604068525ebdd2c32c3ea18d799"
+  },
+  {
+    "engine": "postgres",
     "name": "GetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "c7b306eee3ac685784898bc2e65b0689770d9298de994b4ba77fdeb09ee609d0"
@@ -664,6 +706,12 @@
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "a802e9ed5095b702172266766e4e06b874a5533c361ae6482cbd8fadcb9f44c3"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOrgRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "19358ef3101a8dddd403b8bf1c1b21421cc8b79f016db1e1b5c7f325ed017767"
   },
   {
     "engine": "postgres",
@@ -979,6 +1027,36 @@
   },
   {
     "engine": "postgres",
+    "name": "InsertRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "05ffdb3c92567993232489a47a09879a5aa1e0fb97c0a0c2179cb777203dfe0a"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationPolicyDomain",
+    "annotation": "authn-resolution",
+    "hash": "20bd3ebf74d9b84e5d7e29985d535e6c5cc1895f731d93b35eefac1302343fba"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationPolicyEntry",
+    "annotation": "authn-resolution",
+    "hash": "597cfbfe4d3968bf98209bc0b1f7c14220c5612c27a8f09ad570d72a229d18a0"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationPolicyEntryValue",
+    "annotation": "authn-resolution",
+    "hash": "f80bda82b220f18f12d3f5646d949075841d927e02a08ac3a9f5d73e944f7ff6"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "009abfdf722a083dffc07f9d013f7b0327790f908f5f398d0711514a075f8cf0"
+  },
+  {
+    "engine": "postgres",
     "name": "InsertSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "b1f125250064bfd3c833c03b7848614bb4801783c1e4425cf2f65e5aa78815e4"
@@ -1246,6 +1324,30 @@
     "name": "ListRecoveryCodesForReencrypt",
     "annotation": "authn-resolution",
     "hash": "a7a14fc8bea73a38860b072af45c62beec749bd54ffd9783ba20fcaf5ab790c5"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRegistrationPolicyDomains",
+    "annotation": "authn-resolution",
+    "hash": "118bf8546a2ead196c68fd728f9a30854ddc0aee559f89443b59bbda5c0e6757"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRegistrationPolicyEntries",
+    "annotation": "authn-resolution",
+    "hash": "0db551025eeec5d3ea590606ccdae326ed7150c95e1644903112743b229e04a1"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRegistrationPolicyEntryValues",
+    "annotation": "authn-resolution",
+    "hash": "44a4ab1879ada76b00c31ff0cb8341fa6e3854ff2274ebf71c9c1f07c98f3cd9"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRegistrationSignupsForPolicy",
+    "annotation": "authn-resolution",
+    "hash": "34c056512e15669c5253265fe7107850a4c483e9c2c87871f9304076f3881564"
   },
   {
     "engine": "postgres",
@@ -1945,6 +2047,12 @@
   },
   {
     "engine": "postgres",
+    "name": "UpdateRegistrationPolicyCAS",
+    "annotation": "authn-resolution",
+    "hash": "4cfa982512fad8c574d78672432e396dc2b0ed31c852e58f2f5eefdd48a091db"
+  },
+  {
+    "engine": "postgres",
     "name": "UpdateSAMLProviderCAS",
     "annotation": "authn-resolution",
     "hash": "27b152cf5c55d12f514084806822630971b0e7f5faae5603cd4fcc2737604ace"
@@ -2197,6 +2305,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountRegistrationPolicyOrgs",
+    "annotation": "authn-resolution",
+    "hash": "9f2ae5d2c8f270d4788623e3012b1367fe79bbfcfcd9ed297619b9632c9d9bfe"
+  },
+  {
+    "engine": "sqlite",
     "name": "CountRemotes",
     "annotation": "instance-scoped",
     "hash": "d5c86aafdea3d0248b03a0b9b2b37bdf25fb8522464d0c62eb27cec9f9b20cc1"
@@ -2356,6 +2470,36 @@
     "name": "DeleteReauthWindowsForEnvironment",
     "annotation": "authn-resolution",
     "hash": "372ea6e9510bc1fdf82032650c82f4240acb6c502a068f091ed3673bf7f61ef6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "04c72124bf9c36ac46dc7361aaa983ee4487daed4477d209fd72d4b114a5d077"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationPolicyDomains",
+    "annotation": "authn-resolution",
+    "hash": "371439fe52f65ff3480c93b30485e5d7e22015e6803a91c9f129dc32325f1ac3"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationPolicyEntries",
+    "annotation": "authn-resolution",
+    "hash": "1092a62f864c7236b56705cee0097445d879aefa19b2d8810079aecd3fd152f3"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationPolicyEntryValues",
+    "annotation": "authn-resolution",
+    "hash": "9cb4d5ecb4c2f0284c904c1cbfca5f754fdcec3ad674714dc9fa9aa737fbac23"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "401957b6fa088e446e6aa640602baf9c8e0c6e80159cbd471da427d00b96fb1a"
   },
   {
     "engine": "sqlite",
@@ -2617,6 +2761,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetInstanceRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "4d03873298192baa3f2482d9f7855c369141c604068525ebdd2c32c3ea18d799"
+  },
+  {
+    "engine": "sqlite",
     "name": "GetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "c7b306eee3ac685784898bc2e65b0689770d9298de994b4ba77fdeb09ee609d0"
@@ -2650,6 +2800,12 @@
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "02e196d1a8a8e6e0deaba49cd10fe2169a6fd1d83eb44a2c69bd258413afc2f6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOrgRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "cc2212863a1b618cca167348da2bc3bdd891871af0ace950deb6ba260d4d7f90"
   },
   {
     "engine": "sqlite",
@@ -2965,6 +3121,36 @@
   },
   {
     "engine": "sqlite",
+    "name": "InsertRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "5463c12ac3a2cda766be6cd1a19c2d6291a3e7a1836895f9b83f56caa4a081ed"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationPolicyDomain",
+    "annotation": "authn-resolution",
+    "hash": "30a6b96457d74337562aa959b48f9ea75b2829df46e0414055b76053e089ab48"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationPolicyEntry",
+    "annotation": "authn-resolution",
+    "hash": "3b6b292105bf6d98edc4ca37b7207476600a84c5d3bf01ed0b993d18f73bc539"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationPolicyEntryValue",
+    "annotation": "authn-resolution",
+    "hash": "c99b196fa0fe1ae39880578e54bcc5cc961af8004f827495a64f85fdc93b6a54"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "3d9bd59b88a0ab04ffe54c75c5f6757f81ed0339a92acbdaf3446f892cece361"
+  },
+  {
+    "engine": "sqlite",
     "name": "InsertSAMLProvider",
     "annotation": "authn-resolution",
     "hash": "6beb1bcbcfcb3203a701542c08d23bb940d9e31993da1111cbb0fbcfd8152c65"
@@ -3232,6 +3418,30 @@
     "name": "ListRecoveryCodesForReencrypt",
     "annotation": "authn-resolution",
     "hash": "74c4977eccce71aec43a5beab43648e6954173581a755903760695bb13b55ae7"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRegistrationPolicyDomains",
+    "annotation": "authn-resolution",
+    "hash": "37005d4f204ca14a75dffc4ca496e865e2ec4107c247f338d110709e8102cf6c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRegistrationPolicyEntries",
+    "annotation": "authn-resolution",
+    "hash": "de5e641d735446b19d65f35b89796e103403969d39aa0a8f8a4a7f5d2cfdfd84"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRegistrationPolicyEntryValues",
+    "annotation": "authn-resolution",
+    "hash": "5f8bccc93504b28e8115e58372ed5deebceeefcdee9b7fcf1448f85bfa7758a1"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRegistrationSignupsForPolicy",
+    "annotation": "authn-resolution",
+    "hash": "44209503b1feac0ade57c457479955c766870aa35b7b6efcd3e52005a3257aa3"
   },
   {
     "engine": "sqlite",
@@ -3928,6 +4138,12 @@
     "name": "UpdateRecoveryCodesCAS",
     "annotation": "authn-resolution",
     "hash": "c8d3cd4c31fef6bb52b9c001422cc2f3814afbe415f5dc637f86d1ca63e72d39"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpdateRegistrationPolicyCAS",
+    "annotation": "authn-resolution",
+    "hash": "298dfbea452203c6c4e20cd93d490eea96d701162a20b4da4ce8a68549592f36"
   },
   {
     "engine": "sqlite",

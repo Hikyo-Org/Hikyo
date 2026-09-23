@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { zScimBinding, zScimBindingList, zServiceAccountList } from '@hikyo/zod';
+import { zAuthMethods, zRegistrationPolicy, zScimBinding, zScimBindingList, zServiceAccountList } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
@@ -9,6 +9,7 @@ import { browserApi } from '../fixtures/api.ts';
 import {
   ADMIN,
   BASE_URL,
+  OIDC_PROVIDER,
   nextTotpCode,
   passEnrolmentGate,
   readSeed,
@@ -1103,5 +1104,208 @@ test.describe('audit trail', () => {
         }
       });
     }
+  }
+});
+
+/**
+ * Open registration at organisation scope (#606; locked prototype
+ * social-signin iteration 2): the panel beside invite, its editor with a
+ * requirement line per entry, the blue reauth-gated save, the org sign-up
+ * link, a write-time 400 naming the row, inactive-with-cause with re-save,
+ * and closing. The shared administrator holds a TOTP factor, so every proof
+ * is a fresh code.
+ */
+test.describe('open registration at organisation scope', () => {
+  test.use({ storageState: STORAGE_STATE });
+  const POLICY = `/api/v1/orgs/${seed.org}/registration-policy`;
+
+  /** closeOrgPolicy deletes a policy a previous run or project left behind. */
+  async function closeOrgPolicy(page: Page) {
+    try {
+      await browserApi(page, 'GET', POLICY, zRegistrationPolicy);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('answered 404:')) return;
+      throw error;
+    }
+    await browserApi(page, 'DELETE', POLICY, z.null(), { proof: await nextTotpCode() });
+  }
+
+  /** A route predicate, kept by reference so unroute removes exactly it. */
+  const isPolicy = (url: URL) => url.pathname === POLICY;
+
+  async function confirmProof(page: Page, code?: string) {
+    const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
+    await expect(proof).toBeVisible();
+    const confirm = proof.getByRole('button', { name: 'Confirm' });
+    await expect(confirm).toHaveClass(/btn--reauth/);
+    await proof.getByLabel('Authenticator code or password').fill(code ?? (await nextTotpCode()));
+    await confirm.click();
+    await expect(proof).toBeHidden();
+  }
+
+  async function publicDoor(page: Page) {
+    const response = await page.request.get(`${BASE_URL}/api/v1/auth/methods?org=${seed.org}`);
+    expect(response.ok()).toBe(true);
+    return zAuthMethods.parse(await response.json());
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(PATH);
+    await expect(page.getByRole('heading', { name: 'Members', level: 1 })).toBeVisible();
+    await closeOrgPolicy(page);
+    await page.reload();
+  });
+
+  test.afterEach(async ({ page }) => {
+    await closeOrgPolicy(page);
+  });
+
+  test('opens, re-saves after losing authority and closes behind fresh proof', async ({ page }, testInfo) => {
+    testInfo.setTimeout(240_000);
+    const panel = page.locator('#members-registration');
+    await expect(panel.getByText('closed', { exact: true })).toBeVisible();
+    await expect(panel).toContainText('without an invitation');
+
+    await panel.getByRole('button', { name: 'Open registration…' }).click();
+    const editor = page.getByRole('dialog');
+    await expect(editor.getByRole('heading', { level: 2 })).toContainText('open registration');
+    await editor.getByLabel(OIDC_PROVIDER.displayName).check();
+    // One requirement line per admitted entry.
+    await expect(editor.getByText('The ID token must carry email plus email_verified or xms_edov as boolean true.')).toBeVisible();
+    await editor.getByLabel('Allowlist claim').fill('hd');
+    await editor.getByLabel('Accepted values').fill('acme.example');
+    await editor.getByLabel(/^Role template in/).selectOption('viewer');
+    const save = editor.getByRole('button', { name: 'Save' });
+    await expect(save).toHaveClass(/btn--reauth/);
+    await save.click();
+    await confirmProof(page);
+
+    await expect(page.locator('.notice').filter({ hasText: 'registration.policy_created' })).toBeVisible();
+    await expect(panel.getByText('active', { exact: true })).toBeVisible();
+    await expect(panel).toContainText(OIDC_PROVIDER.displayName);
+    await expect(panel).toContainText('hd ∈ {acme.example}');
+    await expect(panel).toContainText('viewer template');
+    await expect(panel.getByText('The ID token must carry email')).toBeVisible();
+    await expect(panel).toContainText(`/signup?org=${seed.org}`);
+    await expect(panel.getByRole('button', { name: 'Copy sign-up link' })).toBeVisible();
+    const open = await publicDoor(page);
+    expect(open.signup_open).toBe(true);
+    expect(open.signup_paused).toBe(false);
+    expect(open.signup_methods).toEqual([{ kind: 'oidc', slug: OIDC_PROVIDER.slug }]);
+    // The instance door is a different scope and stays closed.
+    const instanceDoor = zAuthMethods.parse(await (await page.request.get(`${BASE_URL}/api/v1/auth/methods`)).json());
+    expect(instanceDoor.signup_open).toBe(false);
+
+    // A write-time precondition comes back as a 400 naming the row, and the
+    // editor shows it on that row. The server's own refusal is covered by the
+    // service and contract suites; this pins how the page voices it.
+    await page.route(isPolicy, async (route) => {
+      if (route.request().method() !== 'PUT') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: { code: 'bad_request', message: 'bad request', detail: `provider-missing-email-scope: oidc:${OIDC_PROVIDER.slug}` } }),
+      });
+    });
+    await panel.getByRole('button', { name: 'Edit…' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+    // The substituted refusal never reaches the server, so no code is spent.
+    await confirmProof(page, '000000');
+    await expect(page.getByRole('dialog').getByRole('alert')).toContainText('does not request the email scope');
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+    await page.unroute(isPolicy);
+
+    // Inactive with its cause: the authority lost the grant it hands out. The
+    // live policy is real; only its evaluated state is substituted.
+    await page.route(isPolicy, async (route) => {
+      if (route.request().method() !== 'GET') {
+        await route.continue();
+        return;
+      }
+      const real = zRegistrationPolicy.parse(await (await route.fetch()).json());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...real, state: 'inactive', inactive_cause: 'authority-lost' }),
+      });
+    });
+    await page.reload();
+    await expect(panel.getByText('inactive · authority-lost')).toBeVisible();
+    await expect(panel.getByRole('alert')).toContainText('no longer holds the grant this policy hands out');
+    await page.unroute(isPolicy);
+    const resave = panel.getByRole('button', { name: 'Re-save as authority' });
+    await expect(resave).toHaveClass(/btn--reauth/);
+    await resave.click();
+    await confirmProof(page);
+    await expect(page.locator('.notice').filter({ hasText: 'You are now its authority.' })).toBeVisible();
+    await expect(panel.getByText('active', { exact: true })).toBeVisible();
+    const saved = await browserApi(page, 'GET', POLICY, zRegistrationPolicy);
+    expect(saved.state).toBe('active');
+    expect(saved.authority_principal_id).toBe(seed.principal);
+
+    // Close: the policy goes and the door with it.
+    await panel.getByRole('button', { name: 'Close registration' }).click();
+    await confirmProof(page);
+    await expect(panel.getByText('closed', { exact: true })).toBeVisible();
+    const closed = await publicDoor(page);
+    expect(closed.signup_open).toBe(false);
+    expect(closed.signup_paused).toBe(false);
+  });
+
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`meets the pinned assertion set on the registration editor and its proof step (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      try {
+        const panel = page.locator('#members-registration');
+        await panel.getByRole('button', { name: 'Open registration…' }).click();
+        const editor = page.getByRole('dialog');
+        await editor.getByLabel(OIDC_PROVIDER.displayName).check();
+        const save = editor.getByRole('button', { name: 'Save' });
+        await expectPinnedAssertionSet(page, {
+          flow: 'members',
+          surface: 'members',
+          theme: scheme,
+          text: [editor.getByRole('heading', { level: 2 }), editor.locator('.registration__requirement').first()],
+          radii: [
+            [editor, 'container'],
+            [save, 'control'],
+          ],
+          fonts: [[editor.getByRole('heading', { level: 2 }), 'ui']],
+          colours: [
+            [editor, 'backgroundColor', '--bg-panel'],
+            // Reauth-gated is the CHANGED slate, not the primary accent.
+            [save, 'color', '--changed'],
+          ],
+          hairlines: [editor],
+          density: [[save, '--control']],
+        });
+        await save.click();
+        const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
+        const confirm = proof.getByRole('button', { name: 'Confirm' });
+        await proof.getByLabel('Authenticator code or password').fill('000000');
+        await expectPinnedAssertionSet(page, {
+          flow: 'members',
+          surface: 'members',
+          theme: scheme,
+          text: [proof.getByRole('heading', { level: 2 })],
+          radii: [[confirm, 'control']],
+          fonts: [[proof.getByRole('heading', { level: 2 }), 'ui']],
+          colours: [[confirm, 'color', '--changed']],
+          hairlines: [proof],
+          density: [[confirm, '--control']],
+        });
+        // Cancelling the proof returns to the editor, draft intact; the
+        // editor's own Cancel closes it.
+        await proof.getByRole('button', { name: 'Cancel' }).click();
+        await expect(page.getByRole('dialog').getByLabel(OIDC_PROVIDER.displayName)).toBeChecked();
+        await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+        await expect(page.getByRole('dialog')).toBeHidden();
+      } finally {
+        await page.emulateMedia({ colorScheme: null });
+      }
+    });
   }
 });

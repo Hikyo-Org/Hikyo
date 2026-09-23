@@ -299,6 +299,17 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"SetCredentialPolicy":        true,
 	"ClampCredentialExpiry":      true,
 	"ClampIndefiniteCredentials": true,
+	// Registration policy (#606). The policy tables are class=authn: the
+	// sign-up legs (#607, #608) resolve them before any principal exists.
+	// Administration is authorized at the chokepoint (registration-policy.*)
+	// before these writers run. The pending sign-up writers are here because
+	// the policy delete clears them; the request writer itself is #608's.
+	"CreateRegistrationPolicy":  true,
+	"ReplaceRegistrationPolicy": true,
+	"writeRegistrationChildren": true,
+	"DeleteRegistrationPolicy":  true,
+	"CreateRegistrationSignup":  true,
+	"DeleteRegistrationSignup":  true,
 	// OIDC federation (#62). Issuer configuration is authorized at the
 	// chokepoint under `instance-config` before it runs; the write rides this
 	// surface because federation_issuers is class=authn, exactly as OIDC and

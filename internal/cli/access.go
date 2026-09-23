@@ -37,6 +37,8 @@ import (
 //     reset-credential` uses. Org or instance scope only: a project has no
 //     accounts of its own. External invitation claiming is a separate
 //     post-1.0 registration feature.
+//   - `registration show|set|delete` (#606) is the registration policy of
+//     api-cli-spellings section 8, at org or instance scope (registration.go).
 //
 // Scope is addressed the ordinary way — `--org`/`--project`/`--env` through the
 // same per-dimension precedence every other verb uses — and the DEEPEST
@@ -46,13 +48,15 @@ import (
 // "grant it to the whole instance".
 
 func runAccess(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("access", args, "grant", "member")
+	sub, rest, err := subverb("access", args, "grant", "member", "registration")
 	if err != nil {
 		return err
 	}
 	switch sub {
 	case "grant":
 		return runAccessGrant(ctx, ios, rest)
+	case "registration":
+		return runAccessRegistration(ctx, ios, rest)
 	default:
 		return runAccessMember(ctx, ios, rest)
 	}

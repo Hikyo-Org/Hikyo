@@ -141,25 +141,28 @@ type DefinitionsService interface {
 
 // API implements the generated strict server.
 type API struct {
-	Runtime         RuntimeStatusSource
-	SelfConfig      *service.SelfConfig
-	Discovery       *service.Discovery
-	Auth            AuthService
-	SAMLAuth        SAMLAuthService
-	Orgs            OrgService
-	Projects        ProjectService
-	Environments    EnvironmentService
-	Folders         FolderService
-	Keys            KeyService
-	Definitions     DefinitionsService
-	Values          ValueService
-	Revisions       RevisionService
-	Rotation        RotationService
-	Reencrypt       ReencryptService
-	Pins            PinService
-	Reveal          RevealService
-	KeyGroups       KeyGroupService
-	Grants          GrantService
+	Runtime      RuntimeStatusSource
+	SelfConfig   *service.SelfConfig
+	Discovery    *service.Discovery
+	Auth         AuthService
+	SAMLAuth     SAMLAuthService
+	Orgs         OrgService
+	Projects     ProjectService
+	Environments EnvironmentService
+	Folders      FolderService
+	Keys         KeyService
+	Definitions  DefinitionsService
+	Values       ValueService
+	Revisions    RevisionService
+	Rotation     RotationService
+	Reencrypt    ReencryptService
+	Pins         PinService
+	Reveal       RevealService
+	KeyGroups    KeyGroupService
+	Grants       GrantService
+	// Registration is the registration policy surface (#606) and the public
+	// sign-up door `/auth/methods` renders.
+	Registration    RegistrationService
 	Identities      IdentityService
 	Federation      FederationService
 	Delivery        DeliveryService

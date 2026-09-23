@@ -43,6 +43,7 @@ type Mocks = {
     data: {
       local_login_enabled: boolean;
       providers: { kind: string; slug: string; display_name: string }[];
+      signup_paused: boolean;
     };
     isError: boolean;
     isPending: boolean;
@@ -64,6 +65,7 @@ const mocks = vi.hoisted((): Mocks => ({
         { kind: 'oidc', slug: 'strict', display_name: 'Corporate IdP' },
         { kind: 'saml', slug: 'sso', display_name: 'SAML SSO' },
       ],
+      signup_paused: false,
     },
     isError: false,
     isPending: false,
@@ -117,6 +119,7 @@ beforeEach(() => {
   mocks.login.isError = false;
   mocks.passkey.isError = false;
   mocks.passkeysAvailable = false;
+  mocks.methods.data.signup_paused = false;
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -207,6 +210,26 @@ it('keys the busy label on the provider being contacted, not on every provider',
   expect(labels).toContain('Continue with SAML SSO');
   expect(labels).not.toContain('Continue with Corporate IdP');
   await unmount();
+});
+
+it('says only "Sign-up is paused." while the registration policy is inactive', async () => {
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  expect(container.textContent).not.toContain('Sign-up is paused.');
+  await unmount();
+
+  mocks.methods.data.signup_paused = true;
+  const paused = document.createElement('div');
+  const second = mount(paused);
+  await second.render();
+  const line = paused.querySelector('.login__paused');
+  expect(line?.textContent).toBe('Sign-up is paused.');
+  // The cause never reaches the public page.
+  for (const cause of ['authority-lost', 'mailer', 'precondition', 'inactive']) {
+    expect(paused.textContent?.toLowerCase()).not.toContain(cause);
+  }
+  await second.unmount();
 });
 
 it('shows a loading line while the sign-in methods are pending', async () => {
