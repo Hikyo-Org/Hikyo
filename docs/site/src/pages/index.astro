@@ -1,6 +1,18 @@
 ---
+// The matrix data and the motion layer come from prototype 11
+// (/prototype/hikyo/11/), promoted to the live homepage.
 import PostHog from '../components/posthog.astro';
 import PwaHead from '../components/PwaHead.astro';
+import {
+  cliRead,
+  environments,
+  masked,
+  matrix,
+  project,
+  type CellState,
+  type Environment,
+  type KeyRow,
+} from '../lib/prototype/hikyo';
 import { repositoryUrl, siteUrl, themeBootstrapScript } from '../lib/site';
 import '../styles/landing.css';
 
@@ -49,6 +61,68 @@ const faq = [
       'Hikyo keeps its production path in the same MPL-2.0 repository. There is no separate enterprise-only implementation directory.',
   },
 ];
+
+// The live page's pill wording, extended to the two states the shared matrix
+// adds (draft, forbidden). Glyph plus word, never colour alone.
+const stateText = (cell: CellState): string => {
+  switch (cell.kind) {
+    case 'set':
+      return `✓ ${cell.value}`;
+    case 'secret':
+      return '● set · secret';
+    case 'absent':
+      return '○ absent';
+    case 'missing':
+      return '! required · absent';
+    case 'forbidden':
+      return '○ absent (forbidden)';
+    case 'draft':
+      return `Δ ${cell.value}`;
+  }
+};
+const stateClass = (cell: CellState): string => (cell.kind === 'secret' ? 'masked' : cell.kind);
+
+// Flatten tbody rows (group headers included) so callout geometry and the
+// column-major resolve order both come from one index space.
+type FlatRow =
+  | { kind: 'group'; name: string; count: number; allOrNone: boolean }
+  | { kind: 'key'; key: KeyRow; keyIndex: number; rowIndex: number };
+const rows: FlatRow[] = [];
+let keyIndex = 0;
+for (const group of matrix) {
+  rows.push({ kind: 'group', name: group.name, count: group.keys.length, allOrNone: group.allOrNone === true });
+  for (const key of group.keys) {
+    rows.push({ kind: 'key', key, keyIndex, rowIndex: rows.length });
+    keyIndex += 1;
+  }
+}
+const keyTotal = keyIndex;
+const envIndex = (env: Environment): number => environments.indexOf(env);
+
+// Fixed geometry mirrored in CSS (--head-h, --row-h): the SVG leaders are
+// computed here, never measured in JS.
+const HEAD = 36;
+const ROW = 40;
+const NOTES_W = 128;
+const rowCentre = (rowIndex: number): number => HEAD + (rowIndex + 0.5) * ROW;
+const rowIndexOf = (name: string): number => {
+  const row = rows.find((r) => r.kind === 'key' && r.key.name === name);
+  if (!row || row.kind !== 'key') throw new Error(`matrix has no key ${name}`);
+  return row.rowIndex;
+};
+const callouts = [
+  { n: 1, key: 'STRIPE_WEBHOOK_SECRET', env: 'production', note: 'required here, absent: publish refuses', shift: -22 },
+  { n: 2, key: 'DATABASE_POOL_MAX', env: 'production', note: 'Δ draft, unpublished', shift: 0 },
+  { n: 3, key: 'PAYMENTS_MOCK_PROVIDER', env: 'production', note: 'forbidden, correctly absent', shift: 30 },
+].map((c) => {
+  const y = rowCentre(rowIndexOf(c.key));
+  const by = y + c.shift;
+  const d = c.shift === 0 ? `M0 ${y} H22` : `M0 ${y} H10 V${by} H22`;
+  return { ...c, y: by, d };
+});
+const notesHeight = HEAD + rows.length * ROW;
+const avatar = project.organisation.slice(0, 2).toUpperCase();
+const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
 ---
 
 <!doctype html>
@@ -150,61 +224,67 @@ const faq = [
             </p>
           </div>
 
-          <div class="surface hero-surface" id="matrix">
+          <div class="surface hero-surface" id="matrix" data-matrix-surface>
             <div class="surface-bar">
-              <div class="crumb"><span class="avatar">EX</span> <strong>example</strong><span>/</span> payments-api</div>
-              <div class="environment-chips" aria-label="Visible environments">
-                <span>development</span><span>staging</span><span>production</span>
+              <div class="crumb"><span class="avatar">{avatar}</span> <strong>{project.organisation}</strong><span>/</span> {project.name}</div>
+              <div class="environment-chips" aria-label="Visible environments" data-env-tabs>
+                {environments.map((env) => (
+                  <button type="button" data-env={env} disabled>{env}</button>
+                ))}
               </div>
             </div>
             <div class="matrix-scroll">
-              <table class="matrix">
+              <table class="matrix" data-matrix>
                 <caption class="sr-only">Example configuration matrix for three environments</caption>
                 <thead>
-                  <tr><th>Key</th><th>development</th><th>staging</th><th>production</th></tr>
+                  <tr><th>Key</th>{environments.map((env) => <th class={`env-${env}`}>{env}</th>)}</tr>
                 </thead>
                 <tbody>
-                  <tr class="group"><th colspan="4">database <span>3</span></th></tr>
-                  <tr>
-                    <th>DATABASE_URL</th>
-                    <td><span class="state masked">● set · secret</span></td>
-                    <td><span class="state masked">● set · secret</span></td>
-                    <td><span class="state masked">● set · secret</span></td>
-                  </tr>
-                  <tr>
-                    <th>DATABASE_POOL_MAX</th>
-                    <td><span class="state set">✓ 10</span></td>
-                    <td><span class="state set">✓ 20</span></td>
-                    <td><span class="state set">✓ 40</span></td>
-                  </tr>
-                  <tr>
-                    <th>DATABASE_SSLMODE</th>
-                    <td><span class="state set">✓ disable</span></td>
-                    <td><span class="state set">✓ verify-full</span></td>
-                    <td><span class="state set">✓ verify-full</span></td>
-                  </tr>
-                  <tr class="group"><th colspan="4">observability <span>2</span></th></tr>
-                  <tr>
-                    <th>LOG_LEVEL</th>
-                    <td><span class="state set">✓ debug</span></td>
-                    <td><span class="state set">✓ info</span></td>
-                    <td><span class="state set">✓ info</span></td>
-                  </tr>
-                  <tr>
-                    <th>SENTRY_DSN</th>
-                    <td><span class="state absent">○ absent</span></td>
-                    <td><span class="state masked">● set · secret</span></td>
-                    <td><span class="state missing">! required · absent</span></td>
-                  </tr>
+                  {rows.map((row) =>
+                    row.kind === 'group' ? (
+                      <tr class="group"><th colspan="4" data-group>{row.name} <span>{row.count}</span>{row.allOrNone && <small>all or none</small>}</th></tr>
+                    ) : (
+                      <tr>
+                        <th>{row.key.name}</th>
+                        {environments.map((env) => (
+                          <td class={`env-${env}`} style={`--i:${envIndex(env) * keyTotal + row.keyIndex};--r:${row.keyIndex}`}>
+                            <span class={`state ${stateClass(row.key.cells[env])}`}>{stateText(row.key.cells[env])}</span>
+                          </td>
+                        ))}
+                      </tr>
+                    ),
+                  )}
                 </tbody>
               </table>
             </div>
+            <div class="callouts" style={`--notes-h:${notesHeight}px`}>
+              <svg
+                class="leaders"
+                width={NOTES_W}
+                height={notesHeight}
+                viewBox={`0 0 ${NOTES_W} ${notesHeight}`}
+                aria-hidden="true"
+                focusable="false"
+              >
+                {callouts.map((c) => <path d={c.d} pathLength="1" />)}
+              </svg>
+              {callouts.map((c) => (
+                <p class="balloon" style={`--y:${c.y}px`}><b>{c.n}</b><span>{c.note}</span></p>
+              ))}
+            </div>
+            <ol class="callout-list">
+              {callouts.map((c) => (
+                <li><b>{c.n}</b><code>{c.key} · {c.env}</code><span>{c.note}</span></li>
+              ))}
+            </ol>
             <div class="surface-foot" aria-label="Value state legend">
               <span class="sample-label">example data</span>
               <span><i class="dot set-dot"></i> set here</span>
               <span><i class="dot absent-dot"></i> absent</span>
               <span><i class="dot masked-dot"></i> secret set</span>
               <span><i class="dot missing-dot"></i> required, absent</span>
+              <span><i class="dot draft-dot"></i> Δ draft</span>
+              <span><i class="dot absent-dot"></i> forbidden</span>
             </div>
           </div>
         </div>
@@ -213,11 +293,16 @@ const faq = [
       <div class="stack">
         <div class="wrap stack-inner">
           <p>Built for infrastructure you own</p>
-          <div><span>Go</span><span>SQLite</span><span>PostgreSQL</span><span>Helm</span><span>OpenAPI</span></div>
+          <div class="stack-marquee">
+            <div class="stack-list">
+              {stackList.map((item) => <span>{item}</span>)}
+              {stackList.map((item) => <span class="dup" aria-hidden="true">{item}</span>)}
+            </div>
+          </div>
         </div>
       </div>
 
-      <section class="block flow" aria-labelledby="flow-heading">
+      <section class="block flow" aria-labelledby="flow-heading" data-section>
         <div class="wrap flow-grid">
           <div>
             <p class="kicker">// one path from intent to runtime</p>
@@ -247,7 +332,7 @@ const faq = [
         </div>
       </section>
 
-      <section class="block" aria-labelledby="product-heading">
+      <section class="block" aria-labelledby="product-heading" data-section>
         <div class="wrap">
           <p class="kicker">// explicit state, deliberate access</p>
           <h2 id="product-heading">A dense surface that stays honest.</h2>
@@ -264,13 +349,13 @@ const faq = [
               </p>
               <p class="feature-note"><span>▸</span> Flat values: no inheritance, no hidden fallback.</p>
             </div>
-            <div class="artifact frame">
+            <div class="artifact frame" data-demo="coverage">
               <div class="frame-head"><i></i><i></i><i></i><span>DATABASE_POOL_MAX · coverage</span></div>
               <div class="frame-body coverage">
                 <div><span>development</span><code>10</code><b>set ✓</b></div>
                 <div><span>staging</span><code>20</code><b>set ✓</b></div>
                 <div class="active"><span>production</span><code>40</code><b>set ✓</b></div>
-                <p>3 environments · 3 explicit values · 0 fallbacks</p>
+                <p>3 environments · 3 explicit values · <span class="flip"><span class="flip-q" aria-hidden="true">?</span><span class="flip-n">0</span></span> fallbacks</p>
               </div>
             </div>
           </article>
@@ -284,12 +369,12 @@ const faq = [
               </p>
               <p class="feature-note"><span>▸</span> Write-only replacement never needs the current plaintext.</p>
             </div>
-            <div class="artifact frame">
+            <div class="artifact frame" data-demo="reveal">
               <div class="frame-head"><i></i><i></i><i></i><span>STRIPE_SECRET_KEY · production</span></div>
               <div class="frame-body reveal">
                 <div class="gate"><span>⌾</span> Re-authentication required <small>protected environment</small></div>
-                <div class="secret-stage"><span>before</span><code>••••••••••••••••</code></div>
-                <div class="secret-stage"><span>after</span><code class="shown">sk_live_51Kp…9aQ</code><b>remask 0:18</b></div>
+                <div class="secret-stage"><span>before</span><code>{masked}</code></div>
+                <div class="secret-stage"><span>after</span><code class="shown" data-reveal-out data-masked={masked}>value written to {cliRead.outputFile}</code><b>remask <span data-remask>0:18</span></b></div>
               </div>
             </div>
           </article>
@@ -303,7 +388,7 @@ const faq = [
               </p>
               <p class="feature-note"><span>▸</span> The server validates the value and presence rule together.</p>
             </div>
-            <div class="artifact frame">
+            <div class="artifact frame" data-demo="checks">
               <div class="frame-head"><i></i><i></i><i></i><span>SENTRY_DSN · production · clear</span></div>
               <div class="frame-body checks">
                 <div><b class="ok">✓</b><span>current value is set</span><code>secret</code></div>
@@ -323,21 +408,15 @@ const faq = [
               </p>
               <p class="feature-note"><span>▸</span> The happy path writes no plaintext file to the host disk.</p>
             </div>
-            <div class="artifact frame terminal">
+            <div class="artifact frame terminal" data-demo="terminal">
               <div class="frame-head"><i></i><i></i><i></i><span>hikyo run · production</span></div>
-              <pre><span># start a process with an authorized environment</span>
-<b>hikyo run</b> -- ./payments-api
-  <em>✓</em> identity verified
-  <em>✓</em> grant constrained to project + environment
-  <em>✓</em> config ready for the child process
-  <span>→ secret plaintext needs explicit machine reveal</span>
-  <strong>!</strong> inaccessible secret stops launch</pre>
+              <pre><i class="ln" style="--n:0"><span># start a process with an authorized environment</span></i><i class="ln" style="--n:1"><b>hikyo run</b> -- ./payments-api</i><i class="ln" style="--n:2">  <em>✓</em> identity verified</i><i class="ln" style="--n:3">  <em>✓</em> grant constrained to project + environment</i><i class="ln" style="--n:4">  <em>✓</em> config ready for the child process</i><i class="ln" style="--n:5">  <span>→ secret plaintext needs explicit machine reveal</span></i><i class="ln" style="--n:6">  <strong>!</strong> inaccessible secret stops launch</i></pre>
             </div>
           </article>
         </div>
       </section>
 
-      <section class="self-host" id="self-host" aria-labelledby="self-host-heading">
+      <section class="self-host" id="self-host" aria-labelledby="self-host-heading" data-section>
         <div class="wrap self-host-grid">
           <div>
             <p class="kicker">// runs where you do</p>
@@ -360,7 +439,7 @@ const faq = [
         </div>
       </section>
 
-      <section class="block comparison" id="compare" aria-labelledby="comparison-heading">
+      <section class="block comparison" id="compare" aria-labelledby="comparison-heading" data-section>
         <div class="wrap">
           <div class="comparison-intro">
             <div>
@@ -487,7 +566,7 @@ const faq = [
         </div>
       </section>
 
-      <section class="block" id="why" aria-labelledby="why-heading">
+      <section class="block" id="why" aria-labelledby="why-heading" data-section>
         <div class="wrap why">
           <p class="kicker">// why hikyo exists</p>
           <h2 id="why-heading">Operational capability should not be an enterprise upsell.</h2>
@@ -506,7 +585,7 @@ const faq = [
         </div>
       </section>
 
-      <section class="block faq" id="faq" aria-labelledby="faq-heading">
+      <section class="block faq" id="faq" aria-labelledby="faq-heading" data-section>
         <div class="wrap faq-grid">
           <div class="faq-intro">
             <p class="kicker">// before you evaluate it</p>
@@ -584,22 +663,33 @@ const faq = [
     <script>
       import { themeStorageKey } from '../lib/site';
 
+      const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
+      const root = document.documentElement;
+
+      // ---------------------------------------------------------- theme
       const button = document.querySelector<HTMLButtonElement>('.theme-toggle');
       const label = button?.querySelector<HTMLElement>('.theme-label');
 
       const renderTheme = (theme: 'dark' | 'light') => {
-        document.documentElement.dataset.theme = theme;
+        root.dataset.theme = theme;
         if (label) label.textContent = theme === 'dark' ? 'Light' : 'Dark';
         button?.setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
       };
 
-      renderTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+      renderTheme(root.dataset.theme === 'light' ? 'light' : 'dark');
+      let themeTimer = 0;
       button?.addEventListener('click', () => {
-        const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        const theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
         localStorage.setItem(themeStorageKey, theme);
+        if (motionOk) {
+          root.classList.add('theme-transition');
+          clearTimeout(themeTimer);
+          themeTimer = window.setTimeout(() => root.classList.remove('theme-transition'), 260);
+        }
         renderTheme(theme);
       });
 
+      // ------------------------------------------------------ flow steps
       const flowSteps = document.querySelector<HTMLOListElement>('[data-flow-steps]');
 
       if (flowSteps) {
@@ -636,6 +726,699 @@ const faq = [
           window.addEventListener('load', scheduleFlowReveal, { once: true });
         }
       }
+
+      // ------------------------------------------- matrix: resolve + tabs
+      const surface = document.querySelector<HTMLElement>('[data-matrix-surface]');
+      const table = surface?.querySelector<HTMLTableElement>('[data-matrix]');
+      const chips = surface?.querySelector<HTMLElement>('[data-env-tabs]');
+      const tabs = chips ? Array.from(chips.querySelectorAll<HTMLButtonElement>('button[data-env]')) : [];
+      const groupHeads = table ? Array.from(table.querySelectorAll<HTMLTableCellElement>('[data-group]')) : [];
+      const mobile = matchMedia('(max-width: 43rem)');
+      const settleMs = (visible: number) => visible * 35 + 160 + 240 + 60;
+
+      const showEnv = (env: string, animate: boolean) => {
+        if (!surface || !table) return;
+        table.dataset.env = env;
+        for (const tab of tabs) {
+          const on = tab.dataset.env === env;
+          tab.setAttribute('aria-selected', on ? 'true' : 'false');
+          tab.tabIndex = on ? 0 : -1;
+        }
+        if (animate && motionOk) {
+          surface.classList.remove('is-pending', 'is-switching');
+          void table.offsetWidth;
+          surface.classList.add('is-pending', 'is-switching');
+          window.setTimeout(() => surface.classList.remove('is-pending', 'is-switching'), 10 * 20 + 100 + 60);
+        }
+      };
+
+      const applyMode = () => {
+        if (!surface || !table || !chips) return;
+        if (mobile.matches) {
+          surface.classList.add('has-tabs');
+          chips.setAttribute('role', 'tablist');
+          for (const head of groupHeads) head.colSpan = 2;
+          for (const tab of tabs) {
+            tab.disabled = false;
+            tab.setAttribute('role', 'tab');
+          }
+          showEnv(table.dataset.env ?? 'production', false);
+        } else {
+          surface.classList.remove('has-tabs');
+          chips.removeAttribute('role');
+          for (const head of groupHeads) head.colSpan = 4;
+          for (const tab of tabs) {
+            tab.disabled = true;
+            tab.removeAttribute('role');
+            tab.removeAttribute('aria-selected');
+            tab.removeAttribute('tabindex');
+          }
+          delete table.dataset.env;
+        }
+      };
+
+      if (surface && table && chips) {
+        applyMode();
+        mobile.addEventListener('change', applyMode);
+
+        for (const tab of tabs) {
+          tab.addEventListener('click', () => showEnv(tab.dataset.env ?? 'production', true));
+        }
+        chips.addEventListener('keydown', (event) => {
+          if (!mobile.matches) return;
+          const current = tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true');
+          let next = -1;
+          if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (current + 1) % tabs.length;
+          else if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (current - 1 + tabs.length) % tabs.length;
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = tabs.length - 1;
+          if (next < 0) return;
+          event.preventDefault();
+          const tab = tabs[next];
+          if (!tab) return;
+          tab.focus();
+          showEnv(tab.dataset.env ?? 'production', true);
+        });
+
+        if (motionOk) {
+          // Placeholders now (the surface is still inside its enter fade), the
+          // staggered resolve once that fade has finished.
+          surface.classList.add('is-pending');
+          Promise.all(surface.getAnimations().map((a) => a.finished))
+            .catch(() => undefined)
+            .then(() => {
+              surface.classList.add('is-resolving');
+              const visible = mobile.matches ? 10 : 30;
+              window.setTimeout(() => {
+                surface.classList.remove('is-pending', 'is-resolving');
+                surface.classList.add('is-settled');
+              }, settleMs(visible));
+            });
+        } else {
+          surface.classList.add('is-settled');
+        }
+      }
+
+      // ------------------------------------------------- artifact demos
+      const frames = Array.from(document.querySelectorAll<HTMLElement>('[data-demo]'));
+      const masked = (el: HTMLElement) => el.dataset.masked ?? '';
+
+      const playReveal = (frame: HTMLElement) => {
+        const out = frame.querySelector<HTMLElement>('[data-reveal-out]');
+        const counter = frame.querySelector<HTMLElement>('[data-remask]');
+        if (!out || !counter) return;
+        let left = 18;
+        const tick = () => {
+          counter.textContent = `0:${String(left).padStart(2, '0')}`;
+          if (left === 0) {
+            out.textContent = masked(out);
+            out.classList.remove('shown');
+            frame.classList.add('is-remasked');
+            return;
+          }
+          left -= 1;
+          window.setTimeout(tick, 3000 / 18);
+        };
+        window.setTimeout(tick, 700);
+      };
+
+      if (motionOk && 'IntersectionObserver' in window && frames.length > 0) {
+        for (const frame of frames) frame.classList.add('is-armed');
+        const observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (!entry.isIntersecting) continue;
+              const frame = entry.target;
+              if (!(frame instanceof HTMLElement)) continue;
+              frame.classList.add('is-playing');
+              if (frame.dataset.demo === 'reveal') playReveal(frame);
+              observer.unobserve(frame);
+            }
+          },
+          { threshold: 0.4 },
+        );
+        for (const frame of frames) observer.observe(frame);
+      }
+
+      // -------------------------------------------- current section cursor
+      const sections = Array.from(document.querySelectorAll<HTMLElement>('[data-section]'));
+      if ('IntersectionObserver' in window && sections.length > 0) {
+        const observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) entry.target.classList.toggle('is-current', entry.isIntersecting);
+          },
+          { rootMargin: '-45% 0px -45% 0px', threshold: 0 },
+        );
+        for (const section of sections) observer.observe(section);
+      }
     </script>
+
+    <style>
+      /* ------------------------------------------------ shared primitives */
+      @keyframes appear {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      @keyframes vanish {
+        from { opacity: 1; }
+        to { opacity: 0; }
+      }
+      @keyframes rise {
+        from { opacity: 0; transform: translateY(0.25rem); }
+        to { opacity: 1; transform: none; }
+      }
+
+      .artifact,
+      .hero-surface,
+      .matrix-scroll {
+        min-width: 0;
+      }
+
+      /* ------------------------------------------------ 6. theme cross-fade */
+      html.theme-transition body,
+      html.theme-transition .surface,
+      html.theme-transition .frame,
+      html.theme-transition .site-header {
+        transition:
+          background-color 240ms ease,
+          color 240ms ease;
+      }
+
+      /* ------------------------------------------------ 5a. scroll progress */
+      .site-header::after {
+        position: absolute;
+        inset-block-end: -1px;
+        inset-inline-start: 0;
+        width: 100%;
+        height: 2px;
+        background: var(--accent);
+        content: '';
+        pointer-events: none;
+        transform: scaleX(0);
+        transform-origin: 0 50%;
+      }
+      @supports (animation-timeline: scroll()) {
+        .site-header::after {
+          animation: header-progress linear both;
+          animation-timeline: scroll(root);
+        }
+      }
+      @keyframes header-progress {
+        from { transform: scaleX(0); }
+        to { transform: scaleX(1); }
+      }
+
+      /* ------------------------------------------------ 5b. section cursor */
+      .kicker::after {
+        display: inline-block;
+        width: 0.5em;
+        height: 1em;
+        margin-inline-start: 0.35em;
+        background: var(--accent);
+        content: '';
+        opacity: 0;
+        vertical-align: -0.15em;
+      }
+      .is-current .kicker::after {
+        opacity: 1;
+        animation: cursor-blink 1.1s steps(2, start) infinite;
+      }
+      @keyframes cursor-blink {
+        50% { opacity: 0; }
+      }
+
+      /* ------------------------------------------------ 5c. stack marquee */
+      .stack-list .dup {
+        display: none;
+      }
+      @media (max-width: 43rem) {
+        .stack-inner {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 0.6rem;
+        }
+        .stack-marquee {
+          width: 100%;
+          overflow: hidden;
+          mask-image: linear-gradient(to right, transparent, #000 8%, #000 92%, transparent);
+        }
+        .stack-list {
+          width: max-content;
+          flex-wrap: nowrap;
+          gap: 0;
+        }
+        .stack-list span {
+          margin-inline-end: 1.75rem;
+        }
+        .stack-list .dup {
+          display: inline;
+        }
+      }
+      @media (max-width: 43rem) and (prefers-reduced-motion: no-preference) {
+        .stack-list {
+          animation: marquee 24s linear infinite;
+        }
+        .stack-marquee:hover .stack-list,
+        .stack-marquee:focus-within .stack-list {
+          animation-play-state: paused;
+        }
+      }
+      @keyframes marquee {
+        to { transform: translateX(-50%); }
+      }
+
+      /* ------------------------------------------------ 1. matrix states */
+      .hero-surface {
+        --head-h: 36px;
+        --row-h: 40px;
+        --notes-w: 108px;
+        --step: 35ms;
+        --fade: 160ms;
+        --settle: calc(30 * var(--step) + var(--fade));
+        position: relative;
+      }
+      .hero-surface .matrix {
+        min-width: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      .matrix thead tr {
+        height: var(--head-h);
+      }
+      .matrix tbody tr {
+        height: var(--row-h);
+      }
+      .matrix th,
+      .matrix td {
+        padding-block: 0;
+        padding-inline: 0.5rem;
+        vertical-align: middle;
+      }
+      .matrix th:first-child,
+      .matrix td:first-child {
+        padding-inline-start: 1rem;
+      }
+      .matrix .group th {
+        padding-block: 0;
+      }
+      .matrix .group small {
+        margin-inline-start: 0.6rem;
+        color: var(--text-faint);
+        font-size: 0.625rem;
+        letter-spacing: 0.06em;
+        text-transform: none;
+      }
+      .matrix td {
+        position: relative;
+      }
+      .state {
+        padding-inline: 0.4rem;
+      }
+      /* The two longest pills wrap to two lines inside the fixed 40px row so
+         the full matrix fits beside the copy at 1280 without inner scroll. */
+      .state.missing,
+      .state.forbidden {
+        max-width: 5.75rem;
+        border-radius: 0.6rem;
+        line-height: 1.3;
+        text-align: start;
+        white-space: normal;
+      }
+      .state.draft {
+        background: color-mix(in oklab, var(--warning) 16%, transparent);
+        color: var(--warning);
+        font-weight: 500;
+      }
+      .state.forbidden {
+        border: 1px solid var(--line);
+        color: var(--text-dim);
+      }
+      .draft-dot {
+        background: var(--warning);
+      }
+
+      /* Placeholder while unresolved. JS adds is-pending only when motion is
+         allowed, so no-JS and reduced-motion readers get the final state. */
+      .is-pending .matrix td::before {
+        position: absolute;
+        inset-inline-start: 0.5rem;
+        inset-block-start: 50%;
+        color: var(--text-faint);
+        content: '···';
+        font-family: var(--mono);
+        font-size: 0.6875rem;
+        letter-spacing: 0.1em;
+        transform: translateY(-50%);
+      }
+      .is-pending .matrix .state {
+        opacity: 0;
+      }
+      .is-pending .matrix td {
+        --d: calc(var(--i) * var(--step));
+      }
+      .is-pending .matrix[data-env] td {
+        --d: calc(var(--r) * var(--step));
+      }
+      .is-switching {
+        --step: 20ms;
+        --fade: 100ms;
+      }
+      .is-pending.is-resolving .matrix td::before,
+      .is-pending.is-switching .matrix td::before {
+        animation: vanish 1ms steps(1, end) var(--d) both;
+      }
+      .is-pending.is-resolving .matrix .state,
+      .is-pending.is-switching .matrix .state {
+        animation: appear var(--fade) ease-out var(--d) both;
+      }
+      .hero-surface .matrix[data-env] {
+        --settle: calc(10 * var(--step) + var(--fade));
+      }
+      .is-pending.is-resolving .matrix .state.missing {
+        animation:
+          appear var(--fade) ease-out var(--d) both,
+          violation-blink 240ms steps(2, end) var(--settle) both;
+      }
+      @keyframes violation-blink {
+        0% { outline: 1px solid var(--warning); outline-offset: 1px; }
+        50% { outline: 1px solid var(--danger); outline-offset: 1px; }
+        100% { outline: 1px solid transparent; outline-offset: 1px; }
+      }
+
+      /* ------------------------------------------------ 3. mobile env tabs */
+      .environment-chips button {
+        padding: 0.2rem 0.5rem;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        background: transparent;
+        color: var(--text-dim);
+        font-family: var(--mono);
+        font-size: 0.6875rem;
+        cursor: default;
+      }
+      .environment-chips button:disabled {
+        opacity: 1;
+      }
+      @media (max-width: 43rem) {
+        .environment-chips button {
+          display: none;
+        }
+        .has-tabs .surface-bar {
+          flex-wrap: wrap;
+          padding-block-end: 0.65rem;
+        }
+        .has-tabs .environment-chips {
+          flex: 1 1 100%;
+          margin-inline-start: 0;
+          gap: 0.3rem;
+        }
+        .has-tabs .environment-chips::after {
+          content: none;
+        }
+        .has-tabs .environment-chips button {
+          display: inline-flex;
+          min-height: 2.75rem;
+          flex: 1 1 0;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        .has-tabs .environment-chips button[aria-selected='true'] {
+          border-color: var(--accent);
+          background: var(--accent-quiet);
+          color: var(--text);
+        }
+      }
+      .matrix[data-env='development'] .env-staging,
+      .matrix[data-env='development'] .env-production,
+      .matrix[data-env='staging'] .env-development,
+      .matrix[data-env='staging'] .env-production,
+      .matrix[data-env='production'] .env-development,
+      .matrix[data-env='production'] .env-staging {
+        display: none;
+      }
+
+      /* ------------------------------------------------ 2. callouts */
+      .callouts {
+        display: none;
+      }
+      .callout-list {
+        display: grid;
+        gap: 0.5rem;
+        margin: 0;
+        padding: 0.8rem 1rem;
+        border-block-start: 1px solid var(--line-soft);
+        list-style: none;
+        color: var(--text-dim);
+        font-family: var(--mono);
+        font-size: 0.6875rem;
+        line-height: 1.45;
+      }
+      .callout-list li {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 0.1rem 0.6rem;
+      }
+      .callout-list b,
+      .balloon b {
+        display: inline-grid;
+        width: 1.125rem;
+        height: 1.125rem;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--accent);
+        font-weight: 500;
+      }
+      .callout-list b {
+        grid-row: 1 / 3;
+        align-self: start;
+      }
+      .callout-list code {
+        color: var(--text);
+        font-family: inherit;
+        overflow-wrap: anywhere;
+      }
+      /* Balloons need the table and a notes column side by side without inner
+         scroll; that only fits from 80rem, so the desktop range below it keeps
+         the live hero and renders the callouts as the list. */
+      @media (min-width: 80rem) {
+        .hero-grid {
+          --max-width: 84rem;
+          grid-template-columns: minmax(27.5rem, 0.55fr) minmax(0, 1fr);
+          gap: 2.5rem;
+        }
+        /* Balloons hang past the surface edge like tags on a drawing frame,
+           so the surface stops clipping and its bar/foot round their own corners. */
+        .hero-surface {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) var(--notes-w);
+          overflow: visible;
+        }
+        .hero-surface .surface-bar {
+          border-start-start-radius: 5px;
+          border-start-end-radius: 5px;
+        }
+        .hero-surface .surface-foot {
+          border-end-start-radius: 5px;
+          border-end-end-radius: 5px;
+        }
+        .hero-surface .matrix tbody th {
+          font-size: 0.6875rem;
+        }
+        .surface-bar,
+        .surface-foot {
+          grid-column: 1 / -1;
+        }
+        .callout-list {
+          display: none;
+        }
+        .callouts {
+          position: relative;
+          display: block;
+          height: var(--notes-h);
+          border-inline-start: 1px solid var(--line-soft);
+          font-family: var(--mono);
+        }
+        .leaders {
+          position: absolute;
+          inset: 0;
+          display: block;
+          overflow: visible;
+          fill: none;
+          stroke: var(--rule-open);
+          stroke-width: 1;
+          stroke-linejoin: round;
+        }
+        .leaders path {
+          stroke-dasharray: 1;
+          stroke-dashoffset: 0;
+        }
+        .is-pending .leaders path {
+          stroke-dashoffset: 1;
+        }
+        .is-settled .leaders path {
+          animation: leader-draw 480ms var(--ease-out) both;
+        }
+        .is-settled .leaders path:nth-child(2) { animation-delay: 140ms; }
+        .is-settled .leaders path:nth-child(3) { animation-delay: 280ms; }
+        .balloon {
+          position: absolute;
+          inset-inline-start: 22px;
+          inset-block-start: var(--y);
+          width: 7.25rem;
+          margin: 0;
+          padding: 0.35rem 0.45rem;
+          border: 1px solid var(--line);
+          border-radius: 3px;
+          background: var(--bg-raised);
+          color: var(--text-dim);
+          font-size: 0.625rem;
+          line-height: 1.4;
+          transform: translateY(-50%);
+        }
+        .balloon b {
+          float: left;
+          margin: 0.05rem 0.35rem 0 0;
+          font-size: 0.625rem;
+        }
+        .is-pending .balloon {
+          opacity: 0;
+        }
+        .is-settled .balloon {
+          animation: appear 240ms ease-out both;
+        }
+        .is-settled .balloon:nth-of-type(1) { animation-delay: 160ms; }
+        .is-settled .balloon:nth-of-type(2) { animation-delay: 300ms; }
+        .is-settled .balloon:nth-of-type(3) { animation-delay: 440ms; }
+      }
+      @keyframes leader-draw {
+        from { stroke-dashoffset: 1; }
+        to { stroke-dashoffset: 0; }
+      }
+
+      /* ------------------------------------------------ 4. artifact demos */
+      .coverage > div {
+        position: relative;
+        overflow: hidden;
+      }
+      .coverage > div::before {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        background: var(--accent-quiet);
+        content: '';
+        opacity: 0;
+        transform: scaleX(0);
+        transform-origin: 0 50%;
+      }
+      .coverage > div > * {
+        position: relative;
+        z-index: 1;
+      }
+      .flip {
+        display: inline-grid;
+      }
+      .flip > * {
+        grid-area: 1 / 1;
+      }
+      .flip-q {
+        display: none;
+      }
+      .is-armed .flip-q {
+        display: inline;
+      }
+      .is-armed .flip-n,
+      .is-armed .coverage b {
+        opacity: 0;
+      }
+      .is-armed .coverage > div::before {
+        opacity: 1;
+      }
+      .is-playing .coverage > div::before {
+        animation: wipe 240ms linear calc(var(--k) * 240ms) both;
+      }
+      .is-playing .coverage b {
+        animation: appear 1ms steps(1, end) calc(var(--k) * 240ms + 240ms) both;
+      }
+      .coverage > div:nth-child(1) { --k: 0; }
+      .coverage > div:nth-child(2) { --k: 1; }
+      .coverage > div:nth-child(3) { --k: 2; }
+      .is-playing .flip-q {
+        animation: vanish 1ms steps(1, end) 860ms both;
+      }
+      .is-playing .flip-n {
+        animation: appear 1ms steps(1, end) 860ms both;
+      }
+      @keyframes wipe {
+        from { transform: scaleX(0); }
+        to { transform: scaleX(1); }
+      }
+
+      .is-armed .reveal .secret-stage:last-child code,
+      .is-armed .reveal .secret-stage:last-child b {
+        opacity: 0;
+      }
+      .is-playing .reveal .gate {
+        animation: gate-pulse 700ms ease-in-out 2;
+      }
+      .is-playing .reveal .secret-stage:last-child code,
+      .is-playing .reveal .secret-stage:last-child b {
+        animation: appear 160ms ease-out 700ms both;
+      }
+      .is-remasked .reveal .secret-stage:last-child b {
+        color: var(--text-faint);
+      }
+      @keyframes gate-pulse {
+        0%, 100% { box-shadow: 0 0 0 1px transparent; }
+        50% { box-shadow: 0 0 0 1px var(--accent); }
+      }
+
+      .is-armed .checks > div {
+        opacity: 0;
+      }
+      .is-playing .checks > div {
+        animation: rise 200ms var(--ease-out) calc(var(--k) * 140ms) both;
+      }
+      .checks > div:nth-child(1) { --k: 0; }
+      .checks > div:nth-child(2) { --k: 1; }
+      .checks > div:nth-child(3) { --k: 2; }
+      .checks > div:nth-child(4) { --k: 3; }
+      .is-playing .checks > div:last-child code {
+        animation: chip-flash 360ms steps(2, end) 560ms;
+      }
+      @keyframes chip-flash {
+        0%, 50% { color: var(--danger); background: var(--danger-quiet); }
+        100% { color: var(--text-faint); background: transparent; }
+      }
+
+      .terminal pre {
+        white-space: normal;
+      }
+      .terminal .ln {
+        display: block;
+        font-style: normal;
+        white-space: pre;
+      }
+      .is-armed .terminal .ln {
+        opacity: 0;
+      }
+      .is-playing .terminal .ln {
+        animation: appear 1ms steps(1, end) calc(var(--n) * 120ms) both;
+      }
+
+      /* ------------------------------------------------ reduced motion */
+      @media (prefers-reduced-motion: reduce) {
+        .site-header::after {
+          animation-duration: auto !important;
+        }
+        .is-current .kicker::after {
+          animation: none;
+        }
+        .stack-list {
+          animation: none;
+        }
+      }
+    </style>
   </body>
 </html>
