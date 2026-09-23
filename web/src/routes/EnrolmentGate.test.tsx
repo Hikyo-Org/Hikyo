@@ -8,11 +8,13 @@ import { EnrolmentGate } from './EnrolmentGate.tsx';
 
 type Leg = { mutate: Mock; reset: Mock; isPending: boolean; isError: boolean; error: Error | null };
 type Mocks = {
+  leg: () => Leg;
   codes: {
     held: { codes: readonly string[]; password: string } | null;
     isPending: boolean;
     error: Error | null;
     issue: Mock;
+    releasePassword: Mock;
   };
   totpStart: Leg;
   totpConfirm: Leg;
@@ -23,15 +25,14 @@ type Mocks = {
 const mocks = vi.hoisted((): Mocks => {
   const leg = (): Leg => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null });
   return {
-    codes: { held: null, isPending: false, error: null, issue: vi.fn() },
+    leg,
+    codes: { held: null, isPending: false, error: null, issue: vi.fn(), releasePassword: vi.fn() },
     totpStart: leg(),
     totpConfirm: leg(),
     passkey: leg(),
     logout: leg(),
   };
 });
-const leg = (): Leg => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false, error: null });
-
 vi.mock('../api/account.ts', () => ({
   accountFailureText: () => 'Account change failed.',
   useEnrolmentGateCodes: () => mocks.codes,
@@ -53,10 +54,11 @@ beforeEach(() => {
   mocks.codes.isPending = false;
   mocks.codes.error = null;
   mocks.codes.issue = vi.fn();
-  mocks.totpStart = leg();
-  mocks.totpConfirm = leg();
-  mocks.passkey = leg();
-  mocks.logout = leg();
+  mocks.codes.releasePassword = vi.fn();
+  mocks.totpStart = mocks.leg();
+  mocks.totpConfirm = mocks.leg();
+  mocks.passkey = mocks.leg();
+  mocks.logout = mocks.leg();
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -109,6 +111,7 @@ it('shows the codes, then the factor choice, and enrols an authenticator with th
   expect(mocks.totpStart.mutate).toHaveBeenCalledWith({ password: 'correct' }, expect.anything());
   expect(gate.container.textContent).toContain('JBSWY3DP');
   expect(gate.container.textContent).toContain('Scan, then confirm one code');
+  expect(mocks.codes.releasePassword).toHaveBeenCalled();
   await gate.unmount();
 });
 

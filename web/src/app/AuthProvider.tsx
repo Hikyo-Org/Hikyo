@@ -207,9 +207,18 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
 
   const settleIdentity = useCallback(
     (
-      identity: WhoAmI | null, publish: boolean, expectedRotation?: ExpectedSessionRotation, invalidateQueries = true,
-      // Bind the identity but keep painting nothing until whoami answers.
-      awaitWhoami = false,
+      identity: WhoAmI | null,
+      publish: boolean,
+      {
+        expectedRotation,
+        invalidateQueries = true,
+        awaitWhoami = false,
+      }: {
+        readonly expectedRotation?: ExpectedSessionRotation;
+        readonly invalidateQueries?: boolean;
+        /** Bind the identity but keep painting nothing until whoami answers. */
+        readonly awaitWhoami?: boolean;
+      } = {},
     ) => {
       const current = snapshotRef.current;
       const sameSession =
@@ -302,7 +311,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       try {
         const identity = await readIdentity(signal);
         if (mountedRef.current && requestRef.current === request) {
-          settleIdentity(identity, publish, expectedRotation, signal === undefined);
+          settleIdentity(identity, publish, { expectedRotation, invalidateQueries: signal === undefined });
         } else if (signal !== undefined) {
           // Runtime recovery needs a verified current answer, not merely a
           // completed request that lost authority to another session check.
@@ -484,13 +493,14 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
           identity.principal.id !== current.identity.principal.id ||
           identity.session.id !== current.identity.session.id || identity.session.artifact !== 'browser') return false;
       verifiedRemintRef.current = null;
-      // whoami already proved this remint, so its whoami-only fields
-      // (capabilities, the enrolment gate) carry over; a dropped
-      // `enrolment_required` would paint the shell over the gate (#785).
+      // whoami already proved this remint, so its whoami-only fields carry
+      // over; a dropped `enrolment_required` would paint the shell over the
+      // gate (#785).
       const hydrated: WhoAmI = {
-        ...current.identity,
         session: identity.session,
         principal: identity.principal,
+        capabilities: current.identity.capabilities,
+        enrolment_required: current.identity.enrolment_required,
       };
       const accepted = transferSensitiveState(transfer, current.queries, {
         sessionId: identity.session.id, principalId: identity.principal.id,
@@ -536,7 +546,7 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       commit({ ...current, state: { status: 'transitioning' }, failure: null });
       queueMicrotask(() => {
         if (mountedRef.current && requestRef.current === request) {
-          settleIdentity(hydrated, true, undefined, true, awaitWhoami);
+          settleIdentity(hydrated, true, { awaitWhoami });
           if (awaitWhoami) {
             void checkSession('blocking');
           } else if (hydrateCapabilities) {

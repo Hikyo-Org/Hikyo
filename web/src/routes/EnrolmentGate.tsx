@@ -35,14 +35,18 @@ export function EnrolmentGate() {
   const totpConfirm = useConfirmTotp();
   const passkey = useEnrolPasskey();
   const logout = useLogout();
-  const [stored, setStored] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
   const [enrolment, setEnrolment] = useSensitiveState<{ uri: string; secret: string } | null>(null);
 
+  const identity = auth.identity;
+  if (identity === null) {
+    throw new Error('the enrolment gate rendered without a session');
+  }
   const held = codes.held;
   const step: SetupStep =
     held === null
       ? { kind: 'password' }
-      : !stored
+      : !acknowledged
         ? { kind: 'codes', codes: held.codes }
         : enrolment === null
           ? { kind: 'choose' }
@@ -58,39 +62,46 @@ export function EnrolmentGate() {
           ? 'code'
           : null;
 
-  const error =
-    step.kind === 'password' && codes.error !== null
-      ? passwordFailureText(codes.error)
-      : step.kind === 'choose' && totpStart.isError
-        ? accountFailureText(totpStart.error)
-        : step.kind === 'choose' && passkey.isError
-          ? accountFailureText(passkey.error)
-          : step.kind === 'totp' && totpConfirm.isError
-            ? stepUpFailureText(totpConfirm.error)
-            : null;
+  const error = ((): string | null => {
+    switch (step.kind) {
+      case 'password':
+        return codes.error === null ? null : passwordFailureText(codes.error);
+      case 'codes':
+        return null;
+      case 'choose':
+        if (totpStart.isError) return accountFailureText(totpStart.error);
+        return passkey.isError ? accountFailureText(passkey.error) : null;
+      case 'totp':
+        return totpConfirm.isError ? stepUpFailureText(totpConfirm.error) : null;
+    }
+  })();
 
   return (
     <main className="login">
       <SecondFactorSetup
-        // whoami carries no username; the display name is what the chrome shows.
-        username={auth.identity?.principal.display_name ?? 'your account'}
+        // whoami carries no username, and the display name is optional in the
+        // contract: name the account the way the chrome does, or generically.
+        username={identity.principal.display_name ?? 'your account'}
         step={step}
         passkeys={passkeysAvailable()}
         busy={busy}
         error={error}
         onPassword={(password) => {
-          setStored(false);
+          setAcknowledged(false);
           codes.issue(password);
         }}
-        onCodesStored={() => setStored(true)}
+        onCodesStored={() => setAcknowledged(true)}
         onChooseTotp={() => {
           if (held === null) return;
           passkey.reset();
           totpStart.mutate(
             { password: held.password },
             {
-              onSuccess: (result) =>
-                setEnrolment({ uri: result.otpauth_uri, secret: otpauthSecret(result.otpauth_uri) }),
+              onSuccess: (result) => {
+                setEnrolment({ uri: result.otpauth_uri, secret: otpauthSecret(result.otpauth_uri) });
+                // Confirming needs only the code: the password's work is done.
+                codes.releasePassword();
+              },
             },
           );
         }}
@@ -109,7 +120,7 @@ export function EnrolmentGate() {
 }
 
 /** The gate's password step is a proof, so a 401 names the password alone. */
-function passwordFailureText(error: Error): string {
+function passwordFailureText(error: unknown): string {
   if (error instanceof ApiError && error.status === 401) {
     return 'That password was not accepted. Check it and try again.';
   }

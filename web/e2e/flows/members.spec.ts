@@ -15,6 +15,9 @@ import {
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
 import { totpCode } from '../fixtures/seed.ts';
+
+/** One TOTP time step: a code for `now + step` is the next step's, inside the skew window. */
+const TOTP_PERIOD_MS = 30_000;
 import { surfacesForFlow } from '../registry.ts';
 
 /**
@@ -491,12 +494,11 @@ test.describe('members and grants', () => {
       };
       // The invitee has no factor, so under the product-default `required`
       // policy its first sign-in lands on the enrolment gate (#785).
-      let otpauth = '';
 
       await establish(authority, firstPassword);
       await expect(invitee.getByRole('heading', { name: 'Credential established' })).toBeVisible();
       await signIn(firstPassword);
-      otpauth = await passEnrolmentGate(invitee, firstPassword);
+      const otpauth = await passEnrolmentGate(invitee, firstPassword);
       await expect(invitee.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
 
       // A real viewer can read project metadata without being offered manager
@@ -536,7 +538,7 @@ test.describe('members and grants', () => {
       // confirm spent its time step, so present the next step's code, which the
       // skew window already accepts.
       await expect(invitee.getByRole('heading', { name: 'Present your second factor' })).toBeVisible();
-      await invitee.getByLabel('Authenticator code').fill(totpCode(otpauth, new Date(Date.now() + 30_000)));
+      await invitee.getByLabel('Authenticator code').fill(totpCode(otpauth, new Date(Date.now() + TOTP_PERIOD_MS)));
       await invitee.getByRole('button', { name: 'Present code' }).click();
       await expect(invitee.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
     } finally {

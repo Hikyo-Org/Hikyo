@@ -211,64 +211,58 @@ export function useRemovePasskey() {
   });
 }
 
-export function useRegenerateRecoveryCodes() {
+/**
+ * The one guarded delivery of freshly regenerated recovery codes: the result
+ * reaches component state only through the synchronous account-session handoff
+ * (no asynchronous plaintext-return path). `hold` shapes what is delivered with
+ * the codes, from the proof that produced them.
+ */
+function useRecoveryCodeHandoff<Held>(hold: (codes: readonly string[], proof: string) => Held) {
   const auth = useAuth();
-  const [codes, setCodes, prepareTransfer] = useSensitiveState<readonly string[] | null>(null);
+  const [held, setHeld, prepareTransfer] = useSensitiveState<Held | null>(null);
   const operation = useSensitiveMutation({
     onMutate: auth.captureTransition,
-    mutationFn: (input: { proof: string }) =>
-      parsed(regenerateRecoveryCodesOp, { body: { proof: input.proof } }),
-    onSuccess: (result, _input, guard) => {
+    mutationFn: (proof: string) =>
+      parsed(regenerateRecoveryCodesOp, { body: { proof } }),
+    onSuccess: (result, proof, guard) => {
       if (guard === undefined || !auth.acceptAccountSession(result.login, guard,
-        prepareTransfer(result.recovery_codes, {
+        prepareTransfer(hold(result.recovery_codes, proof), {
           sessionId: result.login.session.id, principalId: result.login.principal.id,
         }))) throw new Error('The account session changed before its recovery codes could be displayed.');
     },
     onError: () => { void auth.refreshSession(); },
   });
+  return { held, setHeld, operation };
+}
+
+export function useRegenerateRecoveryCodes() {
+  const { held: codes, setHeld: setCodes, operation } = useRecoveryCodeHandoff((codes) => codes);
   return {
     codes,
     isPending: operation.isPending,
     error: operation.error,
-    // No asynchronous plaintext-return path: delivery happens only inside the
-    // guarded synchronous account-session handoff above.
     mutate: (input: { proof: string }, callbacks?: { onError?: (error: Error) => void }) =>
-      operation.mutate(input, { onError: callbacks?.onError }),
+      operation.mutate(input.proof, { onError: callbacks?.onError }),
     dismiss: () => { operation.reset(); setCodes(null); },
   };
 }
 
 /**
  * useEnrolmentGateCodes issues the sign-in enrolment gate's recovery codes
- * (#785), proved by the password while no factor stands. The same guarded
- * account-session handoff as useRegenerateRecoveryCodes delivers them, and it
- * carries the password with them: the factor enrolment that follows needs it
- * again, and the remint this mutation causes retires every other sensitive
- * value on the page. Both live only as long as the gate does.
+ * (#785), proved by the password while no factor stands. It carries the
+ * password with them through the handoff: the factor enrolment that follows
+ * needs it again, and the remint this mutation causes retires every other
+ * sensitive value on the page. `releasePassword` drops it once a factor
+ * enrolment no longer needs it.
  */
 export function useEnrolmentGateCodes() {
-  const auth = useAuth();
-  const [held, , prepareTransfer] = useSensitiveState<{
-    readonly codes: readonly string[];
-    readonly password: string;
-  } | null>(null);
-  const operation = useSensitiveMutation({
-    onMutate: auth.captureTransition,
-    mutationFn: (password: string) =>
-      parsed(regenerateRecoveryCodesOp, { body: { proof: password } }),
-    onSuccess: (result, password, guard) => {
-      if (guard === undefined || !auth.acceptAccountSession(result.login, guard,
-        prepareTransfer({ codes: result.recovery_codes, password }, {
-          sessionId: result.login.session.id, principalId: result.login.principal.id,
-        }))) throw new Error('The account session changed before its recovery codes could be displayed.');
-    },
-    onError: () => { void auth.refreshSession(); },
-  });
+  const { held, setHeld, operation } = useRecoveryCodeHandoff((codes, password) => ({ codes, password }));
   return {
     held,
     isPending: operation.isPending,
     error: operation.error,
     issue: (password: string) => operation.mutate(password),
+    releasePassword: () => setHeld((current) => (current === null ? null : { ...current, password: '' })),
   };
 }
 

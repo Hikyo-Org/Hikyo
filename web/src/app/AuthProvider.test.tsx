@@ -609,6 +609,29 @@ describe('AuthProvider', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('does not strand a held sign-in when its whoami fails', async () => {
+    const mutationResult = deferred<WhoAmI>();
+    const fetchMock = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(json({}, 401))
+      .mockRejectedValueOnce(new TypeError('network down'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe mutationResult={mutationResult} />
+      </AuthProvider>,
+    );
+    await settle();
+    await act(async () => container.querySelectorAll('button')[2]?.click());
+    await act(async () => mutationResult.resolve(loginIdentity('01', '11')));
+    await settle();
+    // The minted session still paints, degraded, rather than "Loading…" forever;
+    // the degraded retry re-reads whoami, and the server enforces the gate.
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '01')}`);
+    expect(text(container, 'degraded')).toBe('degraded');
+  });
+
   it('latches the reload wall when the very first check has no session to fall back on', async () => {
     const fetchMock = vi
       .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
