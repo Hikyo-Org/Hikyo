@@ -291,7 +291,14 @@ instance_doctor_exit=$?
 set -e
 expected_doctor_exit=0
 [[ "$volume_severity" == error ]] && expected_doctor_exit=4
-[[ "$instance_doctor_exit" -eq "$expected_doctor_exit" ]] || fail "instance doctor exited $instance_doctor_exit, want $expected_doctor_exit for measured capacity"
+[[ "$instance_doctor_exit" -eq "$expected_doctor_exit" ]] || {
+	# Name the cause, not just the exit code: the doctor's own report carries the
+	# refused operation, and the server log carries what refused it (a 503 here
+	# has raced self-configuration reconciliation before, #694).
+	jq . "$work_dir/instance-doctor.json" >&2 2>/dev/null || cat "$work_dir/instance-doctor.json" >&2
+	tail -n 60 "$work_dir/server.log" >&2
+	fail "instance doctor exited $instance_doctor_exit, want $expected_doctor_exit for measured capacity"
+}
 jq -e --arg engine sqlite --arg volume_severity "$volume_severity" -f "$repo_root/scripts/ci/assert-doctor-findings.jq" \
 	"$work_dir/instance-doctor.json" >/dev/null || {
 	jq . "$work_dir/instance-doctor.json" >&2
