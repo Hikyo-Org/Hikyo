@@ -6,6 +6,7 @@
 package webauthntest
 
 import (
+	"encoding/json"
 	"errors"
 
 	vw "github.com/descope/virtualwebauthn"
@@ -31,16 +32,12 @@ type Device struct {
 }
 
 // New builds a Device for the given RP id and origin (matching the server's
-// immutable RP config). By default it verifies the user, is not backup-eligible,
-// and emits credProps.rk=true so the enrolled credential is discoverable — the
-// realistic default a platform authenticator produces.
+// immutable RP config). By default it verifies the user and is not
+// backup-eligible. Like a real browser it reports credProps.rk=true only when
+// the registration options request the credProps extension, so an RP that
+// forgets to ask records its passkeys non-discoverable here too.
 func New(rpID, origin string) *Device {
-	return &Device{
-		rp: vw.RelyingParty{Name: "hikyo", ID: rpID, Origin: origin},
-		opts: vw.AuthenticatorOptions{
-			ClientExtensionResults: map[string]any{"credProps": map[string]any{"rk": true}},
-		},
-	}
+	return &Device{rp: vw.RelyingParty{Name: "hikyo", ID: rpID, Origin: origin}}
 }
 
 // SetUserVerified controls the UV bit the authenticator asserts. Setting it
@@ -83,6 +80,20 @@ func (d *Device) Enrol(optionsJSON []byte) ([]byte, error) {
 	att, err := vw.ParseAttestationOptions(string(optionsJSON))
 	if err != nil {
 		return nil, err
+	}
+	var requested struct {
+		PublicKey struct {
+			Extensions struct {
+				CredProps bool `json:"credProps"`
+			} `json:"extensions"`
+		} `json:"publicKey"`
+	}
+	if err := json.Unmarshal(optionsJSON, &requested); err != nil {
+		return nil, err
+	}
+	d.opts.ClientExtensionResults = nil
+	if requested.PublicKey.Extensions.CredProps {
+		d.opts.ClientExtensionResults = map[string]any{"credProps": map[string]any{"rk": true}}
 	}
 	d.opts.UserHandle = []byte(att.UserID)
 	d.auth = vw.NewAuthenticatorWithOptions(d.opts)

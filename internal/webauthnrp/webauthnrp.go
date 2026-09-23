@@ -161,7 +161,11 @@ func (rp *RP) BeginEnrol(u User) (options, session []byte, challenge string, err
 	if len(u.Handle) == 0 {
 		return nil, nil, "", ErrCeremony
 	}
-	creation, sess, err := rp.wa.BeginRegistration(waUser{u})
+	// credProps is a client extension: the browser reports residency only when
+	// the RP asks, and an unreported residency is recorded non-discoverable
+	// (B13), which the passkey sign-in then refuses.
+	creation, sess, err := rp.wa.BeginRegistration(waUser{u},
+		webauthn.WithExtensions(protocol.AuthenticationExtensions{"credProps": true}))
 	if err != nil {
 		return nil, nil, "", fmt.Errorf("%w: %v", ErrCeremony, err)
 	}

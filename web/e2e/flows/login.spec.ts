@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 
 import { fixtureApiCall, fixtureBearer } from '../fixtures/api.ts';
+import { withPasskeyPage } from '../fixtures/passkey.ts';
 import { ADMIN, BASE_URL, OIDC_PROVIDER, nextTotpCode, readSeed } from '../fixtures/instance.ts';
 
 /** publicPost is an unauthenticated JSON POST, parsed at the boundary. */
@@ -267,6 +268,24 @@ test.describe('login', () => {
       session: Object.entries(globalThis.sessionStorage),
     }));
     expect(JSON.stringify(stored)).not.toContain('hik_1_');
+  });
+
+  test('signs in with a passkey alone, the discoverable credential selecting the account', async ({
+    page,
+  }) => {
+    // The shared passkey was enrolled in global setup through the same
+    // credProps round trip the SPA runs: without it the server records the
+    // credential as non-discoverable and refuses it at sign-in with a 401.
+    await withPasskeyPage(page, 'shared', async (passkeyPage) => {
+      await passkeyPage.goto('/login');
+      await passkeyPage.getByRole('button', { name: 'Use a passkey instead' }).click();
+
+      // A passkey is multi-factor on its own: no second step is presented.
+      await expect(passkeyPage.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+      await expect(passkeyPage.getByRole('heading', { name: 'Present your second factor' })).toHaveCount(0);
+      const cookies = await passkeyPage.context().cookies();
+      expect(cookies.find((c) => c.name === '__Host-hikyo'), 'no browser session cookie').toBeDefined();
+    });
   });
 
   test('keeps every login control accessible while an OIDC ceremony is pending', async ({

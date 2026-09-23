@@ -84,7 +84,8 @@ vi.mock('../api/session.ts', () => ({
 
 vi.mock('../api/stepup.ts', () => ({
   passkeysAvailable: () => mocks.passkeysAvailable,
-  stepUpFailureText: () => 'Passkey failed.',
+  passkeyFailureText: () => 'Passkey failed.',
+  stepUpFailureText: () => 'Code failed.',
   usePasskeyLogin: () => mocks.passkey,
 }));
 

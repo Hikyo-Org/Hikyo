@@ -6,7 +6,7 @@ import { useAuthMethods } from '../api/account.ts';
 import { parsed } from '../api/client.ts';
 import { useSensitiveMutation } from '../api/sensitiveMutation.ts';
 import { loginFailureText, useLogin, useLoginChallengeTotp, useOIDCLogin } from '../api/session.ts';
-import { passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
+import { passkeyFailureText, passkeysAvailable, stepUpFailureText, usePasskeyLogin } from '../api/stepup.ts';
 import { surfaceById } from '../app/navigation.ts';
 import { LoginForm, type SignInBusy } from '../ui/auth/LoginForm.tsx';
 import { SecondFactorChallenge } from '../ui/auth/SecondFactorChallenge.tsx';
@@ -88,7 +88,7 @@ export function Login() {
   const error = login.isError
     ? loginFailureText(login.error)
     : passkey.isError
-      ? stepUpFailureText(passkey.error)
+      ? passkeyFailureText(passkey.error)
       : oidc.isError || saml.isError
         ? loginFailureText(oidc.isError ? oidc.error : saml.error)
         : null;

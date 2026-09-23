@@ -302,6 +302,10 @@ export function useEnrolPasskey() {
               clientDataJSON: toBase64URL(attestation.clientDataJSON),
               attestationObject: toBase64URL(attestation.attestationObject),
             },
+            // credProps.rk lives here, and it is the server's only evidence
+            // the passkey is discoverable: without it the passkey is recorded
+            // as unable to sign in on its own.
+            clientExtensionResults: credential.getClientExtensionResults(),
           },
         });
     },
