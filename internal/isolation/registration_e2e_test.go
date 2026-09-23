@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -452,45 +451,6 @@ func runRegistrationPolicyReauth(t *testing.T, db *store.DB) {
 	actor := service.Bearer(token)
 	in := service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: service.RegistrationLanding{Kind: service.LandingNone},
-	}
-
-	// Every operation the contract marks x-hikyo-reauth reaches a service
-	// that refuses it without proof, and every gated call here is marked:
-	// the extension and the gate cannot drift apart.
-	orgIn := service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: orgTemplateLanding()}
-	gated := map[string]func() error{
-		"putOrgRegistrationPolicy": func() error {
-			_, err := reg.Put(ctx, actor, orgAReg, orgIn, "")
-			return err
-		},
-		"deleteOrgRegistrationPolicy": func() error { return reg.Delete(ctx, actor, orgAReg, "") },
-		"putInstanceRegistrationPolicy": func() error {
-			_, err := reg.Put(ctx, actor, instanceReg, in, "")
-			return err
-		},
-		"deleteInstanceRegistrationPolicy": func() error { return reg.Delete(ctx, actor, instanceReg, "") },
-	}
-	operations, err := api.Operations()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for id, op := range operations {
-		if op.Reauth == "" {
-			continue
-		}
-		call, ok := gated[id]
-		if !ok {
-			t.Errorf("%s is marked x-hikyo-reauth but has no proof-less probe here", id)
-			continue
-		}
-		if err := call(); !errors.Is(err, service.ErrReauthProofRequired) {
-			t.Errorf("%s without proof = %v, want ErrReauthProofRequired", id, err)
-		}
-	}
-	for id := range gated {
-		if operations[id].Reauth != api.ReauthAccountSecurity {
-			t.Errorf("%s is reauth-gated in the service but not marked x-hikyo-reauth", id)
-		}
 	}
 
 	if _, err := reg.Put(ctx, actor, instanceReg, in, ""); !errors.Is(err, service.ErrReauthProofRequired) {

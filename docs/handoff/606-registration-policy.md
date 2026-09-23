@@ -196,14 +196,34 @@ use-time call.
   (the reauth proof, required). `signup_methods` matches the spelling
   `[{kind, slug} | "local"]` exactly: a `oneOf` of `ProviderRef` and the
   string `local` (`LocalSignupMethod`).
-- **`x-hikyo-reauth: account-security`** (spec 3.1) is on the four policy
-  mutations and read by `api/spec.go`: the reader refuses a marked operation
-  whose required JSON body lacks a string `proof`, and refuses any class but
-  `account-security`. The isolation suite drives every marked operation's
-  service without proof and asserts the refusal, and asserts every
-  proof-gated registration call is marked, so the extension and the gate
-  cannot drift. Older reauth-gated operations (SCIM credential mint, recovery
-  codes, passkeys) are not yet marked; marking them is a separate sweep.
+- **`x-hikyo-reauth`** (spec 3.1) marks every proof-gated operation, not only
+  the policy mutations. It is an object `{class, proof, presence[, member,
+  values]}` naming the body members that carry the proof and when the proof
+  is required, and `api/spec.go` checks each declaration against its request
+  schema. The presence rules model the real shapes precisely:
+  - `required`: one member, a required string (the four registration-policy
+    mutations, `regenerateRecoveryCodes`, `unlinkIdentity`, `linkIdentity`
+    with `proof`; `enrolTotpStart`, `removeTotp` with `password`);
+  - `selected`: `password` and `code`, both optional, the service selecting
+    which one the account's standing credentials make the proof
+    (`enrolPasskeyStart`, `removePasskey`);
+  - `session`: one optional member required for every session caller, the
+    schema admitting its absence only for local host authority
+    (`mintScimCredential`);
+  - `when-value`: required when `purpose` is `link` (`oidcStart`,
+    `samlStart`);
+  - `when-changed`: required when `username` changes (`updateMyProfile`).
+  The class is `account-security` throughout. The check is bidirectional
+  twice over: statically (`api/reauth_extension_test.go`), every operation
+  whose body carries a `proof`, `password` or `code` member is marked or exempt
+  by name with a reason (the credential IS the ceremony: login, establish,
+  recovery begin, the login challenge, TOTP confirm and step-up, the TOTP
+  reauth ceremony, and the two handoff-code redemptions), and every marked
+  operation carries one; at runtime (`internal/isolation/reauth_gate_e2e_test.go`,
+  both engines), every marked operation's service refuses on a real account
+  when the proof is absent (for a conditional gate, when its condition holds),
+  and every probe names a marked operation. Mutation-checked: dropping one
+  mark fails both halves.
 - **Operation names** carry `-org` / `-instance` (the `member.invite-*` shape);
   spec 3.2 names the verbs only.
 - **Event payloads** add `scope` beside the spec's fields.

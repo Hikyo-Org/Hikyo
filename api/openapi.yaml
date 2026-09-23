@@ -471,6 +471,7 @@ paths:
         factor already standing is refused (`400`).
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [password], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -759,6 +760,7 @@ paths:
         password class; the reissued token is returned.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [password], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -799,6 +801,7 @@ paths:
         returned and MUST replace the old one.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -2089,7 +2092,7 @@ paths:
       x-hikyo-operation: registration-policy.put-instance
       x-hikyo-formula: [manage-members@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-reauth: account-security
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -2134,7 +2137,7 @@ paths:
       x-hikyo-operation: registration-policy.delete-instance
       x-hikyo-formula: [manage-members@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-reauth: account-security
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -2428,7 +2431,7 @@ paths:
       x-hikyo-operation: registration-policy.put-org
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-reauth: account-security
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -2473,7 +2476,7 @@ paths:
       x-hikyo-operation: registration-policy.delete-org
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-reauth: account-security
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4350,6 +4353,7 @@ paths:
         `link` verifies the account-security proof up front (A6).
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: when-value, member: purpose, values: [link]}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4459,6 +4463,7 @@ paths:
         this provider's ACS path; it is never returned in JSON.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [none, human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: when-value, member: purpose, values: [link]}
       x-hikyo-min-revision: 1
       security:
         - {}
@@ -4592,6 +4597,7 @@ paths:
       description: Updates the username and display name. The email is not profile data and cannot be set here; only verified local sign-up writes a verified one. Provisioned names remain controlled by SCIM. Username changes require current account proof.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: when-changed, member: username}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4705,6 +4711,7 @@ paths:
         Returns the IdP authorization URL; the link lands at the callback.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4745,6 +4752,7 @@ paths:
         reissues the acting session. The reissued token replaces the old one.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4832,6 +4840,7 @@ paths:
         `enrol/finish` completes the enrolment.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [password, code], presence: selected}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -5157,6 +5166,7 @@ paths:
         delivered on the `__Host-hikyo` cookie.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [password, code], presence: selected}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -7122,6 +7132,7 @@ paths:
       x-hikyo-operation: scim-credential.mint
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: session}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
