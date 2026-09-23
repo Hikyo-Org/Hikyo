@@ -211,6 +211,38 @@ describe('AuthProvider', () => {
     expect(text(container, 'codes')).toBe(code);
   });
 
+  it('keeps a gated session gated across the recovery-code remint (#785)', async () => {
+    let cookie = '__Host-hikyo-csrf=original';
+    vi.spyOn(document, 'cookie', 'get').mockImplementation(() => cookie);
+    const response = deferred<Response>();
+    const verification = deferred<Response>();
+    const replacement = { ...identity('01', '10'), enrolment_required: true };
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ ...identity('00', '10'), enrolment_required: true }))
+      .mockReturnValueOnce(response.promise)
+      .mockReturnValueOnce(verification.promise));
+    function RecoverySurface() {
+      const auth = useAuth();
+      const operation = useRegenerateRecoveryCodes();
+      return <><button onClick={() => operation.mutate({ proof: 'proof' })}>Replace codes</button>
+        <output data-testid="codes">{operation.codes?.join(',')}</output>
+        <output data-testid="gated">{String(auth.identity?.enrolment_required)}</output></>;
+    }
+    const { container } = await renderAuth(<AuthProvider><RecoverySurface /></AuthProvider>);
+    await settle();
+    expect(text(container, 'gated')).toBe('true');
+    await act(async () => container.querySelector('button')?.click());
+    cookie = '__Host-hikyo-csrf=reminted';
+    const { capabilities: _omitted, enrolment_required: _flag, ...login } = replacement;
+    await act(async () => response.resolve(json({ recovery_codes: ['code'], login })));
+    await act(async () => verification.resolve(json(replacement)));
+    await settleTask();
+    expect(text(container, 'codes')).toBe('code');
+    // The result is a LoginResult without the flag; whoami proved the remint
+    // still gated, and dropping it would paint the shell over the gate.
+    expect(text(container, 'gated')).toBe('true');
+  });
+
   it.each(['dismiss', 'resolved-before-dismiss', 'unmount', 'logout', 'same-principal-replacement', 'different-principal-replacement'])
   ('refuses a deferred recovery handoff after %s', async (boundary) => {
     const response = deferred<Response>();
@@ -543,6 +575,37 @@ describe('AuthProvider', () => {
     await settle();
     expect(text(container, 'state')).toContain(`authenticated:${id('ses', '01')}`);
     expect(text(container, 'operator')).toBe('true');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('holds a sign-in from anonymous on transitioning until whoami says whether it is gated', async () => {
+    const mutationResult = deferred<WhoAmI>();
+    const hydration = deferred<Response>();
+    const fetchMock = vi
+      .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+      .mockResolvedValueOnce(json({}, 401))
+      .mockReturnValueOnce(hydration.promise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe mutationResult={mutationResult} />
+      </AuthProvider>,
+    );
+    await settle();
+    expect(text(container, 'state')).toBe('anonymous');
+
+    await act(async () => container.querySelectorAll('button')[2]?.click());
+    await act(async () => mutationResult.resolve(loginIdentity('01', '11')));
+    await settle();
+    // A sign-in result cannot say whether the session is confined to the
+    // enrolment gate (#785), so nothing session-owned paints until whoami does.
+    expect(text(container, 'state')).toBe('transitioning');
+    expect(text(container, 'private')).toBe('');
+
+    await act(async () => hydration.resolve(json({ ...identity('01', '11'), enrolment_required: true })));
+    await settle();
+    expect(text(container, 'state')).toContain(`authenticated:${id('ses', '01')}`);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

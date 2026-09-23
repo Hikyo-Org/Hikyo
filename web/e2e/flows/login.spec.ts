@@ -11,8 +11,15 @@ import {
 import { z } from 'zod';
 
 import { fixtureApiCall, fixtureBearer } from '../fixtures/api.ts';
+import {
+  ADMIN,
+  BASE_URL,
+  OIDC_PROVIDER,
+  nextTotpCode,
+  passEnrolmentGate,
+  readSeed,
+} from '../fixtures/instance.ts';
 import { withPasskeyPage } from '../fixtures/passkey.ts';
-import { ADMIN, BASE_URL, OIDC_PROVIDER, nextTotpCode, readSeed } from '../fixtures/instance.ts';
 
 /** publicPost is an unauthenticated JSON POST, parsed at the boundary. */
 async function publicPost<T>(path: string, body: unknown, schema: z.ZodType<T>): Promise<T> {
@@ -503,8 +510,87 @@ test.describe('login', () => {
       await expect(page.locator('.login__card').getByRole('alert')).toBeVisible();
       await page.getByLabel('Password').fill(newPassword);
       await page.getByRole('button', { name: 'Sign in' }).click();
+      // No factor stands on this account, so the product-default `required`
+      // policy gates the new session into enrolment (#785) before the shell.
+      await passEnrolmentGate(page, newPassword);
       await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
       expect((await page.content()).includes(code ?? ''), 'the recovery code outlived the ceremony').toBe(false);
+    } finally {
+      await context.close();
+    }
+  });
+
+  // The sign-in enrolment gate and the passkey second factor (#785), under the
+  // product-default `required` policy: an unenrolled invitee signs in, is
+  // confined to the gate whatever path it asks for, re-proves its password,
+  // stores its recovery codes and enrols a passkey; its next sign-in answers
+  // the #760 challenge with that passkey through the button, not the code.
+  test('gates an unenrolled account into enrolment, then signs in with its passkey as the second factor', async ({ browser }, testInfo) => {
+    const seed = readSeed();
+    const username = `gated-${testInfo.project.name}-${Date.now().toString(36)}`;
+    const password = 'a password for an account with no factor yet';
+    const admin = await fixtureBearer('the enrolment gate fixture');
+    const stepped = await fixtureApiCall(
+      admin,
+      'POST',
+      '/api/v1/auth/totp/step-up',
+      z.object({ session_token: z.string() }),
+      { code: await nextTotpCode() },
+    );
+    const invitation = await fixtureApiCall(
+      stepped.session_token,
+      'POST',
+      `/api/v1/orgs/${seed.org}/invitations`,
+      z.object({ authority: z.string(), principal_id: z.string() }),
+      { username },
+    );
+    await publicPost(
+      '/api/v1/auth/credential/establish',
+      { authority: invitation.authority, password },
+      z.object({}),
+    );
+
+    const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    try {
+      // An empty authenticator of its own: the shared admin passkey must not
+      // be replaced by this account's resident credential.
+      await withPasskeyPage(await context.newPage(), 'empty', async (page) => {
+        const signIn = async () => {
+          await page.goto('/login');
+          await page.getByLabel('Username').fill(username);
+          await page.getByLabel('Password').fill(password);
+          await page.getByRole('button', { name: 'Sign in' }).click();
+        };
+
+        await signIn();
+        await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
+        await expect(page.getByRole('button', { name: /skip|later|not now|without/i })).toHaveCount(0);
+        // Confined: a deep link lands back on the gate, no shell renders.
+        await page.goto('/projects');
+        await expect(page).toHaveURL(/\/login$/);
+        await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
+        await expect(page.getByRole('list', { name: 'Breadcrumb' })).toHaveCount(0);
+
+        await page.getByLabel('Password').fill(password);
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await expect(page.getByRole('heading', { name: 'Store your recovery codes' })).toBeVisible();
+        await expect(page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem')).not.toHaveCount(0);
+        const proceed = page.getByRole('button', { name: 'Continue' });
+        await expect(proceed).toBeDisabled();
+        await page.getByRole('checkbox').check();
+        await proceed.click();
+        await page.getByRole('button', { name: 'Create a passkey' }).click();
+        await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+
+        // A fresh sign-in: the passkey now stands, so the password answers a
+        // challenge, and the passkey button completes it.
+        await context.clearCookies();
+        await signIn();
+        await expect(page.getByRole('heading', { name: 'Present your second factor' })).toBeVisible();
+        await expect(page.getByLabel('Authenticator code')).toHaveCount(0);
+        await page.getByRole('button', { name: 'Use a passkey' }).click();
+        await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+      });
     } finally {
       await context.close();
     }

@@ -33,7 +33,7 @@ type Policy = 'require-second-factor' | 'allow-unenrolled';
 type Stage =
   | { at: 'sign-in'; busy: SignInBusy; error: string | null }
   | { at: 'challenge'; username: string; busy: 'code' | 'passkey' | null; error: string | null }
-  | { at: 'setup'; username: string; step: SetupStep; busy: 'totp' | 'passkey' | 'code' | null; error: string | null }
+  | { at: 'setup'; username: string; step: SetupStep; busy: 'password' | 'totp' | 'passkey' | 'code' | null; error: string | null }
   | { at: 'done'; how: string; assurance: string };
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 400));
@@ -54,7 +54,7 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
     if (scenario === 'password-enrolled') {
       setStage({ at: 'challenge', username, busy: null, error: null });
     } else if (policy === 'require-second-factor') {
-      setStage({ at: 'setup', username, step: { kind: 'choose' }, busy: null, error: null });
+      setStage({ at: 'setup', username, step: { kind: 'password' }, busy: null, error: null });
     } else {
       setStage({ at: 'done', how: 'Password', assurance: 'password (single factor)' });
     }
@@ -93,7 +93,21 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
     });
   };
 
+  const done = () =>
+    setStage({ at: 'done', how: 'Password, then enrolled a factor', assurance: 'password + newly enrolled factor' });
+
   const setup = {
+    password: async (username: string, value: string) => {
+      setStage({ at: 'setup', username, step: { kind: 'password' }, busy: 'password', error: null });
+      await tick();
+      if (value !== 'correct') {
+        setStage({ at: 'setup', username, step: { kind: 'password' }, busy: null, error: wrongPassword });
+        return;
+      }
+      setStage({ at: 'setup', username, step: codesStep, busy: null, error: null });
+    },
+    codesStored: (username: string) =>
+      setStage({ at: 'setup', username, step: { kind: 'choose' }, busy: null, error: null }),
     chooseTotp: async (username: string) => {
       setStage({ at: 'setup', username, step: { kind: 'choose' }, busy: 'totp', error: null });
       await tick();
@@ -102,7 +116,7 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
     choosePasskey: async (username: string) => {
       setStage({ at: 'setup', username, step: { kind: 'choose' }, busy: 'passkey', error: null });
       await tick();
-      setStage({ at: 'setup', username, step: codesStep, busy: null, error: null });
+      done();
     },
     confirm: async (username: string, value: string) => {
       setStage({ at: 'setup', username, step: totpStep, busy: 'code', error: null });
@@ -111,10 +125,8 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
         setStage({ at: 'setup', username, step: totpStep, busy: null, error: wrongCode });
         return;
       }
-      setStage({ at: 'setup', username, step: codesStep, busy: null, error: null });
+      done();
     },
-    done: () =>
-      setStage({ at: 'done', how: 'Password, then enrolled a factor', assurance: 'password + newly enrolled factor' }),
   };
 
   switch (stage.at) {
@@ -151,10 +163,11 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
           passkeys
           busy={stage.busy}
           error={stage.error}
+          onPassword={(value) => void setup.password(stage.username, value)}
+          onCodesStored={() => setup.codesStored(stage.username)}
           onChooseTotp={() => void setup.chooseTotp(stage.username)}
           onChoosePasskey={() => void setup.choosePasskey(stage.username)}
           onConfirmCode={(value) => void setup.confirm(stage.username, value)}
-          onDone={setup.done}
         />
       );
     case 'done':
@@ -227,22 +240,28 @@ export const AuthenticatorCodeRefused: FlowStory = {
   },
 };
 
-/** Nothing enrolled, instance requires a factor: gated into enrolment, through to the codes. */
+/**
+ * Nothing enrolled, instance requires a factor: gated into enrolment. The
+ * password is re-proved, the recovery codes come first (the password proves
+ * them only until an authenticator stands), then the factor completes it.
+ */
 export const UnenrolledIsGatedIntoSetup: FlowStory = {
   args: { scenario: 'password-unenrolled', policy: 'require-second-factor' },
   play: async ({ canvas }) => {
     await signInWithPassword(canvas);
     await expect(await canvas.findByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
     await expect(canvas.queryByRole('button', { name: /skip|later|not now|without/i })).toBeNull();
-    await userEvent.click(canvas.getByRole('button', { name: 'Use an authenticator app' }));
-    await expect(await canvas.findByRole('img', { name: /enrolment qr/i })).toBeVisible();
-    await userEvent.type(canvas.getByLabelText('Authenticator code'), '123456');
-    await userEvent.click(canvas.getByRole('button', { name: 'Confirm and enrol' }));
+    await userEvent.type(canvas.getByLabelText('Password'), 'correct');
+    await userEvent.click(canvas.getByRole('button', { name: 'Continue' }));
     await expect(await canvas.findByRole('heading', { name: 'Store your recovery codes' })).toBeVisible();
-    const proceed = canvas.getByRole('button', { name: 'Continue to Hikyo' });
+    const proceed = canvas.getByRole('button', { name: 'Continue' });
     await expect(proceed).toBeDisabled();
     await userEvent.click(canvas.getByRole('checkbox'));
     await userEvent.click(proceed);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Use an authenticator app' }));
+    await expect(await canvas.findByRole('img', { name: /enrolment qr/i })).toBeVisible();
+    await userEvent.type(canvas.getByLabelText('Authenticator code'), '123456');
+    await userEvent.click(canvas.getByRole('button', { name: 'Confirm and enrol' }));
     await expect(await canvas.findByRole('heading', { name: 'Signed in' })).toBeVisible();
   },
 };

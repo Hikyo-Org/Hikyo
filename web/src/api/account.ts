@@ -238,6 +238,40 @@ export function useRegenerateRecoveryCodes() {
   };
 }
 
+/**
+ * useEnrolmentGateCodes issues the sign-in enrolment gate's recovery codes
+ * (#785), proved by the password while no factor stands. The same guarded
+ * account-session handoff as useRegenerateRecoveryCodes delivers them, and it
+ * carries the password with them: the factor enrolment that follows needs it
+ * again, and the remint this mutation causes retires every other sensitive
+ * value on the page. Both live only as long as the gate does.
+ */
+export function useEnrolmentGateCodes() {
+  const auth = useAuth();
+  const [held, , prepareTransfer] = useSensitiveState<{
+    readonly codes: readonly string[];
+    readonly password: string;
+  } | null>(null);
+  const operation = useSensitiveMutation({
+    onMutate: auth.captureTransition,
+    mutationFn: (password: string) =>
+      parsed(regenerateRecoveryCodesOp, { body: { proof: password } }),
+    onSuccess: (result, password, guard) => {
+      if (guard === undefined || !auth.acceptAccountSession(result.login, guard,
+        prepareTransfer({ codes: result.recovery_codes, password }, {
+          sessionId: result.login.session.id, principalId: result.login.principal.id,
+        }))) throw new Error('The account session changed before its recovery codes could be displayed.');
+    },
+    onError: () => { void auth.refreshSession(); },
+  });
+  return {
+    held,
+    isPending: operation.isPending,
+    error: operation.error,
+    issue: (password: string) => operation.mutate(password),
+  };
+}
+
 export function useUnlinkIdentity() {
   const after = useAfterAccountMutation();
   return useSensitiveMutation({

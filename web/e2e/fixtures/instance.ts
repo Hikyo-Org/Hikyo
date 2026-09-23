@@ -1,4 +1,4 @@
-import { chromium, type CDPSession, type Page } from '@playwright/test';
+import { chromium, expect, type CDPSession, type Page } from '@playwright/test';
 import { z } from 'zod';
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -832,13 +832,11 @@ async function startInstanceAt(
         // keeps every other part of the path real (ceremony, outbox, ledger,
         // audit) and is refused outside --dev.
         HIKYO_DEV_ADAPTER_FAKE_PROVIDER: 'true',
-        // Second-factor policy `optional` (#760): the flows exercise the login
-        // CHALLENGE through the enrolled administrator (a factor that stands is
-        // never skippable regardless of policy), while unenrolled accounts — the
-        // recovery invitee, say — sign in without the enrolment gate, whose SPA
-        // lands with the migration series (#785). The gate's server enforcement
-        // has its own isolation coverage. Fresh installs still default `required`.
-        HIKYO_SECOND_FACTOR: 'optional',
+        // No HIKYO_SECOND_FACTOR: the suite runs under the product default,
+        // `required` on a fresh install (#760, #785). A factor that stands is
+        // presented at sign-in, and an unenrolled account (an invitee, a
+        // recovered account) lands on the SPA enrolment gate; flows walk it
+        // with `passEnrolmentGate`.
       },
     },
   );
@@ -1932,19 +1930,61 @@ export async function nextTotpCode(): Promise<string> {
  * factor step. It fills a code and presents it, leaving the page on the
  * authenticated shell. The viewing administrator (A) uses the cross-worker
  * `nextTotpCode` bookkeeping; the serving administrator (B) has no such
- * bookkeeping, so its `otpauth` is passed and a fresh time step is waited into
- * first, so the code is neither the enrol/step-up step nor a replay.
+ * bookkeeping, so its `otpauth` is passed and a refused step is followed by
+ * the next one inside the skew window.
  */
 export async function completeSecondFactor(page: Page, otpauth?: string): Promise<void> {
   const code = page.getByLabel('Authenticator code');
   await code.waitFor();
   if (otpauth === undefined) {
     await code.fill(await nextTotpCode());
-  } else {
-    await new Promise((resolve) => setTimeout(resolve, (30 - (Math.floor(Date.now() / 1000) % 30) + 1) * 1000));
-    await code.fill(totpCode(otpauth));
+    await page.getByRole('button', { name: 'Present code' }).click();
+    return;
   }
-  await page.getByRole('button', { name: 'Present code' }).click();
+  // B keeps no cross-process step ledger, so its current step may already be
+  // spent (setup, a sibling flow). Present the current step's code and, when the
+  // server refuses it, the next step's, which the skew window accepts now,
+  // rather than sleeping into a fresh step: that sleep alone could outlast a
+  // test's budget.
+  for (const ahead of [0, 1]) {
+    await code.fill(totpCode(otpauth, new Date(Date.now() + ahead * TOTP_PERIOD * 1000)));
+    const answered = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        /\/api\/v1\/auth\/login\/challenge\/[^/]+\/totp$/.test(new URL(response.url()).pathname),
+    );
+    await page.getByRole('button', { name: 'Present code' }).click();
+    if ((await answered).ok()) return;
+  }
+  throw new Error('the serving administrator\'s challenge refused both the current and the next step');
+}
+
+/**
+ * passEnrolmentGate walks the sign-in enrolment gate (#785) an unenrolled
+ * account lands on after its password under the `required` policy: re-prove
+ * the password, store the recovery codes, enrol an authenticator. It returns
+ * the enrolled otpauth URI once the gate has handed over to the app (callers
+ * assert their own settle point), so a later sign-in can answer that account's
+ * challenge with `totpCode`. The confirm spends the current time step.
+ */
+export async function passEnrolmentGate(page: Page, password: string): Promise<string> {
+  await expect(page.getByRole('heading', { name: 'Set up a second factor' })).toBeVisible();
+  await page.getByLabel('Password').fill(password);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('heading', { name: 'Store your recovery codes' })).toBeVisible();
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await page.getByRole('button', { name: 'Use an authenticator app' }).click();
+  const secret = await page.locator('.login__secret code').textContent();
+  if (secret === null || secret === '') {
+    throw new Error('the enrolment gate showed no authenticator key');
+  }
+  const otpauth = `otpauth://totp/Hikyo?secret=${encodeURIComponent(secret)}`;
+  await page.getByLabel('Authenticator code').fill(totpCode(otpauth));
+  await page.getByRole('button', { name: 'Confirm and enrol' }).click();
+  // The reissued session carries no gate, so `/login` hands over to the app.
+  await expect(page).not.toHaveURL(/\/login$/);
+  return otpauth;
 }
 
 /** Decide from the file-cookie probe whether re-minting is necessary. */

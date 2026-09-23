@@ -1,4 +1,5 @@
 export { CLIReauth } from '../../routes/CLIReauth.tsx';
+export { EnrolmentGate } from '../../routes/EnrolmentGate.tsx';
 export { EstablishCredential } from '../../routes/EstablishCredential.tsx';
 export { Login } from '../../routes/Login.tsx';
 export { OIDCDone } from '../../routes/OIDCDone.tsx';
