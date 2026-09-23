@@ -142,7 +142,7 @@ The remaining rows have separate owners:
 
 | Gap | Follow-up |
 | --- | --- |
-| Kubernetes CR conditions | [#683](https://github.com/Hikyo-Org/Hikyo/issues/683): design controller-to-server reporting before adding a live-status UI |
+| Kubernetes CR conditions | [#683](https://github.com/Hikyo-Org/Hikyo/issues/683): decisions locked in [k8s-condition-reporting.md](../../adr/k8s-condition-reporting.md); server, operator, UI and validation tickets listed there. Until they ship the tab keeps stating that conditions live only in the cluster |
 | Social sign-in family | #615, explicitly excluded from #680 |
 
 The shared-secret-default row from #680 was based on superseded inheritance

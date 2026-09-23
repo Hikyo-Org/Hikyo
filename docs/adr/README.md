@@ -44,6 +44,7 @@ for its ripple register.
 | import-paths ADR | [import-paths.md](./import-paths.md) |
 | inheritance-model ADR (superseded) | [inheritance-model.md](./inheritance-model.md) |
 | k8s-integration ADR | [k8s-integration.md](./k8s-integration.md) |
+| k8s-condition-reporting ADR | [k8s-condition-reporting.md](./k8s-condition-reporting.md) |
 | machine-identities ADR | [machine-identities.md](./machine-identities.md) |
 | mcp-server ADR | [mcp-server.md](./mcp-server.md) |
 | multi-instance ADR | [multi-instance.md](./multi-instance.md) |

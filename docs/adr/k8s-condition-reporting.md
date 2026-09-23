@@ -1,13 +1,17 @@
-# Hikyo delivery-target condition reporting (ADR, PROPOSED 2026-09-23)
+# Hikyo delivery-target condition reporting (ADR, decision locked 2026-09-23)
 
-> **Status: PROPOSED, not locked.** Drafted for grilling on
-> [#683](https://github.com/Hikyo-Org/Hikyo/issues/683). Every decision below
-> carries lettered options and a recommendation; nothing here is operative
-> until the owner locks it and the [oss-mechanics.md](./oss-mechanics.md)
-> § Governance review has run (or been explicitly waived by the owner). **No
-> reporting implementation is authorized by this ADR alone.** Until operative,
-> the web UI keeps its current statement that Kubernetes conditions live only
-> in the cluster.
+> **Status: decision locked; operative upon the governance PR merging.** The
+> owner locked every decision below on 2026-09-23 via grilling on
+> [#683](https://github.com/Hikyo-Org/Hikyo/issues/683), choosing the
+> recommended option in each case. The owner **waived the cross-provider
+> adversarial review** that the [oss-mechanics.md](./oss-mechanics.md)
+> amendment procedure normally requires (recorded on #683 and in
+> [the handoff](../handoff/683-k8s-condition-reporting.md)); a same-provider
+> review stands in and is not a cross-provider review. **No reporting
+> implementation is authorized by this ADR alone**: each implementation ticket
+> listed below lands under its own review. Until the server and operator
+> tickets ship, the web UI keeps its statement that Kubernetes conditions live
+> only in the cluster.
 
 ## Context
 
@@ -266,28 +270,33 @@ redacted.
 | ops-spec | quota, budget, staleness and retention values per D5, D6, D8 |
 | api-cli-surface | integration-neutral report and list operations |
 
-## Implementation tickets (filed only after lock)
+## Implementation tickets
 
-1. **Governance**: amendment banners on the ADRs above, ops-catalogue rows with
-   `x-hikyo-formula`, ADR index. No code. Depends on lock.
-2. **Server**: atom and allowlist, report table and purge sweep, report and
+1. **Governance** (landed with this ADR): amendment banners on the ADRs
+   above, ops-catalogue value rows, ADR index, UI-audit link. No code. The
+   operations' `x-hikyo-formula` entries land with the server ticket's OpenAPI
+   change, since the formula is a property of the operation it annotates.
+2. **Server** ([#788](https://github.com/Hikyo-Org/Hikyo/issues/788)): atom and allowlist, report table and purge sweep, report and
    list endpoints, budget bucket, audit events, `/meta` capability. Depends on
-   1. Acceptance: cross-tenant and revoked-principal reports are uniform 404;
+   1 only. Acceptance: cross-tenant and revoked-principal reports are uniform 404;
    unknown vocabulary 422; out-of-order 409; quota 409; value-free schema
    pinned by a test that fails on any string field outside the closed enums
    and name grammar.
-3. **Operator**: capability probe, reporter after cursor persist, tombstone
+3. **Operator** ([#789](https://github.com/Hikyo-Org/Hikyo/issues/789)): capability probe, reporter after cursor persist, tombstone
    on delete, Helm value, Namespace `get`. Depends on 2's OpenAPI contract.
    Acceptance: reporting failure never changes conditions, Secret or cursor;
    no report contains message text.
-4. **Web UI**: Kubernetes tab rows and states, remote workspace mapping.
+4. **Web UI** ([#790](https://github.com/Hikyo-Org/Hikyo/issues/790)): Kubernetes tab rows and states, remote workspace mapping.
    Depends on 2. Acceptance: missing, stale and reporter-revoked never render
    as healthy; Storybook states for each.
-5. **Validation**: end-to-end from a real operator (kind/k3d) to the browser:
+5. **Validation** ([#791](https://github.com/Hikyo-Org/Hikyo/issues/791)): end-to-end from a real operator (kind/k3d) to the browser:
    cross-tenant refusal, revoked credential, out-of-order update, stale after
    stop, deletion tombstone, secret-safe payload capture. Depends on 2, 3, 4.
 
-## Open questions for grilling
+## Locked decisions (grilling 2026-09-23)
 
-D1, D2, D3 display labels, D5 ordering, D7 and D9 default are the choices; the
-rest are consequences. Recommendations: D1 b, D2 c, D3 a, D5 a, D7 a, D9 a.
+D1 b (new `report-delivery-status` atom), D2 c (server-observed and
+controller-reported layers, never merged), D3 a (namespace and CR name shown),
+D4 key names excluded, D5 a (generation then timestamp ordering), D7 a
+(environment `read` views status), D9 a (reporting default on, capability
+probed). Every other section follows from these and is locked with them.
