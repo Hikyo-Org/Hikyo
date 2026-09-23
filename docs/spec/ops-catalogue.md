@@ -131,12 +131,12 @@ is a directory listing, so neither adds a resource class.
 | Target rows per service-account principal | 100 (named 409 refusal beyond) | fixed |
 | Report body size | ≤ 8 KiB | fixed |
 | Report budget per principal | 60/min, separate from delivery fetches | fixed |
-| Report budget per org | 300/min, separate from delivery fetches | fixed |
+| Report budget per org | 300/min, separate from delivery fetches; binding above about 1500 reporting CRs per org (heartbeat load `CRs / 5` per min), beyond which rows read stale | fixed |
 | Report heartbeat interval | `max(spec.resyncInterval, 5 min)`, at most 24 h | fixed |
 | Staleness threshold | `2 × report_interval + 5 min` (server clamps `report_interval` to [5 min, 24 h]) | fixed |
 | `reported_at` future skew | 5 min | fixed |
 | Purge after last accepted report | 30 days | fixed |
-| Per-CR suppression after 401/404/413/422 | 1 h, or until generation, credential reference or reportable content changes | fixed |
+| Per-CR suppression after 401/404/413/422 | 1 h, or until generation, credential reference or reportable content changes, or a successful fetch after a 401 | fixed |
 | Operator report timeout | 5 s, one attempt per reconcile | fixed |
 | Operator `/meta` capability cache | 10 min per `HikyoInstance` | fixed |
 

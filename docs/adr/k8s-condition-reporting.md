@@ -159,7 +159,7 @@ Derived UI state per row, computed at read time, never stored as "healthy":
 | --- | --- |
 | `unknown` | no row, or server/operator lacks the capability |
 | `stale` | `now - received_at > 2 * report_interval + 5 min` (5 min = max error backoff), `report_interval` clamped server-side to [5 min, 24 h] |
-| `refused` | the most recent report for an existing row was refused after the last accepted one (vocabulary, ordering or size); the row carries the closed refusal cause and time |
+| `refused` | the most recent report for an existing row was refused after the last accepted one for vocabulary (422) or size (413); the row carries the closed refusal cause and time |
 | `reporter-revoked` | the principal no longer holds `report-delivery-status`, or holds no live credential (every `hikyo-token` revoked or expired and no active federation binding) |
 | `reported` | fresh; shows the conditions exactly as asserted, with "reported by controller, `<age>` ago" |
 
@@ -173,8 +173,11 @@ Ordering, per row:
   retries and leader handover.
 - **(b) Last received wins.**
 
-**Recommendation: (a).** Out-of-order refusals are answered 409 and are not
-retried.
+**Recommendation: (a).** Out-of-order refusals are answered 409, audited and
+dropped: they are never retried and never recorded on the row. An
+out-of-order report is older than accepted state, so it says nothing about
+controller health, and surfacing it would flag a working target after every
+leader handover.
 
 The `refused` state records only refusals the server may attribute to an
 existing row under a principal that holds the grant. An authorization refusal
@@ -219,12 +222,19 @@ redacted.
 - **Separate budget bucket**: 60/min per principal, 300/min per org, charged
   after authorization, so a report storm cannot starve fetches. Sized to the
   quota: 100 rows at the 5 min heartbeat floor is 20/min, leaving room for
-  change-driven reports. A 429 is a failed report (D9); a persistently
-  throttled row reads `stale`, never healthy.
+  change-driven reports. The org bucket is the binding bound: heartbeat load
+  is `CRs / 5` per minute, so an org above about 1500 reporting CRs throttles
+  legitimate heartbeats. That ceiling is documented, not discovered. A 429 is
+  a failed report (D9); a persistently throttled row reads `stale`, never
+  healthy.
 
 ### D9. Operator behavior and failure
 
-- Report **after** the cursor is persisted, and on CR deletion (tombstone).
+- Report at the **end of every reconcile, after the status subresource
+  write** (the last write of a reconcile, after the cursor on the success
+  path; on a failed fetch there is no cursor write and the report still
+  follows the status write), and on CR deletion (tombstone). The report is
+  derived from the status just written.
   A reconcile reports when the reportable content (D4 fields other than
   `reported_at`) changed, or when the heartbeat is due: `report_interval =
   max(spec.resyncInterval, 5 min)`, capped at 24 h. The 5 min floor keeps a
@@ -234,7 +244,10 @@ redacted.
   (reporting about reporting is recursive and would perturb `Ready`).
 - **Per-CR suppression, never instance-wide.** A 401, 404, 413 or 422 on a
   CR's report suppresses reporting **for that CR only** for 1 h, or until its
-  generation, credential reference or reportable content changes. A 401 is the
+  generation, credential reference or reportable content changes, or until a
+  delivery fetch under the same credential succeeds after a 401. A grant
+  added by a human is therefore visible within the hour; for the target
+  persona that latency is accepted. A 401 is the
   same dead credential the fetch path already surfaces through
   `Synced=False/FetchFailed`; the server shows the row `reporter-revoked`
   when no live credential remains, or `stale` otherwise. Because the
@@ -334,5 +347,10 @@ controller-reported layers, never merged), D3 a (namespace and CR name shown),
 D4 key names excluded, D5 a (generation then timestamp ordering), D7 a
 (environment `read` views status), D9 a (reporting default on, capability
 probed). D6, D8, D10 and D11 carried no open alternative and are locked with
-them, including the review fixes of 2026-09-23 (per-CR suppression, `refused`
-state, 5 min heartbeat floor, budget sized to quota, closed `reporter`).
+them.
+
+**Post-lock review corrections (2026-09-23), pending owner confirmation:**
+per-CR suppression instead of an instance-wide 404 disable; the `refused`
+state (422/413 only); change-or-heartbeat report cadence with a 5 min floor;
+per-principal budget 60/min sized to the row quota; closed `reporter` enum;
+report timing after the status write.
