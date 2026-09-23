@@ -22,7 +22,7 @@ import {
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
-import { enrolledAccount } from '../fixtures/accounts.ts';
+import { enrolledAccount, TOTP_STEP_MS } from '../fixtures/accounts.ts';
 import { withPasskeyPage } from '../fixtures/passkey.ts';
 
 /** publicPost is an unauthenticated JSON POST, parsed at the boundary. */
@@ -775,10 +775,16 @@ test.describe('sign-up door', () => {
 
   test('opens only while registration is open, confirms, and lands a new account in its own org', async ({ page, browser }, testInfo) => {
     const subject = `signup-${testInfo.project.name}-${Date.now().toString(36)}`;
-    // Its own instance operator, with its own authenticator: two codes open
-    // its session and step it up, the third proves the policy write. Closing
-    // is a second operator's proof, so no ledger ever waits out a step.
-    const operator = await enrolledAccount(browser, 'signup-operator', 'instance');
+    // Its own instance operators, with their own authenticators: two codes
+    // enrol and step each up, a third proves its write. A fresh account holds
+    // two codes per TOTP step, so the opening proof may wait for one step
+    // boundary; the closer is enrolled now, so its proof, drawn at the end,
+    // is due by then. The budget is the default plus that one step.
+    testInfo.setTimeout(testInfo.timeout + TOTP_STEP_MS);
+    const [operator, closer] = await Promise.all([
+      enrolledAccount(browser, 'signup-operator', 'instance'),
+      enrolledAccount(browser, 'signup-closer', 'instance'),
+    ]);
     const admin = operator.bearer;
     await freshSubject(page, subject);
 
@@ -796,7 +802,7 @@ test.describe('sign-up door', () => {
       await fixtureApiCall(admin, 'PUT', policyPath, zRegistrationPolicy, {
         external: [{ provider: { kind: 'oidc', slug: OIDC_PROVIDER.slug } }],
         landing: { kind: 'fresh-org', cap: 5 },
-        proof: operator.ledger.next(),
+        proof: await operator.ledger.next(),
       });
 
       // The door on /login, and the pinned set on /signup in both schemes.
@@ -864,8 +870,7 @@ test.describe('sign-up door', () => {
       if (created !== undefined) {
         await fixtureApiCall(admin, 'DELETE', `/api/v1/orgs/${created}`, z.unknown()).catch(toleratingGone);
       }
-      const closer = await enrolledAccount(browser, 'signup-closer', 'instance');
-      await fixtureApiCall(closer.bearer, 'DELETE', policyPath, z.unknown(), { proof: closer.ledger.next() }).catch(toleratingGone);
+      await fixtureApiCall(closer.bearer, 'DELETE', policyPath, z.unknown(), { proof: await closer.ledger.next() }).catch(toleratingGone);
     }
     // Closed again: the door is gone (a fresh, signed-out page).
     await page.context().clearCookies();

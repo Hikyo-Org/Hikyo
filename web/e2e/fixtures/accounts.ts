@@ -7,31 +7,37 @@ import { totpCode } from './seed.ts';
 
 const TOTP_PERIOD = 30;
 
+/** One TOTP step, in milliseconds: the unit a flow's time budget adds. */
+export const TOTP_STEP_MS = TOTP_PERIOD * 1000;
+
 /**
  * TotpLedger is ONE account's spent-step ledger, owned by the flow that
  * created the account. The shared administrator's ledger is drawn by the
- * seeding session, fixture step-ups and both projects at once, so a third
- * draw inside one 30-second step has to wait out a boundary; a flow that
- * signs in repeatedly therefore gets its own account instead.
+ * seeding session, fixture step-ups and both projects at once, so a flow that
+ * signs in or proves repeatedly gets its own account instead.
  *
  * The server accepts a code for the step before, at, or after now, strictly
- * beyond the last step it consumed. So a fresh account presents three codes
- * inside any one step without waiting: the previous step, the current one,
- * then the next. Flows keep to three draws per account.
+ * beyond the last step it consumed, and a fresh enrolment starts with the
+ * step before its creation as consumed. So a new account presents two codes
+ * without waiting: the creation step, then the next one. A third inside the
+ * same step waits for the next boundary (at most one step), which only a flow
+ * needing three codes on one account meets, and budgets for.
  */
 export class TotpLedger {
-  private last = Number.NEGATIVE_INFINITY;
+  private last: number;
 
-  constructor(readonly otpauth: string) {}
+  constructor(readonly otpauth: string, createdAt: Date) {
+    this.last = Math.floor(createdAt.getTime() / TOTP_STEP_MS) - 1;
+  }
 
-  next(): string {
-    const now = Math.floor(Date.now() / 1000 / TOTP_PERIOD);
-    const want = Math.max(now - 1, this.last + 1);
-    if (want > now + 1) {
-      throw new Error('TotpLedger: a fourth code inside one step; give the flow another account instead of waiting');
+  async next(): Promise<string> {
+    const now = () => Math.floor(Date.now() / TOTP_STEP_MS);
+    const want = Math.max(this.last + 1, now() - 1);
+    while (want > now() + 1) {
+      await new Promise((resolve) => setTimeout(resolve, (now() + 1) * TOTP_STEP_MS - Date.now() + 50));
     }
     this.last = want;
-    return totpCode(this.otpauth, new Date(want * TOTP_PERIOD * 1000));
+    return totpCode(this.otpauth, new Date(want * TOTP_STEP_MS));
   }
 }
 
@@ -51,7 +57,7 @@ export type EnrolledAccount = {
  * the invitation lands: the seeded org with no template (it signs in and sees
  * nothing), or the instance with the `operator` template (an instance
  * operator that can administer registration). The operator's CLI session is
- * stepped up with its second code, leaving it one code for a proof.
+ * stepped up with its second code; a proof is its third.
  */
 export async function enrolledAccount(browser: Browser, label: string, scope: 'org' | 'instance'): Promise<EnrolledAccount> {
   const username = `${label}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -85,11 +91,14 @@ export async function enrolledAccount(browser: Browser, label: string, scope: 'o
   }
   const session = zLoginResult.parse(await login.json()).session_token ?? '';
   const enrolled = await fixtureApiCall(session, 'POST', '/api/v1/auth/totp/enrol/start', zTotpEnrolStartResult, { password });
-  const ledger = new TotpLedger(enrolled.otpauth_uri);
-  const confirmed = await fixtureApiCall(session, 'POST', '/api/v1/auth/totp/enrol/confirm', zLoginResult, { code: ledger.next() });
+  // Read after the answer: the server stamped the enrolment at or before now,
+  // so a boundary crossed in flight only makes the first code later, never
+  // one the server already counts as spent.
+  const ledger = new TotpLedger(enrolled.otpauth_uri, new Date());
+  const confirmed = await fixtureApiCall(session, 'POST', '/api/v1/auth/totp/enrol/confirm', zLoginResult, { code: await ledger.next() });
   let bearer = confirmed.session_token ?? '';
   if (scope === 'instance') {
-    const stepped = await fixtureApiCall(bearer, 'POST', '/api/v1/auth/totp/step-up', zLoginResult, { code: ledger.next() });
+    const stepped = await fixtureApiCall(bearer, 'POST', '/api/v1/auth/totp/step-up', zLoginResult, { code: await ledger.next() });
     bearer = stepped.session_token ?? '';
   }
   return { username, password, ledger, bearer };
