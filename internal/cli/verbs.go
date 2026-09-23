@@ -255,7 +255,7 @@ diagnostics:
   hikyo update check                                check the selected release track now
 
 hierarchy:
-  hikyo org list [-o table|json]
+  hikyo org list [--origin manual|registration] [-o table|json]
   hikyo org show <org> [-o table|json]
   hikyo org create --name <name>
   hikyo org rename <org> --name <new-name>
@@ -1423,9 +1423,13 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 		format      string
 		orgName     string
 		acknowledge string
+		origin      string
 	)
 	st, flags, err := parseCommon("org "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
+		if sub == "list" {
+			fs.StringVar(&origin, "origin", "", "only orgs of this origin: manual or registration (self-served)")
+		}
 		if sub == "create" || sub == "rename" {
 			fs.StringVar(&orgName, "name", "", "organisation name")
 			ackFlag(fs, &acknowledge)
@@ -1460,6 +1464,8 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 		return failf(ExitUsage, "usage: hikyo org create --name <name>")
 	case sub == "rename" && orgName == "":
 		return failf(ExitUsage, "usage: hikyo org rename <org> --name <new-name>")
+	case origin != "" && origin != "manual" && origin != "registration":
+		return failf(ExitUsage, "usage: hikyo org list [--origin manual|registration]")
 	}
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
@@ -1469,15 +1475,19 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 	switch sub {
 	case "list":
 		var list apigen.OrgList
-		if err := client.Do(ctx, http.MethodGet, api.PathPrefix+"/orgs", nil, &list); err != nil {
+		path := api.PathPrefix + "/orgs"
+		if origin != "" {
+			path += "?origin=" + origin
+		}
+		if err := client.Do(ctx, http.MethodGet, path, nil, &list); err != nil {
 			return err
 		}
 		rows := make([][]string, 0, len(list.Items))
 		for _, o := range list.Items {
-			rows = append(rows, []string{o.Id, o.Name, boolString(o.Active), o.CreatedAt.Format("2006-01-02")})
+			rows = append(rows, []string{o.Id, o.Name, boolString(o.Active), string(o.Origin), o.CreatedAt.Format("2006-01-02")})
 		}
 		return Render(ios.Stdout, f, Table{
-			Columns: []string{"ID", "NAME", "ACTIVE", "CREATED"},
+			Columns: []string{"ID", "NAME", "ACTIVE", "ORIGIN", "CREATED"},
 			Rows:    rows,
 			JSON:    list,
 		})

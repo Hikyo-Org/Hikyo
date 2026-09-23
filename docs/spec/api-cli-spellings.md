@@ -287,6 +287,8 @@ administer, vote, merge or bypass.
 
 Semantics in [social-signin.md](./social-signin.md); this section fixes spellings only.
 
+> **Amended 2026-09-23 ([#606](https://github.com/Hikyo-Org/Hikyo/issues/606), [#607](https://github.com/Hikyo-Org/Hikyo/issues/607)): the spellings as implemented.** `GET /api/v1/auth/methods` also carries `signup_paused: bool` (the addressed scope has a policy that is inactive; the public page says only "Sign-up is paused."), `signup_landing?: org-template | none | fresh-org` (the open door's landing, for the confirmation step), and, on each provider entry, `brand?: google | microsoft` (presentation only, derived from the pinned issuer). `signup_methods` entries are `ProviderRef {kind, slug}` or the string `"local"`. `RegistrationPolicy` responses add `org`, `inactive_precondition` (the failing precondition by name, with the provider when one is involved), `row_version`, `created_at`, `updated_at`, and `display_name` on each external entry; `PUT` and `DELETE` bodies carry the reauthentication `proof`. The OIDC `start` answers a `reauth` on a provider with no assurance policy with `409` naming the remedy. `GET /api/v1/orgs` answers `400` on an unknown `origin`. `hikyo org list --origin` renders an `ORIGIN` column.
+
 ### OAuth2 providers (mirror the SAML family; `instance-config@instance` ∧ reauth on write)
 
 ```

@@ -483,21 +483,33 @@ it('names an expired challenge instead of a server error', async () => {
 
 it('shows the password form only after the password row is chosen, and goes back', async () => {
   const container = document.createElement('div');
+  // Attached, so focus can land in it.
+  document.body.append(container);
   const { render, unmount } = mount(container);
   await render();
   expect(container.querySelector('input')).toBeNull();
   await openPassword(container);
   expect(container.querySelectorAll('input').length).toBe(2);
   expect(container.textContent).toContain('Sign in with a password');
+  // Each step change moves focus to the new step's heading.
+  expect(document.activeElement?.textContent).toBe('Sign in with a password');
   await act(async () => buttonNamed(container, '‹ Other ways to sign in')?.click());
   expect(container.querySelector('input')).toBeNull();
+  expect(document.activeElement?.textContent).toBe('Sign in to Hikyo');
+  // The back glyph is decorative: the control is named by its words.
+  await openPassword(container);
+  expect(container.querySelector('.login__back [aria-hidden="true"]')?.textContent).toBe('‹ ');
   await unmount();
+  container.remove();
 });
 
 it('renders no sign-up door while registration is closed', async () => {
   const container = document.createElement('div');
   const { render, unmount } = mount(container);
   await render();
+  // The page rendered (the absence below is not vacuous).
+  expect(container.querySelector('h1')?.textContent).toBe('Sign in to Hikyo');
+  expect(buttonNamed(container, 'Continue with Corporate IdP')).toBeDefined();
   expect(container.textContent).not.toContain('Create an account');
   expect(container.textContent).not.toContain('New here?');
   await unmount();

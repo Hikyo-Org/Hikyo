@@ -125,10 +125,13 @@ under `login.spec.ts`. The instance org list shows an origin badge
   the policy read inside the transaction, so the callback chooses by the
   recorded intent. Sign-in callbacks keep `tx.Write`.
 - **Sign-up outcome events land on the instance trail** (the pre-auth plane
-  `auth.*` refusals share) with `scope` and `policy_id` in the payload; an
-  org-scope refusal often has no proof at the org to write a tenant row with.
-  The template grant events of an org landing still land on the org's tenant
-  trail through `applyTemplate`.
+  `auth.*` refusals share) with `scope` and `policy_id` in the payload. A
+  tenant copy of `signup_completed` was tried and dropped: a tenant-trail
+  write needs a proof whose operation declares the event, and no registry
+  operation is "a sign-up into this org" (the template proof may not emit it;
+  a new operation would be a registry-shape change). The org's own trail
+  still shows who joined: the template grant lines (`grant.created`,
+  `grant.template_applied`, `origin_kind: registration`, the new principal).
 - **`authority-unassigned` refuses as `authority-lost`** (the closed cause
   enum has no unassigned member; nothing writes such a row since #617).
 - **Brand and landing are server-derived additions to `/auth/methods`**
@@ -142,16 +145,49 @@ under `login.spec.ts`. The instance org list shows an origin badge
 - **"Reaches manage-members only after a local factor"**: the founder's
   single-factor session is refused and an adequately assured session is
   admitted; enrolling the local factor on a social-only account is #611's
-  `establish` purpose.
+  `establish` purpose. **Deferred assertion for #611, verbatim:** the first
+  administrator of a fresh org, signed up through a policy-less OIDC
+  provider, is refused `manage-members` at that org, enrols a local
+  possession factor through the `establish` purpose, and is then admitted to
+  `manage-members` at the same org in a session carrying that factor.
+- **`mintableOrigins` belt.** `registration` joined the human release gate so
+  an administrator's revoke releases it like a manual origin
+  (permission-model 2026-09-03 (b)). The grant API still takes no origin
+  parameter, so nothing outside the sign-up transaction can mint one; the
+  set is also `AddGrantOrigin`'s write gate, which is why the sign-up needs it
+  there. `TestSCIMOriginKindsAreNotHumanReleasable` pins it on the human side
+  and off the SCIM side.
+- **Charge per attempt.** The `signup` charge carries its refund; a sign-up
+  attempt that rolls back (a serialization retry, or a transaction failing
+  outright) refunds before anything else, so the budget counts committed
+  sign-ups only (`TestFederatedSignupRetryRefundsCharge`). `EnableSignup`
+  wires the policy and the budget together and refuses a missing budget; a
+  nil budget refuses a charge instead of admitting one.
+- **Display name.** A valid `name` claim becomes the display name, else the
+  handle; `signup_completed.display_name_from` records which.
 - **Google bare `iss`** is pinned at the `oidcrp` layer: an e2e provider row
   cannot carry Google's issuer (discovery would fetch the real document).
 - The staged entry adds a click to every password sign-in (#587 d1's accepted
   cost); every Playwright password sign-in goes through `choosePassword`.
 
-- The `sign out` flows in `shell.spec.ts` now run under `test.slow()`: their
-  second factor draws the next step from the shared TOTP ledger and can wait
-  out a full period (the `account.spec.ts` precedent); on mobile, back to back,
-  they sat at the 30 s default.
+- **Own accounts, own authenticators in e2e.** Flows that sign in or prove
+  repeatedly (`shell.spec.ts` sign-out, the sign-up door) no longer draw the
+  shared administrator's TOTP ledger, which every project draws at once. They
+  create throwaway accounts (`e2e/fixtures/accounts.ts`: `enrolledAccount`,
+  `TotpLedger`) whose ledger presents the previous, current and next step,
+  never waiting; a flow needing a fourth code takes another account (the
+  sign-up door closes its policy with a second operator's proof).
+- **Entra authorities.** The `common` / `organizations` documents publish the
+  literal `{tenantid}` placeholder; a domain-name authority's document carries
+  the tenant GUID. Both refusals name the document's issuer (fixtures for
+  both in `issuer_test.go` and `TestOIDCProviderIssuerDepartures`).
+- **Guard.** `TestNothingRelaxesTheLibraryIssuerCheck` fails if code outside a
+  test sets `SkipIssuerCheck` or calls `InsecureIssuerURLContext`. Discovery
+  failures log their class of cause; go-oidc's own error is not wrapped
+  because it quotes the provider's response body
+  (`TestAllOIDCLegsUseBoundedClient` forbids that).
+- **CLI.** `hikyo org list --origin manual|registration` with an `ORIGIN`
+  column (api-cli-spellings section 8, amended).
 - `GET /orgs` gained the shared `BadRequest` response (for `?origin=`); the
   generated TS client therefore repeats that response's existing description,
   which carries an em-dash. No new prose here contains one.

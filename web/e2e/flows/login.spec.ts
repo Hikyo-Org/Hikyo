@@ -22,6 +22,7 @@ import {
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { enrolledAccount } from '../fixtures/accounts.ts';
 import { withPasskeyPage } from '../fixtures/passkey.ts';
 
 /** publicPost is an unauthenticated JSON POST, parsed at the boundary. */
@@ -773,16 +774,12 @@ test.describe('sign-up door', () => {
   }
 
   test('opens only while registration is open, confirms, and lands a new account in its own org', async ({ page, browser }, testInfo) => {
-    testInfo.setTimeout(240_000);
     const subject = `signup-${testInfo.project.name}-${Date.now().toString(36)}`;
-    const stepped = await fixtureApiCall(
-      await fixtureBearer('the sign-up door fixture'),
-      'POST',
-      '/api/v1/auth/totp/step-up',
-      z.object({ session_token: z.string() }),
-      { code: await nextTotpCode() },
-    );
-    const admin = stepped.session_token;
+    // Its own instance operator, with its own authenticator: two codes open
+    // its session and step it up, the third proves the policy write. Closing
+    // is a second operator's proof, so no ledger ever waits out a step.
+    const operator = await enrolledAccount(browser, 'signup-operator', 'instance');
+    const admin = operator.bearer;
     await freshSubject(page, subject);
 
     // Closed: nothing hints at sign-up, and the sign-in door refuses an
@@ -799,7 +796,7 @@ test.describe('sign-up door', () => {
       await fixtureApiCall(admin, 'PUT', policyPath, zRegistrationPolicy, {
         external: [{ provider: { kind: 'oidc', slug: OIDC_PROVIDER.slug } }],
         landing: { kind: 'fresh-org', cap: 5 },
-        proof: await nextTotpCode(),
+        proof: operator.ledger.next(),
       });
 
       // The door on /login, and the pinned set on /signup in both schemes.
@@ -847,9 +844,9 @@ test.describe('sign-up door', () => {
       const minted = selfServed.items.filter((org) => org.origin === 'registration' && org.name === `org-${org.id}`);
       expect(minted.length).toBeGreaterThan(0);
       created = minted.at(-1)?.id;
-      const operator = await browser.newContext({ storageState: STORAGE_STATE });
+      const adminView = await browser.newContext({ storageState: STORAGE_STATE });
       try {
-        const operatorPage = await operator.newPage();
+        const operatorPage = await adminView.newPage();
         await operatorPage.goto('/instance');
         const orgs = operatorPage.locator('#instance-orgs');
         await orgs.getByLabel('Show').selectOption('registration');
@@ -858,15 +855,17 @@ test.describe('sign-up door', () => {
         await orgs.getByLabel('Show').selectOption('manual');
         await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toHaveCount(0);
       } finally {
-        await operator.close();
+        await adminView.close();
       }
     } finally {
-      if (created !== undefined) {
-        await fixtureApiCall(admin, 'DELETE', `/api/v1/orgs/${created}`, z.unknown()).catch(() => undefined);
-      }
-      await fixtureApiCall(admin, 'DELETE', policyPath, z.unknown(), { proof: await nextTotpCode() }).catch((error: unknown) => {
+      const toleratingGone = (error: unknown) => {
         if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
-      });
+      };
+      if (created !== undefined) {
+        await fixtureApiCall(admin, 'DELETE', `/api/v1/orgs/${created}`, z.unknown()).catch(toleratingGone);
+      }
+      const closer = await enrolledAccount(browser, 'signup-closer', 'instance');
+      await fixtureApiCall(closer.bearer, 'DELETE', policyPath, z.unknown(), { proof: closer.ledger.next() }).catch(toleratingGone);
     }
     // Closed again: the door is gone (a fresh, signed-out page).
     await page.context().clearCookies();

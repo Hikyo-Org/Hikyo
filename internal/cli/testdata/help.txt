@@ -41,7 +41,7 @@ diagnostics:
   hikyo update check                                check the selected release track now
 
 hierarchy:
-  hikyo org list [-o table|json]
+  hikyo org list [--origin manual|registration] [-o table|json]
   hikyo org show <org> [-o table|json]
   hikyo org create --name <name>
   hikyo org rename <org> --name <new-name>
