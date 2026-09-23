@@ -392,6 +392,21 @@ func runFederatedSignupLandings(t *testing.T, db *store.DB) {
 		t.Fatal(err)
 	}
 	policyID := queryStrings(t, db, "SELECT id FROM registration_policies WHERE org_id IS NULL")
+	// The identity row precedes the org row (spec section 9): an identity
+	// race refuses `identity-exists` with no org minted and no cap slot spent.
+	orgsBefore, accountsBefore := h.count("SELECT COUNT(*) FROM orgs"), h.accounts()
+	restore := authn.SetMutationFailureObserver(func(query string) error {
+		if strings.Contains(query, "-- name: InsertExternalIdentity ") {
+			return fmt.Errorf("%w: induced identity race", domain.ErrConflict)
+		}
+		return nil
+	})
+	_, err = h.login("google", h.fresh(), "sign-up", "", googleClaims("race@acme.example"))
+	restore()
+	wantUniformRefusal(t, "fresh-org identity race", err)
+	if h.refusedCount("identity-exists") != 1 || h.count("SELECT COUNT(*) FROM orgs") != orgsBefore || h.accounts() != accountsBefore {
+		t.Fatal("a fresh-org identity race must refuse `identity-exists` and mint neither org nor account")
+	}
 	founder := h.fresh()
 	signup, err := h.login("google", founder, "sign-up", "", googleClaims("f@acme.example"))
 	if err != nil {
