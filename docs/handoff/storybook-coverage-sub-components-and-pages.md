@@ -108,8 +108,7 @@ parameters: {
 ## House rules honoured
 No `as` casts; `satisfies Meta<typeof C>`; `StoryObj<typeof meta>`;
 `tags: ['ai-generated']`; `fn()` callbacks from `storybook/test`; import grouping
-(third-party / blank / local with explicit extensions); bigint literals for
-int64 fixture fields.
+(third-party / blank / local with explicit extensions); bigint literals for int64 fields in parsed-model fixtures (values handed to a component as props); wire bodies in `responses[].body` carry int64 as JSON numbers, see the pattern section.
 
 ## Local-env traps (same machine as #752)
 - **Node**: this shell defaults to Node v20, but the repo pins v26.7.0 (root

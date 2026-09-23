@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { expect } from 'storybook/test';
+import { expect, waitFor } from 'storybook/test';
 
 import { WorkspaceCallback } from './WorkspaceCallback.tsx';
 
@@ -42,7 +42,9 @@ export const NoResult: Story = {
 export const CouldNotClose: Story = {
   beforeEach: withResult,
   play: async ({ canvas }) => {
-    await expect(await canvas.findByRole('status')).toHaveTextContent(/could not close itself/i);
+    // The status renders before the zero-delay close attempt rewrites it, so
+    // wait for the text, not the element.
+    await waitFor(() => expect(canvas.getByRole('status')).toHaveTextContent(/could not close itself/i));
     await expect(canvas.getByRole('button', { name: /close this window/i })).toBeEnabled();
   },
 };
