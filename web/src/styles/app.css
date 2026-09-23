@@ -6557,6 +6557,20 @@ label.chk:has(input:disabled) {
   padding: 2px 0;
 }
 
+/* The "or" divider and the stacked actions of the second-factor steps
+   (SecondFactorChallenge, SecondFactorSetup, AuthenticatorCodeField). */
+.login__or {
+  margin: var(--space-1) 0;
+  text-align: center;
+  color: var(--tx-dim);
+}
+
+.login__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .login__links {
   display: flex;
   flex-wrap: wrap;
