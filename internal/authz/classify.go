@@ -225,6 +225,8 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// reauth). link start mirrors start; unlink emits the unlink plus the
 	// reissued session. Provider administration is operation-modeled (Ops).
 	"http:POST /api/v1/auth/oidc/{provider}/start": {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventAuthThrottleCrossed}},
+	// A sign-up-intent login (#607) adds the registration outcomes and, for
+	// a landing, the org creation and template grants its authority writes.
 	"http:GET /api/v1/auth/oidc/{provider}/callback": {Class: ClassUnauthenticated, Events: []audit.EventType{
 		audit.EventOIDCLogin,
 		audit.EventOIDCRefused,
@@ -232,6 +234,12 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 		audit.EventAuthSessionCreated,
 		audit.EventAuthReauthenticated,
 		audit.EventAuthThrottleCrossed,
+		audit.EventRegistrationSignupAdmitted,
+		audit.EventRegistrationSignupRefused,
+		audit.EventRegistrationSignupCompleted,
+		audit.EventOrgCreated,
+		audit.EventGrantCreated,
+		audit.EventGrantTemplateApplied,
 	}},
 	"http:GET /api/v1/auth/identities":       {Class: ClassUnauthenticated},
 	"http:POST /api/v1/auth/identities/link": {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventAuthThrottleCrossed}},
