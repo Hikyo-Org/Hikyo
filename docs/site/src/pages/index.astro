@@ -1,18 +1,16 @@
 ---
-// The matrix data and the motion layer come from prototype 11
-// (/prototype/hikyo/11/), promoted to the live homepage.
 import PostHog from '../components/posthog.astro';
 import PwaHead from '../components/PwaHead.astro';
 import {
-  cliRead,
   environments,
   masked,
   matrix,
   project,
+  revealOutputFile,
   type CellState,
   type Environment,
   type KeyRow,
-} from '../lib/prototype/hikyo';
+} from '../lib/landing';
 import { repositoryUrl, siteUrl, themeBootstrapScript } from '../lib/site';
 import '../styles/landing.css';
 
@@ -374,7 +372,7 @@ const stackList = ['Go', 'SQLite', 'PostgreSQL', 'Helm', 'OpenAPI'];
               <div class="frame-body reveal">
                 <div class="gate"><span>⌾</span> Re-authentication required <small>protected environment</small></div>
                 <div class="secret-stage"><span>before</span><code>{masked}</code></div>
-                <div class="secret-stage"><span>after</span><code class="shown" data-reveal-out data-masked={masked}>value written to {cliRead.outputFile}</code><b>remask <span data-remask>0:18</span></b></div>
+                <div class="secret-stage"><span>after</span><code class="shown" data-reveal-out data-masked={masked}>value written to {revealOutputFile}</code><b>remask <span data-remask>0:18</span></b></div>
               </div>
             </div>
           </article>
