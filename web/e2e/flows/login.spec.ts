@@ -10,7 +10,7 @@ import {
 } from '../fixtures/assertions.ts';
 import { z } from 'zod';
 
-import { fixtureApiCall, fixtureBearer } from '../fixtures/api.ts';
+import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
 import {
   ADMIN,
   BASE_URL,
@@ -18,6 +18,7 @@ import {
   nextTotpCode,
   passEnrolmentGate,
   readSeed,
+  STORAGE_STATE,
 } from '../fixtures/instance.ts';
 import { withPasskeyPage } from '../fixtures/passkey.ts';
 
@@ -422,23 +423,17 @@ test.describe('login', () => {
     const firstPassword = 'the password that was lost with the phone';
     const newPassword = 'a brand new password chosen after recovery';
 
-    // Invitation takes a stepped-up administrator session; the invite carries
-    // no template, so the account can sign in and see nothing.
-    const admin = await fixtureBearer('the recovery fixture');
-    const stepped = await fixtureApiCall(
-      admin,
-      'POST',
-      '/api/v1/auth/totp/step-up',
-      z.object({ session_token: z.string() }),
-      { code: await nextTotpCode() },
-    );
-    const invitation = await fixtureApiCall(
-      stepped.session_token,
+    // Invitation takes a stepped-up administrator session: the shared one,
+    // because minting a fresh one spends a TOTP step (see the gate flow below).
+    // The invite carries no template, so the account can sign in and see nothing.
+    const adminContext = await browser.newContext({ storageState: STORAGE_STATE });
+    const invitation = await browserApi(
+      await adminContext.newPage(),
       'POST',
       `/api/v1/orgs/${seed.org}/invitations`,
       z.object({ authority: z.string(), principal_id: z.string() }),
       { username },
-    );
+    ).finally(() => adminContext.close());
     await publicPost(
       '/api/v1/auth/credential/establish',
       { authority: invitation.authority, password: firstPassword },
@@ -529,21 +524,17 @@ test.describe('login', () => {
     const seed = readSeed();
     const username = `gated-${testInfo.project.name}-${Date.now().toString(36)}`;
     const password = 'a password for an account with no factor yet';
-    const admin = await fixtureBearer('the enrolment gate fixture');
-    const stepped = await fixtureApiCall(
-      admin,
-      'POST',
-      '/api/v1/auth/totp/step-up',
-      z.object({ session_token: z.string() }),
-      { code: await nextTotpCode() },
-    );
-    const invitation = await fixtureApiCall(
-      stepped.session_token,
+    // The invitation rides the shared, already stepped-up administrator
+    // session: minting a fresh one would spend a TOTP step, and waiting one out
+    // on the shared ledger can eat the whole test budget.
+    const adminContext = await browser.newContext({ storageState: STORAGE_STATE });
+    const invitation = await browserApi(
+      await adminContext.newPage(),
       'POST',
       `/api/v1/orgs/${seed.org}/invitations`,
       z.object({ authority: z.string(), principal_id: z.string() }),
       { username },
-    );
+    ).finally(() => adminContext.close());
     await publicPost(
       '/api/v1/auth/credential/establish',
       { authority: invitation.authority, password },

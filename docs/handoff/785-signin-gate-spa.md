@@ -71,7 +71,15 @@ slice: the passkey as a second factor, and the enrolment gate `whoami` drives.
   `app/App.gate.test.tsx`, `app/AuthProvider.test.tsx` (awaitWhoami hold, proven
   red without it). Stories: `ui/auth/SecondFactorSetup`, `ui/auth/LoginFlow`.
 - `go test ./api` (parity) green.
-- e2e: see the PR for the desktop run result.
+- e2e under `required` (2026-09-23, local, commit 6cad7d0b + login.spec fix):
+  mobile 239/239; desktop 236/237, the one failure being the new gate flow
+  timing out at 30s because it minted an admin session by spending a TOTP step
+  (`nextTotpCode` can wait out a whole step on the shared ledger). The gate and
+  recovery flows now invite through the shared stepped-up session instead (gate
+  about 5s, recovery 23s to 4s); login.spec passes 19/19 on both viewports.
+- Seen once on the pre-change baseline and not reproduced since:
+  `reveal.spec` write-only pinned set read its "re-masks in Ns" countdown after
+  the 10s re-mask. Unrelated to auth; left as is.
 
 ## Open / not done
 
