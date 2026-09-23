@@ -175,6 +175,12 @@
   },
   {
     "engine": "postgres",
+    "name": "CountExternalIdentitiesForIssuer",
+    "annotation": "authn-resolution",
+    "hash": "b4c66bcfed159804e8b7e491bfc9a99d2ad787159c0cd2e86568a1a744abab3d"
+  },
+  {
+    "engine": "postgres",
     "name": "CountGrantOrigins",
     "annotation": "authn-resolution",
     "hash": "c0b35a1d2aaefea234d06693e608f33023aea3a7424e9fe9da8275b0bfc62d25"
@@ -2266,6 +2272,12 @@
     "name": "CountExpiredApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "d29c7021b8d0627ea9fc342ce97f0f2d2e415e12bdf7007443383aedb73d76a0"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountExternalIdentitiesForIssuer",
+    "annotation": "authn-resolution",
+    "hash": "1c03f4feaade85ff94f08592f6ac0e8c6ef8db2fdc51fb83aca20f1a9ec633d2"
   },
   {
     "engine": "sqlite",
