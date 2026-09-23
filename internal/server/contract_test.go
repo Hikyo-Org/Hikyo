@@ -2224,7 +2224,7 @@ func (stubRevisions) Diff(context.Context, service.Actor, domain.Scope, int64, i
 func (s stubAuth) MyProfile(context.Context, string) (service.AccountProfile, error) {
 	return service.AccountProfile{}, domain.ErrUnauthenticated
 }
-func (s stubAuth) UpdateMyProfile(context.Context, string, service.AccountProfile, string) (service.AccountProfile, error) {
+func (s stubAuth) UpdateMyProfile(context.Context, string, service.ProfileUpdate, string) (service.AccountProfile, error) {
 	return service.AccountProfile{}, domain.ErrUnauthenticated
 }
 

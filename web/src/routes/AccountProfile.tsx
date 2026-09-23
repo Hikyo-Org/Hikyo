@@ -28,10 +28,9 @@ function ProfileForm({ profile }: { profile: Profile }) {
   const [saved, setSaved] = useState(profile);
   const [username, setUsername] = useState(profile.username);
   const [displayName, setDisplayName] = useState(profile.display_name);
-  const [email, setEmail] = useState(profile.email);
   const [proof, setProof] = useSensitiveState('');
   const [done, setDone] = useState(false);
-  const dirty = username !== saved.username || displayName !== saved.display_name || email !== saved.email;
+  const dirty = username !== saved.username || displayName !== saved.display_name;
   const needsProof = username !== saved.username;
 
   return (
@@ -39,12 +38,11 @@ function ProfileForm({ profile }: { profile: Profile }) {
       event.preventDefault();
       if (!dirty || update.isPending || (needsProof && proof === '')) return;
       setDone(false);
-      update.mutate({ username, display_name: displayName, email, ...(needsProof ? { proof } : {}) }, {
+      update.mutate({ username, display_name: displayName, ...(needsProof ? { proof } : {}) }, {
         onSuccess: (result) => {
           setSaved(result);
           setUsername(result.username);
           setDisplayName(result.display_name);
-          setEmail(result.email);
           setDone(true);
         },
       });
@@ -66,12 +64,11 @@ function ProfileForm({ profile }: { profile: Profile }) {
             value={username} readOnly={profile.managed} onChange={(event) => { setUsername(event.target.value); setDone(false); }} />
           <p className="settings-note">Use this username when signing in with a password.</p>
         </div> : null}
-        <div className="field">
-          <label htmlFor={`${id}-email`}>Email address</label>
-          <input id={`${id}-email`} name="email" type="email" autoComplete="email" maxLength={254}
-            value={email} onChange={(event) => { setEmail(event.target.value); setDone(false); }} />
-          <p className="settings-note">Optional contact address. This does not change how you sign in or link accounts.</p>
-        </div>
+        {saved.email !== null ? <div className="field">
+          <label htmlFor={`${id}-email`}>Sign-in email</label>
+          <input id={`${id}-email`} name="email" type="email" readOnly value={saved.email} aria-describedby={`${id}-email-hint`} />
+          <p id={`${id}-email-hint`} className="settings-note">Verified when you signed up. It cannot be changed here.</p>
+        </div> : null}
         {needsProof ? <div className="field">
           <label htmlFor={`${id}-proof`}>Code or password</label>
           <input id={`${id}-proof`} name="proof" type="password" autoComplete="current-password" required
@@ -80,7 +77,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         </div> : null}
       </fieldset>
       {profile.managed ? <p className="settings-note">Your identity provider manages your username and display name. Change them there.</p> : null}
-      {!profile.managed && !profile.username_editable ? <p className="settings-note">You sign in through your identity provider. Your display name and contact email can be changed here.</p> : null}
+      {!profile.managed && !profile.username_editable ? <p className="settings-note">You sign in through your identity provider. Your display name can be changed here.</p> : null}
       <Button type="submit" variant="primary" disabled={!dirty || update.isPending || (needsProof && proof === '')}>
         {update.isPending ? 'Saving…' : 'Save profile'}
       </Button>

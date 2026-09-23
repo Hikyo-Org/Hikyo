@@ -4317,7 +4317,7 @@ paths:
       operationId: updateMyProfile
       tags: [auth]
       summary: Update your own account profile.
-      description: Email is contact metadata and never a login or identity linking key. Provisioned names remain controlled by SCIM. Username changes require current account proof.
+      description: Updates the username and display name. The email is not profile data and cannot be set here; only verified local sign-up writes it. Provisioned names remain controlled by SCIM. Username changes require current account proof.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
@@ -11796,7 +11796,8 @@ components:
         display_name:
           type: string
         email:
-          type: string
+          type: [string, "null"]
+          description: The verified login email in canonical form (domain lowercased), or null when the account has none. Read-only; only verified local sign-up sets it. Never an identity linking key.
         managed:
           type: boolean
           description: SCIM controls the username and display name.
@@ -11806,7 +11807,7 @@ components:
     UpdateAccountProfileRequest:
       type: object
       additionalProperties: false
-      required: [username, display_name, email]
+      required: [username, display_name]
       properties:
         username:
           type: string
@@ -11815,10 +11816,6 @@ components:
         display_name:
           type: string
           maxLength: 256
-        email:
-          type: string
-          maxLength: 254
-          description: Contact address, or empty to clear. Never used for authentication.
         proof:
           type: string
     ID:

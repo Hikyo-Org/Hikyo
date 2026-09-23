@@ -4,6 +4,10 @@
 -- dialect carries the reasoning and the commentary corrections; this file
 -- states what differs.
 --
+-- accounts.email is repurposed as the verified login email exactly as the
+-- sqlite header describes (00049's contact-only meaning is superseded; the
+-- count of cleared values is not reported, migrations being SQL only).
+--
 -- Postgres alters the five widened tables in place instead of rebuilding
 -- them. A rebuild buys nothing here: postgres can drop and re-add a CHECK by
 -- name, the new columns land in the same order the sqlite rebuild gives them
@@ -182,3 +186,23 @@ ALTER TABLE grant_origins ADD CONSTRAINT grant_origins_kind_check CHECK (
 
 ALTER TABLE orgs ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual' CHECK (origin IN ('manual', 'registration'));
 ALTER TABLE orgs ADD COLUMN registration_policy_id TEXT;
+
+-- accounts.email: nullable verified login email (see the sqlite header). The
+-- regex accepts exactly the set the sqlite GLOBs do; the octet/char length
+-- comparison keeps it to ASCII independent of collation.
+ALTER TABLE accounts ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE accounts ALTER COLUMN email DROP DEFAULT;
+UPDATE accounts
+SET email = CASE
+    WHEN octet_length(email) = char_length(email)
+        AND octet_length(email) <= 254
+        AND email ~ '^[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$'
+    THEN split_part(email, '@', 1) || '@' || lower(split_part(email, '@', 2))
+    END;
+UPDATE accounts SET email = NULL
+WHERE email IN (
+    SELECT email FROM accounts WHERE email IS NOT NULL
+    GROUP BY email HAVING COUNT(*) > 1
+);
+ALTER TABLE accounts ADD CONSTRAINT accounts_email_check CHECK (email IS NULL OR email <> '');
+CREATE UNIQUE INDEX accounts_email ON accounts (email) WHERE email IS NOT NULL;

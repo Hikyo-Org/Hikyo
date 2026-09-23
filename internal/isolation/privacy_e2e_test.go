@@ -74,13 +74,23 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The verified login email is written only by verified local sign-up
+			// (#608); stand in for that writer here. The profile surface cannot
+			// set it: an update leaves it exactly as it was.
+			execRaw(t, db, `UPDATE accounts SET email = 'subject@example.test' WHERE principal_id = 'usr_subject'`)
 			profile, err := auth.MyProfile(ctx, session.SessionToken)
 			if err != nil {
 				t.Fatal(err)
 			}
-			profile.Email = "subject@example.test"
-			if _, err := auth.UpdateMyProfile(ctx, session.SessionToken, profile, ""); err != nil {
+			if profile.Email == nil || *profile.Email != "subject@example.test" {
+				t.Fatalf("profile email = %v, want the verified address", profile.Email)
+			}
+			updated, err := auth.UpdateMyProfile(ctx, session.SessionToken, service.ProfileUpdate{Username: profile.Username, DisplayName: "Subject"}, "")
+			if err != nil {
 				t.Fatal(err)
+			}
+			if updated.Email == nil || *updated.Email != *profile.Email {
+				t.Fatalf("a profile update changed the email: %v", updated.Email)
 			}
 			export, err := auth.ExportPrivacySubject(ctx, "usr_subject")
 			if err != nil {
@@ -98,8 +108,8 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if len(export.Sessions) != 1 || len(export.Activity) == 0 {
 				t.Fatalf("missing subject metadata: %+v", export)
 			}
-			if export.Account.Email != profile.Email {
-				t.Fatalf("contact email missing from export: %q", export.Account.Email)
+			if export.Account.Email == nil || *export.Account.Email != *profile.Email {
+				t.Fatalf("login email missing from export: %v", export.Account.Email)
 			}
 			receipt, err := auth.ApplyPrivacySubject(ctx, "usr_subject", "restrict", "")
 			if err != nil {
@@ -152,12 +162,15 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if snapshot.Account.State != "restricted" || snapshot.Account.Username != "corrected-subject" || snapshot.Account.Email != profile.Email {
+			if snapshot.Account.State != "restricted" || snapshot.Account.Username != "corrected-subject" || snapshot.Account.Email == nil || *snapshot.Account.Email != *profile.Email {
 				t.Fatal("failed erasure partially committed")
 			}
 			erased, err := auth.ApplyPrivacySubject(ctx, "usr_subject", "erase", "")
 			if err != nil {
 				t.Fatal(err)
+			}
+			if got := queryInt(t, db, "SELECT COUNT(*) FROM accounts WHERE principal_id = 'usr_subject' AND email IS NULL"); got != 1 {
+				t.Fatalf("erasure left the email non-NULL: %d", got)
 			}
 			if _, err := auth.ReapplyPrivacyReceipt(ctx, erased); err != nil {
 				t.Fatalf("repeat erase: %v", err)
@@ -172,7 +185,7 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if export.Account.DisplayName != "" || export.Account.Email != "" || export.Account.Username == "usr_subject" || export.Account.State != "erased" || len(export.Sessions) != 0 || len(export.Identities) != 0 || len(export.Grants) != 0 {
+			if export.Account.DisplayName != "" || export.Account.Email != nil || export.Account.Username == "usr_subject" || export.Account.State != "erased" || len(export.Sessions) != 0 || len(export.Identities) != 0 || len(export.Grants) != 0 {
 				t.Fatalf("erasure incomplete: %+v", export)
 			}
 			for _, table := range []string{"password_credentials", "credential_authorities", "totp_credentials", "recovery_codes", "webauthn_credentials", "external_identities"} {

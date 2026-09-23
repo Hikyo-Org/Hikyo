@@ -20,7 +20,7 @@ export const zRuntimeStatus = z.object({
 export const zAccountProfile = z.object({
     username: z.string(),
     display_name: z.string(),
-    email: z.string(),
+    email: z.string().nullable(),
     managed: z.boolean(),
     username_editable: z.boolean()
 });
@@ -28,7 +28,6 @@ export const zAccountProfile = z.object({
 export const zUpdateAccountProfileRequest = z.object({
     username: z.string().min(1).max(256),
     display_name: z.string().max(256),
-    email: z.string().max(254),
     proof: z.string().optional()
 });
 

@@ -76,24 +76,21 @@ test.describe('account and security', () => {
     ).toBeVisible();
   });
 
-  test('saves profile labels and contact email, persists them, and refreshes the account menu', async ({ page }) => {
+  test('saves profile labels, persists them, and refreshes the account menu', async ({ page }) => {
     const profile = page.locator('#account-profile');
     const name = profile.getByLabel('Display name', { exact: true });
-    const email = profile.getByLabel('Email address', { exact: true });
     const originalName = await name.inputValue();
-    const originalEmail = await email.inputValue();
+    // The sign-in email is not profile data: no editable email field exists.
+    await expect(profile.locator('input[name="email"]:not([readonly])')).toHaveCount(0);
     try {
       await name.fill('Readable Account Name');
-      await email.fill('profile-test@example.com');
       await profile.getByRole('button', { name: 'Save profile' }).click();
       await expect(profile.getByRole('status')).toContainText('Profile saved.');
       await expect(page.getByRole('button', { name: 'Account: Readable Account Name', exact: true })).toBeVisible();
       await page.reload();
       await expect(name).toHaveValue('Readable Account Name');
-      await expect(email).toHaveValue('profile-test@example.com');
     } finally {
       await name.fill(originalName);
-      await email.fill(originalEmail);
       await profile.getByRole('button', { name: 'Save profile' }).click();
       await expect(profile.getByRole('status')).toContainText('Profile saved.');
     }

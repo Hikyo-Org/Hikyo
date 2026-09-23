@@ -32,7 +32,7 @@ import (
 // AuthService is the human-authentication surface this transport needs.
 type AuthService interface {
 	MyProfile(ctx context.Context, presented string) (service.AccountProfile, error)
-	UpdateMyProfile(ctx context.Context, presented string, profile service.AccountProfile, proof string) (service.AccountProfile, error)
+	UpdateMyProfile(ctx context.Context, presented string, profile service.ProfileUpdate, proof string) (service.AccountProfile, error)
 	LocalLogin(ctx context.Context, username, password string, artifact service.Artifact) (service.LoginResult, error)
 	LoginChallengeTOTP(ctx context.Context, challengeID, code string) (service.LoginResult, error)
 	LoginChallengeWebauthnStart(ctx context.Context, challengeID string) ([]byte, error)

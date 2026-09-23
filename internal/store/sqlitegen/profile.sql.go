@@ -7,6 +7,7 @@ package sqlitegen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const getAccountProfile = `-- name: GetAccountProfile :one
@@ -16,7 +17,7 @@ SELECT username, display_name, email, EXISTS(SELECT 1 FROM scim_users WHERE scim
 type GetAccountProfileRow struct {
 	Username    string
 	DisplayName string
-	Email       string
+	Email       sql.NullString
 	Managed     bool
 	HasPassword bool
 	HasTotp     bool
@@ -40,23 +41,17 @@ func (q *Queries) GetAccountProfile(ctx context.Context, accountID string) (GetA
 }
 
 const updateAccountProfile = `-- name: UpdateAccountProfile :exec
-UPDATE accounts SET username = ?1, display_name = ?2, email = ?3 WHERE id = ?4
+UPDATE accounts SET username = ?1, display_name = ?2 WHERE id = ?3
 `
 
 type UpdateAccountProfileParams struct {
 	Username    string
 	DisplayName string
-	Email       string
 	AccountID   string
 }
 
 // hikyo:authn-resolution
 func (q *Queries) UpdateAccountProfile(ctx context.Context, arg UpdateAccountProfileParams) error {
-	_, err := q.db.ExecContext(ctx, updateAccountProfile,
-		arg.Username,
-		arg.DisplayName,
-		arg.Email,
-		arg.AccountID,
-	)
+	_, err := q.db.ExecContext(ctx, updateAccountProfile, arg.Username, arg.DisplayName, arg.AccountID)
 	return err
 }

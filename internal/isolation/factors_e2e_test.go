@@ -106,7 +106,7 @@ func runFactorLifecycle(t *testing.T, auth *service.Auth, ctx context.Context, u
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := auth.UpdateMyProfile(ctx, login.SessionToken, profile, password); err != nil {
+	if _, err := auth.UpdateMyProfile(ctx, login.SessionToken, service.ProfileUpdate{Username: profile.Username, DisplayName: profile.DisplayName}, password); err != nil {
 		t.Fatal(err)
 	}
 	// Recovery: regenerate a batch (password proof), then consume one code.

@@ -76,7 +76,7 @@ export function useUpdateMyProfile() {
   const queries = useQueryClient();
   const after = useAfterAccountMutation();
   return useSensitiveMutation({
-    mutationFn: (input: { username: string; display_name: string; email: string; proof?: string }) =>
+    mutationFn: (input: { username: string; display_name: string; proof?: string }) =>
       parsed(updateMyProfileOp, { body: input }),
     onSuccess: (profile) => { queries.setQueryData(profileKey, profile); },
     onSettled: after,

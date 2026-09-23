@@ -1,11 +1,13 @@
 package migrate
 
 import (
+	"database/sql"
 	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
@@ -20,6 +22,39 @@ func TestSocialSigninMigrationSQLite(t *testing.T) {
 
 func TestSocialSigninMigrationPostgres(t *testing.T) {
 	testSocialSigninMigration(t, postgresTestConfig(t, "social_signin"))
+}
+
+type socialEmailFixture struct{ name, before, after string }
+
+// socialEmailFixtures are 00049 contact values and what 00057 keeps: the
+// canonical form of a provably valid, unique address, otherwise NULL.
+func socialEmailFixtures() []socialEmailFixture {
+	local64 := strings.Repeat("l", 64)
+	domain189 := strings.Repeat("d", 63) + "." + strings.Repeat("d", 63) + "." + strings.Repeat("d", 61)
+	return []socialEmailFixture{
+		{"empty", "", ""},
+		{"mixed-case domain", "Keep.Me+tag@Example.COM", "Keep.Me+tag@example.com"},
+		{"plain", "plain@example.org", "plain@example.org"},
+		{"254 bytes", local64 + "@" + domain189, local64 + "@" + domain189},
+		{"255 bytes", local64 + "@" + domain189 + "d", ""},
+		{"display name", "Name <name@example.com>", ""},
+		{"no at sign", "no-at-sign", ""},
+		{"two at signs", "a@b@example.com", ""},
+		{"trailing dot", "dot@example.com.", ""},
+		{"non-ASCII domain", "user@bücher.example", ""},
+		{"quoted local", `"quoted"@example.com`, ""},
+		{"leading dot", ".lead@example.com", ""},
+		{"double dot", "a..b@example.com", ""},
+		{"empty local", "@example.com", ""},
+		{"empty domain", "nodomain@", ""},
+		{"space", "sp ace@example.com", ""},
+		{"duplicate pair 1", "dup@example.com", ""},
+		{"duplicate pair 2", "dup@example.com", ""},
+		{"case-variant domain 1", "Case@Example.com", ""},
+		{"case-variant domain 2", "Case@EXAMPLE.COM", ""},
+		{"local case is significant 1", "Local@example.net", "Local@example.net"},
+		{"local case is significant 2", "local@example.net", "local@example.net"},
+	}
 }
 
 // socialSQL rewrites the engine-neutral placeholders: {bN} is a distinct
@@ -136,8 +171,70 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 		}
 	}
 
+	// 00049's contact emails, repurposed by 00057 as the verified login email.
+	for i, c := range socialEmailFixtures() {
+		stmt := fmt.Sprintf("INSERT INTO principals (id,kind,created_at) VALUES ('prn_e%d','human',%s)", i, socialTS)
+		if err := exec("email principal", stmt); err != nil {
+			t.Fatal(err)
+		}
+		stmt = fmt.Sprintf("INSERT INTO accounts (id,principal_id,username,display_name,created_at,email) VALUES ('acc_e%d','prn_e%d','e%d','E',%s,'%s')",
+			i, i, i, socialTS, strings.ReplaceAll(c.before, "'", "''"))
+		if err := exec("email account "+c.before, stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	if err := Run(ctx, cfg); err != nil {
 		t.Fatal(err)
+	}
+
+	for i, c := range socialEmailFixtures() {
+		var got sql.NullString
+		if err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT email FROM accounts WHERE id = 'acc_e%d'", i)).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Valid != (c.after != "") || got.String != c.after {
+			t.Errorf("%s: email %q became %v, want %q", c.name, c.before, got, c.after)
+			continue
+		}
+		// Whatever the SQL keeps, the Go canonicalizer agrees with.
+		if got.Valid {
+			if canonical, err := domain.CanonicalEmail(c.before); err != nil || canonical != got.String {
+				t.Errorf("%s: SQL kept %q, CanonicalEmail(%q) = %q, %v", c.name, got.String, c.before, canonical, err)
+			}
+		}
+	}
+	for label, stmt := range map[string]string{
+		"the pre-existing account has no email": "SELECT COUNT(*) FROM accounts WHERE id='acc_social' AND email IS NULL",
+	} {
+		if n := count(stmt); n != 1 {
+			t.Fatalf("%s: %d", label, n)
+		}
+	}
+	// Uniqueness is over the canonical form; NULLs coexist; '' is not a value.
+	for i, stmt := range []string{
+		"INSERT INTO principals (id,kind,created_at) VALUES ('prn_n1','human'," + socialTS + ")",
+		"INSERT INTO principals (id,kind,created_at) VALUES ('prn_n2','human'," + socialTS + ")",
+		"INSERT INTO principals (id,kind,created_at) VALUES ('prn_n3','human'," + socialTS + ")",
+		"INSERT INTO accounts (id,principal_id,username,display_name,created_at) VALUES ('acc_n1','prn_n1','n1','N'," + socialTS + ")",
+		"INSERT INTO accounts (id,principal_id,username,display_name,created_at,email) VALUES ('acc_n2','prn_n2','n2','N'," + socialTS + ",NULL)",
+	} {
+		if err := exec(fmt.Sprintf("null email %d", i), stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := count("SELECT COUNT(*) FROM accounts WHERE id IN ('acc_n1','acc_n2') AND email IS NULL"); n != 2 {
+		t.Fatalf("new accounts default to NULL email: %d of 2", n)
+	}
+	canonical, err := domain.CanonicalEmail("Keep.Me+tag@EXAMPLE.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exec("canonical duplicate", "INSERT INTO accounts (id,principal_id,username,display_name,created_at,email) VALUES ('acc_n3','prn_n3','n3','N',"+socialTS+",'"+canonical+"')") == nil {
+		t.Error("a second account with the same canonical email was accepted")
+	}
+	if err := exec("empty email", "INSERT INTO accounts (id,principal_id,username,display_name,created_at,email) VALUES ('acc_n3','prn_n3','n3','N',"+socialTS+",'')"); err == nil || !strings.Contains(strings.ToLower(err.Error()), "check constraint") {
+		t.Errorf("an empty email was not refused by a CHECK: %v", err)
 	}
 
 	for query, want := range map[string]int{

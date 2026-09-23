@@ -12,7 +12,10 @@ export type RuntimeStatus = {
 export type AccountProfile = {
     username: string;
     display_name: string;
-    email: string;
+    /**
+     * The verified login email in canonical form (domain lowercased), or null when the account has none. Read-only; only verified local sign-up sets it. Never an identity linking key.
+     */
+    email: string | null;
     /**
      * SCIM controls the username and display name.
      */
@@ -26,10 +29,6 @@ export type AccountProfile = {
 export type UpdateAccountProfileRequest = {
     username: string;
     display_name: string;
-    /**
-     * Contact address, or empty to clear. Never used for authentication.
-     */
-    email: string;
     proof?: string;
 };
 

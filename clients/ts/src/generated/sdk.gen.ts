@@ -1867,7 +1867,7 @@ export const getMyProfile = <ThrowOnError extends boolean = false>(options?: Opt
 /**
  * Update your own account profile.
  *
- * Email is contact metadata and never a login or identity linking key. Provisioned names remain controlled by SCIM. Username changes require current account proof.
+ * Updates the username and display name. The email is not profile data and cannot be set here; only verified local sign-up writes it. Provisioned names remain controlled by SCIM. Username changes require current account proof.
  */
 export const updateMyProfile = <ThrowOnError extends boolean = false>(options: Options<UpdateMyProfileData, ThrowOnError>) => (options.client ?? client).patch<UpdateMyProfileResponses, UpdateMyProfileErrors, ThrowOnError>({
     security: [{ scheme: 'bearer', type: 'http' }],

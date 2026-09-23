@@ -2957,7 +2957,9 @@ func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
 // AccountProfile defines model for AccountProfile.
 type AccountProfile struct {
 	DisplayName string `json:"display_name"`
-	Email       string `json:"email"`
+
+	// Email The verified login email in canonical form (domain lowercased), or null when the account has none. Read-only; only verified local sign-up sets it. Never an identity linking key.
+	Email *string `json:"email"`
 
 	// Managed SCIM controls the username and display name.
 	Managed  bool   `json:"managed"`
@@ -7803,12 +7805,9 @@ type TotpStatus struct {
 
 // UpdateAccountProfileRequest defines model for UpdateAccountProfileRequest.
 type UpdateAccountProfileRequest struct {
-	DisplayName string `json:"display_name"`
-
-	// Email Contact address, or empty to clear. Never used for authentication.
-	Email    string  `json:"email"`
-	Proof    *string `json:"proof,omitempty"`
-	Username string  `json:"username"`
+	DisplayName string  `json:"display_name"`
+	Proof       *string `json:"proof,omitempty"`
+	Username    string  `json:"username"`
 }
 
 // UpdateAdapterOriginRequest defines model for UpdateAdapterOriginRequest.

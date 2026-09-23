@@ -487,6 +487,9 @@ func reverseSocialSigninSQLite(t *testing.T, db *store.DB) {
 		"CREATE INDEX sessions_origin_idx ON sessions (requesting_origin)",
 		legacyStatement("00056_second_factor.sql", "ALTER TABLE sessions ADD COLUMN enrolment_required"))
 	drillExec(t, db, "DROP TABLE oauth2_providers")
+	// The shared reversal drops accounts.email (00049); its 00057 unique index
+	// goes first.
+	drillExec(t, db, "DROP INDEX accounts_email")
 	drillExec(t, db, "ALTER TABLE orgs DROP COLUMN registration_policy_id")
 	drillExec(t, db, "ALTER TABLE orgs DROP COLUMN origin")
 }
@@ -522,6 +525,8 @@ func reverseSocialSigninPostgres(t *testing.T, db *store.DB) {
 		"ALTER TABLE grant_origins ADD CONSTRAINT grant_origins_kind_check CHECK (kind IN ('manual', 'break-glass', 'scim', 'structural', 'lockout-retention'))",
 		"ALTER TABLE orgs DROP COLUMN registration_policy_id",
 		"ALTER TABLE orgs DROP COLUMN origin",
+		// accounts.email itself is dropped by the shared 00049 reversal.
+		"DROP INDEX accounts_email",
 	} {
 		drillExec(t, db, statement)
 	}

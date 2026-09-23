@@ -18,7 +18,7 @@ func (a *API) GetMyProfile(ctx context.Context, _ apigen.GetMyProfileRequestObje
 	return apigen.GetMyProfile200JSONResponse(profileResponse(profile)), nil
 }
 func (a *API) UpdateMyProfile(ctx context.Context, req apigen.UpdateMyProfileRequestObject) (apigen.UpdateMyProfileResponseObject, error) {
-	profile, err := a.Auth.UpdateMyProfile(ctx, bearer(ctx), service.AccountProfile{Username: req.Body.Username, DisplayName: req.Body.DisplayName, Email: req.Body.Email}, deref(req.Body.Proof))
+	profile, err := a.Auth.UpdateMyProfile(ctx, bearer(ctx), service.ProfileUpdate{Username: req.Body.Username, DisplayName: req.Body.DisplayName}, deref(req.Body.Proof))
 	if err != nil {
 		return nil, err
 	}

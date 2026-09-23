@@ -13,7 +13,7 @@ This is a source-based inventory, not a scan of your production data.
 
 | Data class | Examples and location | Lifecycle to account for |
 | --- | --- | --- |
-| Accounts and identity | Login handles, display names, federation subjects, SCIM users/groups and memberships in the database | Host-local restriction/release and identity erasure; upstream identity-provider reconciliation needs separate review |
+| Accounts and identity | Login handles, display names, verified sign-in emails, federation subjects, SCIM users/groups and memberships in the database | Host-local restriction/release and identity erasure; upstream identity-provider reconciliation needs separate review |
 | Authentication and authorization | Password verifiers, factor credentials, sessions, credential authorities, grants and principal references | Expiry and revocation plus historical references; never return credential material in a rights export |
 | Audit metadata | Actor/credential references, source IP, user agent, object references and event payloads in tenant and instance trails | Bounded access/security policies and audited pruning; append-only does not mean anonymous |
 | Customer content | Values, names, descriptions and metadata supplied by users, including snapshots, drafts and history | Personal data can occur in config as well as secrets; revision GC does not impose an absolute age maximum |

@@ -6,4 +6,4 @@ SELECT username, display_name, email, EXISTS(SELECT 1 FROM scim_users WHERE scim
 
 -- hikyo:authn-resolution
 -- name: UpdateAccountProfile :exec
-UPDATE accounts SET username = sqlc.arg(username), display_name = sqlc.arg(display_name), email = sqlc.arg(email) WHERE id = sqlc.arg(account_id);
+UPDATE accounts SET username = sqlc.arg(username), display_name = sqlc.arg(display_name) WHERE id = sqlc.arg(account_id);
