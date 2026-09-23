@@ -665,26 +665,30 @@ jobs:
       # Exact @playwright/test release from web/package.json. Browser and OS
       # dependencies are part of this digest-pinned multi-architecture image.
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
-    # A leg runs ~4 flows serially (~3–4 min); the cap is headroom over that, not
-    # the runner default of 360. A browser/MFA-ceremony hang here would otherwise
-    # stall web-closure and the whole gate for up to 8×360 runner-minutes.
+    # A leg takes ~6 to 8 min (~2.5 min instance setup, then its flows serially);
+    # the cap is headroom over that, not the runner default of 360. A
+    # browser/MFA-ceremony hang here would otherwise stall web-closure and the
+    # whole gate for up to 8×360 runner-minutes.
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         project: [desktop, mobile]
         group: [1, 2, 3, 4]
-        # Weight-balanced by test count + MFA-ceremony cost. Every flow in
+        # Balanced by measured desktop test time per spec (run 35883620401:
+        # members 107s, login 61s, reveal 49s, scanning 31s, settings 73s,
+        # workspace 63s, history 56s, account 120s, machine-access 130s,
+        # instance-admin 114s, shell 39s, matrix 197s). Every flow in
         # e2e/registry.ts appears in exactly one group; the aggregator proves it.
         include:
           - group: 1
             specs: e2e/flows/reveal.spec.ts e2e/flows/members.spec.ts e2e/flows/login.spec.ts e2e/flows/scanning.spec.ts
           - group: 2
-            specs: e2e/flows/settings.spec.ts e2e/flows/history.spec.ts e2e/flows/workspace.spec.ts
+            specs: e2e/flows/settings.spec.ts e2e/flows/history.spec.ts e2e/flows/workspace.spec.ts e2e/flows/account.spec.ts
           - group: 3
-            specs: e2e/flows/shell.spec.ts e2e/flows/instance-admin.spec.ts e2e/flows/machine-access.spec.ts e2e/flows/account.spec.ts
+            specs: e2e/flows/instance-admin.spec.ts e2e/flows/machine-access.spec.ts
           - group: 4
-            specs: e2e/flows/matrix.spec.ts
+            specs: e2e/flows/matrix.spec.ts e2e/flows/shell.spec.ts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
