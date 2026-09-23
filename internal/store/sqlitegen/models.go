@@ -16,6 +16,7 @@ type Account struct {
 	CreatedAt          string
 	WebauthnUserHandle []byte
 	Email              sql.NullString
+	EmailVerifiedAt    sql.NullString
 }
 
 type Adapter struct {

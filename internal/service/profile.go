@@ -15,13 +15,15 @@ import (
 )
 
 // AccountProfile is the authenticated holder's profile. Username and display
-// name are editable (ProfileUpdate); Email is the verified login email, nil
-// when none, written only by verified local sign-up (#608) and never here. It
-// is never a recovery or linking identifier.
+// name are editable (ProfileUpdate); Email is read-only, nil when none. When
+// EmailVerified it is the login email, written only by verified local sign-up
+// (#608) and never here; otherwise it is a legacy contact address, display-only
+// and never used to sign in. It is never a recovery or linking identifier.
 type AccountProfile struct {
 	Username         string
 	DisplayName      string
 	Email            *string
+	EmailVerified    bool
 	Managed          bool
 	UsernameEditable bool
 }
@@ -122,7 +124,7 @@ func (s *Auth) UpdateMyProfile(ctx context.Context, presented string, profile Pr
 				return err
 			}
 		}
-		next := authz.AccountProfile{Username: profile.Username, DisplayName: profile.DisplayName, Email: current.Email, Managed: current.Managed, UsernameEditable: current.UsernameEditable}
+		next := authz.AccountProfile{Username: profile.Username, DisplayName: profile.DisplayName, Email: current.Email, EmailVerified: current.EmailVerified, Managed: current.Managed, UsernameEditable: current.UsernameEditable}
 		if err := az.UpdateAccountProfile(ctx, account.ID, next); err != nil {
 			return err
 		}

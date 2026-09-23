@@ -17,7 +17,7 @@ type PrivacyAccountView struct {
 	PrincipalID string    `json:"principal_id"`
 	Username    string    `json:"username"`
 	DisplayName string    `json:"display_name"`
-	Email       *string   `json:"email"` // the verified login email, NULL when none
+	Email       *string   `json:"email"` // the login email when verified, else legacy contact data; NULL when none
 	CreatedAt   time.Time `json:"created_at"`
 	State       string    `json:"state"`
 }

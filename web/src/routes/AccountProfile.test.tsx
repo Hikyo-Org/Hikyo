@@ -10,7 +10,7 @@ vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({ identity: { principal: { id: 'prn_alice' } }, refreshSession }),
 }));
 
-const profile = { username: 'alice', display_name: 'Alice Example', email: null, managed: false, username_editable: true };
+const profile = { username: 'alice', display_name: 'Alice Example', email: null, email_verified: false, managed: false, username_editable: true };
 let unmount: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
@@ -108,19 +108,31 @@ describe('account profile', () => {
   });
 
   it('shows the sign-in email read-only with truthful copy and never sends it', async () => {
-    const verified = { ...profile, email: 'alice@example.com' };
+    const verified = { ...profile, email: 'alice@example.com', email_verified: true };
     const fetchMock = vi.fn((request: Request) => Promise.resolve(json(request.method === 'PATCH'
       ? { ...verified, display_name: 'Alice New' } : verified)));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = await mount();
     expect(input(container, 'email').value).toBe('alice@example.com');
     expect(input(container, 'email').readOnly).toBe(true);
+    expect(container.querySelector('label[for$="-email"]')?.textContent).toBe('Sign-in email');
     expect(container.textContent).toContain('Used to sign in. Set when you sign up with email');
-    expect(container.textContent).not.toContain('Verified');
+    expect(container.textContent).not.toContain('not used to sign in');
     await act(async () => { typeInto(input(container, 'display_name'), 'Alice New'); });
     await submit(container);
     const request = fetchMock.mock.calls.find(([candidate]) => candidate.method === 'PATCH')?.[0];
     expect(await request?.json()).toEqual({ username: verified.username, display_name: 'Alice New' });
+  });
+
+  it('shows an unverified legacy email as contact data that is not used to sign in', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json({ ...profile, email: 'alice@example.com' }))));
+    const { container } = await mount();
+    expect(input(container, 'email').value).toBe('alice@example.com');
+    expect(input(container, 'email').readOnly).toBe(true);
+    expect(container.querySelector('label[for$="-email"]')?.textContent).toBe('Contact email');
+    expect(container.textContent).toContain('A contact address from before sign-in email existed. It is not used to sign in');
+    expect(container.textContent).not.toContain('Sign-in email');
+    expect(container.textContent).not.toContain('Used to sign in.');
   });
 
   it('shows no email field when the account has no sign-in email', async () => {

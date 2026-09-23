@@ -22,7 +22,10 @@ const maxEmailBytes = 254
 // comment, group, angle brackets or surrounding space; an ASCII domain,
 // lowercased, with no trailing dot and no address literal; the local part
 // byte-preserved; at most 254 bytes. Uniqueness and domain-allowlist matching
-// are over this string.
+// are over this string. Only a verified accounts.email (email_verified_at set)
+// is a login identifier, an existing address for sign-up, or unique; an
+// unverified one is legacy contact data and never an authentication, linking
+// or uniqueness key.
 func CanonicalEmail(raw string) (string, error) {
 	if raw == "" || len(raw) > maxEmailBytes {
 		return "", ErrEmailMalformed

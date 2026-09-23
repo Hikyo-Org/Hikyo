@@ -26,8 +26,9 @@ func TestSocialSigninMigrationPostgres(t *testing.T) {
 
 type socialEmailFixture struct{ name, before, after string }
 
-// socialEmailFixtures are 00049 contact values and what 00057 keeps: the
-// canonical form of a provably valid, unique address, otherwise NULL.
+// socialEmailFixtures are 00049 contact values and what 00057 keeps, always
+// unverified: the canonical form of a provably valid address, otherwise NULL.
+// Duplicates are kept; unverified values are contact data, not a unique key.
 func socialEmailFixtures() []socialEmailFixture {
 	local64 := strings.Repeat("l", 64)
 	domain189 := strings.Repeat("d", 63) + "." + strings.Repeat("d", 63) + "." + strings.Repeat("d", 61)
@@ -48,10 +49,10 @@ func socialEmailFixtures() []socialEmailFixture {
 		{"empty local", "@example.com", ""},
 		{"empty domain", "nodomain@", ""},
 		{"space", "sp ace@example.com", ""},
-		{"duplicate pair 1", "dup@example.com", ""},
-		{"duplicate pair 2", "dup@example.com", ""},
-		{"case-variant domain 1", "Case@Example.com", ""},
-		{"case-variant domain 2", "Case@EXAMPLE.COM", ""},
+		{"duplicate pair 1", "dup@example.com", "dup@example.com"},
+		{"duplicate pair 2", "dup@example.com", "dup@example.com"},
+		{"case-variant domain 1", "Case@Example.com", "Case@example.com"},
+		{"case-variant domain 2", "Case@EXAMPLE.COM", "Case@example.com"},
 		{"local case is significant 1", "Local@example.net", "Local@example.net"},
 		{"local case is significant 2", "local@example.net", "local@example.net"},
 	}
@@ -171,7 +172,7 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 		}
 	}
 
-	// 00049's contact emails, repurposed by 00057 as the verified login email.
+	// 00049's contact emails, which 00057 keeps as unverified contact data.
 	for i, c := range socialEmailFixtures() {
 		stmt := fmt.Sprintf("INSERT INTO principals (id,kind,created_at) VALUES ('prn_e%d','human',%s)", i, socialTS)
 		if err := exec("email principal", stmt); err != nil {
@@ -211,7 +212,12 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 			t.Fatalf("%s: %d", label, n)
 		}
 	}
-	// Uniqueness is over the canonical form; NULLs coexist; '' is not a value.
+	// No legacy value is verified: none is a login identifier or unique key.
+	if n := count("SELECT COUNT(*) FROM accounts WHERE email_verified_at IS NOT NULL"); n != 0 {
+		t.Fatalf("00057 marked %d legacy emails verified", n)
+	}
+	// Uniqueness is over the canonical form of verified values only; NULLs and
+	// unverified duplicates coexist; '' is not a value; verified needs an email.
 	for i, stmt := range []string{
 		"INSERT INTO principals (id,kind,created_at) VALUES ('prn_n1','human'," + socialTS + ")",
 		"INSERT INTO principals (id,kind,created_at) VALUES ('prn_n2','human'," + socialTS + ")",
@@ -230,10 +236,37 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if exec("canonical duplicate", "INSERT INTO accounts (id,principal_id,username,display_name,created_at,email) VALUES ('acc_n3','prn_n3','n3','N',"+socialTS+",'"+canonical+"')") == nil {
-		t.Error("a second account with the same canonical email was accepted")
+	for _, id := range []string{"n4", "n5", "n6"} {
+		if err := exec("principal "+id, "INSERT INTO principals (id,kind,created_at) VALUES ('prn_"+id+"','human',"+socialTS+")"); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := exec("empty email", "INSERT INTO accounts (id,principal_id,username,display_name,created_at,email) VALUES ('acc_n3','prn_n3','n3','N',"+socialTS+",'')"); err == nil || !strings.Contains(strings.ToLower(err.Error()), "check constraint") {
+	account := func(id, email, verifiedAt string) string {
+		return "INSERT INTO accounts (id,principal_id,username,display_name,created_at,email,email_verified_at) VALUES ('acc_" + id + "','prn_" + id + "','" + id + "','N'," + socialTS + "," + email + "," + verifiedAt + ")"
+	}
+	// Another unverified holder of a legacy address is accepted: unverified
+	// values are not a uniqueness key.
+	if err := exec("unverified duplicate", account("n3", "'"+canonical+"'", "NULL")); err != nil {
+		t.Errorf("a second unverified holder of %q was refused: %v", canonical, err)
+	}
+	// Nobody is blocked by the unverified holders: the first verified holder of
+	// the address is accepted beside them.
+	if err := exec("verified beside unverified", account("n4", "'"+canonical+"'", socialTS)); err != nil {
+		t.Errorf("an unverified holder blocked verifying %q: %v", canonical, err)
+	}
+	// A second verified holder, arriving in another case of the domain and
+	// canonicalized as every writer must, is refused.
+	again, err := domain.CanonicalEmail("Keep.Me+tag@example.COM")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exec("verified canonical duplicate", account("n5", "'"+again+"'", socialTS)) == nil {
+		t.Error("a second account with the same verified canonical email was accepted")
+	}
+	if err := exec("verified without email", account("n5", "NULL", socialTS)); err == nil || !strings.Contains(strings.ToLower(err.Error()), "check constraint") {
+		t.Errorf("a verification time without an email was not refused by a CHECK: %v", err)
+	}
+	if err := exec("empty email", account("n6", "''", "NULL")); err == nil || !strings.Contains(strings.ToLower(err.Error()), "check constraint") {
 		t.Errorf("an empty email was not refused by a CHECK: %v", err)
 	}
 
@@ -431,6 +464,10 @@ func testSocialSigninEmailValidityParity(t *testing.T, cfg store.Config) {
 	}
 	if err := Run(ctx, cfg); err != nil {
 		t.Fatal(err)
+	}
+	var verified int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM accounts WHERE email_verified_at IS NOT NULL").Scan(&verified); err != nil || verified != 0 {
+		t.Fatalf("%s: %d legacy emails became verified: %v", cfg.Engine, verified, err)
 	}
 	for i, c := range cases {
 		var got sql.NullString

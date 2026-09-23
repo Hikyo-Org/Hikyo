@@ -77,19 +77,19 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			// The verified login email is written only by verified local sign-up
 			// (#608); stand in for that writer here. The profile surface cannot
 			// set it: an update leaves it exactly as it was.
-			execRaw(t, db, `UPDATE accounts SET email = 'subject@example.test' WHERE principal_id = 'usr_subject'`)
+			execRaw(t, db, `UPDATE accounts SET email = 'subject@example.test', email_verified_at = '2026-09-06T00:00:00.000000Z' WHERE principal_id = 'usr_subject'`)
 			profile, err := auth.MyProfile(ctx, session.SessionToken)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if profile.Email == nil || *profile.Email != "subject@example.test" {
+			if profile.Email == nil || *profile.Email != "subject@example.test" || !profile.EmailVerified {
 				t.Fatalf("profile email = %v, want the verified address", profile.Email)
 			}
 			updated, err := auth.UpdateMyProfile(ctx, session.SessionToken, service.ProfileUpdate{Username: profile.Username, DisplayName: "Subject"}, "")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if updated.Email == nil || *updated.Email != *profile.Email {
+			if updated.Email == nil || *updated.Email != *profile.Email || !updated.EmailVerified {
 				t.Fatalf("a profile update changed the email: %v", updated.Email)
 			}
 			export, err := auth.ExportPrivacySubject(ctx, "usr_subject")
@@ -169,8 +169,8 @@ func TestPrivacySubjectLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := queryInt(t, db, "SELECT COUNT(*) FROM accounts WHERE principal_id = 'usr_subject' AND email IS NULL"); got != 1 {
-				t.Fatalf("erasure left the email non-NULL: %d", got)
+			if got := queryInt(t, db, "SELECT COUNT(*) FROM accounts WHERE principal_id = 'usr_subject' AND email IS NULL AND email_verified_at IS NULL"); got != 1 {
+				t.Fatalf("erasure left the email or its verification non-NULL: %d", got)
 			}
 			if _, err := auth.ReapplyPrivacyReceipt(ctx, erased); err != nil {
 				t.Fatalf("repeat erase: %v", err)

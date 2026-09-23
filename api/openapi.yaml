@@ -4321,7 +4321,7 @@ paths:
       operationId: updateMyProfile
       tags: [auth]
       summary: Update your own account profile.
-      description: Updates the username and display name. The email is not profile data and cannot be set here; only verified local sign-up writes it. Provisioned names remain controlled by SCIM. Username changes require current account proof.
+      description: Updates the username and display name. The email is not profile data and cannot be set here; only verified local sign-up writes a verified one. Provisioned names remain controlled by SCIM. Username changes require current account proof.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
@@ -11793,7 +11793,7 @@ components:
 
     AccountProfile:
       type: object
-      required: [username, display_name, email, managed, username_editable]
+      required: [username, display_name, email, email_verified, managed, username_editable]
       properties:
         username:
           type: string
@@ -11801,7 +11801,10 @@ components:
           type: string
         email:
           type: [string, "null"]
-          description: The sign-in email in canonical form (domain lowercased), or null when the account has none. Read-only. Only verified local sign-up sets a new one; an account upgraded from an earlier version may keep its prior contact address when that address was valid and unique. Never an identity linking key.
+          description: The account email in canonical form (domain lowercased), or null when the account has none. Read-only. See email_verified for what it is used for. Never an identity linking key.
+        email_verified:
+          type: boolean
+          description: True when email is the verified sign-in email, set only by verified local sign-up. False when email is null or is a contact address kept from before sign-in email existed; such an address is display-only and is never used to sign in.
         managed:
           type: boolean
           description: SCIM controls the username and display name.

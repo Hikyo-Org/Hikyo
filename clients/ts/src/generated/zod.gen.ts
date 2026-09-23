@@ -21,6 +21,7 @@ export const zAccountProfile = z.object({
     username: z.string(),
     display_name: z.string(),
     email: z.string().nullable(),
+    email_verified: z.boolean(),
     managed: z.boolean(),
     username_editable: z.boolean()
 });

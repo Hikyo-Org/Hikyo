@@ -2958,8 +2958,11 @@ func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
 type AccountProfile struct {
 	DisplayName string `json:"display_name"`
 
-	// Email The sign-in email in canonical form (domain lowercased), or null when the account has none. Read-only. Only verified local sign-up sets a new one; an account upgraded from an earlier version may keep its prior contact address when that address was valid and unique. Never an identity linking key.
+	// Email The account email in canonical form (domain lowercased), or null when the account has none. Read-only. See email_verified for what it is used for. Never an identity linking key.
 	Email *string `json:"email"`
+
+	// EmailVerified True when email is the verified sign-in email, set only by verified local sign-up. False when email is null or is a contact address kept from before sign-in email existed; such an address is display-only and is never used to sign in.
+	EmailVerified bool `json:"email_verified"`
 
 	// Managed SCIM controls the username and display name.
 	Managed  bool   `json:"managed"`

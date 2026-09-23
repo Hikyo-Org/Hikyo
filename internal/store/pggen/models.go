@@ -16,6 +16,7 @@ type Account struct {
 	CreatedAt          pgtype.Timestamptz
 	WebauthnUserHandle []byte
 	Email              pgtype.Text
+	EmailVerifiedAt    pgtype.Timestamptz
 }
 
 type Adapter struct {

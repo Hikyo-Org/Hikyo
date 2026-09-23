@@ -142,7 +142,7 @@ func (q *Queries) PrivacyCorrectAccount(ctx context.Context, arg PrivacyCorrectA
 }
 
 const privacyEraseAccount = `-- name: PrivacyEraseAccount :exec
-UPDATE accounts SET username = $1, display_name = '', email = NULL, webauthn_user_handle = NULL WHERE id = $2
+UPDATE accounts SET username = $1, display_name = '', email = NULL, email_verified_at = NULL, webauthn_user_handle = NULL WHERE id = $2
 `
 
 type PrivacyEraseAccountParams struct {

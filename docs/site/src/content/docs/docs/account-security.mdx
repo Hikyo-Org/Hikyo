@@ -17,12 +17,14 @@ Use the new username for future password sign-ins. Existing permissions and
 sessions stay attached to the same account. Your display name identifies you
 in the interface; names are labels and do not grant access.
 
-The email shown on your profile is your sign-in email. New ones are set only
-when you register through verified local sign-up; an account upgraded from an
-earlier version may keep the contact address it had, if that address was
-valid and not shared with another account. It is read-only here, shown in
-canonical form (domain lowercased), and is never an account-linking key or a
-password-recovery channel. Accounts without one show no email field.
+The email shown on your profile is read-only and shown in canonical form
+(domain lowercased). A sign-in email is set only when you register through
+verified local sign-up, and only a verified address is used to sign in. An
+account upgraded from an earlier version keeps the contact address it had, if
+that address was valid, shown as a contact email: it was never verified, so it
+is not used to sign in, does not reserve the address, and is cleared if
+someone else later verifies that address. No email is ever an account-linking
+key or a password-recovery channel. Accounts without one show no email field.
 For provisioned accounts, change the username and display name through the
 identity provider; the web app keeps the display name read-only and hides the
 internal username. Accounts that sign in only through a provider can still edit

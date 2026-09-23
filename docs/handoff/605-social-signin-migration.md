@@ -42,28 +42,55 @@ reserved for #607** (the registration switch: `intent` required on
 - Release note: `docs/site/src/content/docs/docs/upgrades.mdx`, "Social
   sign-in schema upgrade".
 
-## Owner decision: accounts.email repurposed
+## Owner decision: accounts.email repurposed, verified values only
 
 00049 had added `accounts.email TEXT NOT NULL DEFAULT ''` as user-editable
 contact metadata. The owner chose to **repurpose that column** as the login
-email rather than add a new one:
+email rather than add a new one, and then ruled that the legacy values must
+neither take over nor block anyone: they were never verified, so anyone could
+have typed someone else's address. The design:
 
-- 00057 makes it nullable (no default, `''` refused by CHECK) with a partial
-  unique index `accounts_email` on the canonical form (domain lowercased,
-  local part preserved).
-- Existing values: kept, in canonical form, only when plain SQL can prove them
-  a bare ASCII dot-atom addr-spec of at most 254 bytes whose canonical form no
-  other account shares. Everything else, and every member of a duplicate
-  group, becomes NULL. Migrations are SQL-only, so the count of cleared values
-  is not reported. The sqlite GLOBs and postgres regex accept the same set,
-  pinned by a both-engine parity test that also checks agreement with
-  `domain.CanonicalEmail`.
-- **Kept values were never verified.** The squatting risk (a user who entered
-  someone else's address keeps it) is accepted by the owner.
-- The profile can no longer set email: `service.ProfileUpdate` carries no
-  email, `UpdateAccountProfileRequest` has no `email` field (sending one is a
-  400), the web form shows it read-only. Only verified local sign-up (#608)
-  writes it. Privacy erasure writes NULL.
+- 00057 makes `email` nullable (no default, `''` refused by CHECK) and adds
+  `accounts.email_verified_at` (nullable; `TIMESTAMPTZ` on postgres, `TEXT`
+  on sqlite, like every other timestamp) with CHECK
+  `email_verified_at IS NULL OR email IS NOT NULL`.
+- The partial unique index `accounts_email` covers verified values only:
+  `UNIQUE (email) WHERE email_verified_at IS NOT NULL`, over the canonical form
+  (domain lowercased, local part preserved), so two verified holders of one
+  address in different domain case are refused.
+- Existing values: kept in canonical form, **unverified**
+  (`email_verified_at = NULL`), when plain SQL can prove them a bare ASCII
+  dot-atom addr-spec of at most 254 bytes; everything else becomes NULL.
+  Duplicates among kept values stay (they are contact data and block nobody),
+  so the former "null every duplicate-group member" step is gone. Migrations
+  are SQL-only, so the count of cleared values is not reported. The sqlite
+  GLOBs and postgres regex accept the same set, pinned by a both-engine parity
+  test that also checks agreement with `domain.CanonicalEmail`.
+- Semantics: **only a verified email is a login identifier, and only a
+  verified email counts as an "existing address" for sign-up.** An unverified
+  value is display-only contact data and never an authentication, linking or
+  uniqueness key.
+- The profile can no longer set email (owner decision: read-only).
+  `service.ProfileUpdate` carries no email, `UpdateAccountProfileRequest` has
+  no `email` field (sending one is a 400). The profile read reports
+  `email_verified` (`AccountProfile` in Go, OpenAPI and the TS client); the web
+  form shows a verified value as "Sign-in email, used to sign in" and an
+  unverified one as "Contact email, from before sign-in email existed, not
+  used to sign in". Privacy erasure writes NULL to both columns.
+
+### Requirements for #608 (verified local sign-up)
+
+- Sign-up and sign-in look addresses up with `email_verified_at IS NOT NULL`
+  only; an unverified holder never refuses a sign-up and never matches a
+  sign-in.
+- Writing a verified address sets `email` (canonical form) and
+  `email_verified_at` together.
+- **In the same transaction that verifies an address, clear (`email = NULL`)
+  every other account holding that address unverified**
+  (`UPDATE accounts SET email = NULL WHERE email = $1 AND email_verified_at IS
+  NULL AND id <> $2`). Not added in #605: with no caller it would be a dead
+  proof-free writer needing a `ResolutionSurfaceWriters` entry, parameter
+  aliases and an annotated-query pin; #608 adds it with its caller.
 
 ## Departures from the spec DDL
 
@@ -82,7 +109,9 @@ email rather than add a new one:
 - **`jit_policy`** is gone since 00044; nothing references it.
 - **Canonicalizer is stricter than the spec text:** it also refuses quoted
   local parts (net/mail unquotes them) and domain literals.
-- **Extra CHECK** `email IS NULL OR email <> ''` on `accounts`.
+- **Extra CHECKs** `email IS NULL OR email <> ''` and
+  `email_verified_at IS NULL OR email IS NOT NULL` on `accounts`, and the
+  added `email_verified_at` column (the spec has none).
 - **Restore epoch scan:** a restore bumps the credential epoch against the
   archive's own schema before rolling forward, so the two post-legacy epoch
   tables (`oauth2_transactions`, `registration_signups`) cannot join the frozen

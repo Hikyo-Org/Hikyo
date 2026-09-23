@@ -4,9 +4,11 @@
 -- dialect carries the reasoning and the commentary corrections; this file
 -- states what differs.
 --
--- accounts.email is repurposed as the verified login email exactly as the
--- sqlite header describes (00049's contact-only meaning is superseded; the
--- count of cleared values is not reported, migrations being SQL only).
+-- accounts.email and the new accounts.email_verified_at follow the sqlite
+-- header exactly: only a verified email is a login identifier or a uniqueness
+-- key, legacy 00049 values are kept unverified in canonical form (invalid ones
+-- become NULL, duplicates stay), and the count of cleared values is not
+-- reported, migrations being SQL only.
 --
 -- Postgres alters the five widened tables in place instead of rebuilding
 -- them. A rebuild buys nothing here: postgres can drop and re-add a CHECK by
@@ -187,10 +189,11 @@ ALTER TABLE grant_origins ADD CONSTRAINT grant_origins_kind_check CHECK (
 ALTER TABLE orgs ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual' CHECK (origin IN ('manual', 'registration'));
 ALTER TABLE orgs ADD COLUMN registration_policy_id TEXT;
 
--- accounts.email: nullable verified login email (see the sqlite header). The
--- regex accepts exactly the set the sqlite GLOBs do, and its explicit
--- character classes already restrict the address to ASCII; the octet/char
--- length comparison is a second, encoding-based guard (UTF-8 databases).
+-- accounts.email: nullable, verified or unverified per email_verified_at (see
+-- the sqlite header). The regex accepts exactly the set the sqlite GLOBs do,
+-- and its explicit character classes already restrict the address to ASCII;
+-- the octet/char length comparison is a second, encoding-based guard (UTF-8
+-- databases). Kept legacy values are unverified, so duplicates among them stay.
 ALTER TABLE accounts ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE accounts ALTER COLUMN email DROP DEFAULT;
 UPDATE accounts
@@ -200,10 +203,7 @@ SET email = CASE
         AND email ~ '^[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&''*+/=?^_`{|}~-]+)*@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*$'
     THEN split_part(email, '@', 1) || '@' || lower(split_part(email, '@', 2))
     END;
-UPDATE accounts SET email = NULL
-WHERE email IN (
-    SELECT email FROM accounts WHERE email IS NOT NULL
-    GROUP BY email HAVING COUNT(*) > 1
-);
 ALTER TABLE accounts ADD CONSTRAINT accounts_email_check CHECK (email IS NULL OR email <> '');
-CREATE UNIQUE INDEX accounts_email ON accounts (email) WHERE email IS NOT NULL;
+ALTER TABLE accounts ADD COLUMN email_verified_at TIMESTAMPTZ;
+ALTER TABLE accounts ADD CONSTRAINT accounts_email_verified_check CHECK (email_verified_at IS NULL OR email IS NOT NULL);
+CREATE UNIQUE INDEX accounts_email ON accounts (email) WHERE email_verified_at IS NOT NULL;

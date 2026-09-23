@@ -8,7 +8,7 @@ import (
 )
 
 func profileResponse(p service.AccountProfile) apigen.AccountProfile {
-	return apigen.AccountProfile{Username: p.Username, DisplayName: p.DisplayName, Email: p.Email, Managed: p.Managed, UsernameEditable: p.UsernameEditable}
+	return apigen.AccountProfile{Username: p.Username, DisplayName: p.DisplayName, Email: p.Email, EmailVerified: p.EmailVerified, Managed: p.Managed, UsernameEditable: p.UsernameEditable}
 }
 func (a *API) GetMyProfile(ctx context.Context, _ apigen.GetMyProfileRequestObject) (apigen.GetMyProfileResponseObject, error) {
 	profile, err := a.Auth.MyProfile(ctx, bearer(ctx))

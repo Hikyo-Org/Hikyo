@@ -46,7 +46,8 @@ test.describe('account and security', () => {
     const profile = page.locator('#account-profile');
     await expect(profile.getByLabel('Display name', { exact: true })).toBeEditable();
     await expect(profile.getByLabel('Username', { exact: true })).toBeEditable();
-    await expect(profile.getByLabel('Email address', { exact: true })).toBeEditable();
+    // The email is never profile data: whatever the account holds is read-only.
+    await expect(profile.locator('input[name="email"]:not([readonly])')).toHaveCount(0);
     await expect(profile.getByRole('button', { name: 'Save profile' })).toBeDisabled();
 
     // Passkeys are listable, so they are listed. The authenticator factor is

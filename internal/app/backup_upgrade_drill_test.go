@@ -289,6 +289,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM external_identities WHERE kind = 'oauth2'",
 		"SELECT COUNT(*) FROM credential_authorities WHERE established_credential_kind <> 'password'",
 		"SELECT COUNT(*) FROM grant_origins WHERE kind = 'registration'",
+		"SELECT COUNT(*) FROM accounts WHERE email_verified_at IS NOT NULL",
 		"SELECT COUNT(*) FROM oidc_transactions",
 		"SELECT COUNT(*) FROM reauth_windows",
 	} {
@@ -488,8 +489,9 @@ func reverseSocialSigninSQLite(t *testing.T, db *store.DB) {
 		legacyStatement("00056_second_factor.sql", "ALTER TABLE sessions ADD COLUMN enrolment_required"))
 	drillExec(t, db, "DROP TABLE oauth2_providers")
 	// The shared reversal drops accounts.email (00049); its 00057 unique index
-	// goes first.
+	// and email_verified_at, whose CHECK names email, go first.
 	drillExec(t, db, "DROP INDEX accounts_email")
+	drillExec(t, db, "ALTER TABLE accounts DROP COLUMN email_verified_at")
 	drillExec(t, db, "ALTER TABLE orgs DROP COLUMN registration_policy_id")
 	drillExec(t, db, "ALTER TABLE orgs DROP COLUMN origin")
 }
@@ -527,6 +529,8 @@ func reverseSocialSigninPostgres(t *testing.T, db *store.DB) {
 		"ALTER TABLE orgs DROP COLUMN origin",
 		// accounts.email itself is dropped by the shared 00049 reversal.
 		"DROP INDEX accounts_email",
+		"ALTER TABLE accounts DROP CONSTRAINT accounts_email_verified_check",
+		"ALTER TABLE accounts DROP COLUMN email_verified_at",
 	} {
 		drillExec(t, db, statement)
 	}

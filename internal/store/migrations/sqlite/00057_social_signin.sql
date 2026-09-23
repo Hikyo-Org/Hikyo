@@ -11,18 +11,25 @@
 -- * 00005 "there is no self-registration, ever, and none is representable
 --   here" is superseded by the registration policy below: an operator-enabled
 --   policy row is now the only thing that makes self-registration reachable.
--- * 00007 "there is no email column, ever" and 00049 "contact metadata only;
---   email is never an authentication or linking key" are both superseded:
---   accounts.email is now the verified login email (spec section 2.2), written
---   only by verified local sign-up (#608) and never through the profile. It is
---   nullable (NULL = none; '' is refused), unique over the canonical form of
---   spec 2.5 (domain lowercased, local part preserved), and still never a
---   linking key. 00049's user-entered contact values were unverified, so this
---   migration keeps one only when plain SQL can prove it a bare ASCII
---   dot-atom addr-spec of at most 254 bytes whose canonical form no other
---   account shares; everything else, and every member of a duplicate group,
---   becomes NULL. Migrations are SQL only, so the number of cleared values is
---   not reported.
+-- * 00007 "there is no email column, ever" is superseded, and 00049's
+--   "contact metadata only; email is never an authentication or linking key"
+--   is narrowed: accounts.email now holds either a verified login email or a
+--   legacy unverified contact address, told apart by the new
+--   accounts.email_verified_at (NULL = unverified). Only a verified email is a
+--   login identifier, and only a verified email counts as an existing address
+--   for sign-up; an unverified value is display-only contact data and never
+--   an authentication, linking or uniqueness key. Verified local sign-up
+--   (#608) is the only writer of a verified value, never the profile, and in
+--   the same transaction it must clear (to NULL) the email of every other
+--   account holding the same address unverified. The column is nullable
+--   (NULL = none; '' is refused), unique over the canonical form of spec 2.5
+--   (domain lowercased, local part preserved) among verified values only, and
+--   email_verified_at requires an email. 00049's user-entered values were
+--   never verified, so each is kept, unverified, in canonical form when plain
+--   SQL can prove it a bare ASCII dot-atom addr-spec of at most 254 bytes, and
+--   becomes NULL otherwise. Duplicates among the kept values stay: they are
+--   contact data and block nobody. Migrations are SQL only, so the number of
+--   cleared values is not reported.
 -- * The automatic OIDC provisioning fold of spec section 2.3 is a no-op:
 --   00044 already retired the provider policy.
 --
@@ -336,14 +343,17 @@ CREATE INDEX grant_origins_grant ON grant_origins (grant_id);
 ALTER TABLE orgs ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual' CHECK (origin IN ('manual', 'registration'));
 ALTER TABLE orgs ADD COLUMN registration_policy_id TEXT;
 
--- accounts.email becomes the nullable verified login email (header). SQLite
--- cannot relax NOT NULL in place; the column has no index, so the canonical
--- value is staged in a new column, the old one dropped and the new one renamed
--- into its place (it stays the last column, as on postgres). A value is kept
--- only when it is pure ASCII, at most 254 bytes, has exactly one '@', and both
--- sides are non-empty dot-atoms with no leading, trailing or doubled dot: the
--- local part over RFC 5322 atext, the domain over letters, digits and '-'.
--- The GLOB classes below and the postgres regex accept exactly this set.
+-- accounts.email becomes nullable and gains email_verified_at (header).
+-- SQLite cannot relax NOT NULL in place; the column has no index, so the
+-- canonical value is staged in a new column, the old one dropped and the new
+-- one renamed into its place (it stays the last column but one, as on
+-- postgres). A value is kept only when it is pure ASCII, at most 254 bytes,
+-- has exactly one '@', and both sides are non-empty dot-atoms with no leading,
+-- trailing or doubled dot: the local part over RFC 5322 atext, the domain over
+-- letters, digits and '-'. The GLOB classes below and the postgres regex
+-- accept exactly this set. Every kept value is unverified, so duplicates
+-- among them are left alone. email_verified_at is added after the rename: its
+-- CHECK names email, and sqlite refuses to drop a column another CHECK names.
 ALTER TABLE accounts ADD COLUMN email_canonical TEXT CHECK (email_canonical IS NULL OR email_canonical <> '');
 UPDATE accounts
 SET email_canonical = substr(email, 1, instr(email, '@')) || lower(substr(email, instr(email, '@') + 1))
@@ -360,14 +370,10 @@ WHERE length(CAST(email AS BLOB)) = length(email)
     AND substr(email, instr(email, '@') + 1) NOT GLOB '.*'
     AND substr(email, instr(email, '@') + 1) NOT GLOB '*.'
     AND substr(email, instr(email, '@') + 1) NOT GLOB '*..*';
-UPDATE accounts SET email_canonical = NULL
-WHERE email_canonical IN (
-    SELECT email_canonical FROM accounts WHERE email_canonical IS NOT NULL
-    GROUP BY email_canonical HAVING COUNT(*) > 1
-);
 ALTER TABLE accounts DROP COLUMN email;
 ALTER TABLE accounts RENAME COLUMN email_canonical TO email;
-CREATE UNIQUE INDEX accounts_email ON accounts (email) WHERE email IS NOT NULL;
+ALTER TABLE accounts ADD COLUMN email_verified_at TEXT CHECK (email_verified_at IS NULL OR email IS NOT NULL);
+CREATE UNIQUE INDEX accounts_email ON accounts (email) WHERE email_verified_at IS NOT NULL;
 
 COMMIT;
 PRAGMA legacy_alter_table = OFF;

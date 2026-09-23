@@ -11,16 +11,17 @@ import (
 )
 
 const getAccountProfile = `-- name: GetAccountProfile :one
-SELECT username, display_name, email, EXISTS(SELECT 1 FROM scim_users WHERE scim_users.account_id = accounts.id) AS managed, EXISTS(SELECT 1 FROM password_credentials WHERE password_credentials.account_id = accounts.id) AS has_password, EXISTS(SELECT 1 FROM totp_credentials WHERE totp_credentials.account_id = accounts.id AND confirmed_at IS NOT NULL) AS has_totp FROM accounts WHERE accounts.id = ?1
+SELECT username, display_name, email, email_verified_at, EXISTS(SELECT 1 FROM scim_users WHERE scim_users.account_id = accounts.id) AS managed, EXISTS(SELECT 1 FROM password_credentials WHERE password_credentials.account_id = accounts.id) AS has_password, EXISTS(SELECT 1 FROM totp_credentials WHERE totp_credentials.account_id = accounts.id AND confirmed_at IS NOT NULL) AS has_totp FROM accounts WHERE accounts.id = ?1
 `
 
 type GetAccountProfileRow struct {
-	Username    string
-	DisplayName string
-	Email       sql.NullString
-	Managed     bool
-	HasPassword bool
-	HasTotp     bool
+	Username        string
+	DisplayName     string
+	Email           sql.NullString
+	EmailVerifiedAt sql.NullString
+	Managed         bool
+	HasPassword     bool
+	HasTotp         bool
 }
 
 // The authenticated account owns these fields. SCIM ownership is only a boolean
@@ -33,6 +34,7 @@ func (q *Queries) GetAccountProfile(ctx context.Context, accountID string) (GetA
 		&i.Username,
 		&i.DisplayName,
 		&i.Email,
+		&i.EmailVerifiedAt,
 		&i.Managed,
 		&i.HasPassword,
 		&i.HasTotp,
