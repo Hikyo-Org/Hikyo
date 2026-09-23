@@ -62,12 +62,31 @@ PR #793, against `feat/605-social-signin-migration`). Three independent causes:
 - Passkey for the serving admin: moot once its chain overlaps the viewing one.
 - Enrolling the viewing admin's passkey earlier would save ~30s per leg more.
 
-## Verification still required after merge
+## Post-merge results (PR #795, merged 2026-09-23)
 
-PR validation runs the base branch's `ci.yml`, planner, race script, registry
-and checker, so only the web change is visible on this PR's own run. On the
-first main push after merge, and one later PR run, check: 38 jobs; race shard
-test steps within about a minute of each other (expect ~13.5 to 14.5 minutes a
-job including setup, down from a 17.4 maximum); web leg globalSetup near 2.5
-minutes (measured on this PR's run: 2m29s) and no leg far above the others; `ci-required` green; a deliberately failing fuzz shard still uploads
+Main push runs [35890214827](https://github.com/Hikyo-Org/Hikyo/actions/runs/35890214827)
+(first, cold race cache) and
+[35893040345](https://github.com/Hikyo-Org/Hikyo/actions/runs/35893040345)
+(warm), both green with 38 jobs.
+
+| | Before | Cold | Warm |
+|---|---|---|---|
+| Race test step, per shard | 814 to 1105s | 620 to 913s | 387 to 706s |
+| Web flow step, per leg | 7.4 to 11.8 min | 5.8 to 7.3 min | 5.3 to 7.5 min |
+| `test_core` test step | 712s | 663s | 639s |
+
+Race balance is short of the predicted ~648s per shard: in the cold run
+`internal/lint` took 446s against its 307s weight, sharing four vCPUs with the
+split store suites, and the per-test weights were measured on a 12-core Mac.
+The warm maximum sits ~100s over the mean with shard 1 light. Retuning would
+save at most ~1.5 minutes and run-to-run noise is similar, so it was left;
+regenerate `racePackageSeconds` from CI logs if the spread grows.
+
+Runner queueing still dominates wall time: jobs queued 5 to 13 minutes in
+these runs because main pushes (full plan, including `k8s-e2e` and
+`floor-bench`) overlapped PR runs under the 20-job cap. Main pushes stay
+independently queued by design; changing that is an open option.
+
+Not yet exercised: the failure path where a fuzz shard uploads its
+shard-specific reproducer artifact and `ci-required` merges those into
 `fuzz-reproducers-<run_id>-<attempt>`.
