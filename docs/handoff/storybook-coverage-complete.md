@@ -36,6 +36,7 @@ sensitivity inventory pin was refreshed for those two files with a review note.
 - `FederationIssuersPanel.tsx`: two `event.target.value as …` casts replaced by an option lookup (`optionById`).
 - `KeyDeclarationDetail.tsx`: `as PresenceMode` cast replaced by a narrowing helper like the existing `ruleType`.
 - `vite.config.ts`: throws with the fix in the message when `clients/ts/node_modules/zod` is missing. Before, the bundler only warned `UNRESOLVED_IMPORT` and treated zod as an external the SPA could never load. A `resolve.alias`/`dedupe` route was tried and dropped: it resolved the import but rolldown's native pre-resolve still printed the warning.
+- `app/useNavigationGuard.ts`: found by CI, not locally. Deactivating a guard calls `history.back()`, which settles after a guard mounted in the same tick has pushed its own sentinel (sibling dialogs, StrictMode effect replay, consecutive stories), so the new guard reported a dismissal nobody attempted. The sentinel entry now carries a marker and a pop landing on a marked entry is adopted, not routed to the callback. Unit test added. The MintDialog/LeaseMintDialog `move` spies now answer with a state as the contract requires; a bare `fn()` made that path throw.
 - No a11y fixes were needed: axe passed on every new story in both palettes.
 
 ## Gotchas learned (add to the pattern doc when next touched)
