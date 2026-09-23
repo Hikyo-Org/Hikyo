@@ -124,6 +124,25 @@ is a directory listing, so neither adds a resource class.
 |---|---|---|
 | Key name length | ≤ 128 bytes (safe under the K8s Secret data-key limit with adapter prefixes applied) | fixed |
 
+## Delivery-target condition reporting ([k8s-condition-reporting.md](../adr/k8s-condition-reporting.md), [#683](https://github.com/Hikyo-Org/Hikyo/issues/683))
+
+| Entry | Default | Scope |
+|---|---|---|
+| Target rows per service-account principal | 100 (named 409 refusal beyond) | fixed |
+| Report body size | ≤ 8 KiB | fixed |
+| Report budget per principal | 60/min, separate from delivery fetches | fixed |
+| Report budget per org | 300/min, separate from delivery fetches; binding above about 1500 reporting CRs per org (heartbeat load `CRs / 5` per min), beyond which rows read stale | fixed |
+| Report heartbeat interval | `max(spec.resyncInterval, 5 min)`, at most 24 h; requeue at `min(spec.resyncInterval, 24 h)` while reporting | fixed |
+| Staleness threshold | `2 × report_interval + 5 min` (server clamps `report_interval` to [5 min, 24 h]) | fixed |
+| `reported_at` future skew | 5 min | fixed |
+| Purge after last accepted report | 30 days | fixed |
+| Per-CR suppression after 401/404/413/422 | 1 h, or until generation, credential reference or reportable content changes, or a successful fetch after a 401 | fixed |
+| Operator report timeout | 5 s, one attempt per reconcile | fixed |
+| Operator `/meta` capability cache | 10 min per `HikyoInstance` | fixed |
+
+Pi-4 fit: at most one small upsert per CR per 5 min heartbeat, plus
+change-driven reports, on a latest-state table; the purge rides the existing hourly scheduler.
+
 ## Required measurement gate (not deferrable past implementation freeze)
 
 Per the declared [#77 amendment](https://github.com/Hikyo-Org/Hikyo/issues/77#issuecomment-5354008780), all *(measured)* entries require the native ARM64 `floor-bench` CI artifact before implementation freeze. CPU measurements use committed conservative factors (4.0 until optional physical Pi calibration); memory uses factor 1.0. Missing factors or measurements refuse acceptance. Physical Pi calibration is optional; estimates must not be described as Pi measurements. Tracked in [open-items.md](./open-items.md).
