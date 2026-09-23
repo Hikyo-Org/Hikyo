@@ -41,6 +41,7 @@ import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { ScanBlockDialog } from './ScanBlockDialog.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
+import { selectOption } from './selectOption.ts';
 
 type Environment = EnvironmentList['items'][number];
 
@@ -1538,7 +1539,7 @@ function DeclarationEditor({
                 className="mono"
                 value={addKind}
                 disabled={update.isPending || alternatives.length >= ANY_OF_MAX}
-                onChange={(event) => setAddKind(ruleType(event.currentTarget.value, addKind))}
+                onChange={(event) => setAddKind(selectOption(RULE_TYPES, event.currentTarget.value))}
               >
                 {RULE_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -1650,16 +1651,7 @@ const ANY_OF_MIN = 2;
 const ANY_OF_MAX = 8;
 
 /** ruleType narrows a select's value to the closed type set without a cast. */
-function ruleType(value: string, fallback: RuleType): RuleType {
-  return RULE_TYPES.find((type) => type === value) ?? fallback;
-}
-
 const PRESENCE_MODES: readonly PresenceMode[] = ['none', 'all', 'explicit'];
-
-/** presenceMode narrows the mode select's value the same way, no cast. */
-function presenceMode(value: string, fallback: PresenceMode): PresenceMode {
-  return PRESENCE_MODES.find((mode) => mode === value) ?? fallback;
-}
 
 /** draftSummary is one alternative as a hint: its type and the constraints set. */
 function draftSummary(draft: RuleDraft): string {
@@ -1701,7 +1693,7 @@ function RuleFields({
         <select
           className="mono"
           value={draft.type}
-          onChange={(event) => set('type', ruleType(event.currentTarget.value, draft.type))}
+          onChange={(event) => set('type', selectOption(RULE_TYPES, event.currentTarget.value))}
         >
           {RULE_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -1822,7 +1814,7 @@ function PresenceControl({
     <div className="key-detail__presence-control">
       <label className="field">
         <span>{label}</span>
-        <select value={mode} onChange={(event) => onMode(presenceMode(event.currentTarget.value, mode))}>
+        <select value={mode} onChange={(event) => onMode(selectOption(PRESENCE_MODES, event.currentTarget.value))}>
           <option value="none">none</option>
           <option value="all">all</option>
           <option value="explicit">explicit</option>

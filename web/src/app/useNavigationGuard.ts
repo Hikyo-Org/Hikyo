@@ -18,7 +18,7 @@ import { useEffect, useRef } from 'react';
 const SENTINEL = { hikyoNavigationGuard: true } as const;
 
 function isSentinel(state: unknown): boolean {
-  return typeof state === 'object' && state !== null && 'hikyoNavigationGuard' in state;
+  return typeof state === 'object' && state !== null && 'hikyoNavigationGuard' in state && state.hikyoNavigationGuard === true;
 }
 
 export function useNavigationGuard(active: boolean, onAttempt: () => void) {
@@ -40,7 +40,10 @@ export function useNavigationGuard(active: boolean, onAttempt: () => void) {
       // same tick (a sibling dialog opening as one closes, StrictMode's effect
       // replay) has pushed its own sentinel. That pop consumed OUR sentinel and
       // left the stale one under the cursor, so adopt it rather than surface a
-      // dismissal nobody attempted.
+      // dismissal nobody attempted. Guards are mutually exclusive today (one
+      // dialog owns the screen); two active at once would both adopt the pop
+      // and swallow the press, so a second concurrent guard needs a per-guard
+      // marker, not a shared one.
       if (isSentinel(event.state)) {
         history.replaceState(SENTINEL, '', window.location.href);
         return;

@@ -39,15 +39,7 @@ sensitivity inventory pin was refreshed for those two files with a review note.
 - `app/useNavigationGuard.ts`: found by CI, not locally. Deactivating a guard calls `history.back()`, which settles after a guard mounted in the same tick has pushed its own sentinel (sibling dialogs, StrictMode effect replay, consecutive stories), so the new guard reported a dismissal nobody attempted. The sentinel entry now carries a marker and a pop landing on a marked entry is adopted, not routed to the callback. Unit test added. The MintDialog/LeaseMintDialog `move` spies now answer with a state as the contract requires; a bare `fn()` made that path throw.
 - No a11y fixes were needed: axe passed on every new story in both palettes.
 
-## Gotchas learned (add to the pattern doc when next touched)
-- Wire bodies in `responses[].body` must be `z.input` shapes: int64 fields as JSON numbers, because `withApp` runs `JSON.stringify` and a bigint throws; `parsed()` coerces them back. Type fixtures `satisfies z.input<typeof zX>` from `@hikyo/zod`.
-- POST-create rows need the contract's status (`status: 201`); a default-200 row on a `[201]`-only operation is treated as a refusal.
-- Never name a story after a global (`Error`, `Set`): use `Failed`, `FirstCredential`.
-- A click on a control that exists before whoami settles is lost when `AuthProvider` swaps the tree; wait for signed-in content first.
-- Pages that read the URL in a `useState` initialiser (CLIReauth, WorkspaceApprove) get their query string from a per-story `beforeEach` that rewrites the frame URL and cleans it up.
-- Pages with an advisory `/events` stream (Matrix) hold it `pending` so the story sits in "connecting" instead of a reconnect loop.
-- `getByRole(..., { hidden: true })` is needed to assert a `display:none` pane is not visible (HistoryDrawer phone stories).
-- Bare `$FILES` in zsh does not word-split for `vitest run`; quote-less expansion silently finds no tests.
+Gotchas learned on this pass were folded into the pattern section of `storybook-coverage-sub-components-and-pages.md`.
 
 ## zod/mini: measured, not adopted
 Measured with Vite on a representative schema (object, string, array of int, enum, url, boolean, record): classic 20.5 KB gzip, mini 6.4 KB gzip, so about 14 KB gzip saved. zod ships in the lazy `account` chunk, not the initial bundle, so first paint is unchanged. Cost: `@hey-api/openapi-ts` emits mini via `compatibilityVersion: 'mini'`, but 42 app files use the classic chained API and mini is functional (`z.optional(x)`, `z.parse(s, v)`, `.check(...)`), so every call site rewrites plus a regen and client-skew churn. Verdict: not worth it now; revisit if the account chunk becomes a measured problem.
