@@ -1219,6 +1219,12 @@
   },
   {
     "engine": "postgres",
+    "name": "ListOauth2ProvidersForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "b8aae00f48de609ac97da867cd07b17dbe8adfea5a7c6d8f785d69161594223a"
+  },
+  {
+    "engine": "postgres",
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "b5359d612f0ff91290b7188db97f939e0f2b29dfe516aee2dc4f920fce1d669e"
@@ -1441,6 +1447,12 @@
   },
   {
     "engine": "postgres",
+    "name": "PostLegacyMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "fc0e657b407efb67ecc1393a4c8f63563f391fe5cd5b7433acd3b2ddc0341c32"
+  },
+  {
+    "engine": "postgres",
     "name": "PrivacyAccount",
     "annotation": "authn-resolution",
     "hash": "65fe215299887024477ce25288511423c58d67de1faa4cae51d466a7ec6b9e9c"
@@ -1654,6 +1666,12 @@
     "name": "RecoveryListGrantsBeforeSelfConfig",
     "annotation": "authn-resolution",
     "hash": "c91703459f54308af0ba16ccc53fff975691badb06445e4608ba3f3815129164"
+  },
+  {
+    "engine": "postgres",
+    "name": "ReencryptOauth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "b1fb941e2e17f7c510e30b5ae50b08a5366e689ebc92409382a13e79fb536d6f"
   },
   {
     "engine": "postgres",
@@ -3187,6 +3205,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListOauth2ProvidersForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "511371aa5b69d480da6dc4e7a3b82d558063f3658d0c4a7c7516f3d68c9b7f77"
+  },
+  {
+    "engine": "sqlite",
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "0df9d463d9a4c8cd88e4f194352647544bdd81502c21186a90b2698efaf9a331"
@@ -3409,6 +3433,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "PostLegacyMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "0126ad2a2d9c54a32eb996497128454cb28e26b80187585c3533e1cc81f5f01b"
+  },
+  {
+    "engine": "sqlite",
     "name": "PrivacyAccount",
     "annotation": "authn-resolution",
     "hash": "65fe215299887024477ce25288511423c58d67de1faa4cae51d466a7ec6b9e9c"
@@ -3622,6 +3652,12 @@
     "name": "RecoveryListGrantsBeforeSelfConfig",
     "annotation": "authn-resolution",
     "hash": "cd384604164fdafe0ff2563899c0c6815c6d39a418f9dada2a847a185e6526ad"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ReencryptOauth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "b1fb941e2e17f7c510e30b5ae50b08a5366e689ebc92409382a13e79fb536d6f"
   },
   {
     "engine": "sqlite",

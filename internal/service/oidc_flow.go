@@ -70,6 +70,12 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 	if purpose == purposeReauth && environmentID == "" {
 		return OIDCStartResult{}, ErrReauthNoEnvironment
 	}
+	// The window scope means nothing to any other purpose and was always
+	// ignored there; 00057's exhaustive CHECK refuses it on the row, so drop it
+	// here rather than turn a stray field into a raw fault.
+	if purpose != purposeReauth {
+		environmentID = ""
+	}
 
 	// Phase 1 - resolve the provider and, for a session-bound purpose, the
 	// acting session and account. Both run INSIDE the admission budget, and

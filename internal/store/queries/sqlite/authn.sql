@@ -590,6 +590,19 @@ SELECT MAX(e) AS max_epoch FROM (
     UNION ALL SELECT COALESCE(MAX(credential_epoch), 0) FROM webauthn_credentials
 );
 
+-- The credential_epoch tables added after the pinned legacy genesis (00057).
+-- A restore bumps the epoch against the ARCHIVE's schema, before rolling
+-- forward, so these cannot join MaxKnownCredentialEpoch (a pre-00057 archive
+-- has no such tables). authn.AdvanceRestoreEpoch runs this query whenever the
+-- restored schema carries them; MaxKnownCredentialEpoch stays the frozen
+-- legacy set. A later epoch-stamped table joins this list.
+-- hikyo:authn-resolution
+-- name: PostLegacyMaxCredentialEpoch :one
+SELECT MAX(e) AS max_epoch FROM (
+    SELECT COALESCE(MAX(credential_epoch), 0) AS e FROM oauth2_transactions
+    UNION ALL SELECT COALESCE(MAX(credential_epoch), 0) FROM registration_signups
+);
+
 -- Sets the credential epoch and marks the epoch reached BY RESTORING. The
 -- caller supplies the value (MaxKnownCredentialEpoch + 1) so the new epoch is
 -- strictly greater than every epoch stamp the archive carried.
@@ -750,6 +763,13 @@ SELECT id, client_secret, dek_version, row_version FROM oidc_providers WHERE id 
 -- hikyo:authn-resolution
 -- name: ReencryptOidcProvider :execrows
 UPDATE oidc_providers SET client_secret=sqlc.arg(ct), dek_version=sqlc.arg(dek_version), row_version=row_version+1 WHERE id=sqlc.arg(id) AND row_version=sqlc.arg(row_version);
+
+-- hikyo:authn-resolution
+-- name: ListOauth2ProvidersForReencrypt :many
+SELECT id, client_secret, dek_version, row_version FROM oauth2_providers WHERE id > ? ORDER BY id LIMIT ?;
+-- hikyo:authn-resolution
+-- name: ReencryptOauth2Provider :execrows
+UPDATE oauth2_providers SET client_secret=sqlc.arg(ct), dek_version=sqlc.arg(dek_version), row_version=row_version+1 WHERE id=sqlc.arg(id) AND row_version=sqlc.arg(row_version);
 
 
 -- Verified source schema 47 retains privacy and restore reconciliation gates.

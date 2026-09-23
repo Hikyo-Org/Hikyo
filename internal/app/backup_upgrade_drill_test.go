@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 55, while the
+// The runtime-created fixture includes migrations 45 through 57, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+12 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 56 only")
+	if len(current.Entries) != len(legacy.Entries)+13 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 57 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -279,6 +279,18 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		"SELECT COUNT(*) FROM federation_issuers WHERE ca_bundle_pem <> ''",
 		"SELECT COUNT(*) FROM environments WHERE parameters_json <> '{}'",
 		"SELECT COUNT(*) FROM snapshots WHERE parameter_contract <> '{}'",
+		// 00057 (social sign-in): nothing registration-shaped may be discarded,
+		// and the sqlite sessions restore below cascades into reauth windows.
+		"SELECT COUNT(*) FROM registration_policies",
+		"SELECT COUNT(*) FROM registration_signups",
+		"SELECT COUNT(*) FROM oauth2_providers",
+		"SELECT COUNT(*) FROM oauth2_transactions",
+		"SELECT COUNT(*) FROM orgs WHERE origin <> 'manual' OR registration_policy_id IS NOT NULL",
+		"SELECT COUNT(*) FROM external_identities WHERE kind = 'oauth2'",
+		"SELECT COUNT(*) FROM credential_authorities WHERE established_credential_kind <> 'password'",
+		"SELECT COUNT(*) FROM grant_origins WHERE kind = 'registration'",
+		"SELECT COUNT(*) FROM oidc_transactions",
+		"SELECT COUNT(*) FROM reauth_windows",
 	} {
 		var evidence int
 		if db.Engine() == store.EngineSQLite {
@@ -287,7 +299,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust or parameter evidence", err)
+			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter or registration evidence", query, err)
 		}
 	}
 	if db.Engine() == store.EngineSQLite {
@@ -350,6 +362,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		}
 		drillExec(t, db, "DROP TABLE webauthn_ceremonies")
 		drillExec(t, db, "CREATE TABLE webauthn_ceremonies"+ceremonyDecl+"\n)")
+		reverseSocialSigninSQLite(t, db)
 	} else {
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs DROP CONSTRAINT cli_reauth_handoffs_operation_check")
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs ADD CONSTRAINT cli_reauth_handoffs_operation_check CHECK (operation IN ('adapter.configure','adapter.credential-set','adapter.adopt','adapter.sync','value.reveal','value.copy-source'))")
@@ -363,6 +376,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// Reverse 00056's webauthn_ceremonies purpose CHECK widening.
 		drillExec(t, db, "ALTER TABLE webauthn_ceremonies DROP CONSTRAINT webauthn_ceremonies_purpose_check")
 		drillExec(t, db, "ALTER TABLE webauthn_ceremonies ADD CONSTRAINT webauthn_ceremonies_purpose_check CHECK (purpose IN ('enrol', 'login', 'reauth', 'step-up', 'account-security'))")
+		reverseSocialSigninPostgres(t, db)
 	}
 	for _, query := range []string{
 		"DROP INDEX audit_tenant_events_env_seq",
@@ -391,9 +405,125 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57)",
 	} {
 		drillExec(t, db, query)
+	}
+}
+
+// reverseSocialSigninSQLite undoes 00057 on a pristine fixture (the evidence
+// checks above hold every table it touches empty or unchanged). The rebuilt
+// tables are recreated from their immutable legacy declarations, created by
+// the same name the legacy migration used so the stored schema text matches
+// byte-for-byte, with rows carried across. sessions is left at its 00056 shape
+// (enrolment_required re-added by 00056's own statement) for the shared
+// reversal below.
+func reverseSocialSigninSQLite(t *testing.T, db *store.DB) {
+	t.Helper()
+	for _, table := range []string{
+		"registration_policy_entry_values", "registration_policy_entries", "registration_policy_domains",
+		"registration_signups", "registration_policies", "oauth2_transactions",
+	} {
+		drillExec(t, db, "DROP TABLE "+table)
+	}
+	restore := func(table, file, declared string, columns string, after ...string) {
+		t.Helper()
+		migration, err := store.MigrationsFS.ReadFile("migrations/sqlite/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, decl, ok := strings.Cut(string(migration), "CREATE TABLE "+declared+" (")
+		if !ok {
+			t.Fatalf("missing legacy %s declaration in %s", declared, file)
+		}
+		if decl, _, ok = strings.Cut(decl, "\n);"); !ok {
+			t.Fatalf("unterminated legacy %s declaration in %s", declared, file)
+		}
+		source := table
+		if declared == table {
+			// Created under its own name: move the current table aside first.
+			// None of these tables is a foreign-key parent, so the rename
+			// rewrites no child reference.
+			source = table + "_post_legacy"
+			drillExec(t, db, "ALTER TABLE "+table+" RENAME TO "+source)
+		}
+		drillExec(t, db, "CREATE TABLE "+declared+" ("+decl+"\n)")
+		drillExec(t, db, "INSERT INTO "+declared+" ("+columns+") SELECT "+columns+" FROM "+source)
+		drillExec(t, db, "DROP TABLE "+source)
+		if declared != table {
+			drillExec(t, db, "ALTER TABLE "+declared+" RENAME TO "+table)
+		}
+		for _, statement := range after {
+			drillExec(t, db, statement)
+		}
+	}
+	legacyStatement := func(file, prefix string) string {
+		t.Helper()
+		migration, err := store.MigrationsFS.ReadFile("migrations/sqlite/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(migration), "\n") {
+			if strings.HasPrefix(line, prefix) {
+				return strings.TrimSuffix(line, ";")
+			}
+		}
+		t.Fatalf("missing %q in %s", prefix, file)
+		return ""
+	}
+	restore("oidc_transactions", "00007_oidc.sql", "oidc_transactions",
+		"id, state_verifier, nonce, pkce_verifier, provider_id, issuer, redirect_uri, purpose, binding_kind, initiating_session_id, browser_binding_verifier, account_id, environment_id, ceremony_id, credential_epoch, created_at, expires_at, consumed_at",
+		legacyStatement("00033_oidc_browser_callback.sql", "ALTER TABLE oidc_transactions ADD COLUMN browser"))
+	restore("external_identities", "00010_saml.sql", "external_identities",
+		"id, account_id, kind, issuer, subject, provider_id, credential_epoch, created_at")
+	restore("grant_origins", "00012_permission.sql", "grant_origins",
+		"id, grant_id, kind, subject, created_at",
+		"CREATE INDEX grant_origins_grant ON grant_origins (grant_id)")
+	restore("credential_authorities", "00037_invitation_issuer.sql", "credential_authorities_new",
+		"id, verifier, account_id, purpose, issued_by, established_credential_kind, credential_epoch, expires_at, consumed_at, created_at")
+	restore("sessions", "00020_multi_instance.sql", "sessions_rebuilt",
+		"id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, ceremony_id, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent, csrf_verifier, provider_id, saml_provider_id, requesting_origin, handoff_id",
+		"CREATE INDEX sessions_principal_idx ON sessions (principal_id)",
+		"CREATE INDEX sessions_origin_idx ON sessions (requesting_origin)",
+		legacyStatement("00056_second_factor.sql", "ALTER TABLE sessions ADD COLUMN enrolment_required"))
+	drillExec(t, db, "DROP TABLE oauth2_providers")
+	drillExec(t, db, "ALTER TABLE orgs DROP COLUMN registration_policy_id")
+	drillExec(t, db, "ALTER TABLE orgs DROP COLUMN origin")
+}
+
+// reverseSocialSigninPostgres undoes 00057's in-place ALTERs, restoring every
+// constraint under the name the legacy schema gave it.
+func reverseSocialSigninPostgres(t *testing.T, db *store.DB) {
+	t.Helper()
+	for _, statement := range []string{
+		"DROP TABLE registration_policy_entry_values",
+		"DROP TABLE registration_policy_entries",
+		"DROP TABLE registration_policy_domains",
+		"DROP TABLE registration_signups",
+		"DROP TABLE registration_policies",
+		"DROP TABLE oauth2_transactions",
+		"ALTER TABLE oidc_transactions DROP CONSTRAINT oidc_transactions_purpose_shape",
+		"ALTER TABLE oidc_transactions DROP CONSTRAINT oidc_transactions_purpose_check",
+		"ALTER TABLE oidc_transactions DROP COLUMN intent",
+		"ALTER TABLE oidc_transactions DROP COLUMN signup_scope_org_id",
+		"ALTER TABLE oidc_transactions DROP COLUMN authority_id",
+		"ALTER TABLE oidc_transactions ADD CONSTRAINT oidc_transactions_purpose_check CHECK (purpose IN ('login', 'link', 'reauth'))",
+		"ALTER TABLE oidc_transactions ADD CONSTRAINT oidc_transactions_check1 CHECK (purpose <> 'link' OR (account_id IS NOT NULL AND ceremony_id IS NOT NULL))",
+		"ALTER TABLE oidc_transactions ADD CONSTRAINT oidc_transactions_check2 CHECK (purpose <> 'reauth' OR (account_id IS NOT NULL AND environment_id IS NOT NULL))",
+		"ALTER TABLE external_identities DROP CONSTRAINT external_identities_kind_check",
+		"ALTER TABLE external_identities ADD CONSTRAINT external_identities_kind_check CHECK (kind IN ('oidc', 'saml'))",
+		"ALTER TABLE sessions DROP CONSTRAINT sessions_one_federated_provider",
+		"ALTER TABLE sessions DROP COLUMN oauth2_provider_id",
+		"ALTER TABLE sessions ADD CONSTRAINT sessions_one_federated_provider CHECK (provider_id IS NULL OR saml_provider_id IS NULL)",
+		"DROP TABLE oauth2_providers",
+		"ALTER TABLE credential_authorities DROP CONSTRAINT credential_authorities_established_credential_kind_check",
+		"ALTER TABLE credential_authorities ADD CONSTRAINT credential_authorities_new_established_credential_kind_check1 CHECK (established_credential_kind IN ('password'))",
+		"ALTER TABLE grant_origins DROP CONSTRAINT grant_origins_kind_check",
+		"ALTER TABLE grant_origins ADD CONSTRAINT grant_origins_kind_check CHECK (kind IN ('manual', 'break-glass', 'scim', 'structural', 'lockout-retention'))",
+		"ALTER TABLE orgs DROP COLUMN registration_policy_id",
+		"ALTER TABLE orgs DROP COLUMN origin",
+	} {
+		drillExec(t, db, statement)
 	}
 }
 

@@ -77,9 +77,20 @@ SELECT id, name, active, metadata, created_at,
 FROM orgs WHERE id = $1
 `
 
-func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (Org, error) {
+type GetOrgRow struct {
+	ID                     string
+	Name                   string
+	Active                 bool
+	Metadata               string
+	CreatedAt              pgtype.Timestamptz
+	RetentionMode          string
+	RetentionAgeSeconds    int64
+	RetentionRevisionCount int64
+}
+
+func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (GetOrgRow, error) {
 	row := q.db.QueryRow(ctx, getOrg, chainOrgID)
-	var i Org
+	var i GetOrgRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
@@ -99,16 +110,27 @@ SELECT id, name, active, metadata, created_at,
 FROM orgs WHERE ($1 = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name
 `
 
+type ListOrgsRow struct {
+	ID                     string
+	Name                   string
+	Active                 bool
+	Metadata               string
+	CreatedAt              pgtype.Timestamptz
+	RetentionMode          string
+	RetentionAgeSeconds    int64
+	RetentionRevisionCount int64
+}
+
 // hikyo:instance-scoped
-func (q *Queries) ListOrgs(ctx context.Context, includeSelfConfig interface{}) ([]Org, error) {
+func (q *Queries) ListOrgs(ctx context.Context, includeSelfConfig interface{}) ([]ListOrgsRow, error) {
 	rows, err := q.db.Query(ctx, listOrgs, includeSelfConfig)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Org
+	var items []ListOrgsRow
 	for rows.Next() {
-		var i Org
+		var i ListOrgsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,

@@ -673,6 +673,46 @@ type McpRateBucket struct {
 	NextAt      pgtype.Timestamptz
 }
 
+type Oauth2Provider struct {
+	ID           string
+	Slug         string
+	DisplayName  string
+	Kind         string
+	Profile      string
+	Issuer       string
+	ClientID     string
+	ClientSecret []byte
+	RedirectUri  string
+	Enabled      int64
+	DekVersion   int64
+	RowVersion   int64
+	CreatedAt    pgtype.Timestamptz
+	UpdatedAt    pgtype.Timestamptz
+}
+
+type Oauth2Transaction struct {
+	ID                     string
+	StateVerifier          []byte
+	PkceVerifier           string
+	ProviderID             string
+	Issuer                 string
+	RedirectUri            string
+	Purpose                string
+	Intent                 pgtype.Text
+	SignupScopeOrgID       pgtype.Text
+	BindingKind            string
+	InitiatingSessionID    pgtype.Text
+	BrowserBindingVerifier []byte
+	AccountID              pgtype.Text
+	AuthorityID            pgtype.Text
+	CeremonyID             pgtype.Text
+	Browser                bool
+	CredentialEpoch        int64
+	CreatedAt              pgtype.Timestamptz
+	ExpiresAt              pgtype.Timestamptz
+	ConsumedAt             pgtype.Timestamptz
+}
+
 type OfflineRecord struct {
 	PrincipalID string
 	RecordID    string
@@ -717,6 +757,9 @@ type OidcTransaction struct {
 	ExpiresAt              pgtype.Timestamptz
 	ConsumedAt             pgtype.Timestamptz
 	Browser                bool
+	Intent                 pgtype.Text
+	SignupScopeOrgID       pgtype.Text
+	AuthorityID            pgtype.Text
 }
 
 type OpsDiagnostic struct {
@@ -737,6 +780,8 @@ type Org struct {
 	RetentionMode          string
 	RetentionAgeSeconds    int64
 	RetentionRevisionCount int64
+	Origin                 string
+	RegistrationPolicyID   pgtype.Text
 }
 
 type PasswordCredential struct {
@@ -828,6 +873,49 @@ type RecoveryCode struct {
 	CredentialEpoch int64
 	RowVersion      int64
 	GeneratedAt     pgtype.Timestamptz
+}
+
+type RegistrationPolicy struct {
+	ID                   string
+	OrgID                pgtype.Text
+	AuthorityPrincipalID pgtype.Text
+	Landing              string
+	Template             pgtype.Text
+	LocalEnabled         bool
+	FreshOrgCap          pgtype.Int8
+	RowVersion           int64
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+}
+
+type RegistrationPolicyDomain struct {
+	PolicyID string
+	Domain   string
+}
+
+type RegistrationPolicyEntry struct {
+	ID           string
+	PolicyID     string
+	ProviderKind string
+	ProviderID   string
+	Claim        pgtype.Text
+	CreatedAt    pgtype.Timestamptz
+}
+
+type RegistrationPolicyEntryValue struct {
+	EntryID string
+	Value   string
+}
+
+type RegistrationSignup struct {
+	ID               string
+	Email            string
+	TokenVerifier    []byte
+	PolicyID         string
+	SignupScopeOrgID pgtype.Text
+	CredentialEpoch  int64
+	CreatedAt        pgtype.Timestamptz
+	ExpiresAt        pgtype.Timestamptz
 }
 
 type Remote struct {
@@ -1172,6 +1260,7 @@ type Session struct {
 	RequestingOrigin  pgtype.Text
 	HandoffID         pgtype.Text
 	EnrolmentRequired bool
+	Oauth2ProviderID  pgtype.Text
 }
 
 type SingletonLease struct {

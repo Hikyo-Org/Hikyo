@@ -1140,11 +1140,17 @@ func TestMaxKnownCredentialEpochCoversEveryEpochColumn(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, after, found := strings.Cut(string(src), "name: MaxKnownCredentialEpoch")
-		if !found {
-			t.Fatalf("%s/authn.sql has no MaxKnownCredentialEpoch query", engine)
+		// The frozen legacy set plus the post-legacy set restore scans when the
+		// restored schema carries it (authn.restoreNextEpoch).
+		var block string
+		for _, name := range []string{"MaxKnownCredentialEpoch", "PostLegacyMaxCredentialEpoch"} {
+			_, after, found := strings.Cut(string(src), "name: "+name+" ")
+			if !found {
+				t.Fatalf("%s/authn.sql has no %s query", engine, name)
+			}
+			query, _, _ := strings.Cut(after, "-- name:")
+			block += query
 		}
-		block, _, _ := strings.Cut(after, "-- name:")
 		for _, table := range tables {
 			if !strings.Contains(block, " FROM "+table) {
 				t.Errorf("%s MaxKnownCredentialEpoch does not scan %s: a forged epoch stamp there would survive a restore", engine, table)
@@ -1224,6 +1230,10 @@ func runRestoreEpochForgery(t *testing.T, target drillTarget, c custody) {
 	// stamp in a separate credential row. The original forged-50 session remains.
 	execRaw(t, db, `INSERT INTO sessions (id, principal_id, verifier, artifact, session_generation, credential_epoch, auth_method, factors, authenticated_at, created_at, last_seen_at, idle_expires_at, absolute_expires_at, source_ip, user_agent) `+
 		`VALUES ('ses_epoch_outlier', 'usr_alice', `+strings.Replace(verifier, "666f7267656421", "666f7267656422", 1)+`, 'cli', 1, 9999, 'password', '[]', `+ts+`, `+ts+`, `+ts+`, '2030-01-01T00:00:00.000000Z', '2030-01-01T00:00:00.000000Z', '127.0.0.1', 'forge')`)
+	// The largest stamp of all sits in a post-legacy table (00057), which the
+	// frozen legacy scan does not read: restore must still find it.
+	execRaw(t, db, `INSERT INTO registration_signups (id, email, token_verifier, policy_id, credential_epoch, created_at, expires_at) `+
+		`VALUES ('rsu_forged', 'forged@example.com', `+strings.Replace(verifier, "666f7267656421", "666f7267656423", 1)+`, 'rp_forged', 20000, `+ts+`, '2030-01-01T00:00:00.000000Z')`)
 	execRaw(t, db, `UPDATE auth_instance_state SET credential_epoch = 3 WHERE id = 1`)
 	execRaw(t, db, `UPDATE principals SET reconciled_epoch = 100000`)
 
@@ -1237,14 +1247,15 @@ func runRestoreEpochForgery(t *testing.T, target drillTarget, c custody) {
 	recoverRestoredTarget(t, target, c)
 	restored := target.open(t)
 
-	// One past the largest stamp anywhere in the archive (the forged 9999),
-	// never the archive's credential counter + 1 (which would be 4 and leave
-	// nothing distinguishing the planted 50 from a legitimate future bump).
-	if got := queryInt(t, restored, "SELECT credential_epoch FROM auth_instance_state WHERE id = 1"); got != 10000 {
-		t.Errorf("post-restore credential epoch = %d, want 10000 (max forged stamp + 1)", got)
+	// One past the largest stamp anywhere in the archive (the forged 20000 in
+	// registration_signups, above the forged 9999 session), never the
+	// archive's credential counter + 1 (which would be 4 and leave nothing
+	// distinguishing the planted 50 from a legitimate future bump).
+	if got := queryInt(t, restored, "SELECT credential_epoch FROM auth_instance_state WHERE id = 1"); got != 20001 {
+		t.Errorf("post-restore credential epoch = %d, want 20001 (max forged stamp + 1)", got)
 	}
-	if got := queryInt(t, restored, "SELECT restore_epoch FROM auth_instance_state WHERE id = 1"); got != 10000 {
-		t.Errorf("post-restore restore epoch = %d, want 10000", got)
+	if got := queryInt(t, restored, "SELECT restore_epoch FROM auth_instance_state WHERE id = 1"); got != 20001 {
+		t.Errorf("post-restore restore epoch = %d, want 20001", got)
 	}
 	// The planted session survived as a ROW (restore replays state verbatim)
 	// but its stamp no longer matches any epoch the instance will ever serve

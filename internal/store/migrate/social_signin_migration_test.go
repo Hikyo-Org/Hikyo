@@ -1,0 +1,265 @@
+package migrate
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/Hikyo-Org/hikyo/internal/store"
+)
+
+// Migration 00057 (social sign-in, #605) is additive: every row that exists
+// before it survives with every column a later migration added (00056's
+// enrolment_required included), today's writers stay inside the widened CHECKs,
+// and the new CHECKs refuse exactly the shapes the spec (section 2) names.
+
+func TestSocialSigninMigrationSQLite(t *testing.T) {
+	testSocialSigninMigration(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "social.db")})
+}
+
+func TestSocialSigninMigrationPostgres(t *testing.T) {
+	testSocialSigninMigration(t, postgresTestConfig(t, "social_signin"))
+}
+
+// socialSQL rewrites the engine-neutral placeholders: {bN} is a distinct
+// one-byte blob, {t}/{f} a boolean literal for a BOOLEAN column on postgres.
+func socialSQL(cfg store.Config, stmt string) string {
+	pairs := []string{}
+	for i := 1; i <= 40; i++ {
+		blob := fmt.Sprintf("X'%02x'", i)
+		if cfg.Engine == store.EnginePostgres {
+			blob = fmt.Sprintf("decode('%02x','hex')", i)
+		}
+		pairs = append(pairs, fmt.Sprintf("{b%d}", i), blob)
+	}
+	if cfg.Engine == store.EnginePostgres {
+		pairs = append(pairs, "{t}", "TRUE", "{f}", "FALSE")
+	} else {
+		pairs = append(pairs, "{t}", "1", "{f}", "0")
+	}
+	return strings.NewReplacer(pairs...).Replace(stmt)
+}
+
+func sqlValue(v string) string {
+	if v == "" {
+		return "NULL"
+	}
+	return "'" + v + "'"
+}
+
+const socialTS = "'2026-01-01T00:00:00Z'"
+
+func socialPolicy(id, orgID, landing, template, freshOrgCap string) string {
+	capValue := "NULL"
+	if freshOrgCap != "" {
+		capValue = freshOrgCap
+	}
+	return "INSERT INTO registration_policies (id,org_id,authority_principal_id,landing,template,local_enabled,fresh_org_cap,row_version,created_at,updated_at) VALUES (" +
+		sqlValue(id) + "," + sqlValue(orgID) + ",'prn_social'," + sqlValue(landing) + "," + sqlValue(template) + ",{f}," + capValue + ",1," + socialTS + "," + socialTS + ")"
+}
+
+// socialTx builds an oidc_transactions (table "oidc") or oauth2_transactions
+// (table "oauth2") row; the binding columns follow bindingKind so only the
+// field under test varies.
+func socialTx(table, id, blob, purpose, intent, scope, bindingKind, account, environment, ceremony, authority string) string {
+	session, binding := "NULL", "NULL"
+	if bindingKind == "session" {
+		session = "'ses_social'"
+	} else {
+		binding = "{b" + blob + "}"
+	}
+	if table == "oauth2" {
+		return "INSERT INTO oauth2_transactions (id,state_verifier,pkce_verifier,provider_id,issuer,redirect_uri,purpose,intent,signup_scope_org_id,binding_kind,initiating_session_id,browser_binding_verifier,account_id,authority_id,ceremony_id,credential_epoch,created_at,expires_at) VALUES (" +
+			sqlValue(id) + ",{b" + blob + "},'pkce','prv_oauth2','https://github.com','https://hikyo.test/cb'," + sqlValue(purpose) + "," + sqlValue(intent) + "," + sqlValue(scope) + "," +
+			sqlValue(bindingKind) + "," + session + "," + binding + "," + sqlValue(account) + "," + sqlValue(authority) + "," + sqlValue(ceremony) + ",1," + socialTS + "," + socialTS + ")"
+	}
+	return "INSERT INTO oidc_transactions (id,state_verifier,nonce,pkce_verifier,provider_id,issuer,redirect_uri,purpose,intent,signup_scope_org_id,binding_kind,initiating_session_id,browser_binding_verifier,account_id,environment_id,ceremony_id,authority_id,browser,credential_epoch,created_at,expires_at) VALUES (" +
+		sqlValue(id) + ",{b" + blob + "},{b1},'pkce','prv_oidc','https://idp.test','https://hikyo.test/cb'," + sqlValue(purpose) + "," + sqlValue(intent) + "," + sqlValue(scope) + "," +
+		sqlValue(bindingKind) + "," + session + "," + binding + "," + sqlValue(account) + "," + sqlValue(environment) + "," + sqlValue(ceremony) + "," + sqlValue(authority) + ",{f},1," + socialTS + "," + socialTS + ")"
+}
+
+func socialSession(id, blob, oidc, saml, oauth2 string) string {
+	return "INSERT INTO sessions (id,principal_id,verifier,artifact,session_generation,credential_epoch,auth_method,factors,authenticated_at,created_at,last_seen_at,idle_expires_at,absolute_expires_at,source_ip,user_agent,provider_id,saml_provider_id,oauth2_provider_id) VALUES (" +
+		sqlValue(id) + ",'prn_social',{b" + blob + "},'browser',1,1,'password','[\"password\"]'," + socialTS + "," + socialTS + "," + socialTS + "," + socialTS + "," + socialTS + ",'192.0.2.1','agent'," +
+		sqlValue(oidc) + "," + sqlValue(saml) + "," + sqlValue(oauth2) + ")"
+}
+
+func socialAuthority(id, blob, issuedBy, kind string) string {
+	return "INSERT INTO credential_authorities (id,verifier,account_id,purpose,issued_by,established_credential_kind,credential_epoch,expires_at,created_at) VALUES (" +
+		sqlValue(id) + ",{b" + blob + "},'acc_social','establish-credential'," + sqlValue(issuedBy) + "," + sqlValue(kind) + ",1," + socialTS + "," + socialTS + ")"
+}
+
+func testSocialSigninMigration(t *testing.T, cfg store.Config) {
+	t.Helper()
+	ctx := t.Context()
+	if err := RunUpTo(ctx, cfg, 56); err != nil {
+		t.Fatal(err)
+	}
+	db := migrationFixtureSQL(t, cfg)
+	exec := func(label, stmt string) error {
+		_, err := db.ExecContext(ctx, socialSQL(cfg, stmt))
+		if err != nil {
+			return fmt.Errorf("%s: %w", label, err)
+		}
+		return nil
+	}
+	count := func(query string) int {
+		t.Helper()
+		var n int
+		if err := db.QueryRowContext(ctx, socialSQL(cfg, query)).Scan(&n); err != nil {
+			t.Fatalf("%s: %v", query, err)
+		}
+		return n
+	}
+
+	// The state 00057 inherits: a live oidc session carrying 00056's enrolment
+	// flag, an open reauth window and a CLI handoff hanging off it, a pending
+	// invitation authority, a granted origin, a linked identity, and an
+	// in-flight link transaction.
+	for i, stmt := range []string{
+		"INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_social','social',{t},'{}'," + socialTS + ")",
+		"INSERT INTO principals (id,kind,created_at) VALUES ('prn_social','human'," + socialTS + ")",
+		"INSERT INTO accounts (id,principal_id,username,display_name,created_at) VALUES ('acc_social','prn_social','social','Social'," + socialTS + ")",
+		"INSERT INTO oidc_providers (id,slug,display_name,kind,issuer,client_id,client_secret,scopes,redirect_uri,enabled,dek_version,row_version,created_at,updated_at) VALUES ('prv_oidc','corp','Corp','oidc','https://idp.test','client',{b2},'openid','https://hikyo.test/cb',1,1,1," + socialTS + "," + socialTS + ")",
+		"INSERT INTO sessions (id,principal_id,verifier,artifact,session_generation,credential_epoch,auth_method,factors,authenticated_at,created_at,last_seen_at,idle_expires_at,absolute_expires_at,source_ip,user_agent,provider_id,enrolment_required) VALUES ('ses_social','prn_social',{b3},'browser',1,1,'oidc:https://idp.test','[\"federated\"]'," + socialTS + "," + socialTS + "," + socialTS + "," + socialTS + "," + socialTS + ",'192.0.2.1','agent','prv_oidc',{t})",
+		"INSERT INTO reauth_windows (id,session_id,environment_id,ceremony_id,factor_class,single_decision,authenticated_at,window_expires_at,hard_expires_at,credential_epoch,created_at) VALUES ('rw_social','ses_social','env_x','cer_x','oidc',0," + socialTS + "," + socialTS + "," + socialTS + ",1," + socialTS + ")",
+		"INSERT INTO cli_reauth_handoffs (id,state_verifier,session_id,principal_id,purpose,operation,environment_set,key_set,pkce_challenge,redirect_uri,created_at,expires_at) VALUES ('clh_social',{b4},'ses_social','prn_social','adapter','adapter.sync','[]','','challenge','http://127.0.0.1/cb'," + socialTS + "," + socialTS + ")",
+		"INSERT INTO credential_authorities (id,verifier,account_id,purpose,issued_by,credential_epoch,expires_at,created_at) VALUES ('cra_social',{b5},'acc_social','establish-credential','invitation',1," + socialTS + "," + socialTS + ")",
+		"INSERT INTO grants (id,principal_id,capability,created_at) VALUES ('grt_social','prn_social','read'," + socialTS + ")",
+		"INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gro_social','grt_social','manual','prn_social'," + socialTS + ")",
+		"INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('eid_social','acc_social','oidc','https://idp.test','Subject','prv_oidc',1," + socialTS + ")",
+		"INSERT INTO oidc_transactions (id,state_verifier,nonce,pkce_verifier,provider_id,issuer,redirect_uri,purpose,binding_kind,initiating_session_id,account_id,environment_id,ceremony_id,credential_epoch,created_at,expires_at) VALUES ('otx_old',{b6},{b1},'pkce','prv_oidc','https://idp.test','https://hikyo.test/cb','link','session','ses_social','acc_social','','cer_old',1," + socialTS + "," + socialTS + ")",
+	} {
+		if err := exec(fmt.Sprintf("seed %d", i), stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := Run(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	for query, want := range map[string]int{
+		// Sessions survive the rebuild with every column carried forward.
+		"SELECT COUNT(*) FROM sessions WHERE id='ses_social' AND enrolment_required={t} AND provider_id='prv_oidc' AND oauth2_provider_id IS NULL AND user_agent='agent'": 1,
+		// Every open reauth window is closed (release note), handoffs are not.
+		"SELECT COUNT(*) FROM reauth_windows":                                    0,
+		"SELECT COUNT(*) FROM cli_reauth_handoffs WHERE session_id='ses_social'": 1,
+		"SELECT COUNT(*) FROM credential_authorities WHERE id='cra_social' AND issued_by='invitation' AND established_credential_kind='password'": 1,
+		"SELECT COUNT(*) FROM grant_origins WHERE id='gro_social' AND kind='manual'":                                                              1,
+		"SELECT COUNT(*) FROM external_identities WHERE id='eid_social' AND kind='oidc' AND subject='Subject'":                                    1,
+		// Minutes-lived transactions are purged (an empty environment_id on a
+		// link row would violate the exhaustive CHECK).
+		"SELECT COUNT(*) FROM oidc_transactions": 0,
+		"SELECT COUNT(*) FROM orgs WHERE id='org_social' AND origin='manual' AND registration_policy_id IS NULL": 1,
+	} {
+		if got := count(query); got != want {
+			t.Fatalf("%s = %d, want %d", query, got, want)
+		}
+	}
+
+	// The sqlite rebuild runs with foreign keys off; nothing may dangle after.
+	if cfg.Engine == store.EngineSQLite {
+		rows, err := db.QueryContext(ctx, "PRAGMA foreign_key_check")
+		if err != nil {
+			t.Fatal(err)
+		}
+		dangling := rows.Next()
+		_ = rows.Close()
+		if dangling {
+			t.Fatal("foreign_key_check reported a violation after 00057")
+		}
+	}
+
+	// Fixtures the new tables reference.
+	for i, stmt := range []string{
+		"INSERT INTO oauth2_providers (id,slug,display_name,kind,profile,issuer,client_id,client_secret,redirect_uri,enabled,dek_version,row_version,created_at,updated_at) VALUES ('prv_oauth2','github','GitHub','oauth2','github','https://github.com','client',{b7},'https://hikyo.test/oauth2/cb',1,1,1," + socialTS + "," + socialTS + ")",
+		"INSERT INTO saml_providers (id,slug,display_name,kind,entity_id,acs_url,sso_redirect_url,signing_certificates,allow_email_nameid,force_sign_requests,metadata_want_authn_requests_signed,metadata_source,metadata_signed,enabled,row_version,created_at,updated_at) VALUES ('prv_saml','saml','SAML','saml','https://saml.test','https://hikyo.test/acs','https://saml.test/sso',{b8},0,0,0,'file',0,1,1," + socialTS + "," + socialTS + ")",
+	} {
+		if err := exec(fmt.Sprintf("fixture %d", i), stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Every refusal is a CHECK refusal on an otherwise valid row: the message
+	// is asserted so a foreign-key or uniqueness failure cannot pass for one.
+	refused := []struct{ label, stmt string }{
+		{"org policy without template", socialPolicy("rp_r1", "org_social", "org-template", "", "")},
+		{"instance policy with template", socialPolicy("rp_r2", "", "none", "member", "")},
+		{"fresh_org_cap without fresh-org landing", socialPolicy("rp_r3", "", "none", "", "5")},
+		{"fresh-org landing without fresh_org_cap", socialPolicy("rp_r4", "", "fresh-org", "", "")},
+		{"non-positive fresh_org_cap", socialPolicy("rp_r5", "", "fresh-org", "", "0")},
+		{"intent on a link transaction", socialTx("oidc", "otx_r1", "10", "link", "sign-in", "", "session", "acc_social", "", "cer_r1", "")},
+		{"intent on a reauth transaction", socialTx("oidc", "otx_r2", "11", "reauth", "sign-up", "", "session", "acc_social", "env_x", "", "")},
+		{"signup scope on a link transaction", socialTx("oidc", "otx_r3", "12", "link", "", "org_social", "session", "acc_social", "", "cer_r3", "")},
+		{"signup scope on a sign-in login", socialTx("oidc", "otx_r4", "13", "login", "sign-in", "org_social", "browser-cookie", "", "", "", "")},
+		{"login bound to a session", socialTx("oidc", "otx_r5", "14", "login", "", "", "session", "", "", "", "")},
+		{"link without ceremony", socialTx("oidc", "otx_r6", "15", "link", "", "", "session", "acc_social", "", "", "")},
+		{"authority on a link", socialTx("oidc", "otx_r7", "16", "link", "", "", "session", "acc_social", "", "cer_r7", "cra_social")},
+		{"authority on a login", socialTx("oidc", "otx_r8", "17", "login", "", "", "browser-cookie", "", "", "", "cra_social")},
+		{"claim without authority", socialTx("oidc", "otx_r9", "18", "claim", "", "", "browser-cookie", "acc_social", "", "", "")},
+		{"environment on a link", socialTx("oidc", "otx_r10", "19", "link", "", "", "session", "acc_social", "env_x", "cer_r10", "")},
+		{"oauth2 login without intent", socialTx("oauth2", "o2x_r1", "20", "login", "", "", "browser-cookie", "", "", "", "")},
+		{"oauth2 login bound to a session", socialTx("oauth2", "o2x_r2", "21", "login", "sign-in", "", "session", "", "", "", "")},
+		{"oauth2 reauth", socialTx("oauth2", "o2x_r3", "22", "reauth", "", "", "session", "acc_social", "", "", "")},
+		{"oauth2 authority without claim", socialTx("oauth2", "o2x_r4", "23", "establish", "", "", "session", "acc_social", "", "", "cra_social")},
+		{"oidc and oauth2 provider on one session", socialSession("ses_r1", "24", "prv_oidc", "", "prv_oauth2")},
+		{"saml and oauth2 provider on one session", socialSession("ses_r2", "25", "", "prv_saml", "prv_oauth2")},
+		{"oidc and saml provider on one session", socialSession("ses_r3", "26", "prv_oidc", "prv_saml", "")},
+		{"recovery authority establishing oidc", socialAuthority("cra_r1", "27", "recovery", "oidc")},
+		{"unknown established credential kind", socialAuthority("cra_r2", "28", "invitation", "saml")},
+		{"unknown grant origin", "INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gro_r1','grt_social','bogus','x'," + socialTS + ")"},
+		{"unknown identity kind", "INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('eid_r1','acc_social','github','https://github.com','1','prv_oauth2',1," + socialTS + ")"},
+		{"unknown org origin", "INSERT INTO orgs (id,name,active,metadata,created_at,origin) VALUES ('org_r1','r1',{t},'{}'," + socialTS + ",'imported')"},
+		{"uppercase allowlist domain", "INSERT INTO registration_policy_domains (policy_id,domain) VALUES ('rp_ok_instance','Example.com')"},
+		{"email as an allowlist claim", "INSERT INTO registration_policy_entries (id,policy_id,provider_kind,provider_id,claim,created_at) VALUES ('rpe_r1','rp_ok_instance','oidc','prv_oidc','email'," + socialTS + ")"},
+		{"empty claim value", "INSERT INTO registration_policy_entry_values (entry_id,value) VALUES ('rpe_ok','')"},
+	}
+	accepted := []struct{ label, stmt string }{
+		{"org policy", socialPolicy("rp_ok_org", "org_social", "org-template", "member", "")},
+		{"instance fresh-org policy", socialPolicy("rp_ok_instance", "", "fresh-org", "", "5")},
+		{"allowlist domain", "INSERT INTO registration_policy_domains (policy_id,domain) VALUES ('rp_ok_instance','example.com')"},
+		{"policy entry", "INSERT INTO registration_policy_entries (id,policy_id,provider_kind,provider_id,claim,created_at) VALUES ('rpe_ok','rp_ok_instance','oidc','prv_oidc','groups'," + socialTS + ")"},
+		{"entry value", "INSERT INTO registration_policy_entry_values (entry_id,value) VALUES ('rpe_ok','staff')"},
+		{"pending signup", "INSERT INTO registration_signups (id,email,token_verifier,policy_id,signup_scope_org_id,credential_epoch,created_at,expires_at) VALUES ('rsu_ok','user@example.com',{b29},'rp_ok_org','org_social',1," + socialTS + "," + socialTS + ")"},
+		{"today's login writer (no intent)", socialTx("oidc", "otx_ok1", "30", "login", "", "", "browser-cookie", "", "", "", "")},
+		{"sign-up login with org scope", socialTx("oidc", "otx_ok2", "31", "login", "sign-up", "org_social", "browser-cookie", "", "", "", "")},
+		{"today's link writer", socialTx("oidc", "otx_ok3", "32", "link", "", "", "session", "acc_social", "", "cer_ok3", "")},
+		{"today's reauth writer", socialTx("oidc", "otx_ok4", "33", "reauth", "", "", "session", "acc_social", "env_x", "", "")},
+		{"establish", socialTx("oidc", "otx_ok5", "34", "establish", "", "", "session", "acc_social", "", "", "")},
+		{"claim", socialTx("oidc", "otx_ok6", "35", "claim", "", "", "browser-cookie", "acc_social", "", "", "cra_social")},
+		{"oauth2 sign-in login", socialTx("oauth2", "o2x_ok1", "36", "login", "sign-in", "", "browser-cookie", "", "", "", "")},
+		{"oauth2 claim", socialTx("oauth2", "o2x_ok2", "37", "claim", "", "", "browser-cookie", "acc_social", "", "", "cra_social")},
+		{"oauth2 session", socialSession("ses_ok1", "38", "", "", "prv_oauth2")},
+		{"invitation authority establishing oidc", socialAuthority("cra_ok1", "39", "invitation", "oidc")},
+		{"recovery authority establishing a password", socialAuthority("cra_ok2", "40", "recovery", "password")},
+		{"registration grant origin", "INSERT INTO grant_origins (id,grant_id,kind,subject,created_at) VALUES ('gro_ok','grt_social','registration','prn_social'," + socialTS + ")"},
+		{"oauth2 identity", "INSERT INTO external_identities (id,account_id,kind,issuer,subject,provider_id,credential_epoch,created_at) VALUES ('eid_ok','acc_social','oauth2','https://github.com','1','prv_oauth2',1," + socialTS + ")"},
+		{"registration org", "INSERT INTO orgs (id,name,active,metadata,created_at,origin,registration_policy_id) VALUES ('org_ok','ok',{t},'{}'," + socialTS + ",'registration','rp_ok_instance')"},
+	}
+	for _, c := range accepted {
+		if err := exec(c.label, c.stmt); err != nil {
+			t.Fatalf("valid row refused: %v", err)
+		}
+	}
+	for _, c := range refused {
+		err := exec(c.label, c.stmt)
+		if err == nil {
+			t.Errorf("%s: accepted, want a CHECK refusal", c.label)
+			continue
+		}
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "check constraint") {
+			t.Errorf("%s: refused by something other than a CHECK: %v", c.label, err)
+		}
+	}
+
+	// One instance policy, one policy per org.
+	if exec("second instance policy", socialPolicy("rp_dup", "", "none", "", "")) == nil {
+		t.Error("a second instance policy was accepted")
+	}
+	if exec("second org policy", socialPolicy("rp_dup2", "org_social", "org-template", "member", "")) == nil {
+		t.Error("a second policy for one org was accepted")
+	}
+}

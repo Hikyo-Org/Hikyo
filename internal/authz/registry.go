@@ -924,6 +924,8 @@ const (
 	StoreReencryptRecoveryCodes            StoreOp = "reencrypt.ReencryptRecoveryCodes"
 	StoreReencryptListOidcProviders        StoreOp = "reencrypt.ListOidcProvidersForReencrypt"
 	StoreReencryptOidcProvider             StoreOp = "reencrypt.ReencryptOidcProvider"
+	StoreReencryptListOauth2Providers      StoreOp = "reencrypt.ListOauth2ProvidersForReencrypt"
+	StoreReencryptOauth2Provider           StoreOp = "reencrypt.ReencryptOauth2Provider"
 	StoreReencryptListSelfConfigSeedInputs StoreOp = "reencrypt.ListSelfConfigSeedInputsForReencrypt"
 	StoreReencryptSelfConfigSeedInput      StoreOp = "reencrypt.ReencryptSelfConfigSeedInput"
 	StoreReencryptListSamlKeys             StoreOp = "reencrypt.ListSamlKeysForReencrypt"
@@ -1151,6 +1153,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreReencryptListTotpCreds:               true,
 	StoreReencryptListRecoveryCodes:           true,
 	StoreReencryptListOidcProviders:           true,
+	StoreReencryptListOauth2Providers:         true,
 	StoreReencryptListSamlKeys:                true,
 	StoreReencryptListRemotes:                 true,
 	StoreAuditTenantPage:                      true,
@@ -2816,6 +2819,7 @@ var operationTable = map[Operation]opSpec{
 			StoreReencryptListTotpCreds: true, StoreReencryptTotpCred: true,
 			StoreReencryptListRecoveryCodes: true, StoreReencryptRecoveryCodes: true,
 			StoreReencryptListOidcProviders: true, StoreReencryptOidcProvider: true,
+			StoreReencryptListOauth2Providers: true, StoreReencryptOauth2Provider: true,
 			StoreReencryptListSamlKeys: true, StoreReencryptSamlKey: true,
 			StoreReencryptListSelfConfigSeedInputs: true, StoreReencryptSelfConfigSeedInput: true,
 			StoreReencryptListRemotes: true, StoreReencryptRemote: true,

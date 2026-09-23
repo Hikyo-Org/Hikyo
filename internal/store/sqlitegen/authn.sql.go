@@ -1902,6 +1902,51 @@ func (q *Queries) ListGrantsForResetTarget(ctx context.Context, principalID stri
 	return items, nil
 }
 
+const listOauth2ProvidersForReencrypt = `-- name: ListOauth2ProvidersForReencrypt :many
+SELECT id, client_secret, dek_version, row_version FROM oauth2_providers WHERE id > ? ORDER BY id LIMIT ?
+`
+
+type ListOauth2ProvidersForReencryptParams struct {
+	ID    string
+	Limit int64
+}
+
+type ListOauth2ProvidersForReencryptRow struct {
+	ID           string
+	ClientSecret []byte
+	DekVersion   int64
+	RowVersion   int64
+}
+
+// hikyo:authn-resolution
+func (q *Queries) ListOauth2ProvidersForReencrypt(ctx context.Context, arg ListOauth2ProvidersForReencryptParams) ([]ListOauth2ProvidersForReencryptRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOauth2ProvidersForReencrypt, arg.ID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOauth2ProvidersForReencryptRow
+	for rows.Next() {
+		var i ListOauth2ProvidersForReencryptRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientSecret,
+			&i.DekVersion,
+			&i.RowVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOidcProvidersForReencrypt = `-- name: ListOidcProvidersForReencrypt :many
 SELECT id, client_secret, dek_version, row_version FROM oidc_providers WHERE id > ? ORDER BY id LIMIT ?
 `
@@ -2255,6 +2300,27 @@ func (q *Queries) MaxKnownCredentialEpoch(ctx context.Context) (interface{}, err
 	return max_epoch, err
 }
 
+const postLegacyMaxCredentialEpoch = `-- name: PostLegacyMaxCredentialEpoch :one
+SELECT MAX(e) AS max_epoch FROM (
+    SELECT COALESCE(MAX(credential_epoch), 0) AS e FROM oauth2_transactions
+    UNION ALL SELECT COALESCE(MAX(credential_epoch), 0) FROM registration_signups
+)
+`
+
+// The credential_epoch tables added after the pinned legacy genesis (00057).
+// A restore bumps the epoch against the ARCHIVE's schema, before rolling
+// forward, so these cannot join MaxKnownCredentialEpoch (a pre-00057 archive
+// has no such tables). authn.AdvanceRestoreEpoch runs this query whenever the
+// restored schema carries them; MaxKnownCredentialEpoch stays the frozen
+// legacy set. A later epoch-stamped table joins this list.
+// hikyo:authn-resolution
+func (q *Queries) PostLegacyMaxCredentialEpoch(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRowContext(ctx, postLegacyMaxCredentialEpoch)
+	var max_epoch interface{}
+	err := row.Scan(&max_epoch)
+	return max_epoch, err
+}
+
 const rebindSAMLExternalIdentityProvider = `-- name: RebindSAMLExternalIdentityProvider :execrows
 UPDATE external_identities
 SET provider_id = ?1
@@ -2342,6 +2408,31 @@ func (q *Queries) RecoveryListGrantsBeforeSelfConfig(ctx context.Context, princi
 		return nil, err
 	}
 	return items, nil
+}
+
+const reencryptOauth2Provider = `-- name: ReencryptOauth2Provider :execrows
+UPDATE oauth2_providers SET client_secret=?1, dek_version=?2, row_version=row_version+1 WHERE id=?3 AND row_version=?4
+`
+
+type ReencryptOauth2ProviderParams struct {
+	Ct         []byte
+	DekVersion int64
+	ID         string
+	RowVersion int64
+}
+
+// hikyo:authn-resolution
+func (q *Queries) ReencryptOauth2Provider(ctx context.Context, arg ReencryptOauth2ProviderParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reencryptOauth2Provider,
+		arg.Ct,
+		arg.DekVersion,
+		arg.ID,
+		arg.RowVersion,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const reencryptOidcProvider = `-- name: ReencryptOidcProvider :execrows

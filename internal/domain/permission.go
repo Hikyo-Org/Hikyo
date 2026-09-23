@@ -339,6 +339,11 @@ const (
 	OriginSCIM             OriginKind = "scim"
 	OriginStructural       OriginKind = "structural"
 	OriginLockoutRetention OriginKind = "lockout-retention"
+	// OriginRegistration holds the template grant a registration policy
+	// applied at sign-up (social-signin spec 2.2); its subject is the policy's
+	// authority principal. Declared with the widened grant_origins CHECK (#605);
+	// neither mintable nor a system origin until its writer lands (#607).
+	OriginRegistration OriginKind = "registration"
 )
 
 // mintableOrigins is the subset the grant surface may write today. The rest

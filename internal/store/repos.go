@@ -305,7 +305,7 @@ func (o sqliteOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	}
 	out := make([]Org, 0, len(rows))
 	for _, row := range rows {
-		org, err := orgFromSQLite(row)
+		org, err := orgFromSQLite(sqlitegen.GetOrgRow(row))
 		if err != nil {
 			return nil, err
 		}
@@ -355,7 +355,7 @@ func (o sqliteOrgs) Delete(ctx context.Context, p authz.Proof) error {
 	return affected(o.q.DeleteOrg(ctx, string(chain.Org)))
 }
 
-func orgFromSQLite(row sqlitegen.Org) (Org, error) {
+func orgFromSQLite(row sqlitegen.GetOrgRow) (Org, error) {
 	created, err := parseTime("org", row.ID, row.CreatedAt)
 	if err != nil {
 		return Org{}, err
@@ -971,7 +971,7 @@ func (o pgOrgs) List(ctx context.Context, p authz.Proof) ([]Org, error) {
 	}
 	out := make([]Org, 0, len(rows))
 	for _, row := range rows {
-		org, err := orgFromPG(row)
+		org, err := orgFromPG(pggen.GetOrgRow(row))
 		if err != nil {
 			return nil, err
 		}
@@ -1021,7 +1021,7 @@ func (o pgOrgs) Delete(ctx context.Context, p authz.Proof) error {
 	return affected(o.q.DeleteOrg(ctx, string(chain.Org)))
 }
 
-func orgFromPG(row pggen.Org) (Org, error) {
+func orgFromPG(row pggen.GetOrgRow) (Org, error) {
 	if !row.CreatedAt.Valid {
 		return Org{}, fmt.Errorf("store: org %s: null created_at", row.ID)
 	}
