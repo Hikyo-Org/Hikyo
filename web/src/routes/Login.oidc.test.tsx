@@ -120,6 +120,9 @@ beforeEach(() => {
   mocks.passkey.isError = false;
   mocks.passkeysAvailable = false;
   mocks.methods.data.signup_paused = false;
+  // The remembered way in is per-browser state; a test that starts a leg
+  // leaves it behind for the next one unless it is cleared here.
+  globalThis.localStorage.clear();
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -150,6 +153,21 @@ it('opens the password form from its row, and comes back to the rows', async () 
   expect(container.querySelector('h1')?.textContent).toBe('Sign in with a password');
   await act(async () => buttonNamed(container, '‹ Other ways to sign in')?.click());
   expect(container.querySelector('form')).toBeNull();
+  await unmount();
+});
+
+it('badges the row this browser used last time, and remembers the one chosen now', async () => {
+  globalThis.localStorage.setItem('hikyo.last-sign-in', 'provider:sso');
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  const badged = [...container.querySelectorAll('button')].filter((button) =>
+    button.textContent?.includes('Last used'),
+  );
+  expect(badged.map((button) => button.textContent)).toEqual(['Continue with SAML SSOLast used']);
+
+  await act(async () => buttonNamed(container, 'Continue with Corporate IdP')?.click());
+  expect(globalThis.localStorage.getItem('hikyo.last-sign-in')).toBe('provider:strict');
   await unmount();
 });
 

@@ -43,17 +43,19 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
 
   // Step one of the staged entry (#587 locked, spec section 6): one row per
   // way in, no credential field yet. The e2e browser can assert, so the
-  // passkey row stands beside the password row and the seeded provider.
+  // passkey row stands beside the password row and the seeded provider. The
+  // Password row is matched by prefix: after a sign-in its name carries the
+  // "Last used" badge.
   const card = page.locator('.login__card');
   await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
   await expect(page.getByText('Choose how you sign in.')).toBeVisible();
-  await expect(card.getByRole('button', { name: 'Password', exact: true })).toBeVisible();
+  await expect(card.getByRole('button', { name: /^Password\b/ })).toBeVisible();
   await expect(card.getByRole('button', { name: 'Passkey', exact: true })).toBeVisible();
   await expect(card.getByLabel('Username')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Create an account' })).toHaveCount(0);
   await expectNoSeriousAxeViolations(page);
 
-  await card.getByRole('button', { name: 'Password', exact: true }).click();
+  await card.getByRole('button', { name: /^Password\b/ }).click();
   const submit = page.getByRole('button', { name: 'Sign in', exact: true });
   const username = page.getByLabel('Username');
   const password = page.getByLabel('Password');
@@ -229,7 +231,7 @@ test.describe('login', () => {
     await page.goto('/login');
     await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Password', exact: true }).click();
+    await page.getByRole('button', { name: /^Password\b/ }).click();
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill('not the password at all');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -320,7 +322,7 @@ test.describe('login', () => {
     page,
   }) => {
     await page.goto('/login');
-    await page.getByRole('button', { name: 'Password', exact: true }).click();
+    await page.getByRole('button', { name: /^Password\b/ }).click();
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -579,7 +581,7 @@ test.describe('login', () => {
       // The old password is gone and the new one signs in. Nothing about the
       // authority or the code survives in the page.
       await page.getByRole('link', { name: 'Sign in' }).click();
-      await page.getByRole('button', { name: 'Password', exact: true }).click();
+      await page.getByRole('button', { name: /^Password\b/ }).click();
       await page.getByLabel('Username').fill(username);
       await page.getByLabel('Password').fill(firstPassword);
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -629,7 +631,7 @@ test.describe('login', () => {
       await withPasskeyPage(await context.newPage(), 'empty', async (page) => {
         const signIn = async () => {
           await page.goto('/login');
-          await page.getByRole('button', { name: 'Password', exact: true }).click();
+          await page.getByRole('button', { name: /^Password\b/ }).click();
           await page.getByLabel('Username').fill(username);
           await page.getByLabel('Password').fill(password);
           await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -706,7 +708,7 @@ test.describe('login', () => {
       await expectContrast(page, page.getByText('Choose how you sign in.'));
     }
     // Step two, once: the theme is re-emulated in place, the step holds.
-    await page.getByRole('button', { name: 'Password', exact: true }).click();
+    await page.getByRole('button', { name: /^Password\b/ }).click();
     for (const scheme of ['dark', 'light'] as const) {
       await page.emulateMedia({ colorScheme: scheme });
       await expectContrast(page, page.getByRole('heading', { name: 'Sign in with a password' }));

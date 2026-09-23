@@ -533,7 +533,7 @@ test.describe('sign out', () => {
 
   /** Password on the staged entry, then the passkey against the #760 challenge. */
   async function signInWithPasskeyFactor(page: Page): Promise<void> {
-    await page.getByRole('button', { name: 'Password', exact: true }).click();
+    await page.getByRole('button', { name: /^Password\b/ }).click();
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill(ADMIN.password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -556,6 +556,9 @@ test.describe('sign out', () => {
       const names = (await page.context().cookies()).map((c) => c.name);
       expect(names).not.toContain('__Host-hikyo');
       expect(names).not.toContain('__Host-hikyo-csrf');
+      // The way in survives the sign-out as a badge on its row, and only its row.
+      await expect(page.getByRole('button', { name: /^Password\b/ })).toContainText('Last used');
+      await expect(page.getByText('Last used')).toHaveCount(1);
     });
   });
 

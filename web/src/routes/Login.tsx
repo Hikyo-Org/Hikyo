@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 
 import { useAuthMethods } from '../api/account.ts';
 import { ApiError, parsed } from '../api/client.ts';
+import { readLastSignIn, rememberLastSignIn } from '../api/lastSignIn.ts';
 import { useSensitiveMutation } from '../api/sensitiveMutation.ts';
 import { loginFailureText, useLogin, useLoginChallengeTotp, useOIDCLogin } from '../api/session.ts';
 import {
@@ -75,6 +76,9 @@ export function Login() {
   const challengePasskey = useLoginChallengePasskey(challenge?.id ?? '');
   // The provider being contacted, so only ITS button shows the busy label.
   const [contacting, setContacting] = useState<string | null>(null);
+  // Read once per mount: the badge describes the previous visit, and the row
+  // being remembered right now is the one the person just chose.
+  const [lastUsed] = useState(readLastSignIn);
   // The kind discriminator is open (zIdentityProviderKind is a string), so the
   // card is only offered the two protocols this route can actually start.
   const providers = (methods.data?.providers ?? []).filter(
@@ -156,12 +160,14 @@ export function Login() {
            fact about an inactive policy, said and never explained (#587 d3). */
         signup={null}
         paused={methods.data?.signup_paused === true}
+        lastUsed={lastUsed}
         busy={busy}
         error={error}
         onPassword={(credentials) => {
           retireEveryLeg();
           login.mutate(credentials, {
             onSuccess: (outcome) => {
+              rememberLastSignIn({ kind: 'password' });
               if (outcome.kind === 'challenge') {
                 setChallenge({
                   id: outcome.challenge.challenge_id,
@@ -174,11 +180,13 @@ export function Login() {
         }}
         onPasskey={() => {
           retireEveryLeg();
-          passkey.mutate();
+          passkey.mutate(undefined, { onSuccess: () => rememberLastSignIn({ kind: 'passkey' }) });
         }}
         onProvider={(slug) => {
           retireEveryLeg();
           setContacting(slug);
+          // The round-trip leaves no later moment: remembered at the start.
+          rememberLastSignIn({ kind: 'provider', slug });
           const provider = providers.find((candidate) => candidate.slug === slug);
           if (provider?.kind === 'saml') saml.mutate(slug);
           else oidc.mutate(slug);

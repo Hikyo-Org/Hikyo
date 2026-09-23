@@ -2,6 +2,7 @@ import type { zAuthMethodProvider } from '@hikyo/zod';
 import type { JSX } from 'react';
 import type { z } from 'zod';
 
+import { Badge } from '../Badge.tsx';
 import { cx } from '../cx.ts';
 
 /** One configured identity provider, as `GET /auth/methods` describes it. */
@@ -77,6 +78,7 @@ export function ProviderButton({
   intent,
   busy,
   disabled,
+  lastUsed = false,
   onClick,
 }: {
   provider: LoginProvider;
@@ -84,6 +86,8 @@ export function ProviderButton({
   /** This row's own ceremony is in flight. */
   busy: boolean;
   disabled: boolean;
+  /** This browser signed in through this row last time. */
+  lastUsed?: boolean;
   onClick: () => void;
 }) {
   const { brand } = provider;
@@ -101,6 +105,7 @@ export function ProviderButton({
           <span className="login__brand-tenant">· {provider.display_name}</span>
         ) : null}
       </span>
+      {lastUsed ? <Badge className="login__last-used">Last used</Badge> : null}
     </button>
   );
 }

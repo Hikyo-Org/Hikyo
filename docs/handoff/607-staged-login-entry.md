@@ -54,11 +54,22 @@ SQL changed here.
    passkey instead of a TOTP code: back to back they each spent a 30 s step,
    and the second waited most of its 30 s budget for the next one (they ran
    at 28 to 30 s before, 1.5 to 2.3 s now).
-6. **Sensitivity inventory** re-pinned for `LoginForm.tsx` and `Login.tsx`:
+6. **"Last used" badge** (Marc, 2026-09-23). `api/lastSignIn.ts` keeps the
+   way in this browser used last (`password`, `passkey`, `provider:<slug>`)
+   in localStorage beside the theme choice, best-effort and Zod-parsed on
+   read; never a credential, identifier or token. The route reads it once per
+   mount and hands `lastUsed` to the card, which badges that one row with the
+   neutral `ui/Badge`. Written when the password is accepted, the passkey
+   asserts, or a provider round-trip starts (the redirect leaves no later
+   moment).
+7. **Sensitivity inventory** re-pinned for `LoginForm.tsx` and `Login.tsx`:
    the password stays component-owned `useSensitiveState`, cleared on submit;
    only presentation moved.
 
-## Decisions taken here (Marc to confirm or overrule)
+## Decisions (Marc, 2026-09-23)
+
+D1 option (a), D2 option (a), D3 and D4 as recommended. D1's server-side
+brand derivation is #607 work; the spec line goes through #589.
 
 - **D1. Brand is not on the wire.** Spec section 3.1 pins only
   `profile: [github]` on `AuthMethodProvider`; nothing tells the client Google

@@ -30,6 +30,7 @@ const meta = {
     passkeys: true,
     signup: null,
     paused: false,
+    lastUsed: null,
     busy: null,
     error: null,
     onPassword: fn(),
@@ -64,6 +65,25 @@ export const SocialProviders: Story = {
     await expect(canvas.getAllByText('Microsoft: work or school account')).toHaveLength(1);
   },
 };
+
+/** The row this browser used last time wears the badge; a provider is matched by slug. */
+export const LastUsedProvider: Story = {
+  args: { providers: socialProviders, lastUsed: { kind: 'provider', slug: 'github' } },
+  play: async ({ canvas }) => {
+    const row = canvas.getByRole('button', { name: /continue with github/i });
+    await expect(row).toHaveTextContent('Last used');
+    await expect(canvas.getAllByText('Last used')).toHaveLength(1);
+  },
+};
+
+export const LastUsedPassword: Story = {
+  args: { lastUsed: { kind: 'password' } },
+  play: async ({ canvas }) => {
+    await expect(canvas.getByRole('button', { name: /^password/i })).toHaveTextContent('Last used');
+  },
+};
+
+export const LastUsedPasskey: Story = { args: { lastUsed: { kind: 'passkey' } } };
 
 /** Nothing but a password: the picker still stands, one row, so the shape never shifts. */
 export const LocalOnly: Story = { args: { providers: [], passkeys: false } };

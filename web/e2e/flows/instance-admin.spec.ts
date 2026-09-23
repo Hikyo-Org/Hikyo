@@ -805,7 +805,7 @@ test.describe('instance administration', () => {
     try {
       const operatorPage = await context.newPage();
       await operatorPage.goto('/login');
-      await operatorPage.getByRole('button', { name: 'Password', exact: true }).click();
+      await operatorPage.getByRole('button', { name: /^Password\b/ }).click();
       await operatorPage.getByLabel('Username').fill(username);
       await operatorPage.getByLabel('Password').fill(password);
       await operatorPage.getByRole('button', { name: 'Sign in', exact: true }).click();

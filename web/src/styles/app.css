@@ -5251,6 +5251,11 @@ label.chk:has(input:disabled) {
   text-align: left;
 }
 
+/* "Last used": the badge names a fact about this browser, neutral tone. */
+.login__last-used {
+  margin-left: var(--space-2);
+}
+
 .login__method-hint {
   margin-left: auto;
   font-family: var(--font-mono);

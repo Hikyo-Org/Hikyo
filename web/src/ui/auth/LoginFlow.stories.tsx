@@ -139,6 +139,7 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
               : null
           }
           paused={false}
+          lastUsed={null}
           busy={stage.busy}
           error={stage.error}
           onPassword={(credentials) => void password(credentials)}

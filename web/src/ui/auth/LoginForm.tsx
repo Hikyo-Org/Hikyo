@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
+import { isLastSignIn, type LastSignIn } from '../../api/lastSignIn.ts';
 import { useSensitiveState } from '../../api/sensitiveMutation.ts';
 import { Alert } from '../Alert.tsx';
+import { Badge } from '../Badge.tsx';
 import { Button } from '../Button.tsx';
 import { Glyph } from '../Glyph.tsx';
 import { Input } from '../Input.tsx';
@@ -55,6 +57,7 @@ export function LoginForm({
   passkeys,
   signup,
   paused,
+  lastUsed,
   busy,
   error,
   onPassword,
@@ -68,6 +71,8 @@ export function LoginForm({
   signup: SignupDoor | null;
   /** The scope has a registration policy that is inactive: say so, never why (#587 Q2). */
   paused: boolean;
+  /** The way in this browser used last time; its row wears the "Last used" badge. */
+  lastUsed: LastSignIn | null;
   busy: SignInBusy;
   /** A refusal to show above the form, already worded (see loginFailureText). */
   error: string | null;
@@ -233,6 +238,9 @@ export function LoginForm({
               onClick={() => setStage({ at: 'password' })}
             >
               Password
+              {isLastSignIn(lastUsed, { kind: 'password' }) ? (
+                <Badge className="login__last-used">Last used</Badge>
+              ) : null}
               <span className="login__method-hint" aria-hidden="true">
                 username
               </span>
@@ -240,6 +248,9 @@ export function LoginForm({
             {passkeys ? (
               <Button type="button" className="login__method" disabled={anyBusy} onClick={onPasskey}>
                 {busy === 'passkey' ? 'Waiting for the passkey…' : 'Passkey'}
+                {isLastSignIn(lastUsed, { kind: 'passkey' }) ? (
+                  <Badge className="login__last-used">Last used</Badge>
+                ) : null}
                 {busy === 'passkey' ? null : (
                   <span className="login__method-hint" aria-hidden="true">
                     this device
@@ -254,6 +265,7 @@ export function LoginForm({
                 intent="sign-in"
                 busy={providerBusy(provider.slug)}
                 disabled={anyBusy}
+                lastUsed={isLastSignIn(lastUsed, { kind: 'provider', slug: provider.slug })}
                 onClick={() => onProvider(provider.slug, 'sign-in')}
               />
             ))}
