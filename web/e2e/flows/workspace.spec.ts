@@ -578,9 +578,10 @@ test.describe('multi-instance', () => {
       new URL(arrivedAt).search,
     );
 
+    await popup.getByRole('button', { name: 'Password', exact: true }).click();
     await popup.getByLabel('Username').fill(ADMIN.username);
     await popup.getByLabel('Password').fill(ADMIN.password);
-    await popup.getByRole('button', { name: 'Sign in' }).click();
+    await popup.getByRole('button', { name: 'Sign in', exact: true }).click();
     // B carries a factor; present its authenticator against the challenge (#760).
     await completeSecondFactor(popup, nextServingCode);
 

@@ -149,6 +149,13 @@ export function Login() {
       <LoginForm
         providers={providers}
         passkeys={passkeysAvailable()}
+        /* The sign-up door lands with #607: the start request has no intent
+           yet, so a provider chosen to create an account would only be refused
+           at the callback as an unknown identity. Until then the card offers
+           no door, whatever `signup_open` says. Paused is #606's one public
+           fact about an inactive policy, said and never explained (#587 d3). */
+        signup={null}
+        paused={methods.data?.signup_paused === true}
         busy={busy}
         error={error}
         onPassword={(credentials) => {
@@ -189,14 +196,6 @@ export function Login() {
           </>
         }
       />
-      {/* An inactive registration policy (#606): the public page says only
-          this, never the cause, which renders on the Members panel (#587 d3).
-          The sign-up door itself lands with #607. */}
-      {methods.data?.signup_paused === true ? (
-        <p className="login__paused" role="status">
-          Sign-up is paused.
-        </p>
-      ) : null}
       {methods.isPending ? <p role="status">Loading sign-in methods…</p> : null}
       {methods.isError ? <ProviderDiscoveryAlert onRetry={() => void methods.refetch()} /> : null}
     </main>

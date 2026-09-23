@@ -805,9 +805,10 @@ test.describe('instance administration', () => {
     try {
       const operatorPage = await context.newPage();
       await operatorPage.goto('/login');
+      await operatorPage.getByRole('button', { name: 'Password', exact: true }).click();
       await operatorPage.getByLabel('Username').fill(username);
       await operatorPage.getByLabel('Password').fill(password);
-      await operatorPage.getByRole('button', { name: 'Sign in' }).click();
+      await operatorPage.getByRole('button', { name: 'Sign in', exact: true }).click();
       await passEnrolmentGate(operatorPage, password);
       // The account entry is shell chrome that renders even for an operator with
       // no organisations of its own, so it is the honest "signed in" settle point.

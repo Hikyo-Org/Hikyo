@@ -499,9 +499,10 @@ test.describe('members and grants', () => {
       const signIn = async (password: string) => {
         await invitee.getByRole('link', { name: 'Sign in' }).click();
         await expect(invitee).toHaveURL(/\/login$/);
+        await invitee.getByRole('button', { name: 'Password', exact: true }).click();
         await invitee.getByLabel('Username').fill(username);
         await invitee.getByLabel('Password').fill(password);
-        await invitee.getByRole('button', { name: 'Sign in' }).click();
+        await invitee.getByRole('button', { name: 'Sign in', exact: true }).click();
       };
       // The invitee has no factor, so under the product-default `required`
       // policy its first sign-in lands on the enrolment gate (#785).

@@ -139,6 +139,20 @@ it('offers each configured OIDC and SAML provider and starts the selected login'
   await unmount();
 });
 
+it('opens the password form from its row, and comes back to the rows', async () => {
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+  expect(container.querySelector('form')).toBeNull();
+  expect(container.querySelector('h1')?.textContent).toBe('Sign in to Hikyo');
+  await act(async () => buttonNamed(container, 'Passwordusername')?.click());
+  expect(container.querySelectorAll('input').length).toBe(2);
+  expect(container.querySelector('h1')?.textContent).toBe('Sign in with a password');
+  await act(async () => buttonNamed(container, '‹ Other ways to sign in')?.click());
+  expect(container.querySelector('form')).toBeNull();
+  await unmount();
+});
+
 it('starts a SAML login through the SP-initiated redirect', async () => {
   const fetchMock = vi.fn((_request: RequestInfo | URL) =>
     Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso' })),
@@ -176,17 +190,13 @@ it.each([
 
   await render();
 
+  // Step one of the staged entry: the password row, the passkey row, and one
+  // row per provider. A ceremony ends in a redirect or a session change; a
+  // second start racing it is the failure mode, and the busy label says why.
   const buttons = container.querySelectorAll('button');
   expect(buttons.length).toBe(4);
   for (const button of buttons) {
     expect(button.disabled).toBe(true);
-  }
-  const inputs = container.querySelectorAll('input');
-  expect(inputs.length).toBe(2);
-  // A ceremony ends in a redirect or a session change; a second submission
-  // racing it is the failure mode, and the busy button label says why.
-  for (const input of inputs) {
-    expect(input.disabled).toBe(true);
   }
 
   await unmount();
@@ -223,8 +233,9 @@ it('says only "Sign-up is paused." while the registration policy is inactive', a
   const paused = document.createElement('div');
   const second = mount(paused);
   await second.render();
-  const line = paused.querySelector('.login__paused');
+  const line = paused.querySelector('.login__card .login__paused');
   expect(line?.textContent).toBe('Sign-up is paused.');
+  expect(line?.getAttribute('role')).toBe('status');
   // The cause never reaches the public page.
   for (const cause of ['authority-lost', 'mailer', 'precondition', 'inactive']) {
     expect(paused.textContent?.toLowerCase()).not.toContain(cause);
@@ -351,8 +362,12 @@ it('clears a SAML refusal when an OIDC attempt starts', async () => {
   await unmount();
 });
 
-/** Submit the password form and answer it with a #760 login challenge. */
+const buttonNamed = (container: HTMLElement, text: string) =>
+  [...container.querySelectorAll('button')].find((button) => button.textContent === text);
+
+/** Open the password step, submit its form and answer it with a #760 login challenge. */
 async function answerWithChallenge(container: HTMLElement, factors: string[]) {
+  await act(async () => buttonNamed(container, 'Passwordusername')?.click());
   mocks.login.mutate.mockImplementation(
     (_credentials: unknown, callbacks: { onSuccess: (outcome: unknown) => void }) =>
       callbacks.onSuccess({
@@ -364,9 +379,6 @@ async function answerWithChallenge(container: HTMLElement, factors: string[]) {
   const form = container.querySelector('form');
   await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
 }
-
-const buttonNamed = (container: HTMLElement, text: string) =>
-  [...container.querySelectorAll('button')].find((button) => button.textContent === text);
 
 it('presents a passkey as the second factor when one is enrolled and the platform can assert', async () => {
   mocks.passkeysAvailable = true;

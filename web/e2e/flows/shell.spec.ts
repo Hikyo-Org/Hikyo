@@ -7,7 +7,8 @@ import {
   expectPinnedAssertionSet,
   expectStatusIsTextAndAria,
 } from '../fixtures/assertions.ts';
-import { ADMIN, completeSecondFactor, STORAGE_STATE } from '../fixtures/instance.ts';
+import { ADMIN, STORAGE_STATE } from '../fixtures/instance.ts';
+import { withPasskeyPage } from '../fixtures/passkey.ts';
 import { surfacesForFlow } from '../registry.ts';
 
 
@@ -523,47 +524,56 @@ test.describe('app chrome', () => {
 
 // Sign-out revokes the session it uses, so it gets its own, sharing the
 // suite's would leave every later test holding a dead cookie.
+//
+// The challenge is answered with the shared passkey, not a TOTP code: a code
+// spends a single-use 30 s step, and two of these tests back to back would
+// make the second wait for the next step, most of its whole 30 s budget.
 test.describe('sign out', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
-  test('signs out through the account entry and clears both cookies', async ({ page }) => {
-    await page.goto('/login');
+  /** Password on the staged entry, then the passkey against the #760 challenge. */
+  async function signInWithPasskeyFactor(page: Page): Promise<void> {
+    await page.getByRole('button', { name: 'Password', exact: true }).click();
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill(ADMIN.password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    await completeSecondFactor(page);
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await page.getByRole('button', { name: 'Use a passkey' }).click();
     await expect(page.getByRole('button', { name: /^Account:/ })).toBeVisible();
+  }
 
-    await page.getByRole('button', { name: /^Account:/ }).click();
-    await page.getByRole('menuitem', { name: 'Sign out' }).click();
+  test('signs out through the account entry and clears both cookies', async ({ page }) => {
+    await withPasskeyPage(page, 'shared', async (page) => {
+      await page.goto('/login');
+      await signInWithPasskeyFactor(page);
 
-    // Sign-out is a cookie-authenticated POST, so it only succeeds if the SPA
-    // echoed the synchronizer token, reaching the login page proves the whole
-    // CSRF contract end to end, through the real server.
-    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
-    const names = (await page.context().cookies()).map((c) => c.name);
-    expect(names).not.toContain('__Host-hikyo');
-    expect(names).not.toContain('__Host-hikyo-csrf');
+      await page.getByRole('button', { name: /^Account:/ }).click();
+      await page.getByRole('menuitem', { name: 'Sign out' }).click();
+
+      // Sign-out is a cookie-authenticated POST, so it only succeeds if the SPA
+      // echoed the synchronizer token, reaching the login page proves the whole
+      // CSRF contract end to end, through the real server.
+      await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+      const names = (await page.context().cookies()).map((c) => c.name);
+      expect(names).not.toContain('__Host-hikyo');
+      expect(names).not.toContain('__Host-hikyo-csrf');
+    });
   });
 
   test('moves two tabs through one login and logout state machine', async ({ context, page }) => {
-    const other = await context.newPage();
-    await page.goto('/login');
-    await other.goto('/login');
-    await expect(other.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await withPasskeyPage(page, 'shared', async (page) => {
+      const other = await context.newPage();
+      await page.goto('/login');
+      await other.goto('/login');
+      await expect(other.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
 
-    await page.getByLabel('Username').fill(ADMIN.username);
-    await page.getByLabel('Password').fill(ADMIN.password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    await completeSecondFactor(page);
+      await signInWithPasskeyFactor(page);
+      await expect(other.getByRole('button', { name: /^Account:/ })).toBeVisible();
 
-    await expect(page.getByRole('button', { name: /^Account:/ })).toBeVisible();
-    await expect(other.getByRole('button', { name: /^Account:/ })).toBeVisible();
+      await page.getByRole('button', { name: /^Account:/ }).click();
+      await page.getByRole('menuitem', { name: 'Sign out' }).click();
 
-    await page.getByRole('button', { name: /^Account:/ }).click();
-    await page.getByRole('menuitem', { name: 'Sign out' }).click();
-
-    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
-    await expect(other.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+      await expect(other.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    });
   });
 });
