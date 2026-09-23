@@ -15,6 +15,8 @@ import {
   settingsOperationFailure,
   useCreateOrg,
   useInstanceOrgs,
+  orgOriginLabel,
+  type OrgOrigin,
   useReencryptInstance,
   useRotateDek,
   useRotateMasterKey,
@@ -101,7 +103,9 @@ const instanceFailureText = (error: unknown) =>
  * surface `/instance/members`, so every scope is a {Members, Settings} pair.
  */
 export function InstanceAdmin() {
-  const orgs = useInstanceOrgs();
+  const [originFilter, setOriginFilter] = useState<OrgOrigin | 'all'>('all');
+  const orgs = useInstanceOrgs(true, originFilter === 'all' ? undefined : originFilter);
+  const originFilterId = useId();
   const health = useInstanceRetentionHealth();
   const policy = useCredentialPolicy();
   const nameId = useId();
@@ -140,6 +144,19 @@ export function InstanceAdmin() {
     {done !== null ? <Alert tone="done">{done}</Alert> : null}
 
     <Panel id="instance-orgs" title="Organisations">
+      {/* Self-served orgs (a registration policy's fresh-org landing) are
+          filtered by origin and pruned with the ordinary delete (#585 d9). */}
+      <div className="field instance-org-filter">
+        <label htmlFor={originFilterId}>Show</label>
+        <select id={originFilterId} value={originFilter} onChange={(event) => {
+          const value = event.target.value;
+          setOriginFilter(value === 'manual' || value === 'registration' ? value : 'all');
+        }}>
+          <option value="all">All organisations</option>
+          <option value="manual">Created by an operator</option>
+          <option value="registration">Self-served (sign-up)</option>
+        </select>
+      </div>
       {orgs.isPending ? <p role="status">Loading organisations…</p> : null}
       {secondFactor(orgs.error) ? <Alert>Listing every organisation on this instance needs a second factor. This session does not have sufficient second-factor assurance; present your authenticator code or passkey in the banner above.</Alert> : null}
       {nondisclosed(orgs.error) ? <p role="status">The organisation directory is not disclosed to this session.</p> : null}
@@ -151,9 +168,13 @@ export function InstanceAdmin() {
             <span className="settings-row__detail">Organisation settings</span>
           </div>
           <span className="settings-row__spacer" />
+          <Badge mono>{orgOriginLabel(org.origin)}</Badge>
           <Badge mono>{org.active ? 'active' : 'inactive'}</Badge>
         </div>
       )) : null}
+      {orgs.isSuccess && orgs.data.items.length === 0 && originFilter !== 'all' ? (
+        <p role="status">No organisations of this origin.</p>
+      ) : null}
       {showCreate ? (
         <div className="settings-row">
           <div className="field settings-row__spacer"><label htmlFor={nameId}>New organisation name</label><input id={nameId} value={name} onChange={(event) => setName(event.target.value)} /></div>

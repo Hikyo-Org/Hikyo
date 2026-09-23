@@ -133,10 +133,17 @@ type Org struct {
 	Active    bool
 	Metadata  json.RawMessage
 	CreatedAt time.Time
+	// Origin is `manual` or `registration` (#585 d8); RegistrationPolicyID
+	// names the minting policy of a self-served org, else empty.
+	Origin               string
+	RegistrationPolicyID string
 }
 
 func orgOf(o store.Org) Org {
-	return Org{ID: o.ID, Name: o.Name, Active: o.Active, Metadata: o.Metadata, CreatedAt: o.CreatedAt}
+	return Org{
+		ID: o.ID, Name: o.Name, Active: o.Active, Metadata: o.Metadata, CreatedAt: o.CreatedAt,
+		Origin: o.Origin, RegistrationPolicyID: o.RegistrationPolicyID,
+	}
 }
 
 // Orgs is the organisation surface. Creation and enumeration are
@@ -176,6 +183,7 @@ func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool
 		Active:    active,
 		Metadata:  metadata,
 		CreatedAt: store.CanonTime(now),
+		Origin:    "manual",
 	}
 	// Session invalidation updates the creator's shared generation row. Admit
 	// org creates before postgres takes a SERIALIZABLE snapshot so concurrent

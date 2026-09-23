@@ -808,7 +808,9 @@ export const zOrg = z.object({
     name: z.string(),
     active: z.boolean(),
     metadata: z.record(z.string(), z.unknown()).nullish(),
-    created_at: zTimestamp
+    created_at: zTimestamp,
+    origin: z.enum(['manual', 'registration']),
+    registration_policy_id: z.string().nullish()
 });
 
 export const zOrgList = z.object({
@@ -2482,6 +2484,8 @@ export const zRegistrationPolicyDeleteRequest = z.object({
 
 export const zOidcStartRequest = z.object({
     purpose: z.string(),
+    intent: z.enum(['sign-in', 'sign-up']).optional(),
+    signup_org: z.string().max(64).optional(),
     environment_id: z.string().max(64).optional(),
     proof: z.string().max(1024).optional(),
     browser: z.boolean().optional().default(false)
@@ -2599,7 +2603,8 @@ export const zRegistrationPolicy = z.object({
 export const zAuthMethodProvider = z.object({
     slug: z.string(),
     display_name: z.string(),
-    kind: zIdentityProviderKind
+    kind: zIdentityProviderKind,
+    brand: z.enum(['google', 'microsoft']).optional()
 });
 
 export const zAuthMethods = z.object({
@@ -2607,7 +2612,12 @@ export const zAuthMethods = z.object({
     local_login_enabled: z.boolean(),
     signup_open: z.boolean(),
     signup_paused: z.boolean(),
-    signup_methods: z.array(zSignupMethod)
+    signup_methods: z.array(zSignupMethod),
+    signup_landing: z.enum([
+        'org-template',
+        'none',
+        'fresh-org'
+    ]).optional()
 });
 
 export const zExternalIdentity = z.object({
@@ -3943,6 +3953,10 @@ export const zBeginRecoveryBody = zRecoveryBeginRequest;
  * A session-less credential-establishment authority, returned once.
  */
 export const zBeginRecoveryResponse = zRecoveryBeginResult;
+
+export const zListOrgsQuery = z.object({
+    origin: z.enum(['manual', 'registration']).optional()
+});
 
 /**
  * The organisations this principal may administer.

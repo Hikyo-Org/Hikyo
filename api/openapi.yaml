@@ -888,9 +888,21 @@ paths:
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
+      parameters:
+        - name: origin
+          in: query
+          required: false
+          description: |
+            Only orgs of this origin: the operator's filter for self-served
+            (`registration`) orgs, pruned with the ordinary delete (#585 d9).
+          schema:
+            type: string
+            enum: [manual, registration]
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "200":
           description: The organisations this principal may administer.
           content:
@@ -13482,7 +13494,7 @@ components:
 
     Org:
       type: object
-      required: [id, name, active, created_at]
+      required: [id, name, active, created_at, origin]
       properties:
         id:
           $ref: "#/components/schemas/ID"
@@ -13494,6 +13506,19 @@ components:
           type: [object, "null"]
         created_at:
           $ref: "#/components/schemas/Timestamp"
+        origin:
+          type: string
+          enum: [manual, registration]
+          description: |
+            How the org came to exist (#585 d8): `manual` (an operator's
+            create) or `registration` (a sign-up under a registration policy,
+            a self-served org). Typed on the row, never editable.
+        registration_policy_id:
+          type: [string, "null"]
+          description: |
+            The registration policy that minted the org, a trail pointer with
+            no foreign key (the org keeps it after the policy is deleted); null
+            for a manual org.
 
     OrgList:
       type: object
@@ -16749,6 +16774,15 @@ components:
             (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
           items:
             $ref: "#/components/schemas/SignupMethod"
+        signup_landing:
+          type: string
+          enum: [org-template, none, fresh-org]
+          description: |
+            Where an admitted sign-up lands, present only while the door is
+            open (#607): the addressed org (`org-template`), an account with
+            no grants (`none`), or a fresh org of its own (`fresh-org`). Not
+            secret: the landing kind is what the confirmation step tells the
+            signer before the round-trip (#585 d5, #587 d1).
 
     SignupMethod:
       description: A federated provider by `{kind, slug}`, or the string `local` for the email + password entry.
@@ -16919,6 +16953,16 @@ components:
           type: string
         kind:
           $ref: "#/components/schemas/IdentityProviderKind"
+        brand:
+          type: string
+          enum: [google, microsoft]
+          description: |
+            The provider's published button rules apply (#587 d4,
+            docs/research/social-providers.md): Google's standard-colour G,
+            or the Microsoft logo with the row's display name as the tenant.
+            Derived from the pinned issuer (Google's, or an Entra
+            tenant-specific issuer); absent for a generic OIDC provider.
+            Presentation only: admission never keys on it.
 
     OidcStartRequest:
       type: object

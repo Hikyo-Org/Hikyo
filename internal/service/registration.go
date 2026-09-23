@@ -250,6 +250,9 @@ type SignupDoor struct {
 	Open    bool
 	Paused  bool
 	Methods []SignupMethod
+	// Landing is the open door's landing kind (#607), for the confirmation
+	// step; empty unless Open.
+	Landing LandingKind
 }
 
 // SignupMethod is one way the door admits: a federated provider by
@@ -812,7 +815,7 @@ func (s *Registration) SignupDoor(ctx context.Context, scope RegistrationScope) 
 			door.Paused = true
 			return nil
 		}
-		door.Open = true
+		door.Open, door.Landing = true, view.Landing.Kind
 		for _, e := range view.External {
 			door.Methods = append(door.Methods, SignupMethod{Kind: SignupMethodKind(e.Provider.Kind), Slug: e.Provider.Slug})
 		}

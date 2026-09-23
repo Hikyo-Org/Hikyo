@@ -975,7 +975,7 @@ func TestNullableMetadataRoundTripsAbsentNullAndValue(t *testing.T) {
 			seen = append(seen, meta)
 			return service.Org{
 				ID: testOrgID, Name: name, Active: active, Metadata: meta,
-				CreatedAt: liveIdentity.CreatedAt,
+				CreatedAt: liveIdentity.CreatedAt, Origin: "manual",
 			}, nil
 		},
 	})

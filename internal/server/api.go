@@ -530,13 +530,17 @@ func (a *API) ListMyOrgs(ctx context.Context, _ apigen.ListMyOrgsRequestObject) 
 	return apigen.ListMyOrgs200JSONResponse{Items: items, Count: len(items)}, nil
 }
 
-func (a *API) ListOrgs(ctx context.Context, _ apigen.ListOrgsRequestObject) (apigen.ListOrgsResponseObject, error) {
+func (a *API) ListOrgs(ctx context.Context, req apigen.ListOrgsRequestObject) (apigen.ListOrgsResponseObject, error) {
 	orgs, err := a.Orgs.List(ctx, service.Bearer(bearer(ctx)))
 	if err != nil {
 		return nil, err
 	}
 	items := make([]apigen.Org, 0, len(orgs))
 	for _, o := range orgs {
+		// `?origin=` narrows the rendered list; the audited read is the list.
+		if req.Params.Origin != nil && o.Origin != string(*req.Params.Origin) {
+			continue
+		}
 		items = append(items, wireOrg(o))
 	}
 	return apigen.ListOrgs200JSONResponse{Items: items, Count: len(items)}, nil

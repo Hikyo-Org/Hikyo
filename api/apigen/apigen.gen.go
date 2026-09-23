@@ -686,6 +686,45 @@ func (e ApprovalVoteRequestDecision) Valid() bool {
 	}
 }
 
+// Defines values for AuthMethodProviderBrand.
+const (
+	Google    AuthMethodProviderBrand = "google"
+	Microsoft AuthMethodProviderBrand = "microsoft"
+)
+
+// Valid indicates whether the value is a known member of the AuthMethodProviderBrand enum.
+func (e AuthMethodProviderBrand) Valid() bool {
+	switch e {
+	case Google:
+		return true
+	case Microsoft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthMethodsSignupLanding.
+const (
+	AuthMethodsSignupLandingFreshOrg    AuthMethodsSignupLanding = "fresh-org"
+	AuthMethodsSignupLandingNone        AuthMethodsSignupLanding = "none"
+	AuthMethodsSignupLandingOrgTemplate AuthMethodsSignupLanding = "org-template"
+)
+
+// Valid indicates whether the value is a known member of the AuthMethodsSignupLanding enum.
+func (e AuthMethodsSignupLanding) Valid() bool {
+	switch e {
+	case AuthMethodsSignupLandingFreshOrg:
+		return true
+	case AuthMethodsSignupLandingNone:
+		return true
+	case AuthMethodsSignupLandingOrgTemplate:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CLIReauthStartRequestOperation.
 const (
 	CLIReauthStartRequestOperationAdapterAdopt         CLIReauthStartRequestOperation = "adapter.adopt"
@@ -1577,6 +1616,24 @@ func (e OpsDiagnosticFindingSeverity) Valid() bool {
 	case OpsDiagnosticFindingSeverityUnknown:
 		return true
 	case OpsDiagnosticFindingSeverityWarn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrgOrigin.
+const (
+	OrgOriginManual       OrgOrigin = "manual"
+	OrgOriginRegistration OrgOrigin = "registration"
+)
+
+// Valid indicates whether the value is a known member of the OrgOrigin enum.
+func (e OrgOrigin) Valid() bool {
+	switch e {
+	case OrgOriginManual:
+		return true
+	case OrgOriginRegistration:
 		return true
 	default:
 		return false
@@ -2645,6 +2702,24 @@ func (e DeliveryProjection) Valid() bool {
 	case ConfigOnly:
 		return true
 	case Full:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListOrgsParamsOrigin.
+const (
+	ListOrgsParamsOriginManual       ListOrgsParamsOrigin = "manual"
+	ListOrgsParamsOriginRegistration ListOrgsParamsOrigin = "registration"
+)
+
+// Valid indicates whether the value is a known member of the ListOrgsParamsOrigin enum.
+func (e ListOrgsParamsOrigin) Valid() bool {
+	switch e {
+	case ListOrgsParamsOriginManual:
+		return true
+	case ListOrgsParamsOriginRegistration:
 		return true
 	default:
 		return false
@@ -3824,17 +3899,39 @@ type AuthMethod = string
 
 // AuthMethodProvider defines model for AuthMethodProvider.
 type AuthMethodProvider struct {
-	DisplayName string `json:"display_name"`
+	// Brand The provider's published button rules apply (#587 d4,
+	// docs/research/social-providers.md): Google's standard-colour G,
+	// or the Microsoft logo with the row's display name as the tenant.
+	// Derived from the pinned issuer (Google's, or an Entra
+	// tenant-specific issuer); absent for a generic OIDC provider.
+	// Presentation only: admission never keys on it.
+	Brand       *AuthMethodProviderBrand `json:"brand,omitempty"`
+	DisplayName string                   `json:"display_name"`
 
 	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
 	Kind IdentityProviderKind `json:"kind"`
 	Slug string               `json:"slug"`
 }
 
+// AuthMethodProviderBrand The provider's published button rules apply (#587 d4,
+// docs/research/social-providers.md): Google's standard-colour G,
+// or the Microsoft logo with the row's display name as the tenant.
+// Derived from the pinned issuer (Google's, or an Entra
+// tenant-specific issuer); absent for a generic OIDC provider.
+// Presentation only: admission never keys on it.
+type AuthMethodProviderBrand string
+
 // AuthMethods defines model for AuthMethods.
 type AuthMethods struct {
 	LocalLoginEnabled bool                 `json:"local_login_enabled"`
 	Providers         []AuthMethodProvider `json:"providers"`
+
+	// SignupLanding Where an admitted sign-up lands, present only while the door is
+	// open (#607): the addressed org (`org-template`), an account with
+	// no grants (`none`), or a fresh org of its own (`fresh-org`). Not
+	// secret: the landing kind is what the confirmation step tells the
+	// signer before the round-trip (#585 d5, #587 d1).
+	SignupLanding *AuthMethodsSignupLanding `json:"signup_landing,omitempty"`
 
 	// SignupMethods The methods the open door admits, empty unless `signup_open`
 	// (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
@@ -3849,6 +3946,13 @@ type AuthMethods struct {
 	// Members panel (#587 d3). False when the scope has no policy.
 	SignupPaused bool `json:"signup_paused"`
 }
+
+// AuthMethodsSignupLanding Where an admitted sign-up lands, present only while the door is
+// open (#607): the addressed org (`org-template`), an account with
+// no grants (`none`), or a fresh org of its own (`fresh-org`). Not
+// secret: the landing kind is what the confirmation step tells the
+// signer before the round-trip (#585 d5, #587 d1).
+type AuthMethodsSignupLanding string
 
 // BackupHealth Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
 type BackupHealth struct {
@@ -6262,7 +6366,22 @@ type Org struct {
 	Id       ID                      `json:"id"`
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 	Name     string                  `json:"name"`
+
+	// Origin How the org came to exist (#585 d8): `manual` (an operator's
+	// create) or `registration` (a sign-up under a registration policy,
+	// a self-served org). Typed on the row, never editable.
+	Origin OrgOrigin `json:"origin"`
+
+	// RegistrationPolicyId The registration policy that minted the org, a trail pointer with
+	// no foreign key (the org keeps it after the policy is deleted); null
+	// for a manual org.
+	RegistrationPolicyId *string `json:"registration_policy_id,omitempty"`
 }
+
+// OrgOrigin How the org came to exist (#585 d8): `manual` (an operator's
+// create) or `registration` (a sign-up under a registration policy,
+// a self-served org). Typed on the row, never editable.
+type OrgOrigin string
 
 // OrgList defines model for OrgList.
 type OrgList struct {
@@ -8818,6 +8937,16 @@ type RevokeInstanceGrantParams struct {
 	Capability GrantCapability `form:"capability" json:"capability"`
 }
 
+// ListOrgsParams defines parameters for ListOrgs.
+type ListOrgsParams struct {
+	// Origin Only orgs of this origin: the operator's filter for self-served
+	// (`registration`) orgs, pruned with the ordinary delete (#585 d9).
+	Origin *ListOrgsParamsOrigin `form:"origin,omitempty" json:"origin,omitempty"`
+}
+
+// ListOrgsParamsOrigin defines parameters for ListOrgs.
+type ListOrgsParamsOrigin string
+
 // QueryOrgAuditParams defines parameters for QueryOrgAudit.
 type QueryOrgAuditParams struct {
 	// From Inclusive lower time bound (recorded-at). Absent means the epoch.
@@ -10379,7 +10508,7 @@ type ServerInterface interface {
 	GetMeta(w http.ResponseWriter, r *http.Request)
 	// ListOrgs List organisations.
 	// (GET /api/v1/orgs)
-	ListOrgs(w http.ResponseWriter, r *http.Request)
+	ListOrgs(w http.ResponseWriter, r *http.Request, params ListOrgsParams)
 	// CreateOrg Create an organisation.
 	// (POST /api/v1/orgs)
 	CreateOrg(w http.ResponseWriter, r *http.Request)
@@ -11567,7 +11696,7 @@ func (_ Unimplemented) GetMeta(w http.ResponseWriter, r *http.Request) {
 
 // ListOrgs List organisations.
 // (GET /api/v1/orgs)
-func (_ Unimplemented) ListOrgs(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) ListOrgs(w http.ResponseWriter, r *http.Request, params ListOrgsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -14641,8 +14770,27 @@ func (siw *ServerInterfaceWrapper) GetMeta(w http.ResponseWriter, r *http.Reques
 // ListOrgs operation middleware
 func (siw *ServerInterfaceWrapper) ListOrgs(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOrgsParams
+
+	// ------------- Optional query parameter "origin" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "origin", r.URL.Query(), &params.Origin, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "origin"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "origin", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListOrgs(w, r)
+		siw.Handler.ListOrgs(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -35931,6 +36079,7 @@ func (response GetMeta503JSONResponse) VisitGetMetaResponse(w http.ResponseWrite
 }
 
 type ListOrgsRequestObject struct {
+	Params ListOrgsParams
 }
 
 type ListOrgsResponseObject interface {
@@ -35947,6 +36096,20 @@ func (response ListOrgs200JSONResponse) VisitListOrgsResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgs400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListOrgs400JSONResponse) VisitListOrgsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -60275,8 +60438,10 @@ func (sh *strictHandler) GetMeta(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListOrgs operation middleware
-func (sh *strictHandler) ListOrgs(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) ListOrgs(w http.ResponseWriter, r *http.Request, params ListOrgsParams) {
 	var request ListOrgsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListOrgs(ctx, request.(ListOrgsRequestObject))

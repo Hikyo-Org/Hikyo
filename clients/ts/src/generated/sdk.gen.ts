@@ -1898,7 +1898,10 @@ export const authMethods = <ThrowOnError extends boolean = false>(options?: Opti
  * returns the IdP authorization URL. `login` is anonymous and bound by a
  * `__Host-` browser-binding cookie set on this response (A2/A16); `link`
  * and `reauth` require an authenticated session and are session-bound, and
- * `link` verifies the account-security proof up front (A6).
+ * `link` verifies the account-security proof up front (A6). A `login`
+ * records its `intent` (absent = `sign-in`) and, for a `sign-up`, the
+ * addressed scope (`signup_org`, absent = instance); the start reads no
+ * registration policy (#604 d5).
  *
  */
 export const oidcStart = <ThrowOnError extends boolean = false>(options: Options<OidcStartData, ThrowOnError>) => (options.client ?? client).post<OidcStartResponses, OidcStartErrors, ThrowOnError>({

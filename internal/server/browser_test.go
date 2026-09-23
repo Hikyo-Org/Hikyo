@@ -56,7 +56,7 @@ func browserLoginAuth() stubAuth {
 func createsOrgs() stubOrgs {
 	return stubOrgs{
 		create: func(_ context.Context, _ service.Actor, name string, active bool, meta json.RawMessage) (service.Org, error) {
-			return service.Org{ID: testOrgID, Name: name, Active: active, Metadata: meta, CreatedAt: liveIdentity.CreatedAt}, nil
+			return service.Org{ID: testOrgID, Name: name, Active: active, Metadata: meta, CreatedAt: liveIdentity.CreatedAt, Origin: "manual"}, nil
 		},
 	}
 }

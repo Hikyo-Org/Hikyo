@@ -202,6 +202,7 @@ var wireErrorRules = []struct {
 	{service.ErrLastCredential, apigen.ErrorCodeBadRequest},
 	{service.ErrIssuerImmutable, apigen.ErrorCodeBadRequest},
 	{service.ErrProviderDiscovery, apigen.ErrorCodeBadRequest},
+	{service.ErrPairwiseClientID, apigen.ErrorCodeBadRequest},
 	{service.ErrProviderExists, apigen.ErrorCodeBadRequest},
 	{service.ErrProviderRace, apigen.ErrorCodeConflict},
 	{service.ErrSAMLProviderNotFound, apigen.ErrorCodeNotFound},

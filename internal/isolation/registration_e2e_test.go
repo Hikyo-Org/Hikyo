@@ -492,9 +492,10 @@ func runRegistrationPolicyReauth(t *testing.T, db *store.DB) {
 }
 
 // runRegistrationLifecycle emits every registration.* type the registry
-// declares today (#606) through the real service, on a datastore shared with
+// declares (#606, #607) through the real service, on a datastore shared with
 // the audit emitter-closure check: an org policy created, edited and deleted,
-// and an instance policy deleted with one pending sign-up behind it.
+// an instance policy deleted with one pending sign-up behind it, and a
+// federated sign-up admitted into a fresh org beside one refused.
 func runRegistrationLifecycle(t *testing.T, db *store.DB) {
 	t.Helper()
 	ctx := t.Context()
@@ -521,5 +522,26 @@ func runRegistrationLifecycle(t *testing.T, db *store.DB) {
 	seedPendingSignup(t, db, "su_lifecycle", "lifecycle@example.test", inst.ID, "")
 	if err := reg.Delete(ctx, service.LocalPrincipal(root), instanceReg, ""); err != nil {
 		t.Fatalf("registration lifecycle instance delete: %v", err)
+	}
+
+	// The federated sign-up outcomes (#607) through a real IdP round trip:
+	// signup_admitted, the widened settings.org_created (a fresh org under
+	// the authority), signup_completed, and a signup_refused.
+	h := newSignupHarness(t, db)
+	h.provider("reg-signup", service.ProviderInput{})
+	if _, err := h.reg.Put(ctx, service.LocalPrincipal(root), instanceReg, service.RegistrationPolicyInput{
+		External: []service.RegistrationExternalEntry{oidcEntry("reg-signup")},
+		Landing:  service.RegistrationLanding{Kind: service.LandingFreshOrg, Cap: 5},
+	}, ""); err != nil {
+		t.Fatalf("registration lifecycle sign-up policy: %v", err)
+	}
+	if _, err := h.login("reg-signup", "lifecycle-signup", "sign-up", "", googleClaims("lifecycle@acme.example")); err != nil {
+		t.Fatalf("registration lifecycle sign-up: %v", err)
+	}
+	if _, err := h.login("reg-signup", "lifecycle-refused", "sign-up", "", map[string]any{"email": "x@acme.example"}); err == nil {
+		t.Fatal("registration lifecycle: an unverified address signed up")
+	}
+	if err := h.reg.Delete(ctx, service.LocalPrincipal(root), instanceReg, ""); err != nil {
+		t.Fatalf("registration lifecycle sign-up policy delete: %v", err)
 	}
 }

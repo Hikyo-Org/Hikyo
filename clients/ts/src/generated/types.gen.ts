@@ -1055,6 +1055,20 @@ export type Org = {
         [key: string]: unknown;
     } | null;
     created_at: Timestamp;
+    /**
+     * How the org came to exist (#585 d8): `manual` (an operator's
+     * create) or `registration` (a sign-up under a registration policy,
+     * a self-served org). Typed on the row, never editable.
+     *
+     */
+    origin: 'manual' | 'registration';
+    /**
+     * The registration policy that minted the org, a trail pointer with
+     * no foreign key (the org keeps it after the policy is deleted); null
+     * for a manual org.
+     *
+     */
+    registration_policy_id?: string | null;
 };
 
 export type OrgList = {
@@ -3371,6 +3385,15 @@ export type AuthMethods = {
      *
      */
     signup_methods: Array<SignupMethod>;
+    /**
+     * Where an admitted sign-up lands, present only while the door is
+     * open (#607): the addressed org (`org-template`), an account with
+     * no grants (`none`), or a fresh org of its own (`fresh-org`). Not
+     * secret: the landing kind is what the confirmation step tells the
+     * signer before the round-trip (#585 d5, #587 d1).
+     *
+     */
+    signup_landing?: 'org-template' | 'none' | 'fresh-org';
 };
 
 /**
@@ -3485,10 +3508,37 @@ export type AuthMethodProvider = {
     slug: string;
     display_name: string;
     kind: IdentityProviderKind;
+    /**
+     * The provider's published button rules apply (#587 d4,
+     * docs/research/social-providers.md): Google's standard-colour G,
+     * or the Microsoft logo with the row's display name as the tenant.
+     * Derived from the pinned issuer (Google's, or an Entra
+     * tenant-specific issuer); absent for a generic OIDC provider.
+     * Presentation only: admission never keys on it.
+     *
+     */
+    brand?: 'google' | 'microsoft';
 };
 
 export type OidcStartRequest = {
     purpose: string;
+    /**
+     * Valid only with purpose `login` (#604); absent = `sign-in`. It
+     * decides only what happens to an unknown identity at the callback:
+     * `sign-in` refuses it uniformly, `sign-up` enters the registration
+     * policy of the addressed scope. A known identity signs in under
+     * either. Supplied on any other purpose, the start refuses uniformly.
+     *
+     */
+    intent?: 'sign-in' | 'sign-up';
+    /**
+     * The org whose registration policy a `sign-up` addresses; absent =
+     * the instance scope. Valid only with intent `sign-up`. The start
+     * reads no policy: an unknown org refuses at the callback as a closed
+     * door.
+     *
+     */
+    signup_org?: string;
     /**
      * Required for reauth; the window scope. Refused (400) on any other purpose.
      */
@@ -6156,11 +6206,25 @@ export type BeginRecoveryResponse = BeginRecoveryResponses[keyof BeginRecoveryRe
 export type ListOrgsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Only orgs of this origin: the operator's filter for self-served
+         * (`registration`) orgs, pruned with the ordinary delete (#585 d9).
+         *
+         */
+        origin?: 'manual' | 'registration';
+    };
     url: '/api/v1/orgs';
 };
 
 export type ListOrgsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
     /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts
@@ -12504,6 +12568,15 @@ export type OidcStartErrors = {
      *
      */
     404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
     /**
      * The instance-wide admission budget or a per-source limit is
      * exhausted. Uniform on every path, with no unbounded work performed.

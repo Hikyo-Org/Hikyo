@@ -184,6 +184,10 @@ func wireRegistrationPolicy(v service.RegistrationPolicyView) apigen.Registratio
 // `local` (api-cli-spellings section 8).
 func wireSignupDoor(out *apigen.AuthMethods, door service.SignupDoor) error {
 	out.SignupOpen, out.SignupPaused = door.Open, door.Paused
+	if door.Landing != "" {
+		landing := apigen.AuthMethodsSignupLanding(door.Landing)
+		out.SignupLanding = &landing
+	}
 	out.SignupMethods = make([]apigen.SignupMethod, 0, len(door.Methods))
 	for _, m := range door.Methods {
 		var method apigen.SignupMethod

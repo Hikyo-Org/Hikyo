@@ -34,9 +34,14 @@ func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObje
 		Providers:         make([]apigen.AuthMethodProvider, 0, len(providers)),
 	}
 	for _, p := range providers {
-		out.Providers = append(out.Providers, apigen.AuthMethodProvider{
+		provider := apigen.AuthMethodProvider{
 			Slug: p.Slug, DisplayName: p.DisplayName, Kind: apigen.IdentityProviderKind(p.Kind),
-		})
+		}
+		if p.Brand != "" {
+			brand := apigen.AuthMethodProviderBrand(p.Brand)
+			provider.Brand = &brand
+		}
+		out.Providers = append(out.Providers, provider)
 	}
 	// The sign-up door of the addressed scope (#606): the instance when
 	// `org` is absent, else `?org=`. An unknown org, and a supplied but empty

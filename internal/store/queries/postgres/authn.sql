@@ -372,6 +372,13 @@ WHERE id = $2 AND consumed_at IS NULL;
 SELECT id, account_id, kind, issuer, subject, provider_id, credential_epoch, created_at
 FROM external_identities WHERE kind = $1 AND issuer = $2 AND subject = $3;
 
+-- The pairwise-subject client_id guard (#588 d2): does this issuer have any
+-- linked identity? A provider-administration read, proof-free like the rest
+-- of the provider surface.
+-- hikyo:authn-resolution
+-- name: CountExternalIdentitiesForIssuer :one
+SELECT COUNT(*) FROM external_identities WHERE kind = $1 AND issuer = $2;
+
 -- hikyo:authn-resolution
 -- name: GetExternalIdentityByID :one
 SELECT id, account_id, kind, issuer, subject, provider_id, credential_epoch, created_at

@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
@@ -954,6 +955,29 @@ type AuthMethodProvider struct {
 	Slug        string
 	DisplayName string
 	Kind        string
+	// Brand names the provider whose published button rules the sign-in
+	// surface follows (#587 d4): "google", "microsoft", or "" for generic.
+	Brand string
+}
+
+// Brand issuers (docs/research/social-providers.md 2.1, 3.1): Google's one
+// issuer, and the Entra authority host of every tenant-specific row.
+const (
+	googleIssuer         = "https://accounts.google.com"
+	microsoftIssuerStart = "https://login.microsoftonline.com/"
+)
+
+// providerBrand derives the presentation brand from a pinned issuer. It is
+// display only; nothing admits or refuses on it.
+func providerBrand(issuer string) string {
+	switch {
+	case issuer == googleIssuer:
+		return "google"
+	case strings.HasPrefix(issuer, microsoftIssuerStart):
+		return "microsoft"
+	default:
+		return ""
+	}
 }
 
 // AuthMethods returns the enabled OIDC providers and whether local login is on.
@@ -967,7 +991,7 @@ func (s *Auth) AuthMethods(ctx context.Context) ([]AuthMethodProvider, bool, err
 		}
 		for _, p := range rows {
 			if p.Enabled {
-				out = append(out, AuthMethodProvider{Slug: p.Slug, DisplayName: p.DisplayName, Kind: OIDCKind})
+				out = append(out, AuthMethodProvider{Slug: p.Slug, DisplayName: p.DisplayName, Kind: OIDCKind, Brand: providerBrand(p.Issuer)})
 			}
 		}
 		samlProviders, e := az.ListSAMLProviders(ctx)

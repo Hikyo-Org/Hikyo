@@ -3,9 +3,14 @@ package authn
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
+	"modernc.org/sqlite"
+	sqlitelib "modernc.org/sqlite/lib"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
@@ -370,8 +375,8 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 			Browser:                boolInt(t.Browser),
 			CredentialEpoch:        t.CredentialEpoch,
 			CreatedAt:              encodeTime(t.CreatedAt), ExpiresAt: encodeTime(t.ExpiresAt),
-			Intent:                 nullString(t.Intent),
-			SignupScopeOrgID:       nullString(t.SignupScopeOrgID),
+			Intent:           nullString(t.Intent),
+			SignupScopeOrgID: nullString(t.SignupScopeOrgID),
 		})
 	}
 	return r.pg.InsertOIDCTransaction(ctx, pggen.InsertOIDCTransactionParams{
@@ -386,8 +391,8 @@ func (r *Resolver) CreateOIDCTransaction(ctx context.Context, t NewOIDCTransacti
 		Browser:                t.Browser,
 		CredentialEpoch:        t.CredentialEpoch,
 		CreatedAt:              pgTimestamp(t.CreatedAt), ExpiresAt: pgTimestamp(t.ExpiresAt),
-		Intent:                 pgText(t.Intent),
-		SignupScopeOrgID:       pgText(t.SignupScopeOrgID),
+		Intent:           pgText(t.Intent),
+		SignupScopeOrgID: pgText(t.SignupScopeOrgID),
 	})
 }
 
@@ -514,6 +519,15 @@ func (r *Resolver) ExternalIdentityByKey(ctx context.Context, kind, issuer, subj
 	return pgIdentity(row), nil
 }
 
+// CountExternalIdentitiesForIssuer counts the identities linked under one
+// (kind, issuer): the pairwise-subject client_id guard's condition (#588 d2).
+func (r *Resolver) CountExternalIdentitiesForIssuer(ctx context.Context, kind, issuer string) (int64, error) {
+	if r.sq != nil {
+		return r.sq.CountExternalIdentitiesForIssuer(ctx, sqlitegen.CountExternalIdentitiesForIssuerParams{Kind: kind, Issuer: issuer})
+	}
+	return r.pg.CountExternalIdentitiesForIssuer(ctx, pggen.CountExternalIdentitiesForIssuerParams{Kind: kind, Issuer: issuer})
+}
+
 // ExternalIdentityByID resolves a link by its id.
 func (r *Resolver) ExternalIdentityByID(ctx context.Context, id string) (ExternalIdentity, error) {
 	if r.sq != nil {
@@ -560,17 +574,40 @@ func (r *Resolver) ExternalIdentitiesForAccount(ctx context.Context, accountID s
 
 // CreateExternalIdentity writes a link. The (kind, issuer, subject) uniqueness
 // constraint makes two concurrent binds of one identity fail closed.
+//
+// The instance-wide UNIQUE (kind, issuer, subject) key arbitrating a
+// concurrent bind of the same identity is folded onto domain.ErrConflict by
+// typed extended code (the accountConstraint shape), so every creator (SCIM,
+// link, the registration sign-up) sees one cross-engine refusal. The id is
+// freshly minted, so a duplicate can only be the identity key.
 func (r *Resolver) CreateExternalIdentity(ctx context.Context, n NewExternalIdentity) error {
 	if r.sq != nil {
-		return r.sq.InsertExternalIdentity(ctx, sqlitegen.InsertExternalIdentityParams{
+		return identityConstraint(r.sq.InsertExternalIdentity(ctx, sqlitegen.InsertExternalIdentityParams{
 			ID: n.ID, AccountID: n.AccountID, Kind: n.Kind, Issuer: n.Issuer, Subject: n.Subject,
 			ProviderID: n.ProviderID, CredentialEpoch: n.CredentialEpoch, CreatedAt: encodeTime(n.CreatedAt),
-		})
+		}))
 	}
-	return r.pg.InsertExternalIdentity(ctx, pggen.InsertExternalIdentityParams{
+	return identityConstraint(r.pg.InsertExternalIdentity(ctx, pggen.InsertExternalIdentityParams{
 		ID: n.ID, AccountID: n.AccountID, Kind: n.Kind, Issuer: n.Issuer, Subject: n.Subject,
 		ProviderID: n.ProviderID, CredentialEpoch: n.CredentialEpoch, CreatedAt: pgTimestamp(n.CreatedAt),
-	})
+	}))
+}
+
+func identityConstraint(err error) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return fmt.Errorf("%w: that external identity is already bound", domain.ErrConflict)
+	}
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) &&
+		(sqliteErr.Code() == sqlitelib.SQLITE_CONSTRAINT_UNIQUE ||
+			sqliteErr.Code() == sqlitelib.SQLITE_CONSTRAINT_PRIMARYKEY) {
+		return fmt.Errorf("%w: that external identity is already bound", domain.ErrConflict)
+	}
+	return err
 }
 
 // RebindSAMLExternalIdentityProvider updates only the row whose previous

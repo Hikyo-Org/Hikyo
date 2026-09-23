@@ -316,6 +316,26 @@ func (q *Queries) CountAccounts(ctx context.Context) (int64, error) {
 	return count, err
 }
 
+const countExternalIdentitiesForIssuer = `-- name: CountExternalIdentitiesForIssuer :one
+SELECT COUNT(*) FROM external_identities WHERE kind = ? AND issuer = ?
+`
+
+type CountExternalIdentitiesForIssuerParams struct {
+	Kind   string
+	Issuer string
+}
+
+// The pairwise-subject client_id guard (#588 d2): does this issuer have any
+// linked identity? A provider-administration read, proof-free like the rest
+// of the provider surface.
+// hikyo:authn-resolution
+func (q *Queries) CountExternalIdentitiesForIssuer(ctx context.Context, arg CountExternalIdentitiesForIssuerParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countExternalIdentitiesForIssuer, arg.Kind, arg.Issuer)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteExternalIdentity = `-- name: DeleteExternalIdentity :exec
 DELETE FROM external_identities WHERE id = ?
 `
