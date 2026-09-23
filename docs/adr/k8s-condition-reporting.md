@@ -78,7 +78,7 @@ new availability coupling". This ADR designs that channel.
 - **(c) Operator-wide reporter credential.** Rejected by the locked
   no-operator-principal rule; listed only so the rejection is recorded.
 
-**Recommendation: (b).** The authority boundary stays legible in RBAC terms: a
+**Locked: (b).** The authority boundary stays legible in RBAC terms: a
 grant list that says `read` means read. The cost is one extra grant per
 reporting service account, carried by the setup journey.
 
@@ -94,7 +94,7 @@ reporting service account, carried by the setup journey.
   *Reported by controller*: the conditions below. The UI never merges them into
   one health bit.
 
-**Recommendation: (c).** The server's own observation is free and verified;
+**Locked: (c).** The server's own observation is free and verified;
 controller conditions are assertions and are shown as such.
 
 ### D3. Target identity and ownership
@@ -113,7 +113,7 @@ A report row is keyed by
   the principal holds no `report-delivery-status` on is a uniform 404.
 
 Display labels: **(a)** namespace and CR name sent and shown; **(b)** opaque
-UIDs only. **Recommendation: (a)**; namespace and CR name are what an operator
+UIDs only. **Locked: (a)**; namespace and CR name are what an operator
 types into `kubectl`, they are already readable by anyone who can list CRs,
 and hiding them makes the view unusable. They are bounded strings validated
 against Kubernetes name grammar (DNS-1123, 63/253 chars) and are never
@@ -174,7 +174,7 @@ Ordering, per row:
   retries and leader handover.
 - **(b) Last received wins.**
 
-**Recommendation: (a).** Out-of-order refusals are answered 409, audited and
+**Locked: (a).** Out-of-order refusals are answered 409, audited and
 dropped: they are never retried and never recorded on the row. An
 out-of-order report is older than accepted state, so it says nothing about
 controller health, and surfacing it would flag a working target after every
@@ -206,7 +206,7 @@ rules hold: `reporter-revoked`, then `refused`, then `stale`, then `reported`.
 - **(a) `read` on the environment.** Status is metadata, not values.
 - **(b) `manage-identities` on the project.**
 
-**Recommendation: (a)**, with the Kubernetes tab gated per environment the
+**Locked: (a)**, with the Kubernetes tab gated per environment the
 viewer can read; rows for environments the viewer cannot read are absent, not
 redacted.
 
@@ -265,7 +265,7 @@ redacted.
 - Reports use the same credential as the fetch; a federation token is reused
   within its 600 s life rather than minted twice.
 - Helm value `operator.statusReporting`: **(a) default on**, capability-probed;
-  **(b) default off**. **Recommendation: (a)**; it sends no values, uses no new
+  **(b) default off**. **Locked: (a)**; it sends no values, uses no new
   cluster RBAC beyond the one Namespace `get`, and refuses cleanly without the
   grant.
 
@@ -357,7 +357,7 @@ D4 key names excluded, D5 a (generation then timestamp ordering), D7 a
 probed). D6, D8, D10 and D11 carried no open alternative and are locked with
 them.
 
-**Post-lock review corrections (2026-09-23), pending owner confirmation:**
+**Post-lock review corrections, confirmed by the owner 2026-09-23:**
 per-CR suppression instead of an instance-wide 404 disable; the `refused`
 state (422 only); change-or-heartbeat report cadence with a 5 min floor;
 per-principal budget 60/min sized to the row quota; closed `reporter` enum;

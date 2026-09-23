@@ -46,6 +46,8 @@ write, the org budget ceiling (about 1500 reporting CRs), unstated CRD impact (n
 the validation plan (revoked credential, same-generation and future-skew
 ordering).
 
+The owner confirmed these post-lock corrections as locked on 2026-09-23.
+
 ## What landed in this change
 
 - The new ADR, with context drawn from source (operator conditions, fetch
