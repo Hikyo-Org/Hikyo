@@ -109,4 +109,16 @@ describe('runOIDCCeremony', () => {
     );
     expect(popup.close).toHaveBeenCalledOnce();
   });
+
+  it('names the remedy when the provider row has no assurance policy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: 'conflict', message: 'the current state of this resource refuses the request' } }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await expect(runOIDCCeremony('google', 'env-production')).rejects.toThrow('Enrol WebAuthn or TOTP');
+    expect(popup.close).toHaveBeenCalledOnce();
+  });
 });

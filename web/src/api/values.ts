@@ -331,6 +331,14 @@ export async function runOIDCCeremony(providerSlug: string, environmentId: strin
         'The identity provider refused this reauthentication. Its assurance policy may not permit disclosure reauthentication.',
       );
     }
+    // A provider row with no assurance policy is refused by name at start
+    // (#588 d4): no round-trip is made, because a fresh sign-in there proves
+    // nothing about who is present. The remedy is a local possession factor.
+    if (error instanceof ApiError && error.status === 409) {
+      throw new OIDCCeremonyError(
+        'This sign-in provider cannot confirm it’s you again. Enrol WebAuthn or TOTP under Settings › Security and use it instead.',
+      );
+    }
     throw error;
   }
   const state = new URL(started.authorization_url).searchParams.get('state') ?? '';
