@@ -117,34 +117,6 @@ jobs:
           path: ~/.cache/go-build
           key: ${{ steps.lint-go-cache.outputs.cache-primary-key }}
 
-  dco:
-    if: github.event_name != 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Require DCO sign-off on every PR commit
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          # GitHub sets the PR actor from the authenticated opener; it cannot be
-          # spoofed by commit metadata. Only then do we exempt Dependabot's
-          # author identity from the sign-off requirement (it cannot produce a
-          # parseable trailer). Any other opener gets the full check, even for
-          # commits that forge Dependabot's git author header.
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: |
-          trusted_dco="$RUNNER_TEMP/check-dco.sh"
-          git show "$BASE_SHA:scripts/ci/check-dco.sh" >"$trusted_dco"
-          chmod +x "$trusted_dco"
-          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
-            export DCO_EXEMPT_AUTHOR='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
-          fi
-          "$trusted_dco" "$BASE_SHA" "$HEAD_SHA"
-
   supply-chain-checks:
     needs: changes
     if: ${{ fromJSON(needs.changes.outputs.plan)['supply-chain-checks'] }}
@@ -276,7 +248,7 @@ jobs:
       ${{ fromJSON(needs.changes.outputs.plan).web ||
       fromJSON(needs.changes.outputs.plan)['web-go'] }}
     runs-on: ubuntu-latest
-    # On the critical path that web / web-go / no-egress all need; cap it so a
+    # On the critical path that web and web-go both need; cap it so a
     # hung Go build or artifact transfer cannot stall the gate at the default 360.
     timeout-minutes: 20
     steps:
@@ -353,32 +325,6 @@ jobs:
         with:
           path: ~/.local/share/pnpm/store
           key: ${{ steps.pnpm-store.outputs.cache-primary-key }}
-
-  # Probe the exact release-shaped binary already built for app validation.
-  # Keeping this in the same run removes the standalone workflow's duplicate
-  # cold compile while preserving exact-head, read-only pull-request execution.
-  no-egress:
-    needs: [changes, app-build]
-    if: ${{ fromJSON(needs.changes.outputs.plan)['web-go'] }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - name: Download the exact app build
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: hikyo-app-${{ github.run_id }}
-      - name: Prepare the prebuilt app
-        run: chmod +x ci-artifacts/hikyo-ui
-      - name: Install strace
-        run: sudo apt-get update && sudo apt-get install -y strace
-      - name: Boot+idle originates zero outbound connections
-        env:
-          HIKYO_NO_EGRESS_BIN: ${{ github.workspace }}/ci-artifacts/hikyo-ui
-        run: ./scripts/ci/no-egress.sh
 
   release-snapshot:
     needs: changes
@@ -482,29 +428,40 @@ jobs:
           path: ~/.cache/go-build
           key: ${{ steps.release-snapshot-go-cache.outputs.cache-primary-key }}
 
-  generated:
+  # The short repository checks share one runner: DCO (pull requests only), the
+  # API freeze guard and generated-code freshness each take under a minute, so
+  # as separate jobs they mostly paid runner setup and held concurrency slots
+  # while the shards fanned out. Each check keeps its old gate as a step
+  # condition, and `!cancelled()` lets every selected check still run and name
+  # its own failure after an earlier one fails. Always runs: every PR checks
+  # DCO, and main's full plan selects the rest.
+  preflight:
     needs: changes
-    if: ${{ fromJSON(needs.changes.outputs.plan).generated }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: ${{ fromJSON(needs.changes.outputs.plan).generated || fromJSON(needs.changes.outputs.plan)['freeze-guard'] }}
         with:
           go-version-file: go.mod
           cache: false
       - name: Restore shared Go module cache
+        if: ${{ fromJSON(needs.changes.outputs.plan).generated || fromJSON(needs.changes.outputs.plan)['freeze-guard'] }}
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/go/pkg/mod
           key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
           restore-keys: go-mod-v2-${{ runner.os }}-
       - name: Select runner cache ABI
+        if: ${{ fromJSON(needs.changes.outputs.plan).generated }}
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
       - name: Restore generated-code Go cache
+        if: ${{ fromJSON(needs.changes.outputs.plan).generated }}
         id: generated-go-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -512,11 +469,28 @@ jobs:
           key: go-generated-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}
           restore-keys: |
             go-generated-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
+      # Dormant until the first stable release tag exists. After v1.0.0, every
+      # OpenAPI revision is checked against that immutable contract baseline.
+      - name: Enforce frozen API surface
+        if: ${{ fromJSON(needs.changes.outputs.plan)['freeze-guard'] }}
+        run: ./scripts/ci/check-api-freeze.sh
+      # WebUI parity (#490): every `issue:` row in api/parity.yaml must still be
+      # open. Public-repo issue reads need only the workflow token; the script
+      # fails loud on a denied read rather than guessing.
+      - name: Parity registry references only open issues
+        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan)['freeze-guard'] }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: ./scripts/ci/check-parity-issues.sh
       - name: Format
+        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).generated }}
         run: test -z "$("$(go env GOROOT)/bin/gofmt" -l .)" || { "$(go env GOROOT)/bin/gofmt" -l .; exit 1; }
       - name: Go import formatting
+        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).generated }}
         run: ./scripts/ci/check-go-imports.sh
       - name: Generated code is fresh
+        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).generated }}
         run: |
           go tool sqlc generate
           go tool oapi-codegen --config api/oapi-codegen.yaml api/openapi.yaml
@@ -525,6 +499,7 @@ jobs:
           # git diff misses newly generated untracked files
           test -z "$(git status --porcelain --untracked-files=all -- internal/store/sqlitegen internal/store/pggen api/apigen internal/scanning/rules_gen.go)"
       - name: Operator CRDs and deepcopy are fresh
+        if: ${{ !cancelled() && fromJSON(needs.changes.outputs.plan).generated }}
         run: |
           ./scripts/gen-crds.sh
           git diff --exit-code -- chart/hikyo/crds internal/operator/api
@@ -538,39 +513,25 @@ jobs:
         with:
           path: ~/.cache/go-build
           key: ${{ steps.generated-go-cache.outputs.cache-primary-key }}
-
-  # Dormant until the first stable release tag exists. After v1.0.0, every
-  # OpenAPI revision is checked against that immutable contract baseline.
-  freeze-guard:
-    needs: changes
-    if: ${{ fromJSON(needs.changes.outputs.plan)['freeze-guard'] }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Restore shared Go module cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/go/pkg/mod
-          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
-          restore-keys: go-mod-v2-${{ runner.os }}-
-      - name: Enforce frozen API surface
-        run: ./scripts/ci/check-api-freeze.sh
-      # WebUI parity (#490): every `issue:` row in api/parity.yaml must still be
-      # open. Public-repo issue reads need only the workflow token; the script
-      # fails loud on a denied read rather than guessing.
-      - name: Parity registry references only open issues
+      - name: Require DCO sign-off on every PR commit
+        if: ${{ !cancelled() && github.event_name != 'push' }}
         env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-        run: ./scripts/ci/check-parity-issues.sh
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # GitHub sets the PR actor from the authenticated opener; it cannot be
+          # spoofed by commit metadata. Only then do we exempt Dependabot's
+          # author identity from the sign-off requirement (it cannot produce a
+          # parseable trailer). Any other opener gets the full check, even for
+          # commits that forge Dependabot's git author header.
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          trusted_dco="$RUNNER_TEMP/check-dco.sh"
+          git show "$BASE_SHA:scripts/ci/check-dco.sh" >"$trusted_dco"
+          chmod +x "$trusted_dco"
+          if [ "$PR_AUTHOR" = "dependabot[bot]" ]; then
+            export DCO_EXEMPT_AUTHOR='dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>'
+          fi
+          "$trusted_dco" "$BASE_SHA" "$HEAD_SHA"
 
   # The TypeScript half of the contract chain. It is a separate job because it
   # needs a different toolchain, and because a Go-only change must not be able
@@ -678,13 +639,13 @@ jobs:
         run: ./scripts/compose-demo.sh
 
   # The SPA and its flow suite (#56). The flows run against the GO BINARY
-  # app-build already produced, so this job no longer builds anything — it boots
+  # app-build already produced, so this job no longer builds anything; it boots
   # instances and drives a browser.
   #
   # PARALLELISED ON TWO AXES: viewport project (desktop / mobile) AND a flow
-  # GROUP. The harness holds one administrator per run — a TOTP ledger where a
+  # GROUP. The harness holds one administrator per run (a TOTP ledger where a
   # code is single-use per step, a passkey whose signature counter must advance,
-  # a shared browser session flows re-mint — so two workers inside one process
+  # a shared browser session flows re-mint), so two workers inside one process
   # would race all three (see playwright.config.ts). But each MATRIX LEG is its
   # own runner with its own pair of instances, its own seeded tenant and its own
   # passkey, so splitting the FLOWS across legs races nothing: a leg runs a
@@ -694,7 +655,7 @@ jobs:
   # A flow that only passes at 1280px has not passed, so every group runs on both
   # viewports; `fail-fast: false` keeps the broken viewport named.
   #
-  # Adding a flow to e2e/registry.ts REQUIRES adding its spec to one group here —
+  # Adding a flow to e2e/registry.ts REQUIRES adding its spec to one group here:
   # a flow in no group never runs, and the aggregator fails the build by name.
   web:
     needs: [changes, app-build]
@@ -704,26 +665,30 @@ jobs:
       # Exact @playwright/test release from web/package.json. Browser and OS
       # dependencies are part of this digest-pinned multi-architecture image.
       image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
-    # A leg runs ~4 flows serially (~3–4 min); the cap is headroom over that, not
-    # the runner default of 360. A browser/MFA-ceremony hang here would otherwise
-    # stall web-closure and the whole gate for up to 8×360 runner-minutes.
+    # A leg takes ~6 to 8 min (~2.5 min instance setup, then its flows serially);
+    # the cap is headroom over that, not the runner default of 360. A
+    # browser/MFA-ceremony hang here would otherwise stall web-closure and the
+    # whole gate for up to 8×360 runner-minutes.
     timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         project: [desktop, mobile]
         group: [1, 2, 3, 4]
-        # Weight-balanced by test count + MFA-ceremony cost. Every flow in
+        # Balanced by measured desktop test time per spec (run 35883620401:
+        # members 107s, login 61s, reveal 49s, scanning 31s, settings 73s,
+        # workspace 63s, history 56s, account 120s, machine-access 130s,
+        # instance-admin 114s, shell 39s, matrix 197s). Every flow in
         # e2e/registry.ts appears in exactly one group; the aggregator proves it.
         include:
           - group: 1
             specs: e2e/flows/reveal.spec.ts e2e/flows/members.spec.ts e2e/flows/login.spec.ts e2e/flows/scanning.spec.ts
           - group: 2
-            specs: e2e/flows/settings.spec.ts e2e/flows/history.spec.ts e2e/flows/workspace.spec.ts
+            specs: e2e/flows/settings.spec.ts e2e/flows/history.spec.ts e2e/flows/workspace.spec.ts e2e/flows/account.spec.ts
           - group: 3
-            specs: e2e/flows/shell.spec.ts e2e/flows/instance-admin.spec.ts e2e/flows/machine-access.spec.ts e2e/flows/account.spec.ts
+            specs: e2e/flows/instance-admin.spec.ts e2e/flows/machine-access.spec.ts
           - group: 4
-            specs: e2e/flows/matrix.spec.ts
+            specs: e2e/flows/matrix.spec.ts e2e/flows/shell.spec.ts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -754,8 +719,8 @@ jobs:
             pnpm-store-v1-${{ runner.os }}-
 
       # The SPA consumes clients/ts generated sources through aliases, so the
-      # generated Zod schemas resolve `zod` from clients/ts's own node_modules
-      # — without this install, typecheck and build fail on TS2307.
+      # generated Zod schemas resolve `zod` from clients/ts's own node_modules;
+      # without this install, typecheck and build fail on TS2307.
       - name: Install client package (generated sources' own deps)
         working-directory: clients/ts
         run: pnpm install --frozen-lockfile
@@ -805,7 +770,7 @@ jobs:
   # merges the eight legs' run logs and asserts every flow×surface×theme claim ran
   # for BOTH viewports. Also `needs: storybook` so it doubles as the web plan's
   # enforcement gate for that indirect job (a red story blocks closure). `needs:
-  # web` so it runs only when all legs passed — a
+  # web` so it runs only when all legs passed: a
   # failed leg already fails the gate, and a partial log here would be a false
   # negative. No pnpm install: the checker imports only registry.ts and the pure
   # surface list, so Node's native type stripping runs it with zero deps.
@@ -837,14 +802,13 @@ jobs:
 
   # Storybook stories run as vitest browser tests (chromium via
   # @vitest/browser-playwright), so they need this container's browsers but not
-  # the app binary, a viewport, or the e2e flow legs — story coverage is theme-
+  # the app binary, a viewport, or the e2e flow legs; story coverage is theme-
   # and prop-driven. Its own job keeps it off the app-build artifact and out of
   # the web job's frontend-work fixture (whose guard forbids a browser shard
   # repeating app-build frontend work). Registered `indirect` in
   # ci-job-registry.json and enforced transitively: web-closure `needs` it, so a
   # red story fails the web plan's closure gate without touching
-  # ci-required.needs (a directly-required job cannot be introduced in its own PR
-  # — the base-pinned governance check would reject it).
+  # ci-required.needs.
   storybook:
     needs: [changes]
     if: ${{ fromJSON(needs.changes.outputs.plan).web }}
@@ -904,7 +868,7 @@ jobs:
   # The ui-tagged Go coverage the browser suite used to carry inline: the
   # release-shaped binary's govulncheck pass and the ui-tagged server/webui
   # tests. Split into its own job so it runs CONCURRENTLY with the two browser
-  # legs instead of serially inside each of them — both legs paid it before, and
+  # legs instead of serially inside each of them; both legs paid it before, and
   # neither is browser work. Keep it on its own `web-go` plan so Go/API/client
   # changes still validate the release-shaped app while skipping browser legs;
   # web changes select both plans.
@@ -945,7 +909,7 @@ jobs:
           restore-keys: |
             go-web-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       # The release ships the `ui`-tagged binary, so the shipped shape gets its
-      # own govulncheck pass here; `test` scans the untagged build that every
+      # own govulncheck pass here; `test_core` scans the untagged build that every
       # Go-only change exercises. The binary is app-build's exact artifact.
       - name: govulncheck (vulnerabilities reachable from the release-shaped binary)
         run: ./scripts/ci/run-go-tool.sh govulncheck -mode=binary ci-artifacts/hikyo-ui
@@ -956,6 +920,18 @@ jobs:
         # web-only change that drops an operation import must fail on this
         # plan, not on the next Go change.
         run: go test -count=1 -tags ui ./api/... ./internal/server/... ./internal/webui/...
+      # Probe the exact release-shaped binary already built for app validation.
+      # Riding here instead of in its own job saves a runner and a second
+      # artifact download while keeping exact-head, read-only execution.
+      # `!cancelled()` keeps the probe reporting after a Go test failure.
+      - name: Install strace
+        if: ${{ !cancelled() }}
+        run: sudo apt-get update && sudo apt-get install -y strace
+      - name: Boot+idle originates zero outbound connections
+        if: ${{ !cancelled() }}
+        env:
+          HIKYO_NO_EGRESS_BIN: ${{ github.workspace }}/ci-artifacts/hikyo-ui
+        run: ./scripts/ci/no-egress.sh
 
   # Fast package/build checks stay together; the historically dominant
   # internal/isolation package runs on three independent PostgreSQL runners.
@@ -1065,7 +1041,7 @@ jobs:
       - name: Verify operations floor preflight refusals
         run: ./scripts/ci/ops-floor_test.sh
       # The secret-scanning benchmark regression guard (#74, SS1). Relative, not
-      # absolute-ms — CI runners are not the Pi-class calibration floor, so this
+      # absolute-ms: CI runners are not the Pi-class calibration floor, so this
       # only proves BenchmarkScan compiles and runs to completion; the absolute
       # p99/boot envelope is asserted by the committed Pi artifact under `go test`.
       - name: Secret-scanning benchmark runs (relative regression guard)
@@ -1092,7 +1068,7 @@ jobs:
   # The operator's kind end-to-end suite (#64, mvp-boundary M3): the Hikyo
   # server runs in-process over TLS, the operator reconciler in-process against a
   # real kind API server, and the CRDs are applied from chart/hikyo/crds. The
-  # runner script (scripts/ci/k8s-e2e.sh) owns the cluster lifecycle — it creates
+  # runner script (scripts/ci/k8s-e2e.sh) owns the cluster lifecycle; it creates
   # a fresh `hikyo-e2e` cluster and deletes it in a trap.
   k8s-e2e:
     needs: changes
@@ -1127,7 +1103,7 @@ jobs:
             go-k8s-e2e-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       # A pinned, checksummed binary download (the shellcheck pattern above):
       # the repository's Actions allowlist is deliberately narrow, and kind is
-      # a single static binary — no third-party action needed.
+      # a single static binary, no third-party action needed.
       - name: Install kind (pinned archive)
         env:
           KIND_VERSION: v0.32.0
@@ -1302,22 +1278,6 @@ jobs:
           # hit it mid-test without any hang (#694). Race shards already run 20m.
           go test -count=1 -timeout=18m ./internal/isolation/ -run "^(${tests})$"
 
-  test:
-    needs:
-      - changes
-      - isolation_shard
-      - test_core
-    if: ${{ always() && !cancelled() && fromJSON(needs.changes.outputs.plan).test }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require core checks and every isolation shard
-        env:
-          ISOLATION_SHARD_RESULT: ${{ needs.isolation_shard.result }}
-          TEST_CORE_RESULT: ${{ needs.test_core.result }}
-        run: |
-          test "$TEST_CORE_RESULT" = success
-          test "$ISOLATION_SHARD_RESULT" = success
-
   # Race detector as its own context: a concurrent server with transaction
   # retry and a single-writer SQLite pool gets its data races found here, not
   # in production. The probe-based isolation E2E suite exceeds the per-package
@@ -1368,12 +1328,15 @@ jobs:
       - name: Select runner cache ABI
         id: runner-cache-abi
         run: ./scripts/ci/export-runner-cache-abi.sh
+      # The planner hash re-keys the cache when shard assignments change: saves
+      # run only on an exact-key miss, so a reshuffle would otherwise keep each
+      # shard compiling its newly assigned suites until go.sum next changed.
       - name: Restore race Go cache
         id: race-go-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/go-build
-          key: go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}
+          key: go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-${{ hashFiles('go.mod', 'go.sum') }}-${{ hashFiles('scripts/ci/analysis-shards-go/main.go') }}
           restore-keys: go-race-v2-shard-${{ matrix.shard }}-${{ runner.os }}-${{ runner.arch }}-${{ steps.runner-cache-abi.outputs.value }}-
       - name: Race detector (all packages except the isolation suite)
         env:
@@ -1409,19 +1372,7 @@ jobs:
           path: ~/.cache/go-build
           key: ${{ steps.race-go-cache.outputs.cache-primary-key }}
 
-  race:
-    needs:
-      - changes
-      - race_shard
-    if: ${{ always() && !cancelled() && fromJSON(needs.changes.outputs.plan).race }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require every race shard
-        env:
-          RACE_SHARD_RESULT: ${{ needs.race_shard.result }}
-        run: test "$RACE_SHARD_RESULT" = success
-
-  # Seed corpora already run in `test`; this bounded exploration pass discovers
+  # Seed corpora already run in `test_core`; this bounded exploration pass discovers
   # targets dynamically so a new fuzz target cannot be forgotten.
   fuzz_shard:
     name: fuzz shard (${{ matrix.shard }})
@@ -1492,7 +1443,7 @@ jobs:
             ran=$((ran + 1))
           done <"$targets"
           if [ "$ran" -eq 0 ]; then
-            echo "fuzz: shard $FUZZ_SHARD has no target — the pass cannot be vacuous" >&2
+            echo "fuzz: shard $FUZZ_SHARD has no target; the pass cannot be vacuous" >&2
             exit 1
           fi
           echo "fuzz: shard $FUZZ_SHARD ran $ran targets"
@@ -1556,54 +1507,10 @@ jobs:
           path: ~/.cache/go-build
           key: ${{ steps.fuzz-go-cache.outputs.cache-primary-key }}
 
-  # Preserve the reporter's single canonical artifact contract while allowing
-  # all shard failures to finish and contribute minimized reproducers.
-  fuzz:
-    needs:
-      - changes
-      - fuzz_shard
-    if: ${{ always() && !cancelled() && fromJSON(needs.changes.outputs.plan).fuzz }}
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - name: Download shard fuzz reproducers
-        if: ${{ needs.fuzz_shard.result != 'success' }}
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: fuzz-reproducers-${{ github.run_id }}-${{ github.run_attempt }}-shard-*
-          merge-multiple: true
-          path: ${{ runner.temp }}/fuzz-shard-artifacts
-      - name: Find merged fuzz reproducers
-        id: merged-reproducers
-        if: ${{ needs.fuzz_shard.result != 'success' }}
-        env:
-          ARTIFACT_ROOT: ${{ runner.temp }}/fuzz-shard-artifacts
-        run: |
-          found=false
-          if [ -d "$ARTIFACT_ROOT" ] &&
-            find "$ARTIFACT_ROOT" -type f -print -quit | grep -q .; then
-            found=true
-          fi
-          echo "found=$found" >>"$GITHUB_OUTPUT"
-      - name: Upload minimized fuzz reproducers
-        if: ${{ steps.merged-reproducers.outputs.found == 'true' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: fuzz-reproducers-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/fuzz-shard-artifacts/
-          if-no-files-found: error
-          retention-days: 30
-      - name: Require every fuzz shard
-        env:
-          FUZZ_SHARD_RESULT: ${{ needs.fuzz_shard.result }}
-        run: test "$FUZZ_SHARD_RESULT" = success
-
   # Fuzz findings are reported out-of-band by fuzz-report.yml (workflow_run), so
   # no job here requests issue/PR write. That keeps this reusable workflow's
   # permission surface read-only (contents/actions), which is all its caller
-  # (trusted-ci) grants — a write request here would startup-fail every PR's
+  # (trusted-ci) grants: a write request here would startup-fail every PR's
   # trusted-ci run.
 
   # The headline guarantee, as its own named context (#76, mvp-boundary K3):
@@ -1613,8 +1520,8 @@ jobs:
   # age artifact lives, together with the replay of every credential artifact
   # an attacker can lift out of the dump.
   #
-  # It is a separate job rather than a step inside `test` so the guarantee has
-  # a context of its own: a green `test` that skipped these because someone
+  # It is a separate job rather than a step inside `test_core` so the guarantee
+  # has a context of its own: a green `test_core` that skipped these because someone
   # narrowed a -run pattern would still look green, and this is the one row
   # the project's positioning rests on.
   headline-guarantee:
@@ -1688,20 +1595,18 @@ jobs:
       - changes
       - client
       - compose-demo
-      - dco
       - docs
       - floor-bench
-      - freeze-guard
-      - fuzz
-      - generated
+      - fuzz_shard
       - headline-guarantee
+      - isolation_shard
       - k8s-e2e
       - lint
-      - no-egress
-      - race
+      - preflight
+      - race_shard
       - release-snapshot
       - supply-chain-checks
-      - test
+      - test_core
       - web
       - web-closure
       - web-go
@@ -1711,6 +1616,36 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      # Preserve the reporter's single canonical artifact contract while allowing
+      # all shard failures to finish and contribute minimized reproducers. Only
+      # a failed fuzz shard leaves reproducers, so a green run skips these.
+      - name: Download shard fuzz reproducers
+        if: ${{ needs.fuzz_shard.result == 'failure' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: fuzz-reproducers-${{ github.run_id }}-${{ github.run_attempt }}-shard-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/fuzz-shard-artifacts
+      - name: Find merged fuzz reproducers
+        id: merged-reproducers
+        if: ${{ needs.fuzz_shard.result == 'failure' }}
+        env:
+          ARTIFACT_ROOT: ${{ runner.temp }}/fuzz-shard-artifacts
+        run: |
+          found=false
+          if [ -d "$ARTIFACT_ROOT" ] &&
+            find "$ARTIFACT_ROOT" -type f -print -quit | grep -q .; then
+            found=true
+          fi
+          echo "found=$found" >>"$GITHUB_OUTPUT"
+      - name: Upload minimized fuzz reproducers
+        if: ${{ steps.merged-reproducers.outputs.found == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: fuzz-reproducers-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/fuzz-shard-artifacts/
+          if-no-files-found: error
+          retention-days: 30
       - name: Require every validation job
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

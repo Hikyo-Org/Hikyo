@@ -8,7 +8,7 @@ Do NOT use em-dash (—)
 
 Every commit on a pull request **must** carry a Developer Certificate of Origin
 (DCO) sign-off, and this is checked **before** the PR can merge: the
-`validation / dco` CI job (`scripts/ci/check-dco.sh`) fails the build when any
+`validation / preflight` CI job's DCO step (`scripts/ci/check-dco.sh`) fails the build when any
 commit in the range is missing one.
 
 - Add the sign-off when you commit: `git commit -s` (or `git commit --signoff`).

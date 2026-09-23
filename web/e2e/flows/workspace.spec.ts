@@ -8,6 +8,7 @@ import {
   BASE_URL_B,
   HOST_B,
   completeSecondFactor,
+  nextServingCode,
   readServing,
   REMOTE_NAME,
   refreshServingSession,
@@ -581,7 +582,7 @@ test.describe('multi-instance', () => {
     await popup.getByLabel('Password').fill(ADMIN.password);
     await popup.getByRole('button', { name: 'Sign in' }).click();
     // B carries a factor; present its authenticator against the challenge (#760).
-    await completeSecondFactor(popup, readServing().otpauth);
+    await completeSecondFactor(popup, nextServingCode);
 
     // And the transaction the popup arrived holding is the one it approves.
     await popup.getByRole('button', { name: 'Authorize' }).click();

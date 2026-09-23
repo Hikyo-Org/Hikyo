@@ -22,9 +22,10 @@ require_line() {
 		fail "missing $expected in $(basename "$file")"
 }
 
-app_block=$(sed -n '/^  app-build:/,/^  no-egress:/p' "$workflow")
-no_egress_block=$(sed -n '/^  no-egress:/,/^  release-snapshot:/p' "$workflow")
-release_block=$(sed -n '/^  release-snapshot:/,/^  generated:/p' "$workflow")
+app_block=$(sed -n '/^  app-build:/,/^  release-snapshot:/p' "$workflow")
+# The no-egress probe rides in web-go, which already downloads the app build.
+no_egress_block=$(sed -n '/^  web-go:/,/^  test_core:/p' "$workflow")
+release_block=$(sed -n '/^  release-snapshot:/,/^  preflight:/p' "$workflow")
 web_block=$(sed -n '/^  web:/,/^  web-closure:/p' "$workflow")
 
 [ -n "$app_block" ] || fail 'app-build job is missing'
@@ -44,7 +45,8 @@ fi
 printf '%s\n' "$app_block" | grep -F 'overwrite: true' >/dev/null ||
 	fail 'app-build artifact cannot be replaced by a full workflow rerun'
 
-[ -n "$no_egress_block" ] || fail 'no-egress job is missing'
+printf '%s\n' "$no_egress_block" | grep -F 'run: ./scripts/ci/no-egress.sh' >/dev/null ||
+	fail 'no-egress probe is missing from web-go'
 printf '%s\n' "$no_egress_block" | grep -F 'needs: [changes, app-build]' >/dev/null ||
 	fail 'no-egress does not depend on app-build'
 printf '%s\n' "$no_egress_block" | grep -Fx '          name: hikyo-app-${{ github.run_id }}' >/dev/null ||
@@ -58,7 +60,7 @@ printf '%s\n' "$no_egress_block" | grep -F 'run: chmod +x ci-artifacts/hikyo-ui'
 	fail 'no-egress does not restore execute permission after artifact download'
 printf '%s\n' "$no_egress_block" | grep -F 'HIKYO_NO_EGRESS_BIN: ${{ github.workspace }}/ci-artifacts/hikyo-ui' >/dev/null ||
 	fail 'no-egress does not pass the downloaded binary to the probe'
-if printf '%s\n' "$no_egress_block" | grep -E 'actions/setup-go|go build' >/dev/null; then
+if printf '%s\n' "$no_egress_block" | grep -F 'go build' >/dev/null; then
 	fail 'no-egress repeats app-build compilation'
 fi
 [ ! -e "$standalone_no_egress" ] || fail 'standalone no-egress workflow still duplicates app-build'

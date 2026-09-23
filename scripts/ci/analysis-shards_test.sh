@@ -109,6 +109,18 @@ func Example_external() {
 	// Output:
 }
 EOF
+for package in internal/store internal/store/upgrade internal/upgradegate; do
+	package_name=${package##*/}
+	cat >"$fixture_dir/$package/${package_name}_test.go" <<EOF
+package $package_name
+
+import "testing"
+
+func TestFirst(t *testing.T)  {}
+func TestSecond(t *testing.T) {}
+func TestThird(t *testing.T)  {}
+EOF
+done
 
 race_actual=$fixture_dir/race-actual
 fuzz_actual=$fixture_dir/fuzz-actual
@@ -136,39 +148,25 @@ for shard_count in 1 3 6; do
 			awk -v shard="$shard" '{ print shard "\t" $0 }' >>"$race_actual"
 		shard=$((shard + 1))
 	done
-	awk -F '\t' '$2 !~ /internal\/(app|service)$/ { print $2 }' "$race_actual" | sort >"$fixture_dir/whole-actual"
-	printf '%s\n' extra internal/crypto internal/lint internal/store internal/store/upgrade internal/upgradegate |
+	split_suites='internal/(app|service|store|store/upgrade|upgradegate)$'
+	awk -F '\t' -v suites="$split_suites" '$2 !~ suites { print $2 }' "$race_actual" | sort >"$fixture_dir/whole-actual"
+	printf '%s\n' extra internal/crypto internal/lint |
 		sed 's|^|example.com/shards/|' | sort >"$fixture_dir/whole-expected"
 	cmp "$fixture_dir/whole-expected" "$fixture_dir/whole-actual"
-	if awk -F '\t' '$2 !~ /internal\/(app|service)$/ && NF != 2 { found=1 } END { exit !found }' "$race_actual"; then
+	if awk -F '\t' -v suites="$split_suites" '$2 !~ suites && NF != 2 { found=1 } END { exit !found }' "$race_actual"; then
 		printf 'analysis shard fixture failed: unexpected filter on whole package\n' >&2
 		exit 1
 	fi
-	for package in app service; do
+	for package in app service store store/upgrade upgradegate; do
 		awk -F '\t' -v package="example.com/shards/internal/$package" '$2 == package { print $3 }' "$race_actual" |
 			sed 's/^\^(//; s/)\$$//' | tr '|' '\n' | sort >"$fixture_dir/targets-actual"
-		if [ "$package" = app ]; then
-			printf '%s\n' Example FuzzApp TestAutomaticDrill TestBoot TestDiagnostics TestMaintenance TestOwnerRuntime TestRestore TestScheduler TestUpgrade
-		else
-			printf '%s\n' Example_external FuzzExternal FuzzService TestEight TestExternal TestFive TestFour TestOne TestSeven TestSix TestThree TestTwo
-		fi | sort >"$fixture_dir/targets-expected"
+		case "$package" in
+		app) printf '%s\n' Example FuzzApp TestAutomaticDrill TestBoot TestDiagnostics TestMaintenance TestOwnerRuntime TestRestore TestScheduler TestUpgrade ;;
+		service) printf '%s\n' Example_external FuzzExternal FuzzService TestEight TestExternal TestFive TestFour TestOne TestSeven TestSix TestThree TestTwo ;;
+		*) printf '%s\n' TestFirst TestSecond TestThird ;;
+		esac | sort >"$fixture_dir/targets-expected"
 		cmp "$fixture_dir/targets-expected" "$fixture_dir/targets-actual"
-		split_count=$(awk -F '\t' -v package="example.com/shards/internal/$package" '$2 == package { print $1 }' "$race_actual" | sort -u | wc -l | tr -d ' ')
-		expected_count=$shard_count
-		[ "$expected_count" -ne 3 ] || expected_count=2
-		[ "$expected_count" -le 4 ] || expected_count=4
-		[ "$split_count" -ge "$expected_count" ] || {
-			printf 'analysis shard fixture failed: %s not spread over %s runners\n' "$package" "$expected_count" >&2
-			exit 1
-		}
 	done
-	if [ "$shard_count" -eq 6 ]; then
-		awk -F '\t' '
-			$2 ~ /internal\/(app|service)$/ && $1 >= 4 { exit 1 }
-			$2 ~ /internal\/(store|lint)$/ && $1 != 4 { exit 1 }
-			$2 ~ /internal\/(upgradegate|store\/upgrade)$/ && $1 != 5 { exit 1 }
-		' "$race_actual"
-	fi
 done
 if [ -n "$(cut -f2- "$fuzz_actual" | sort | uniq -d)" ]; then
 	printf 'analysis shard fixture failed: fuzz target assigned more than once\n' >&2

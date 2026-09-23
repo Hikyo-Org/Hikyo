@@ -23,7 +23,7 @@ import { ADMIN } from './instance.ts';
  *
  * It is seeded through the REAL API with a real session, never by writing to
  * the datastore: a value is a sealed envelope bound to its own row, and a
- * fixture that inserted bytes directly would produce cells nothing can open , 
+ * fixture that inserted bytes directly would produce cells nothing can open;
  * a flow that then "passed" would be proving something about a broken row.
  *
  * Two capabilities on the seeding path are MFA-mandatory (`instance-config`
@@ -235,9 +235,8 @@ let lastStep = -1;
 
 async function consumeCode(token: string, uri: string, path: string): Promise<string> {
   const step = () => Math.floor(Date.now() / 1000 / 30);
-  // The next step nothing has spent. A code is single-use per (account, step)
-  // the enrolment's own start reserves one too, so each presentation has to
-  // move forward.
+  // The next step nothing has spent. A code is single-use per (account, step),
+  // so each presentation has to move forward.
   const want = Math.max(step(), lastStep + 1);
   // Wait ONLY when the wanted step is out of the server's ±1 skew. One step
   // ahead is presentable now, which is what keeps global setup short: the
@@ -397,10 +396,9 @@ export async function seedTenant(
     zEnrolStart,
     { password: ADMIN.password },
   );
-  // Enrolment RESERVES the step it started in: confirmation must consume a
-  // LATER one, because a code is single-use per (account, step) and the start
-  // already recorded that step as spent.
-  lastStep = Math.floor(Date.now() / 1000 / 30);
+  // Enrolment does NOT reserve the step it started in: the pending row records
+  // `created_step - 1` as spent (`CreateTOTP`), so the confirmation may spend
+  // the current step and every later ceremony moves up from there.
   token = await consumeCode(token, uri, '/api/v1/auth/totp/enrol/confirm');
   // Confirmation reissues the session carrying only the PASSWORD class: the
   // factor was enrolled, not presented, and a human steps up separately.
@@ -646,7 +644,7 @@ export async function seedTenant(
     zStaged,
   );
 
-  // Development gets an explicit sliding window. The INSTANCE default is 0 , 
+  // Development gets an explicit sliding window. The INSTANCE default is 0,
   // fail-closed, and the concrete default is the operations spec's to fix, so
   // without this every environment would take a ceremony per disclosure and
   // the sliding half of the guard would have no subject.

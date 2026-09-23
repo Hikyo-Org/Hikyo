@@ -11,7 +11,10 @@ workflow job IDs.
 - `scripts/ci/ci-job-registry.json` owns path-class selections for all 13
   selectable validation jobs and gate behavior for all 21 static `ci.yml` jobs.
 - Plan v2 keys are exact workflow job IDs. The five underscore-to-hyphen aliases
-  and the checker's `gsub` conversion are removed.
+  and the checker's `gsub` conversion are removed. Later, folding jobs to save
+  runner slots left `test`, `race`, `fuzz`, `freeze-guard` and `generated` as
+  domain keys without a same-named job; the Go test now requires every key to
+  select a check that `ci-required` gates.
 - Pull-request classification and aggregation fetch the registry from
   `BASE_SHA` beside their trusted scripts. Missing trusted metadata fails the
   required gate closed.

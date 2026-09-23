@@ -91,7 +91,7 @@
     "changes": {"required_gate": "always"},
     "floor-bench": {"required_gate": "planned", "plan_jobs": ["floor-bench"]},
     "lint": {"required_gate": "planned", "plan_jobs": ["lint"]},
-    "dco": {"required_gate": "pull-request"},
+    "preflight": {"required_gate": "always"},
     "supply-chain-checks": {
       "required_gate": "planned",
       "plan_jobs": ["supply-chain-checks"]
@@ -100,21 +100,12 @@
       "required_gate": "indirect",
       "plan_jobs": ["web", "web-go"]
     },
-    "no-egress": {"required_gate": "planned", "plan_jobs": ["web-go"]},
     "release-snapshot": {
       "required_gate": "planned",
       "plan_jobs": ["release-snapshot"]
     },
-    "generated": {
-      "required_gate": "planned",
-      "plan_jobs": ["generated"]
-    },
     "client": {"required_gate": "planned", "plan_jobs": ["client"]},
     "docs": {"required_gate": "planned", "plan_jobs": ["docs"]},
-    "freeze-guard": {
-      "required_gate": "planned",
-      "plan_jobs": ["freeze-guard"]
-    },
     "compose-demo": {
       "required_gate": "planned",
       "plan_jobs": ["compose-demo"]
@@ -123,7 +114,6 @@
     "web-closure": {"required_gate": "planned", "plan_jobs": ["web"]},
     "storybook": {"required_gate": "indirect", "plan_jobs": ["web"]},
     "web-go": {"required_gate": "planned", "plan_jobs": ["web-go"]},
-    "test": {"required_gate": "planned", "plan_jobs": ["test"]},
     "k8s-e2e": {
       "required_gate": "planned",
       "plan_jobs": ["k8s-e2e"]
@@ -132,15 +122,13 @@
       "required_gate": "indirect",
       "plan_jobs": ["test", "race", "fuzz"]
     },
-    "test_core": {"required_gate": "indirect", "plan_jobs": ["test"]},
+    "test_core": {"required_gate": "planned", "plan_jobs": ["test"]},
     "isolation_shard": {
-      "required_gate": "indirect",
+      "required_gate": "planned",
       "plan_jobs": ["test"]
     },
-    "race_shard": {"required_gate": "indirect", "plan_jobs": ["race"]},
-    "race": {"required_gate": "planned", "plan_jobs": ["race"]},
-    "fuzz_shard": {"required_gate": "indirect", "plan_jobs": ["fuzz"]},
-    "fuzz": {"required_gate": "planned", "plan_jobs": ["fuzz"]},
+    "race_shard": {"required_gate": "planned", "plan_jobs": ["race"]},
+    "fuzz_shard": {"required_gate": "planned", "plan_jobs": ["fuzz"]},
     "headline-guarantee": {
       "required_gate": "planned",
       "plan_jobs": ["headline-guarantee"]

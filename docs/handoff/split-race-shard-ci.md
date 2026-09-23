@@ -43,3 +43,8 @@ jobs. Compare each job's test-step duration, total duration, queue delay, and th
 final required-gate completion against run 34725771747. Check a subsequent run
 after shard caches have warmed. The provisional target is 10 to 12 minutes per
 race shard; no speedup is claimed until those hosted measurements exist.
+
+## Superseded
+
+Hash placement and the shard 4/5 pins were replaced by duration-weighted
+packing; see [ci-slot-pressure.md](ci-slot-pressure.md).
