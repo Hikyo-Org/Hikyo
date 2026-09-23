@@ -5,3 +5,4 @@ allowBuilds:
   sharp: true
 overrides:
   inline-style-parser@<=0.2.9: 0.2.9
+  devalue@<5.9.2: 5.9.2
