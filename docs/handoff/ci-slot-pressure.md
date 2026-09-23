@@ -39,6 +39,11 @@ PR #793, against `feat/605-social-signin-migration`). Three independent causes:
   current step when it is unspent. Local desktop `login.spec.ts`: globalSetup
   306.5s to 129.8s. Full desktop and mobile suites green. Harness only; no
   server behaviour changed.
+- **Web groups** (`ci(web): rebalance flow groups by measured spec time`).
+  After the setup fix, PR run 35883620401 measured desktop test time per group
+  at 248, 192, 403 and 197s. Account moves to group 2 and shell to group 4,
+  capping the heaviest group near 312s. Per-spec times sit in the ci.yml
+  comment; re-measure when a spec grows.
 - **Race balance** (`ci(race): weight-balance race shards by measured duration`).
   LPT packing over weights embedded in the planner source (PRs run the base
   planner, so weights cannot come from the PR checkout). Store, store/upgrade
@@ -63,6 +68,6 @@ PR validation runs the base branch's `ci.yml`, planner, race script, registry
 and checker, so only the web change is visible on this PR's own run. On the
 first main push after merge, and one later PR run, check: 38 jobs; race shard
 test steps within about a minute of each other (expect ~13.5 to 14.5 minutes a
-job including setup, down from a 17.4 maximum); web leg globalSetup near 2
-minutes; `ci-required` green; a deliberately failing fuzz shard still uploads
+job including setup, down from a 17.4 maximum); web leg globalSetup near 2.5
+minutes (measured on this PR's run: 2m29s) and no leg far above the others; `ci-required` green; a deliberately failing fuzz shard still uploads
 `fuzz-reproducers-<run_id>-<attempt>`.
