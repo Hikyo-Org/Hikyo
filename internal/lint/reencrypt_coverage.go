@@ -103,12 +103,14 @@ var reencryptExemptBlobs = map[string]string{
 	"registration_signups.token_verifier": "single-use sign-up verification token (hashed `su` artifact)",
 	// Short-lived FLOW artifacts — OAuth / SAML / WebAuthn transaction state,
 	// hashed or opaque, expired not rotated.
-	"oidc_transactions.browser_binding_verifier":     "OIDC browser-binding verifier (flow)",
-	"oidc_transactions.state_verifier":               "OIDC state verifier (flow)",
-	"oidc_transactions.nonce":                        "OIDC nonce (flow)",
-	"oidc_transactions_new.browser_binding_verifier": "OIDC browser-binding verifier on a table-rebuild copy (#605)",
-	"oidc_transactions_new.state_verifier":           "OIDC state verifier on a table-rebuild copy (#605)",
-	"oidc_transactions_new.nonce":                    "OIDC nonce on a table-rebuild copy (#605)",
+	"oidc_transactions.browser_binding_verifier": "OIDC browser-binding verifier (flow)",
+	"oidc_transactions.state_verifier":           "OIDC state verifier (flow)",
+	"oidc_transactions.nonce":                    "OIDC nonce (flow)",
+	// 00057's sqlite-only rebuild twin, renamed over oidc_transactions inside
+	// the same migration (postgres alters in place and has no twin).
+	"oidc_transactions_new.browser_binding_verifier": "OIDC browser-binding verifier on the 00057 sqlite rebuild twin (#605)",
+	"oidc_transactions_new.state_verifier":           "OIDC state verifier on the 00057 sqlite rebuild twin (#605)",
+	"oidc_transactions_new.nonce":                    "OIDC nonce on the 00057 sqlite rebuild twin (#605)",
 	"oauth2_transactions.browser_binding_verifier":   "OAuth2 browser-binding verifier (flow)",
 	"oauth2_transactions.state_verifier":             "OAuth2 state verifier (flow)",
 	"saml_transactions.initiator_verifier":           "SAML initiator verifier (flow)",

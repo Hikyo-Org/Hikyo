@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	SAMLKind = "saml"
+	SAMLKind = string(domain.ProviderSAML)
 
 	samlNameIDPersistent  = "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"
 	samlNameIDUnspecified = "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"

@@ -12,15 +12,19 @@ import (
 // origin kinds the SCIM engine — as opposed to the human grant surface — is
 // allowed to write.
 
-// ProviderKind is the identity-protocol family a binding references (§1).
+// ProviderKind is the identity-protocol family of a federated provider and of
+// its external identities, the single source of the kind spellings (the
+// service's OIDCKind, SAMLKind and OAuth2Kind are these values).
 type ProviderKind string
 
 const (
-	ProviderOIDC ProviderKind = "oidc"
-	ProviderSAML ProviderKind = "saml"
+	ProviderOIDC   ProviderKind = "oidc"
+	ProviderSAML   ProviderKind = "saml"
+	ProviderOAuth2 ProviderKind = "oauth2" // social sign-in (#605); never a SCIM binding kind
 )
 
-// IsProviderKind reports membership of the closed set.
+// IsProviderKind reports membership of the closed set a SCIM binding may
+// reference (§1): oidc and saml only.
 func IsProviderKind(k ProviderKind) bool { return k == ProviderOIDC || k == ProviderSAML }
 
 // SCIMAttention is one enumerated attention state on a binding (§9). Each is

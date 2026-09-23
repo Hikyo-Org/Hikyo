@@ -637,6 +637,21 @@ func TestOIDCBrowserLinkCarriesBrowserIntent(t *testing.T) {
 	}
 }
 
+// An environment_id on a non-reauth start is a request-shape refusal: a 400
+// naming the field, the one start refusal outside the uniform 401.
+func TestOIDCStartRefusesEnvironmentOutsideReauth(t *testing.T) {
+	auth := stubAuth{oidcStart: func(context.Context, string, string, string, string, string, bool) (service.OIDCStartResult, error) {
+		return service.OIDCStartResult{}, service.ErrEnvironmentNotForPurpose
+	}}
+	srv := newTestServer(t, auth, stubOrgs{})
+	response, body := call(t, srv, http.MethodPost, api.PathPrefix+"/auth/oidc/corp/start", "", map[string]any{
+		"purpose": "login", "environment_id": "env_stray",
+	})
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "environment_id") {
+		t.Fatalf("status=%d body=%s, want 400 naming environment_id", response.StatusCode, body)
+	}
+}
+
 func TestOIDCBrowserCallbackRefusalRedirectsWithoutSessionCookie(t *testing.T) {
 	auth := stubAuth{oidcCallback: func(context.Context, string, string, string, string, string, string, string) (service.OIDCCallbackResult, error) {
 		return service.OIDCCallbackResult{Browser: true, Purpose: "reauth", State: "refused-state"}, domain.ErrUnauthenticated

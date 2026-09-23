@@ -77,9 +77,9 @@ func TestProviderRef(t *testing.T) {
 		want ProviderRef
 		ok   bool
 	}{
-		{"oidc:corp", ProviderRef{Kind: ProviderKindOIDC, Slug: "corp"}, true},
-		{"oauth2:github", ProviderRef{Kind: ProviderKindOAuth2, Slug: "github"}, true},
-		{"saml:okta", ProviderRef{Kind: ProviderKindSAML, Slug: "okta"}, true},
+		{"oidc:corp", ProviderRef{Kind: ProviderOIDC, Slug: "corp"}, true},
+		{"oauth2:github", ProviderRef{Kind: ProviderOAuth2, Slug: "github"}, true},
+		{"saml:okta", ProviderRef{Kind: ProviderSAML, Slug: "okta"}, true},
 		{"github", ProviderRef{Slug: "github"}, true},
 		{"ldap:corp", ProviderRef{}, false},
 		{"oidc:", ProviderRef{}, false},
@@ -97,21 +97,21 @@ func TestProviderRef(t *testing.T) {
 	}
 
 	enabled := []ProviderRef{
-		{Kind: ProviderKindOIDC, Slug: "corp"},
-		{Kind: ProviderKindOIDC, Slug: "shared"},
-		{Kind: ProviderKindOAuth2, Slug: "shared"},
-		{Kind: ProviderKindOAuth2, Slug: "github"},
+		{Kind: ProviderOIDC, Slug: "corp"},
+		{Kind: ProviderOIDC, Slug: "shared"},
+		{Kind: ProviderOAuth2, Slug: "shared"},
+		{Kind: ProviderOAuth2, Slug: "github"},
 	}
 	for _, c := range []struct {
 		ref  ProviderRef
 		want ProviderRef
 		err  error
 	}{
-		{ProviderRef{Slug: "github"}, ProviderRef{Kind: ProviderKindOAuth2, Slug: "github"}, nil},
-		{ProviderRef{Kind: ProviderKindOIDC, Slug: "shared"}, ProviderRef{Kind: ProviderKindOIDC, Slug: "shared"}, nil},
+		{ProviderRef{Slug: "github"}, ProviderRef{Kind: ProviderOAuth2, Slug: "github"}, nil},
+		{ProviderRef{Kind: ProviderOIDC, Slug: "shared"}, ProviderRef{Kind: ProviderOIDC, Slug: "shared"}, nil},
 		{ProviderRef{Slug: "shared"}, ProviderRef{}, ErrAmbiguousProviderSlug},
 		{ProviderRef{Slug: "missing"}, ProviderRef{}, ErrNotFound},
-		{ProviderRef{Kind: ProviderKindSAML, Slug: "corp"}, ProviderRef{}, ErrNotFound},
+		{ProviderRef{Kind: ProviderSAML, Slug: "corp"}, ProviderRef{}, ErrNotFound},
 	} {
 		got, err := ResolveProviderRef(c.ref, enabled)
 		if !errors.Is(err, c.err) || got != c.want {

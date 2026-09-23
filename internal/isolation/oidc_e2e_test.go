@@ -284,15 +284,10 @@ func runOIDCBinding(t *testing.T, db *store.DB) {
 	if _, err := auth.OIDCCallback(ctx, "idp", code2, state2, "", "", start2.BindingCookie, ""); err != nil {
 		t.Fatalf("login with the correct binding cookie should succeed: %v", err)
 	}
-	// A stray environment_id on a non-reauth start was always ignored; 00057's
-	// exhaustive purpose CHECK refuses it on the row, so the start drops it.
-	stray, err := auth.OIDCStart(ctx, "idp", "login", "env_stray", "", "", false)
-	if err != nil {
-		t.Fatalf("login start with a stray environment_id: %v", err)
-	}
-	scode, sstate := driveIdP(t, stray.AuthURL+"&sub=user")
-	if _, err := auth.OIDCCallback(ctx, "idp", scode, sstate, "", "", stray.BindingCookie, ""); err != nil {
-		t.Fatalf("login with a stray environment_id should succeed: %v", err)
+	// environment_id scopes a reauth window only; on any other purpose the
+	// start refuses it by name (the transaction CHECK would refuse the row).
+	if _, err := auth.OIDCStart(ctx, "idp", "login", "env_stray", "", "", false); !errors.Is(err, service.ErrEnvironmentNotForPurpose) {
+		t.Fatalf("login start with an environment_id: %v, want ErrEnvironmentNotForPurpose", err)
 	}
 
 	// A link transaction is session-bound: a callback with no session fails the

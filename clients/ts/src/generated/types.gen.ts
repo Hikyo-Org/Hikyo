@@ -13,7 +13,7 @@ export type AccountProfile = {
     username: string;
     display_name: string;
     /**
-     * The verified login email in canonical form (domain lowercased), or null when the account has none. Read-only; only verified local sign-up sets it. Never an identity linking key.
+     * The sign-in email in canonical form (domain lowercased), or null when the account has none. Read-only. Only verified local sign-up sets a new one; an account upgraded from an earlier version may keep its prior contact address when that address was valid and unique. Never an identity linking key.
      */
     email: string | null;
     /**
@@ -3359,7 +3359,7 @@ export type AuthMethodProvider = {
 export type OidcStartRequest = {
     purpose: string;
     /**
-     * Required for reauth; the window scope.
+     * Required for reauth; the window scope. Refused (400) on any other purpose.
      */
     environment_id?: string;
     /**
@@ -11875,6 +11875,13 @@ export type OidcStartData = {
 };
 
 export type OidcStartErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
     /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts

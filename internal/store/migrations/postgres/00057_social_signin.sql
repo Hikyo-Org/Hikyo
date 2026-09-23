@@ -188,8 +188,9 @@ ALTER TABLE orgs ADD COLUMN origin TEXT NOT NULL DEFAULT 'manual' CHECK (origin 
 ALTER TABLE orgs ADD COLUMN registration_policy_id TEXT;
 
 -- accounts.email: nullable verified login email (see the sqlite header). The
--- regex accepts exactly the set the sqlite GLOBs do; the octet/char length
--- comparison keeps it to ASCII independent of collation.
+-- regex accepts exactly the set the sqlite GLOBs do, and its explicit
+-- character classes already restrict the address to ASCII; the octet/char
+-- length comparison is a second, encoding-based guard (UTF-8 databases).
 ALTER TABLE accounts ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE accounts ALTER COLUMN email DROP DEFAULT;
 UPDATE accounts

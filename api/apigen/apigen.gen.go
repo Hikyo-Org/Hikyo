@@ -2958,7 +2958,7 @@ func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
 type AccountProfile struct {
 	DisplayName string `json:"display_name"`
 
-	// Email The verified login email in canonical form (domain lowercased), or null when the account has none. Read-only; only verified local sign-up sets it. Never an identity linking key.
+	// Email The sign-in email in canonical form (domain lowercased), or null when the account has none. Read-only. Only verified local sign-up sets a new one; an account upgraded from an earlier version may keep its prior contact address when that address was valid and unique. Never an identity linking key.
 	Email *string `json:"email"`
 
 	// Managed SCIM controls the username and display name.
@@ -6095,7 +6095,7 @@ type OidcStartRequest struct {
 	// Browser Redirect the callback to the SPA done page instead of returning JSON.
 	Browser *bool `json:"browser,omitempty"`
 
-	// EnvironmentId Required for reauth; the window scope.
+	// EnvironmentId Required for reauth; the window scope. Refused (400) on any other purpose.
 	EnvironmentId *string `json:"environment_id,omitempty"`
 
 	// Proof Required for link; the pre-existing password.
@@ -25371,6 +25371,20 @@ func (response OidcStart200JSONResponse) VisitOidcStartResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcStart400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response OidcStart400JSONResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }

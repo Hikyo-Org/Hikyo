@@ -67,7 +67,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         {saved.email !== null ? <div className="field">
           <label htmlFor={`${id}-email`}>Sign-in email</label>
           <input id={`${id}-email`} name="email" type="email" readOnly value={saved.email} aria-describedby={`${id}-email-hint`} />
-          <p id={`${id}-email-hint`} className="settings-note">Verified when you signed up. It cannot be changed here.</p>
+          <p id={`${id}-email-hint`} className="settings-note">Used to sign in. Set when you sign up with email; it cannot be changed here.</p>
         </div> : null}
         {needsProof ? <div className="field">
           <label htmlFor={`${id}-proof`}>Code or password</label>

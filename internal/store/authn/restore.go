@@ -232,8 +232,10 @@ func (r *Resolver) restoredPostLegacyTables(ctx context.Context) (int64, error) 
 			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('oauth2_transactions', 'registration_signups')`).Scan(&present)
 		return present, err
 	}
+	// Tables only, as sqlite's type = 'table': to_regclass would also resolve
+	// a view or sequence of the same name.
 	err := r.pgdb.QueryRow(ctx,
-		`SELECT COUNT(*) FROM (VALUES (to_regclass('oauth2_transactions')), (to_regclass('registration_signups'))) AS t (c) WHERE c IS NOT NULL`).Scan(&present)
+		`SELECT COUNT(*) FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid IN (to_regclass('oauth2_transactions'), to_regclass('registration_signups'))`).Scan(&present)
 	return present, err
 }
 

@@ -4102,7 +4102,11 @@ paths:
         # policy-less or environment-less reauth, unauthenticated link/reauth,
         # and a missing body) collapses to one uniform 401 so a pre-auth prober
         # cannot enumerate provider config. 429/500 are the cross-cutting
-        # admission and fault responses.
+        # admission and fault responses. The one exception is a request-shape
+        # refusal that depends on nothing but the body: `environment_id` on a
+        # purpose other than `reauth` is a 400 naming the field.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
@@ -11797,7 +11801,7 @@ components:
           type: string
         email:
           type: [string, "null"]
-          description: The verified login email in canonical form (domain lowercased), or null when the account has none. Read-only; only verified local sign-up sets it. Never an identity linking key.
+          description: The sign-in email in canonical form (domain lowercased), or null when the account has none. Read-only. Only verified local sign-up sets a new one; an account upgraded from an earlier version may keep its prior contact address when that address was valid and unique. Never an identity linking key.
         managed:
           type: boolean
           description: SCIM controls the username and display name.
@@ -16460,7 +16464,7 @@ components:
         environment_id:
           type: string
           maxLength: 64
-          description: Required for reauth; the window scope.
+          description: Required for reauth; the window scope. Refused (400) on any other purpose.
         proof:
           type: string
           maxLength: 1024

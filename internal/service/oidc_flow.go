@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
@@ -29,6 +30,12 @@ var ErrReauthNoPolicy = errors.New("service: provider has no assurance policy; O
 
 // ErrReauthNoEnvironment refuses a reauth with no environment scope.
 var ErrReauthNoEnvironment = errors.New("service: OIDC reauthentication requires an environment_id")
+
+// ErrEnvironmentNotForPurpose refuses an environment_id on a login or link
+// start: only reauth scopes a window, and the transaction CHECK refuses the
+// field on every other purpose. It depends on the request body alone, so it
+// is the one start refusal that is not folded into the uniform 401.
+var ErrEnvironmentNotForPurpose = fmt.Errorf("%w: environment_id is only valid with purpose reauth", domain.ErrInvalid)
 
 // OIDCStartResult is the authorization URL plus the artifacts the transport
 // carries: the state value (used to derive the per-transaction binding-cookie
@@ -70,11 +77,8 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 	if purpose == purposeReauth && environmentID == "" {
 		return OIDCStartResult{}, ErrReauthNoEnvironment
 	}
-	// The window scope means nothing to any other purpose and was always
-	// ignored there; 00057's exhaustive CHECK refuses it on the row, so drop it
-	// here rather than turn a stray field into a raw fault.
-	if purpose != purposeReauth {
-		environmentID = ""
+	if purpose != purposeReauth && environmentID != "" {
+		return OIDCStartResult{}, ErrEnvironmentNotForPurpose
 	}
 
 	// Phase 1 - resolve the provider and, for a session-bound purpose, the

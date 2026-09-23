@@ -360,3 +360,91 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 		t.Error("a second policy for one org was accepted")
 	}
 }
+
+// The sqlite GLOBs and the postgres regex that decide which 00049 contact
+// values 00057 keeps must accept exactly the same set. One fixture of
+// character-class edges runs through the real migration on both engines; each
+// engine must reach the expected outcome (hence the same one), and every kept
+// value must be what domain.CanonicalEmail returns.
+func TestSocialSigninEmailValidityParitySQLite(t *testing.T) {
+	testSocialSigninEmailValidityParity(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "parity.db")})
+}
+
+func TestSocialSigninEmailValidityParityPostgres(t *testing.T) {
+	testSocialSigninEmailValidityParity(t, postgresTestConfig(t, "email_parity"))
+}
+
+func testSocialSigninEmailValidityParity(t *testing.T, cfg store.Config) {
+	t.Helper()
+	ctx := t.Context()
+	cases := []struct {
+		in   string
+		want string // canonical kept value, "" = NULL
+	}{
+		{"back`tick@example.com", "back`tick@example.com"},
+		{"{|}~@example.com", "{|}~@example.com"},
+		{"!#$%&'*+/=?^_-@example.com", "!#$%&'*+/=?^_-@example.com"},
+		{"dollar$sign@example.com", "dollar$sign@example.com"},
+		{"caret^hat@example.com", "caret^hat@example.com"},
+		{"under_score@example.com", "under_score@example.com"},
+		{"dash-start@-example.com", "dash-start@-example.com"},
+		{"dash-end@example-.com", "dash-end@example-.com"},
+		{"digits@123.456", "digits@123.456"},
+		{"single@Label", "single@label"},
+		{"Upper@EXAMPLE.COM", "Upper@example.com"},
+		{"a.b.c@x.y.z", "a.b.c@x.y.z"},
+		{"domain-underscore@ex_ample.com", ""}, // Go admits it; the SQL stays conservative
+		{"literal@[192.0.2.1]", ""},
+		{"paren(s)@example.com", ""},
+		{`back\slash@example.com`, ""},
+		{"comma,s@example.com", ""},
+		{"semi;colon@example.com", ""},
+		{"colon:s@example.com", ""},
+		{"angle<s@example.com", ""},
+		{"tab\t@example.com", ""},
+		{"space in@example.com", ""},
+		{"dom@exa mple.com", ""},
+		{"dom@example..com", ""},
+		{"trail.@example.com", ""},
+		{".lead2@example.com", ""},
+		{"ümlaut@example.com", ""},
+		{"idn@bücher.example", ""},
+		{"two@@example.com", ""},
+		{"dom@.", ""},
+		{"dom@example.com.", ""},
+		{"plus+tag@example.com", "plus+tag@example.com"},
+	}
+	if err := RunUpTo(ctx, cfg, 56); err != nil {
+		t.Fatal(err)
+	}
+	db := migrationFixtureSQL(t, cfg)
+	for i, c := range cases {
+		for _, stmt := range []string{
+			fmt.Sprintf("INSERT INTO principals (id,kind,created_at) VALUES ('prn_p%d','human',%s)", i, socialTS),
+			fmt.Sprintf("INSERT INTO accounts (id,principal_id,username,display_name,created_at,email) VALUES ('acc_p%d','prn_p%d','p%d','P',%s,'%s')",
+				i, i, i, socialTS, strings.ReplaceAll(c.in, "'", "''")),
+		} {
+			if _, err := db.ExecContext(ctx, stmt); err != nil {
+				t.Fatalf("seed %q: %v", c.in, err)
+			}
+		}
+	}
+	if err := Run(ctx, cfg); err != nil {
+		t.Fatal(err)
+	}
+	for i, c := range cases {
+		var got sql.NullString
+		if err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT email FROM accounts WHERE id = 'acc_p%d'", i)).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got.Valid != (c.want != "") || got.String != c.want {
+			t.Errorf("%s: %q became %v, want %q", cfg.Engine, c.in, got, c.want)
+			continue
+		}
+		if got.Valid {
+			if canonical, err := domain.CanonicalEmail(c.in); err != nil || canonical != got.String {
+				t.Errorf("%s: SQL kept %q but CanonicalEmail(%q) = %q, %v", cfg.Engine, got.String, c.in, canonical, err)
+			}
+		}
+	}
+}

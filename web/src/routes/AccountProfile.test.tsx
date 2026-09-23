@@ -107,7 +107,7 @@ describe('account profile', () => {
     expect(container.textContent).toContain('Profile saved.');
   });
 
-  it('shows the verified sign-in email read-only and never sends it', async () => {
+  it('shows the sign-in email read-only with truthful copy and never sends it', async () => {
     const verified = { ...profile, email: 'alice@example.com' };
     const fetchMock = vi.fn((request: Request) => Promise.resolve(json(request.method === 'PATCH'
       ? { ...verified, display_name: 'Alice New' } : verified)));
@@ -115,6 +115,8 @@ describe('account profile', () => {
     const { container } = await mount();
     expect(input(container, 'email').value).toBe('alice@example.com');
     expect(input(container, 'email').readOnly).toBe(true);
+    expect(container.textContent).toContain('Used to sign in. Set when you sign up with email');
+    expect(container.textContent).not.toContain('Verified');
     await act(async () => { typeInto(input(container, 'display_name'), 'Alice New'); });
     await submit(container);
     const request = fetchMock.mock.calls.find(([candidate]) => candidate.method === 'PATCH')?.[0];

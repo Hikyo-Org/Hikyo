@@ -90,7 +90,7 @@ CREATE TABLE registration_policies (
     CHECK (fresh_org_cap IS NULL OR fresh_org_cap > 0)
 );
 CREATE UNIQUE INDEX registration_policies_org ON registration_policies (org_id) WHERE org_id IS NOT NULL;
-CREATE UNIQUE INDEX registration_policies_instance ON registration_policies (landing IS NOT NULL) WHERE org_id IS NULL;
+CREATE UNIQUE INDEX registration_policies_instance ON registration_policies ((org_id IS NULL)) WHERE org_id IS NULL;
 
 -- The local entry's domain allowlist, one row per domain (no JSON arrays: the
 -- database refuses empty strings, duplicates and non-strings by shape).

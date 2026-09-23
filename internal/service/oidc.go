@@ -28,9 +28,10 @@ import (
 // evaluation - lives here.
 
 const (
-	// OIDCKind is the identity-key discriminator. Only 'oidc' exists in v1; the
-	// column reserves room for SAML (#72) without reshaping the key.
-	OIDCKind = "oidc"
+	// OIDCKind and OAuth2Kind are the identity-key discriminators, spelled once
+	// in domain.ProviderKind.
+	OIDCKind   = string(domain.ProviderOIDC)
+	OAuth2Kind = string(domain.ProviderOAuth2)
 	// oidcTxLifetime is the transaction's single-use window.
 	oidcTxLifetime = 10 * time.Minute
 	// oidcAuthTimeBound is the reauth freshness bound on the provider-asserted

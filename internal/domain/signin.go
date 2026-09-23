@@ -47,14 +47,6 @@ func CanonicalEmail(raw string) (string, error) {
 	return local + "@" + strings.ToLower(host), nil
 }
 
-// Provider kinds: the discriminator of a federated provider and of its
-// external identities.
-const (
-	ProviderKindOIDC   = "oidc"
-	ProviderKindSAML   = "saml"
-	ProviderKindOAuth2 = "oauth2"
-)
-
 // ErrAmbiguousProviderSlug refuses a bare slug that names providers of more
 // than one kind.
 var ErrAmbiguousProviderSlug = fmt.Errorf("%w: ambiguous provider slug", ErrInvalid)
@@ -63,12 +55,12 @@ var ErrAmbiguousProviderSlug = fmt.Errorf("%w: ambiguous provider slug", ErrInva
 // (social-signin spec 2.6). Slugs are unique per provider table only, so the
 // kind is part of the name. An empty Kind is a bare slug awaiting resolution.
 type ProviderRef struct {
-	Kind string
+	Kind ProviderKind
 	Slug string
 }
 
 // String renders the `<kind>:<slug>` form.
-func (r ProviderRef) String() string { return r.Kind + ":" + r.Slug }
+func (r ProviderRef) String() string { return string(r.Kind) + ":" + r.Slug }
 
 // ParseProviderRef reads `<kind>:<slug>` or a bare `<slug>`.
 func ParseProviderRef(s string) (ProviderRef, error) {
@@ -79,15 +71,15 @@ func ParseProviderRef(s string) (ProviderRef, error) {
 	if slug == "" || strings.Contains(slug, ":") {
 		return ProviderRef{}, fmt.Errorf("%w: provider reference %q", ErrInvalid, s)
 	}
-	switch kind {
-	case "", ProviderKindOIDC, ProviderKindSAML, ProviderKindOAuth2:
+	switch ProviderKind(kind) {
+	case "", ProviderOIDC, ProviderSAML, ProviderOAuth2:
 	default:
 		return ProviderRef{}, fmt.Errorf("%w: unknown provider kind %q", ErrInvalid, kind)
 	}
 	if qualified && kind == "" {
 		return ProviderRef{}, fmt.Errorf("%w: provider reference %q", ErrInvalid, s)
 	}
-	return ProviderRef{Kind: kind, Slug: slug}, nil
+	return ProviderRef{Kind: ProviderKind(kind), Slug: slug}, nil
 }
 
 // ResolveProviderRef finds ref among the enabled providers. A bare slug

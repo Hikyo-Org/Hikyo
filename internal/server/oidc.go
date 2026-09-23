@@ -94,6 +94,9 @@ func oidcStartError(a *API, ctx context.Context, err error) apigen.OidcStartResp
 	// unauthenticated link/reauth, so a pre-auth prober cannot enumerate
 	// provider config by status (the timing is uniform too — login admission
 	// runs before provider resolution in the service).
+	if errors.Is(err, service.ErrEnvironmentNotForPurpose) {
+		return apigen.OidcStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "environment_id is only valid with purpose reauth"))}
+	}
 	policy := wireErrorFor(err)
 	switch policy.code {
 	case apigen.ErrorCodeTooManyRequests:
