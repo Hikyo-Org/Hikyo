@@ -139,7 +139,8 @@ key names (including undelivered-key lists), mapping, cursor, cursor binding,
 stamp, managed Secret UID/resourceVersion, credential material, credential
 expiry (the server already knows it), and any free text. A `type` or `reason`
 outside the advertised vocabulary refuses the **whole** report (422, field
-named); the server never stores an unrecognized string. An operator whose own
+named); the server never stores an unrecognized string or any of the refused
+report's data, only the closed refusal cause on an existing row (D5). An operator whose own
 vocabulary is newer than the advertised one and holds a condition outside it
 **skips the report** and emits an Event; it never drops the condition and
 sends the rest, because omitting a failing condition could read as healthy.
@@ -159,7 +160,7 @@ Derived UI state per row, computed at read time, never stored as "healthy":
 | --- | --- |
 | `unknown` | no row, or server/operator lacks the capability |
 | `stale` | `now - received_at > 2 * report_interval + 5 min` (5 min = max error backoff), `report_interval` clamped server-side to [5 min, 24 h] |
-| `refused` | the most recent report for an existing row was refused after the last accepted one for vocabulary (422) or size (413); the row carries the closed refusal cause and time |
+| `refused` | the most recent report for an existing row was refused after the last accepted one for vocabulary (422); the row carries the closed refusal cause and time. A 413 is never tied to a row: the server does not parse an over-size body to find its key |
 | `reporter-revoked` | the principal no longer holds `report-delivery-status`, or holds no live credential (every `hikyo-token` revoked or expired and no active federation binding) |
 | `reported` | fresh; shows the conditions exactly as asserted, with "reported by controller, `<age>` ago" |
 
@@ -216,8 +217,9 @@ redacted.
 - Events: first report for a new row, tombstone, purge, and every refusal
   (authorization, vocabulary, ordering, quota, size), per audit-model
   conventions. Refusal volume is bounded by the operator's per-CR suppression
-  (D9): an ungranted CR produces at most one refusal per hour, not one per
-  heartbeat. Grant and revoke of `report-delivery-status` are grant-mutation
+  (D9): an ungranted CR whose generation and reportable content are unchanged
+  produces at most one refusal per hour, not one per heartbeat; a flapping CR
+  is bounded by the per-principal budget. Grant and revoke of `report-delivery-status` are grant-mutation
   events like any other.
 - **Separate budget bucket**: 60/min per principal, 300/min per org, charged
   after authorization, so a report storm cannot starve fetches. Sized to the
@@ -238,7 +240,11 @@ redacted.
   A reconcile reports when the reportable content (D4 fields other than
   `reported_at`) changed, or when the heartbeat is due: `report_interval =
   max(spec.resyncInterval, 5 min)`, capped at 24 h. The 5 min floor keeps a
-  30 s requeue from becoming a 30 s report rate.
+  30 s requeue from becoming a 30 s report rate. `spec.resyncInterval` has no
+  upper bound, so with reporting enabled the operator requeues at
+  `min(spec.resyncInterval, 24 h)`; otherwise a CR resyncing less than every
+  48 h would always read `stale`. The cost is at most one extra conditional
+  fetch per CR per day.
 - **Fire-and-forget.** One attempt per reconcile, 5 s timeout, no requeue, no
   faster retry. Failure emits a rate-limited Event; **no CR condition**
   (reporting about reporting is recursive and would perturb `Ready`).
@@ -253,7 +259,9 @@ redacted.
   when no live credential remains, or `stale` otherwise. Because the
   capability probe (D10) already established that the route exists, a 404
   always means "not authorized for this target" and says nothing about the
-  instance.
+  instance. Accepted residual: a server downgraded inside the 10 min `/meta`
+  cache window answers 404 for every CR, which then suppresses for an hour;
+  reporting resumes by itself and nothing reads as healthy meanwhile.
 - Reports use the same credential as the fetch; a federation token is reused
   within its 600 s life rather than minted twice.
 - Helm value `operator.statusReporting`: **(a) default on**, capability-probed;
@@ -328,7 +336,7 @@ redacted.
    unknown vocabulary 422; out-of-order 409; quota 409; value-free schema
    pinned by a test that fails on any string field outside the closed enums
    and name grammar.
-3. **Operator** ([#789](https://github.com/Hikyo-Org/Hikyo/issues/789)): capability probe, reporter after cursor persist, tombstone
+3. **Operator** ([#789](https://github.com/Hikyo-Org/Hikyo/issues/789)): capability probe, reporter after the status write, tombstone
    on delete, Helm value, Namespace `get`. Depends on 2's OpenAPI contract.
    Acceptance: reporting failure never changes conditions, Secret or cursor;
    no report contains message text.
@@ -351,6 +359,6 @@ them.
 
 **Post-lock review corrections (2026-09-23), pending owner confirmation:**
 per-CR suppression instead of an instance-wide 404 disable; the `refused`
-state (422/413 only); change-or-heartbeat report cadence with a 5 min floor;
+state (422 only); change-or-heartbeat report cadence with a 5 min floor;
 per-principal budget 60/min sized to the row quota; closed `reporter` enum;
 report timing after the status write.

@@ -132,7 +132,7 @@ is a directory listing, so neither adds a resource class.
 | Report body size | ≤ 8 KiB | fixed |
 | Report budget per principal | 60/min, separate from delivery fetches | fixed |
 | Report budget per org | 300/min, separate from delivery fetches; binding above about 1500 reporting CRs per org (heartbeat load `CRs / 5` per min), beyond which rows read stale | fixed |
-| Report heartbeat interval | `max(spec.resyncInterval, 5 min)`, at most 24 h | fixed |
+| Report heartbeat interval | `max(spec.resyncInterval, 5 min)`, at most 24 h; requeue at `min(spec.resyncInterval, 24 h)` while reporting | fixed |
 | Staleness threshold | `2 × report_interval + 5 min` (server clamps `report_interval` to [5 min, 24 h]) | fixed |
 | `reported_at` future skew | 5 min | fixed |
 | Purge after last accepted report | 30 days | fixed |

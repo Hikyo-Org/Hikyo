@@ -38,8 +38,9 @@ this change fixed: a 404 disabling reporting instance-wide (now per-CR
 suppression; the capability probe owns route existence), refusal audit volume
 (bounded by suppression), a budget below the row quota (60/min, 5 min
 heartbeat floor), deleted-principal contradiction (rows are deleted), a free
-`reporter` string (closed enum plus SemVer), missing `refused` state (422/413 only; 409 ordering
-is dropped, never shown) and 401 behavior, report timing after the status
+`reporter` string (closed enum plus SemVer), missing `refused` state (422 only; 409 ordering
+is dropped and 413 is never tied to a row), the 24 h requeue cap while
+reporting, and 401 behavior, report timing after the status
 write, the org budget ceiling (about 1500 reporting CRs), unstated CRD impact (no CRD change), operator-newer vocabulary
 (skip report, never drop a condition), a threat-model misquote, and gaps in
 the validation plan (revoked credential, same-generation and future-skew
@@ -68,7 +69,7 @@ ordering).
 
 - The operator never holds a Hikyo credential; reports use the CR's own
   credential. Operator-wide reporter credentials are rejected.
-- Reporting sits after cursor persistence and can never alter conditions, the
+- Reporting sits after the status subresource write (after the cursor on success) and can never alter conditions, the
   Secret or the cursor. No finalizer.
 - The server stores only the closed vocabulary; any unknown `type`/`reason`
   refuses the whole report.
