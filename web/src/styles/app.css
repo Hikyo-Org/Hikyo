@@ -5237,7 +5237,7 @@ label.chk:has(input:disabled) {
    secondary button, left-aligned, with a quiet hint at its far edge. */
 .login__methods {
   display: grid;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
 .login__methods .login__method,
@@ -5251,9 +5251,23 @@ label.chk:has(input:disabled) {
   text-align: left;
 }
 
-/* "Last used": the badge names a fact about this browser, neutral tone. */
+/* "Last used": a filled accent tag riding the row's top edge, the one place
+   the accent fills a badge, so the returning person's row is found at a
+   glance. The rows are relatively positioned for it; the grid gap leaves
+   room for the half of the badge above the row. */
+.login__methods .login__method,
+.login__methods .login__brand {
+  position: relative;
+}
+
 .login__last-used {
-  margin-left: var(--space-2);
+  position: absolute;
+  top: 0;
+  right: var(--space-3);
+  transform: translateY(-50%);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .login__method-hint {
