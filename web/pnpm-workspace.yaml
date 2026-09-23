@@ -19,6 +19,15 @@ allowBuilds:
 # tree to the one version everything else already uses.
 overrides:
   playwright-core: 1.62.1
+  # @open-pencil/core's `calc` tool (dev-only design CLI/MCP) evaluates caller
+  # text with expr-eval, which is unmaintained with no patched release for its
+  # code execution and prototype pollution advisories. The fork keeps the same
+  # default export ({ Parser, Expression }) and carries the fixes.
+  expr-eval: npm:expr-eval-fork@3.0.3
+  # pptxgenjs (via @open-pencil/core) declares image-size ^1 but never loads it:
+  # its builds require('sizeof') instead. Every 1.x release carries the
+  # ICNS/JXL/HEIF infinite-loop advisories, so the major bump is inert.
+  image-size@<2.0.3: 2.0.4
 # pnpm 11 refuses versions younger than its default minimum release age, and the
 # lockfile is re-verified against that policy on every install, so a same-day
 # release has to be named here or `pnpm install --frozen-lockfile` fails in CI.
