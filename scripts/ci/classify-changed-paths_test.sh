@@ -176,7 +176,7 @@ if "$classifier" --unsupported >/dev/null 2>&1; then
 	exit 1
 fi
 
-printf 'changed-path classifier fixture: exact workflow job IDs and fail-closed plans passed\n'
+printf 'changed-path classifier fixture: exact plan keys and fail-closed plans passed\n'
 
 for floor_path in internal/crypto/password.go internal/admission/admission.go internal/service/publish.go internal/operator/reconciler.go internal/bench/floor_test.go internal/isolation/floor_bench_test.go docs/release/measurements/derate.json scripts/bench/floor.sh go.mod go.sum; do
 	expect_selected "$floor_path" floor-bench "$floor_path"

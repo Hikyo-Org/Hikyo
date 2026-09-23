@@ -23,7 +23,7 @@ require_text() {
 
 release_block=$(sed -n '/args: release --clean --skip=publish/,/uses: docker\/setup-buildx-action/p' "$release_workflow")
 release_image_block=$(sed -n '/name: Publish unsigned multi-arch image/,/name: Published image SBOM/p' "$release_workflow")
-snapshot_block=$(sed -n '/^  release-snapshot:/,/^  generated:/p' "$ci_workflow")
+snapshot_block=$(sed -n '/^  release-snapshot:/,/^  preflight:/p' "$ci_workflow")
 [ -n "$release_block" ] || fail 'release packaging block is missing'
 [ -n "$release_image_block" ] || fail 'release image block is missing'
 [ -n "$snapshot_block" ] || fail 'release snapshot job is missing'

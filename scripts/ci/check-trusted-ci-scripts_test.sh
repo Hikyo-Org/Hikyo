@@ -31,8 +31,6 @@ require_line "$workflow" "CI_JOB_REGISTRY=\"\$trusted_registry\" \"\$trusted_che
 require_line "$workflow" "git show \"\$BASE_SHA:scripts/ci/analysis-shards-go/main.go\" >\"\$trusted_planner\""
 # shellcheck disable=SC2016
 require_line "$workflow" 'isolation_shard=$(go run "$trusted_planner" isolation --root .'
-# shellcheck disable=SC2016
-require_line "$workflow" 'ISOLATION_SHARD_RESULT: ${{ needs.isolation_shard.result }}'
 # Core package enumeration moved into the scheduler so app cleanup does not
 # contend with other packages' PostgreSQL checkpoints. Keep workflow wiring
 # pinned here, and execute its coverage/order/failure refusal proof directly.
@@ -52,11 +50,6 @@ require_line "$workflow" "-fuzztime=100000x -timeout=2m"
 # Workflow shell variables below are literal fixture text.
 # shellcheck disable=SC2016
 require_line "$workflow" 'echo "$shellcheck_dir" >>"$GITHUB_PATH"'
-# GitHub expressions below are literal fixture text.
-# shellcheck disable=SC2016
-require_line "$workflow" 'FUZZ_SHARD_RESULT: ${{ needs.fuzz_shard.result }}'
-# shellcheck disable=SC2016
-require_line "$workflow" 'RACE_SHARD_RESULT: ${{ needs.race_shard.result }}'
 
 download_block=$(sed -n \
 	'/name: Download shard fuzz reproducers/,/name: Find merged fuzz reproducers/p' \
@@ -87,11 +80,19 @@ for gate in "$workflow_gate" "$controller_gate"; do
 		exit 1
 	fi
 done
-# Shard fan-in jobs aggregate ordinary failures too, so cancellation must skip
-# them without weakening their path-plan condition.
-for plan_job in test race fuzz; do
-	require_line "$workflow" "if: \${{ always() && !cancelled() && fromJSON(needs.changes.outputs.plan).$plan_job }}"
+# The aggregate gate requires every shard matrix directly (no fan-in jobs), and
+# merges shard fuzz reproducers only when a fuzz shard failed.
+for shard_job in test_core isolation_shard race_shard fuzz_shard; do
+	printf '%s\n' "$workflow_gate" | grep -Fx "      - $shard_job" >/dev/null || {
+		printf 'trusted CI scripts fixture failed: ci-required does not gate %s\n' "$shard_job" >&2
+		exit 1
+	}
 done
+printf '%s\n' "$workflow_gate" |
+	grep -Fx "        if: \${{ needs.fuzz_shard.result == 'failure' }}" >/dev/null || {
+	printf 'trusted CI scripts fixture failed: ci-required does not merge failed fuzz shard reproducers\n' >&2
+	exit 1
+}
 
 # The untrusted validation graph (ci.yml, ci-control.yml) holds NO issue/PR write
 # anywhere: executing attacker-influenced PR code must never reach a write token.

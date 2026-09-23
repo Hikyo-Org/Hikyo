@@ -54,20 +54,18 @@ all_success='{
 	"changes":{"result":"success"},
 	"client":{"result":"success"},
 	"compose-demo":{"result":"success"},
-	"dco":{"result":"success"},
 	"docs":{"result":"success"},
 	"floor-bench":{"result":"success"},
-	"freeze-guard":{"result":"success"},
-	"fuzz":{"result":"success"},
-	"generated":{"result":"success"},
+	"fuzz_shard":{"result":"success"},
 	"headline-guarantee":{"result":"success"},
+	"isolation_shard":{"result":"success"},
 	"k8s-e2e":{"result":"success"},
 	"lint":{"result":"success"},
-	"no-egress":{"result":"success"},
-	"race":{"result":"success"},
+	"preflight":{"result":"success"},
+	"race_shard":{"result":"success"},
 	"release-snapshot":{"result":"success"},
 	"supply-chain-checks":{"result":"success"},
-	"test":{"result":"success"},
+	"test_core":{"result":"success"},
 	"web":{"result":"success"},
 	"web-closure":{"result":"success"},
 	"web-go":{"result":"success"}
@@ -78,17 +76,15 @@ docs_success=$(printf '%s' "$all_success" | jq '
 	.client.result = "skipped" |
 	.["compose-demo"].result = "skipped" |
 	.["floor-bench"].result = "skipped" |
-	.["freeze-guard"].result = "skipped" |
-	.fuzz.result = "skipped" |
-	.generated.result = "skipped" |
+	.fuzz_shard.result = "skipped" |
 	.["headline-guarantee"].result = "skipped" |
+	.isolation_shard.result = "skipped" |
 	.["k8s-e2e"].result = "skipped" |
 	.lint.result = "skipped" |
-	.["no-egress"].result = "skipped" |
-	.race.result = "skipped" |
+	.race_shard.result = "skipped" |
 	.["release-snapshot"].result = "skipped" |
 	.["supply-chain-checks"].result = "skipped" |
-	.test.result = "skipped" |
+	.test_core.result = "skipped" |
 	.web.result = "skipped" |
 	.["web-closure"].result = "skipped" |
 	.["web-go"].result = "skipped"
@@ -97,7 +93,6 @@ docs_success=$(printf '%s' "$all_success" | jq '
 app_plan=$(printf '%s' "$all_plan" | jq 'map_values(false) | .["web-go"] = true')
 app_success=$(printf '%s' "$docs_success" | jq '
 	.docs.result = "skipped" |
-	.["no-egress"].result = "success" |
 	.["web-go"].result = "success"
 ')
 
@@ -111,10 +106,9 @@ for result in failure cancelled skipped; do
 		"$(printf '%s' "$all_success" | jq --arg result "$result" '.client.result = $result')" \
 		"$all_plan"
 done
-expect_accept 'main push with skipped DCO' push \
-	"$(printf '%s' "$all_success" | jq '.dco.result = "skipped"')" "$all_plan"
+expect_accept 'main push' push "$all_success" "$all_plan"
 
-for job in client compose-demo freeze-guard fuzz no-egress race; do
+for job in client compose-demo fuzz_shard isolation_shard preflight race_shard test_core; do
 	for result in failure cancelled skipped; do
 		expect_reject "selected $job with $result result" pull_request \
 			"$(printf '%s' "$all_success" | jq --arg job "$job" --arg result "$result" '.[ $job ].result = $result')" \
@@ -128,12 +122,11 @@ expect_reject 'unselected web job failed instead of skipping' pull_request \
 	"$(printf '%s' "$docs_success" | jq '.web.result = "failure"')" "$docs_plan"
 expect_reject 'non-web app pull request ran browser matrix' pull_request \
 	"$(printf '%s' "$app_success" | jq '.web.result = "success"')" "$app_plan"
-expect_reject 'main push used a selective plan' push \
-	"$(printf '%s' "$docs_success" | jq '.dco.result = "skipped"')" "$docs_plan"
+expect_reject 'main push used a selective plan' push "$docs_success" "$docs_plan"
 expect_reject 'classifier failed' pull_request \
 	"$(printf '%s' "$all_success" | jq '.changes.result = "failure"')" "$all_plan"
-expect_reject 'failed DCO' pull_request \
-	"$(printf '%s' "$all_success" | jq '.dco.result = "failure"')" "$all_plan"
+expect_reject 'main push with skipped preflight' push \
+	"$(printf '%s' "$all_success" | jq '.preflight.result = "skipped"')" "$all_plan"
 expect_reject 'unsupported event' workflow_dispatch "$all_success" "$all_plan"
 expect_reject 'empty job set' pull_request '{}' "$all_plan"
 expect_reject 'missing required job' pull_request \

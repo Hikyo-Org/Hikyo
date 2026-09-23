@@ -36,6 +36,9 @@ type workflowJob struct {
 	Needs    yaml.Node        `yaml:"needs"`
 	If       string           `yaml:"if"`
 	Strategy workflowStrategy `yaml:"strategy"`
+	Steps    []struct {
+		If string `yaml:"if"`
+	} `yaml:"steps"`
 }
 
 type workflowStrategy struct {
@@ -130,6 +133,48 @@ func TestCIJobRegistryRejectsWorkflowDrift(t *testing.T) {
 			},
 			workflow: baseWorkflow,
 		},
+		"plan key gating no required check": {
+			mutateRegistry: func(input registry) registry {
+				input.Jobs["test"] = jobRule{RequiredGate: "indirect", PlanJobs: []string{"test"}}
+				return input
+			},
+			workflow: []byte(`jobs:
+  changes:
+    runs-on: ubuntu-latest
+  test:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).test }}
+    runs-on: ubuntu-latest
+  ci-required:
+    if: always() && !cancelled()
+    needs: [changes]
+    runs-on: ubuntu-latest
+`),
+		},
+		"step references unknown plan key": {
+			workflow: []byte(`jobs:
+  changes:
+    runs-on: ubuntu-latest
+  test:
+    needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).test }}
+    runs-on: ubuntu-latest
+  checks:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - if: ${{ fromJSON(needs.changes.outputs.plan).tset }}
+        run: "true"
+  ci-required:
+    if: always() && !cancelled()
+    needs: [changes, checks, test]
+    runs-on: ubuntu-latest
+`),
+			mutateRegistry: func(input registry) registry {
+				input.Jobs["checks"] = jobRule{RequiredGate: "always"}
+				return input
+			},
+		},
 		"aggregate without cancellation guard": {
 			workflow: []byte(`jobs:
   changes:
@@ -183,20 +228,16 @@ func validateRegistry(gotRegistry registry, workflowData []byte) error {
 		return errors.New("registry full path class is empty")
 	}
 	selectable := make(map[string]bool, len(fullJobs))
-	for class, jobs := range gotRegistry.PathClasses {
-		if len(jobs) == 0 {
+	for _, key := range fullJobs {
+		selectable[key] = true
+	}
+	for class, keys := range gotRegistry.PathClasses {
+		if len(keys) == 0 {
 			return fmt.Errorf("path class %q is empty", class)
 		}
-		for _, job := range jobs {
-			rule, exists := gotRegistry.Jobs[job]
-			if !exists {
-				return fmt.Errorf("path class %q references unknown job %q", class, job)
-			}
-			if rule.RequiredGate != "planned" || !reflect.DeepEqual(rule.PlanJobs, []string{job}) {
-				return fmt.Errorf("path class %q job %q is not directly planned", class, job)
-			}
-			if class == "full" {
-				selectable[job] = true
+		for _, key := range keys {
+			if !selectable[key] {
+				return fmt.Errorf("path class %q selects plan key %q outside the full plan", class, key)
 			}
 		}
 	}
@@ -256,13 +297,40 @@ func validateRegistry(gotRegistry registry, workflowData []byte) error {
 		}
 	}
 
+	// Plan keys name validation domains, not jobs. Each must select a check
+	// ci-required gates, as a planned job or a step of a directly required job,
+	// and a step condition cannot name an unknown key: fromJSON would yield
+	// null and skip that check silently.
+	gated := make(map[string]bool, len(fullJobs))
+	for job, rule := range gotRegistry.Jobs {
+		direct := directGate(rule.RequiredGate)
+		if direct {
+			for _, key := range workflowPlanJobs(gotWorkflow.Jobs[job].If) {
+				gated[key] = true
+			}
+		}
+		for _, step := range gotWorkflow.Jobs[job].Steps {
+			for _, key := range workflowPlanJobs(step.If) {
+				if !selectable[key] {
+					return fmt.Errorf("job %q step references non-selectable plan key %q", job, key)
+				}
+				gated[key] = gated[key] || direct
+			}
+		}
+	}
+	for _, key := range fullJobs {
+		if !gated[key] {
+			return fmt.Errorf("plan key %q selects no check that ci-required gates", key)
+		}
+	}
+
 	directNeeds, err := workflowNeeds(gotWorkflow.Jobs["ci-required"].Needs)
 	if err != nil {
 		return err
 	}
 	wantNeeds := make([]string, 0, len(gotRegistry.Jobs))
 	for job, rule := range gotRegistry.Jobs {
-		if rule.RequiredGate == "always" || rule.RequiredGate == "pull-request" || rule.RequiredGate == "planned" {
+		if directGate(rule.RequiredGate) {
 			wantNeeds = append(wantNeeds, job)
 		}
 	}
@@ -287,6 +355,10 @@ func validateRegistry(gotRegistry registry, workflowData []byte) error {
 	}
 
 	return nil
+}
+
+func directGate(gate string) bool {
+	return gate == "always" || gate == "pull-request" || gate == "planned"
 }
 
 func workflowPlanJobs(condition string) []string {
