@@ -174,9 +174,14 @@ under `login.spec.ts`. The instance org list shows an origin badge
   repeatedly (`shell.spec.ts` sign-out, the sign-up door) no longer draw the
   shared administrator's TOTP ledger, which every project draws at once. They
   create throwaway accounts (`e2e/fixtures/accounts.ts`: `enrolledAccount`,
-  `TotpLedger`) whose ledger presents the previous, current and next step,
-  never waiting; a flow needing a fourth code takes another account (the
-  sign-up door closes its policy with a second operator's proof).
+  `TotpLedger`). A fresh enrolment treats the step before its creation as
+  spent, so a new account presents two codes per step without waiting: the
+  sign-out flows need exactly two (enrol, sign-in) and never wait. An
+  instance operator needs three (enrol, step-up, proof), so the sign-up door
+  enrols its opener and its closer up front; only the opener's proof may wait
+  for one step boundary, and the test budget is the default plus one step
+  (`TOTP_STEP_MS`), not a padded constant. Both ran `--repeat-each=3` on
+  desktop and mobile.
 - **Entra authorities.** The `common` / `organizations` documents publish the
   literal `{tenantid}` placeholder; a domain-name authority's document carries
   the tenant GUID. Both refusals name the document's issuer (fixtures for
