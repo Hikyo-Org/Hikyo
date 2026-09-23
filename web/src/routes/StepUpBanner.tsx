@@ -5,6 +5,7 @@ import { usePasskeys, useTotpStatus } from '../api/account.ts';
 import type { WhoAmI } from '../api/session.ts';
 import {
   hasSecondFactor,
+  passkeyFailureText,
   passkeysAvailable,
   stepUpFailureText,
   useStepUpPasskey,
@@ -47,7 +48,7 @@ export function StepUpBanner({ session }: { session: WhoAmI }) {
   const failure = stepUpTotp.isError
     ? stepUpFailureText(stepUpTotp.error)
     : stepUpPasskey.isError
-      ? stepUpFailureText(stepUpPasskey.error)
+      ? passkeyFailureText(stepUpPasskey.error)
       : null;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {

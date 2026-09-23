@@ -1,6 +1,7 @@
 import { expect } from '@playwright/test';
-import { zLoginChallenge, zLoginResult, zWhoAmI } from '@hikyo/zod';
+import { zLoginChallenge, zLoginResult, zPasskeyList, zWhoAmI } from '@hikyo/zod';
 
+import { browserApi } from '../fixtures/api.ts';
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
 import {
   ADMIN,
@@ -295,6 +296,12 @@ test.describe('account and security', () => {
 
       const added = rows.last();
       await expect(added).toContainText('added');
+      // The SPA's enrolment must carry the credProps residency report back:
+      // without it the server records the passkey non-discoverable and it can
+      // never sign in on its own.
+      const { passkeys } = await browserApi(page, 'GET', '/api/v1/auth/webauthn/credentials', zPasskeyList);
+      expect(passkeys).toHaveLength(before + 1);
+      expect(passkeys.every((passkey) => passkey.discoverable)).toBe(true);
       await added.getByRole('button', { name: /Remove passkey/ }).click();
       const removeProof = page.getByRole('dialog');
       await removeProof.getByLabel('Authenticator code').fill(await nextTotpCode());

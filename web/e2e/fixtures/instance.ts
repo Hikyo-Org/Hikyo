@@ -1811,6 +1811,10 @@ const sessionScript = async ({
             userVerification: 'required',
             residentKey: 'required',
           },
+          // Forwarded, not asserted here: the server must ASK for credProps,
+          // or the shared passkey is recorded non-discoverable and the passkey
+          // sign-in flow fails, which is the point.
+          extensions: { credProps: record(create['extensions'])['credProps'] === true },
         },
       });
       if (!(credential instanceof PublicKeyCredential)) {
@@ -1828,6 +1832,7 @@ const sessionScript = async ({
           clientDataJSON: b64u(attestation.clientDataJSON),
           attestationObject: b64u(attestation.attestationObject),
         },
+        clientExtensionResults: credential.getClientExtensionResults(),
       });
     }
 

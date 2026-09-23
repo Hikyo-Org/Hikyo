@@ -55,6 +55,23 @@ export function stepUpFailureText(error: unknown): string {
 }
 
 /**
+ * passkeyFailureText is stepUpFailureText for a passkey ceremony, whose 400 and
+ * 401 mean something other than a code: the server's refusal stays uniform, but
+ * it must not send the human looking for an authenticator code.
+ */
+export function passkeyFailureText(error: unknown): string {
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 400:
+        return 'No passkey can be used here: passkeys are not configured on this instance, or the account holds none.';
+      case 401:
+        return 'That passkey was not accepted. Sign in another way, then remove and add it again under Account & security.';
+    }
+  }
+  return stepUpFailureText(error);
+}
+
+/**
  * useStepUpTotp elevates the acting browser session with an authenticator
  * code. The server rotates the session token onto the cookie; the body is
  * parsed for contract conformance and every cached answer is re-read, because
