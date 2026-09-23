@@ -8,13 +8,15 @@ import {
   expectStatusIsTextAndAria,
   measureSurfaceLuminance,
 } from '../fixtures/assertions.ts';
+import { zAuthMethods, zRegistrationPolicy } from '@hikyo/zod';
 import { z } from 'zod';
 
-import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
+import { browserApi, fixtureApiCall, fixtureBearer } from '../fixtures/api.ts';
 import {
   ADMIN,
   BASE_URL,
   OIDC_PROVIDER,
+  WEBUI_OIDC,
   nextTotpCode,
   passEnrolmentGate,
   readSeed,
@@ -232,27 +234,63 @@ test.describe('login', () => {
   });
 
   // An inactive registration policy (#606, #587 d3): the public page says
-  // only "Sign-up is paused." and nothing about why. The inactive state is
-  // substituted on the public discovery read (the real causes, a lost
-  // authority or a missing mailer, are the Members panel's and the service
-  // suite's); with registration closed there is no line at all.
-  test('says only "Sign-up is paused." while registration is inactive', async ({ page }) => {
+  // only "Sign-up is paused." and nothing about why. Real state: an instance
+  // policy is opened on a provider seeded for the purpose, then the provider
+  // is disabled, which makes the policy inactive (a failing precondition).
+  // With registration closed there is no line at all.
+  test('says only "Sign-up is paused." while registration is inactive', async ({ page }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const provider = { slug: 'e2e-reg-paused', displayName: 'Registration Paused' };
+    const policyPath = '/api/v1/instance/registration-policy';
+    const providerPath = `/api/v1/instance/oidc-providers/${provider.slug}`;
+    const providerBody = (enabled: boolean) => ({
+      display_name: provider.displayName,
+      issuer: WEBUI_OIDC.issuer,
+      client_id: 'e2e-reg-client',
+      client_secret: 'e2e-reg-secret',
+      scopes: 'openid email',
+      enabled,
+    });
+    const stepped = await fixtureApiCall(
+      await fixtureBearer('the registration fixture'),
+      'POST',
+      '/api/v1/auth/totp/step-up',
+      z.object({ session_token: z.string() }),
+      { code: await nextTotpCode() },
+    );
+    const admin = stepped.session_token;
+    const methods = async () => {
+      const response = await fetch(`${BASE_URL}/api/v1/auth/methods`);
+      return zAuthMethods.parse(await response.json());
+    };
+
     await page.goto('/login');
     await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
     await expect(page.getByText('Sign-up is paused.')).toHaveCount(0);
-
-    await page.route((url) => url.pathname === '/api/v1/auth/methods', async (route) => {
-      const real = z.record(z.string(), z.unknown()).parse(await (await route.fetch()).json());
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ...real, signup_open: false, signup_paused: true, signup_methods: [] }),
+    try {
+      await fixtureApiCall(admin, 'PUT', providerPath, z.unknown(), providerBody(true));
+      await fixtureApiCall(admin, 'PUT', policyPath, zRegistrationPolicy, {
+        external: [{ provider: { kind: 'oidc', slug: provider.slug } }],
+        landing: { kind: 'none' },
+        proof: await nextTotpCode(),
       });
-    });
-    await page.reload();
-    const paused = page.getByText('Sign-up is paused.', { exact: true });
-    await expect(paused).toBeVisible();
-    await expect(page.locator('main')).not.toContainText(/authority-lost|no longer holds|mailer|precondition|inactive/i);
+      expect((await methods()).signup_open).toBe(true);
+      await fixtureApiCall(admin, 'PUT', providerPath, z.unknown(), providerBody(false));
+      const door = await methods();
+      expect(door.signup_open).toBe(false);
+      expect(door.signup_paused).toBe(true);
+
+      await page.reload();
+      await expect(page.getByText('Sign-up is paused.', { exact: true })).toBeVisible();
+      await expect(page.locator('main')).not.toContainText(/authority-lost|no longer holds|mailer|precondition|inactive|disabled/i);
+    } finally {
+      await fixtureApiCall(admin, 'DELETE', policyPath, z.unknown(), { proof: await nextTotpCode() }).catch((error: unknown) => {
+        if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
+      });
+      await fixtureApiCall(admin, 'DELETE', providerPath, z.unknown()).catch((error: unknown) => {
+        if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
+      });
+    }
   });
 
   test('redirects an anonymous authenticated-route deep link to login', async ({ page }) => {

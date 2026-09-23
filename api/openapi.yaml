@@ -2089,6 +2089,7 @@ paths:
       x-hikyo-operation: registration-policy.put-instance
       x-hikyo-formula: [manage-members@instance]
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: account-security
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -2133,6 +2134,7 @@ paths:
       x-hikyo-operation: registration-policy.delete-instance
       x-hikyo-formula: [manage-members@instance]
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: account-security
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -2426,6 +2428,7 @@ paths:
       x-hikyo-operation: registration-policy.put-org
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: account-security
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -2470,6 +2473,7 @@ paths:
       x-hikyo-operation: registration-policy.delete-org
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: account-security
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -16721,23 +16725,21 @@ components:
         signup_methods:
           type: array
           description: |
-            The methods the open door admits, empty unless `signup_open`.
-            Federated entries carry `{kind, slug}`; the local entry is
-            `{kind: local}`.
+            The methods the open door admits, empty unless `signup_open`
+            (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
           items:
             $ref: "#/components/schemas/SignupMethod"
 
     SignupMethod:
-      type: object
-      additionalProperties: false
-      required: [kind]
-      properties:
-        kind:
-          type: string
-          x-extensible-enum: [oidc, oauth2, local]
-        slug:
-          type: string
-          description: The provider slug; absent for `local`.
+      description: A federated provider by `{kind, slug}`, or the string `local` for the email + password entry.
+      oneOf:
+        - $ref: "#/components/schemas/ProviderRef"
+        - $ref: "#/components/schemas/LocalSignupMethod"
+
+    LocalSignupMethod:
+      type: string
+      description: The email + password sign-up entry.
+      enum: [local]
 
     ProviderRef:
       type: object
@@ -16809,7 +16811,7 @@ components:
     RegistrationPolicyPutRequest:
       type: object
       additionalProperties: false
-      required: [external, landing]
+      required: [external, landing, proof]
       properties:
         external:
           type: array
@@ -16830,6 +16832,7 @@ components:
     RegistrationPolicyDeleteRequest:
       type: object
       additionalProperties: false
+      required: [proof]
       properties:
         proof:
           type: string

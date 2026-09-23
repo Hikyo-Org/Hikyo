@@ -473,6 +473,8 @@ func newTestServer(t *testing.T, auth server.AuthService, orgs server.OrgService
 	t.Helper()
 	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
 		Auth: auth, Orgs: orgs, Providers: stubProviders{}, Version: "test",
+		// Every door closed: the public discovery read always asks for one.
+		Registration: stubRegistration{},
 		// The hierarchy services default to the uniform nonexistent answer, so a
 		// contract test that does not care about them still exercises the real
 		// router and the real response validation rather than nil-panicking.
@@ -1571,27 +1573,27 @@ type stubRegistration struct {
 	stubHierarchy
 	door    service.SignupDoor
 	putErr  error
-	doorOrg *domain.OrgID
+	doorOrg *service.RegistrationScope
 }
 
-func (s stubRegistration) Get(context.Context, service.Actor, domain.OrgID) (*service.RegistrationPolicyView, error) {
+func (s stubRegistration) Get(context.Context, service.Actor, service.RegistrationScope) (*service.RegistrationPolicyView, error) {
 	return nil, s.outcome()
 }
 
-func (s stubRegistration) Put(context.Context, service.Actor, domain.OrgID, service.RegistrationPolicyInput, string) (service.RegistrationPolicyView, error) {
+func (s stubRegistration) Put(context.Context, service.Actor, service.RegistrationScope, service.RegistrationPolicyInput, string) (service.RegistrationPolicyView, error) {
 	if s.putErr != nil {
 		return service.RegistrationPolicyView{}, s.putErr
 	}
 	return service.RegistrationPolicyView{}, s.outcome()
 }
 
-func (s stubRegistration) Delete(context.Context, service.Actor, domain.OrgID, string) error {
+func (s stubRegistration) Delete(context.Context, service.Actor, service.RegistrationScope, string) error {
 	return s.outcome()
 }
 
-func (s stubRegistration) SignupDoor(_ context.Context, org domain.OrgID) (service.SignupDoor, error) {
+func (s stubRegistration) SignupDoor(_ context.Context, scope service.RegistrationScope) (service.SignupDoor, error) {
 	if s.doorOrg != nil {
-		*s.doorOrg = org
+		*s.doorOrg = scope
 	}
 	return s.door, nil
 }
@@ -1629,25 +1631,26 @@ func TestRegistrationPolicyPreconditionIsNamedOnTheWire(t *testing.T) {
 // `/auth/methods?org=<id>` renders that org's door (#606): the org reaches
 // the service unchanged and the door fields are on the contract.
 func TestAuthMethodsRendersTheAddressedSignupDoor(t *testing.T) {
-	var seen domain.OrgID
+	var seen service.RegistrationScope
 	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, Version: "test",
 		Registration: stubRegistration{doorOrg: &seen, door: service.SignupDoor{Open: true, Methods: []service.SignupMethod{
-			{Kind: "oidc", Slug: "corp"}, {Kind: "local"},
+			{Kind: service.SignupMethodOIDC, Slug: "corp"}, {Kind: service.SignupMethodLocal},
 		}}},
 	}, nil))
 	t.Cleanup(srv.Close)
 	resp, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/methods?org="+testOrgID, "", nil)
-	if resp.StatusCode != http.StatusOK || seen != testOrgID {
-		t.Fatalf("auth methods ?org answered %d for org %q", resp.StatusCode, seen)
+	if resp.StatusCode != http.StatusOK || seen.Instance() || seen.Org() != testOrgID {
+		t.Fatalf("auth methods ?org answered %d for scope %+v", resp.StatusCode, seen)
 	}
-	var methods apigen.AuthMethods
-	if err := json.Unmarshal(payload, &methods); err != nil {
-		t.Fatal(err)
-	}
-	if !methods.SignupOpen || methods.SignupPaused || len(methods.SignupMethods) != 2 ||
-		methods.SignupMethods[0].Slug == nil || *methods.SignupMethods[0].Slug != "corp" || methods.SignupMethods[1].Slug != nil {
+	// The spelling is `[{kind, slug} | "local"]` (api-cli-spellings section 8).
+	if !strings.Contains(string(payload), `"signup_methods":[{"kind":"oidc","slug":"corp"},"local"]`) ||
+		!strings.Contains(string(payload), `"signup_open":true`) || !strings.Contains(string(payload), `"signup_paused":false`) {
 		t.Fatalf("door = %s", payload)
+	}
+	// Without ?org= the instance door is asked.
+	if resp, _ := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/methods", "", nil); resp.StatusCode != http.StatusOK || !seen.Instance() {
+		t.Fatalf("auth methods without ?org answered %d for scope %+v", resp.StatusCode, seen)
 	}
 }
 

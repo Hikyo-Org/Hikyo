@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -35,6 +36,25 @@ func seedRegistrationProvider(t *testing.T, db *store.DB, slug, scopes string, e
 		` enabled, dek_version, row_version, created_at, updated_at) VALUES `+
 		`('idp_`+slug+`', '`+slug+`', 'Provider `+slug+`', 'oidc', 'https://`+slug+`.example.test', 'cid', `+secret+`, '`+scopes+`', `+
 		`'https://hikyo.example.test/cb', `+on+`, 1, 1, `+ts+`, `+ts+`)`)
+}
+
+var (
+	orgAReg     = service.OrgRegistrationScope(orgA)
+	instanceReg = service.InstanceRegistrationScope()
+)
+
+// newRegistration builds the service the way the app does, with a
+// mailer predicate the test controls.
+func newRegistration(t *testing.T, c service.RegistrationConfig) *service.Registration {
+	t.Helper()
+	if c.MailConfigured == nil {
+		c.MailConfigured = func(context.Context) (bool, error) { return false, nil }
+	}
+	reg, err := service.NewRegistration(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reg
 }
 
 func oidcEntry(slug string) service.RegistrationExternalEntry {
@@ -68,65 +88,71 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	seedRegistrationProvider(t, db, "noemail", "openid profile", true)
 	seedRegistrationProvider(t, db, "off", "openid email", false)
 	mailer := false
-	reg := &service.Registration{DB: db, PublicOriginExplicit: true,
-		MailConfigured: func(context.Context) bool { return mailer }}
+	var mailFault error
+	reg := newRegistration(t, service.RegistrationConfig{DB: db, PublicOriginExplicit: true,
+		MailConfigured: func(context.Context) (bool, error) { return mailer, mailFault }})
 	admin := service.LocalPrincipal(orgAdmin)
 	operator := service.LocalPrincipal(root)
 
 	// Closed until a policy exists; an unknown org is the same closed door.
-	if got, err := reg.Get(ctx, admin, orgA); err != nil || got != nil {
+	if got, err := reg.Get(ctx, admin, orgAReg); err != nil || got != nil {
 		t.Fatalf("org policy before any write = %+v, %v; want none", got, err)
 	}
-	for _, org := range []domain.OrgID{orgA, "org_nope", ""} {
+	for _, org := range []service.RegistrationScope{orgAReg, service.OrgRegistrationScope("org_nope"), instanceReg} {
 		door, err := reg.SignupDoor(ctx, org)
 		if err != nil || door.Open || door.Paused || len(door.Methods) != 0 {
-			t.Fatalf("door %q before any policy = %+v, %v; want closed", org, door, err)
+			t.Fatalf("door %+v before any policy = %+v, %v; want closed", org, door, err)
 		}
 	}
 
 	// Write-time preconditions refuse 400 by name, the provider row named.
 	cases := []struct {
-		name string
-		svc  *service.Registration
-		org  domain.OrgID
-		in   service.RegistrationPolicyInput
+		name  string
+		svc   *service.Registration
+		scope service.RegistrationScope
+		in    service.RegistrationPolicyInput
 	}{
-		{service.PreconditionNoPublicOrigin, &service.Registration{DB: db}, orgA,
+		{string(service.PreconditionNoPublicOrigin), newRegistration(t, service.RegistrationConfig{DB: db}), orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: orgTemplateLanding()}},
-		{service.PreconditionMailerUnconfigured, reg, orgA,
+		{string(service.PreconditionMailerUnconfigured), reg, orgAReg,
 			service.RegistrationPolicyInput{Local: &service.RegistrationLocalEntry{}, Landing: orgTemplateLanding()}},
-		{service.PreconditionProviderDisabled + ": oidc:off", reg, orgA,
+		{string(service.PreconditionProviderDisabled) + ": oidc:off", reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("off")}, Landing: orgTemplateLanding()}},
-		{service.PreconditionProviderMissingEmail + ": oidc:noemail", reg, orgA,
+		{string(service.PreconditionProviderMissingEmail) + ": oidc:noemail", reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("noemail")}, Landing: orgTemplateLanding()}},
-		{service.PreconditionTemplateNotOrgApplicable, reg, orgA,
+		{string(service.PreconditionTemplateNotOrgApplicable), reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")},
 				Landing: service.RegistrationLanding{Kind: service.LandingOrgTemplate, Template: domain.TemplateOperator}}},
-		{service.PreconditionCapZero, reg, "",
+		{string(service.PreconditionCapZero), reg, instanceReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")},
 				Landing: service.RegistrationLanding{Kind: service.LandingFreshOrg}}},
-		{"external[0].claim", reg, orgA,
+		{"external[0].claim", reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{{
 				Provider: domain.ProviderRef{Kind: domain.ProviderOIDC, Slug: "corp"}, Claim: "email", Values: []string{"a@b.test"}}},
 				Landing: orgTemplateLanding()}},
-		{"external[0]", reg, orgA,
+		{"external[0]", reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{{
 				Provider: domain.ProviderRef{Kind: domain.ProviderOIDC, Slug: "corp"}, Claim: "hd"}},
 				Landing: orgTemplateLanding()}},
-		{"external[0].provider.kind", reg, orgA,
+		{"external[0].provider.kind", reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{{
 				Provider: domain.ProviderRef{Kind: domain.ProviderSAML, Slug: "corp"}}}, Landing: orgTemplateLanding()}},
-		{"external[0].provider", reg, orgA,
+		{"external[0].provider", reg, orgAReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("missing")}, Landing: orgTemplateLanding()}},
-		{"landing.kind", reg, "",
+		{"landing.kind", reg, instanceReg,
 			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: orgTemplateLanding()}},
+		// oauth2 has no provider table until #609: refused by name, not as
+		// an unknown row.
+		{string(service.PreconditionProviderKindUnsupported) + ": oauth2:github", reg, orgAReg,
+			service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{{
+				Provider: domain.ProviderRef{Kind: domain.ProviderOAuth2, Slug: "github"}}}, Landing: orgTemplateLanding()}},
 	}
 	for _, c := range cases {
 		actor := admin
-		if c.org == "" {
+		if c.scope.Instance() {
 			actor = operator
 		}
-		_, err := c.svc.Put(ctx, actor, c.org, c.in, "")
+		_, err := c.svc.Put(ctx, actor, c.scope, c.in, "")
 		wantRefusal(t, err, c.name)
 	}
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM registration_policies"); n != 0 {
@@ -134,7 +160,7 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	}
 
 	// An org policy: orgAdmin becomes the authority; tenant trail.
-	orgPolicy, err := reg.Put(ctx, admin, orgA, service.RegistrationPolicyInput{
+	orgPolicy, err := reg.Put(ctx, admin, orgAReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{{
 			Provider: domain.ProviderRef{Kind: domain.ProviderOIDC, Slug: "corp"}, Claim: "hd", Values: []string{"acme.example"}}},
 		Landing: orgTemplateLanding(),
@@ -150,16 +176,16 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 		"AND payload LIKE '%\"authority_principal_id\":\"usr_orgadmin\"%'"); n != 1 {
 		t.Errorf("registration.policy_created on org_a's trail = %d, want 1", n)
 	}
-	door, err := reg.SignupDoor(ctx, orgA)
+	door, err := reg.SignupDoor(ctx, orgAReg)
 	if err != nil || !door.Open || door.Paused || len(door.Methods) != 1 || door.Methods[0] != (service.SignupMethod{Kind: "oidc", Slug: "corp"}) {
 		t.Fatalf("org door = %+v, %v; want open with oidc:corp", door, err)
 	}
-	if door, _ := reg.SignupDoor(ctx, ""); door.Open || door.Paused {
+	if door, err := reg.SignupDoor(ctx, instanceReg); err != nil || door.Open || door.Paused {
 		t.Fatalf("the org policy opened the instance door: %+v", door)
 	}
 
 	// Any edit reassigns authority to the editor: root edits org_a's policy.
-	edited, err := reg.Put(ctx, operator, orgA, service.RegistrationPolicyInput{
+	edited, err := reg.Put(ctx, operator, orgAReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: orgTemplateLanding(),
 	}, "")
 	if err != nil || edited.AuthorityPrincipalID != root || edited.ID != orgPolicy.ID {
@@ -171,23 +197,23 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	}
 	// Back to orgAdmin, then revoke orgAdmin's manage-members: the next read
 	// is inactive authority-lost and the door pauses (cause off the page).
-	if _, err := reg.Put(ctx, admin, orgA, service.RegistrationPolicyInput{
+	if _, err := reg.Put(ctx, admin, orgAReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: orgTemplateLanding(),
 	}, ""); err != nil {
 		t.Fatal(err)
 	}
 	execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id = 'g_oa_mm'")
 	execRaw(t, db, "DELETE FROM grants WHERE id = 'g_oa_mm'")
-	lost, err := reg.Get(ctx, operator, orgA)
+	lost, err := reg.Get(ctx, operator, orgAReg)
 	if err != nil || lost == nil || lost.Active || lost.InactiveCause != service.InactiveAuthorityLost {
 		t.Fatalf("after revoking the authority's manage-members = %+v, %v; want inactive authority-lost", lost, err)
 	}
-	door, err = reg.SignupDoor(ctx, orgA)
+	door, err = reg.SignupDoor(ctx, orgAReg)
 	if err != nil || door.Open || !door.Paused || len(door.Methods) != 0 {
 		t.Fatalf("door with lost authority = %+v, %v; want paused, no methods", door, err)
 	}
 	// Re-save as authority: the operator now holds it and the policy lives.
-	resaved, err := reg.Put(ctx, operator, orgA, service.RegistrationPolicyInput{
+	resaved, err := reg.Put(ctx, operator, orgAReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: orgTemplateLanding(),
 	}, "")
 	if err != nil || !resaved.Active || resaved.AuthorityPrincipalID != root {
@@ -195,21 +221,21 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	}
 	// A provider disabled after the write is a use-time precondition.
 	execRaw(t, db, "UPDATE oidc_providers SET enabled = 0 WHERE slug = 'corp'")
-	pre, err := reg.Get(ctx, operator, orgA)
+	pre, err := reg.Get(ctx, operator, orgAReg)
 	if err != nil || pre.Active || pre.InactiveCause != service.InactivePrecondition ||
-		pre.InactivePrecondition != service.PreconditionProviderDisabled+": oidc:corp" {
+		pre.InactivePrecondition != string(service.PreconditionProviderDisabled)+": oidc:corp" {
 		t.Fatalf("after disabling the provider = %+v, %v; want inactive precondition provider-disabled", pre, err)
 	}
 	execRaw(t, db, "UPDATE oidc_providers SET enabled = 1 WHERE slug = 'corp'")
 	// An org-scope entry names only instance-enabled providers: the same
 	// refusal applies at org scope as at instance scope.
-	_, err = reg.Put(ctx, operator, orgA, service.RegistrationPolicyInput{
+	_, err = reg.Put(ctx, operator, orgAReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("off")}, Landing: orgTemplateLanding()}, "")
-	wantRefusal(t, err, service.PreconditionProviderDisabled+": oidc:off")
+	wantRefusal(t, err, string(service.PreconditionProviderDisabled)+": oidc:off")
 
 	// Instance policy, fresh-org: `n / cap` counts live orgs it minted.
 	mailer = true
-	inst, err := reg.Put(ctx, operator, "", service.RegistrationPolicyInput{
+	inst, err := reg.Put(ctx, operator, instanceReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("corp")},
 		Local:    &service.RegistrationLocalEntry{Domains: []string{"Acme.Example"}},
 		Landing:  service.RegistrationLanding{Kind: service.LandingFreshOrg, Cap: 3},
@@ -222,22 +248,40 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 		t.Errorf("registration.policy_created on the instance trail = %d, want 1", n)
 	}
 	execRaw(t, db, "UPDATE orgs SET origin = 'registration', registration_policy_id = '"+inst.ID+"' WHERE id = 'org_b'")
-	counted, err := reg.Get(ctx, operator, "")
+	counted, err := reg.Get(ctx, operator, instanceReg)
 	if err != nil || *counted.FreshOrgCount != 1 {
 		t.Fatalf("n / cap after one minted org = %+v, %v", counted, err)
 	}
-	door, err = reg.SignupDoor(ctx, "")
+	door, err = reg.SignupDoor(ctx, instanceReg)
 	if err != nil || !door.Open || len(door.Methods) != 2 || door.Methods[1].Kind != "local" {
 		t.Fatalf("instance door = %+v, %v; want oidc:corp + local", door, err)
 	}
 	// The mailer going away pauses a policy with a local entry.
 	mailer = false
-	if got, _ := reg.Get(ctx, operator, ""); got.Active || got.InactivePrecondition != service.PreconditionMailerUnconfigured {
+	if got, _ := reg.Get(ctx, operator, instanceReg); got.Active || got.InactivePrecondition != string(service.PreconditionMailerUnconfigured) {
 		t.Fatalf("instance policy without a mailer = %+v; want inactive mailer-unconfigured", got)
 	}
 	mailer = true
+	// A mailer predicate that FAILS is a fault on every path, never a
+	// silent "unconfigured": the write, the read and the public door all
+	// surface it.
+	mailFault = errors.New("runtime configuration read failed")
+	if _, err := reg.Put(ctx, operator, instanceReg, service.RegistrationPolicyInput{
+		External: []service.RegistrationExternalEntry{oidcEntry("corp")},
+		Local:    &service.RegistrationLocalEntry{},
+		Landing:  service.RegistrationLanding{Kind: service.LandingFreshOrg, Cap: 3},
+	}, ""); !errors.Is(err, mailFault) {
+		t.Fatalf("put with a failing mailer predicate = %v, want the fault", err)
+	}
+	if _, err := reg.Get(ctx, operator, instanceReg); !errors.Is(err, mailFault) {
+		t.Fatalf("read with a failing mailer predicate = %v, want the fault", err)
+	}
+	if _, err := reg.SignupDoor(ctx, instanceReg); !errors.Is(err, mailFault) {
+		t.Fatalf("door with a failing mailer predicate = %v, want the fault", err)
+	}
+	mailFault = nil
 	// An editor without org.create cannot delegate fresh orgs.
-	if _, err := reg.Put(ctx, service.LocalPrincipal(orgAdmin), "", service.RegistrationPolicyInput{
+	if _, err := reg.Put(ctx, service.LocalPrincipal(orgAdmin), instanceReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("corp")},
 		Landing:  service.RegistrationLanding{Kind: service.LandingFreshOrg, Cap: 3}}, ""); err == nil {
 		t.Fatal("an org administrator wrote the instance policy")
@@ -246,12 +290,12 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	// instance policy to authority-lost.
 	execRaw(t, db, "DELETE FROM grant_origins WHERE grant_id = 'g_ro_ic'")
 	execRaw(t, db, "DELETE FROM grants WHERE id = 'g_ro_ic'")
-	if got, err := reg.Get(ctx, operator, ""); err != nil || got.InactiveCause != service.InactiveAuthorityLost {
+	if got, err := reg.Get(ctx, operator, instanceReg); err != nil || got.InactiveCause != service.InactiveAuthorityLost {
 		t.Fatalf("instance policy after revoking instance-config = %+v, %v; want authority-lost", got, err)
 	}
 	// A manage-members-only instance editor cannot delegate fresh orgs: the
 	// write needs org.create too, refused as an instance-scope grant refusal.
-	if _, err := reg.Put(ctx, operator, "", service.RegistrationPolicyInput{
+	if _, err := reg.Put(ctx, operator, instanceReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("corp")},
 		Landing:  service.RegistrationLanding{Kind: service.LandingFreshOrg, Cap: 3}}, ""); !errors.Is(err, domain.ErrUnauthorized) {
 		t.Fatalf("fresh-org write without org.create = %v, want domain.ErrUnauthorized", err)
@@ -262,7 +306,7 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	err = tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := time.Now()
 		return az.CreateRegistrationPolicy(ctx, authz.RegistrationPolicy{
-			ID: "rpol_second", AuthorityPrincipalID: root, Landing: service.LandingNone, CreatedAt: now, UpdatedAt: now,
+			ID: "rpol_second", AuthorityPrincipalID: root, Landing: string(service.LandingNone), CreatedAt: now, UpdatedAt: now,
 		})
 	})
 	if !errors.Is(err, domain.ErrConflict) {
@@ -271,7 +315,7 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	err = tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := time.Now()
 		return az.CreateRegistrationPolicy(ctx, authz.RegistrationPolicy{
-			ID: "rpol_second_org", OrgID: orgA, AuthorityPrincipalID: root, Landing: service.LandingOrgTemplate,
+			ID: "rpol_second_org", OrgID: orgA, AuthorityPrincipalID: root, Landing: string(service.LandingOrgTemplate),
 			Template: string(domain.TemplateViewer), CreatedAt: now, UpdatedAt: now,
 		})
 	})
@@ -282,7 +326,7 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	err = tx.Write(ctx, db, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer) error {
 		now := time.Now()
 		return az.CreateRegistrationPolicy(ctx, authz.RegistrationPolicy{
-			ID: "rpol_values", OrgID: orgB, AuthorityPrincipalID: root, Landing: service.LandingOrgTemplate,
+			ID: "rpol_values", OrgID: orgB, AuthorityPrincipalID: root, Landing: string(service.LandingOrgTemplate),
 			Template: string(domain.TemplateViewer), CreatedAt: now, UpdatedAt: now,
 			Entries: []authz.RegistrationEntry{{ID: "rpe_v", ProviderKind: "oidc", ProviderID: "idp_corp", Values: []string{"x"}, CreatedAt: now}},
 		})
@@ -295,7 +339,7 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	// transaction, each with registration.signup_expired {policy-deleted}.
 	seedPendingSignup(t, db, "su_one", "one@acme.example", inst.ID, "")
 	seedPendingSignup(t, db, "su_two", "two@acme.example", inst.ID, "")
-	if err := reg.Delete(ctx, operator, "", ""); err != nil {
+	if err := reg.Delete(ctx, operator, instanceReg, ""); err != nil {
 		t.Fatalf("delete the instance policy: %v", err)
 	}
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM registration_signups"); n != 0 {
@@ -312,15 +356,43 @@ func runRegistrationPolicy(t *testing.T, db *store.DB) {
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM orgs WHERE registration_policy_id = '"+inst.ID+"'"); n != 1 {
 		t.Errorf("deleting the policy touched the org it minted")
 	}
-	if err := reg.Delete(ctx, operator, "", ""); !errors.Is(err, domain.ErrNotFound) {
+	if err := reg.Delete(ctx, operator, instanceReg, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("deleting an absent policy = %v, want domain.ErrNotFound", err)
 	}
 
+	// org_b: a deleted provider row reads provider-missing (nothing
+	// auto-deletes the entry), and restricting the authority principal (a
+	// disabled account holds no grants) flips the policy to authority-lost.
+	seedRegistrationProvider(t, db, "gone", "openid email", true)
+	execRaw(t, db, `INSERT INTO grants (id, principal_id, capability, org_id, project_id, env_id, created_at) `+
+		`SELECT 'g_gr_mm_b', 'usr_grantee', 'manage-members', 'org_b', NULL, NULL, created_at FROM grants WHERE id = 'g_oa_read'`)
+	seedOrigins(t, db)
+	orgBReg := service.OrgRegistrationScope(orgB)
+	if _, err := reg.Put(ctx, service.LocalPrincipal(grantee), orgBReg, service.RegistrationPolicyInput{
+		External: []service.RegistrationExternalEntry{oidcEntry("corp"), oidcEntry("gone")}, Landing: orgTemplateLanding(),
+	}, ""); err != nil {
+		t.Fatalf("put org_b policy as grantee: %v", err)
+	}
+	execRaw(t, db, "DELETE FROM oidc_providers WHERE slug = 'gone'")
+	missing, err := reg.Get(ctx, operator, orgBReg)
+	if err != nil || missing.InactiveCause != service.InactivePrecondition ||
+		missing.InactivePrecondition != string(service.PreconditionProviderMissing)+": oidc:idp_gone" {
+		t.Fatalf("policy naming a deleted provider = %+v, %v; want precondition provider-missing", missing, err)
+	}
+	execRaw(t, db, "UPDATE principals SET privacy_state = 'restricted' WHERE id = 'usr_grantee'")
+	restricted, err := reg.Get(ctx, operator, orgBReg)
+	if err != nil || restricted.InactiveCause != service.InactiveAuthorityLost {
+		t.Fatalf("policy whose authority is restricted = %+v, %v; want authority-lost", restricted, err)
+	}
+	if door, err := reg.SignupDoor(ctx, orgBReg); err != nil || !door.Paused {
+		t.Fatalf("door with a restricted authority = %+v, %v; want paused", door, err)
+	}
+
 	// Someone without manage-members at org_a is refused uniformly.
-	if _, err := reg.Get(ctx, service.LocalPrincipal(alice), orgA); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := reg.Get(ctx, service.LocalPrincipal(alice), orgAReg); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("alice reading org_a's policy = %v, want the uniform domain.ErrNotFound", err)
 	}
-	if err := reg.Delete(ctx, service.LocalPrincipal(alice), orgA, ""); !errors.Is(err, domain.ErrNotFound) {
+	if err := reg.Delete(ctx, service.LocalPrincipal(alice), orgAReg, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("alice deleting org_a's policy = %v, want the uniform domain.ErrNotFound", err)
 	}
 }
@@ -356,7 +428,7 @@ func runRegistrationPolicyReauth(t *testing.T, db *store.DB) {
 	clk := base
 	auth.Now = func() time.Time { return clk }
 	ctx := t.Context()
-	reg := &service.Registration{DB: db, Auth: auth, Now: func() time.Time { return clk }, PublicOriginExplicit: true}
+	reg := newRegistration(t, service.RegistrationConfig{DB: db, Auth: auth, Now: func() time.Time { return clk }, PublicOriginExplicit: true})
 
 	login, err := auth.LocalLogin(ctx, "factor-admin", password, service.ArtifactCLI)
 	if err != nil {
@@ -382,19 +454,58 @@ func runRegistrationPolicyReauth(t *testing.T, db *store.DB) {
 		External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: service.RegistrationLanding{Kind: service.LandingNone},
 	}
 
-	if _, err := reg.Put(ctx, actor, "", in, ""); !errors.Is(err, service.ErrReauthProofRequired) {
+	// Every operation the contract marks x-hikyo-reauth reaches a service
+	// that refuses it without proof, and every gated call here is marked:
+	// the extension and the gate cannot drift apart.
+	orgIn := service.RegistrationPolicyInput{External: []service.RegistrationExternalEntry{oidcEntry("corp")}, Landing: orgTemplateLanding()}
+	gated := map[string]func() error{
+		"putOrgRegistrationPolicy": func() error {
+			_, err := reg.Put(ctx, actor, orgAReg, orgIn, "")
+			return err
+		},
+		"deleteOrgRegistrationPolicy": func() error { return reg.Delete(ctx, actor, orgAReg, "") },
+		"putInstanceRegistrationPolicy": func() error {
+			_, err := reg.Put(ctx, actor, instanceReg, in, "")
+			return err
+		},
+		"deleteInstanceRegistrationPolicy": func() error { return reg.Delete(ctx, actor, instanceReg, "") },
+	}
+	operations, err := api.Operations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, op := range operations {
+		if op.Reauth == "" {
+			continue
+		}
+		call, ok := gated[id]
+		if !ok {
+			t.Errorf("%s is marked x-hikyo-reauth but has no proof-less probe here", id)
+			continue
+		}
+		if err := call(); !errors.Is(err, service.ErrReauthProofRequired) {
+			t.Errorf("%s without proof = %v, want ErrReauthProofRequired", id, err)
+		}
+	}
+	for id := range gated {
+		if operations[id].Reauth != api.ReauthAccountSecurity {
+			t.Errorf("%s is reauth-gated in the service but not marked x-hikyo-reauth", id)
+		}
+	}
+
+	if _, err := reg.Put(ctx, actor, instanceReg, in, ""); !errors.Is(err, service.ErrReauthProofRequired) {
 		t.Fatalf("put without proof = %v, want ErrReauthProofRequired", err)
 	}
-	if _, err := reg.Put(ctx, actor, "", in, password); !errors.Is(err, domain.ErrUnauthenticated) {
+	if _, err := reg.Put(ctx, actor, instanceReg, in, password); !errors.Is(err, domain.ErrUnauthenticated) {
 		t.Fatalf("put with a password where a TOTP stands = %v, want the uniform refusal", err)
 	}
 	sessionsBefore := queryInt(t, db, "SELECT COUNT(*) FROM sessions")
 	clk = base.Add(90 * time.Second)
 	code := totpCode(t, uri, clk)
-	if _, err := reg.Put(ctx, actor, "", in, code); err != nil {
+	if _, err := reg.Put(ctx, actor, instanceReg, in, code); err != nil {
 		t.Fatalf("put with fresh proof: %v", err)
 	}
-	if _, err := reg.Put(ctx, actor, "", in, code); err == nil {
+	if _, err := reg.Put(ctx, actor, instanceReg, in, code); err == nil {
 		t.Fatal("a spent TOTP step authorized a second mutation")
 	}
 	if n := queryInt(t, db, "SELECT COUNT(*) FROM sessions"); n != sessionsBefore {
@@ -403,19 +514,19 @@ func runRegistrationPolicyReauth(t *testing.T, db *store.DB) {
 	if _, err := auth.Identity(ctx, token); err != nil {
 		t.Fatalf("the actor's session did not survive the mutation: %v", err)
 	}
-	if err := reg.Delete(ctx, actor, "", ""); !errors.Is(err, service.ErrReauthProofRequired) {
+	if err := reg.Delete(ctx, actor, instanceReg, ""); !errors.Is(err, service.ErrReauthProofRequired) {
 		t.Fatalf("delete without proof = %v, want ErrReauthProofRequired", err)
 	}
 	clk = base.Add(120 * time.Second)
-	if err := reg.Delete(ctx, actor, "", totpCode(t, uri, clk)); err != nil {
+	if err := reg.Delete(ctx, actor, instanceReg, totpCode(t, uri, clk)); err != nil {
 		t.Fatalf("delete with fresh proof: %v", err)
 	}
 	if _, err := auth.Identity(ctx, token); err != nil {
 		t.Fatalf("the actor's session did not survive the delete: %v", err)
 	}
 	// Without an Auth library a network mutation fails closed.
-	bare := &service.Registration{DB: db, PublicOriginExplicit: true}
-	if _, err := bare.Put(ctx, actor, "", in, "123456"); !errors.Is(err, service.ErrRegistrationProofUnavailable) {
+	bare := newRegistration(t, service.RegistrationConfig{DB: db, PublicOriginExplicit: true})
+	if _, err := bare.Put(ctx, actor, instanceReg, in, "123456"); !errors.Is(err, service.ErrRegistrationProofUnavailable) {
 		t.Fatalf("put with no reauth library = %v, want ErrRegistrationProofUnavailable", err)
 	}
 }
@@ -428,19 +539,19 @@ func runRegistrationLifecycle(t *testing.T, db *store.DB) {
 	t.Helper()
 	ctx := t.Context()
 	seedRegistrationProvider(t, db, "reg-lifecycle", "openid email", true)
-	reg := &service.Registration{DB: db, PublicOriginExplicit: true}
+	reg := newRegistration(t, service.RegistrationConfig{DB: db, PublicOriginExplicit: true})
 	org := service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("reg-lifecycle")}, Landing: orgTemplateLanding(),
 	}
 	for range 2 {
-		if _, err := reg.Put(ctx, service.LocalPrincipal(root), orgA, org, ""); err != nil {
+		if _, err := reg.Put(ctx, service.LocalPrincipal(root), orgAReg, org, ""); err != nil {
 			t.Fatalf("registration lifecycle put: %v", err)
 		}
 	}
-	if err := reg.Delete(ctx, service.LocalPrincipal(root), orgA, ""); err != nil {
+	if err := reg.Delete(ctx, service.LocalPrincipal(root), orgAReg, ""); err != nil {
 		t.Fatalf("registration lifecycle delete: %v", err)
 	}
-	inst, err := reg.Put(ctx, service.LocalPrincipal(root), "", service.RegistrationPolicyInput{
+	inst, err := reg.Put(ctx, service.LocalPrincipal(root), instanceReg, service.RegistrationPolicyInput{
 		External: []service.RegistrationExternalEntry{oidcEntry("reg-lifecycle")},
 		Landing:  service.RegistrationLanding{Kind: service.LandingNone},
 	}, "")
@@ -448,7 +559,7 @@ func runRegistrationLifecycle(t *testing.T, db *store.DB) {
 		t.Fatalf("registration lifecycle instance put: %v", err)
 	}
 	seedPendingSignup(t, db, "su_lifecycle", "lifecycle@example.test", inst.ID, "")
-	if err := reg.Delete(ctx, service.LocalPrincipal(root), "", ""); err != nil {
+	if err := reg.Delete(ctx, service.LocalPrincipal(root), instanceReg, ""); err != nil {
 		t.Fatalf("registration lifecycle instance delete: %v", err)
 	}
 }

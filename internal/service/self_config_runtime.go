@@ -22,6 +22,13 @@ const selfConfigReconcileInterval = 2 * time.Second
 
 var ErrSelfConfigUnavailable = errors.New("runtime configuration is not ready; retry after reconciliation")
 
+// ErrSelfConfigFenced is the subset of ErrSelfConfigUnavailable that names a
+// known fenced state: the managed configuration is suspended, restoring, on
+// another topology, or not yet reconciled to the active generation. Callers
+// that must tell "fenced by design" from a fault (a failed metadata read, a
+// runtime that never loaded) test for this, not for the broader error.
+var ErrSelfConfigFenced = fmt.Errorf("%w: fenced", ErrSelfConfigUnavailable)
+
 type selfConfigActive struct {
 	bundle                                    *runtimeconfig.Bundle
 	owner, incarnation, snapshotID, seedToken string
@@ -41,14 +48,17 @@ func (s *SelfConfig) Capture(ctx context.Context) (*runtimeconfig.Bundle, error)
 	}
 	if metadata.Managed {
 		if metadata.Topology != nil && (metadata.Topology.After.NodeID != s.NodeID || metadata.Topology.After.HA != s.HAMode || s.Deployment == nil || s.Deployment.Identity().TemplateStamp != metadata.TopologyStamp) {
-			return nil, ErrSelfConfigUnavailable
+			return nil, ErrSelfConfigFenced
 		}
 		owner, incarnation, err := s.DB.RecoveryIdentity()
-		if err != nil || owner != metadata.OwnerInstanceID || incarnation != metadata.Incarnation || metadata.Suspended || metadata.DeploymentRestoring || active.owner != metadata.OwnerInstanceID || active.generation != metadata.Generation || active.incarnation != metadata.Incarnation {
+		if err != nil {
 			return nil, ErrSelfConfigUnavailable
 		}
+		if owner != metadata.OwnerInstanceID || incarnation != metadata.Incarnation || metadata.Suspended || metadata.DeploymentRestoring || active.owner != metadata.OwnerInstanceID || active.generation != metadata.Generation || active.incarnation != metadata.Incarnation {
+			return nil, ErrSelfConfigFenced
+		}
 	} else if active.generation != 0 {
-		return nil, ErrSelfConfigUnavailable
+		return nil, ErrSelfConfigFenced
 	}
 	return active.bundle, nil
 }

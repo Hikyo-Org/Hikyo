@@ -1,25 +1,35 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { zAuthMethods, zRegistrationPolicy, zScimBinding, zScimBindingList, zServiceAccountList } from '@hikyo/zod';
+import {
+  zAuthMethods,
+  zInvitationResult,
+  zLoginResult,
+  zRegistrationPolicy,
+  zScimBinding,
+  zScimBindingList,
+  zServiceAccountList,
+  zTotpEnrolStartResult,
+} from '@hikyo/zod';
 import { z } from 'zod';
 
-import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
-import { browserApi } from '../fixtures/api.ts';
+import { expectPinnedAssertionSet, expectStatusIsTextAndAria, expectTouchTargets } from '../fixtures/assertions.ts';
+import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
 import {
   ADMIN,
   BASE_URL,
   OIDC_PROVIDER,
+  WEBUI_OIDC,
   nextTotpCode,
   passEnrolmentGate,
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
 import { totpCode } from '../fixtures/seed.ts';
+import { surfacesForFlow } from '../registry.ts';
 
 /** One TOTP time step: a code for `now + step` is the next step's, inside the skew window. */
 const TOTP_PERIOD_MS = 30_000;
-import { surfacesForFlow } from '../registry.ts';
 
 /**
  * Flow: members & grants (registry surface `members`), mvp-boundary S3's
@@ -1111,13 +1121,18 @@ test.describe('audit trail', () => {
  * Open registration at organisation scope (#606; locked prototype
  * social-signin iteration 2): the panel beside invite, its editor with a
  * requirement line per entry, the blue reauth-gated save, the org sign-up
- * link, a write-time 400 naming the row, inactive-with-cause with re-save,
- * and closing. The shared administrator holds a TOTP factor, so every proof
- * is a fresh code.
+ * link, a write-time 400 naming the row (a provider really seeded without
+ * the email scope), inactive-with-cause with re-save (a second organisation
+ * administrator really becomes the authority and really loses the grant),
+ * and closing. Everything here is real server state; nothing is substituted
+ * on the route. The shared administrator holds a TOTP factor, so every
+ * proof is a fresh code.
  */
 test.describe('open registration at organisation scope', () => {
   test.use({ storageState: STORAGE_STATE });
   const POLICY = `/api/v1/orgs/${seed.org}/registration-policy`;
+  /** A provider on the second fake IdP whose row does not request `email`. */
+  const NO_EMAIL = { slug: 'e2e-reg-noemail', displayName: 'Registration No Email' };
 
   /** closeOrgPolicy deletes a policy a previous run or project left behind. */
   async function closeOrgPolicy(page: Page) {
@@ -1130,15 +1145,20 @@ test.describe('open registration at organisation scope', () => {
     await browserApi(page, 'DELETE', POLICY, z.null(), { proof: await nextTotpCode() });
   }
 
-  /** A route predicate, kept by reference so unroute removes exactly it. */
-  const isPolicy = (url: URL) => url.pathname === POLICY;
+  async function dropNoEmailProvider(page: Page) {
+    await browserApi(page, 'DELETE', `/api/v1/instance/oidc-providers/${NO_EMAIL.slug}`, z.null()).catch(
+      (error: unknown) => {
+        if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
+      },
+    );
+  }
 
-  async function confirmProof(page: Page, code?: string) {
+  async function confirmProof(page: Page) {
     const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
     await expect(proof).toBeVisible();
     const confirm = proof.getByRole('button', { name: 'Confirm' });
     await expect(confirm).toHaveClass(/btn--reauth/);
-    await proof.getByLabel('Authenticator code or password').fill(code ?? (await nextTotpCode()));
+    await proof.getByLabel('Authenticator code or password').fill(await nextTotpCode());
     await confirm.click();
     await expect(proof).toBeHidden();
   }
@@ -1149,19 +1169,70 @@ test.describe('open registration at organisation scope', () => {
     return zAuthMethods.parse(await response.json());
   }
 
+  /** Wait into the next TOTP step, so a second account's code is always fresh. */
+  async function nextStep(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, (30 - (Math.floor(Date.now() / 1000) % 30) + 1) * 1000));
+  }
+
+  /**
+   * A second organisation administrator with its own authenticator, signed in
+   * over the API and stepped up, so it can write the policy and become its
+   * authority. Returns its principal, bearer and authenticator URI.
+   */
+  async function secondAdministrator(page: Page, username: string) {
+    const password = 'a second administrator password';
+    const invitation = await browserApi(page, 'POST', `/api/v1/orgs/${seed.org}/invitations`, zInvitationResult, {
+      username,
+      template: 'admin',
+    });
+    const established = await fetch(`${BASE_URL}/api/v1/auth/credential/establish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authority: invitation.authority, password }),
+    });
+    expect(established.status).toBe(204);
+    const login = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, artifact: 'cli' }),
+    });
+    expect(login.status).toBe(200);
+    const session = zLoginResult.parse(await login.json()).session_token ?? '';
+    const enrolled = await fixtureApiCall(session, 'POST', '/api/v1/auth/totp/enrol/start', zTotpEnrolStartResult, { password });
+    const confirmed = await fixtureApiCall(session, 'POST', '/api/v1/auth/totp/enrol/confirm', zLoginResult, {
+      code: totpCode(enrolled.otpauth_uri),
+    });
+    await nextStep();
+    const stepped = await fixtureApiCall(confirmed.session_token ?? '', 'POST', '/api/v1/auth/totp/step-up', zLoginResult, {
+      code: totpCode(enrolled.otpauth_uri),
+    });
+    return { principal: invitation.principal_id, bearer: stepped.session_token ?? '', otpauth: enrolled.otpauth_uri };
+  }
+
   test.beforeEach(async ({ page }) => {
     await page.goto(PATH);
     await expect(page.getByRole('heading', { name: 'Members', level: 1 })).toBeVisible();
     await closeOrgPolicy(page);
+    await dropNoEmailProvider(page);
     await page.reload();
   });
 
   test.afterEach(async ({ page }) => {
     await closeOrgPolicy(page);
+    await dropNoEmailProvider(page);
   });
 
-  test('opens, re-saves after losing authority and closes behind fresh proof', async ({ page }, testInfo) => {
+  test('refuses a provider row without the email scope, opens, and closes behind fresh proof', async ({ page }, testInfo) => {
     testInfo.setTimeout(240_000);
+    await browserApi(page, 'PUT', `/api/v1/instance/oidc-providers/${NO_EMAIL.slug}`, z.unknown(), {
+      display_name: NO_EMAIL.displayName,
+      issuer: WEBUI_OIDC.issuer,
+      client_id: 'e2e-reg-client',
+      client_secret: 'e2e-reg-secret',
+      scopes: 'openid',
+      enabled: true,
+    });
+    await page.reload();
     const panel = page.locator('#members-registration');
     await expect(panel.getByText('closed', { exact: true })).toBeVisible();
     await expect(panel).toContainText('without an invitation');
@@ -1169,13 +1240,24 @@ test.describe('open registration at organisation scope', () => {
     await panel.getByRole('button', { name: 'Open registration…' }).click();
     const editor = page.getByRole('dialog');
     await expect(editor.getByRole('heading', { level: 2 })).toContainText('open registration');
-    await editor.getByLabel(OIDC_PROVIDER.displayName).check();
+    // A write-time precondition the server alone knows: this provider row
+    // does not request `email`. The refusal names the row, lands on it, and
+    // focus moves to it.
+    await editor.getByLabel(NO_EMAIL.displayName).check();
+    await editor.getByRole('button', { name: 'Save' }).click();
+    await confirmProof(page);
+    const refused = page.getByRole('dialog');
+    await expect(refused.getByRole('alert')).toContainText(`${NO_EMAIL.slug}: this provider row does not request the email scope`);
+    await expect(refused.getByLabel(NO_EMAIL.displayName)).toBeFocused();
+    await refused.getByLabel(NO_EMAIL.displayName).uncheck();
+
+    await refused.getByLabel(OIDC_PROVIDER.displayName).check();
     // One requirement line per admitted entry.
-    await expect(editor.getByText('The ID token must carry email plus email_verified or xms_edov as boolean true.')).toBeVisible();
-    await editor.getByLabel('Allowlist claim').fill('hd');
-    await editor.getByLabel('Accepted values').fill('acme.example');
-    await editor.getByLabel(/^Role template in/).selectOption('viewer');
-    const save = editor.getByRole('button', { name: 'Save' });
+    await expect(refused.getByText('The ID token must carry email plus email_verified or xms_edov as boolean true.')).toBeVisible();
+    await refused.getByLabel('Allowlist claim').fill('hd');
+    await refused.getByLabel('Accepted values').fill('acme.example');
+    await refused.getByLabel(/^Role template in/).selectOption('viewer');
+    const save = refused.getByRole('button', { name: 'Save' });
     await expect(save).toHaveClass(/btn--reauth/);
     await save.click();
     await confirmProof(page);
@@ -1196,46 +1278,41 @@ test.describe('open registration at organisation scope', () => {
     const instanceDoor = zAuthMethods.parse(await (await page.request.get(`${BASE_URL}/api/v1/auth/methods`)).json());
     expect(instanceDoor.signup_open).toBe(false);
 
-    // A write-time precondition comes back as a 400 naming the row, and the
-    // editor shows it on that row. The server's own refusal is covered by the
-    // service and contract suites; this pins how the page voices it.
-    await page.route(isPolicy, async (route) => {
-      if (route.request().method() !== 'PUT') {
-        await route.continue();
-        return;
-      }
-      await route.fulfill({
-        status: 400,
-        contentType: 'application/json',
-        body: JSON.stringify({ error: { code: 'bad_request', message: 'bad request', detail: `provider-missing-email-scope: oidc:${OIDC_PROVIDER.slug}` } }),
-      });
-    });
-    await panel.getByRole('button', { name: 'Edit…' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
-    // The substituted refusal never reaches the server, so no code is spent.
-    await confirmProof(page, '000000');
-    await expect(page.getByRole('dialog').getByRole('alert')).toContainText('does not request the email scope');
-    await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
-    await page.unroute(isPolicy);
+    await panel.getByRole('button', { name: 'Close registration' }).click();
+    await confirmProof(page);
+    await expect(panel.getByText('closed', { exact: true })).toBeVisible();
+    const closed = await publicDoor(page);
+    expect(closed.signup_open).toBe(false);
+    expect(closed.signup_paused).toBe(false);
+  });
 
-    // Inactive with its cause: the authority lost the grant it hands out. The
-    // live policy is real; only its evaluated state is substituted.
-    await page.route(isPolicy, async (route) => {
-      if (route.request().method() !== 'GET') {
-        await route.continue();
-        return;
-      }
-      const real = zRegistrationPolicy.parse(await (await route.fetch()).json());
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ ...real, state: 'inactive', inactive_cause: 'authority-lost' }),
-      });
+  test('pauses when its authority loses the grant, and re-saves as authority', async ({ page }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    const username = `reg-authority-${testInfo.project.name}-${Date.now()}`;
+    const second = await secondAdministrator(page, username);
+    // The second administrator writes the policy: it becomes the authority.
+    await nextStep();
+    await fixtureApiCall(second.bearer, 'PUT', POLICY, zRegistrationPolicy, {
+      external: [{ provider: { kind: 'oidc', slug: OIDC_PROVIDER.slug } }],
+      landing: { kind: 'org-template', template: 'viewer' },
+      proof: totpCode(second.otpauth),
     });
+    const panel = page.locator('#members-registration');
+    await page.reload();
+    await expect(panel.getByText('active', { exact: true })).toBeVisible();
+    await expect(panel).toContainText(`${username} · re-checked`);
+
+    // The shared administrator revokes the authority's manage-members: the
+    // standing delegation no longer holds, on the very next read.
+    const query = `principal=${encodeURIComponent(second.principal)}&capability=manage-members`;
+    await browserApi(page, 'DELETE', `/api/v1/orgs/${seed.org}/grants?${query}`, z.null());
     await page.reload();
     await expect(panel.getByText('inactive · authority-lost')).toBeVisible();
-    await expect(panel.getByRole('alert')).toContainText('no longer holds the grant this policy hands out');
-    await page.unroute(isPolicy);
+    await expect(panel.getByRole('alert')).toContainText(`${username} no longer holds the grant this policy hands out`);
+    const paused = await publicDoor(page);
+    expect(paused.signup_open).toBe(false);
+    expect(paused.signup_paused).toBe(true);
+
     const resave = panel.getByRole('button', { name: 'Re-save as authority' });
     await expect(resave).toHaveClass(/btn--reauth/);
     await resave.click();
@@ -1245,14 +1322,6 @@ test.describe('open registration at organisation scope', () => {
     const saved = await browserApi(page, 'GET', POLICY, zRegistrationPolicy);
     expect(saved.state).toBe('active');
     expect(saved.authority_principal_id).toBe(seed.principal);
-
-    // Close: the policy goes and the door with it.
-    await panel.getByRole('button', { name: 'Close registration' }).click();
-    await confirmProof(page);
-    await expect(panel.getByText('closed', { exact: true })).toBeVisible();
-    const closed = await publicDoor(page);
-    expect(closed.signup_open).toBe(false);
-    expect(closed.signup_paused).toBe(false);
   });
 
   for (const scheme of ['dark', 'light'] as const) {
@@ -1264,6 +1333,8 @@ test.describe('open registration at organisation scope', () => {
         const editor = page.getByRole('dialog');
         await editor.getByLabel(OIDC_PROVIDER.displayName).check();
         const save = editor.getByRole('button', { name: 'Save' });
+        // Every entry's checkbox is a touch target on its own (ui-spec S3).
+        await expectTouchTargets(page, await editor.locator('.registration-editor__entry input[type="checkbox"]').all());
         await expectPinnedAssertionSet(page, {
           flow: 'members',
           surface: 'members',
@@ -1285,7 +1356,11 @@ test.describe('open registration at organisation scope', () => {
         await save.click();
         const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
         const confirm = proof.getByRole('button', { name: 'Confirm' });
-        await proof.getByLabel('Authenticator code or password').fill('000000');
+        const field = proof.getByLabel('Authenticator code or password');
+        // A password field, never autofilled with a one-time code.
+        await expect(field).toHaveAttribute('type', 'password');
+        await expect(field).toHaveAttribute('autocomplete', 'current-password');
+        await field.fill('000000');
         await expectPinnedAssertionSet(page, {
           flow: 'members',
           surface: 'members',

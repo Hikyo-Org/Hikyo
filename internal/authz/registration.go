@@ -86,16 +86,16 @@ func (a *TxAuthorizer) RegistrationAuthorityHolds(ctx context.Context, principal
 	if !ok {
 		return false, fmt.Errorf("authz: operation %q is not in the operation registry", op)
 	}
+	// Both paths resolve the principal's grants through the same query every
+	// authorization uses, which returns nothing for a principal that is not
+	// active (restricted or erased): a disabled authority holds nothing, so
+	// the policy reads authority-lost without a second status check.
 	switch spec.class {
 	case ClassInstance:
 		if scope != (domain.Scope{}) {
 			return false, fmt.Errorf("authz: instance operation %q addressed with a tenant scope", op)
 		}
-		grants, err := a.r.Grants(ctx, principal)
-		if err != nil {
-			return false, err
-		}
-		return evaluate(spec.formula, domain.Scope{}, grants), nil
+		return a.principalInstanceHolds(ctx, principal, spec)
 	case ClassTenant:
 		_, _, holds, err := a.principalFormulaEvaluation(ctx, principal, op, scope)
 		return holds, err

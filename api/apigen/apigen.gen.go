@@ -1526,6 +1526,21 @@ func (e LocalLoginRequestArtifact) Valid() bool {
 	}
 }
 
+// Defines values for LocalSignupMethod.
+const (
+	Local LocalSignupMethod = "local"
+)
+
+// Valid indicates whether the value is a known member of the LocalSignupMethod enum.
+func (e LocalSignupMethod) Valid() bool {
+	switch e {
+	case Local:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OpsDiagnosticFindingSeverity.
 const (
 	OpsDiagnosticFindingSeverityError   OpsDiagnosticFindingSeverity = "error"
@@ -3803,9 +3818,8 @@ type AuthMethods struct {
 	LocalLoginEnabled bool                 `json:"local_login_enabled"`
 	Providers         []AuthMethodProvider `json:"providers"`
 
-	// SignupMethods The methods the open door admits, empty unless `signup_open`.
-	// Federated entries carry `{kind, slug}`; the local entry is
-	// `{kind: local}`.
+	// SignupMethods The methods the open door admits, empty unless `signup_open`
+	// (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
 	SignupMethods []SignupMethod `json:"signup_methods"`
 
 	// SignupOpen The addressed scope (the instance, or `?org=`) has an active
@@ -5866,6 +5880,9 @@ type LocalLoginRequest struct {
 // than the server guessing from a header.
 type LocalLoginRequestArtifact string
 
+// LocalSignupMethod The email + password sign-up entry.
+type LocalSignupMethod string
+
 // LoginChallenge A single-use, expiring authority proving the password step passed for
 // one account, issued by `localLogin` (202) when a factor stands and a
 // browser session was requested. No session and no cookie exist until a
@@ -6641,7 +6658,7 @@ type RegistrationPolicyState string
 // RegistrationPolicyDeleteRequest defines model for RegistrationPolicyDeleteRequest.
 type RegistrationPolicyDeleteRequest struct {
 	// Proof The reauthentication proof, as on `put`.
-	Proof *string `json:"proof,omitempty"`
+	Proof string `json:"proof"`
 }
 
 // RegistrationPolicyPutRequest defines model for RegistrationPolicyPutRequest.
@@ -6659,7 +6676,7 @@ type RegistrationPolicyPutRequest struct {
 
 	// Proof The reauthentication proof: a TOTP code, or the account password
 	// where no factor is enrolled.
-	Proof *string `json:"proof,omitempty"`
+	Proof string `json:"proof"`
 }
 
 // Remote One connection entry and its last-known state. There is deliberately no
@@ -7846,12 +7863,9 @@ type SetValueRequest struct {
 	Value string `json:"value"`
 }
 
-// SignupMethod defines model for SignupMethod.
+// SignupMethod A federated provider by `{kind, slug}`, or the string `local` for the email + password entry.
 type SignupMethod struct {
-	Kind string `json:"kind"`
-
-	// Slug The provider slug; absent for `local`.
-	Slug *string `json:"slug,omitempty"`
+	union json.RawMessage
 }
 
 // SnapshotKey defines model for SnapshotKey.
@@ -9792,6 +9806,68 @@ func (t ResumeAdapterMoveRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (t *ResumeAdapterMoveRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsProviderRef returns the union data inside the SignupMethod as a ProviderRef
+func (t SignupMethod) AsProviderRef() (ProviderRef, error) {
+	var body ProviderRef
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromProviderRef overwrites any union data inside the SignupMethod as the provided ProviderRef
+func (t *SignupMethod) FromProviderRef(v ProviderRef) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeProviderRef performs a merge with any union data inside the SignupMethod, using the provided ProviderRef
+func (t *SignupMethod) MergeProviderRef(v ProviderRef) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsLocalSignupMethod returns the union data inside the SignupMethod as a LocalSignupMethod
+func (t SignupMethod) AsLocalSignupMethod() (LocalSignupMethod, error) {
+	var body LocalSignupMethod
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLocalSignupMethod overwrites any union data inside the SignupMethod as the provided LocalSignupMethod
+func (t *SignupMethod) FromLocalSignupMethod(v LocalSignupMethod) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLocalSignupMethod performs a merge with any union data inside the SignupMethod, using the provided LocalSignupMethod
+func (t *SignupMethod) MergeLocalSignupMethod(v LocalSignupMethod) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SignupMethod) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SignupMethod) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }

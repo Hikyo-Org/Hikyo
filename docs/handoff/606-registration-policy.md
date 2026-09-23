@@ -60,11 +60,22 @@ operator supplied `HIKYO_EXTERNAL_ORIGIN` (flag, env, or managed value), false
 when it fell back to the listen address. `ManagedOwnerValues` now exports the
 origin only when explicit, and `ApplyManagedOwnerValues` keeps the node's own
 derivation when neither side states one, so a round trip preserves
-explicitness.
+explicitness. Managed snapshots saved before #606 hold the listen-derived
+origin as a value; a managed origin equal to this node's own derivation is
+therefore NOT treated as explicit (an operator who means exactly that origin
+states it in `HIKYO_EXTERNAL_ORIGIN` on the process). Pinned by
+`TestManagedLegacyDerivedOriginIsNotExplicit`.
 
-**Service** (`internal/service/registration.go`). `Registration{DB, Auth,
-Now, PublicOriginExplicit, MailConfigured}` with `Get`, `Put` (full
-replacement, caller becomes authority), `Delete`, and `SignupDoor(org)`.
+**Service** (`internal/service/registration.go`). `NewRegistration(
+RegistrationConfig{DB, Auth, Now, PublicOriginExplicit, MailConfigured})`
+refuses a missing datastore or mailer predicate at construction (the app
+refuses to boot). `Get`, `Put` (full replacement, caller becomes authority),
+`Delete` and `SignupDoor` take a `RegistrationScope`
+(`InstanceRegistrationScope()` / `OrgRegistrationScope(org)`; the zero value
+is refused, so "no org" never silently means the instance). Landing kinds,
+inactive causes, precondition names and sign-up method kinds are typed
+constants. `providerPrecondition` is the one provider-eligibility rule shared
+by the write (`resolveEntryProvider`) and every read (`evaluatePolicy`).
 `evaluatePolicy` is the read/use re-check. Refusals are
 `registrationRefusal` (wraps `domain.ErrInvalid`, `SafeDetail` names the item),
 so the 400 body's `detail` is e.g. `provider-disabled: oidc:okta`.
@@ -117,20 +128,37 @@ support, sensitive-inventory re-pin with a review note.
 - **Cause precedence** at read: `authority-unassigned` (NULL authority), then
   `authority-lost`, then `precondition` (with `inactive_precondition` naming
   it: `no-public-origin`, `mailer-unconfigured`, `provider-disabled: <ref>`,
-  `provider-missing-email-scope: <ref>`). A deleted provider row reads as
-  `provider-disabled` naming the row id it pointed at; nothing auto-deletes
-  entries (#579 d6).
+  `provider-missing-email-scope: <ref>`, `provider-missing: <ref>` for a
+  deleted provider row, named by the row id it pointed at, since nothing
+  auto-deletes entries (#579 d6), and `provider-kind-unsupported: <ref>`).
+- **A disabled authority is a lost authority.** The re-check resolves the
+  authority's grants through the same query every authorization uses, which
+  returns nothing for a restricted or erased principal; pinned on both
+  engines (restricting the authority flips the policy to `authority-lost`).
+  The instance path reuses `principalInstanceHolds`, the grant half of
+  `HoldsInstanceCapability`.
 - **Reauth** (#579 d8): the existing account-security proof primitive
   (`Auth.VerifyReauthProof` before the transaction, `ConsumeReauthEvidence`
   inside it), the `SCIM.MintCredential` shape. The proof rides the request
-  body (`proof`), DELETE included (the `unlinkIdentity` precedent). No session
+  body (`proof`, required on PUT and DELETE), DELETE included (the
+  `unlinkIdentity` precedent), and the operations are marked
+  `x-hikyo-reauth: account-security` (below). No session
   is purged or reissued; the isolation test pins the session count and that
   the acting session still resolves. A spent TOTP step cannot authorize a
   second mutation. A network actor with no `Auth` wired fails closed.
 - **Provider references** are `{kind, slug}` on the wire (spec 2.6), stored
-  as `(provider_kind, provider_id)`. SAML is not a sign-up kind; `oauth2`
-  resolves as unknown until #609 adds its table lookup (single seam:
-  `resolveEntryProvider` and the `ProviderKind` branch in `evaluatePolicy`).
+  as `(provider_kind, provider_id)`. SAML is not a sign-up kind; `oauth2` is
+  refused at write by name (`provider-kind-unsupported: oauth2:<slug>`) until
+  #609 adds its table lookup (single seam: `resolveEntryProvider` and the
+  kind branch in `evaluatePolicy`).
+- **Use-time refusal events land in #607.** The public door is the only use
+  site in #606, and it renders `signup_paused` without auditing; the
+  `registration.signup_refused {authority-lost | precondition | ...}` event is
+  emitted by the first sign-up leg (#607 federated, #608 local).
+- **The `none` landing re-checks `manage-members@instance`** (#579 d4: every
+  edit and use re-checks the authority's standing grants; a `none` landing
+  grants nothing, so the delegation it rests on is the policy's own
+  formula).
 - **Pending sign-ups on policy delete** (spec section 4): deleted in the same
   transaction, one `registration.signup_expired {cause: policy-deleted}` each,
   on the policy's trail. Orgs the policy minted keep `origin` and the pointer.
@@ -141,42 +169,57 @@ support, sensitive-inventory re-pin with a review note.
 predicate of mailer-seam 7.3 (clauses 1 and 2) is derivable:
 `service.SelfConfigMailConfigured(selfConfig)` captures the active runtime
 bundle and reads `bundle.MailConfigured()` (the prepared, never-dialed mail
-client). A capture refusal (restore fence, suspended or restoring
-configuration) reads "unconfigured", fail-closed. Clause 3 (explicit public
-origin) is the separate `no-public-origin` precondition. The seam is the one
-`Registration.MailConfigured func(ctx) bool` field; nil reads unconfigured.
-#608 needs no replacement, only the use-time call.
+client). Only the known fenced states read "unconfigured": `Capture` now
+returns `ErrSelfConfigFenced` (which wraps `ErrSelfConfigUnavailable`, so
+existing callers are unchanged) for a suspended, restoring, other-topology or
+unreconciled configuration. Every other capture failure (a failed metadata
+read, a runtime that never loaded) propagates: `Put` answers 5xx and the
+public door read fails loudly. The predicate is evaluated inside each write
+or read transaction, beside the other preconditions. Clause 3 (explicit
+public origin) is the separate `no-public-origin` precondition. The seam is
+the one `RegistrationConfig.MailConfigured func(ctx) (bool, error)`; a nil
+predicate is a construction error. #608 needs no replacement, only the
+use-time call.
 
 ## Departures from the ticket and spec text, and why
 
 - **No JIT fold, no re-save path for folded rows**: retired by #617
-  (migration 00044), per the spec's 2026-09-05 banner. The panel's generic
-  "Re-save as authority" serves every inactive cause instead.
-- **Spelling additions** (api-cli-spellings section 8 is silent on them):
-  `AuthMethods.signup_paused` (the login page must tell paused from closed and
-  `signup_open=false, signup_methods=[]` cannot); `RegistrationPolicy.org`,
-  `inactive_precondition` (the panel's remedy line names the precondition),
-  `row_version`, `created_at`, `updated_at`; `RegistrationPolicyPutRequest.proof`
-  and `RegistrationPolicyDeleteRequest.proof` (the reauth proof); entry
-  `display_name` on responses. `signup_methods` items are
-  `{kind, slug?}` objects with `kind: local` for the local entry, not a
-  string/object union (the generators handle unions badly).
-- **No `x-hikyo-reauth` extension.** Spec 3.1 names one, but `api/spec.go`
-  parses a closed `x-hikyo-*` set that has no reauth member and nothing reads
-  one; the gate is the body proof plus the service check, described in the
-  operation text.
+  (migration 00044), per the spec's 2026-09-05 banner. "Re-save as
+  authority" is offered for `authority-lost` and `authority-unassigned` only.
+- **Spelling additions for a #589 amendment line** (api-cli-spellings
+  section 8 is silent on them): `AuthMethods.signup_paused` (the login page
+  must tell paused from closed, and `signup_open=false, signup_methods=[]`
+  cannot); `RegistrationPolicy.inactive_precondition` (the panel's remedy
+  line names the precondition); `RegistrationPolicy.row_version`, `org`,
+  `created_at`, `updated_at`; entry `display_name` on responses;
+  `RegistrationPolicyPutRequest.proof` and `RegistrationPolicyDeleteRequest.proof`
+  (the reauth proof, required). `signup_methods` matches the spelling
+  `[{kind, slug} | "local"]` exactly: a `oneOf` of `ProviderRef` and the
+  string `local` (`LocalSignupMethod`).
+- **`x-hikyo-reauth: account-security`** (spec 3.1) is on the four policy
+  mutations and read by `api/spec.go`: the reader refuses a marked operation
+  whose required JSON body lacks a string `proof`, and refuses any class but
+  `account-security`. The isolation suite drives every marked operation's
+  service without proof and asserts the refusal, and asserts every
+  proof-gated registration call is marked, so the extension and the gate
+  cannot drift. Older reauth-gated operations (SCIM credential mint, recovery
+  codes, passkeys) are not yet marked; marking them is a separate sweep.
 - **Operation names** carry `-org` / `-instance` (the `member.invite-*` shape);
   spec 3.2 names the verbs only.
 - **Event payloads** add `scope` beside the spec's fields.
 - **Integers**: `cap`, `fresh_org_count` and `row_version` are plain JSON
   integers (no `int64` format) so the web client keeps numbers, not bigints.
-- **Playwright substitutions**: the inactive state on the Members panel, the
-  write-time 400 naming a row, and the paused public page are driven by
-  substituting the evaluated state or the refusal on the route (the real
-  write, re-save and close go to the server). Producing a real lost authority
-  for the shared fixture administrator is not possible without breaking the
-  rest of the suite; the real causes are covered by the both-engine service
-  tests.
+- **Playwright drives real state only.** The write-time 400 names a
+  provider really seeded without the email scope (`e2e-reg-noemail` on the
+  second fake IdP); authority-lost is a second organisation administrator
+  (invited with `admin`, own authenticator) who writes the policy and then
+  loses `manage-members`; the paused login page is an instance policy whose
+  provider (`e2e-reg-paused`) is then disabled. Every seeded provider and
+  policy is deleted afterwards.
+- **Shared proof prompt.** `web/src/ui/auth/ProofDialog.tsx` is the one
+  "Confirm it's you" prompt; Account & security's account-security prompts
+  render it too. The reauth-gated form is a password field
+  (`current-password`), never `one-time-code`.
 - **E2E fixture**: the instances now start with an explicit
   `HIKYO_EXTERNAL_ORIGIN` (the same value the listener derives), and the
   fixture OIDC provider requests `openid email`, so a policy can name it.

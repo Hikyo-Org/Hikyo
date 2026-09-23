@@ -16,14 +16,14 @@ import (
 
 // RegistrationService is the registration policy surface.
 type RegistrationService interface {
-	Get(ctx context.Context, actor service.Actor, org domain.OrgID) (*service.RegistrationPolicyView, error)
-	Put(ctx context.Context, actor service.Actor, org domain.OrgID, in service.RegistrationPolicyInput, proof string) (service.RegistrationPolicyView, error)
-	Delete(ctx context.Context, actor service.Actor, org domain.OrgID, proof string) error
-	SignupDoor(ctx context.Context, org domain.OrgID) (service.SignupDoor, error)
+	Get(ctx context.Context, actor service.Actor, scope service.RegistrationScope) (*service.RegistrationPolicyView, error)
+	Put(ctx context.Context, actor service.Actor, scope service.RegistrationScope, in service.RegistrationPolicyInput, proof string) (service.RegistrationPolicyView, error)
+	Delete(ctx context.Context, actor service.Actor, scope service.RegistrationScope, proof string) error
+	SignupDoor(ctx context.Context, scope service.RegistrationScope) (service.SignupDoor, error)
 }
 
 func (a *API) GetOrgRegistrationPolicy(ctx context.Context, req apigen.GetOrgRegistrationPolicyRequestObject) (apigen.GetOrgRegistrationPolicyResponseObject, error) {
-	view, err := a.getRegistrationPolicy(ctx, domain.OrgID(req.Org))
+	view, err := a.getRegistrationPolicy(ctx, service.OrgRegistrationScope(domain.OrgID(req.Org)))
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func (a *API) GetOrgRegistrationPolicy(ctx context.Context, req apigen.GetOrgReg
 }
 
 func (a *API) GetInstanceRegistrationPolicy(ctx context.Context, _ apigen.GetInstanceRegistrationPolicyRequestObject) (apigen.GetInstanceRegistrationPolicyResponseObject, error) {
-	view, err := a.getRegistrationPolicy(ctx, "")
+	view, err := a.getRegistrationPolicy(ctx, service.InstanceRegistrationScope())
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (a *API) GetInstanceRegistrationPolicy(ctx context.Context, _ apigen.GetIns
 }
 
 func (a *API) PutOrgRegistrationPolicy(ctx context.Context, req apigen.PutOrgRegistrationPolicyRequestObject) (apigen.PutOrgRegistrationPolicyResponseObject, error) {
-	view, err := a.putRegistrationPolicy(ctx, domain.OrgID(req.Org), req.Body)
+	view, err := a.putRegistrationPolicy(ctx, service.OrgRegistrationScope(domain.OrgID(req.Org)), req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (a *API) PutOrgRegistrationPolicy(ctx context.Context, req apigen.PutOrgReg
 }
 
 func (a *API) PutInstanceRegistrationPolicy(ctx context.Context, req apigen.PutInstanceRegistrationPolicyRequestObject) (apigen.PutInstanceRegistrationPolicyResponseObject, error) {
-	view, err := a.putRegistrationPolicy(ctx, "", req.Body)
+	view, err := a.putRegistrationPolicy(ctx, service.InstanceRegistrationScope(), req.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -55,28 +55,28 @@ func (a *API) PutInstanceRegistrationPolicy(ctx context.Context, req apigen.PutI
 }
 
 func (a *API) DeleteOrgRegistrationPolicy(ctx context.Context, req apigen.DeleteOrgRegistrationPolicyRequestObject) (apigen.DeleteOrgRegistrationPolicyResponseObject, error) {
-	if err := a.Registration.Delete(ctx, service.Bearer(bearer(ctx)), domain.OrgID(req.Org), deleteProof(req.Body)); err != nil {
+	if err := a.Registration.Delete(ctx, service.Bearer(bearer(ctx)), service.OrgRegistrationScope(domain.OrgID(req.Org)), deleteProof(req.Body)); err != nil {
 		return nil, err
 	}
 	return apigen.DeleteOrgRegistrationPolicy204Response{}, nil
 }
 
 func (a *API) DeleteInstanceRegistrationPolicy(ctx context.Context, req apigen.DeleteInstanceRegistrationPolicyRequestObject) (apigen.DeleteInstanceRegistrationPolicyResponseObject, error) {
-	if err := a.Registration.Delete(ctx, service.Bearer(bearer(ctx)), "", deleteProof(req.Body)); err != nil {
+	if err := a.Registration.Delete(ctx, service.Bearer(bearer(ctx)), service.InstanceRegistrationScope(), deleteProof(req.Body)); err != nil {
 		return nil, err
 	}
 	return apigen.DeleteInstanceRegistrationPolicy204Response{}, nil
 }
 
 func deleteProof(body *apigen.RegistrationPolicyDeleteRequest) string {
-	if body == nil || body.Proof == nil {
+	if body == nil {
 		return ""
 	}
-	return *body.Proof
+	return body.Proof
 }
 
-func (a *API) getRegistrationPolicy(ctx context.Context, org domain.OrgID) (apigen.RegistrationPolicy, error) {
-	view, err := a.Registration.Get(ctx, service.Bearer(bearer(ctx)), org)
+func (a *API) getRegistrationPolicy(ctx context.Context, scope service.RegistrationScope) (apigen.RegistrationPolicy, error) {
+	view, err := a.Registration.Get(ctx, service.Bearer(bearer(ctx)), scope)
 	if err != nil {
 		return apigen.RegistrationPolicy{}, err
 	}
@@ -87,12 +87,12 @@ func (a *API) getRegistrationPolicy(ctx context.Context, org domain.OrgID) (apig
 	return wireRegistrationPolicy(*view), nil
 }
 
-func (a *API) putRegistrationPolicy(ctx context.Context, org domain.OrgID, body *apigen.RegistrationPolicyPutRequest) (apigen.RegistrationPolicy, error) {
+func (a *API) putRegistrationPolicy(ctx context.Context, scope service.RegistrationScope, body *apigen.RegistrationPolicyPutRequest) (apigen.RegistrationPolicy, error) {
 	if body == nil {
 		return apigen.RegistrationPolicy{}, fmt.Errorf("%w: a registration policy body is required", domain.ErrInvalid)
 	}
 	in := service.RegistrationPolicyInput{
-		Landing: service.RegistrationLanding{Kind: string(body.Landing.Kind)},
+		Landing: service.RegistrationLanding{Kind: service.LandingKind(body.Landing.Kind)},
 	}
 	if body.Landing.Template != nil {
 		in.Landing.Template = domain.Template(*body.Landing.Template)
@@ -118,11 +118,7 @@ func (a *API) putRegistrationPolicy(ctx context.Context, org domain.OrgID, body 
 			in.Local.Domains = *body.Local.Domains
 		}
 	}
-	proof := ""
-	if body.Proof != nil {
-		proof = *body.Proof
-	}
-	view, err := a.Registration.Put(ctx, service.Bearer(bearer(ctx)), org, in, proof)
+	view, err := a.Registration.Put(ctx, service.Bearer(bearer(ctx)), scope, in, body.Proof)
 	if err != nil {
 		return apigen.RegistrationPolicy{}, err
 	}
@@ -183,16 +179,27 @@ func wireRegistrationPolicy(v service.RegistrationPolicyView) apigen.Registratio
 	return out
 }
 
-// wireSignupDoor renders one scope's public sign-up door onto AuthMethods.
-func wireSignupDoor(out *apigen.AuthMethods, door service.SignupDoor) {
+// wireSignupDoor renders one scope's public sign-up door onto AuthMethods:
+// federated entries as `{kind, slug}`, the local entry as the string
+// `local` (api-cli-spellings section 8).
+func wireSignupDoor(out *apigen.AuthMethods, door service.SignupDoor) error {
 	out.SignupOpen, out.SignupPaused = door.Open, door.Paused
 	out.SignupMethods = make([]apigen.SignupMethod, 0, len(door.Methods))
 	for _, m := range door.Methods {
-		method := apigen.SignupMethod{Kind: m.Kind}
-		if m.Slug != "" {
-			slug := m.Slug
-			method.Slug = &slug
+		var method apigen.SignupMethod
+		var err error
+		switch m.Kind {
+		case service.SignupMethodLocal:
+			err = method.FromLocalSignupMethod(apigen.Local)
+		case service.SignupMethodOIDC, service.SignupMethodOAuth2:
+			err = method.FromProviderRef(apigen.ProviderRef{Kind: apigen.IdentityProviderKind(m.Kind), Slug: m.Slug})
+		default:
+			err = fmt.Errorf("server: sign-up method kind %q has no wire spelling", m.Kind)
+		}
+		if err != nil {
+			return err
 		}
 		out.SignupMethods = append(out.SignupMethods, method)
 	}
+	return nil
 }

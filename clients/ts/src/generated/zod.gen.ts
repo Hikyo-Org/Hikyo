@@ -2447,10 +2447,10 @@ export const zRenameKeyGroupRequest = z.object({
     acknowledgements: zAcknowledgements.optional()
 });
 
-export const zSignupMethod = z.object({
-    kind: z.string(),
-    slug: z.string().optional()
-});
+/**
+ * The email + password sign-up entry.
+ */
+export const zLocalSignupMethod = z.enum(['local']);
 
 /**
  * Email + password sign-up; present means enabled.
@@ -2477,7 +2477,7 @@ export const zRegistrationLanding = z.object({
 });
 
 export const zRegistrationPolicyDeleteRequest = z.object({
-    proof: z.string().max(1024).optional()
+    proof: z.string().max(1024)
 });
 
 export const zOidcStartRequest = z.object({
@@ -2554,6 +2554,14 @@ export const zProviderRef = z.object({
     slug: z.string().min(1).max(128)
 });
 
+/**
+ * A federated provider by `{kind, slug}`, or the string `local` for the email + password entry.
+ */
+export const zSignupMethod = z.union([
+    zProviderRef,
+    zLocalSignupMethod
+]);
+
 export const zRegistrationExternalEntry = z.object({
     provider: zProviderRef,
     display_name: z.string().optional(),
@@ -2565,7 +2573,7 @@ export const zRegistrationPolicyPutRequest = z.object({
     external: z.array(zRegistrationExternalEntry).max(64),
     local: zRegistrationLocalEntry.optional(),
     landing: zRegistrationLanding,
-    proof: z.string().max(1024).optional()
+    proof: z.string().max(1024)
 });
 
 export const zRegistrationPolicy = z.object({

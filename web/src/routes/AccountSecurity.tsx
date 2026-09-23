@@ -26,6 +26,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
+import { ProofDialog } from '../ui/auth/ProofDialog.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
 import { QrCode } from '../ui/auth/QrCode.tsx';
@@ -555,7 +556,7 @@ export function AccountSecurity() {
       </Panel>
 
       {proof === null ? null : (
-        <ProofDialog
+        <AccountProofDialog
           request={proof}
           onCancel={() => setProof(null)}
           onSubmit={runProof}
@@ -623,7 +624,7 @@ const PROOF_COPY: Record<ProofRequest['kind'], { title: string; hint: string; la
   },
 };
 
-function ProofDialog({
+function AccountProofDialog({
   request,
   onCancel,
   onSubmit,
@@ -632,61 +633,17 @@ function ProofDialog({
   onCancel: () => void;
   onSubmit: (value: string) => void;
 }) {
-  const formId = useId();
-  const inputId = useId();
-  const [value, setValue] = useSensitiveState('');
   const copy = PROOF_COPY[request.kind];
   const field: ProofClass = 'proof' in request ? request.proof : 'password';
-
   return (
-    <Dialog
+    <ProofDialog
       title={copy.title}
       lede={copy.hint}
-      onCancel={(event) => {
-        event.preventDefault();
-        onCancel();
-      }}
-      actions={
-        <>
-          <Button type="button" onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button type="submit" form={formId} variant="primary" disabled={value === ''}>
-            Confirm
-          </Button>
-        </>
-      }
-    >
-      <form
-        id={formId}
-        onSubmit={(event) => {
-          event.preventDefault();
-          onSubmit(value);
-        }}
-      >
-        <div className="field">
-          <label htmlFor={inputId}>{field === 'code' ? 'Authenticator code' : copy.label}</label>
-          {field === 'code' ? (
-            <input
-              id={inputId}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-            />
-          ) : (
-            <input
-              id={inputId}
-              type="password"
-              autoComplete="current-password"
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-            />
-          )}
-        </div>
-      </form>
-    </Dialog>
+      field={field}
+      label={field === 'code' ? 'Authenticator code' : copy.label}
+      onCancel={onCancel}
+      onSubmit={(value) => onSubmit(value)}
+    />
   );
 }
 

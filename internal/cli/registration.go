@@ -89,7 +89,7 @@ func runAccessRegistration(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		body.Proof = &proof
+		body.Proof = proof
 		var policy apigen.RegistrationPolicy
 		if err := client.Do(ctx, http.MethodPut, path, body, &policy); err != nil {
 			return err
@@ -101,7 +101,7 @@ func runAccessRegistration(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		if err := client.Do(ctx, http.MethodDelete, path, apigen.RegistrationPolicyDeleteRequest{Proof: &proof}, nil); err != nil {
+		if err := client.Do(ctx, http.MethodDelete, path, apigen.RegistrationPolicyDeleteRequest{Proof: proof}, nil); err != nil {
 			return err
 		}
 		fmt.Fprintf(ios.Stderr, "registration closed at %s\n", scope.label)
@@ -125,7 +125,11 @@ func readRegistrationPolicyFile(path string) (apigen.RegistrationPolicyPutReques
 	if dec.More() {
 		return body, failf(ExitUsage, "the registration policy %s holds more than one JSON document", path)
 	}
-	if body.Proof != nil {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &members); err != nil {
+		return body, failf(ExitUsage, "the registration policy %s is not a policy document: %v", path, err)
+	}
+	if _, carried := members["proof"]; carried {
 		return body, failf(ExitUsage, "the registration policy %s carries a proof: the proof is prompted for, never read from a file", path)
 	}
 	if body.External == nil {

@@ -3,11 +3,11 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client.ts';
-import type { RegistrationPolicy } from '../api/registration.ts';
+import { policyView, type PolicyView, type RegistrationPolicy } from '../api/registration.ts';
 import { renderForm, settle, typeInto } from '../testkit/renderForm.tsx';
 import { OpenRegistrationPanel } from './OpenRegistration.tsx';
 
-type PolicyQuery = { data: RegistrationPolicy | null | undefined; isPending: boolean; isError: boolean; isSuccess: boolean; error: unknown };
+type PolicyQuery = { data: PolicyView | null | undefined; isPending: boolean; isError: boolean; isSuccess: boolean; error: unknown };
 
 type Mocks = {
   policy: PolicyQuery;
@@ -58,14 +58,14 @@ const base = {
   updated_at: '2026-09-20T08:00:00Z',
 };
 
-function policyOf(overrides: Partial<RegistrationPolicy>): RegistrationPolicy {
-  return {
+function policyOf(overrides: Partial<RegistrationPolicy>): PolicyView {
+  return policyView({
     ...base,
     external: [{ provider: { kind: 'oidc', slug: 'corp' }, display_name: 'Corporate IdP' }],
     landing: { kind: 'org-template', template: 'viewer' },
     state: 'active',
     ...overrides,
-  };
+  });
 }
 
 function buttonNamed(root: ParentNode, name: string): HTMLButtonElement {

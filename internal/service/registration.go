@@ -12,6 +12,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
+	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
@@ -23,70 +24,174 @@ import (
 // an account. The sign-up legs that USE a policy are #607 (federated) and
 // #608 (local); this file owns the policy itself, its standing delegation,
 // its preconditions and the public door `/auth/methods` renders.
+//
+// Build it with NewRegistration: every dependency is required, so a missing
+// mail predicate is a construction error rather than a silent "unconfigured".
 type Registration struct {
-	DB   *store.DB
-	Auth *Auth
-	Now  func() time.Time
-	// PublicOriginExplicit is config.ExternalOriginExplicit: the
+	db   *store.DB
+	auth *Auth
+	now  func() time.Time
+	// publicOriginExplicit is config.ExternalOriginExplicit: the
 	// `no-public-origin` precondition (#579 d6).
-	PublicOriginExplicit bool
-	// MailConfigured is the static "mailer configured" predicate of
-	// mailer-seam 7.3 (clauses 1 and 2; clause 3 is PublicOriginExplicit). It
-	// never dials. Nil reads "unconfigured", fail-closed.
-	MailConfigured func(context.Context) bool
+	publicOriginExplicit bool
+	// mailConfigured is the static "mailer configured" predicate of
+	// mailer-seam 7.3 (clauses 1 and 2; clause 3 is publicOriginExplicit). It
+	// never dials. An error is a fault, never "unconfigured".
+	mailConfigured func(context.Context) (bool, error)
 }
 
-func (s *Registration) now() time.Time { return nowOr(s.Now) }
+// RegistrationConfig carries Registration's dependencies. Auth may be nil
+// only where no network caller exists (local host authority); a network
+// mutation without it fails closed.
+type RegistrationConfig struct {
+	DB                   *store.DB
+	Auth                 *Auth
+	Now                  func() time.Time
+	PublicOriginExplicit bool
+	MailConfigured       func(context.Context) (bool, error)
+}
 
-func (s *Registration) mailerConfigured(ctx context.Context) bool {
-	return s.MailConfigured != nil && s.MailConfigured(ctx)
+// NewRegistration validates the configuration.
+func NewRegistration(c RegistrationConfig) (*Registration, error) {
+	if c.DB == nil {
+		return nil, errors.New("service: registration needs a datastore")
+	}
+	if c.MailConfigured == nil {
+		return nil, errors.New("service: registration needs the mailer-configured predicate")
+	}
+	return &Registration{
+		db: c.DB, auth: c.Auth, now: func() time.Time { return nowOr(c.Now) },
+		publicOriginExplicit: c.PublicOriginExplicit, mailConfigured: c.MailConfigured,
+	}, nil
 }
 
 // SelfConfigMailConfigured adapts the active runtime configuration to the
 // registration mailer predicate: the captured bundle's prepared mail client
-// (mailer-seam 7.3 clauses 1 and 2). A capture refusal (a fenced or restoring
-// configuration) reads "unconfigured": the policy must not open on a mail
-// transport the runtime will not currently use.
-func SelfConfigMailConfigured(sc *SelfConfig) func(context.Context) bool {
-	return func(ctx context.Context) bool {
-		if sc == nil {
-			return false
+// (mailer-seam 7.3 clauses 1 and 2). Only the known fenced states (a
+// suspended, restoring or unreconciled configuration) read "unconfigured":
+// the policy must not open on a mail transport the runtime will not use.
+// Every other capture failure is a fault and propagates.
+func SelfConfigMailConfigured(sc *SelfConfig) (func(context.Context) (bool, error), error) {
+	if sc == nil {
+		return nil, errors.New("service: the mailer predicate needs the runtime configuration")
+	}
+	return mailPredicate(sc.Capture), nil
+}
+
+func mailPredicate(capture func(context.Context) (*runtimeconfig.Bundle, error)) func(context.Context) (bool, error) {
+	return func(ctx context.Context) (bool, error) {
+		bundle, err := capture(ctx)
+		switch {
+		case errors.Is(err, ErrSelfConfigFenced):
+			return false, nil
+		case err != nil:
+			return false, err
+		default:
+			return bundle.MailConfigured(), nil
 		}
-		bundle, err := sc.Capture(ctx)
-		return err == nil && bundle.MailConfigured()
 	}
 }
 
-// Landing kinds (spec 2.1). An org policy lands org-template; an instance
-// policy lands none or fresh-org.
+// RegistrationScope addresses one policy: the instance, or one org. The zero
+// value addresses nothing and is refused, so "no org" can never silently
+// mean "the instance".
+type RegistrationScope struct {
+	org      domain.OrgID
+	instance bool
+}
+
+// InstanceRegistrationScope addresses the instance policy.
+func InstanceRegistrationScope() RegistrationScope { return RegistrationScope{instance: true} }
+
+// OrgRegistrationScope addresses one org's policy.
+func OrgRegistrationScope(org domain.OrgID) RegistrationScope { return RegistrationScope{org: org} }
+
+// Instance reports whether the scope is the instance.
+func (s RegistrationScope) Instance() bool { return s.instance }
+
+// Org is the addressed org, "" for the instance.
+func (s RegistrationScope) Org() domain.OrgID { return s.org }
+
+func (s RegistrationScope) valid() error {
+	if s.instance == (s.org != "") {
+		return fmt.Errorf("%w: a registration policy is addressed at one org or at the instance", domain.ErrInvalid)
+	}
+	return nil
+}
+
+func (s RegistrationScope) authzScope() domain.Scope { return domain.Scope{Org: s.org} }
+
+func (s RegistrationScope) label() string { return renderScope(s.authzScope()) }
+
+func (s RegistrationScope) ops() (get, put, del authz.Operation) {
+	if s.instance {
+		return authz.OpRegistrationPolicyGetInstance, authz.OpRegistrationPolicyPutInstance, authz.OpRegistrationPolicyDeleteInstance
+	}
+	return authz.OpRegistrationPolicyGetOrg, authz.OpRegistrationPolicyPutOrg, authz.OpRegistrationPolicyDeleteOrg
+}
+
+// insertEvent lands an event on the scope's trail: tenant for an org policy,
+// instance for the instance policy (spec section 5).
+func (s RegistrationScope) insertEvent(ctx context.Context, r store.Repos, p authz.Proof, ev audit.Event) error {
+	if s.instance {
+		return r.Audit().InsertInstance(ctx, p, ev)
+	}
+	return r.Audit().InsertTenant(ctx, p, ev)
+}
+
+// LandingKind is where a sign-up arrives (spec 2.1). An org policy lands
+// org-template; an instance policy lands none or fresh-org.
+type LandingKind string
+
 const (
-	LandingOrgTemplate = "org-template"
-	LandingNone        = "none"
-	LandingFreshOrg    = "fresh-org"
+	LandingOrgTemplate LandingKind = "org-template"
+	LandingNone        LandingKind = "none"
+	LandingFreshOrg    LandingKind = "fresh-org"
 )
 
-// Write-time precondition names (api-cli-spellings section 8). Each refuses
-// 400 naming itself (and the provider row where relevant) in the body.
+// RegistrationPrecondition names a precondition (api-cli-spellings section
+// 8). At write it refuses 400 naming itself (and the provider row where
+// relevant); at use it is the named reason behind `precondition`.
+type RegistrationPrecondition string
+
 const (
-	PreconditionNoPublicOrigin           = "no-public-origin"
-	PreconditionMailerUnconfigured       = "mailer-unconfigured"
-	PreconditionProviderDisabled         = "provider-disabled"
-	PreconditionProviderMissingEmail     = "provider-missing-email-scope"
-	PreconditionCapZero                  = "cap-zero"
-	PreconditionTemplateNotOrgApplicable = "template-not-org-applicable"
+	PreconditionNoPublicOrigin           RegistrationPrecondition = "no-public-origin"
+	PreconditionMailerUnconfigured       RegistrationPrecondition = "mailer-unconfigured"
+	PreconditionProviderDisabled         RegistrationPrecondition = "provider-disabled"
+	PreconditionProviderMissingEmail     RegistrationPrecondition = "provider-missing-email-scope"
+	PreconditionCapZero                  RegistrationPrecondition = "cap-zero"
+	PreconditionTemplateNotOrgApplicable RegistrationPrecondition = "template-not-org-applicable"
+	// PreconditionProviderMissing is a stored entry whose provider row was
+	// deleted: nothing auto-deletes entries (#579 d6).
+	PreconditionProviderMissing RegistrationPrecondition = "provider-missing"
+	// PreconditionProviderKindUnsupported is a provider kind with no
+	// configured table yet (`oauth2` until #609).
+	PreconditionProviderKindUnsupported RegistrationPrecondition = "provider-kind-unsupported"
 )
 
-// Use-time inactive causes (#579 d6/d11). The row stays; sign-ups refuse
-// uniformly with the audited cause (#607, #608).
+// InactiveCause is why a stored policy admits nobody (#579 d6/d11). The row
+// stays; sign-ups refuse uniformly with the audited cause (#607, #608).
+type InactiveCause string
+
 const (
-	InactiveAuthorityLost       = "authority-lost"
-	InactiveAuthorityUnassigned = "authority-unassigned"
-	InactivePrecondition        = "precondition"
+	InactiveAuthorityLost       InactiveCause = "authority-lost"
+	InactiveAuthorityUnassigned InactiveCause = "authority-unassigned"
+	InactivePrecondition        InactiveCause = "precondition"
+)
+
+// SignupMethodKind is one way an open door admits: a federated provider kind
+// or the local entry.
+type SignupMethodKind string
+
+const (
+	SignupMethodOIDC   SignupMethodKind = SignupMethodKind(domain.ProviderOIDC)
+	SignupMethodOAuth2 SignupMethodKind = SignupMethodKind(domain.ProviderOAuth2)
+	SignupMethodLocal  SignupMethodKind = "local"
 )
 
 // RegistrationLanding is where a sign-up arrives.
 type RegistrationLanding struct {
-	Kind     string
+	Kind     LandingKind
 	Template domain.Template // org-template only
 	Cap      int64           // fresh-org only
 }
@@ -125,7 +230,7 @@ type RegistrationPolicyView struct {
 	Landing              RegistrationLanding
 	AuthorityPrincipalID domain.PrincipalID
 	Active               bool
-	InactiveCause        string
+	InactiveCause        InactiveCause
 	// InactivePrecondition names the failing precondition when InactiveCause
 	// is `precondition`, with the provider when one is involved.
 	InactivePrecondition string
@@ -148,9 +253,9 @@ type SignupDoor struct {
 }
 
 // SignupMethod is one way the door admits: a federated provider by
-// {kind, slug}, or the local entry (Kind "local", no slug).
+// {kind, slug}, or the local entry (Kind local, no slug).
 type SignupMethod struct {
-	Kind string
+	Kind SignupMethodKind
 	Slug string
 }
 
@@ -170,11 +275,16 @@ func refuseRegistration(format string, args ...any) error {
 	return &registrationRefusal{detail: fmt.Sprintf(format, args...)}
 }
 
-func preconditionRefusal(name, item string) error {
+// preconditionDetail is the named form `<precondition>[: <kind>:<slug>]`.
+func preconditionDetail(name RegistrationPrecondition, item string) string {
 	if item == "" {
-		return &registrationRefusal{detail: name}
+		return string(name)
 	}
-	return &registrationRefusal{detail: name + ": " + item}
+	return string(name) + ": " + item
+}
+
+func preconditionRefusal(name RegistrationPrecondition, item string) error {
+	return &registrationRefusal{detail: preconditionDetail(name, item)}
 }
 
 // ErrRegistrationProofUnavailable refuses a network mutation when no
@@ -187,49 +297,31 @@ var ErrRegistrationProofUnavailable = fmt.Errorf(
 // write (a concurrent edit or delete); the caller re-reads and retries.
 var ErrRegistrationPolicyRace = fmt.Errorf("%w: service: the registration policy changed underneath this write", domain.ErrConflict)
 
-func registrationOps(org domain.OrgID) (get, put, del authz.Operation) {
-	if org == "" {
-		return authz.OpRegistrationPolicyGetInstance, authz.OpRegistrationPolicyPutInstance, authz.OpRegistrationPolicyDeleteInstance
-	}
-	return authz.OpRegistrationPolicyGetOrg, authz.OpRegistrationPolicyPutOrg, authz.OpRegistrationPolicyDeleteOrg
-}
-
-func registrationScope(org domain.OrgID) domain.Scope { return domain.Scope{Org: org} }
-
-// insertRegistrationEvent lands an event on the scope's trail: tenant for an
-// org policy, instance for the instance policy (spec section 5).
-func insertRegistrationEvent(ctx context.Context, r store.Repos, p authz.Proof, org domain.OrgID, ev audit.Event) error {
-	if org == "" {
-		return r.Audit().InsertInstance(ctx, p, ev)
-	}
-	return r.Audit().InsertTenant(ctx, p, ev)
-}
-
 // validateRegistrationInput is the body-only half of the write: shape, the
 // allowlist rules and the named shape preconditions (cap-zero,
 // template-not-org-applicable). It depends on the request alone.
-func validateRegistrationInput(org domain.OrgID, in RegistrationPolicyInput) (RegistrationPolicyInput, error) {
+func validateRegistrationInput(scope RegistrationScope, in RegistrationPolicyInput) (RegistrationPolicyInput, error) {
 	out := RegistrationPolicyInput{Landing: in.Landing}
 	switch {
-	case org != "" && in.Landing.Kind == LandingOrgTemplate:
+	case !scope.Instance() && in.Landing.Kind == LandingOrgTemplate:
 		if in.Landing.Cap != 0 {
 			return out, refuseRegistration("landing.cap: only a fresh-org landing has a cap")
 		}
 		if _, err := domain.ExpandTemplate(in.Landing.Template, domain.LevelOrg); err != nil {
 			return out, preconditionRefusal(PreconditionTemplateNotOrgApplicable, string(in.Landing.Template))
 		}
-	case org == "" && in.Landing.Kind == LandingNone:
+	case scope.Instance() && in.Landing.Kind == LandingNone:
 		if in.Landing.Template != "" || in.Landing.Cap != 0 {
 			return out, refuseRegistration("landing: a none landing carries no template and no cap")
 		}
-	case org == "" && in.Landing.Kind == LandingFreshOrg:
+	case scope.Instance() && in.Landing.Kind == LandingFreshOrg:
 		if in.Landing.Template != "" {
 			return out, refuseRegistration("landing.template: a fresh-org landing always uses the admin template")
 		}
 		if in.Landing.Cap <= 0 {
 			return out, preconditionRefusal(PreconditionCapZero, "")
 		}
-	case org != "":
+	case !scope.Instance():
 		return out, refuseRegistration("landing.kind: an organisation policy lands org-template")
 	default:
 		return out, refuseRegistration("landing.kind: an instance policy lands none or fresh-org")
@@ -291,34 +383,45 @@ func validateRegistrationInput(org domain.OrgID, in RegistrationPolicyInput) (Re
 	return out, nil
 }
 
+// providerPrecondition is the ONE eligibility rule for a provider row named
+// by an entry, shared by the write and every read or use: the row must be
+// enabled, and an oidc row must request the email scope, or it cannot assert
+// the verified address (#598). "" means eligible.
+func providerPrecondition(p authz.OIDCProvider) RegistrationPrecondition {
+	switch {
+	case !p.Enabled:
+		return PreconditionProviderDisabled
+	case !slices.Contains(strings.Fields(p.Scopes), "email"):
+		return PreconditionProviderMissingEmail
+	default:
+		return ""
+	}
+}
+
 // resolvedEntry is an input entry bound to its provider row.
 type resolvedEntry struct {
 	entry      RegistrationExternalEntry
 	providerID string
 }
 
-// resolveEntryProvider binds a {kind, slug} to a provider row and checks the
-// provider preconditions (#598: an oidc row must request the email scope).
-// Only oidc rows exist today; oauth2 rows arrive with #609, which replaces
-// the not-found branch below with its own table lookup.
-func resolveEntryProvider(ctx context.Context, az *authz.TxAuthorizer, at string, ref domain.ProviderRef) (string, string, error) {
+// resolveEntryProvider binds a {kind, slug} to a provider row and applies
+// providerPrecondition. Only oidc rows exist today: an `oauth2` entry is
+// refused by name until #609 adds its table, which replaces this branch.
+func resolveEntryProvider(ctx context.Context, az *authz.TxAuthorizer, at string, ref domain.ProviderRef) (string, error) {
 	if ref.Kind != domain.ProviderOIDC {
-		return "", "", refuseRegistration("%s.provider: unknown provider %s", at, ref)
+		return "", preconditionRefusal(PreconditionProviderKindUnsupported, ref.String())
 	}
 	p, err := az.ProviderBySlug(ctx, ref.Slug)
 	if errors.Is(err, domain.ErrNotFound) {
-		return "", "", refuseRegistration("%s.provider: unknown provider %s", at, ref)
+		return "", refuseRegistration("%s.provider: unknown provider %s", at, ref)
 	}
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	if !p.Enabled {
-		return "", "", preconditionRefusal(PreconditionProviderDisabled, ref.String())
+	if failing := providerPrecondition(p); failing != "" {
+		return "", preconditionRefusal(failing, ref.String())
 	}
-	if !slices.Contains(strings.Fields(p.Scopes), "email") {
-		return "", "", preconditionRefusal(PreconditionProviderMissingEmail, ref.String())
-	}
-	return p.ID, p.DisplayName, nil
+	return p.ID, nil
 }
 
 // verifyRegistrationReauth is the reauthentication half of a policy
@@ -329,20 +432,20 @@ func (s *Registration) verifyRegistrationReauth(ctx context.Context, actor Actor
 	if actor.bearer == "" {
 		return ReauthEvidence{kind: reauthEvidenceExempt}, nil
 	}
-	if s.Auth == nil {
+	if s.auth == nil {
 		return ReauthEvidence{}, ErrRegistrationProofUnavailable
 	}
-	return s.Auth.VerifyReauthProof(ctx, actor.bearer, proof)
+	return s.auth.VerifyReauthProof(ctx, actor.bearer, proof)
 }
 
 func (s *Registration) consumeRegistrationReauth(ctx context.Context, az *authz.TxAuthorizer, ev ReauthEvidence, caller domain.PrincipalID) error {
 	if ev.kind == reauthEvidenceExempt {
 		return nil
 	}
-	if s.Auth == nil {
+	if s.auth == nil {
 		return ErrRegistrationProofUnavailable
 	}
-	return s.Auth.ConsumeReauthEvidence(ctx, az, ev, caller)
+	return s.auth.ConsumeReauthEvidence(ctx, az, ev, caller)
 }
 
 // authorityOperation is the operation whose formula the authority principal
@@ -351,81 +454,89 @@ func (s *Registration) consumeRegistrationReauth(ctx context.Context, az *authz.
 // admin template on the new org follows from the same instance grants by
 // inheritance); and, for a none landing, which grants nothing, the policy's
 // own instance manage-members formula.
-func authorityOperation(p authz.RegistrationPolicy) (authz.Operation, domain.Scope) {
-	switch p.Landing {
+func authorityOperation(p authz.RegistrationPolicy) (authz.Operation, domain.Scope, error) {
+	switch LandingKind(p.Landing) {
 	case LandingOrgTemplate:
-		return authz.OpTemplateApplyOrg, domain.Scope{Org: p.OrgID}
+		return authz.OpTemplateApplyOrg, domain.Scope{Org: p.OrgID}, nil
 	case LandingFreshOrg:
-		return authz.OpOrgCreate, domain.Scope{}
+		return authz.OpOrgCreate, domain.Scope{}, nil
+	case LandingNone:
+		return authz.OpRegistrationPolicyPutInstance, domain.Scope{}, nil
 	default:
-		return authz.OpRegistrationPolicyPutInstance, domain.Scope{}
+		return "", domain.Scope{}, fmt.Errorf("service: registration policy %s has unknown landing %q", p.ID, p.Landing)
 	}
 }
 
 // evaluatePolicy is the standing-delegation and precondition re-check (#579
-// d4 and d6) run at every read and, by #607/#608, at every use. It returns
-// the view with the state and, for a fresh-org landing, the live org count.
-func (s *Registration) evaluatePolicy(ctx context.Context, az *authz.TxAuthorizer, p authz.RegistrationPolicy, mailer bool) (RegistrationPolicyView, error) {
+// d4 and d6) run at every read and, by #607/#608, at every use, inside the
+// caller's transaction. It returns the view with the state and, for a
+// fresh-org landing, the live org count.
+func (s *Registration) evaluatePolicy(ctx context.Context, az *authz.TxAuthorizer, p authz.RegistrationPolicy) (RegistrationPolicyView, error) {
 	view := RegistrationPolicyView{
 		ID: p.ID, Org: p.OrgID, AuthorityPrincipalID: p.AuthorityPrincipalID,
-		Landing:    RegistrationLanding{Kind: p.Landing, Template: domain.Template(p.Template), Cap: p.FreshOrgCap},
+		Landing:    RegistrationLanding{Kind: LandingKind(p.Landing), Template: domain.Template(p.Template), Cap: p.FreshOrgCap},
 		RowVersion: p.RowVersion, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt,
 		External: []RegistrationExternalEntry{},
 	}
+	precondition := ""
+	if !s.publicOriginExplicit {
+		precondition = string(PreconditionNoPublicOrigin)
+	}
 	if p.LocalEnabled {
 		view.Local = &RegistrationLocalEntry{Domains: append([]string{}, p.Domains...)}
-	}
-	precondition := ""
-	if !s.PublicOriginExplicit {
-		precondition = PreconditionNoPublicOrigin
-	} else if p.LocalEnabled && !mailer {
-		precondition = PreconditionMailerUnconfigured
+		if precondition == "" {
+			configured, err := s.mailConfigured(ctx)
+			if err != nil {
+				return RegistrationPolicyView{}, err
+			}
+			if !configured {
+				precondition = string(PreconditionMailerUnconfigured)
+			}
+		}
 	}
 	for _, e := range p.Entries {
 		entry := RegistrationExternalEntry{
 			Provider: domain.ProviderRef{Kind: domain.ProviderKind(e.ProviderKind), Slug: e.ProviderID},
 			Claim:    e.Claim, Values: append([]string{}, e.Values...),
 		}
-		failure := PreconditionProviderDisabled
-		if e.ProviderKind == string(domain.ProviderOIDC) {
+		var failing RegistrationPrecondition
+		if entry.Provider.Kind != domain.ProviderOIDC {
+			failing = PreconditionProviderKindUnsupported
+		} else {
 			row, err := az.ProviderForCallback(ctx, e.ProviderID)
 			switch {
 			case errors.Is(err, domain.ErrNotFound):
-				// The provider row was deleted; nothing auto-deletes the
-				// entry (#579 d6), so it names the row id it pointed at.
+				// The row was deleted; the entry names the id it pointed at.
+				failing = PreconditionProviderMissing
 			case err != nil:
 				return RegistrationPolicyView{}, err
 			default:
 				entry.Provider.Slug, entry.DisplayName = row.Slug, row.DisplayName
-				switch {
-				case !row.Enabled:
-				case !slices.Contains(strings.Fields(row.Scopes), "email"):
-					failure = PreconditionProviderMissingEmail
-				default:
-					failure = ""
-				}
+				failing = providerPrecondition(row)
 			}
 		}
-		if failure != "" && precondition == "" {
-			precondition = failure + ": " + entry.Provider.String()
+		if failing != "" && precondition == "" {
+			precondition = preconditionDetail(failing, entry.Provider.String())
 		}
 		view.External = append(view.External, entry)
 	}
 	slices.SortFunc(view.External, func(a, b RegistrationExternalEntry) int {
 		return strings.Compare(a.Provider.String(), b.Provider.String())
 	})
-	if p.Landing == LandingFreshOrg {
+	if view.Landing.Kind == LandingFreshOrg {
 		n, err := az.CountRegistrationPolicyOrgs(ctx, p.ID)
 		if err != nil {
 			return RegistrationPolicyView{}, err
 		}
 		view.FreshOrgCount = &n
 	}
-	switch {
-	case p.AuthorityPrincipalID == "":
+	if p.AuthorityPrincipalID == "" {
 		view.InactiveCause = InactiveAuthorityUnassigned
-	default:
-		op, scope := authorityOperation(p)
+	} else {
+		op, scope, err := authorityOperation(p)
+		if err != nil {
+			return RegistrationPolicyView{}, err
+		}
 		holds, err := az.RegistrationAuthorityHolds(ctx, p.AuthorityPrincipalID, op, scope)
 		if err != nil {
 			return RegistrationPolicyView{}, err
@@ -441,38 +552,40 @@ func (s *Registration) evaluatePolicy(ctx context.Context, az *authz.TxAuthorize
 	return view, nil
 }
 
-// Get returns the scope's policy (org "" = instance), or nil when the scope
-// has none: closed. The read is recorded as a membership-surface read.
-func (s *Registration) Get(ctx context.Context, actor Actor, org domain.OrgID) (*RegistrationPolicyView, error) {
-	getOp, _, _ := registrationOps(org)
-	mailer := s.mailerConfigured(ctx)
+// Get returns the scope's policy, or nil when the scope has none: closed.
+// The read is recorded as a membership-surface read.
+func (s *Registration) Get(ctx context.Context, actor Actor, scope RegistrationScope) (*RegistrationPolicyView, error) {
+	if err := scope.valid(); err != nil {
+		return nil, err
+	}
+	getOp, _, _ := scope.ops()
 	var out *RegistrationPolicyView
-	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err := tx.Write(ctx, s.db, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		out = nil
-		caller, p, err := authorize(ctx, az, actor, getOp, registrationScope(org), s.now())
+		caller, p, err := authorize(ctx, az, actor, getOp, scope.authzScope(), s.now())
 		if err != nil {
 			return err
 		}
 		rows := 0
-		policy, err := az.RegistrationPolicyFor(ctx, org)
+		policy, err := az.RegistrationPolicyFor(ctx, scope.Org())
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 		case err != nil:
 			return err
 		default:
-			view, err := s.evaluatePolicy(ctx, az, policy, mailer)
+			view, err := s.evaluatePolicy(ctx, az, policy)
 			if err != nil {
 				return err
 			}
 			out, rows = &view, 1
 		}
 		ev, err := domainEvent(ctx, audit.EventGrantMembershipRead, caller.Principal,
-			audit.Object{Type: "registration-policy", ID: renderScope(registrationScope(org))},
-			audit.Payload{"scope": renderScope(registrationScope(org)), "row_count": rows})
+			audit.Object{Type: "registration-policy", ID: scope.label()},
+			audit.Payload{"scope": scope.label(), "row_count": rows})
 		if err != nil {
 			return err
 		}
-		return insertRegistrationEvent(ctx, r, p, org, ev)
+		return scope.insertEvent(ctx, r, p, ev)
 	})
 	return out, err
 }
@@ -480,10 +593,14 @@ func (s *Registration) Get(ctx context.Context, actor Actor, org domain.OrgID) (
 // Put replaces the scope's policy (creating it when absent) and makes the
 // caller its authority principal (#579 d4: any edit reassigns authority).
 // Reauth-gated: proof is verified before the transaction and consumed in it;
-// the caller's sessions are untouched.
-func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, in RegistrationPolicyInput, proof string) (RegistrationPolicyView, error) {
-	_, putOp, _ := registrationOps(org)
-	in, err := validateRegistrationInput(org, in)
+// the caller's sessions are untouched. Every precondition is evaluated inside
+// the write transaction.
+func (s *Registration) Put(ctx context.Context, actor Actor, scope RegistrationScope, in RegistrationPolicyInput, proof string) (RegistrationPolicyView, error) {
+	if err := scope.valid(); err != nil {
+		return RegistrationPolicyView{}, err
+	}
+	_, putOp, _ := scope.ops()
+	in, err := validateRegistrationInput(scope, in)
 	if err != nil {
 		return RegistrationPolicyView{}, err
 	}
@@ -491,9 +608,8 @@ func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, i
 	if err != nil {
 		return RegistrationPolicyView{}, err
 	}
-	mailer := s.mailerConfigured(ctx)
 	var out RegistrationPolicyView
-	err = tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err = tx.Write(ctx, s.db, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		now := s.now()
 		caller, err := actor.resolve(ctx, az, now)
 		if err != nil {
@@ -502,7 +618,7 @@ func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, i
 		if err := s.consumeRegistrationReauth(ctx, az, evidence, caller.Principal); err != nil {
 			return err
 		}
-		p, err := az.Authorize(ctx, caller, putOp, registrationScope(org))
+		p, err := az.Authorize(ctx, caller, putOp, scope.authzScope())
 		if err != nil {
 			return err
 		}
@@ -514,15 +630,21 @@ func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, i
 			}
 		}
 		// Write-time preconditions (#579 d6), by name.
-		if !s.PublicOriginExplicit {
+		if !s.publicOriginExplicit {
 			return preconditionRefusal(PreconditionNoPublicOrigin, "")
 		}
-		if in.Local != nil && !mailer {
-			return preconditionRefusal(PreconditionMailerUnconfigured, "")
+		if in.Local != nil {
+			configured, err := s.mailConfigured(ctx)
+			if err != nil {
+				return err
+			}
+			if !configured {
+				return preconditionRefusal(PreconditionMailerUnconfigured, "")
+			}
 		}
 		resolved := make([]resolvedEntry, 0, len(in.External))
 		for i, e := range in.External {
-			id, _, err := resolveEntryProvider(ctx, az, "external["+strconv.Itoa(i)+"]", e.Provider)
+			id, err := resolveEntryProvider(ctx, az, "external["+strconv.Itoa(i)+"]", e.Provider)
 			if err != nil {
 				return err
 			}
@@ -530,7 +652,7 @@ func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, i
 		}
 
 		row := authz.RegistrationPolicy{
-			OrgID: org, AuthorityPrincipalID: caller.Principal, Landing: in.Landing.Kind,
+			OrgID: scope.Org(), AuthorityPrincipalID: caller.Principal, Landing: string(in.Landing.Kind),
 			Template: string(in.Landing.Template), LocalEnabled: in.Local != nil, FreshOrgCap: in.Landing.Cap,
 			CreatedAt: now, UpdatedAt: now,
 		}
@@ -547,7 +669,7 @@ func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, i
 				Claim: e.entry.Claim, Values: e.entry.Values, CreatedAt: now,
 			})
 		}
-		existing, err := az.RegistrationPolicyFor(ctx, org)
+		existing, err := az.RegistrationPolicyFor(ctx, scope.Org())
 		typ := audit.EventRegistrationPolicyUpdated
 		previous := domain.PrincipalID("")
 		switch {
@@ -571,15 +693,15 @@ func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, i
 				return ErrRegistrationPolicyRace
 			}
 		}
-		saved, err := az.RegistrationPolicyFor(ctx, org)
+		saved, err := az.RegistrationPolicyFor(ctx, scope.Org())
 		if err != nil {
 			return err
 		}
-		if out, err = s.evaluatePolicy(ctx, az, saved, mailer); err != nil {
+		if out, err = s.evaluatePolicy(ctx, az, saved); err != nil {
 			return err
 		}
 		payload := audit.Payload{
-			"policy_id": saved.ID, "scope": renderScope(registrationScope(org)),
+			"policy_id": saved.ID, "scope": scope.label(),
 			"landing": saved.Landing, "authority_principal_id": string(saved.AuthorityPrincipalID),
 		}
 		if previous != "" && previous != saved.AuthorityPrincipalID {
@@ -589,7 +711,7 @@ func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, i
 		if err != nil {
 			return err
 		}
-		return insertRegistrationEvent(ctx, r, p, org, ev)
+		return scope.insertEvent(ctx, r, p, ev)
 	})
 	return out, err
 }
@@ -598,13 +720,16 @@ func (s *Registration) Put(ctx context.Context, actor Actor, org domain.OrgID, i
 // pending local sign-ups it admitted, inside the same transaction, each with
 // `registration.signup_expired {cause: policy-deleted}` (spec section 4).
 // Reauth-gated like Put; no session is purged.
-func (s *Registration) Delete(ctx context.Context, actor Actor, org domain.OrgID, proof string) error {
-	_, _, delOp := registrationOps(org)
+func (s *Registration) Delete(ctx context.Context, actor Actor, scope RegistrationScope, proof string) error {
+	if err := scope.valid(); err != nil {
+		return err
+	}
+	_, _, delOp := scope.ops()
 	evidence, err := s.verifyRegistrationReauth(ctx, actor, proof)
 	if err != nil {
 		return err
 	}
-	return tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	return tx.Write(ctx, s.db, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, err := actor.resolve(ctx, az, s.now())
 		if err != nil {
 			return err
@@ -612,11 +737,11 @@ func (s *Registration) Delete(ctx context.Context, actor Actor, org domain.OrgID
 		if err := s.consumeRegistrationReauth(ctx, az, evidence, caller.Principal); err != nil {
 			return err
 		}
-		p, err := az.Authorize(ctx, caller, delOp, registrationScope(org))
+		p, err := az.Authorize(ctx, caller, delOp, scope.authzScope())
 		if err != nil {
 			return err
 		}
-		existing, err := az.RegistrationPolicyFor(ctx, org)
+		existing, err := az.RegistrationPolicyFor(ctx, scope.Org())
 		if err != nil {
 			return err
 		}
@@ -638,7 +763,7 @@ func (s *Registration) Delete(ctx context.Context, actor Actor, org domain.OrgID
 			if err != nil {
 				return err
 			}
-			if err := insertRegistrationEvent(ctx, r, p, org, ev); err != nil {
+			if err := scope.insertEvent(ctx, r, p, ev); err != nil {
 				return err
 			}
 		}
@@ -652,32 +777,34 @@ func (s *Registration) Delete(ctx context.Context, actor Actor, org domain.OrgID
 		ev, err := domainEvent(ctx, audit.EventRegistrationPolicyDeleted, caller.Principal,
 			audit.Object{Type: "registration-policy", ID: existing.ID},
 			audit.Payload{
-				"policy_id": existing.ID, "scope": renderScope(registrationScope(org)),
+				"policy_id": existing.ID, "scope": scope.label(),
 				"landing": existing.Landing, "authority_principal_id": string(existing.AuthorityPrincipalID),
 			})
 		if err != nil {
 			return err
 		}
-		return insertRegistrationEvent(ctx, r, p, org, ev)
+		return scope.insertEvent(ctx, r, p, ev)
 	})
 }
 
-// SignupDoor renders one scope's public sign-up door (org "" = instance).
-// Proof-free public discovery like the rest of `/auth/methods`: an unknown
-// org and an org without a policy are the same closed door, byte for byte.
-func (s *Registration) SignupDoor(ctx context.Context, org domain.OrgID) (SignupDoor, error) {
-	mailer := s.mailerConfigured(ctx)
+// SignupDoor renders one scope's public sign-up door. Proof-free public
+// discovery like the rest of `/auth/methods`: an unknown org and an org
+// without a policy are the same closed door, byte for byte.
+func (s *Registration) SignupDoor(ctx context.Context, scope RegistrationScope) (SignupDoor, error) {
+	if err := scope.valid(); err != nil {
+		return SignupDoor{}, err
+	}
 	door := SignupDoor{Methods: []SignupMethod{}}
-	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
+	err := tx.Read(ctx, s.db, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
 		door = SignupDoor{Methods: []SignupMethod{}}
-		policy, err := az.RegistrationPolicyFor(ctx, org)
+		policy, err := az.RegistrationPolicyFor(ctx, scope.Org())
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		view, err := s.evaluatePolicy(ctx, az, policy, mailer)
+		view, err := s.evaluatePolicy(ctx, az, policy)
 		if err != nil {
 			return err
 		}
@@ -687,10 +814,10 @@ func (s *Registration) SignupDoor(ctx context.Context, org domain.OrgID) (Signup
 		}
 		door.Open = true
 		for _, e := range view.External {
-			door.Methods = append(door.Methods, SignupMethod{Kind: string(e.Provider.Kind), Slug: e.Provider.Slug})
+			door.Methods = append(door.Methods, SignupMethod{Kind: SignupMethodKind(e.Provider.Kind), Slug: e.Provider.Slug})
 		}
 		if view.Local != nil {
-			door.Methods = append(door.Methods, SignupMethod{Kind: "local"})
+			door.Methods = append(door.Methods, SignupMethod{Kind: SignupMethodLocal})
 		}
 		return nil
 	})

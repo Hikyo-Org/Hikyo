@@ -67,6 +67,13 @@ const (
 	extFormula     = "x-hikyo-formula"
 	extArtifacts   = "x-hikyo-artifacts"
 	extMinRevision = "x-hikyo-min-revision"
+	// extReauth marks an operation gated on fresh proof under the existing
+	// account-security primitive (spec social-signin 3.1). The reader refuses
+	// a marked operation whose request body cannot carry the proof, and the
+	// isolation suite drives every marked operation's service without one.
+	extReauth = "x-hikyo-reauth"
+	// ReauthAccountSecurity is the one reauth class the contract names.
+	ReauthAccountSecurity = "account-security"
 	// ExtOpenEnum marks an enum declared OPEN: it may gain values additively
 	// and every generated consumer must tolerate unknown ones. Open enums
 	// deliberately carry no `enum` keyword, so runtime validation tolerates
@@ -185,6 +192,9 @@ type Operation struct {
 	formula     []string
 	artifacts   []string
 	MinRevision int
+	// Reauth is the x-hikyo-reauth class ("" when the operation is not
+	// reauthentication-gated).
+	Reauth string
 	// Secured reports whether the operation inherits the document's session
 	// security requirement. An operation that clears it with `security: []`
 	// is a pre-authentication path and must be classified as one.
@@ -318,6 +328,17 @@ func collectOperations(d *openapi3.T) (map[string]Operation, error) {
 			}
 			if row.MinRevision, err = extInt(op.Extensions, extMinRevision); err != nil {
 				return nil, fmt.Errorf("api: %s %s: %w", method, path, err)
+			}
+			if row.Reauth, err = optionalString(op.Extensions, extReauth); err != nil {
+				return nil, fmt.Errorf("api: %s %s: %w", method, path, err)
+			}
+			if row.Reauth != "" {
+				if row.Reauth != ReauthAccountSecurity {
+					return nil, fmt.Errorf("api: %s %s: extension %s must be %q", method, path, extReauth, ReauthAccountSecurity)
+				}
+				if !bodyCarriesProof(op) {
+					return nil, fmt.Errorf("api: %s %s: extension %s needs a required JSON request body with a string `proof` member", method, path, extReauth)
+				}
 			}
 			if row.ID == "" {
 				return nil, fmt.Errorf("api: %s %s has no operationId", method, path)
@@ -567,6 +588,21 @@ func extString(ext map[string]any, key string) (string, error) {
 		return "", fmt.Errorf("missing required extension %s", key)
 	}
 	return v, nil
+}
+
+// bodyCarriesProof reports whether an operation takes a required JSON body
+// whose schema declares a string `proof` member: the carrier every
+// reauthentication-gated operation presents its fresh proof in.
+func bodyCarriesProof(op *openapi3.Operation) bool {
+	if op.RequestBody == nil || op.RequestBody.Value == nil || !op.RequestBody.Value.Required {
+		return false
+	}
+	media := op.RequestBody.Value.Content.Get("application/json")
+	if media == nil || media.Schema == nil || media.Schema.Value == nil {
+		return false
+	}
+	proof := media.Schema.Value.Properties["proof"]
+	return proof != nil && proof.Value != nil && proof.Value.Type.Is(openapi3.TypeString)
 }
 
 func optionalString(ext map[string]any, key string) (string, error) {

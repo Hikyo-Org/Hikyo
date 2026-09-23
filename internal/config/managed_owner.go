@@ -174,6 +174,14 @@ func applyManagedOwnerValues(base *Config, values map[string]string, validateNod
 		// rather than the parser's --dev stand-in.
 		result.ExternalOrigin = base.ExternalOrigin
 	}
+	if parsed.ExternalOriginExplicit && !base.ExternalOriginExplicit && parsed.ExternalOrigin == base.ExternalOrigin {
+		// Managed snapshots saved before #606 persisted this node's
+		// listen-derived origin as a value. A managed origin equal to the
+		// derivation is therefore not evidence of an operator statement, and
+		// must not satisfy `no-public-origin`; an operator who means that
+		// exact origin states it in HIKYO_EXTERNAL_ORIGIN on the process.
+		result.ExternalOriginExplicit = false
+	}
 	result.MCPEnabled, result.MCPAllowedOrigins = parsed.MCPEnabled, slices.Clone(parsed.MCPAllowedOrigins)
 	result.MCPWriteEnabled = parsed.MCPWriteEnabled
 	result.SecondFactor = parsed.SecondFactor

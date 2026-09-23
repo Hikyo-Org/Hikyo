@@ -40,21 +40,18 @@ func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObje
 	}
 	// The sign-up door of the addressed scope (#606): the instance, or
 	// `?org=`. An unknown org is the same closed door as one without a policy.
-	var org domain.OrgID
-	if req.Params.Org != nil {
-		org = domain.OrgID(*req.Params.Org)
+	scope := service.InstanceRegistrationScope()
+	if req.Params.Org != nil && *req.Params.Org != "" {
+		scope = service.OrgRegistrationScope(domain.OrgID(*req.Params.Org))
 	}
-	door := service.SignupDoor{}
-	if a.Registration != nil {
-		// A transport built without the registration surface (focused test
-		// harnesses) renders every door closed; production always wires it.
-		door, err = a.Registration.SignupDoor(ctx, org)
+	door, err := a.Registration.SignupDoor(ctx, scope)
+	if err == nil {
+		err = wireSignupDoor(&out, door)
 	}
 	if err != nil {
 		a.fault(ctx, "auth methods sign-up door", err)
 		return apigen.AuthMethods500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
 	}
-	wireSignupDoor(&out, door)
 	return apigen.AuthMethods200JSONResponse(out), nil
 }
 

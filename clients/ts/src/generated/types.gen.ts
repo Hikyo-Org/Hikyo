@@ -3366,21 +3366,22 @@ export type AuthMethods = {
      */
     signup_paused: boolean;
     /**
-     * The methods the open door admits, empty unless `signup_open`.
-     * Federated entries carry `{kind, slug}`; the local entry is
-     * `{kind: local}`.
+     * The methods the open door admits, empty unless `signup_open`
+     * (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
      *
      */
     signup_methods: Array<SignupMethod>;
 };
 
-export type SignupMethod = {
-    kind: string;
-    /**
-     * The provider slug; absent for `local`.
-     */
-    slug?: string;
-};
+/**
+ * A federated provider by `{kind, slug}`, or the string `local` for the email + password entry.
+ */
+export type SignupMethod = ProviderRef | LocalSignupMethod;
+
+/**
+ * The email + password sign-up entry.
+ */
+export type LocalSignupMethod = 'local';
 
 /**
  * A federated provider named by kind and slug (slugs are unique per kind only).
@@ -3437,14 +3438,14 @@ export type RegistrationPolicyPutRequest = {
      * where no factor is enrolled.
      *
      */
-    proof?: string;
+    proof: string;
 };
 
 export type RegistrationPolicyDeleteRequest = {
     /**
      * The reauthentication proof, as on `put`.
      */
-    proof?: string;
+    proof: string;
 };
 
 export type RegistrationPolicy = {
