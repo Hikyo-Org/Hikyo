@@ -684,7 +684,7 @@ func TestHierarchyJSONShapesAreFrozen(t *testing.T) {
 		{"org-json.json", apigen.OrgList{
 			Items: []apigen.Org{{
 				Id: "org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f11", Name: "acme",
-				Active: true, CreatedAt: stamp,
+				Active: true, CreatedAt: stamp, Origin: apigen.OrgOriginManual,
 			}},
 			Count: 1,
 		}},
