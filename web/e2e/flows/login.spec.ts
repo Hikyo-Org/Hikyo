@@ -854,7 +854,7 @@ test.describe('sign-up door', () => {
         const orgs = operatorPage.locator('#instance-orgs');
         await orgs.getByLabel('Show').selectOption('registration');
         await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toBeVisible();
-        await expect(orgs.getByText('self-serve').first()).toBeVisible();
+        await expect(orgs.getByText('self-serve', { exact: true }).first()).toBeVisible();
         await orgs.getByLabel('Show').selectOption('manual');
         await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toHaveCount(0);
       } finally {
