@@ -14,6 +14,13 @@ import { useEffect, useRef } from 'react';
  * gate as Escape. Deactivating consumes the sentinel again so Back is not a
  * double-press afterwards.
  */
+/** The sentinel entry's state, so a popstate can tell a sentinel from the route. */
+const SENTINEL = { hikyoNavigationGuard: true } as const;
+
+function isSentinel(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && 'hikyoNavigationGuard' in state;
+}
+
 export function useNavigationGuard(active: boolean, onAttempt: () => void) {
   const attempt = useRef(onAttempt);
   useEffect(() => {
@@ -26,11 +33,22 @@ export function useNavigationGuard(active: boolean, onAttempt: () => void) {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
-    const onPopState = () => {
-      history.pushState(null, '', window.location.href);
+    const onPopState = (event: PopStateEvent) => {
+      // A Back press from the sentinel lands on the route. Landing on a
+      // sentinel instead means the pop is another guard's deactivation: its
+      // `history.back()` settles asynchronously, after a guard mounted in the
+      // same tick (a sibling dialog opening as one closes, StrictMode's effect
+      // replay) has pushed its own sentinel. That pop consumed OUR sentinel and
+      // left the stale one under the cursor, so adopt it rather than surface a
+      // dismissal nobody attempted.
+      if (isSentinel(event.state)) {
+        history.replaceState(SENTINEL, '', window.location.href);
+        return;
+      }
+      history.pushState(SENTINEL, '', window.location.href);
       attempt.current();
     };
-    history.pushState(null, '', window.location.href);
+    history.pushState(SENTINEL, '', window.location.href);
     window.addEventListener('beforeunload', onBeforeUnload);
     window.addEventListener('popstate', onPopState);
     return () => {

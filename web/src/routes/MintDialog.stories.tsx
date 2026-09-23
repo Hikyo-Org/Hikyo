@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { ComponentProps } from 'react';
 import { expect, fn } from 'storybook/test';
 
 import { MintDialog } from './MachineAccess.tsx';
@@ -43,7 +44,10 @@ const meta = {
   parameters: { ...topLayerDocs, app: {} },
   args: {
     lifecycle: { kind: 'reviewing', request },
-    move: fn(),
+    // The machine's contract: every event answers with a state. A bare spy
+    // would hand `dismiss` undefined, and the navigation guard routes Back
+    // presses through it.
+    move: fn<ComponentProps<typeof MintDialog>['move']>(() => ({ accepted: true, state: { kind: 'idle' } })),
     isSubmitting: fn(() => false),
   },
 } satisfies Meta<typeof MintDialog>;

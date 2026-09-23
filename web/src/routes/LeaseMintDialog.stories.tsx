@@ -70,7 +70,10 @@ const meta = {
       { id: STAGING, name: 'staging' },
     ],
     lifecycle: { kind: 'idle' },
-    move: fn(),
+    // The machine's contract: every event answers with a state. A bare spy
+    // would hand `dismiss` undefined, and the navigation guard routes Back
+    // presses through it.
+    move: fn<ComponentProps<typeof LeaseMintDialog>['move']>(() => ({ accepted: true, state: { kind: 'idle' } })),
     isSubmitting: fn(() => false),
     nextRequestId: fn(() => 1),
     onClose: fn(),
