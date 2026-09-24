@@ -148,7 +148,8 @@ func TestVocabularyFitsTheConditionGrammar(t *testing.T) {
 	report := func(typ, reason string) deliverytarget.Report {
 		return deliverytarget.Report{
 			Vocabulary: 1, Generation: 1, ObservedGeneration: 1, ReportedAt: time.Unix(1_800_000_000, 0),
-			ReportIntervalSeconds: 300, ReporterVersion: "1.0.0",
+			ReportIntervalSeconds: 300, ReporterVersion: "1.0.0", Lifecycle: "Synced",
+			Reporter: deliverytarget.ReporterKubernetesOperator,
 			Target: deliverytarget.Target{
 				ClusterID: "0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f00", InstanceUID: "0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f01",
 				Namespace: "apps", Name: "api", UID: "0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f02",

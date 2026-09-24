@@ -87,6 +87,8 @@ func TestCheckShape(t *testing.T) {
 		"version free text":       func(r *Report) { r.ReporterVersion = "latest" },
 		"version too long":        func(r *Report) { r.ReporterVersion = "1.0.0-" + strings.Repeat("a", 64) },
 		"condition status":        func(r *Report) { r.Conditions[0].Status = "Maybe" },
+		"lifecycle outside enum":  func(r *Report) { r.Lifecycle = "Healthy" },
+		"reporter outside enum":   func(r *Report) { r.Reporter = "compose" },
 		"condition observed":      func(r *Report) { r.Conditions[0].ObservedGeneration = 9 },
 		"too many conditions":     func(r *Report) { r.Conditions = make([]Condition, 11) },
 		"name leading hyphen":     func(r *Report) { r.Target.Name = "-api" },
@@ -113,8 +115,6 @@ func TestCheckVocabulary(t *testing.T) {
 		field  string
 	}{
 		"version":        {func(r *Report) { r.Vocabulary = 2 }, "vocabulary"},
-		"reporter":       {func(r *Report) { r.Reporter = "compose" }, "reporter.integration"},
-		"lifecycle":      {func(r *Report) { r.Lifecycle = "Healthy" }, "lifecycle"},
 		"type":           {func(r *Report) { r.Conditions[1].Type = "Available" }, "conditions[1].type"},
 		"reason":         {func(r *Report) { r.Conditions[0].Reason = "Delivered" }, "conditions[0].reason"},
 		"duplicate type": {func(r *Report) { r.Conditions[1] = r.Conditions[0] }, "conditions[1].type"},

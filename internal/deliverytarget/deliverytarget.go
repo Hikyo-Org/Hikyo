@@ -293,6 +293,12 @@ func CheckShape(r Report) error {
 		return fmt.Errorf("%w: reported_at is required", ErrShape)
 	case r.ReportIntervalSeconds < 1:
 		return fmt.Errorf("%w: report_interval_seconds must be positive", ErrShape)
+	// The lifecycle and reporter enums are closed in the contract, so a value
+	// outside them is malformed (400), not a vocabulary refusal.
+	case !IsLifecycle(r.Lifecycle):
+		return fmt.Errorf("%w: lifecycle is not a HikyoSecret lifecycle", ErrShape)
+	case !IsReporter(r.Reporter):
+		return fmt.Errorf("%w: reporter.integration is not a known integration", ErrShape)
 	case !IsSemVer(r.ReporterVersion):
 		return fmt.Errorf("%w: reporter.version is not a SemVer 2.0 version", ErrShape)
 	case len(r.Conditions) > len(vocabularyV1):
@@ -321,12 +327,6 @@ func CheckVocabulary(r Report) error {
 	vocab, ok := vocabularies[r.Vocabulary]
 	if !ok {
 		return &VocabularyError{Field: "vocabulary"}
-	}
-	if !IsReporter(r.Reporter) {
-		return &VocabularyError{Field: "reporter.integration"}
-	}
-	if !IsLifecycle(r.Lifecycle) {
-		return &VocabularyError{Field: "lifecycle"}
 	}
 	seen := map[string]bool{}
 	for i, c := range r.Conditions {
