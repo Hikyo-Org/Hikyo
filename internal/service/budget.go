@@ -10,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -263,6 +264,17 @@ var (
 		rates: []budgetRateRule{
 			{dimOrg, BudgetMachineFetchOrgPerMin, time.Minute},
 			{dimInstance, BudgetMachineFetchInstancePerMin, time.Minute},
+		},
+	}
+	// budgetDeliveryTarget is the delivery-target report bucket
+	// (k8s-condition-reporting ADR D8): separate from machine-fetch so a report
+	// storm cannot starve fetches. Both keys resolve only after authorization,
+	// so it is charged in-tx via chargeOnce.
+	budgetDeliveryTarget = budgetCategory{
+		name: "delivery-target",
+		rates: []budgetRateRule{
+			{dimPrincipal, deliverytarget.PrincipalBudget, time.Minute},
+			{dimOrg, deliverytarget.OrgBudget, time.Minute},
 		},
 	}
 	budgetSchemaRevision = budgetCategory{

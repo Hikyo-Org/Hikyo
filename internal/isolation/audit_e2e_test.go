@@ -480,6 +480,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// OIDC federation and the delivery surface (#62): the same obligation, one
 		// ticket later.
 		runFederationLifecycle(t, db)
+		// Delivery-target condition reporting (#788): a new row, a vocabulary
+		// refusal, a tombstone and the scheduled 30-day purge, each through
+		// the real service under a real workload credential.
+		runDeliveryTargetAuditLifecycle(t, db)
 		// SCIM provisioning (#73): every `scim.*` type gets a real emitter —
 		// binding, credential, user, group, mapping, attention and the lockout
 		// pair — before the trails are read.
