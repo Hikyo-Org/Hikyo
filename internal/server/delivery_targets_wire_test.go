@@ -219,3 +219,37 @@ func TestMetaAdvertisesTheDeliveryTargetReportCapability(t *testing.T) {
 		t.Fatalf("api_revision = %d, want %d", meta.ApiRevision, api.Revision)
 	}
 }
+
+// TestDeliveryTargetConditionGrammarAtTheWire: a condition type or reason the
+// server's vocabulary does not know, but which fits the Kubernetes condition
+// grammar, passes the contract and reaches the service (whose 422 names the
+// member); a string outside the grammar is a contract 400 that never does.
+func TestDeliveryTargetConditionGrammarAtTheWire(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		typ, reason   string
+		reachesServer bool
+	}{
+		{"unknown qualified type", "example.com/Healthy", "Reconciled", true},
+		{"unknown reason", "Ready", "SomethingNew", true},
+		{"type outside the grammar", "not a type", "Reconciled", false},
+		{"reason outside the grammar", "Ready", "9starts-with-digit", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			del := newDTDelivery(nil)
+			srv := federationServer(t, stubFederation{}, del)
+			body := wireReport()
+			body.Conditions[0].Type, body.Conditions[0].Reason = tc.typ, tc.reason
+			resp, payload := call(t, srv, http.MethodPost, deliveryTargetsPath, "hik_1_wl_abc", body)
+			if tc.reachesServer {
+				if resp.StatusCode != http.StatusNoContent || len(*del.calls) != 1 || del.report.Conditions[0].Type != tc.typ {
+					t.Fatalf("-> %d, service saw %v: %s", resp.StatusCode, *del.calls, payload)
+				}
+				return
+			}
+			if resp.StatusCode != http.StatusBadRequest || len(*del.calls) != 0 {
+				t.Fatalf("-> %d, service saw %v: %s", resp.StatusCode, *del.calls, payload)
+			}
+		})
+	}
+}

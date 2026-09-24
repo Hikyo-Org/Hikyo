@@ -1121,90 +1121,6 @@ func (e DeliveryTargetRefusalCause) Valid() bool {
 	}
 }
 
-// Defines values for DeliveryTargetConditionReason.
-const (
-	DeliveryTargetConditionReasonAudienceMissing             DeliveryTargetConditionReason = "AudienceMissing"
-	DeliveryTargetConditionReasonAuthorizationWithdrawn      DeliveryTargetConditionReason = "AuthorizationWithdrawn"
-	DeliveryTargetConditionReasonBlocked                     DeliveryTargetConditionReason = "Blocked"
-	DeliveryTargetConditionReasonCurrent                     DeliveryTargetConditionReason = "Current"
-	DeliveryTargetConditionReasonDelivered                   DeliveryTargetConditionReason = "Delivered"
-	DeliveryTargetConditionReasonEnvFromSkip                 DeliveryTargetConditionReason = "EnvFromSkip"
-	DeliveryTargetConditionReasonExpired                     DeliveryTargetConditionReason = "Expired"
-	DeliveryTargetConditionReasonExpiresSoon                 DeliveryTargetConditionReason = "ExpiresSoon"
-	DeliveryTargetConditionReasonFetchFailed                 DeliveryTargetConditionReason = "FetchFailed"
-	DeliveryTargetConditionReasonInstanceMismatch            DeliveryTargetConditionReason = "InstanceMismatch"
-	DeliveryTargetConditionReasonInvalidSecretData           DeliveryTargetConditionReason = "InvalidSecretData"
-	DeliveryTargetConditionReasonKeysMissing                 DeliveryTargetConditionReason = "KeysMissing"
-	DeliveryTargetConditionReasonLoaderControlUnacknowledged DeliveryTargetConditionReason = "LoaderControlUnacknowledged"
-	DeliveryTargetConditionReasonManagedSecretNotOwned       DeliveryTargetConditionReason = "ManagedSecretNotOwned"
-	DeliveryTargetConditionReasonNamespaceNotBound           DeliveryTargetConditionReason = "NamespaceNotBound"
-	DeliveryTargetConditionReasonNotMaterialized             DeliveryTargetConditionReason = "NotMaterialized"
-	DeliveryTargetConditionReasonPinExpired                  DeliveryTargetConditionReason = "PinExpired"
-	DeliveryTargetConditionReasonReconciled                  DeliveryTargetConditionReason = "Reconciled"
-	DeliveryTargetConditionReasonSecretNotDesignated         DeliveryTargetConditionReason = "SecretNotDesignated"
-	DeliveryTargetConditionReasonServiceAccountNotDesignated DeliveryTargetConditionReason = "ServiceAccountNotDesignated"
-	DeliveryTargetConditionReasonStalled                     DeliveryTargetConditionReason = "Stalled"
-	DeliveryTargetConditionReasonTargetClaimed               DeliveryTargetConditionReason = "TargetClaimed"
-	DeliveryTargetConditionReasonTargetTypeImmutable         DeliveryTargetConditionReason = "TargetTypeImmutable"
-	DeliveryTargetConditionReasonUndeliveredSecrets          DeliveryTargetConditionReason = "UndeliveredSecrets"
-)
-
-// Valid indicates whether the value is a known member of the DeliveryTargetConditionReason enum.
-func (e DeliveryTargetConditionReason) Valid() bool {
-	switch e {
-	case DeliveryTargetConditionReasonAudienceMissing:
-		return true
-	case DeliveryTargetConditionReasonAuthorizationWithdrawn:
-		return true
-	case DeliveryTargetConditionReasonBlocked:
-		return true
-	case DeliveryTargetConditionReasonCurrent:
-		return true
-	case DeliveryTargetConditionReasonDelivered:
-		return true
-	case DeliveryTargetConditionReasonEnvFromSkip:
-		return true
-	case DeliveryTargetConditionReasonExpired:
-		return true
-	case DeliveryTargetConditionReasonExpiresSoon:
-		return true
-	case DeliveryTargetConditionReasonFetchFailed:
-		return true
-	case DeliveryTargetConditionReasonInstanceMismatch:
-		return true
-	case DeliveryTargetConditionReasonInvalidSecretData:
-		return true
-	case DeliveryTargetConditionReasonKeysMissing:
-		return true
-	case DeliveryTargetConditionReasonLoaderControlUnacknowledged:
-		return true
-	case DeliveryTargetConditionReasonManagedSecretNotOwned:
-		return true
-	case DeliveryTargetConditionReasonNamespaceNotBound:
-		return true
-	case DeliveryTargetConditionReasonNotMaterialized:
-		return true
-	case DeliveryTargetConditionReasonPinExpired:
-		return true
-	case DeliveryTargetConditionReasonReconciled:
-		return true
-	case DeliveryTargetConditionReasonSecretNotDesignated:
-		return true
-	case DeliveryTargetConditionReasonServiceAccountNotDesignated:
-		return true
-	case DeliveryTargetConditionReasonStalled:
-		return true
-	case DeliveryTargetConditionReasonTargetClaimed:
-		return true
-	case DeliveryTargetConditionReasonTargetTypeImmutable:
-		return true
-	case DeliveryTargetConditionReasonUndeliveredSecrets:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for DeliveryTargetConditionStatus.
 const (
 	DeliveryTargetConditionStatusFalse   DeliveryTargetConditionStatus = "False"
@@ -1220,48 +1136,6 @@ func (e DeliveryTargetConditionStatus) Valid() bool {
 	case DeliveryTargetConditionStatusTrue:
 		return true
 	case DeliveryTargetConditionStatusUnknown:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for DeliveryTargetConditionType.
-const (
-	DeliveryTargetConditionTypeConflict         DeliveryTargetConditionType = "Conflict"
-	DeliveryTargetConditionTypeCredentialExpiry DeliveryTargetConditionType = "CredentialExpiry"
-	DeliveryTargetConditionTypeDelivery         DeliveryTargetConditionType = "Delivery"
-	DeliveryTargetConditionTypeDesignation      DeliveryTargetConditionType = "Designation"
-	DeliveryTargetConditionTypePinExpired       DeliveryTargetConditionType = "PinExpired"
-	DeliveryTargetConditionTypeReady            DeliveryTargetConditionType = "Ready"
-	DeliveryTargetConditionTypeRollout          DeliveryTargetConditionType = "Rollout"
-	DeliveryTargetConditionTypeScrubbed         DeliveryTargetConditionType = "Scrubbed"
-	DeliveryTargetConditionTypeSynced           DeliveryTargetConditionType = "Synced"
-	DeliveryTargetConditionTypeUnreconciled     DeliveryTargetConditionType = "Unreconciled"
-)
-
-// Valid indicates whether the value is a known member of the DeliveryTargetConditionType enum.
-func (e DeliveryTargetConditionType) Valid() bool {
-	switch e {
-	case DeliveryTargetConditionTypeConflict:
-		return true
-	case DeliveryTargetConditionTypeCredentialExpiry:
-		return true
-	case DeliveryTargetConditionTypeDelivery:
-		return true
-	case DeliveryTargetConditionTypeDesignation:
-		return true
-	case DeliveryTargetConditionTypePinExpired:
-		return true
-	case DeliveryTargetConditionTypeReady:
-		return true
-	case DeliveryTargetConditionTypeRollout:
-		return true
-	case DeliveryTargetConditionTypeScrubbed:
-		return true
-	case DeliveryTargetConditionTypeSynced:
-		return true
-	case DeliveryTargetConditionTypeUnreconciled:
 		return true
 	default:
 		return false
@@ -5129,24 +5003,21 @@ type DeliveryTarget struct {
 // DeliveryTargetRefusalCause defines model for DeliveryTarget.Refusal.Cause.
 type DeliveryTargetRefusalCause string
 
-// DeliveryTargetCondition One asserted condition. `type` and `reason` are closed over every
-// vocabulary this server accepts; a reason that is not in its type's
-// set for the report's vocabulary is a 422.
+// DeliveryTargetCondition One asserted condition. `type` and `reason` are bounded by the
+// Kubernetes condition grammar (k8s.io/apimachinery `metav1.Condition`
+// Type and Reason validation), not enumerated: a value outside the
+// vocabulary `/meta` advertises (`delivery-target-report/<vocabulary>`)
+// refuses the whole report with 422 naming the member, so the refusal is
+// recorded on the target's row. A string outside the grammar is a 400.
 type DeliveryTargetCondition struct {
 	ObservedGeneration int64                         `json:"observed_generation"`
-	Reason             DeliveryTargetConditionReason `json:"reason"`
+	Reason             string                        `json:"reason"`
 	Status             DeliveryTargetConditionStatus `json:"status"`
-	Type               DeliveryTargetConditionType   `json:"type"`
+	Type               string                        `json:"type"`
 }
-
-// DeliveryTargetConditionReason defines model for DeliveryTargetCondition.Reason.
-type DeliveryTargetConditionReason string
 
 // DeliveryTargetConditionStatus defines model for DeliveryTargetCondition.Status.
 type DeliveryTargetConditionStatus string
-
-// DeliveryTargetConditionType defines model for DeliveryTargetCondition.Type.
-type DeliveryTargetConditionType string
 
 // DeliveryTargetIdentity The target's identity under the reporting principal: the cluster
 // (the `kube-system` namespace UID), the `HikyoInstance` UID and the

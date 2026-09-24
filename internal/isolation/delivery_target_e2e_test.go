@@ -244,20 +244,43 @@ func TestDeliveryTargetRefusals(t *testing.T) {
 			t.Fatalf("ordering refusal events = %d, want 3", got)
 		}
 
-		// Vocabulary (422): names the field, stores no report data, records
-		// only the closed cause on the existing row.
-		bad := dtReport(1, 3, dtNow.Add(time.Minute))
-		bad.Conditions[1].Type = "Healthy"
-		err := dtService(t, db, dtNow.Add(time.Minute)).ReportTarget(t.Context(), minted.Value, scope, bad)
-		var detail interface{ SafeDetail() string }
-		if !errors.Is(err, service.ErrReportVocabulary) || !errors.As(err, &detail) || detail.SafeDetail() != "conditions[1].type" {
-			t.Fatalf("vocabulary refusal = %v, want 422 naming conditions[1].type", err)
+		// Vocabulary (422): a grammatical type or reason outside the
+		// advertised vocabulary names the field, stores no report data, and
+		// records only the closed cause on the existing row.
+		for _, tc := range []struct {
+			field  string
+			mutate func(*deliverytarget.Report)
+		}{
+			{"conditions[1].type", func(r *deliverytarget.Report) { r.Conditions[1].Type = "example.com/Healthy" }},
+			{"conditions[0].reason", func(r *deliverytarget.Report) { r.Conditions[0].Reason = "Fine" }},
+		} {
+			execRaw(t, db, "UPDATE delivery_target_reports SET refusal_cause = NULL, refused_at = NULL WHERE "+row)
+			bad := dtReport(1, 3, dtNow.Add(time.Minute))
+			tc.mutate(&bad)
+			err := dtService(t, db, dtNow.Add(time.Minute)).ReportTarget(t.Context(), minted.Value, scope, bad)
+			var detail interface{ SafeDetail() string }
+			if !errors.Is(err, service.ErrReportVocabulary) || !errors.As(err, &detail) || detail.SafeDetail() != tc.field {
+				t.Fatalf("vocabulary refusal = %v, want 422 naming %s", err, tc.field)
+			}
+			if got := snapshot(); got != accepted {
+				t.Fatalf("a vocabulary-refused report stored data: %q -> %q", accepted, got)
+			}
+			if got := dtRows(t, db, row+" AND refusal_cause = 'vocabulary' AND refused_at IS NOT NULL"); got != 1 {
+				t.Fatalf("%s: the vocabulary refusal cause was not recorded on the existing row", tc.field)
+			}
+			if got := dtEvents(t, db, "identity.delivery_target_refused", `payload LIKE '%"field":"`+tc.field+`"%'`); got != 1 {
+				t.Fatalf("%s: refusal events naming the field = %d, want 1", tc.field, got)
+			}
 		}
-		if got := snapshot(); got != accepted {
-			t.Fatalf("a vocabulary-refused report stored data: %q -> %q", accepted, got)
+		// A string outside the condition grammar is a 400: no event, no mark.
+		refusals := dtEvents(t, db, "identity.delivery_target_refused", "")
+		ungrammatical := dtReport(1, 3, dtNow.Add(time.Minute))
+		ungrammatical.Conditions[0].Type = "not a condition"
+		if err := del.ReportTarget(t.Context(), minted.Value, scope, ungrammatical); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("ungrammatical condition type = %v, want 400", err)
 		}
-		if got := dtRows(t, db, row+" AND refusal_cause = 'vocabulary' AND refused_at IS NOT NULL"); got != 1 {
-			t.Fatal("the vocabulary refusal cause was not recorded on the existing row")
+		if got := dtEvents(t, db, "identity.delivery_target_refused", ""); got != refusals || snapshot() != accepted {
+			t.Fatal("a grammar refusal touched the trail or the row")
 		}
 		list := dtList(t, db, service.LocalPrincipal(alice), envA1, dtNow.Add(2*time.Minute))
 		if got := list.Targets[0]; got.State != deliverytarget.StateRefused || got.RefusalCause != deliverytarget.RefusalVocabulary {

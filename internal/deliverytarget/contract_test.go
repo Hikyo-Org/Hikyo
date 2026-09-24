@@ -1,10 +1,12 @@
 package deliverytarget_test
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/getkin/kin-openapi/openapi3"
 
@@ -15,9 +17,9 @@ import (
 
 // TestDeliveryTargetContractIsValueFree is the ADR's value-free pin (D4,
 // #788 acceptance): every string a delivery-target request can carry is a
-// closed enum, the Kubernetes name grammar, a UID, an RFC 3339 time or a
-// SemVer version, each bounded exactly as this package bounds it, and every
-// object is closed. A free string anywhere in a request body fails here.
+// closed enum, the Kubernetes name grammar, the Kubernetes condition
+// type/reason grammar, a UID, an RFC 3339 time or a SemVer version, each
+// bounded exactly as this package bounds it, and every object is closed. A free string anywhere in a request body fails here.
 func TestDeliveryTargetContractIsValueFree(t *testing.T) {
 	doc, err := api.Doc()
 	if err != nil {
@@ -28,6 +30,8 @@ func TestDeliveryTargetContractIsValueFree(t *testing.T) {
 		deliverytarget.DNS1123SubdomainPattern: deliverytarget.MaxSubdomainLength,
 		deliverytarget.UIDPattern:              deliverytarget.MaxUIDLength,
 		deliverytarget.SemVerPattern:           deliverytarget.MaxVersionLength,
+		deliverytarget.ConditionTypePattern:    deliverytarget.MaxConditionTypeLength,
+		deliverytarget.ConditionReasonPattern:  deliverytarget.MaxConditionReasonLength,
 	}
 	for _, id := range []string{"reportDeliveryTarget", "tombstoneDeliveryTarget"} {
 		op := operation(t, doc, id)
@@ -51,11 +55,6 @@ func TestDeliveryTargetContractIsValueFree(t *testing.T) {
 
 	// The wire enums are this package's closed sets, exactly.
 	schemas := doc.Components.Schemas
-	var types, reasons []string
-	for _, v := range deliverytarget.Vocabularies() {
-		types = append(types, deliverytarget.ConditionTypes(v)...)
-		reasons = append(reasons, deliverytarget.AllReasons(v)...)
-	}
 	condition := schemas["DeliveryTargetCondition"].Value.Properties
 	var capabilities []string
 	for _, v := range schemas["ProtocolCapability"].Value.Extensions["x-extensible-enum"].([]any) {
@@ -67,8 +66,6 @@ func TestDeliveryTargetContractIsValueFree(t *testing.T) {
 		name      string
 		got, want []string
 	}{
-		{"DeliveryTargetCondition.type", enum(condition["type"].Value), types},
-		{"DeliveryTargetCondition.reason", enum(condition["reason"].Value), reasons},
 		{"DeliveryTargetCondition.status", enum(condition["status"].Value), deliverytarget.ConditionStatuses()},
 		{"DeliveryTargetLifecycle", enum(schemas["DeliveryTargetLifecycle"].Value), deliverytarget.Lifecycles()},
 		{"DeliveryTargetReporter.integration", enum(schemas["DeliveryTargetReporter"].Value.Properties["integration"].Value), deliverytarget.Reporters()},
@@ -142,4 +139,42 @@ func enum(s *openapi3.Schema) []string {
 		out = append(out, fmt.Sprint(v))
 	}
 	return out
+}
+
+// TestVocabularyFitsTheConditionGrammar: every advertised type and reason
+// passes the wire grammar, so a vocabulary value never meets a 400, and a
+// string outside the grammar is a shape refusal before the vocabulary check.
+func TestVocabularyFitsTheConditionGrammar(t *testing.T) {
+	report := func(typ, reason string) deliverytarget.Report {
+		return deliverytarget.Report{
+			Vocabulary: 1, Generation: 1, ObservedGeneration: 1, ReportedAt: time.Unix(1_800_000_000, 0),
+			ReportIntervalSeconds: 300, ReporterVersion: "1.0.0",
+			Target: deliverytarget.Target{
+				ClusterID: "0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f00", InstanceUID: "0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f01",
+				Namespace: "apps", Name: "api", UID: "0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f02",
+			},
+			Conditions: []deliverytarget.Condition{{Type: typ, Status: "True", Reason: reason, ObservedGeneration: 1}},
+		}
+	}
+	for _, v := range deliverytarget.Vocabularies() {
+		for _, typ := range deliverytarget.ConditionTypes(v) {
+			for _, reason := range deliverytarget.Reasons(v, typ) {
+				if err := deliverytarget.CheckShape(report(typ, reason)); err != nil {
+					t.Errorf("vocabulary %d %s/%s fails the grammar: %v", v, typ, reason, err)
+				}
+			}
+		}
+	}
+	for _, bad := range []deliverytarget.Report{
+		report("has space", "Reconciled"), report("Ready", "has space"),
+		report("Ready", "9LeadingDigit"), report(strings.Repeat("a", 317), "Reconciled"),
+	} {
+		if err := deliverytarget.CheckShape(bad); !errors.Is(err, deliverytarget.ErrShape) {
+			t.Errorf("%+v passed the grammar", bad.Conditions[0])
+		}
+	}
+	// Grammatical but outside the vocabulary: the 422 path.
+	if err := deliverytarget.CheckShape(report("example.com/Healthy", "Fine")); err != nil {
+		t.Fatalf("a grammatical unknown condition failed the shape check: %v", err)
+	}
 }

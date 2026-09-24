@@ -1597,55 +1597,22 @@ export const zDeliveryTargetRef = z.object({
 });
 
 /**
- * One asserted condition. `type` and `reason` are closed over every
- * vocabulary this server accepts; a reason that is not in its type's
- * set for the report's vocabulary is a 422.
+ * One asserted condition. `type` and `reason` are bounded by the
+ * Kubernetes condition grammar (k8s.io/apimachinery `metav1.Condition`
+ * Type and Reason validation), not enumerated: a value outside the
+ * vocabulary `/meta` advertises (`delivery-target-report/<vocabulary>`)
+ * refuses the whole report with 422 naming the member, so the refusal is
+ * recorded on the target's row. A string outside the grammar is a 400.
  *
  */
 export const zDeliveryTargetCondition = z.object({
-    type: z.enum([
-        'Conflict',
-        'CredentialExpiry',
-        'Delivery',
-        'Designation',
-        'PinExpired',
-        'Ready',
-        'Rollout',
-        'Scrubbed',
-        'Synced',
-        'Unreconciled'
-    ]),
+    type: z.string().min(1).max(316).regex(/^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*\/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$/),
     status: z.enum([
         'False',
         'True',
         'Unknown'
     ]),
-    reason: z.enum([
-        'AudienceMissing',
-        'AuthorizationWithdrawn',
-        'Blocked',
-        'Current',
-        'Delivered',
-        'EnvFromSkip',
-        'Expired',
-        'ExpiresSoon',
-        'FetchFailed',
-        'InstanceMismatch',
-        'InvalidSecretData',
-        'KeysMissing',
-        'LoaderControlUnacknowledged',
-        'ManagedSecretNotOwned',
-        'NamespaceNotBound',
-        'NotMaterialized',
-        'PinExpired',
-        'Reconciled',
-        'SecretNotDesignated',
-        'ServiceAccountNotDesignated',
-        'Stalled',
-        'TargetClaimed',
-        'TargetTypeImmutable',
-        'UndeliveredSecrets'
-    ]),
+    reason: z.string().min(1).max(1024).regex(/^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$/),
     observed_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
 });
 

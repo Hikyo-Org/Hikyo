@@ -224,6 +224,16 @@ const (
 	MaxSubdomainLength = 253
 	MaxUIDLength       = 36
 	MaxVersionLength   = 64
+	// The Kubernetes condition grammar (k8s.io/apimachinery metav1.Condition
+	// Type and Reason validation). A condition type or reason is bounded by it
+	// on the wire, not enumerated, so a value outside the advertised
+	// vocabulary reaches the vocabulary check and is refused 422 naming the
+	// member (ADR D4, D5), rather than 400 before authorization, which the
+	// operator's per-CR suppression (D9) would not recognize.
+	ConditionTypePattern     = `^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$`
+	MaxConditionTypeLength   = 316
+	ConditionReasonPattern   = `^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$`
+	MaxConditionReasonLength = 1024
 )
 
 var (
@@ -231,6 +241,8 @@ var (
 	dns1123Subdomain = regexp.MustCompile(DNS1123SubdomainPattern)
 	uidPattern       = regexp.MustCompile(UIDPattern)
 	semverPattern    = regexp.MustCompile(SemVerPattern)
+	conditionType    = regexp.MustCompile(ConditionTypePattern)
+	conditionReason  = regexp.MustCompile(ConditionReasonPattern)
 )
 
 // IsDNS1123Label reports whether s is a Kubernetes namespace name.
@@ -292,6 +304,12 @@ func CheckShape(r Report) error {
 		}
 		if !IsConditionStatus(c.Status) {
 			return fmt.Errorf("%w: conditions[%d].status must be True, False or Unknown", ErrShape, i)
+		}
+		if len(c.Type) > MaxConditionTypeLength || !conditionType.MatchString(c.Type) {
+			return fmt.Errorf("%w: conditions[%d].type is not a Kubernetes condition type", ErrShape, i)
+		}
+		if len(c.Reason) > MaxConditionReasonLength || !conditionReason.MatchString(c.Reason) {
+			return fmt.Errorf("%w: conditions[%d].reason is not a Kubernetes condition reason", ErrShape, i)
 		}
 	}
 	return nil

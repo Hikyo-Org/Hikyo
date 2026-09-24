@@ -138,7 +138,7 @@ func (a *API) ReportDeliveryTarget(ctx context.Context, req apigen.ReportDeliver
 	conditions := make([]deliverytarget.Condition, 0, len(body.Conditions))
 	for _, c := range body.Conditions {
 		conditions = append(conditions, deliverytarget.Condition{
-			Type: string(c.Type), Status: string(c.Status), Reason: string(c.Reason),
+			Type: c.Type, Status: string(c.Status), Reason: c.Reason,
 			ObservedGeneration: c.ObservedGeneration,
 		})
 	}
@@ -195,8 +195,8 @@ func (a *API) ListDeliveryTargets(ctx context.Context, req apigen.ListDeliveryTa
 		conditions := make([]apigen.DeliveryTargetCondition, 0, len(r.Conditions))
 		for _, c := range r.Conditions {
 			conditions = append(conditions, apigen.DeliveryTargetCondition{
-				Type: apigen.DeliveryTargetConditionType(c.Type), Status: apigen.DeliveryTargetConditionStatus(c.Status),
-				Reason: apigen.DeliveryTargetConditionReason(c.Reason), ObservedGeneration: c.ObservedGeneration,
+				Type: c.Type, Status: apigen.DeliveryTargetConditionStatus(c.Status),
+				Reason: c.Reason, ObservedGeneration: c.ObservedGeneration,
 			})
 		}
 		row := apigen.DeliveryTarget{

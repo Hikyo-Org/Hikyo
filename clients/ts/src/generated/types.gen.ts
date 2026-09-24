@@ -2788,15 +2788,18 @@ export type DeliveryTargetRef = {
 };
 
 /**
- * One asserted condition. `type` and `reason` are closed over every
- * vocabulary this server accepts; a reason that is not in its type's
- * set for the report's vocabulary is a 422.
+ * One asserted condition. `type` and `reason` are bounded by the
+ * Kubernetes condition grammar (k8s.io/apimachinery `metav1.Condition`
+ * Type and Reason validation), not enumerated: a value outside the
+ * vocabulary `/meta` advertises (`delivery-target-report/<vocabulary>`)
+ * refuses the whole report with 422 naming the member, so the refusal is
+ * recorded on the target's row. A string outside the grammar is a 400.
  *
  */
 export type DeliveryTargetCondition = {
-    type: 'Conflict' | 'CredentialExpiry' | 'Delivery' | 'Designation' | 'PinExpired' | 'Ready' | 'Rollout' | 'Scrubbed' | 'Synced' | 'Unreconciled';
+    type: string;
     status: 'False' | 'True' | 'Unknown';
-    reason: 'AudienceMissing' | 'AuthorizationWithdrawn' | 'Blocked' | 'Current' | 'Delivered' | 'EnvFromSkip' | 'Expired' | 'ExpiresSoon' | 'FetchFailed' | 'InstanceMismatch' | 'InvalidSecretData' | 'KeysMissing' | 'LoaderControlUnacknowledged' | 'ManagedSecretNotOwned' | 'NamespaceNotBound' | 'NotMaterialized' | 'PinExpired' | 'Reconciled' | 'SecretNotDesignated' | 'ServiceAccountNotDesignated' | 'Stalled' | 'TargetClaimed' | 'TargetTypeImmutable' | 'UndeliveredSecrets';
+    reason: string;
     observed_generation: number;
 };
 
