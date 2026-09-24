@@ -229,6 +229,9 @@ func TestDeliveryTargetRefusals(t *testing.T) {
 			"lower observed_generation": dtReport(1, 1, dtNow.Add(time.Minute)),
 			"not-later reported_at":     dtReport(1, 2, dtNow),
 			"future reported_at":        dtReport(1, 2, dtNow.Add(deliverytarget.MaxFutureSkew+time.Second)),
+			// Stored at microsecond precision, so a replay carrying
+			// sub-microsecond digits is the same instant, not a later one.
+			"sub-microsecond replay": dtReport(1, 2, dtNow.Add(500*time.Nanosecond)),
 		} {
 			if err := del.ReportTarget(t.Context(), minted.Value, scope, report); !errors.Is(err, domain.ErrConflict) {
 				t.Fatalf("%s = %v, want 409", name, err)
@@ -240,8 +243,8 @@ func TestDeliveryTargetRefusals(t *testing.T) {
 		if got := dtRows(t, db, row+" AND refusal_cause IS NOT NULL"); got != 0 {
 			t.Fatal("an ordering refusal was recorded on the row")
 		}
-		if got := dtEvents(t, db, "identity.delivery_target_refused", `payload LIKE '%"cause":"ordering"%'`); got != 3 {
-			t.Fatalf("ordering refusal events = %d, want 3", got)
+		if got := dtEvents(t, db, "identity.delivery_target_refused", `payload LIKE '%"cause":"ordering"%'`); got != 4 {
+			t.Fatalf("ordering refusal events = %d, want 4", got)
 		}
 
 		// Vocabulary (422): a grammatical type or reason outside the
@@ -288,7 +291,7 @@ func TestDeliveryTargetRefusals(t *testing.T) {
 		}
 		// A vocabulary refusal with no existing row touches nothing.
 		fresh := dtReport(9, 1, dtNow)
-		fresh.Lifecycle = "Healthy"
+		fresh.Conditions[0].Type = "example.com/Healthy"
 		if err := del.ReportTarget(t.Context(), minted.Value, scope, fresh); !errors.Is(err, service.ErrReportVocabulary) {
 			t.Fatalf("new-row vocabulary refusal = %v", err)
 		}
@@ -424,6 +427,59 @@ func TestDeliveryTargetListIsolation(t *testing.T) {
 		} {
 			_, err := del.ListTargets(t.Context(), probe.actor, probe.scope)
 			t.Run(name, func(t *testing.T) { assertUniformNotFound(t, err, missing) })
+		}
+	})
+}
+
+// TestDeliveryTargetQuotaNoticeAcrossEnvironments: a quota refusal has no row
+// (ADR D5), so a principal whose rows all live in one environment and is
+// refused in another still shows its notice in the other environment's list,
+// and a quota-refused principal never granted that environment never appears
+// there.
+func TestDeliveryTargetQuotaNoticeAcrossEnvironments(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		identityFixtures(t, db)
+		del := dtService(t, db, dtNow)
+		fill := func(credential string) {
+			t.Helper()
+			for n := 1; n <= deliverytarget.MaxRowsPerPrincipal; n++ {
+				if err := del.ReportTarget(t.Context(), credential, envScope(envA1), dtReport(n, 1, dtNow)); err != nil {
+					t.Fatalf("report %d: %v", n, err)
+				}
+			}
+		}
+		granted, grantedCredential := reportingWorkload(t, db, "quota-both", envScope(envA1))
+		grantWorkload(t, db, granted.Principal, domain.CapReportDeliveryStatus, envScope(envProd))
+		fill(grantedCredential.Value)
+		if err := del.ReportTarget(t.Context(), grantedCredential.Value, envScope(envProd), dtReport(1000, 1, dtNow)); !errors.Is(err, domain.ErrLimitExceeded) {
+			t.Fatalf("report past the quota in env_prod = %v, want the named 409", err)
+		}
+		ungranted, ungrantedCredential := reportingWorkload(t, db, "quota-a1-only", envScope(envA1))
+		fill(ungrantedCredential.Value)
+		if err := del.ReportTarget(t.Context(), ungrantedCredential.Value, envScope(envA1), dtReport(1000, 1, dtNow)); !errors.Is(err, domain.ErrLimitExceeded) {
+			t.Fatalf("report past the quota in env_a1 = %v, want the named 409", err)
+		}
+
+		prod := dtList(t, db, service.LocalPrincipal(alice), envProd, dtNow)
+		if len(prod.Targets) != 0 {
+			t.Fatalf("env_prod targets = %+v, want none", prod.Targets)
+		}
+		if len(prod.Reporters) != 1 || prod.Reporters[0].PrincipalID != string(granted.Principal) || prod.Reporters[0].QuotaRefusedAt.IsZero() {
+			t.Fatalf("env_prod principals = %+v, want only %s with its quota notice", prod.Reporters, granted.Principal)
+		}
+		for _, r := range prod.Reporters {
+			if r.PrincipalID == string(ungranted.Principal) {
+				t.Fatalf("env_prod names %s, which holds no report-delivery-status there", ungranted.Principal)
+			}
+		}
+		a1 := dtList(t, db, service.LocalPrincipal(alice), envA1, dtNow)
+		if len(a1.Reporters) != 2 {
+			t.Fatalf("env_a1 principals = %+v, want both reporters", a1.Reporters)
+		}
+		for _, r := range a1.Reporters {
+			if r.QuotaRefusedAt.IsZero() {
+				t.Fatalf("env_a1 principal %s lost its quota notice", r.PrincipalID)
+			}
 		}
 	})
 }

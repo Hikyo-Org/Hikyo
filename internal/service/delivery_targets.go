@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/audit"
@@ -46,8 +48,8 @@ var ErrReportVocabulary = errors.New("service: the report carries a value outsid
 // ErrReportTooLarge is the size refusal (413).
 var ErrReportTooLarge = fmt.Errorf("service: a delivery-target report is at most %d bytes", deliverytarget.MaxReportBytes)
 
-// deliveryTargetPurgeBatch is SelectExpiredDeliveryTargetReports' LIMIT: a
-// shorter batch means the backlog is drained.
+// deliveryTargetPurgeBatch bounds one purge transaction; it is bound as the
+// select's LIMIT, so a shorter batch means the backlog is drained.
 const deliveryTargetPurgeBatch = 100
 
 // DeliveryTargetKey names one target of the caller's own: the principal is
@@ -103,6 +105,10 @@ func (s *Delivery) ReportTargetAs(ctx context.Context, actor Actor, scope domain
 	if err := deliverytarget.CheckShape(report); err != nil {
 		return invalidDetail("%s", err)
 	}
+	// The stored reported_at is canonical (microseconds), so the incoming one
+	// is compared at the same precision: an exact replay carrying sub-
+	// microsecond digits is "not later" (ADR D5a), never accepted as newer.
+	report.ReportedAt = store.CanonTime(report.ReportedAt)
 	var (
 		charged bool
 		refusal error
@@ -317,6 +323,16 @@ func (s *Delivery) ListTargets(ctx context.Context, actor Actor, scope domain.Sc
 		if err != nil {
 			return err
 		}
+		notices, err := r.DeliveryTargets().QuotaNotices(ctx, p)
+		if err != nil {
+			return err
+		}
+		reporter := func(principal string) (DeliveryTargetReporter, error) {
+			out := DeliveryTargetReporter{PrincipalID: principal, QuotaRefusedAt: notices[principal]}
+			var err error
+			out.LastContactAt, _, err = r.DeliveryTargets().LastFetchAt(ctx, p, principal)
+			return out, err
+		}
 		// Reporter liveness is per principal, so it is evaluated once each.
 		live := map[string]bool{}
 		for _, row := range rows {
@@ -326,14 +342,11 @@ func (s *Delivery) ListTargets(ctx context.Context, actor Actor, scope domain.Sc
 					return err
 				}
 				live[row.PrincipalID] = ok
-				reporter := DeliveryTargetReporter{PrincipalID: row.PrincipalID}
-				if reporter.LastContactAt, _, err = r.DeliveryTargets().LastFetchAt(ctx, p, row.PrincipalID); err != nil {
+				rep, err := reporter(row.PrincipalID)
+				if err != nil {
 					return err
 				}
-				if reporter.QuotaRefusedAt, _, err = r.DeliveryTargets().QuotaNotice(ctx, p, row.PrincipalID); err != nil {
-					return err
-				}
-				out.Reporters = append(out.Reporters, reporter)
+				out.Reporters = append(out.Reporters, rep)
 			}
 			target := DeliveryTarget{
 				ID: row.ID, PrincipalID: row.PrincipalID, ReceivedAt: row.ReceivedAt,
@@ -353,6 +366,27 @@ func (s *Delivery) ListTargets(ctx context.Context, actor Actor, scope domain.Sc
 				target.RefusalCause, target.RefusedAt = row.RefusalCause, row.RefusedAt
 			}
 			out.Targets = append(out.Targets, target)
+		}
+		// A quota refusal has no row (ADR D5), so a principal whose rows all
+		// live in other environments still carries its notice here, but only
+		// where it holds `report-delivery-status`: the list never names a
+		// principal the environment did not grant.
+		for _, principal := range slices.Sorted(maps.Keys(notices)) {
+			if _, listed := live[principal]; listed {
+				continue
+			}
+			holds, err := az.DeliveryReporterHolds(ctx, domain.PrincipalID(principal), scope)
+			if err != nil {
+				return err
+			}
+			if !holds {
+				continue
+			}
+			rep, err := reporter(principal)
+			if err != nil {
+				return err
+			}
+			out.Reporters = append(out.Reporters, rep)
 		}
 		return nil
 	})
@@ -383,7 +417,7 @@ func (s *Delivery) purgeTargetBatch(ctx context.Context) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		due, err := r.DeliveryTargets().SelectExpired(ctx, p, cutoff)
+		due, err := r.DeliveryTargets().SelectExpired(ctx, p, cutoff, deliveryTargetPurgeBatch)
 		if err != nil {
 			return 0, err
 		}

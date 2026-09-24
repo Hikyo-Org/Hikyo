@@ -56,30 +56,6 @@ func (q *Queries) DeleteDeliveryTargetReport(ctx context.Context, arg DeleteDeli
 	return result.RowsAffected(), nil
 }
 
-const getDeliveryTargetQuotaNotice = `-- name: GetDeliveryTargetQuotaNotice :one
-SELECT principal_id, refused_at FROM delivery_target_quota_notices
-WHERE org_id = $1 AND project_id = $2
-  AND principal_id = $3
-`
-
-type GetDeliveryTargetQuotaNoticeParams struct {
-	ChainOrgID     string
-	ChainProjectID string
-	PrincipalID    string
-}
-
-type GetDeliveryTargetQuotaNoticeRow struct {
-	PrincipalID string
-	RefusedAt   pgtype.Timestamptz
-}
-
-func (q *Queries) GetDeliveryTargetQuotaNotice(ctx context.Context, arg GetDeliveryTargetQuotaNoticeParams) (GetDeliveryTargetQuotaNoticeRow, error) {
-	row := q.db.QueryRow(ctx, getDeliveryTargetQuotaNotice, arg.ChainOrgID, arg.ChainProjectID, arg.PrincipalID)
-	var i GetDeliveryTargetQuotaNoticeRow
-	err := row.Scan(&i.PrincipalID, &i.RefusedAt)
-	return i, err
-}
-
 const getDeliveryTargetReport = `-- name: GetDeliveryTargetReport :one
 
 SELECT id, org_id, project_id, environment_id, principal_id, cluster_id, instance_uid,
@@ -269,6 +245,45 @@ func (q *Queries) LastDeliveryFetchAt(ctx context.Context, arg LastDeliveryFetch
 	return i, err
 }
 
+const listDeliveryTargetQuotaNotices = `-- name: ListDeliveryTargetQuotaNotices :many
+SELECT principal_id, refused_at FROM delivery_target_quota_notices
+WHERE org_id = $1 AND project_id = $2
+ORDER BY principal_id
+`
+
+type ListDeliveryTargetQuotaNoticesParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+}
+
+type ListDeliveryTargetQuotaNoticesRow struct {
+	PrincipalID string
+	RefusedAt   pgtype.Timestamptz
+}
+
+// The project's quota-refused notices (ADR D5), one per principal. The list
+// shows a notice only for a principal that may report on the listed
+// environment, which the service decides at the chokepoint.
+func (q *Queries) ListDeliveryTargetQuotaNotices(ctx context.Context, arg ListDeliveryTargetQuotaNoticesParams) ([]ListDeliveryTargetQuotaNoticesRow, error) {
+	rows, err := q.db.Query(ctx, listDeliveryTargetQuotaNotices, arg.ChainOrgID, arg.ChainProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDeliveryTargetQuotaNoticesRow
+	for rows.Next() {
+		var i ListDeliveryTargetQuotaNoticesRow
+		if err := rows.Scan(&i.PrincipalID, &i.RefusedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDeliveryTargetReports = `-- name: ListDeliveryTargetReports :many
 SELECT id, org_id, project_id, environment_id, principal_id, cluster_id, instance_uid,
        target_uid, namespace, name, vocabulary, generation, observed_generation,
@@ -387,8 +402,13 @@ SELECT id, org_id, project_id, environment_id, principal_id, received_at
 FROM delivery_target_reports
 WHERE received_at < $1
 ORDER BY received_at, id
-LIMIT 100
+LIMIT $2
 `
+
+type SelectExpiredDeliveryTargetReportsParams struct {
+	ReceivedAt pgtype.Timestamptz
+	BatchLimit int32
+}
 
 type SelectExpiredDeliveryTargetReportsRow struct {
 	ID            string
@@ -403,8 +423,8 @@ type SelectExpiredDeliveryTargetReportsRow struct {
 // batch (ADR D6: no accepted report for 30 days). Repeated scheduler runs
 // commit progress without an unbounded backlog inside one transaction.
 // hikyo:instance-scoped
-func (q *Queries) SelectExpiredDeliveryTargetReports(ctx context.Context, receivedAt pgtype.Timestamptz) ([]SelectExpiredDeliveryTargetReportsRow, error) {
-	rows, err := q.db.Query(ctx, selectExpiredDeliveryTargetReports, receivedAt)
+func (q *Queries) SelectExpiredDeliveryTargetReports(ctx context.Context, arg SelectExpiredDeliveryTargetReportsParams) ([]SelectExpiredDeliveryTargetReportsRow, error) {
+	rows, err := q.db.Query(ctx, selectExpiredDeliveryTargetReports, arg.ReceivedAt, arg.BatchLimit)
 	if err != nil {
 		return nil, err
 	}

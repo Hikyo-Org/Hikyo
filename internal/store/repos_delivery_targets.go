@@ -70,8 +70,9 @@ type ExpiredDeliveryTargetReport struct {
 // DeliveryTargetReader is the read side the human list operation uses.
 type DeliveryTargetReader interface {
 	List(ctx context.Context, p authz.Proof) ([]DeliveryTargetReport, error)
-	// QuotaNotice returns the principal's last quota refusal time, if any.
-	QuotaNotice(ctx context.Context, p authz.Proof, principalID string) (time.Time, bool, error)
+	// QuotaNotices returns the project's quota-refused notices, keyed by
+	// principal, with each one's last refusal time.
+	QuotaNotices(ctx context.Context, p authz.Proof) (map[string]time.Time, error)
 	// LastFetchAt returns the principal's last identity.delivery_fetched time
 	// in the proof's environment, if any (ADR D2, observed by the server).
 	LastFetchAt(ctx context.Context, p authz.Proof, principalID string) (time.Time, bool, error)
@@ -89,7 +90,9 @@ type DeliveryTargetRepo interface {
 	RecordRefusal(ctx context.Context, p authz.Proof, id, cause string, at time.Time) (bool, error)
 	Delete(ctx context.Context, p authz.Proof, id string) (bool, error)
 	RecordQuotaRefusal(ctx context.Context, p authz.Proof, principalID string, at time.Time) error
-	SelectExpired(ctx context.Context, p authz.Proof, cutoff time.Time) ([]ExpiredDeliveryTargetReport, error)
+	// SelectExpired returns at most limit rows with no accepted report since
+	// cutoff.
+	SelectExpired(ctx context.Context, p authz.Proof, cutoff time.Time, limit int) ([]ExpiredDeliveryTargetReport, error)
 	Purge(ctx context.Context, p authz.Proof, id string, cutoff time.Time) (bool, error)
 }
 
@@ -194,22 +197,24 @@ func (r sqliteDeliveryTargets) List(ctx context.Context, p authz.Proof) ([]Deliv
 	return out, nil
 }
 
-func (r sqliteDeliveryTargets) QuotaNotice(ctx context.Context, p authz.Proof, principalID string) (time.Time, bool, error) {
-	chain, err := authz.Verify(p, authz.StoreDeliveryTargetsQuotaNotice, r.tok)
+func (r sqliteDeliveryTargets) QuotaNotices(ctx context.Context, p authz.Proof) (map[string]time.Time, error) {
+	chain, err := authz.Verify(p, authz.StoreDeliveryTargetsQuotaNotices, r.tok)
 	if err != nil {
-		return time.Time{}, false, err
+		return nil, err
 	}
-	row, err := r.q.GetDeliveryTargetQuotaNotice(ctx, sqlitegen.GetDeliveryTargetQuotaNoticeParams{
-		OrgID: string(chain.Org), ProjectID: string(chain.Project), PrincipalID: principalID,
+	rows, err := r.q.ListDeliveryTargetQuotaNotices(ctx, sqlitegen.ListDeliveryTargetQuotaNoticesParams{
+		OrgID: string(chain.Org), ProjectID: string(chain.Project),
 	})
-	if errors.Is(err, sql.ErrNoRows) {
-		return time.Time{}, false, nil
-	}
 	if err != nil {
-		return time.Time{}, false, err
+		return nil, err
 	}
-	at, err := parseTime("delivery target quota notice", principalID, row.RefusedAt)
-	return at, err == nil, err
+	out := make(map[string]time.Time, len(rows))
+	for _, row := range rows {
+		if out[row.PrincipalID], err = parseTime("delivery target quota notice", row.PrincipalID, row.RefusedAt); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
 }
 
 func (r sqliteDeliveryTargets) LastFetchAt(ctx context.Context, p authz.Proof, principalID string) (time.Time, bool, error) {
@@ -340,11 +345,13 @@ func (r sqliteDeliveryTargets) RecordQuotaRefusal(ctx context.Context, p authz.P
 	}))
 }
 
-func (r sqliteDeliveryTargets) SelectExpired(ctx context.Context, p authz.Proof, cutoff time.Time) ([]ExpiredDeliveryTargetReport, error) {
+func (r sqliteDeliveryTargets) SelectExpired(ctx context.Context, p authz.Proof, cutoff time.Time, limit int) ([]ExpiredDeliveryTargetReport, error) {
 	if _, err := authz.Verify(p, authz.StoreDeliveryTargetsSelectExpired, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.SelectExpiredDeliveryTargetReports(ctx, fixedStamp(cutoff))
+	rows, err := r.q.SelectExpiredDeliveryTargetReports(ctx, sqlitegen.SelectExpiredDeliveryTargetReportsParams{
+		ReceivedAt: fixedStamp(cutoff), BatchLimit: int64(limit),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -465,21 +472,22 @@ func (r pgDeliveryTargets) List(ctx context.Context, p authz.Proof) ([]DeliveryT
 	return out, nil
 }
 
-func (r pgDeliveryTargets) QuotaNotice(ctx context.Context, p authz.Proof, principalID string) (time.Time, bool, error) {
-	chain, err := authz.Verify(p, authz.StoreDeliveryTargetsQuotaNotice, r.tok)
+func (r pgDeliveryTargets) QuotaNotices(ctx context.Context, p authz.Proof) (map[string]time.Time, error) {
+	chain, err := authz.Verify(p, authz.StoreDeliveryTargetsQuotaNotices, r.tok)
 	if err != nil {
-		return time.Time{}, false, err
+		return nil, err
 	}
-	row, err := r.q.GetDeliveryTargetQuotaNotice(ctx, pggen.GetDeliveryTargetQuotaNoticeParams{
-		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), PrincipalID: principalID,
+	rows, err := r.q.ListDeliveryTargetQuotaNotices(ctx, pggen.ListDeliveryTargetQuotaNoticesParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project),
 	})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return time.Time{}, false, nil
-	}
 	if err != nil {
-		return time.Time{}, false, err
+		return nil, err
 	}
-	return row.RefusedAt.Time.UTC(), true, nil
+	out := make(map[string]time.Time, len(rows))
+	for _, row := range rows {
+		out[row.PrincipalID] = row.RefusedAt.Time.UTC()
+	}
+	return out, nil
 }
 
 func (r pgDeliveryTargets) LastFetchAt(ctx context.Context, p authz.Proof, principalID string) (time.Time, bool, error) {
@@ -611,11 +619,13 @@ func (r pgDeliveryTargets) RecordQuotaRefusal(ctx context.Context, p authz.Proof
 	}))
 }
 
-func (r pgDeliveryTargets) SelectExpired(ctx context.Context, p authz.Proof, cutoff time.Time) ([]ExpiredDeliveryTargetReport, error) {
+func (r pgDeliveryTargets) SelectExpired(ctx context.Context, p authz.Proof, cutoff time.Time, limit int) ([]ExpiredDeliveryTargetReport, error) {
 	if _, err := authz.Verify(p, authz.StoreDeliveryTargetsSelectExpired, r.tok); err != nil {
 		return nil, err
 	}
-	rows, err := r.q.SelectExpiredDeliveryTargetReports(ctx, pgRequiredTime(cutoff))
+	rows, err := r.q.SelectExpiredDeliveryTargetReports(ctx, pggen.SelectExpiredDeliveryTargetReportsParams{
+		ReceivedAt: pgRequiredTime(cutoff), BatchLimit: int32(limit),
+	})
 	if err != nil {
 		return nil, err
 	}

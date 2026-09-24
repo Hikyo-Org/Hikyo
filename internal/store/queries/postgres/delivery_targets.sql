@@ -74,10 +74,13 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
 INSERT INTO delivery_target_quota_notices (principal_id, org_id, project_id, refused_at)
 VALUES (sqlc.arg(principal_id), sqlc.arg(chain_org_id), sqlc.arg(chain_project_id), sqlc.arg(refused_at));
 
--- name: GetDeliveryTargetQuotaNotice :one
+-- The project's quota-refused notices (ADR D5), one per principal. The list
+-- shows a notice only for a principal that may report on the listed
+-- environment, which the service decides at the chokepoint.
+-- name: ListDeliveryTargetQuotaNotices :many
 SELECT principal_id, refused_at FROM delivery_target_quota_notices
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id)
-  AND principal_id = sqlc.arg(principal_id);
+ORDER BY principal_id;
 
 -- The server-observed layer (ADR D2): the last authenticated delivery fetch
 -- of one principal in one environment, from the audit trail.
@@ -98,7 +101,7 @@ SELECT id, org_id, project_id, environment_id, principal_id, received_at
 FROM delivery_target_reports
 WHERE received_at < sqlc.arg(received_at)
 ORDER BY received_at, id
-LIMIT 100;
+LIMIT sqlc.arg(batch_limit);
 
 -- PurgeDeliveryTargetReport deletes one expired row, guarded by the same
 -- cutoff so a report accepted since the select keeps its row.

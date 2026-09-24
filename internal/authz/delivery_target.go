@@ -18,7 +18,7 @@ import (
 // environment the caller was authorized to list, so it discloses nothing the
 // list does not already name.
 func (a *TxAuthorizer) DeliveryReporterLive(ctx context.Context, principal domain.PrincipalID, scope domain.Scope, now time.Time) (bool, error) {
-	_, _, holds, err := a.principalFormulaEvaluation(ctx, principal, OpDeliveryTargetReport, scope)
+	holds, err := a.DeliveryReporterHolds(ctx, principal, scope)
 	if err != nil || !holds {
 		return false, err
 	}
@@ -35,4 +35,15 @@ func (a *TxAuthorizer) DeliveryReporterLive(ctx context.Context, principal domai
 	}
 	live, err := a.r.LiveMachineCredentialCount(ctx, sa.ID, epoch, now)
 	return live > 0, err
+}
+
+// DeliveryReporterHolds reports whether a principal holds
+// `report-delivery-status` on the scope: the report operation's own formula,
+// evaluated over its grants. The list uses it to name a quota-refused
+// principal only in an environment that principal may report on (ADR D5), so
+// a principal the environment never granted never appears there. Like
+// DeliveryReporterLive it records no denial: the principal is not the caller.
+func (a *TxAuthorizer) DeliveryReporterHolds(ctx context.Context, principal domain.PrincipalID, scope domain.Scope) (bool, error) {
+	_, _, holds, err := a.principalFormulaEvaluation(ctx, principal, OpDeliveryTargetReport, scope)
+	return holds, err
 }

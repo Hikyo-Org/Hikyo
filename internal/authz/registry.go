@@ -877,7 +877,7 @@ const (
 
 	StoreDeliveryTargetsGet            StoreOp = "deliverytargets.Get"
 	StoreDeliveryTargetsList           StoreOp = "deliverytargets.List"
-	StoreDeliveryTargetsQuotaNotice    StoreOp = "deliverytargets.QuotaNotice"
+	StoreDeliveryTargetsQuotaNotices   StoreOp = "deliverytargets.QuotaNotices"
 	StoreDeliveryTargetsLastFetch      StoreOp = "deliverytargets.LastFetchAt"
 	StoreDeliveryTargetsCountPrincipal StoreOp = "deliverytargets.CountForPrincipal"
 	StoreDeliveryTargetsInsert         StoreOp = "deliverytargets.Insert"
@@ -1218,7 +1218,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StorePinsList:                             true,
 	StoreDeliveryTargetsGet:                   true,
 	StoreDeliveryTargetsList:                  true,
-	StoreDeliveryTargetsQuotaNotice:           true,
+	StoreDeliveryTargetsQuotaNotices:          true,
 	StoreDeliveryTargetsLastFetch:             true,
 	StoreDeliveryTargetsCountPrincipal:        true,
 	// Secret-change approvals (#151): the read-only doors, licensed on the
@@ -3762,7 +3762,7 @@ var operationTable = map[Operation]opSpec{
 		level:   domain.LevelEnv,
 		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{
-			StoreDeliveryTargetsList: true, StoreDeliveryTargetsQuotaNotice: true,
+			StoreDeliveryTargetsList: true, StoreDeliveryTargetsQuotaNotices: true,
 			StoreDeliveryTargetsLastFetch: true,
 		},
 		auditedNone: true,
