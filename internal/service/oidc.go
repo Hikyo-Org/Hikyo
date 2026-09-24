@@ -293,6 +293,11 @@ func (s *Providers) redirectURI(slug string) string {
 // immutable on update (A3): a changed issuer is refused by name. Discovery is
 // re-run at write time and the document's issuer must byte-equal the configured
 // one. A reconfigure that changes security material sweeps federated sessions.
+// Changing the client ID is refused with ErrPairwiseClientID when discovery
+// advertises only pairwise subjects and identities remain linked under the
+// issuer. Discovery failures return ErrProviderDiscovery, with the discovered
+// issuer named when it differs. Authorization, storage and sealing errors
+// propagate.
 func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in ProviderInput) (ProviderView, error) {
 	var out ProviderView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {

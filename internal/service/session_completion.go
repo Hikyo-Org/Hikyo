@@ -44,6 +44,8 @@ const (
 	sessionRefusedOverloaded
 )
 
+// err turns a committed refusal into the error returned to the caller. A
+// sign-up budget refusal becomes admission.ErrOverloaded; no refusal is nil.
 func (r sessionRefusal) err() error {
 	switch r {
 	case sessionNotRefused:

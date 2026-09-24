@@ -149,7 +149,11 @@ export function useLogout() {
   });
 }
 
-/** Start a browser OIDC login whose callback returns through the SPA. */
+/**
+ * Start a browser OIDC login and redirect to the provider. `intent` selects
+ * sign-in or sign-up; `signupOrg` addresses an org's registration policy only
+ * for sign-up. The callback returns through the SPA.
+ */
 export function useOIDCLogin() {
   return useSensitiveMutation({
     // The intent is a server fact (#604): the sign-in door sends `sign-in`,

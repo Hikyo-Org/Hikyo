@@ -80,10 +80,14 @@ func (g *oidcSignup) rollback() {
 	}
 }
 
+// newOIDCSignup holds one callback's verified claims and its budget refund
+// across transaction retries.
 func newOIDCSignup(s *Auth, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims) *oidcSignup {
 	return &oidcSignup{auth: s, prov: prov, txn: txn, claims: claims}
 }
 
+// scope returns the transaction's sign-up scope; an empty org ID represents
+// the instance policy.
 func (g *oidcSignup) scope() domain.Scope {
 	return domain.Scope{Org: domain.OrgID(g.txn.SignupScopeOrgID)}
 }
@@ -101,6 +105,8 @@ func (g *oidcSignup) refusal(ctx context.Context, az *authz.TxAuthorizer, attemp
 	return authz.Account{}, nil
 }
 
+// stageRefused records the refusal on the instance trail. The policy ID is
+// omitted when no policy was resolved; audit creation and write errors propagate.
 func (g *oidcSignup) stageRefused(ctx context.Context, az *authz.TxAuthorizer, cause, policyID string) error {
 	payload := audit.Payload{
 		"cause": cause, "scope": renderScope(g.scope()),
@@ -135,6 +141,8 @@ func (g *oidcSignup) refuseAfterRace(ctx context.Context) error {
 // run is the registration leg for an unknown identity under sign-up intent.
 // It returns the new account (the caller mints the session exactly as for a
 // known identity), or stages a refusal on attempt and returns a zero account.
+// Policy, audit and write errors propagate; an identity uniqueness race is
+// returned for completeLogin to audit in a fresh transaction.
 func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt, epoch int64, now time.Time) (authz.Account, error) {
 	refuse := func(cause, policyID string) (authz.Account, error) {
 		return g.refusal(ctx, az, attempt, cause, policyID)

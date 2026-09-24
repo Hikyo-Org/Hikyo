@@ -111,8 +111,13 @@ export function useIdentities(): UseQueryResult<IdentityList> {
 }
 
 /**
- * useAuthMethods is what makes the "link another identity" affordance honest:
- * linking starts an OIDC transaction against a CONFIGURED provider, so where
+ * useAuthMethods loads the public login methods and sign-up door. `org`
+ * selects that organization's door; without it the query selects the instance
+ * door. The provider list and local-login flag are instance-wide in either
+ * response. A discovery 429 is retried once, using Retry-After when present.
+ *
+ * It is also what keeps the "link another identity" affordance honest:
+ * linking starts an OIDC transaction against a configured provider, so where
  * an instance has none the surface says so instead of offering a button that
  * could only ever 400.
  */

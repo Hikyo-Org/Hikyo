@@ -1410,6 +1410,9 @@ func runContext(_ context.Context, ios IO, args []string) error {
 // org
 // ---------------------------------------------------------------------------
 
+// runOrg handles organization commands. List accepts an optional origin
+// filter and includes each organization's origin in table output; invalid
+// origin values return a usage error before target resolution.
 func runOrg(ctx context.Context, ios IO, args []string) error {
 	if len(args) > 0 && args[0] == "retention" {
 		return runOrgRetention(ctx, ios, args[1:])

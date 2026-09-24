@@ -20,6 +20,10 @@ import (
 // browser-binding and session cookies from the stashed raw request; the
 // security decisions all live in the service.
 
+// AuthMethods returns public login methods and the sign-up door for the
+// requested org, or the instance when no org is supplied. An unknown or empty
+// org selects a closed door. Discovery throttling returns 429; service and
+// conversion failures become 500 responses.
 func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObject) (apigen.AuthMethodsResponseObject, error) {
 	if a.Admission != nil && !a.Admission.AllowDiscovery(audit.FromContext(ctx).SourceIP) {
 		return apigen.AuthMethods429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
@@ -79,7 +83,9 @@ func (r oidcStartResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
 	return json.NewEncoder(w).Encode(r.body)
 }
 
-// OidcStart validates the requested OIDC purpose before starting the flow.
+// OidcStart forwards the purpose, login intent and optional sign-up org to the
+// service. A successful anonymous start sets the browser-binding cookie; its
+// expected refusals are rendered by oidcStartError.
 func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) (apigen.OidcStartResponseObject, error) {
 	if req.Body == nil {
 		// A missing body folds into the uniform 401 like every other start
@@ -115,6 +121,9 @@ func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) 
 	return resp, nil
 }
 
+// oidcStartError renders an invalid reauth environment as 400 and a
+// policy-less reauth as 409. Other expected refusals become uniform 401 or
+// shared 429 responses; unexpected faults become 500.
 func oidcStartError(a *API, ctx context.Context, err error) apigen.OidcStartResponseObject {
 	// Every expected start refusal collapses to one uniform 401 body: an
 	// unknown or disabled slug, a bad purpose, and a reauth against a
@@ -259,6 +268,8 @@ func (a *API) ListIdentities(ctx context.Context, _ apigen.ListIdentitiesRequest
 	return apigen.ListIdentities200JSONResponse(out), nil
 }
 
+// LinkIdentity starts a session-bound OIDC linking ceremony using the caller's
+// proof. A browser start sets a return marker cookie; service errors propagate.
 func (a *API) LinkIdentity(ctx context.Context, req apigen.LinkIdentityRequestObject) (apigen.LinkIdentityResponseObject, error) {
 	if req.Body == nil {
 		return apigen.LinkIdentity400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil

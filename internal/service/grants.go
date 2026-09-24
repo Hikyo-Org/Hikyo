@@ -273,6 +273,11 @@ func (s *Grants) grantOneDeferredInvalidation(
 	return s.grantOneWithInvalidation(ctx, az, caller, spec, level, template, false)
 }
 
+// grantOneWithInvalidation applies one grant under the caller's authority and
+// returns the lifecycle events for the enclosing transaction. A configured
+// originKind marks template grants made during registration; otherwise the
+// origin is manual. Session invalidation is deferred when requested, and an
+// unchanged grant emits no events.
 func (s *Grants) grantOneWithInvalidation(
 	ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity,
 	spec GrantSpec, level domain.Level, template domain.Template,

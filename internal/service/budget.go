@@ -351,7 +351,8 @@ func noopBudgetRelease() {}
 // It returns the charge's refund. A committed charge is never refunded, but
 // the federated sign-up charges inside a retried transaction, and a charge
 // made by an attempt that rolled back must not stay counted, or the budget
-// would record sign-ups that never happened.
+// would record sign-ups that never happened. An exhausted budget returns
+// admission.ErrOverloaded; a nil budget returns an error rather than charging.
 func (b *Budget) chargeSignup() (refund func(), err error) {
 	if b == nil {
 		return func() {}, errors.New("service: no signup budget is wired; sign-up refuses rather than run unbudgeted")

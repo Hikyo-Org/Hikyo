@@ -31,6 +31,7 @@ export class TotpLedger {
     this.last = Math.floor(createdAt.getTime() / TOTP_STEP_MS) - 1;
   }
 
+  /** Return the next unspent TOTP code, waiting for a new step if necessary. */
   async next(): Promise<string> {
     const now = () => Math.floor(Date.now() / TOTP_STEP_MS);
     const want = Math.max(this.last + 1, now() - 1);

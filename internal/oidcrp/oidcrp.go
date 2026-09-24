@@ -91,7 +91,11 @@ func Discover(ctx context.Context, issuer string) (*Provider, error) {
 	return DiscoverWithPolicy(ctx, issuer, federationhttp.Policy{})
 }
 
-// DiscoverWithPolicy binds every network leg to immutable operator egress policy.
+// DiscoverWithPolicy discovers an issuer, binding every network leg to the
+// immutable operator egress policy, and rejects invalid issuer or endpoint
+// URLs. A document naming a different issuer returns IssuerMismatchError,
+// which unwraps to ErrDiscovery; other discovery and transport failures also
+// return ErrDiscovery.
 func DiscoverWithPolicy(ctx context.Context, issuer string, policy federationhttp.Policy) (*Provider, error) {
 	target, err := federationhttp.ValidateURL(issuer, policy.Development)
 	if err != nil || target.RawQuery != "" || target.ForceQuery {
@@ -152,9 +156,9 @@ func discoveryCause(err error) string {
 func (p *Provider) Issuer() string { return p.issuer }
 
 // PairwiseSubjectsOnly reports whether the discovery document advertises
-// `subject_types_supported` as pairwise only (#588 d2): its `sub` values are
-// bound to the client registration. Provider-asserted, never keyed on the
-// issuer host.
+// `subject_types_supported` as a nonempty list containing only `pairwise`
+// (#588 d2): its `sub` values are bound to the client registration. Missing
+// subject types return false. Provider-asserted, never keyed on the issuer host.
 func (p *Provider) PairwiseSubjectsOnly() bool {
 	return len(p.subjectTypes) > 0 && !slices.ContainsFunc(p.subjectTypes, func(t string) bool { return t != "pairwise" })
 }
@@ -235,10 +239,12 @@ type Claims struct {
 // Verify validates an ID token completely: the issuer by go-oidc's own
 // unconditional check (SkipIssuerCheck is never set; its only relaxation is
 // Google's documented bare `accounts.google.com`, #588 d3, so Hikyo keeps no
-// duplicate belt), signature with an algorithm from the allowlist (never none), audience
-// contains this client, azp when present equals this client, exp/iat within
-// skew. Empty subject is refused (A15). Nonce equality is the caller's, because
-// the transaction stores it hashed.
+// duplicate belt), signature with an algorithm from the allowlist (never none),
+// audience containing this client, and azp when present equaling this client.
+// It rejects an expired token, an absent iat, or an iat more than two minutes
+// in the future or after exp. Empty subject is refused (A15). Nonce equality
+// is the caller's, because the transaction stores it hashed. Validation
+// failures return ErrTokenInvalid, except for ErrEmptySubject and ErrAudience.
 func (p *Provider) Verify(ctx context.Context, clientID, rawIDToken string, now func() time.Time) (Claims, error) {
 	ctx, cancel := context.WithTimeout(oidc.ClientContext(ctx, p.client), federationhttp.Deadline)
 	defer cancel()

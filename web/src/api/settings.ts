@@ -388,6 +388,8 @@ export function useOrgTopology(org: string): {
  * are no organisations", it is "this session has not presented a second
  * factor". The navigation rail asks a different question entirely
  * (`listMyOrgs`, #56) and needs no factor at all.
+ * `origin` filters the operator list to manually created or self-served orgs;
+ * omitted means all origins. `enabled` controls whether the query runs.
  */
 export function useInstanceOrgs(enabled = true, origin?: OrgOrigin): UseQueryResult<OrgList> {
   return useQuery({

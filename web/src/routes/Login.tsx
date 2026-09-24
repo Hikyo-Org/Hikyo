@@ -19,23 +19,6 @@ import { LoginForm, type SignInBusy, type SignInIntent, type SignupDoor } from '
 import { SecondFactorChallenge } from '../ui/auth/SecondFactorChallenge.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
-/**
- * The login page: the staged entry (#587 d1) and, while the addressed
- * scope's registration policy is open, its sign-up door (#607).
- *
- * Local credentials and every configured OIDC provider establish the same
- * browser-session artifact. The provider callback returns through OIDCDone.
- *
- * Refusal presentation follows the locked rule that no state is carried by
- * colour alone: the message is text, it is announced through `role="alert"`,
- * and it carries a glyph. The wording never distinguishes an unknown account
- * from a wrong password, because the server deliberately does not either.
- *
- * The card itself is ui/auth/LoginForm: this route owns the transport (the
- * four mutations and the discovery query) and hands the atom the three ways
- * in as callbacks. Provider discovery, which is about the page rather than
- * the credential, stays outside the card.
- */
 /** A SAML provider's login leg: the same artifact as OIDC, over the SP-initiated redirect. */
 function useSAMLLogin() {
   return useSensitiveMutation({
@@ -77,6 +60,8 @@ function landingText(landing: AuthMethods['signup_landing']): string | null {
  * The page's sign-up door (#607): the open door of the addressed scope,
  * reduced to the configured providers it admits. Only the OIDC kind signs up
  * here; the local entry (#608) and the OAuth2 kind (#609) join it later.
+ * Returns null until methods arrive, while the policy is closed, or when no
+ * admitted OIDC provider is configured.
  */
 function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
   if (methods === undefined || !methods.signup_open) return null;
@@ -88,9 +73,23 @@ function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
 }
 
 /**
- * `intent` is the door the page opens on: `/login` opens on sign-in, and
- * `/signup` (optionally `?org=<id>`, the link the Members panel hands out)
- * opens on the addressed scope's sign-up door when it is open.
+ * The staged login page (#587 d1) and, when the addressed registration policy
+ * admits a configured OIDC provider, its sign-up door (#607). `intent` selects
+ * the initial door: `/login` opens on sign-in; `/signup` opens on sign-up and
+ * may address an org with `?org=<id>` (the link the Members panel hands out).
+ *
+ * Local credentials and configured OIDC or SAML providers establish the same
+ * browser session. OIDC callbacks return through OIDCDone.
+ *
+ * Refusal presentation follows the locked rule that no state is carried by
+ * colour alone: the message is text, it is announced through `role="alert"`,
+ * and it carries a glyph. The wording never distinguishes an unknown account
+ * from a wrong password, because the server deliberately does not either.
+ *
+ * This route owns the transport (the mutations and the discovery query);
+ * ui/auth/LoginForm renders the card and invokes their callbacks. Provider
+ * discovery, which is about the page rather than the credential, stays outside
+ * the card.
  */
 export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
   const [search] = useSearchParams();

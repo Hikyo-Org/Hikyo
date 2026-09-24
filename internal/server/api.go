@@ -530,6 +530,9 @@ func (a *API) ListMyOrgs(ctx context.Context, _ apigen.ListMyOrgsRequestObject) 
 	return apigen.ListMyOrgs200JSONResponse{Items: items, Count: len(items)}, nil
 }
 
+// ListOrgs enumerates organizations for an authorized operator. An origin
+// query narrows the returned items and count after the service read; list
+// authorization and read errors propagate.
 func (a *API) ListOrgs(ctx context.Context, req apigen.ListOrgsRequestObject) (apigen.ListOrgsResponseObject, error) {
 	orgs, err := a.Orgs.List(ctx, service.Bearer(bearer(ctx)))
 	if err != nil {

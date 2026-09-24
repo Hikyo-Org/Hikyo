@@ -593,6 +593,8 @@ func (r *Resolver) CreateExternalIdentity(ctx context.Context, n NewExternalIden
 	}))
 }
 
+// identityConstraint converts an external identity uniqueness failure on
+// either database engine to domain.ErrConflict; other errors pass through.
 func identityConstraint(err error) error {
 	if err == nil {
 		return nil

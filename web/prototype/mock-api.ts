@@ -728,6 +728,7 @@ export function prototypeRetentionHealth(scenario: Scenario) {
   };
 }
 
+/** Handle prototype API requests from fixture state; pass non-API paths to Vite. */
 function mockApi(request: IncomingMessage, response: ServerResponse): boolean | Promise<boolean> {
   const method = request.method ?? 'GET';
   const url = new URL(request.url ?? '/', 'http://prototype.local');

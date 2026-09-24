@@ -80,6 +80,9 @@ type OIDCStartResult struct {
 // sign-up, the addressed scope (signupOrg, absent = instance). Intent on any
 // other purpose, and a scope without sign-up, refuse uniformly in the
 // ErrBadPurpose shape. The start reads no registration policy (#604 d5).
+// Reauth without an assurance policy returns ErrReauthNoPolicy before redirect;
+// admission, authentication and transaction-write errors propagate, while a
+// discovery failure returns ErrProviderDiscovery.
 func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (OIDCStartResult, error) {
 	// Admission is entered FIRST, uniformly for every purpose and BEFORE the
 	// provider is resolved or the purpose/environment validated. An unknown
@@ -515,7 +518,9 @@ func (s *Auth) revalidateProvider(ctx context.Context, az *authz.TxAuthorizer, s
 // whatever the landing: the landing is known only after the policy read
 // inside the transaction, and a fresh-org mint must serialize its cap count
 // and admin grant against operator creates. A sign-in callback keeps
-// tx.Write.
+// tx.Write. Committed registration refusals return domain.ErrUnauthenticated,
+// except budget overflow, which returns admission.ErrOverloaded. Transaction
+// and audit errors propagate without publishing a session.
 func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims) (OIDCCallbackResult, error) {
 	signup := newOIDCSignup(s, prov, txn, claims)
 	fn := func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt) error {
@@ -985,8 +990,9 @@ func providerBrand(issuer string) string {
 	}
 }
 
-// AuthMethods returns the enabled OIDC providers and whether local login is on.
-// Public discovery: proof-free, instance-level, never per-account.
+// AuthMethods returns enabled OIDC and SAML providers and reports local login
+// enabled. OIDC brands are derived from the pinned issuer. This is proof-free,
+// instance-level discovery; repository read errors propagate.
 func (s *Auth) AuthMethods(ctx context.Context) ([]AuthMethodProvider, bool, error) {
 	var out []AuthMethodProvider
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {

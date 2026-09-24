@@ -231,6 +231,8 @@ func (p *IdP) RegisterRedirectURI(raw string) error {
 	return nil
 }
 
+// discovery advertises the fixture's endpoints and configured subject types,
+// defaulting to public subjects when no type is set.
 func (p *IdP) discovery(w http.ResponseWriter, _ *http.Request) {
 	if p.down(w) {
 		return
@@ -391,6 +393,8 @@ func (p *IdP) authorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
+// token exchanges a single-use code and merges fixture claims into the signed
+// ID token before applying the code's subject claim.
 func (p *IdP) token(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.TokenEndpointHits++

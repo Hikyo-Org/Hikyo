@@ -308,7 +308,13 @@ class OIDCCeremonyError extends Error {
   override readonly name = 'OIDCCeremonyError';
 }
 
-/** Re-run the current OIDC provider in a popup and await its same-origin return. */
+/**
+ * Re-run the selected OIDC provider for an environment in a popup and await
+ * its same-origin return. A blocked popup falls back to a full-page redirect.
+ * Start refusals close the popup: 401 and 409 responses become
+ * OIDCCeremonyError messages, while other API errors propagate. A missing
+ * transaction state or a callback timeout rejects with an Error.
+ */
 export async function runOIDCCeremony(providerSlug: string, environmentId: string): Promise<void> {
   const epoch = captureSessionEpoch();
   // Open synchronously while the click still carries user activation. A
