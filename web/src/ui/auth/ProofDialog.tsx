@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 
 import { useSensitiveState } from '../../api/sensitiveMutation.ts';
 import { Alert } from '../Alert.tsx';
@@ -52,10 +52,21 @@ export function ProofDialog({
   const input = useRef<HTMLInputElement>(null);
   const [value, setValue] = useSensitiveState('');
   const [touched, setTouched] = useState(false);
+  // A caller clears from its refusal handler, while `pending` still disables
+  // the field and focus() on it is a no-op; the refocus waits for `pending`
+  // to drop.
+  const refocus = useRef(false);
   const clear = () => {
     setValue('');
-    input.current?.focus();
+    if (input.current !== null && !input.current.disabled) input.current.focus();
+    else refocus.current = true;
   };
+  useEffect(() => {
+    if (!pending && refocus.current) {
+      refocus.current = false;
+      input.current?.focus();
+    }
+  }, [pending]);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setTouched(true);

@@ -53,6 +53,8 @@ describe('registration policy helpers', () => {
     expect(() => policyView(noCount)).toThrow('live org count');
     const { inactive_cause: _cause, ...noCause } = wire;
     expect(() => policyView(noCause)).toThrow('names its cause');
+    const { inactive_precondition: _precondition, ...noPrecondition } = wire;
+    expect(() => policyView(noPrecondition)).toThrow('a precondition cause its precondition');
     expect(() => policyView({ ...wire, landing: { kind: 'org-template' } })).toThrow();
     expect(() => policyView({ ...wire, external: [{ provider: { kind: 'oidc', slug: 'x' }, claim: 'hd' }] })).toThrow(
       'arrive together',
@@ -82,7 +84,6 @@ describe('registration policy helpers', () => {
     );
     expect(inactiveText({ state: 'inactive', inactive_cause: 'authority-lost' }, 'Alex')).toContain('Alex no longer holds');
     expect(inactiveText({ state: 'inactive', inactive_cause: 'authority-unassigned' }, 'Alex')).toContain('no authority yet');
-    expect(() => inactiveText({ state: 'inactive', inactive_cause: 'precondition' }, 'Alex')).toThrow();
   });
 
   it('states one requirement per method kind, none borrowed from another', () => {

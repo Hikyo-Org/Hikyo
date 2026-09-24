@@ -38,13 +38,16 @@ func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObje
 			Slug: p.Slug, DisplayName: p.DisplayName, Kind: apigen.IdentityProviderKind(p.Kind),
 		})
 	}
-	// The sign-up door of the addressed scope (#606): the instance, or
-	// `?org=`. An unknown org is the same closed door as one without a policy.
-	scope := service.InstanceRegistrationScope()
-	if req.Params.Org != nil && *req.Params.Org != "" {
-		scope = service.OrgRegistrationScope(domain.OrgID(*req.Params.Org))
+	// The sign-up door of the addressed scope (#606): the instance when
+	// `org` is absent, else `?org=`. An unknown org, and a supplied but empty
+	// one, is the same closed door as one without a policy.
+	door := service.SignupDoor{Methods: []service.SignupMethod{}}
+	switch {
+	case req.Params.Org == nil:
+		door, err = a.Registration.SignupDoor(ctx, service.InstanceRegistrationScope())
+	case *req.Params.Org != "":
+		door, err = a.Registration.SignupDoor(ctx, service.OrgRegistrationScope(domain.OrgID(*req.Params.Org)))
 	}
-	door, err := a.Registration.SignupDoor(ctx, scope)
 	if err == nil {
 		err = wireSignupDoor(&out, door)
 	}

@@ -946,7 +946,7 @@ export const getInstanceRegistrationPolicy = <ThrowOnError extends boolean = fal
  * the write transaction. No session is purged. Write-time preconditions
  * refuse `400` naming the failing item in `detail`: `no-public-origin`,
  * `mailer-unconfigured`, `provider-disabled`,
- * `provider-missing-email-scope`, `cap-zero`,
+ * `provider-kind-unsupported`, `provider-missing-email-scope`, `cap-zero`,
  * `template-not-org-applicable`, with the provider as `<kind>:<slug>`
  * where one is involved. `email` is never an allowlist claim.
  *
@@ -1097,7 +1097,7 @@ export const getOrgRegistrationPolicy = <ThrowOnError extends boolean = false>(o
  * the write transaction. No session is purged. Write-time preconditions
  * refuse `400` naming the failing item in `detail`: `no-public-origin`,
  * `mailer-unconfigured`, `provider-disabled`,
- * `provider-missing-email-scope`, `cap-zero`,
+ * `provider-kind-unsupported`, `provider-missing-email-scope`, `cap-zero`,
  * `template-not-org-applicable`, with the provider as `<kind>:<slug>`
  * where one is involved. `email` is never an allowlist claim.
  *

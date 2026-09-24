@@ -65,13 +65,11 @@ const zLandingView = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('fresh-org'), cap: z.number().int().positive() }),
 ]);
 
-const zStateView = z.discriminatedUnion('state', [
+// A `precondition` cause names its precondition; the other causes need none.
+const zStateView = z.union([
   z.object({ state: z.literal('active') }),
-  z.object({
-    state: z.literal('inactive'),
-    inactive_cause: z.enum(['authority-lost', 'authority-unassigned', 'precondition']),
-    inactive_precondition: z.string().optional(),
-  }),
+  z.object({ state: z.literal('inactive'), inactive_cause: z.enum(['authority-lost', 'authority-unassigned']) }),
+  z.object({ state: z.literal('inactive'), inactive_cause: z.literal('precondition'), inactive_precondition: z.string() }),
 ]);
 
 const zPolicyView = z
@@ -89,7 +87,7 @@ const zPolicyView = z
   .transform((policy, context) => {
     const state = zStateView.safeParse(policy);
     if (!state.success) {
-      context.addIssue({ code: 'custom', message: 'an inactive policy names its cause' });
+      context.addIssue({ code: 'custom', message: 'an inactive policy names its cause, and a precondition cause its precondition' });
       return z.NEVER;
     }
     if (policy.landing.kind === 'fresh-org' && policy.fresh_org_count === undefined) {
@@ -233,9 +231,6 @@ export function inactiveText(state: Extract<PolicyView['state'], { state: 'inact
     case 'authority-unassigned':
       return 'This policy has no authority yet. Sign-ups are refused. Re-save to become the authority.';
     case 'precondition':
-      if (state.inactive_precondition === undefined) {
-        throw new Error('a precondition cause arrived without naming the precondition');
-      }
       return `Sign-ups are refused: ${preconditionText(state.inactive_precondition)}`;
   }
 }

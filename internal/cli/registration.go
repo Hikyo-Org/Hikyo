@@ -129,8 +129,12 @@ func readRegistrationPolicyFile(path string) (apigen.RegistrationPolicyPutReques
 	if err := json.Unmarshal(raw, &members); err != nil {
 		return body, failf(ExitUsage, "the registration policy %s is not a policy document: %v", path, err)
 	}
-	if _, carried := members["proof"]; carried {
-		return body, failf(ExitUsage, "the registration policy %s carries a proof: the proof is prompted for, never read from a file", path)
+	// encoding/json matches member names case-insensitively, so "Proof" and
+	// "PROOF" decode into the proof as surely as "proof" does.
+	for key := range members {
+		if strings.EqualFold(key, "proof") {
+			return body, failf(ExitUsage, "the registration policy %s carries a proof: the proof is prompted for, never read from a file", path)
+		}
 	}
 	if body.External == nil {
 		body.External = []apigen.RegistrationExternalEntry{}

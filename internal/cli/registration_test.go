@@ -83,6 +83,8 @@ func TestAccessRegistrationSetRefusals(t *testing.T) {
 		args []string
 	}{
 		{"proof in file", `{"external":[],"landing":{"kind":"none"},"proof":"hunter2"}`, []string{"--instance-scope"}},
+		{"proof in file, capitalised", `{"external":[],"landing":{"kind":"none"},"Proof":"hunter2"}`, []string{"--instance-scope"}},
+		{"proof in file, upper case", `{"external":[],"landing":{"kind":"none"},"PROOF":"hunter2"}`, []string{"--instance-scope"}},
 		{"unknown member", `{"external":[],"landing":{"kind":"none"},"jit":true}`, []string{"--instance-scope"}},
 		{"project address", `{"external":[],"landing":{"kind":"none"}}`, []string{"--org", "org_70", "--project", "prj_70"}},
 	} {

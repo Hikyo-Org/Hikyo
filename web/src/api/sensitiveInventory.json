@@ -49,7 +49,7 @@
     "routes/Values.tsx": "1694f9e0fca368889d6699dc202798862e266a4effd474ca02052c46a221959f",
     "routes/WorkspaceApprove.tsx": "a928c626cca32b1c8e691ebb34fd30fcd40d38b6fa57bb6edc28870b9cdbd812",
     "ui/auth/LoginForm.tsx": "4db1c6ec080904c9ecf640bce31c16557d72cc00d989a6c9d9fd24e4bdaff195",
-    "ui/auth/ProofDialog.tsx": "9b7ecab0a3293ffb4ce216ff56e331a41673842be6f51db3729d7b10ac5d7d68",
+    "ui/auth/ProofDialog.tsx": "2ad7582557e7bc3d479e3aeb04c48b962d9dde20114ba76e516ec760ca9ac009",
     "ui/auth/SecondFactorSetup.tsx": "76405ce9c77015d38a0a8847f8e9899803ae0d063ceb62b7a16f7dbc9db14225"
   }
 }

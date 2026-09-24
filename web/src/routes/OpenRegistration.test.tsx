@@ -242,6 +242,20 @@ describe('OpenRegistrationPanel', () => {
     await unmount();
   });
 
+  it('voices a failed policy read as a read, never as a refused save', async () => {
+    mocks.policy = { data: undefined, isPending: false, isError: true, isSuccess: false, error: new ApiError(403, 'forbidden') };
+    const { rendered } = mount({ kind: 'org', org: 'org_acme' });
+    const { container, unmount } = await rendered;
+    expect(container.textContent).toContain('The registration policy could not be read. Reload to try again.');
+    expect(container.textContent).not.toContain('save');
+    await unmount();
+    mocks.policy = { data: undefined, isPending: false, isError: true, isSuccess: false, error: new ApiError(500, 'internal') };
+    const again = await mount({ kind: 'org', org: 'org_acme' }).rendered;
+    expect(again.container.textContent).toContain('server error 500');
+    expect(again.container.textContent).not.toContain('save');
+    await again.unmount();
+  });
+
   it('keeps a refused proof on the proof step and clears it', async () => {
     mocks.policy = { data: policyOf({}), isPending: false, isError: false, isSuccess: true, error: null };
     mocks.del.mockRejectedValueOnce(new ApiError(401, 'unauthenticated'));
@@ -250,10 +264,13 @@ describe('OpenRegistrationPanel', () => {
     await click(buttonNamed(container, 'Close registration'));
     const proof = inputLabelled(container, 'Authenticator code or password');
     await act(async () => typeInto(proof, 'wrong'));
+    proof.blur();
     await click(buttonNamed(container, 'Confirm'));
     expect(mocks.del).toHaveBeenCalledWith({ kind: 'org', org: 'org_acme' }, 'wrong');
     expect(container.textContent).toContain('That proof was not accepted.');
     expect(inputLabelled(container, 'Authenticator code or password').value).toBe('');
+    // Refocused once the pending state that disabled it has cleared.
+    expect(document.activeElement).toBe(inputLabelled(container, 'Authenticator code or password'));
     await unmount();
   });
 });

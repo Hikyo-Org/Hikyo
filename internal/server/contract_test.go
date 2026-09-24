@@ -1652,6 +1652,13 @@ func TestAuthMethodsRendersTheAddressedSignupDoor(t *testing.T) {
 	if resp, _ := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/methods", "", nil); resp.StatusCode != http.StatusOK || !seen.Instance() {
 		t.Fatalf("auth methods without ?org answered %d for scope %+v", resp.StatusCode, seen)
 	}
+	// A supplied but empty ?org= is a closed door, never the instance's.
+	seen = service.RegistrationScope{}
+	resp, payload = call(t, srv, http.MethodGet, api.PathPrefix+"/auth/methods?org=", "", nil)
+	if resp.StatusCode != http.StatusOK || seen.Instance() || seen.Org() != "" ||
+		!strings.Contains(string(payload), `"signup_open":false`) || !strings.Contains(string(payload), `"signup_methods":[]`) {
+		t.Fatalf("auth methods ?org= answered %d for scope %+v: %s", resp.StatusCode, seen, payload)
+	}
 }
 
 type stubSettings struct{ stubHierarchy }

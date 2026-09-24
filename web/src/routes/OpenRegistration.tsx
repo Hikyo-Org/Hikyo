@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { templatesAt } from '../api/access.ts';
 import type { RoleTemplateId } from '../api/access-templates.ts';
 import { useAuthMethods } from '../api/account.ts';
-import { ApiError } from '../api/client.ts';
+import { ApiError, transportRefusalText } from '../api/client.ts';
 import {
   deleteRegistrationPolicy,
   inactiveText,
@@ -81,7 +81,9 @@ export function OpenRegistrationPanel({
   return (
     <Panel id="members-registration" title="Open registration">
       {policy.isPending ? <p role="status">Loading the registration policy…</p> : null}
-      {policy.isError ? <Alert>{registrationFailureText(policy.error)}</Alert> : null}
+      {policy.isError ? (
+        <Alert>{transportRefusalText(policy.error) ?? 'The registration policy could not be read. Reload to try again.'}</Alert>
+      ) : null}
       {policy.isSuccess && current === null ? (
         <div className="registration">
           <p className="registration__status">
