@@ -66,6 +66,7 @@ const identities = {
 
 const providers = {
   local_login_enabled: true,
+  signup_open: false, signup_paused: false, signup_methods: [],
   providers: [
     { slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' },
     { slug: 'sso', display_name: 'SAML SSO', kind: 'saml' },
@@ -171,7 +172,7 @@ export const Empty: Story = {
           profile,
           passkeys: { passkeys: [] },
           identities: { identities: [] },
-          methods: { local_login_enabled: true, providers: [] },
+          methods: { local_login_enabled: true, providers: [], signup_open: false, signup_paused: false, signup_methods: [] },
           sessions: { items: [], count: 0 },
         }),
         totp({ confirmed: false, pending: false }),

@@ -48,7 +48,7 @@ const transaction = (rest: Partial<MockRoute>): MockRoute => ({
 // The anonymous branch renders Login in place, which reads the sign-in methods.
 const methods: MockRoute = {
   url: '/api/v1/auth/methods',
-  body: { local_login_enabled: true, providers: [] } satisfies z.input<typeof zAuthMethods>,
+  body: { local_login_enabled: true, providers: [], signup_open: false, signup_paused: false, signup_methods: [] } satisfies z.input<typeof zAuthMethods>,
 };
 
 const meta = {
