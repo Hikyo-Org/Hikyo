@@ -16,6 +16,7 @@ const local = {
   username: 'alice',
   display_name: 'Alice Example',
   email: 'alice@example.com',
+  email_verified: true,
   managed: false,
   username_editable: true,
 } satisfies z.input<typeof zAccountProfile>;
