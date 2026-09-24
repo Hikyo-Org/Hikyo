@@ -345,12 +345,13 @@ func budgetMapKey(cat string, dim budgetDimension, value string) string {
 func noopBudgetRelease() {}
 
 // chargeSignup charges one sign-up against the instance-wide `signup` budget.
-// Rate-only, so there is nothing to release; never refunded. The charge sites
-// are the sign-up legs of #607 and #608.
+// Rate-only, so there is nothing to release. The charge sites are the
+// sign-up legs of #607 and #608.
 //
-// It returns the charge's refund: the federated sign-up charges inside a
-// retried transaction, and a charge made by an attempt that rolled back must
-// not stay counted, or the budget would record sign-ups that never happened.
+// It returns the charge's refund. A committed charge is never refunded, but
+// the federated sign-up charges inside a retried transaction, and a charge
+// made by an attempt that rolled back must not stay counted, or the budget
+// would record sign-ups that never happened.
 func (b *Budget) chargeSignup() (refund func(), err error) {
 	if b == nil {
 		return func() {}, errors.New("service: no signup budget is wired; sign-up refuses rather than run unbudgeted")
