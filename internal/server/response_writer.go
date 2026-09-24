@@ -58,3 +58,19 @@ func (w *responseWriter) markRecoveredPanic() { w.status = http.StatusInternalSe
 // markUnmatched keeps unsupported methods in the fail-closed `other` class
 // even when chi retains the path pattern it matched before rejecting the verb.
 func (w *responseWriter) markUnmatched() { w.unmatched = true }
+
+// rootResponseWriter follows Unwrap down to the net/http writer. MaxBytesReader
+// reports "body too large" through a private interface on that writer only
+// and does no unwrapping of its own, so handed the observe wrapper it would
+// still fail the read but never tell net/http, which would then drain the
+// rest of the body to keep the connection alive instead of closing it after
+// the refusal. MaxBytesReader never writes through the writer it is given.
+func rootResponseWriter(w http.ResponseWriter) http.ResponseWriter {
+	for {
+		u, ok := w.(interface{ Unwrap() http.ResponseWriter })
+		if !ok {
+			return w
+		}
+		w = u.Unwrap()
+	}
+}

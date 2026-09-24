@@ -797,12 +797,17 @@ func (a *API) validateAgainstContractWith(
 			// reporting ADR D6) and an over-size one is refused WITHOUT being
 			// parsed, so the refusal can never be tied to a row the body names.
 			// It still ranks behind admission, authentication and authorization.
-			raw, err := io.ReadAll(io.LimitReader(r.Body, deliverytarget.MaxReportBytes+1))
-			if err != nil {
+			// MaxBytesReader, not LimitReader: past the bound it tells net/http
+			// to close the connection after the refusal instead of draining the
+			// rest of the body. The read happens here, before the contract
+			// validator, so the SCIM caveat above does not apply.
+			raw, err := io.ReadAll(http.MaxBytesReader(rootResponseWriter(w), r.Body, deliverytarget.MaxReportBytes))
+			var oversize *http.MaxBytesError
+			if err != nil && !errors.As(err, &oversize) {
 				writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), "")
 				return
 			}
-			if len(raw) > deliverytarget.MaxReportBytes {
+			if oversize != nil {
 				validated, err := match.ValidateWithoutBody()
 				if err != nil {
 					a.writeValidationError(w, err)
@@ -816,7 +821,7 @@ func (a *API) validateAgainstContractWith(
 			}
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		} else if r.Body != nil {
-			r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBytes)
+			r.Body = http.MaxBytesReader(rootResponseWriter(w), r.Body, MaxRequestBytes)
 		}
 		validated, err := match.Validate()
 		if err != nil {

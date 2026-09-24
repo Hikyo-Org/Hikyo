@@ -143,6 +143,13 @@ func TestDeliveryTargetOversizeReportIsRefusedUnparsed(t *testing.T) {
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversize report -> %d: %s", resp.StatusCode, payload)
 	}
+	// The bound is signalled to net/http (MaxBytesReader on the root writer,
+	// not LimitReader): the server closes the connection after the refusal
+	// instead of draining the rest of the body. The client folds the wire's
+	// `Connection: close` into resp.Close.
+	if !resp.Close {
+		t.Fatal("oversize refusal kept the connection open")
+	}
 	if got := *del.calls; !slices.Equal(got, []string{"oversize"}) {
 		t.Fatalf("service doors = %v, want only the size refusal", got)
 	}
