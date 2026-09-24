@@ -36,6 +36,7 @@ import {
   STORAGE_STATE,
   WEBUI_OIDC,
 } from '../fixtures/instance.ts';
+import { enrolledAccount, signInAs, type EnrolledAccount } from '../fixtures/accounts.ts';
 import { test } from '../fixtures/passkey.ts';
 
 /**
@@ -1191,25 +1192,33 @@ test.describe('instance administration', () => {
  * editor lands `none` or `fresh-org` (no organisation to pick), and a
  * fresh-org policy renders `n / cap`. Every mutation takes the blue proof
  * step; the policy is closed again afterwards so no other flow sees a door.
+ * The proofs come from an instance operator of the test's own: two on the
+ * shared administrator leave its ledger a step ahead of the clock for the next
+ * flow to wait out.
  */
 test.describe('open registration at instance scope', () => {
   test.use({ storageState: STORAGE_STATE });
   const POLICY = '/api/v1/instance/registration-policy';
 
-  async function closeInstancePolicy(page: Page) {
+  async function closeInstancePolicy(page: Page, operator: EnrolledAccount) {
     try {
       await browserApi(page, 'GET', POLICY, zRegistrationPolicy);
     } catch (error) {
       if (error instanceof Error && error.message.includes('answered 404:')) return;
       throw error;
     }
-    await browserApi(page, 'DELETE', POLICY, z.null(), { proof: await nextTotpCode() });
+    await browserApi(page, 'DELETE', POLICY, z.null(), { proof: await operator.ledger.next() });
   }
 
-  test('opens a fresh-org policy with n / cap and closes it', async ({ page }, testInfo) => {
+  test('opens a fresh-org policy with n / cap and closes it', async ({ page, browser }, testInfo) => {
     testInfo.setTimeout(90_000);
+    // No bearer: the operator signs the page in with its second code, so its
+    // two proofs start at the third and wait at most one boundary each.
+    // An instance operator holds manage-members and instance-config there.
+    const operator = await enrolledAccount(browser, 'reg-instance-operator', 'instance', false);
+    await signInAs(page, operator);
     await page.goto('/instance/members');
-    await closeInstancePolicy(page);
+    await closeInstancePolicy(page, operator);
     await page.reload();
     const panel = page.locator('#members-registration');
     try {
@@ -1228,7 +1237,7 @@ test.describe('open registration at instance scope', () => {
       await editor.getByLabel('Cap on organisations minted').fill('5');
       await editor.getByRole('button', { name: 'Save' }).click();
       const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
-      await proof.getByLabel('Authenticator code or password').fill(await nextTotpCode());
+      await proof.getByLabel('Authenticator code or password').fill(await operator.ledger.next());
       await proof.getByRole('button', { name: 'Confirm' }).click();
       await expect(page.locator('.notice').filter({ hasText: 'registration.policy_created' })).toBeVisible();
       await expect(panel).toContainText('0 / 5 minted');
@@ -1241,11 +1250,11 @@ test.describe('open registration at instance scope', () => {
 
       await panel.getByRole('button', { name: 'Close registration' }).click();
       const closing = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
-      await closing.getByLabel('Authenticator code or password').fill(await nextTotpCode());
+      await closing.getByLabel('Authenticator code or password').fill(await operator.ledger.next());
       await closing.getByRole('button', { name: 'Confirm' }).click();
       await expect(panel).toContainText('No one can sign up on this instance without an invitation.');
     } finally {
-      await closeInstancePolicy(page);
+      await closeInstancePolicy(page, operator);
     }
   });
 });

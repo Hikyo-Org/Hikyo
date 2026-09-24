@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
-import type { Browser } from '@playwright/test';
-import { zInvitationResult, zLoginResult, zTotpEnrolStartResult } from '@hikyo/zod';
+import type { Browser, Page } from '@playwright/test';
+import { zInvitationResult, zLoginChallenge, zLoginResult, zTotpEnrolStartResult } from '@hikyo/zod';
 
 import { browserApi, fixtureApiCall } from './api.ts';
 import { BASE_URL, readSeed, STORAGE_STATE } from './instance.ts';
@@ -47,34 +47,54 @@ export class TotpLedger {
 export type EnrolledAccount = {
   readonly username: string;
   readonly password: string;
+  readonly principal: string;
   readonly ledger: TotpLedger;
-  /** A CLI session stepped up with the account's second code (instance scope only). */
+  /** A CLI session, stepped up with the account's second code when asked for, else `''`. */
   readonly bearer: string;
 };
 
 /**
+ * Where an enrolled account lands: the seeded org with no template (it signs
+ * in and sees nothing), the seeded org as an `admin` (it administers members
+ * and registration there), or the instance with the `operator` template (an
+ * instance operator that can administer registration).
+ */
+export type AccountGrant = 'org' | 'org-admin' | 'instance';
+
+/** Run `work` on a page holding the suite's shared, stepped-up administrator session. */
+export async function withSharedAdmin<T>(browser: Browser, work: (page: Page) => Promise<T>): Promise<T> {
+  const admin = await browser.newContext({ storageState: STORAGE_STATE });
+  try {
+    return await work(await admin.newPage());
+  } finally {
+    await admin.close();
+  }
+}
+
+/**
  * enrolledAccount invites a fresh human (through the suite's stored,
  * stepped-up administrator session: no administrator code is drawn),
- * establishes its password and enrols an authenticator. `scope` names where
- * the invitation lands: the seeded org with no template (it signs in and sees
- * nothing), or the instance with the `operator` template (an instance
- * operator that can administer registration). The operator's CLI session is
- * stepped up with its second code; a proof is its third.
+ * establishes its password and enrols an authenticator. `stepUp` steps its CLI
+ * session up with the second code, for a flow that acts as a bearer; a flow
+ * that drives the account in a browser leaves it off and spends the second
+ * code on `signInAs` instead, so its proofs start at the third.
  */
-export async function enrolledAccount(browser: Browser, label: string, scope: 'org' | 'instance'): Promise<EnrolledAccount> {
+export async function enrolledAccount(
+  browser: Browser,
+  label: string,
+  grant: AccountGrant,
+  stepUp = grant === 'instance',
+): Promise<EnrolledAccount> {
   const username = `${label}-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
   const password = randomBytes(24).toString('base64url');
-  const admin = await browser.newContext({ storageState: STORAGE_STATE });
-  const invitation = await (async () => {
-    try {
-      const page = await admin.newPage();
-      return scope === 'org'
-        ? await browserApi(page, 'POST', `/api/v1/orgs/${readSeed().org}/invitations`, zInvitationResult, { username })
-        : await browserApi(page, 'POST', '/api/v1/instance/invitations', zInvitationResult, { username, template: 'operator' });
-    } finally {
-      await admin.close();
-    }
-  })();
+  const invitation = await withSharedAdmin(browser, (page) =>
+    grant === 'instance'
+      ? browserApi(page, 'POST', '/api/v1/instance/invitations', zInvitationResult, { username, template: 'operator' })
+      : browserApi(page, 'POST', `/api/v1/orgs/${readSeed().org}/invitations`, zInvitationResult, {
+          username,
+          ...(grant === 'org-admin' ? { template: 'admin' } : {}),
+        }),
+  );
   const established = await fetch(`${BASE_URL}/api/v1/auth/credential/establish`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -98,10 +118,32 @@ export async function enrolledAccount(browser: Browser, label: string, scope: 'o
   // one the server already counts as spent.
   const ledger = new TotpLedger(enrolled.otpauth_uri, new Date());
   const confirmed = await fixtureApiCall(session, 'POST', '/api/v1/auth/totp/enrol/confirm', zLoginResult, { code: await ledger.next() });
-  let bearer = confirmed.session_token ?? '';
-  if (scope === 'instance') {
-    const stepped = await fixtureApiCall(bearer, 'POST', '/api/v1/auth/totp/step-up', zLoginResult, { code: await ledger.next() });
+  let bearer = '';
+  if (stepUp) {
+    const stepped = await fixtureApiCall(confirmed.session_token ?? '', 'POST', '/api/v1/auth/totp/step-up', zLoginResult, { code: await ledger.next() });
     bearer = stepped.session_token ?? '';
   }
-  return { username, password, ledger, bearer };
+  return { username, password, principal: invitation.principal_id, ledger, bearer };
+}
+
+/**
+ * signInAs replaces the page's session with a browser session for `account`,
+ * answering its login challenge (#760) from the account's own ledger. The
+ * session records `[password, totp]`, adequate for every MFA-mandatory surface.
+ */
+export async function signInAs(page: Page, account: EnrolledAccount): Promise<void> {
+  await page.context().clearCookies();
+  const login = await page.request.post(`${BASE_URL}/api/v1/auth/local/login`, {
+    data: { username: account.username, password: account.password, artifact: 'browser' },
+  });
+  if (login.status() !== 202) {
+    throw new Error(`signing ${account.username} in answered ${String(login.status())}, want a login challenge`);
+  }
+  const challenge = zLoginChallenge.parse(await login.json());
+  const answered = await page.request.post(`${BASE_URL}/api/v1/auth/login/challenge/${challenge.challenge_id}/totp`, {
+    data: { code: await account.ledger.next() },
+  });
+  if (!answered.ok()) {
+    throw new Error(`${account.username}'s login challenge answered ${String(answered.status())}`);
+  }
 }

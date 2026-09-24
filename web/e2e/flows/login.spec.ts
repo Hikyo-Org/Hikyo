@@ -11,7 +11,7 @@ import {
 import { zAuthMethods, zOrgList, zRegistrationPolicy } from '@hikyo/zod';
 import { z } from 'zod';
 
-import { browserApi, fixtureApiCall, fixtureBearer } from '../fixtures/api.ts';
+import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
 import {
   ADMIN,
   BASE_URL,
@@ -287,7 +287,14 @@ test.describe('login', () => {
   // policy is opened on a provider seeded for the purpose, then the provider
   // is disabled, which makes the policy inactive (a failing precondition).
   // With registration closed there is no line at all.
-  test('says only "Sign-up is paused." while registration is inactive', async ({ page }, testInfo) => {
+  //
+  // Its own instance operator, like the sign-up door's: three codes (step-up,
+  // two proofs) on the shared administrator leave its ledger a step ahead of
+  // the clock, and the next flow to draw from it waits out that step inside a
+  // default budget. The fresh account spends four (enrol, step-up, two
+  // proofs); the last two may each wait one boundary, which the budget below
+  // covers.
+  test('says only "Sign-up is paused." while registration is inactive', async ({ page, browser }, testInfo) => {
     testInfo.setTimeout(180_000);
     const provider = { slug: 'e2e-reg-paused', displayName: 'Registration Paused' };
     const policyPath = '/api/v1/instance/registration-policy';
@@ -300,14 +307,8 @@ test.describe('login', () => {
       scopes: 'openid email',
       enabled,
     });
-    const stepped = await fixtureApiCall(
-      await fixtureBearer('the registration fixture'),
-      'POST',
-      '/api/v1/auth/totp/step-up',
-      z.object({ session_token: z.string() }),
-      { code: await nextTotpCode() },
-    );
-    const admin = stepped.session_token;
+    const operator = await enrolledAccount(browser, 'reg-paused-operator', 'instance');
+    const admin = operator.bearer;
     const methods = async () => {
       const response = await fetch(`${BASE_URL}/api/v1/auth/methods`);
       return zAuthMethods.parse(await response.json());
@@ -321,7 +322,7 @@ test.describe('login', () => {
       await fixtureApiCall(admin, 'PUT', policyPath, zRegistrationPolicy, {
         external: [{ provider: { kind: 'oidc', slug: provider.slug } }],
         landing: { kind: 'none' },
-        proof: await nextTotpCode(),
+        proof: await operator.ledger.next(),
       });
       expect((await methods()).signup_open).toBe(true);
       await fixtureApiCall(admin, 'PUT', providerPath, z.unknown(), providerBody(false));
@@ -333,7 +334,7 @@ test.describe('login', () => {
       await expect(page.getByText('Sign-up is paused.', { exact: true })).toBeVisible();
       await expect(page.locator('main')).not.toContainText(/authority-lost|no longer holds|mailer|precondition|inactive|disabled/i);
     } finally {
-      await fixtureApiCall(admin, 'DELETE', policyPath, z.unknown(), { proof: await nextTotpCode() }).catch((error: unknown) => {
+      await fixtureApiCall(admin, 'DELETE', policyPath, z.unknown(), { proof: await operator.ledger.next() }).catch((error: unknown) => {
         if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
       });
       await fixtureApiCall(admin, 'DELETE', providerPath, z.unknown()).catch((error: unknown) => {
