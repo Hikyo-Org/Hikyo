@@ -64,10 +64,10 @@ function ProfileForm({ profile }: { profile: Profile }) {
             value={username} readOnly={profile.managed} onChange={(event) => { setUsername(event.target.value); setDone(false); }} />
           <p className="settings-note">Use this username when signing in with a password.</p>
         </div> : null}
-        {saved.email !== null ? <div className="field">
-          <label htmlFor={`${id}-email`}>{saved.email_verified ? 'Sign-in email' : 'Contact email'}</label>
-          <input id={`${id}-email`} name="email" type="email" readOnly value={saved.email} aria-describedby={`${id}-email-hint`} />
-          <p id={`${id}-email-hint`} className="settings-note">{saved.email_verified
+        {profile.email !== null ? <div className="field">
+          <label htmlFor={`${id}-email`}>{profile.email_verified ? 'Sign-in email' : 'Contact email'}</label>
+          <input id={`${id}-email`} name="email" type="email" readOnly value={profile.email} aria-describedby={`${id}-email-hint`} />
+          <p id={`${id}-email-hint`} className="settings-note">{profile.email_verified
             ? 'Used to sign in. Set when you sign up with email; it cannot be changed here.'
             : 'A contact address from before sign-in email existed. It is not used to sign in and cannot be changed here.'}</p>
         </div> : null}

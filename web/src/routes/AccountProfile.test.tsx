@@ -135,6 +135,17 @@ describe('account profile', () => {
     expect(container.textContent).not.toContain('Used to sign in.');
   });
 
+  it('follows a refetched profile when the email is cleared under the open form', async () => {
+    let current: typeof profile | (Omit<typeof profile, 'email'> & { email: string }) = { ...profile, email: 'alice@example.com' };
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json(current))));
+    const { container, client } = await mount();
+    expect(input(container, 'email').value).toBe('alice@example.com');
+    current = profile;
+    await act(async () => { await client.refetchQueries(); });
+    await settleTask();
+    expect(container.querySelector('input[name="email"]')).toBeNull();
+  });
+
   it('shows no email field when the account has no sign-in email', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json(profile))));
     const { container } = await mount();
