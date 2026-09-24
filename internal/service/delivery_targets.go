@@ -226,13 +226,12 @@ func (s *Delivery) TombstoneTarget(ctx context.Context, presented string, scope 
 // tombstone event (ADR D6). A tombstone naming no row of the caller's is the
 // uniform nonexistent answer.
 func (s *Delivery) TombstoneTargetAs(ctx context.Context, actor Actor, scope domain.Scope, key DeliveryTargetKey) error {
-	if err := deliverytarget.CheckTarget(deliverytarget.Target{
-		ClusterID: key.ClusterID, InstanceUID: key.InstanceUID, UID: key.UID,
-		// The display labels are not part of the key; any grammatical value
-		// passes the shared check.
-		Namespace: "tombstone", Name: "tombstone",
-	}); err != nil {
-		return invalidDetail("%s", err)
+	for _, uid := range []struct{ member, value string }{
+		{"target.cluster_id", key.ClusterID}, {"target.instance_uid", key.InstanceUID}, {"target.uid", key.UID},
+	} {
+		if !deliverytarget.IsUID(uid.value) {
+			return invalidDetail("%s is not a UID", uid.member)
+		}
 	}
 	var charged bool
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {

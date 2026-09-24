@@ -99,9 +99,10 @@ func wirePolicyForCode(code apigen.ErrorCode) WireError {
 // detail ONLY ever arrives from an explicit SafeDetail-carrying error (see
 // writeHandlerError). A plain conflict — one that wraps domain.ErrConflict with
 // no SafeDetail — carries no detail and stays byte-identical to every other
-// conflict. The single conflict that opts in is the protected-destination
-// refusal, whose detail is the caller's OWN destination id (post-authorization,
-// so naming it discloses nothing).
+// conflict. Two conflicts opt in, both post-authorization so naming them
+// discloses nothing: the protected-destination refusal, whose detail is the
+// caller's OWN destination id, and the delivery-target ordering refusal, whose
+// detail names the ordering rule the caller's own report broke.
 func errorBody(code apigen.ErrorCode, detail string) apigen.Error {
 	return wirePolicyForCode(code).bodyWithDetail(detail)
 }
@@ -262,6 +263,8 @@ var wireErrorRules = []struct {
 //   - Anything else is a fault: 500, with the cause logged and never returned.
 //   - ErrConflict and ErrLimitExceeded are decided AFTER authorization
 //     succeeded, so they disclose nothing a caller could not already read.
+//     So are the delivery-target report's vocabulary (422) and size (413)
+//     refusals; the size refusal ranks behind authorization by construction.
 //   - ErrInvalid is decided before or independently of tenant resolution.
 //   - The reveal-ceremony refusals (#58) are `forbidden`. They are decided
 //     AFTER authorize() has already succeeded, so they disclose nothing beyond

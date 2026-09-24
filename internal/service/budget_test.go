@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -187,6 +188,31 @@ func TestBudgetMachineFetchAggregates(t *testing.T) {
 	}
 	if _, err := b.acquire(budgetMachineFetch, budgetKeys{Org: domain.OrgID("org1")}); !errors.Is(err, admission.ErrOverloaded) {
 		t.Fatalf("301st org fetch = %v, want ErrOverloaded", err)
+	}
+}
+
+// TestBudgetDeliveryTargetBucket: the delivery-target report bucket is 60/min
+// per principal and 300/min per org (k8s-condition-reporting ADR D8).
+func TestBudgetDeliveryTargetBucket(t *testing.T) {
+	b := newTestBudget(&clock{t: time.Unix(1_700_000_000, 0)})
+	one := budgetKeys{Principal: "mch_1", Org: "org1"}
+	for i := range deliverytarget.PrincipalBudget {
+		if _, err := b.acquire(budgetDeliveryTarget, one); err != nil {
+			t.Fatalf("report %d refused early: %v", i+1, err)
+		}
+	}
+	if _, err := b.acquire(budgetDeliveryTarget, one); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("61st principal report = %v, want ErrOverloaded", err)
+	}
+	for i := 1; i < deliverytarget.OrgBudget/deliverytarget.PrincipalBudget; i++ {
+		for range deliverytarget.PrincipalBudget {
+			if _, err := b.acquire(budgetDeliveryTarget, budgetKeys{Principal: domain.PrincipalID("mch_" + strconv.Itoa(i+1)), Org: "org1"}); err != nil {
+				t.Fatalf("principal %d refused before the org bound: %v", i+1, err)
+			}
+		}
+	}
+	if _, err := b.acquire(budgetDeliveryTarget, budgetKeys{Principal: "mch_fresh", Org: "org1"}); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("301st org report = %v, want ErrOverloaded", err)
 	}
 }
 
