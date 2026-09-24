@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { Browser } from '@playwright/test';
 import { zInvitationResult, zLoginResult, zTotpEnrolStartResult } from '@hikyo/zod';
 
@@ -60,8 +61,8 @@ export type EnrolledAccount = {
  * stepped up with its second code; a proof is its third.
  */
 export async function enrolledAccount(browser: Browser, label: string, scope: 'org' | 'instance'): Promise<EnrolledAccount> {
-  const username = `${label}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  const password = `a password for ${username}`;
+  const username = `${label}-${Date.now().toString(36)}-${randomBytes(4).toString('hex')}`;
+  const password = randomBytes(24).toString('base64url');
   const admin = await browser.newContext({ storageState: STORAGE_STATE });
   const invitation = await (async () => {
     try {
