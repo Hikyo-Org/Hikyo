@@ -309,7 +309,7 @@ hikyo access registration set    [--org <org> | --instance-scope] --file <policy
 hikyo access registration delete [--org <org> | --instance-scope]
 ```
 
-REST: `GET|PUT|DELETE /api/v1/orgs/{org}/registration-policy` and `/api/v1/instance/registration-policy`. `PUT` body `RegistrationPolicy {external: [{provider, claim?, values?}], local?: {domains?: [...]}, landing: {kind: org-template, template} | {kind: none} | {kind: fresh-org, cap}}`; the response adds `authority_principal_id`, `state: active | inactive`, `inactive_cause?`, `fresh_org_count?`. Write-time refusals are `400` naming the failing precondition (`no-public-origin`, `mailer-unconfigured`, `provider-disabled`, `provider-kind-unsupported`, `provider-missing-email-scope`, `cap-zero`, `template-not-org-applicable`).
+REST: `GET|PUT|DELETE /api/v1/orgs/{org}/registration-policy` and `/api/v1/instance/registration-policy`. `PUT` body `RegistrationPolicy {external: [{provider, claim?, values?}], local?: {domains?: [...]}, landing: {kind: org-template, template} | {kind: none} | {kind: fresh-org, cap}}`; the response adds `authority_principal_id`, `state: active | inactive`, `inactive_cause?`, `inactive_precondition?` (the failing precondition by name when the cause is `precondition`, the provider as `<kind>:<slug>` where one is involved), `fresh_org_count?`. Write-time refusals are `400` naming the failing precondition (`no-public-origin`, `mailer-unconfigured`, `provider-disabled`, `provider-kind-unsupported`, `provider-missing-email-scope`, `cap-zero`, `template-not-org-applicable`).
 
 ### Public sign-up (pre-auth, admission-bounded, uniform responses)
 
