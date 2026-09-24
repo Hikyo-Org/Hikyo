@@ -20,8 +20,8 @@ const withProviders = {
     { slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' },
     { slug: 'sso', display_name: 'SAML SSO', kind: 'saml' },
   ],
-} satisfies z.infer<typeof zAuthMethods>;
-const localOnly = { local_login_enabled: true, providers: [] } satisfies z.infer<typeof zAuthMethods>;
+} satisfies z.input<typeof zAuthMethods>;
+const localOnly = { local_login_enabled: true, providers: [] } satisfies z.input<typeof zAuthMethods>;
 
 const meta = {
   component: Login,

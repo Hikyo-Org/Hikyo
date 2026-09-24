@@ -39,7 +39,7 @@ describe('useNavigationGuard', () => {
 
     await mount(true, () => {});
     expect(pushState).toHaveBeenCalledTimes(1);
-    expect(pushState).toHaveBeenCalledWith(null, '', window.location.href);
+    expect(pushState).toHaveBeenCalledWith({ hikyoNavigationGuard: expect.any(Number) }, '', window.location.href);
     expect(addListener.mock.calls.map(([type]) => type)).toEqual(
       expect.arrayContaining(['beforeunload', 'popstate']),
     );
@@ -61,6 +61,62 @@ describe('useNavigationGuard', () => {
     expect(pushState).toHaveBeenCalledTimes(1);
     expect(first).not.toHaveBeenCalled();
     expect(latest).toHaveBeenCalledTimes(1);
+  });
+
+  it('adopts a stale sentinel left by a finished guard instead of surfacing an attempt', async () => {
+    const pushState = vi.spyOn(history, 'pushState').mockImplementation(() => {});
+    const replaceState = vi.spyOn(history, 'replaceState').mockImplementation(() => {});
+    vi.spyOn(history, 'back').mockImplementation(() => {});
+    const onAttempt = vi.fn();
+
+    // A guard that activates and finishes: its sentinel id is no longer live.
+    await mount(true, () => {});
+    const finished = pushState.mock.calls[0]?.[0];
+    await mount(false, () => {});
+    await mount(true, onAttempt);
+    pushState.mockClear();
+
+    // The finished guard's `history.back()` settling after this one mounted:
+    // the pop lands on that guard's sentinel, not on the route.
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: finished }));
+    });
+
+    expect(onAttempt).not.toHaveBeenCalled();
+    expect(pushState).not.toHaveBeenCalled();
+    expect(replaceState).toHaveBeenCalledWith({ hikyoNavigationGuard: expect.any(Number) }, '', window.location.href);
+  });
+
+  it('routes a Back press to the newest of two live guards and ignores a pop onto its own sentinel', async () => {
+    const pushState = vi.spyOn(history, 'pushState').mockImplementation(() => {});
+    vi.spyOn(history, 'back').mockImplementation(() => {});
+    const older = vi.fn();
+    const newer = vi.fn();
+
+    const outer = createRoot(document.createElement('div'));
+    await act(async () => {
+      outer.render(<Guarded active onAttempt={older} />);
+    });
+    const olderSentinel = pushState.mock.calls[0]?.[0];
+    await mount(true, newer);
+    const newerSentinel = pushState.mock.calls[1]?.[0];
+
+    // Back from the newer sentinel lands on the older guard's live sentinel:
+    // a real press, answered by the newest guard only.
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: olderSentinel }));
+    });
+    expect(newer).toHaveBeenCalledTimes(1);
+    expect(older).not.toHaveBeenCalled();
+
+    // A pop onto the newest guard's own entry is a sibling's deactivation
+    // settling, not a press.
+    await act(async () => {
+      window.dispatchEvent(new PopStateEvent('popstate', { state: newerSentinel }));
+    });
+    expect(newer).toHaveBeenCalledTimes(1);
+
+    await act(async () => outer.unmount());
   });
 
   it('removes its listeners and consumes the sentinel when deactivated', async () => {

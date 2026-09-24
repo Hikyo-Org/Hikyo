@@ -19,6 +19,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Textarea } from '../ui/Textarea.tsx';
 import { Panel } from './Sections.tsx';
+import { selectOption } from './selectOption.ts';
 
 const secondFactor = (error: unknown) => error instanceof ApiError && error.status === 403;
 const nondisclosed = (error: unknown) => error instanceof ApiError && error.status === 404;
@@ -29,10 +30,13 @@ const ISSUER_TYPES: ReadonlyArray<{ readonly id: FederationIssuerType; readonly 
   { id: 'github-actions', label: 'GitHub Actions' },
 ];
 
+const ISSUER_TYPE_IDS: readonly FederationIssuerType[] = ISSUER_TYPES.map((entry) => entry.id);
+
 const JWKS_MODES: ReadonlyArray<{ readonly id: FederationJwksMode; readonly label: string }> = [
   { id: 'discovery', label: 'Discovery: fetch and cache the keys' },
   { id: 'static', label: 'Static: supply the JWKS document' },
 ];
+const JWKS_MODE_IDS: readonly FederationJwksMode[] = JWKS_MODES.map((entry) => entry.id);
 
 /** audiencesFrom splits the one-per-line textarea into trimmed, non-empty lines. */
 function audiencesFrom(text: string): string[] {
@@ -383,7 +387,7 @@ function IssuerForm({
           <select
             id={typeId}
             value={type}
-            onChange={(event) => setType(event.target.value as FederationIssuerType)}
+            onChange={(event) => setType(selectOption(ISSUER_TYPE_IDS, event.target.value))}
           >
             {ISSUER_TYPES.map((entry) => (
               <option key={entry.id} value={entry.id}>
@@ -406,7 +410,7 @@ function IssuerForm({
           id={modeId}
           value={mode}
           onChange={(event) => {
-            const next = event.target.value as FederationJwksMode;
+            const next = selectOption(JWKS_MODE_IDS, event.target.value);
             setMode(next);
             // Do not carry a JWKS document out of static mode: under discovery
             // it is not sent (the wire schema refuses it), and holding it in

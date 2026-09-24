@@ -4,6 +4,7 @@ import { expect } from 'storybook/test';
 import type { z } from 'zod';
 
 import { authenticatedIdentity } from '../testkit/identity.ts';
+import { ORG, PRJ } from '../testkit/ids.ts';
 import { Projects } from './Projects.tsx';
 
 import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
@@ -14,11 +15,10 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // disables the system-scope query (`useSystemScope(operator === true)`), leaving
 // one load-time call, GET /api/v1/orgs/{org}/projects, and shows the create
 // form (an ordinary scope). See .storybook/withApp.tsx.
-const ORG = 'org_123e4567-e89b-12d3-a456-426614174001';
 const PROJECTS_URL = `/api/v1/orgs/${ORG}/projects`;
 
-const member: z.infer<typeof zProjectList>['items'][number] = {
-  id: 'prj_123e4567-e89b-12d3-a456-426614174000',
+const member: z.input<typeof zProjectList>['items'][number] = {
+  id: PRJ,
   org_id: ORG,
   name: 'billing',
   created_at: '2026-01-01T00:00:00Z',
@@ -30,7 +30,7 @@ const populated = {
     { ...member, id: 'prj_123e4567-e89b-12d3-a456-426614174002', name: 'web' },
     { ...member, id: 'prj_123e4567-e89b-12d3-a456-426614174003', name: 'analytics' },
   ],
-} satisfies z.infer<typeof zProjectList>;
+} satisfies z.input<typeof zProjectList>;
 
 const meta = {
   component: Projects,

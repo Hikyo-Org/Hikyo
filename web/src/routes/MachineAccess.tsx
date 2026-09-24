@@ -202,7 +202,7 @@ export function accountsRefusalText(error: unknown): string {
 /** Deep links into the Hikyo system project answer with the profile refusal. */
 export const MachineAccess = gateSystemScope('machine-access', MachineAccessPage);
 
-function MachineAccessPage() {
+export function MachineAccessPage() {
   const params = useParams();
   const project: ProjectRef = {
     org: params['org'] ?? '',
@@ -1125,7 +1125,7 @@ function PolicyStrip({ project }: { project: ProjectRef }) {
   );
 }
 
-function MachineRevealDialog({
+export function MachineRevealDialog({
   enable,
   busy,
   failure,
@@ -1503,7 +1503,7 @@ function JourneyActionButton({
   );
 }
 
-function BindingCard({
+export function BindingCard({
   account,
   credential,
   now,
@@ -1924,7 +1924,7 @@ export function MintDialog({
  * from the subject's shape, because a `pull_request_target` token carries the
  * ordinary ref-form subject a production binding names.
  */
-function BindingDialog({
+export function BindingDialog({
   project,
   accounts,
   initial,
@@ -2663,7 +2663,7 @@ function GrantBody({
  * HERE (empty or over 64) rather than as a 400, and the trimmed name is what is
  * sent so the length checked is the length the server sees.
  */
-function CreateAccountDialog({
+export function CreateAccountDialog({
   project,
   onClose,
   onCreated,
@@ -2788,7 +2788,7 @@ function CreateAccountDialog({
  * under the plain capability with no disclosure gate, because requiring a
  * ceremony to kill a compromised workload would be a self-inflicted delay.
  */
-function DeleteAccountDialog({
+export function DeleteAccountDialog({
   project,
   account,
   onClose,
@@ -2896,7 +2896,7 @@ function blankClaims(preset: FederationPreset): Record<string, string> {
  * might be unreachable. There is no passkey here: configuring standing project
  * authority is `manage-identities`, not a per-environment disclosure.
  */
-function CreateProviderDialog({
+export function CreateProviderDialog({
   project,
   onClose,
   onCreated,
@@ -3039,7 +3039,7 @@ function CreateProviderDialog({
  * re-probes on set, so a success means the new credential authenticates; the
  * prior one is never shown and is overwritten, not archived.
  */
-function SetCredentialDialog({
+export function SetCredentialDialog({
   project,
   provider,
   onClose,
@@ -3140,7 +3140,7 @@ function SetCredentialDialog({
  * no longer renew, revoke or expire them until a replacement credential is set.
  * A lease revocation that needs the credential will strand until then.
  */
-function RevokeCredentialDialog({
+export function RevokeCredentialDialog({
   project,
   provider,
   onClose,
@@ -3223,7 +3223,7 @@ function RevokeCredentialDialog({
  * checkbox when there are any, rather than letting the operator meet the refusal
  * as a 409.
  */
-function DeleteProviderDialog({
+export function DeleteProviderDialog({
   project,
   provider,
   liveLeaseCount,
@@ -3344,7 +3344,7 @@ function DeleteProviderDialog({
  * the role name and its password EXACTLY once, a retry is a new lease, never the
  * old secret.
  */
-function LeaseMintDialog({
+export function LeaseMintDialog({
   project,
   sessionId,
   providers,
@@ -3643,7 +3643,7 @@ function LeaseMintDialog({
  * copy says "queued" rather than promising a done state the row does not yet
  * show. Renew offers an optional new ceiling; revoke and settle are one-tap.
  */
-function LeaseActionDialog({
+export function LeaseActionDialog({
   project,
   action,
   onClose,

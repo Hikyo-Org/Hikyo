@@ -79,12 +79,36 @@ parameters: {
 - Split text (`⊘ denied` = an aria-hidden glyph span + text) is not matchable by
   `getByText('⊘ denied')`; assert via the row's accessible name
   (`getByRole('button', { name: /Dana Jacobs/ })`) instead.
+- Wire bodies in `responses[].body` are `z.input` shapes: int64 fields as JSON
+  numbers, because the harness runs `JSON.stringify` and a bigint throws;
+  `parsed()` coerces them back. Type fixtures `satisfies z.input<typeof zX>`
+  from `@hikyo/zod`. Shared ids and fixtures live in `web/src/testkit/`.
+- POST-create rows need the contract's status (`status: 201`); a default-200
+  row on a `[201]`-only operation is treated as a refusal.
+- Never name a story after a global (`Error`, `Set`): use `Failed`,
+  `FirstCredential`.
+- A `Failed` story asserts the status-specific sentence, never a bare
+  `role="alert"`: the harness answers a mis-routed request with 404, which many
+  screens render as a plausible refusal.
+- A click on a control that exists before whoami settles is lost when
+  `AuthProvider` swaps the tree; wait for signed-in content first.
+- Pages that read the URL in a `useState` initialiser (CLIReauth,
+  WorkspaceApprove) get their query string from a per-story `beforeEach` that
+  rewrites the frame URL and restores it.
+- Pages with an advisory `/events` stream (Matrix) hold that row `pending` so
+  the story sits in "connecting" instead of a reconnect loop.
+- `getByRole(..., { hidden: true })` is needed to assert a `display:none` pane
+  is not visible (HistoryDrawer phone stories).
+- Story `move`/callback spies must honour the callee's contract: a bare `fn()`
+  returning undefined where the component reads `result.state` throws from
+  the navigation guard's popstate path, not from the play.
+- Bare `$FILES` in zsh does not word-split for `vitest run`; an unquoted
+  expansion silently finds no tests.
 
 ## House rules honoured
 No `as` casts; `satisfies Meta<typeof C>`; `StoryObj<typeof meta>`;
 `tags: ['ai-generated']`; `fn()` callbacks from `storybook/test`; import grouping
-(third-party / blank / local with explicit extensions); bigint literals for
-int64 fixture fields.
+(third-party / blank / local with explicit extensions); bigint literals for int64 fields in parsed-model fixtures (values handed to a component as props); wire bodies in `responses[].body` carry int64 as JSON numbers, see the pattern section.
 
 ## Local-env traps (same machine as #752)
 - **Node**: this shell defaults to Node v20, but the repo pins v26.7.0 (root

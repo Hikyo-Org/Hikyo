@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import react from '@vitejs/plugin-react';
@@ -10,6 +11,14 @@ import { playwright } from '@vitest/browser-playwright';
 import { prototypeMockApi } from './prototype/mock-api.ts';
 
 const here = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
+// The generated client (aliased below) imports `zod` from clients/ts, which has
+// its own lockfile and node_modules. Without that install the bundler treats
+// `zod` as an unresolved external and only warns, so the SPA would ship an
+// import it cannot load. Refuse up front with the fix in the message instead.
+if (!existsSync(here('../clients/ts/node_modules/zod'))) {
+  throw new Error('clients/ts is not installed (zod unresolved): run `pnpm --dir clients/ts install --frozen-lockfile` first');
+}
 
 // The build is constrained by the server's CSP baseline, not by taste
 // (internal/server/spa.go asserts the header; internal/server/spa_test.go
