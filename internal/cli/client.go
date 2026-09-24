@@ -270,7 +270,8 @@ func exitForStatus(status int) int {
 	case status == http.StatusNotFound:
 		return ExitNotFound
 	case status == http.StatusForbidden, status == http.StatusBadRequest,
-		status == http.StatusConflict:
+		status == http.StatusConflict, status == http.StatusUnprocessableEntity,
+		status == http.StatusRequestEntityTooLarge:
 		return ExitRefused
 	case status >= 500, status == http.StatusTooManyRequests:
 		return ExitUnavailable
