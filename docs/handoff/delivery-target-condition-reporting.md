@@ -43,13 +43,14 @@ Unblocks #789, #790 and #791.
 
 ## Open at merge time
 
-- **Migration order:** `00059` skips `00057`/`00058` (#794 claims 57 and
-  reserves 58). Goose runs without out-of-order support, so #794 must land
-  first, or whichever merges second renumbers and regenerates
-  `internal/buildcompat/development.json`
-  (`go run ./scripts/release/compatibility --development --out <file>` with
-  `HIKYO_RELEASE_SCHEMA_POSTGRES_DSN` set) and the upgrade-drill list in
-  `internal/app/backup_upgrade_drill_test.go`.
+- **Migration order:** this PR is stacked on #607 (`feat/607-federated-signup`),
+  which carries `00057`/`00058` from the #605/#606 stack, so `00059` follows
+  them. Goose runs without out-of-order support: if the stack changes its
+  migrations, rebase and regenerate `internal/buildcompat/development.json`
+  (`go run ./scripts/release/compatibility --development --out <new file>`
+  against an empty PostgreSQL 18 database in `HIKYO_RELEASE_SCHEMA_POSTGRES_DSN`)
+  and the upgrade-drill list in `internal/app/backup_upgrade_drill_test.go`.
+  The drill reverses `00059` first, before `00057`'s table rebuilds.
 - **Generated constant rename:** the new `Retained` lifecycle value made
   oapi-codegen prefix the `RetentionConsequence` constants
   (`apigen.RetentionConsequenceCollectionEligible`). Open branches using the old
