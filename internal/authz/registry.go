@@ -3753,7 +3753,7 @@ var operationTable = map[Operation]opSpec{
 			StoreDeliveryTargetsGet: true, StoreDeliveryTargetsDelete: true,
 			StoreAuditTenantInsert: true,
 		},
-		events: []audit.EventType{audit.EventDeliveryTargetTombstoned, audit.EventDeliveryTargetRefused},
+		events: []audit.EventType{audit.EventDeliveryTargetTombstoned},
 	},
 	// The list is metadata under `read` (D7) and a pure read: the trail would
 	// only duplicate it.
