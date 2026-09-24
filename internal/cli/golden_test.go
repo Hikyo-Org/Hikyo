@@ -1031,7 +1031,7 @@ func TestPinReleasePrintsServerRetentionConsequence(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode pin release output: %v", err)
 	}
-	if result.Revision != 3 || result.RetentionConsequence != apigen.CollectionEligible {
+	if result.Revision != 3 || result.RetentionConsequence != apigen.RetentionConsequenceCollectionEligible {
 		t.Fatalf("pin release output = %+v", result)
 	}
 }

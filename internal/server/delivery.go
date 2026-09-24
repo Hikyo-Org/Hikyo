@@ -3,9 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
@@ -32,6 +34,10 @@ import (
 type DeliveryService interface {
 	Fetch(ctx context.Context, presented string, scope domain.Scope, cursor string, opts service.FetchOptions) (service.FetchResult, error)
 	ReconcileOfflineRecords(ctx context.Context, presented string, scope domain.Scope, records []service.OfflineRecord) (service.ReconcileResult, error)
+	ReportTarget(ctx context.Context, presented string, scope domain.Scope, report deliverytarget.Report) error
+	TombstoneTarget(ctx context.Context, presented string, scope domain.Scope, key service.DeliveryTargetKey) error
+	RefuseOversizeReport(ctx context.Context, presented string, scope domain.Scope) error
+	ListTargets(ctx context.Context, actor service.Actor, scope domain.Scope) (service.DeliveryTargetList, error)
 }
 
 func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequestObject) (apigen.FetchDeliveryResponseObject, error) {
@@ -120,4 +126,100 @@ func (a *API) ReconcileOfflineRecords(ctx context.Context, req apigen.ReconcileO
 	return apigen.ReconcileOfflineRecords200JSONResponse{
 		Accepted: res.Accepted, Duplicates: res.Duplicates,
 	}, nil
+}
+
+// Delivery-target condition reporting (#788). The report and tombstone hand
+// the raw presented artifact to the service for the same reason the fetch
+// does: they ride the fetch credential, bearer or federated. The body is
+// already closed by the contract; the handler only renames its members.
+
+func (a *API) ReportDeliveryTarget(ctx context.Context, req apigen.ReportDeliveryTargetRequestObject) (apigen.ReportDeliveryTargetResponseObject, error) {
+	body := req.Body
+	conditions := make([]deliverytarget.Condition, 0, len(body.Conditions))
+	for _, c := range body.Conditions {
+		conditions = append(conditions, deliverytarget.Condition{
+			Type: string(c.Type), Status: string(c.Status), Reason: string(c.Reason),
+			ObservedGeneration: c.ObservedGeneration,
+		})
+	}
+	report := deliverytarget.Report{
+		Vocabulary: body.Vocabulary,
+		Target: deliverytarget.Target{
+			ClusterID: body.Target.ClusterId, InstanceUID: body.Target.InstanceUid,
+			Namespace: body.Target.Namespace, Name: body.Target.Name, UID: body.Target.Uid,
+		},
+		Generation: body.Generation, ObservedGeneration: body.ObservedGeneration,
+		ReportedAt: body.ReportedAt, ReportIntervalSeconds: body.ReportIntervalSeconds,
+		Lifecycle: string(body.Lifecycle), Conditions: conditions,
+		Reporter: string(body.Reporter.Integration), ReporterVersion: body.Reporter.Version,
+	}
+	if err := a.Delivery.ReportTarget(ctx, bearer(ctx), envScope(req.Org, req.Project, req.Environment), report); err != nil {
+		return nil, err
+	}
+	return apigen.ReportDeliveryTarget204Response{}, nil
+}
+
+func (a *API) TombstoneDeliveryTarget(ctx context.Context, req apigen.TombstoneDeliveryTargetRequestObject) (apigen.TombstoneDeliveryTargetResponseObject, error) {
+	key := service.DeliveryTargetKey{
+		ClusterID: req.Body.Target.ClusterId, InstanceUID: req.Body.Target.InstanceUid, UID: req.Body.Target.Uid,
+	}
+	if err := a.Delivery.TombstoneTarget(ctx, bearer(ctx), envScope(req.Org, req.Project, req.Environment), key); err != nil {
+		return nil, err
+	}
+	return apigen.TombstoneDeliveryTarget204Response{}, nil
+}
+
+// refuseOversizeReport answers a report body over deliverytarget.MaxReportBytes
+// without parsing it. Authentication and authorization still rank first, so an
+// unauthorized caller gets the uniform 404, never a size answer.
+func (a *API) refuseOversizeReport(w http.ResponseWriter, r *http.Request, scope domain.Scope) {
+	a.writeHandlerError(w, r, a.Delivery.RefuseOversizeReport(r.Context(), bearer(r.Context()), scope))
+}
+
+func (a *API) ListDeliveryTargets(ctx context.Context, req apigen.ListDeliveryTargetsRequestObject) (apigen.ListDeliveryTargetsResponseObject, error) {
+	list, err := a.Delivery.ListTargets(ctx, service.Bearer(bearer(ctx)), envScope(req.Org, req.Project, req.Environment))
+	if err != nil {
+		return nil, err
+	}
+	out := apigen.ListDeliveryTargets200JSONResponse{
+		Principals: make([]apigen.DeliveryTargetPrincipal, 0, len(list.Reporters)),
+		Targets:    make([]apigen.DeliveryTarget, 0, len(list.Targets)),
+	}
+	for _, p := range list.Reporters {
+		out.Principals = append(out.Principals, apigen.DeliveryTargetPrincipal{
+			PrincipalId: p.PrincipalID, LastContactAt: optionalTime(p.LastContactAt), QuotaRefusedAt: optionalTime(p.QuotaRefusedAt),
+		})
+	}
+	for _, t := range list.Targets {
+		r := t.Report
+		conditions := make([]apigen.DeliveryTargetCondition, 0, len(r.Conditions))
+		for _, c := range r.Conditions {
+			conditions = append(conditions, apigen.DeliveryTargetCondition{
+				Type: apigen.DeliveryTargetConditionType(c.Type), Status: apigen.DeliveryTargetConditionStatus(c.Status),
+				Reason: apigen.DeliveryTargetConditionReason(c.Reason), ObservedGeneration: c.ObservedGeneration,
+			})
+		}
+		row := apigen.DeliveryTarget{
+			Id: t.ID, PrincipalId: t.PrincipalID,
+			Target: apigen.DeliveryTargetRef{
+				ClusterId: r.Target.ClusterID, InstanceUid: r.Target.InstanceUID,
+				Namespace: r.Target.Namespace, Name: r.Target.Name, Uid: r.Target.UID,
+			},
+			Vocabulary: r.Vocabulary, Generation: r.Generation, ObservedGeneration: r.ObservedGeneration,
+			ReportedAt: r.ReportedAt, ReceivedAt: t.ReceivedAt, ReportIntervalSeconds: r.ReportIntervalSeconds,
+			Lifecycle: apigen.DeliveryTargetLifecycle(r.Lifecycle), Conditions: conditions,
+			Reporter: apigen.DeliveryTargetReporter{
+				Integration: apigen.DeliveryTargetReporterIntegration(r.Reporter), Version: r.ReporterVersion,
+			},
+			State: apigen.DeliveryTargetState(t.State),
+		}
+		if t.RefusalCause != "" {
+			row.Refusal = &struct {
+				Cause     apigen.DeliveryTargetRefusalCause `json:"cause"`
+				RefusedAt apigen.Timestamp                  `json:"refused_at"`
+			}{Cause: apigen.DeliveryTargetRefusalCause(t.RefusalCause), RefusedAt: t.RefusedAt}
+		}
+		out.Targets = append(out.Targets, row)
+	}
+	return out, nil
 }

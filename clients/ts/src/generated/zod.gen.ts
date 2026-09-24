@@ -425,6 +425,8 @@ export const zErrorCode = z.enum([
     'not_found',
     'conflict',
     'limit_exceeded',
+    'unprocessable',
+    'payload_too_large',
     'too_many_requests',
     'service_unavailable',
     'internal'
@@ -1554,6 +1556,187 @@ export const zFederatedBinding = z.object({
 export const zReconcileOfflineRecordsResponse = z.object({
     accepted: z.int().gte(0),
     duplicates: z.int().gte(0)
+});
+
+/**
+ * A Kubernetes object UID, canonical lower-case RFC 4122 form.
+ */
+export const zKubernetesUid = z.string().max(36).regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+/**
+ * A namespace name (DNS-1123 label). A display label, never interpreted.
+ */
+export const zKubernetesNamespace = z.string().max(63).regex(/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/);
+
+/**
+ * An object name (DNS-1123 subdomain). A display label, never interpreted.
+ */
+export const zKubernetesObjectName = z.string().max(253).regex(/^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/);
+
+/**
+ * The target's identity under the reporting principal: the cluster
+ * (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+ * target object's UID. A recreated object is a new target.
+ *
+ */
+export const zDeliveryTargetIdentity = z.object({
+    cluster_id: zKubernetesUid,
+    instance_uid: zKubernetesUid,
+    uid: zKubernetesUid
+});
+
+/**
+ * The target's identity plus the namespace and name an operator types into `kubectl`.
+ */
+export const zDeliveryTargetRef = z.object({
+    cluster_id: zKubernetesUid,
+    instance_uid: zKubernetesUid,
+    namespace: zKubernetesNamespace,
+    name: zKubernetesObjectName,
+    uid: zKubernetesUid
+});
+
+/**
+ * One asserted condition. `type` and `reason` are closed over every
+ * vocabulary this server accepts; a reason that is not in its type's
+ * set for the report's vocabulary is a 422.
+ *
+ */
+export const zDeliveryTargetCondition = z.object({
+    type: z.enum([
+        'Conflict',
+        'CredentialExpiry',
+        'Delivery',
+        'Designation',
+        'PinExpired',
+        'Ready',
+        'Rollout',
+        'Scrubbed',
+        'Synced',
+        'Unreconciled'
+    ]),
+    status: z.enum([
+        'False',
+        'True',
+        'Unknown'
+    ]),
+    reason: z.enum([
+        'AudienceMissing',
+        'AuthorizationWithdrawn',
+        'Blocked',
+        'Current',
+        'Delivered',
+        'EnvFromSkip',
+        'Expired',
+        'ExpiresSoon',
+        'FetchFailed',
+        'InstanceMismatch',
+        'InvalidSecretData',
+        'KeysMissing',
+        'LoaderControlUnacknowledged',
+        'ManagedSecretNotOwned',
+        'NamespaceNotBound',
+        'NotMaterialized',
+        'PinExpired',
+        'Reconciled',
+        'SecretNotDesignated',
+        'ServiceAccountNotDesignated',
+        'Stalled',
+        'TargetClaimed',
+        'TargetTypeImmutable',
+        'UndeliveredSecrets'
+    ]),
+    observed_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+/**
+ * The target's closed `status.lifecycle`.
+ */
+export const zDeliveryTargetLifecycle = z.enum([
+    'Refused',
+    'Retained',
+    'Scrubbed',
+    'Synced',
+    'Unreconciled'
+]);
+
+/**
+ * The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+ */
+export const zDeliveryTargetReporter = z.object({
+    integration: z.enum(['kubernetes-operator']),
+    version: z.string().max(64).regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/)
+});
+
+/**
+ * One closed, value-free report (ADR D4). It carries no condition
+ * message, event text, secret value, key name, cursor or credential
+ * material; there is no member that could.
+ *
+ */
+export const zDeliveryTargetReportRequest = z.object({
+    vocabulary: z.int().gte(1),
+    target: zDeliveryTargetRef,
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    observed_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    reported_at: zTimestamp,
+    report_interval_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    lifecycle: zDeliveryTargetLifecycle,
+    conditions: z.array(zDeliveryTargetCondition).max(10),
+    reporter: zDeliveryTargetReporter
+});
+
+export const zDeliveryTargetTombstoneRequest = z.object({
+    target: zDeliveryTargetIdentity
+});
+
+/**
+ * Derived at read time, never stored (ADR D5). `unknown` is the absence
+ * of a row, so no row carries it.
+ *
+ */
+export const zDeliveryTargetState = z.enum([
+    'refused',
+    'reported',
+    'reporter-revoked',
+    'stale'
+]);
+
+/**
+ * One target's latest accepted report, as its controller asserted it.
+ */
+export const zDeliveryTarget = z.object({
+    id: z.string(),
+    principal_id: z.string(),
+    target: zDeliveryTargetRef,
+    vocabulary: z.int().gte(1),
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    observed_generation: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    reported_at: zTimestamp,
+    received_at: zTimestamp,
+    report_interval_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(86400)),
+    lifecycle: zDeliveryTargetLifecycle,
+    conditions: z.array(zDeliveryTargetCondition),
+    reporter: zDeliveryTargetReporter,
+    state: zDeliveryTargetState,
+    refusal: z.object({
+        cause: z.enum(['vocabulary']),
+        refused_at: zTimestamp
+    }).optional()
+});
+
+/**
+ * The server-observed layer for one reporting principal (ADR D2).
+ */
+export const zDeliveryTargetPrincipal = z.object({
+    principal_id: z.string(),
+    last_contact_at: zTimestamp.optional(),
+    quota_refused_at: zTimestamp.optional()
+});
+
+export const zDeliveryTargetList = z.object({
+    principals: z.array(zDeliveryTargetPrincipal),
+    targets: z.array(zDeliveryTarget)
 });
 
 export const zInstanceConfigBinding = z.object({
@@ -5469,6 +5652,43 @@ export const zReconcileOfflineRecordsPath = z.object({
  * The idempotent batch outcome.
  */
 export const zReconcileOfflineRecordsResponse2 = zReconcileOfflineRecordsResponse;
+
+export const zListDeliveryTargetsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The environment's delivery targets.
+ */
+export const zListDeliveryTargetsResponse = zDeliveryTargetList;
+
+export const zReportDeliveryTargetBody = zDeliveryTargetReportRequest;
+
+export const zReportDeliveryTargetPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Accepted.
+ */
+export const zReportDeliveryTargetResponse = z.void();
+
+export const zTombstoneDeliveryTargetBody = zDeliveryTargetTombstoneRequest;
+
+export const zTombstoneDeliveryTargetPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The row is removed.
+ */
+export const zTombstoneDeliveryTargetResponse = z.void();
 
 export const zListScimBindingsPath = z.object({
     org: zId

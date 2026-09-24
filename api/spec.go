@@ -49,7 +49,9 @@ var SpecYAML []byte
 // Revision 3 adds environment parameter operations and delivery snapshot revision
 // metadata. Existing operation minimums remain stable for older clients.
 // Revision 4 adds public runtime maintenance status.
-const Revision = 4
+// Revision 5 adds delivery-target condition reporting (report, tombstone,
+// list) and its `/meta` protocol capability.
+const Revision = 5
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.
@@ -427,6 +429,10 @@ func MatchRequest(r *http.Request) (*MatchedRequest, error) {
 // Consumers may hold and read it but must not mutate its slice fields.
 func (m *MatchedRequest) Operation() Operation { return m.op }
 
+// PathParam returns one path parameter as the contract route matched it, for
+// middleware that answers before the router hands the request to a handler.
+func (m *MatchedRequest) PathParam(name string) string { return m.params[name] }
+
 // Validate checks the matched request against the contract and reports the
 // offending member on failure. The request is validated AS MATCHED: a caller
 // that replaces r.Body on the same *http.Request between MatchRequest and
@@ -440,6 +446,20 @@ func (m *MatchedRequest) Operation() Operation { return m.op }
 // security requirement so it validates shape only. Only successful validation
 // returns a value capable of attaching the matched operation to context.
 func (m *MatchedRequest) Validate() (*ValidatedRequest, error) {
+	return m.validate(IsSCIMWireOperation(m.op.ID))
+}
+
+// ValidateWithoutBody is Validate with the body excluded, for a request whose
+// over-bound body the server refuses UNREAD (the delivery-target report's
+// 413): path, query and headers are still checked, and the returned request
+// carries the operation row, so artifact admission and authorization run on
+// the refusal exactly as on an accepted request. The caller must never read
+// the body from it.
+func (m *MatchedRequest) ValidateWithoutBody() (*ValidatedRequest, error) {
+	return m.validate(true)
+}
+
+func (m *MatchedRequest) validate(excludeBody bool) (*ValidatedRequest, error) {
 	input := &openapi3filter.RequestValidationInput{
 		Request:    m.request,
 		PathParams: m.params,
@@ -460,7 +480,7 @@ func (m *MatchedRequest) Validate() (*ValidatedRequest, error) {
 			// check only ever rejected "not a JSON object" — which
 			// `scimproto.DecodeUser`/`DecodeGroup`/`ParsePatch` reject
 			// themselves, post-auth, as an RFC 7644 `invalidSyntax`.
-			ExcludeRequestBody: IsSCIMWireOperation(m.op.ID),
+			ExcludeRequestBody: excludeBody,
 		},
 	}
 	if err := openapi3filter.ValidateRequest(m.request.Context(), input); err != nil {

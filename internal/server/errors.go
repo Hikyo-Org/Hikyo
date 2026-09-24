@@ -10,6 +10,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -43,8 +44,10 @@ import (
 // it — is recorded as a disposition item rather than smuggled in here.
 var limitExceededMessage = fmt.Sprintf(
 	"a structural bound was reached: a project holds at most %d environments, "+
-		"declares at most %d keys, and declares at most %d key groups",
-	service.MaxEnvironmentsPerProject, schema.MaxKeysPerProject, schema.MaxKeyGroupsPerProject)
+		"declares at most %d keys, and declares at most %d key groups, "+
+		"and a service account reports at most %d delivery targets",
+	service.MaxEnvironmentsPerProject, schema.MaxKeysPerProject, schema.MaxKeyGroupsPerProject,
+	deliverytarget.MaxRowsPerPrincipal)
 
 type detailPolicy uint8
 
@@ -74,6 +77,8 @@ var wirePolicies = map[apigen.ErrorCode]WireError{
 	apigen.ErrorCodeNotFound:           {status: http.StatusNotFound, code: apigen.ErrorCodeNotFound, message: "not found", detailPolicy: redactDetail},
 	apigen.ErrorCodeConflict:           {status: http.StatusConflict, code: apigen.ErrorCodeConflict, message: "the current state of this resource refuses the request", detailPolicy: allowSafeDetail},
 	apigen.ErrorCodeLimitExceeded:      {status: http.StatusConflict, code: apigen.ErrorCodeLimitExceeded, message: limitExceededMessage, detailPolicy: redactDetail},
+	apigen.ErrorCodeUnprocessable:      {status: http.StatusUnprocessableEntity, code: apigen.ErrorCodeUnprocessable, message: "a value is outside the vocabulary this server accepts", detailPolicy: allowSafeDetail},
+	apigen.ErrorCodePayloadTooLarge:    {status: http.StatusRequestEntityTooLarge, code: apigen.ErrorCodePayloadTooLarge, message: "the request body exceeds this operation's bound", detailPolicy: redactDetail},
 	apigen.ErrorCodeTooManyRequests:    {status: http.StatusTooManyRequests, code: apigen.ErrorCodeTooManyRequests, message: "too many requests", detailPolicy: redactDetail},
 	apigen.ErrorCodeInternal:           {status: http.StatusInternalServerError, code: apigen.ErrorCodeInternal, message: "internal error", detailPolicy: redactDetail},
 }
@@ -221,6 +226,10 @@ var wireErrorRules = []struct {
 
 	// Enumeration-safe server surfaces.
 	{service.ErrNoResetTarget, apigen.ErrorCodeNotFound},
+
+	// Delivery-target reports (#788), both decided after authorization.
+	{service.ErrReportVocabulary, apigen.ErrorCodeUnprocessable},
+	{service.ErrReportTooLarge, apigen.ErrorCodePayloadTooLarge},
 
 	// Adapter provider-lease contention and generation-supersede are post-auth
 	// contention, not faults: they escape the Adopt/RemoveTarget/Delete paths

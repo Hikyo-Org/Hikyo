@@ -1106,6 +1106,234 @@ func (e DeliveredKeyPresence) Valid() bool {
 	}
 }
 
+// Defines values for DeliveryTargetRefusalCause.
+const (
+	Vocabulary DeliveryTargetRefusalCause = "vocabulary"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetRefusalCause enum.
+func (e DeliveryTargetRefusalCause) Valid() bool {
+	switch e {
+	case Vocabulary:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetConditionReason.
+const (
+	DeliveryTargetConditionReasonAudienceMissing             DeliveryTargetConditionReason = "AudienceMissing"
+	DeliveryTargetConditionReasonAuthorizationWithdrawn      DeliveryTargetConditionReason = "AuthorizationWithdrawn"
+	DeliveryTargetConditionReasonBlocked                     DeliveryTargetConditionReason = "Blocked"
+	DeliveryTargetConditionReasonCurrent                     DeliveryTargetConditionReason = "Current"
+	DeliveryTargetConditionReasonDelivered                   DeliveryTargetConditionReason = "Delivered"
+	DeliveryTargetConditionReasonEnvFromSkip                 DeliveryTargetConditionReason = "EnvFromSkip"
+	DeliveryTargetConditionReasonExpired                     DeliveryTargetConditionReason = "Expired"
+	DeliveryTargetConditionReasonExpiresSoon                 DeliveryTargetConditionReason = "ExpiresSoon"
+	DeliveryTargetConditionReasonFetchFailed                 DeliveryTargetConditionReason = "FetchFailed"
+	DeliveryTargetConditionReasonInstanceMismatch            DeliveryTargetConditionReason = "InstanceMismatch"
+	DeliveryTargetConditionReasonInvalidSecretData           DeliveryTargetConditionReason = "InvalidSecretData"
+	DeliveryTargetConditionReasonKeysMissing                 DeliveryTargetConditionReason = "KeysMissing"
+	DeliveryTargetConditionReasonLoaderControlUnacknowledged DeliveryTargetConditionReason = "LoaderControlUnacknowledged"
+	DeliveryTargetConditionReasonManagedSecretNotOwned       DeliveryTargetConditionReason = "ManagedSecretNotOwned"
+	DeliveryTargetConditionReasonNamespaceNotBound           DeliveryTargetConditionReason = "NamespaceNotBound"
+	DeliveryTargetConditionReasonNotMaterialized             DeliveryTargetConditionReason = "NotMaterialized"
+	DeliveryTargetConditionReasonPinExpired                  DeliveryTargetConditionReason = "PinExpired"
+	DeliveryTargetConditionReasonReconciled                  DeliveryTargetConditionReason = "Reconciled"
+	DeliveryTargetConditionReasonSecretNotDesignated         DeliveryTargetConditionReason = "SecretNotDesignated"
+	DeliveryTargetConditionReasonServiceAccountNotDesignated DeliveryTargetConditionReason = "ServiceAccountNotDesignated"
+	DeliveryTargetConditionReasonStalled                     DeliveryTargetConditionReason = "Stalled"
+	DeliveryTargetConditionReasonTargetClaimed               DeliveryTargetConditionReason = "TargetClaimed"
+	DeliveryTargetConditionReasonTargetTypeImmutable         DeliveryTargetConditionReason = "TargetTypeImmutable"
+	DeliveryTargetConditionReasonUndeliveredSecrets          DeliveryTargetConditionReason = "UndeliveredSecrets"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetConditionReason enum.
+func (e DeliveryTargetConditionReason) Valid() bool {
+	switch e {
+	case DeliveryTargetConditionReasonAudienceMissing:
+		return true
+	case DeliveryTargetConditionReasonAuthorizationWithdrawn:
+		return true
+	case DeliveryTargetConditionReasonBlocked:
+		return true
+	case DeliveryTargetConditionReasonCurrent:
+		return true
+	case DeliveryTargetConditionReasonDelivered:
+		return true
+	case DeliveryTargetConditionReasonEnvFromSkip:
+		return true
+	case DeliveryTargetConditionReasonExpired:
+		return true
+	case DeliveryTargetConditionReasonExpiresSoon:
+		return true
+	case DeliveryTargetConditionReasonFetchFailed:
+		return true
+	case DeliveryTargetConditionReasonInstanceMismatch:
+		return true
+	case DeliveryTargetConditionReasonInvalidSecretData:
+		return true
+	case DeliveryTargetConditionReasonKeysMissing:
+		return true
+	case DeliveryTargetConditionReasonLoaderControlUnacknowledged:
+		return true
+	case DeliveryTargetConditionReasonManagedSecretNotOwned:
+		return true
+	case DeliveryTargetConditionReasonNamespaceNotBound:
+		return true
+	case DeliveryTargetConditionReasonNotMaterialized:
+		return true
+	case DeliveryTargetConditionReasonPinExpired:
+		return true
+	case DeliveryTargetConditionReasonReconciled:
+		return true
+	case DeliveryTargetConditionReasonSecretNotDesignated:
+		return true
+	case DeliveryTargetConditionReasonServiceAccountNotDesignated:
+		return true
+	case DeliveryTargetConditionReasonStalled:
+		return true
+	case DeliveryTargetConditionReasonTargetClaimed:
+		return true
+	case DeliveryTargetConditionReasonTargetTypeImmutable:
+		return true
+	case DeliveryTargetConditionReasonUndeliveredSecrets:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetConditionStatus.
+const (
+	DeliveryTargetConditionStatusFalse   DeliveryTargetConditionStatus = "False"
+	DeliveryTargetConditionStatusTrue    DeliveryTargetConditionStatus = "True"
+	DeliveryTargetConditionStatusUnknown DeliveryTargetConditionStatus = "Unknown"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetConditionStatus enum.
+func (e DeliveryTargetConditionStatus) Valid() bool {
+	switch e {
+	case DeliveryTargetConditionStatusFalse:
+		return true
+	case DeliveryTargetConditionStatusTrue:
+		return true
+	case DeliveryTargetConditionStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetConditionType.
+const (
+	DeliveryTargetConditionTypeConflict         DeliveryTargetConditionType = "Conflict"
+	DeliveryTargetConditionTypeCredentialExpiry DeliveryTargetConditionType = "CredentialExpiry"
+	DeliveryTargetConditionTypeDelivery         DeliveryTargetConditionType = "Delivery"
+	DeliveryTargetConditionTypeDesignation      DeliveryTargetConditionType = "Designation"
+	DeliveryTargetConditionTypePinExpired       DeliveryTargetConditionType = "PinExpired"
+	DeliveryTargetConditionTypeReady            DeliveryTargetConditionType = "Ready"
+	DeliveryTargetConditionTypeRollout          DeliveryTargetConditionType = "Rollout"
+	DeliveryTargetConditionTypeScrubbed         DeliveryTargetConditionType = "Scrubbed"
+	DeliveryTargetConditionTypeSynced           DeliveryTargetConditionType = "Synced"
+	DeliveryTargetConditionTypeUnreconciled     DeliveryTargetConditionType = "Unreconciled"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetConditionType enum.
+func (e DeliveryTargetConditionType) Valid() bool {
+	switch e {
+	case DeliveryTargetConditionTypeConflict:
+		return true
+	case DeliveryTargetConditionTypeCredentialExpiry:
+		return true
+	case DeliveryTargetConditionTypeDelivery:
+		return true
+	case DeliveryTargetConditionTypeDesignation:
+		return true
+	case DeliveryTargetConditionTypePinExpired:
+		return true
+	case DeliveryTargetConditionTypeReady:
+		return true
+	case DeliveryTargetConditionTypeRollout:
+		return true
+	case DeliveryTargetConditionTypeScrubbed:
+		return true
+	case DeliveryTargetConditionTypeSynced:
+		return true
+	case DeliveryTargetConditionTypeUnreconciled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetLifecycle.
+const (
+	DeliveryTargetLifecycleRefused      DeliveryTargetLifecycle = "Refused"
+	DeliveryTargetLifecycleRetained     DeliveryTargetLifecycle = "Retained"
+	DeliveryTargetLifecycleScrubbed     DeliveryTargetLifecycle = "Scrubbed"
+	DeliveryTargetLifecycleSynced       DeliveryTargetLifecycle = "Synced"
+	DeliveryTargetLifecycleUnreconciled DeliveryTargetLifecycle = "Unreconciled"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetLifecycle enum.
+func (e DeliveryTargetLifecycle) Valid() bool {
+	switch e {
+	case DeliveryTargetLifecycleRefused:
+		return true
+	case DeliveryTargetLifecycleRetained:
+		return true
+	case DeliveryTargetLifecycleScrubbed:
+		return true
+	case DeliveryTargetLifecycleSynced:
+		return true
+	case DeliveryTargetLifecycleUnreconciled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetReporterIntegration.
+const (
+	KubernetesOperator DeliveryTargetReporterIntegration = "kubernetes-operator"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetReporterIntegration enum.
+func (e DeliveryTargetReporterIntegration) Valid() bool {
+	switch e {
+	case KubernetesOperator:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetState.
+const (
+	DeliveryTargetStateRefused         DeliveryTargetState = "refused"
+	DeliveryTargetStateReported        DeliveryTargetState = "reported"
+	DeliveryTargetStateReporterRevoked DeliveryTargetState = "reporter-revoked"
+	DeliveryTargetStateStale           DeliveryTargetState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetState enum.
+func (e DeliveryTargetState) Valid() bool {
+	switch e {
+	case DeliveryTargetStateRefused:
+		return true
+	case DeliveryTargetStateReported:
+		return true
+	case DeliveryTargetStateReporterRevoked:
+		return true
+	case DeliveryTargetStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DynamicLeaseState.
 const (
 	DynamicLeaseStateActive   DynamicLeaseState = "active"
@@ -1198,9 +1426,11 @@ const (
 	ErrorCodeInternal           ErrorCode = "internal"
 	ErrorCodeLimitExceeded      ErrorCode = "limit_exceeded"
 	ErrorCodeNotFound           ErrorCode = "not_found"
+	ErrorCodePayloadTooLarge    ErrorCode = "payload_too_large"
 	ErrorCodeServiceUnavailable ErrorCode = "service_unavailable"
 	ErrorCodeTooManyRequests    ErrorCode = "too_many_requests"
 	ErrorCodeUnauthenticated    ErrorCode = "unauthenticated"
+	ErrorCodeUnprocessable      ErrorCode = "unprocessable"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -1218,11 +1448,15 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeNotFound:
 		return true
+	case ErrorCodePayloadTooLarge:
+		return true
 	case ErrorCodeServiceUnavailable:
 		return true
 	case ErrorCodeTooManyRequests:
 		return true
 	case ErrorCodeUnauthenticated:
+		return true
+	case ErrorCodeUnprocessable:
 		return true
 	default:
 		return false
@@ -1888,19 +2122,19 @@ func (e ResumeAdapterTargetMoveRequestVisibility) Valid() bool {
 
 // Defines values for RetentionConsequence.
 const (
-	AlreadyCollected   RetentionConsequence = "already_collected"
-	CollectionEligible RetentionConsequence = "collection_eligible"
-	Retained           RetentionConsequence = "retained"
+	RetentionConsequenceAlreadyCollected   RetentionConsequence = "already_collected"
+	RetentionConsequenceCollectionEligible RetentionConsequence = "collection_eligible"
+	RetentionConsequenceRetained           RetentionConsequence = "retained"
 )
 
 // Valid indicates whether the value is a known member of the RetentionConsequence enum.
 func (e RetentionConsequence) Valid() bool {
 	switch e {
-	case AlreadyCollected:
+	case RetentionConsequenceAlreadyCollected:
 		return true
-	case CollectionEligible:
+	case RetentionConsequenceCollectionEligible:
 		return true
-	case Retained:
+	case RetentionConsequenceRetained:
 		return true
 	default:
 		return false
@@ -4854,6 +5088,165 @@ type DeliveryResponse struct {
 	SnapshotExpiresAt Timestamp `json:"snapshot_expires_at"`
 }
 
+// DeliveryTarget One target's latest accepted report, as its controller asserted it.
+type DeliveryTarget struct {
+	Conditions []DeliveryTargetCondition `json:"conditions"`
+	Generation int64                     `json:"generation"`
+	Id         string                    `json:"id"`
+
+	// Lifecycle The target's closed `status.lifecycle`.
+	Lifecycle          DeliveryTargetLifecycle `json:"lifecycle"`
+	ObservedGeneration int64                   `json:"observed_generation"`
+	PrincipalId        string                  `json:"principal_id"`
+
+	// ReceivedAt RFC 3339 UTC, microsecond precision.
+	ReceivedAt Timestamp `json:"received_at"`
+
+	// Refusal Present only while `state` is `refused`. The closed cause, never the refused value.
+	Refusal *struct {
+		Cause DeliveryTargetRefusalCause `json:"cause"`
+
+		// RefusedAt RFC 3339 UTC, microsecond precision.
+		RefusedAt Timestamp `json:"refused_at"`
+	} `json:"refusal,omitempty"`
+	ReportIntervalSeconds int64 `json:"report_interval_seconds"`
+
+	// ReportedAt RFC 3339 UTC, microsecond precision.
+	ReportedAt Timestamp `json:"reported_at"`
+
+	// Reporter The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+	Reporter DeliveryTargetReporter `json:"reporter"`
+
+	// State Derived at read time, never stored (ADR D5). `unknown` is the absence
+	// of a row, so no row carries it.
+	State DeliveryTargetState `json:"state"`
+
+	// Target The target's identity plus the namespace and name an operator types into `kubectl`.
+	Target     DeliveryTargetRef `json:"target"`
+	Vocabulary int               `json:"vocabulary"`
+}
+
+// DeliveryTargetRefusalCause defines model for DeliveryTarget.Refusal.Cause.
+type DeliveryTargetRefusalCause string
+
+// DeliveryTargetCondition One asserted condition. `type` and `reason` are closed over every
+// vocabulary this server accepts; a reason that is not in its type's
+// set for the report's vocabulary is a 422.
+type DeliveryTargetCondition struct {
+	ObservedGeneration int64                         `json:"observed_generation"`
+	Reason             DeliveryTargetConditionReason `json:"reason"`
+	Status             DeliveryTargetConditionStatus `json:"status"`
+	Type               DeliveryTargetConditionType   `json:"type"`
+}
+
+// DeliveryTargetConditionReason defines model for DeliveryTargetCondition.Reason.
+type DeliveryTargetConditionReason string
+
+// DeliveryTargetConditionStatus defines model for DeliveryTargetCondition.Status.
+type DeliveryTargetConditionStatus string
+
+// DeliveryTargetConditionType defines model for DeliveryTargetCondition.Type.
+type DeliveryTargetConditionType string
+
+// DeliveryTargetIdentity The target's identity under the reporting principal: the cluster
+// (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+// target object's UID. A recreated object is a new target.
+type DeliveryTargetIdentity struct {
+	// ClusterId A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	ClusterId KubernetesUID `json:"cluster_id"`
+
+	// InstanceUid A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	InstanceUid KubernetesUID `json:"instance_uid"`
+
+	// Uid A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	Uid KubernetesUID `json:"uid"`
+}
+
+// DeliveryTargetLifecycle The target's closed `status.lifecycle`.
+type DeliveryTargetLifecycle string
+
+// DeliveryTargetList defines model for DeliveryTargetList.
+type DeliveryTargetList struct {
+	Principals []DeliveryTargetPrincipal `json:"principals"`
+	Targets    []DeliveryTarget          `json:"targets"`
+}
+
+// DeliveryTargetPrincipal The server-observed layer for one reporting principal (ADR D2).
+type DeliveryTargetPrincipal struct {
+	// LastContactAt Its last authenticated delivery fetch in this environment. Absent when never observed.
+	LastContactAt *Timestamp `json:"last_contact_at,omitempty"`
+	PrincipalId   string     `json:"principal_id"`
+
+	// QuotaRefusedAt The closed `quota-refused` notice's last time. Absent when never refused.
+	QuotaRefusedAt *Timestamp `json:"quota_refused_at,omitempty"`
+}
+
+// DeliveryTargetRef The target's identity plus the namespace and name an operator types into `kubectl`.
+type DeliveryTargetRef struct {
+	// ClusterId A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	ClusterId KubernetesUID `json:"cluster_id"`
+
+	// InstanceUid A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	InstanceUid KubernetesUID `json:"instance_uid"`
+
+	// Name An object name (DNS-1123 subdomain). A display label, never interpreted.
+	Name KubernetesObjectName `json:"name"`
+
+	// Namespace A namespace name (DNS-1123 label). A display label, never interpreted.
+	Namespace KubernetesNamespace `json:"namespace"`
+
+	// Uid A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	Uid KubernetesUID `json:"uid"`
+}
+
+// DeliveryTargetReportRequest One closed, value-free report (ADR D4). It carries no condition
+// message, event text, secret value, key name, cursor or credential
+// material; there is no member that could.
+type DeliveryTargetReportRequest struct {
+	Conditions []DeliveryTargetCondition `json:"conditions"`
+	Generation int64                     `json:"generation"`
+
+	// Lifecycle The target's closed `status.lifecycle`.
+	Lifecycle          DeliveryTargetLifecycle `json:"lifecycle"`
+	ObservedGeneration int64                   `json:"observed_generation"`
+
+	// ReportIntervalSeconds The target's heartbeat interval. The server clamps it to [300, 86400].
+	ReportIntervalSeconds int64 `json:"report_interval_seconds"`
+
+	// ReportedAt RFC 3339 UTC, microsecond precision.
+	ReportedAt Timestamp `json:"reported_at"`
+
+	// Reporter The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+	Reporter DeliveryTargetReporter `json:"reporter"`
+
+	// Target The target's identity plus the namespace and name an operator types into `kubectl`.
+	Target DeliveryTargetRef `json:"target"`
+
+	// Vocabulary The vocabulary version `/meta` advertised. One this server does not accept is a 422.
+	Vocabulary int `json:"vocabulary"`
+}
+
+// DeliveryTargetReporter The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+type DeliveryTargetReporter struct {
+	Integration DeliveryTargetReporterIntegration `json:"integration"`
+	Version     string                            `json:"version"`
+}
+
+// DeliveryTargetReporterIntegration defines model for DeliveryTargetReporter.Integration.
+type DeliveryTargetReporterIntegration string
+
+// DeliveryTargetState Derived at read time, never stored (ADR D5). `unknown` is the absence
+// of a row, so no row carries it.
+type DeliveryTargetState string
+
+// DeliveryTargetTombstoneRequest defines model for DeliveryTargetTombstoneRequest.
+type DeliveryTargetTombstoneRequest struct {
+	// Target The target's identity under the reporting principal: the cluster
+	// (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+	// target object's UID. A recreated object is a new target.
+	Target DeliveryTargetIdentity `json:"target"`
+}
+
 // DirectoryListing What a connection credential authorizes, exhaustively. There is no field
 // here that could carry a value, a key, an environment, a membership, a
 // setting or an audit row, and adding one would widen every credential in
@@ -5049,9 +5442,10 @@ type Error struct {
 		// Code Closed response-code set. Clients branch on this, not on prose.
 		Code ErrorCode `json:"code"`
 
-		// Detail Present only on `bad_request`, where it names the offending
-		// request member. `null` and absent are equivalent; every other
-		// error code omits the member entirely.
+		// Detail Present on `bad_request` and `unprocessable`, where it names
+		// the offending request member, and on a `conflict` whose refusal
+		// names the caller's own state. `null` and absent are
+		// equivalent; every other error code omits the member entirely.
 		Detail *string `json:"detail,omitempty"`
 
 		// Findings Secret-scanning refusal detail (#74, Surface 2). Present only on
@@ -5977,6 +6371,15 @@ type KeyRule struct {
 // KeyRuleType defines model for KeyRule.Type.
 type KeyRuleType string
 
+// KubernetesNamespace A namespace name (DNS-1123 label). A display label, never interpreted.
+type KubernetesNamespace = string
+
+// KubernetesObjectName An object name (DNS-1123 subdomain). A display label, never interpreted.
+type KubernetesObjectName = string
+
+// KubernetesUID A Kubernetes object UID, canonical lower-case RFC 4122 form.
+type KubernetesUID = string
+
 // LocalLoginRequest defines model for LocalLoginRequest.
 type LocalLoginRequest struct {
 	// Artifact Which session artifact to mint. Omitted or `cli` mints a CLI
@@ -6132,8 +6535,11 @@ type Meta struct {
 	// InstanceIdentity Stable server-generated instance identity, independent of URL aliases.
 	InstanceIdentity *string `json:"instance_identity,omitempty"`
 
-	// ProtocolCapabilities Which authentication protocol flows this instance serves. `login`
-	// needs this before any session exists.
+	// ProtocolCapabilities Which protocols this instance serves: the authentication flows
+	// `login` needs before any session exists, and the machine protocols
+	// an integration probes before using them, such as
+	// `delivery-target-report/<vocabulary>` for each delivery-target
+	// report vocabulary this server accepts.
 	ProtocolCapabilities []ProtocolCapability `json:"protocol_capabilities"`
 
 	// ServerVersion The build's version string; `dev` for unreleased builds.
@@ -8893,6 +9299,9 @@ type Internal = Error
 // NotFound defines model for NotFound.
 type NotFound = Error
 
+// PayloadTooLarge defines model for PayloadTooLarge.
+type PayloadTooLarge = Error
+
 // ScimServiceUnavailable A SCIM 2.0 resource or message, as RFC 7643/7644 shapes it. It is
 // deliberately open: identity providers send and expect attributes this
 // provider stores as round-tripped display metadata, and pinning the
@@ -8910,6 +9319,9 @@ type TooManyRequests = Error
 
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
+
+// UnprocessableContent defines model for UnprocessableContent.
+type UnprocessableContent = Error
 
 // AuthMethodsParams defines parameters for AuthMethods.
 type AuthMethodsParams struct {
@@ -9749,6 +10161,12 @@ type RenameEnvironmentJSONRequestBody = RenameRequest
 
 // VoteApprovalRequestJSONRequestBody defines body for VoteApprovalRequest for application/json ContentType.
 type VoteApprovalRequestJSONRequestBody = ApprovalVoteRequest
+
+// ReportDeliveryTargetJSONRequestBody defines body for ReportDeliveryTarget for application/json ContentType.
+type ReportDeliveryTargetJSONRequestBody = DeliveryTargetReportRequest
+
+// TombstoneDeliveryTargetJSONRequestBody defines body for TombstoneDeliveryTarget for application/json ContentType.
+type TombstoneDeliveryTargetJSONRequestBody = DeliveryTargetTombstoneRequest
 
 // ReconcileOfflineRecordsJSONRequestBody defines body for ReconcileOfflineRecords for application/json ContentType.
 type ReconcileOfflineRecordsJSONRequestBody = ReconcileOfflineRecordsRequest
@@ -10716,6 +11134,15 @@ type ServerInterface interface {
 	// FetchDelivery Fetch the authorized projection, conditionally.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 	FetchDelivery(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params FetchDeliveryParams)
+	// ListDeliveryTargets List the environment's delivery targets and their derived state.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+	ListDeliveryTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ReportDeliveryTarget Report one delivery target's asserted conditions.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+	ReportDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// TombstoneDeliveryTarget Remove the caller's row for one deleted delivery target.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone)
+	TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
 	// ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 	ReconcileOfflineRecords(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -12111,6 +12538,24 @@ func (_ Unimplemented) ExportEnvAudit(w http.ResponseWriter, r *http.Request, or
 // FetchDelivery Fetch the authorized projection, conditionally.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 func (_ Unimplemented) FetchDelivery(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params FetchDeliveryParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListDeliveryTargets List the environment's delivery targets and their derived state.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+func (_ Unimplemented) ListDeliveryTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReportDeliveryTarget Report one delivery target's asserted conditions.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+func (_ Unimplemented) ReportDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TombstoneDeliveryTarget Remove the caller's row for one deleted delivery target.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone)
+func (_ Unimplemented) TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -18523,6 +18968,138 @@ func (siw *ServerInterfaceWrapper) FetchDelivery(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListDeliveryTargets operation middleware
+func (siw *ServerInterfaceWrapper) ListDeliveryTargets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDeliveryTargets(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReportDeliveryTarget operation middleware
+func (siw *ServerInterfaceWrapper) ReportDeliveryTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReportDeliveryTarget(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TombstoneDeliveryTarget operation middleware
+func (siw *ServerInterfaceWrapper) TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TombstoneDeliveryTarget(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReconcileOfflineRecords operation middleware
 func (siw *ServerInterfaceWrapper) ReconcileOfflineRecords(w http.ResponseWriter, r *http.Request) {
 
@@ -24025,6 +24602,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records", wrapper.ReconcileOfflineRecords)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets", wrapper.ListDeliveryTargets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets", wrapper.ReportDeliveryTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone", wrapper.TombstoneDeliveryTarget)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings", wrapper.ListScimBindings)
 	})
 	r.Group(func(r chi.Router) {
@@ -24392,6 +24978,8 @@ type InternalJSONResponse Error
 
 type NotFoundJSONResponse Error
 
+type PayloadTooLargeJSONResponse Error
+
 type ScimServiceUnavailableResponseHeaders struct {
 	RetryAfter int
 }
@@ -24420,6 +25008,8 @@ type TooManyRequestsJSONResponse struct {
 }
 
 type UnauthenticatedJSONResponse Error
+
+type UnprocessableContentJSONResponse Error
 
 type ResetCredentialRequestObject struct {
 	Principal ResetTargetPrincipal `json:"principal"`
@@ -43733,6 +44323,356 @@ func (response FetchDelivery503JSONResponse) VisitFetchDeliveryResponse(w http.R
 	return err
 }
 
+type ListDeliveryTargetsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListDeliveryTargetsResponseObject interface {
+	VisitListDeliveryTargetsResponse(w http.ResponseWriter) error
+}
+
+type ListDeliveryTargets200JSONResponse DeliveryTargetList
+
+func (response ListDeliveryTargets200JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListDeliveryTargets401JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListDeliveryTargets404JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListDeliveryTargets429JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListDeliveryTargets500JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListDeliveryTargets503JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTargetRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *ReportDeliveryTargetJSONRequestBody
+}
+
+type ReportDeliveryTargetResponseObject interface {
+	VisitReportDeliveryTargetResponse(w http.ResponseWriter) error
+}
+
+type ReportDeliveryTarget204Response struct {
+}
+
+func (response ReportDeliveryTarget204Response) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ReportDeliveryTarget400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReportDeliveryTarget400JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ReportDeliveryTarget401JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReportDeliveryTarget404JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReportDeliveryTarget409JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget413JSONResponse struct{ PayloadTooLargeJSONResponse }
+
+func (response ReportDeliveryTarget413JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget422JSONResponse struct {
+	UnprocessableContentJSONResponse
+}
+
+func (response ReportDeliveryTarget422JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ReportDeliveryTarget429JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response ReportDeliveryTarget500JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReportDeliveryTarget503JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTargetRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *TombstoneDeliveryTargetJSONRequestBody
+}
+
+type TombstoneDeliveryTargetResponseObject interface {
+	VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error
+}
+
+type TombstoneDeliveryTarget204Response struct {
+}
+
+func (response TombstoneDeliveryTarget204Response) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type TombstoneDeliveryTarget400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TombstoneDeliveryTarget400JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TombstoneDeliveryTarget401JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TombstoneDeliveryTarget404JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TombstoneDeliveryTarget429JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response TombstoneDeliveryTarget500JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TombstoneDeliveryTarget503JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReconcileOfflineRecordsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -57090,6 +58030,15 @@ type StrictServerInterface interface {
 	// FetchDelivery Fetch the authorized projection, conditionally.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 	FetchDelivery(ctx context.Context, request FetchDeliveryRequestObject) (FetchDeliveryResponseObject, error)
+	// ListDeliveryTargets List the environment's delivery targets and their derived state.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+	ListDeliveryTargets(ctx context.Context, request ListDeliveryTargetsRequestObject) (ListDeliveryTargetsResponseObject, error)
+	// ReportDeliveryTarget Report one delivery target's asserted conditions.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+	ReportDeliveryTarget(ctx context.Context, request ReportDeliveryTargetRequestObject) (ReportDeliveryTargetResponseObject, error)
+	// TombstoneDeliveryTarget Remove the caller's row for one deleted delivery target.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone)
+	TombstoneDeliveryTarget(ctx context.Context, request TombstoneDeliveryTargetRequestObject) (TombstoneDeliveryTargetResponseObject, error)
 	// ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 	ReconcileOfflineRecords(ctx context.Context, request ReconcileOfflineRecordsRequestObject) (ReconcileOfflineRecordsResponseObject, error)
@@ -62545,6 +63494,104 @@ func (sh *strictHandler) FetchDelivery(w http.ResponseWriter, r *http.Request, o
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(FetchDeliveryResponseObject); ok {
 		if err := validResponse.VisitFetchDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDeliveryTargets operation middleware
+func (sh *strictHandler) ListDeliveryTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListDeliveryTargetsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDeliveryTargets(ctx, request.(ListDeliveryTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDeliveryTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDeliveryTargetsResponseObject); ok {
+		if err := validResponse.VisitListDeliveryTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReportDeliveryTarget operation middleware
+func (sh *strictHandler) ReportDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ReportDeliveryTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body ReportDeliveryTargetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReportDeliveryTarget(ctx, request.(ReportDeliveryTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReportDeliveryTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReportDeliveryTargetResponseObject); ok {
+		if err := validResponse.VisitReportDeliveryTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TombstoneDeliveryTarget operation middleware
+func (sh *strictHandler) TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request TombstoneDeliveryTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body TombstoneDeliveryTargetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TombstoneDeliveryTarget(ctx, request.(TombstoneDeliveryTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TombstoneDeliveryTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TombstoneDeliveryTargetResponseObject); ok {
+		if err := validResponse.VisitTombstoneDeliveryTargetResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

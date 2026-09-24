@@ -172,6 +172,7 @@ import {
   listAdapterTargets,
   listApprovalPolicies,
   listApprovalRequests,
+  listDeliveryTargets,
   listDynamicProviders,
   listEnvironmentParameters,
   listEnvironments,
@@ -258,6 +259,7 @@ import {
   renameRemote,
   renewLease,
   reorderEnvironments,
+  reportDeliveryTarget,
   requestInstanceUpdate,
   resetCredential,
   resumeAdapterMove,
@@ -332,6 +334,7 @@ import {
   syncAdapterTarget,
   testAdapterTarget,
   testInstanceConfigMail,
+  tombstoneDeliveryTarget,
   unlinkIdentity,
   updateAdapterOrigin,
   updateAdapterTarget,
@@ -459,6 +462,7 @@ import type {
   ListAdapterTargetsData,
   ListApprovalPoliciesData,
   ListApprovalRequestsData,
+  ListDeliveryTargetsData,
   ListDynamicProvidersData,
   ListEnvironmentParametersData,
   ListEnvironmentsData,
@@ -545,6 +549,7 @@ import type {
   RenameRemoteData,
   RenewLeaseData,
   ReorderEnvironmentsData,
+  ReportDeliveryTargetData,
   RequestInstanceUpdateData,
   ResetCredentialData,
   ResumeAdapterMoveData,
@@ -619,6 +624,7 @@ import type {
   SyncAdapterTargetData,
   TestAdapterTargetData,
   TestInstanceConfigMailData,
+  TombstoneDeliveryTargetData,
   UnlinkIdentityData,
   UpdateAdapterOriginData,
   UpdateAdapterTargetData,
@@ -730,6 +736,7 @@ import {
   zListAdapterTargetsResponse,
   zListApprovalPoliciesResponse,
   zListApprovalRequestsResponse,
+  zListDeliveryTargetsResponse,
   zListDynamicProvidersResponse,
   zListEnvironmentParametersResponse,
   zListEnvironmentsResponse,
@@ -984,6 +991,7 @@ export const listAdaptersOp: BodyOperation<ListAdaptersData, typeof zListAdapter
 export const listAdapterTargetsOp: BodyOperation<ListAdapterTargetsData, typeof zListAdapterTargetsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapterTargets, [200], zListAdapterTargetsResponse);
 export const listApprovalPoliciesOp: BodyOperation<ListApprovalPoliciesData, typeof zListApprovalPoliciesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalPolicies, [200], zListApprovalPoliciesResponse);
 export const listApprovalRequestsOp: BodyOperation<ListApprovalRequestsData, typeof zListApprovalRequestsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalRequests, [200], zListApprovalRequestsResponse);
+export const listDeliveryTargetsOp: BodyOperation<ListDeliveryTargetsData, typeof zListDeliveryTargetsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listDeliveryTargets, [200], zListDeliveryTargetsResponse);
 export const listDynamicProvidersOp: BodyOperation<ListDynamicProvidersData, typeof zListDynamicProvidersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listDynamicProviders, [200], zListDynamicProvidersResponse);
 export const listEnvironmentParametersOp: BodyOperation<ListEnvironmentParametersData, typeof zListEnvironmentParametersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listEnvironmentParameters, [200], zListEnvironmentParametersResponse);
 export const listEnvironmentsOp: BodyOperation<ListEnvironmentsData, typeof zListEnvironmentsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listEnvironments, [200], zListEnvironmentsResponse);
@@ -1156,6 +1164,7 @@ export const deleteServiceAccountOp: BodylessOperation<DeleteServiceAccountData>
 export const establishCredentialOp: BodylessOperation<EstablishCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(establishCredential, [204]);
 export const logoutOp: BodylessOperation<LogoutData> = /* @__PURE__ */ new GeneratedBodylessOperation(logout, [204]);
 export const removeRemoteOp: BodylessOperation<RemoveRemoteData> = /* @__PURE__ */ new GeneratedBodylessOperation(removeRemote, [204]);
+export const reportDeliveryTargetOp: BodylessOperation<ReportDeliveryTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(reportDeliveryTarget, [204]);
 export const retireSamlSpKeyOp: BodylessOperation<RetireSamlSpKeyData> = /* @__PURE__ */ new GeneratedBodylessOperation(retireSamlSpKey, [204]);
 export const revokeAdapterCredentialOp: BodylessOperation<RevokeAdapterCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeAdapterCredential, [204]);
 export const revokeDynamicProviderCredentialOp: BodylessOperation<RevokeDynamicProviderCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(revokeDynamicProviderCredential, [204]);
@@ -1171,4 +1180,5 @@ export const scimDeleteGroupOp: BodylessOperation<ScimDeleteGroupData> = /* @__P
 export const scimDeleteUserOp: BodylessOperation<ScimDeleteUserData> = /* @__PURE__ */ new GeneratedBodylessOperation(scimDeleteUser, [204]);
 export const setAdapterCredentialOp: BodylessOperation<SetAdapterCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(setAdapterCredential, [204]);
 export const setDynamicProviderCredentialOp: BodylessOperation<SetDynamicProviderCredentialData> = /* @__PURE__ */ new GeneratedBodylessOperation(setDynamicProviderCredential, [204]);
+export const tombstoneDeliveryTargetOp: BodylessOperation<TombstoneDeliveryTargetData> = /* @__PURE__ */ new GeneratedBodylessOperation(tombstoneDeliveryTarget, [204]);
 export const watchProjectEventsOp: StreamOperation<typeof watchProjectEvents, typeof zWatchProjectEventsResponse> = /* @__PURE__ */ new GeneratedStreamOperation(watchProjectEvents, [200], zWatchProjectEventsResponse);

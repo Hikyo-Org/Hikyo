@@ -589,6 +589,18 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 		audit.EventFederationRefused,
 		audit.EventJWKSRefreshFailed,
 	}},
+	// Delivery-target reports (#788) ride the fetch credential, so a federated
+	// presentation carries the same pre-authentication refusals. The list is a
+	// human read.
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets": {Class: ClassTenant, Ops: []Operation{OpDeliveryTargetReport}, Events: []audit.EventType{
+		audit.EventFederationRefused,
+		audit.EventJWKSRefreshFailed,
+	}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone": {Class: ClassTenant, Ops: []Operation{OpDeliveryTargetTombstone}, Events: []audit.EventType{
+		audit.EventFederationRefused,
+		audit.EventJWKSRefreshFailed,
+	}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets": {Class: ClassTenant, Ops: []Operation{OpDeliveryTargetList}},
 
 	"http:GET /api/v1/orgs/{org}/projects/{project}/grants":                                      {Class: ClassTenant, Ops: []Operation{OpGrantListProject}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/grants":                                     {Class: ClassTenant, Ops: []Operation{OpGrantCreateProject}},

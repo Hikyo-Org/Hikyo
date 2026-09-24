@@ -32,14 +32,16 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// login/session/clone events, the webauthn start carrying none).
 	// #606 adds six registration-policy routes (get/put/delete at org and
 	// instance scope), each linked to its own operation.
-	if got := len(facts.Wire()); got != 343 {
-		t.Fatalf("wire entries = %d, want 343", got)
+	// #788 adds the delivery-target report, tombstone and list routes; the two
+	// machine writes carry the federated pre-authentication refusal events.
+	if got := len(facts.Wire()); got != 346 {
+		t.Fatalf("wire entries = %d, want 346", got)
 	}
-	if got := len(facts.WireRoutes()); got != 240 {
-		t.Fatalf("operation-linked entries = %d, want 240", got)
+	if got := len(facts.WireRoutes()); got != 243 {
+		t.Fatalf("operation-linked entries = %d, want 243", got)
 	}
-	if got := len(facts.WireEvents()); got != 72 {
-		t.Fatalf("direct-event entries = %d, want 72", got)
+	if got := len(facts.WireEvents()); got != 74 {
+		t.Fatalf("direct-event entries = %d, want 74", got)
 	}
 }
 

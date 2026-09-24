@@ -6757,6 +6757,148 @@ paths:
           $ref: "#/components/responses/Internal"
 
   # ---------------------------------------------------------------------------
+  # Delivery-target condition reporting (#788, k8s-condition-reporting ADR).
+  #
+  # The report and tombstone are the workload's one value-free write
+  # (`report-delivery-status`, D1), integration-neutral: any integration
+  # presenting a machine credential with the atom may report. The list is the
+  # human view under `read` on the environment (D7). Every request string is a
+  # closed enum or a fixed grammar; nothing free-form crosses (D4).
+  # ---------------------------------------------------------------------------
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listDeliveryTargets
+      tags: [delivery]
+      summary: List the environment's delivery targets and their derived state.
+      description: |
+        Two labelled layers, never merged into one health bit (ADR D2): per
+        reporting principal, the server's own observation (its last
+        authenticated delivery fetch here) and its quota notice; per target,
+        the conditions its controller asserted, with a state derived at read
+        time. `reporter-revoked`, `refused` and `stale` take precedence over
+        `reported`, in that order; nothing is stored as healthy. An
+        environment the caller cannot read is the uniform nonexistent answer,
+        never an empty or redacted list.
+      x-hikyo-class: tenant
+      x-hikyo-operation: delivery-target.list
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 5
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The environment's delivery targets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryTargetList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: reportDeliveryTarget
+      tags: [delivery]
+      summary: Report one delivery target's asserted conditions.
+      description: |
+        Upserts the caller's latest-state row for one target, keyed by the
+        presenting principal (never the credential, so rotation keeps one row)
+        and the target's cluster, instance and object UIDs. An accepted repeat
+        report is not audited; a new row, and every refusal, is.
+
+        Refusals: a caller without `report-delivery-status` on this
+        environment is the uniform 404; a value outside the advertised
+        vocabulary refuses the whole report with 422 naming the member and
+        stores none of it (only the closed cause, on an existing row); a lower
+        `observed_generation`, a not-later `reported_at` within one
+        generation, or a `reported_at` more than 5 minutes ahead is a 409 that
+        is audited and dropped; a principal already reporting 100 targets is
+        the named 409 `limit_exceeded`; a body over 8 KiB is a 413 that is
+        never tied to a row. Charged to a separate budget, 60/min per principal
+        and 300/min per organisation, after authorization.
+      x-hikyo-class: tenant
+      x-hikyo-operation: delivery-target.report
+      x-hikyo-formula: [report-delivery-status@environment]
+      x-hikyo-artifacts: [machine-credential]
+      x-hikyo-min-revision: 5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryTargetReportRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Accepted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    post:
+      operationId: tombstoneDeliveryTarget
+      tags: [delivery]
+      summary: Remove the caller's row for one deleted delivery target.
+      description: |
+        The best-effort tombstone a controller sends when its target is
+        deleted (ADR D6): the row is removed right after the tombstone event.
+        A target the caller has no row for is the uniform 404.
+      x-hikyo-class: tenant
+      x-hikyo-operation: delivery-target.tombstone
+      x-hikyo-formula: [report-delivery-status@environment]
+      x-hikyo-artifacts: [machine-credential]
+      x-hikyo-min-revision: 5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryTargetTombstoneRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: The row is removed.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  # ---------------------------------------------------------------------------
   # SCIM administration (#73, scim-provisioning ADR §8; spellings §1).
   #
   # Domain surface with full UI<->CLI parity: binding CRUD, mapping-table
@@ -12037,6 +12179,24 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    UnprocessableContent:
+      description: |
+        The caller is authorized and the request is well formed, but a value
+        is outside the vocabulary this server accepts for it. `detail` names
+        the member, never its value. Decided after authorization.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PayloadTooLarge:
+      description: |
+        The request body exceeds this operation's bound. The body is not
+        parsed, so the refusal is tied to nothing it carries. Decided after
+        authorization.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     TooManyRequests:
       description: |
         The instance-wide admission budget or a per-source limit is
@@ -12744,9 +12904,10 @@ components:
             detail:
               type: [string, "null"]
               description: |
-                Present only on `bad_request`, where it names the offending
-                request member. `null` and absent are equivalent; every other
-                error code omits the member entirely.
+                Present on `bad_request` and `unprocessable`, where it names
+                the offending request member, and on a `conflict` whose refusal
+                names the caller's own state. `null` and absent are
+                equivalent; every other error code omits the member entirely.
             findings:
               type: array
               description: |
@@ -12805,6 +12966,8 @@ components:
         - not_found
         - conflict
         - limit_exceeded
+        - unprocessable
+        - payload_too_large
         - too_many_requests
         - service_unavailable
         - internal
@@ -12835,8 +12998,11 @@ components:
         protocol_capabilities:
           type: array
           description: |
-            Which authentication protocol flows this instance serves. `login`
-            needs this before any session exists.
+            Which protocols this instance serves: the authentication flows
+            `login` needs before any session exists, and the machine protocols
+            an integration probes before using them, such as
+            `delivery-target-report/<vocabulary>` for each delivery-target
+            report vocabulary this server accepts.
           items:
             $ref: "#/components/schemas/ProtocolCapability"
 
@@ -12853,6 +13019,7 @@ components:
         - oidc
         - saml
         - webauthn
+        - delivery-target-report/1
 
     EstablishCredentialRequest:
       description: |
@@ -15866,6 +16033,213 @@ components:
         duplicates:
           type: integer
           minimum: 0
+
+    # Delivery-target condition reporting (#788). Every string below is a
+    # closed enum or a fixed grammar, pinned to internal/deliverytarget by
+    # TestDeliveryTargetContractIsValueFree.
+    KubernetesUID:
+      type: string
+      description: A Kubernetes object UID, canonical lower-case RFC 4122 form.
+      maxLength: 36
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    KubernetesNamespace:
+      type: string
+      description: A namespace name (DNS-1123 label). A display label, never interpreted.
+      maxLength: 63
+      pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+    KubernetesObjectName:
+      type: string
+      description: An object name (DNS-1123 subdomain). A display label, never interpreted.
+      maxLength: 253
+      pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+    DeliveryTargetIdentity:
+      type: object
+      description: |
+        The target's identity under the reporting principal: the cluster
+        (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+        target object's UID. A recreated object is a new target.
+      additionalProperties: false
+      required: [cluster_id, instance_uid, uid]
+      properties:
+        cluster_id: {$ref: "#/components/schemas/KubernetesUID"}
+        instance_uid: {$ref: "#/components/schemas/KubernetesUID"}
+        uid: {$ref: "#/components/schemas/KubernetesUID"}
+    DeliveryTargetRef:
+      type: object
+      description: The target's identity plus the namespace and name an operator types into `kubectl`.
+      additionalProperties: false
+      required: [cluster_id, instance_uid, namespace, name, uid]
+      properties:
+        cluster_id: {$ref: "#/components/schemas/KubernetesUID"}
+        instance_uid: {$ref: "#/components/schemas/KubernetesUID"}
+        namespace: {$ref: "#/components/schemas/KubernetesNamespace"}
+        name: {$ref: "#/components/schemas/KubernetesObjectName"}
+        uid: {$ref: "#/components/schemas/KubernetesUID"}
+    DeliveryTargetCondition:
+      type: object
+      description: |
+        One asserted condition. `type` and `reason` are closed over every
+        vocabulary this server accepts; a reason that is not in its type's
+        set for the report's vocabulary is a 422.
+      additionalProperties: false
+      required: [type, status, reason, observed_generation]
+      properties:
+        type:
+          type: string
+          enum: [Conflict, CredentialExpiry, Delivery, Designation, PinExpired, Ready, Rollout, Scrubbed, Synced, Unreconciled]
+        status:
+          type: string
+          enum: ["False", "True", Unknown]
+        reason:
+          type: string
+          enum:
+            - AudienceMissing
+            - AuthorizationWithdrawn
+            - Blocked
+            - Current
+            - Delivered
+            - EnvFromSkip
+            - Expired
+            - ExpiresSoon
+            - FetchFailed
+            - InstanceMismatch
+            - InvalidSecretData
+            - KeysMissing
+            - LoaderControlUnacknowledged
+            - ManagedSecretNotOwned
+            - NamespaceNotBound
+            - NotMaterialized
+            - PinExpired
+            - Reconciled
+            - SecretNotDesignated
+            - ServiceAccountNotDesignated
+            - Stalled
+            - TargetClaimed
+            - TargetTypeImmutable
+            - UndeliveredSecrets
+        observed_generation:
+          type: integer
+          format: int64
+          minimum: 0
+    DeliveryTargetLifecycle:
+      type: string
+      description: The target's closed `status.lifecycle`.
+      enum: [Refused, Retained, Scrubbed, Synced, Unreconciled]
+    DeliveryTargetReporter:
+      type: object
+      description: The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+      additionalProperties: false
+      required: [integration, version]
+      properties:
+        integration:
+          type: string
+          enum: [kubernetes-operator]
+        version:
+          type: string
+          maxLength: 64
+          pattern: '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+    DeliveryTargetReportRequest:
+      type: object
+      description: |
+        One closed, value-free report (ADR D4). It carries no condition
+        message, event text, secret value, key name, cursor or credential
+        material; there is no member that could.
+      additionalProperties: false
+      required: [vocabulary, target, generation, observed_generation, reported_at, report_interval_seconds, lifecycle, conditions, reporter]
+      properties:
+        vocabulary:
+          type: integer
+          minimum: 1
+          description: The vocabulary version `/meta` advertised. One this server does not accept is a 422.
+        target: {$ref: "#/components/schemas/DeliveryTargetRef"}
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        observed_generation:
+          type: integer
+          format: int64
+          minimum: 0
+        reported_at:
+          $ref: "#/components/schemas/Timestamp"
+        report_interval_seconds:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The target's heartbeat interval. The server clamps it to [300, 86400].
+        lifecycle: {$ref: "#/components/schemas/DeliveryTargetLifecycle"}
+        conditions:
+          type: array
+          maxItems: 10
+          items: {$ref: "#/components/schemas/DeliveryTargetCondition"}
+        reporter: {$ref: "#/components/schemas/DeliveryTargetReporter"}
+    DeliveryTargetTombstoneRequest:
+      type: object
+      additionalProperties: false
+      required: [target]
+      properties:
+        target: {$ref: "#/components/schemas/DeliveryTargetIdentity"}
+    DeliveryTargetState:
+      type: string
+      description: |
+        Derived at read time, never stored (ADR D5). `unknown` is the absence
+        of a row, so no row carries it.
+      enum: [refused, reported, reporter-revoked, stale]
+    DeliveryTarget:
+      type: object
+      description: One target's latest accepted report, as its controller asserted it.
+      additionalProperties: false
+      required: [id, principal_id, target, vocabulary, generation, observed_generation, reported_at, received_at, report_interval_seconds, lifecycle, conditions, reporter, state]
+      properties:
+        id: {type: string}
+        principal_id: {type: string}
+        target: {$ref: "#/components/schemas/DeliveryTargetRef"}
+        vocabulary: {type: integer, minimum: 1}
+        generation: {type: integer, format: int64, minimum: 1}
+        observed_generation: {type: integer, format: int64, minimum: 0}
+        reported_at: {$ref: "#/components/schemas/Timestamp"}
+        received_at: {$ref: "#/components/schemas/Timestamp"}
+        report_interval_seconds: {type: integer, format: int64, minimum: 300, maximum: 86400}
+        lifecycle: {$ref: "#/components/schemas/DeliveryTargetLifecycle"}
+        conditions:
+          type: array
+          items: {$ref: "#/components/schemas/DeliveryTargetCondition"}
+        reporter: {$ref: "#/components/schemas/DeliveryTargetReporter"}
+        state: {$ref: "#/components/schemas/DeliveryTargetState"}
+        refusal:
+          type: object
+          description: Present only while `state` is `refused`. The closed cause, never the refused value.
+          additionalProperties: false
+          required: [cause, refused_at]
+          properties:
+            cause:
+              type: string
+              enum: [vocabulary]
+            refused_at: {$ref: "#/components/schemas/Timestamp"}
+    DeliveryTargetPrincipal:
+      type: object
+      description: The server-observed layer for one reporting principal (ADR D2).
+      additionalProperties: false
+      required: [principal_id]
+      properties:
+        principal_id: {type: string}
+        last_contact_at:
+          $ref: "#/components/schemas/Timestamp"
+          description: Its last authenticated delivery fetch in this environment. Absent when never observed.
+        quota_refused_at:
+          $ref: "#/components/schemas/Timestamp"
+          description: The closed `quota-refused` notice's last time. Absent when never refused.
+    DeliveryTargetList:
+      type: object
+      additionalProperties: false
+      required: [principals, targets]
+      properties:
+        principals:
+          type: array
+          items: {$ref: "#/components/schemas/DeliveryTargetPrincipal"}
+        targets:
+          type: array
+          items: {$ref: "#/components/schemas/DeliveryTarget"}
 
     InstanceConfigBinding:
       type: object

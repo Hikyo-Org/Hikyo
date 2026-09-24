@@ -248,7 +248,9 @@ func errorFromResponse(status int, payload []byte) error {
 		// taxonomy's own wording ("refused: validation, policy, ceremony
 		// declined"). Left to the default they landed on ExitInternal, which told
 		// a script the server broke when it had in fact answered correctly.
-		apigen.ErrorCodeConflict, apigen.ErrorCodeLimitExceeded:
+		apigen.ErrorCodeConflict, apigen.ErrorCodeLimitExceeded,
+		// A vocabulary or size refusal is the same: the server answered.
+		apigen.ErrorCodeUnprocessable, apigen.ErrorCodePayloadTooLarge:
 		return failf(ExitRefused, "%s", message)
 	case apigen.ErrorCodeNotFound:
 		return failf(ExitNotFound, "%s", message)

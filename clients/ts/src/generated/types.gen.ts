@@ -483,9 +483,10 @@ export type Error = {
          */
         message: string;
         /**
-         * Present only on `bad_request`, where it names the offending
-         * request member. `null` and absent are equivalent; every other
-         * error code omits the member entirely.
+         * Present on `bad_request` and `unprocessable`, where it names
+         * the offending request member, and on a `conflict` whose refusal
+         * names the caller's own state. `null` and absent are
+         * equivalent; every other error code omits the member entirely.
          *
          */
         detail?: string | null;
@@ -543,7 +544,7 @@ export type ScanFinding = {
 /**
  * Closed response-code set. Clients branch on this, not on prose.
  */
-export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'too_many_requests' | 'service_unavailable' | 'internal';
+export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'unprocessable' | 'payload_too_large' | 'too_many_requests' | 'service_unavailable' | 'internal';
 
 /**
  * An exact closed allowlist. `additionalProperties: false` is the
@@ -568,8 +569,11 @@ export type Meta = {
      */
     api_revision: number;
     /**
-     * Which authentication protocol flows this instance serves. `login`
-     * needs this before any session exists.
+     * Which protocols this instance serves: the authentication flows
+     * `login` needs before any session exists, and the machine protocols
+     * an integration probes before using them, such as
+     * `delivery-target-report/<vocabulary>` for each delivery-target
+     * report vocabulary this server accepts.
      *
      */
     protocol_capabilities: Array<ProtocolCapability>;
@@ -2743,6 +2747,151 @@ export type ReconcileOfflineRecordsRequest = {
 export type ReconcileOfflineRecordsResponse = {
     accepted: number;
     duplicates: number;
+};
+
+/**
+ * A Kubernetes object UID, canonical lower-case RFC 4122 form.
+ */
+export type KubernetesUid = string;
+
+/**
+ * A namespace name (DNS-1123 label). A display label, never interpreted.
+ */
+export type KubernetesNamespace = string;
+
+/**
+ * An object name (DNS-1123 subdomain). A display label, never interpreted.
+ */
+export type KubernetesObjectName = string;
+
+/**
+ * The target's identity under the reporting principal: the cluster
+ * (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+ * target object's UID. A recreated object is a new target.
+ *
+ */
+export type DeliveryTargetIdentity = {
+    cluster_id: KubernetesUid;
+    instance_uid: KubernetesUid;
+    uid: KubernetesUid;
+};
+
+/**
+ * The target's identity plus the namespace and name an operator types into `kubectl`.
+ */
+export type DeliveryTargetRef = {
+    cluster_id: KubernetesUid;
+    instance_uid: KubernetesUid;
+    namespace: KubernetesNamespace;
+    name: KubernetesObjectName;
+    uid: KubernetesUid;
+};
+
+/**
+ * One asserted condition. `type` and `reason` are closed over every
+ * vocabulary this server accepts; a reason that is not in its type's
+ * set for the report's vocabulary is a 422.
+ *
+ */
+export type DeliveryTargetCondition = {
+    type: 'Conflict' | 'CredentialExpiry' | 'Delivery' | 'Designation' | 'PinExpired' | 'Ready' | 'Rollout' | 'Scrubbed' | 'Synced' | 'Unreconciled';
+    status: 'False' | 'True' | 'Unknown';
+    reason: 'AudienceMissing' | 'AuthorizationWithdrawn' | 'Blocked' | 'Current' | 'Delivered' | 'EnvFromSkip' | 'Expired' | 'ExpiresSoon' | 'FetchFailed' | 'InstanceMismatch' | 'InvalidSecretData' | 'KeysMissing' | 'LoaderControlUnacknowledged' | 'ManagedSecretNotOwned' | 'NamespaceNotBound' | 'NotMaterialized' | 'PinExpired' | 'Reconciled' | 'SecretNotDesignated' | 'ServiceAccountNotDesignated' | 'Stalled' | 'TargetClaimed' | 'TargetTypeImmutable' | 'UndeliveredSecrets';
+    observed_generation: number;
+};
+
+/**
+ * The target's closed `status.lifecycle`.
+ */
+export type DeliveryTargetLifecycle = 'Refused' | 'Retained' | 'Scrubbed' | 'Synced' | 'Unreconciled';
+
+/**
+ * The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+ */
+export type DeliveryTargetReporter = {
+    integration: 'kubernetes-operator';
+    version: string;
+};
+
+/**
+ * One closed, value-free report (ADR D4). It carries no condition
+ * message, event text, secret value, key name, cursor or credential
+ * material; there is no member that could.
+ *
+ */
+export type DeliveryTargetReportRequest = {
+    /**
+     * The vocabulary version `/meta` advertised. One this server does not accept is a 422.
+     */
+    vocabulary: number;
+    target: DeliveryTargetRef;
+    generation: number;
+    observed_generation: number;
+    reported_at: Timestamp;
+    /**
+     * The target's heartbeat interval. The server clamps it to [300, 86400].
+     */
+    report_interval_seconds: number;
+    lifecycle: DeliveryTargetLifecycle;
+    conditions: Array<DeliveryTargetCondition>;
+    reporter: DeliveryTargetReporter;
+};
+
+export type DeliveryTargetTombstoneRequest = {
+    target: DeliveryTargetIdentity;
+};
+
+/**
+ * Derived at read time, never stored (ADR D5). `unknown` is the absence
+ * of a row, so no row carries it.
+ *
+ */
+export type DeliveryTargetState = 'refused' | 'reported' | 'reporter-revoked' | 'stale';
+
+/**
+ * One target's latest accepted report, as its controller asserted it.
+ */
+export type DeliveryTarget = {
+    id: string;
+    principal_id: string;
+    target: DeliveryTargetRef;
+    vocabulary: number;
+    generation: number;
+    observed_generation: number;
+    reported_at: Timestamp;
+    received_at: Timestamp;
+    report_interval_seconds: number;
+    lifecycle: DeliveryTargetLifecycle;
+    conditions: Array<DeliveryTargetCondition>;
+    reporter: DeliveryTargetReporter;
+    state: DeliveryTargetState;
+    /**
+     * Present only while `state` is `refused`. The closed cause, never the refused value.
+     */
+    refusal?: {
+        cause: 'vocabulary';
+        refused_at: Timestamp;
+    };
+};
+
+/**
+ * The server-observed layer for one reporting principal (ADR D2).
+ */
+export type DeliveryTargetPrincipal = {
+    principal_id: string;
+    /**
+     * Its last authenticated delivery fetch in this environment. Absent when never observed.
+     */
+    last_contact_at?: Timestamp;
+    /**
+     * The closed `quota-refused` notice's last time. Absent when never refused.
+     */
+    quota_refused_at?: Timestamp;
+};
+
+export type DeliveryTargetList = {
+    principals: Array<DeliveryTargetPrincipal>;
+    targets: Array<DeliveryTarget>;
 };
 
 export type InstanceConfigBinding = {
@@ -16736,6 +16885,226 @@ export type ReconcileOfflineRecordsResponses = {
 };
 
 export type ReconcileOfflineRecordsResponse2 = ReconcileOfflineRecordsResponses[keyof ReconcileOfflineRecordsResponses];
+
+export type ListDeliveryTargetsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets';
+};
+
+export type ListDeliveryTargetsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListDeliveryTargetsError = ListDeliveryTargetsErrors[keyof ListDeliveryTargetsErrors];
+
+export type ListDeliveryTargetsResponses = {
+    /**
+     * The environment's delivery targets.
+     */
+    200: DeliveryTargetList;
+};
+
+export type ListDeliveryTargetsResponse = ListDeliveryTargetsResponses[keyof ListDeliveryTargetsResponses];
+
+export type ReportDeliveryTargetData = {
+    body: DeliveryTargetReportRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets';
+};
+
+export type ReportDeliveryTargetErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The request body exceeds this operation's bound. The body is not
+     * parsed, so the refusal is tied to nothing it carries. Decided after
+     * authorization.
+     *
+     */
+    413: Error;
+    /**
+     * The caller is authorized and the request is well formed, but a value
+     * is outside the vocabulary this server accepts for it. `detail` names
+     * the member, never its value. Decided after authorization.
+     *
+     */
+    422: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ReportDeliveryTargetError = ReportDeliveryTargetErrors[keyof ReportDeliveryTargetErrors];
+
+export type ReportDeliveryTargetResponses = {
+    /**
+     * Accepted.
+     */
+    204: void;
+};
+
+export type ReportDeliveryTargetResponse = ReportDeliveryTargetResponses[keyof ReportDeliveryTargetResponses];
+
+export type TombstoneDeliveryTargetData = {
+    body: DeliveryTargetTombstoneRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone';
+};
+
+export type TombstoneDeliveryTargetErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TombstoneDeliveryTargetError = TombstoneDeliveryTargetErrors[keyof TombstoneDeliveryTargetErrors];
+
+export type TombstoneDeliveryTargetResponses = {
+    /**
+     * The row is removed.
+     */
+    204: void;
+};
+
+export type TombstoneDeliveryTargetResponse = TombstoneDeliveryTargetResponses[keyof TombstoneDeliveryTargetResponses];
 
 export type ListScimBindingsData = {
     body?: never;

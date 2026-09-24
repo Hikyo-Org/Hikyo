@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -267,11 +268,17 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 		}
 		identity = &value
 	}
+	// The delivery-target report tokens (#788, ADR D10): one per accepted
+	// vocabulary. An integration reports only when one is advertised.
+	capabilities := []apigen.ProtocolCapability{"local-password"}
+	for _, token := range deliverytarget.CapabilityTokens() {
+		capabilities = append(capabilities, apigen.ProtocolCapability(token))
+	}
 	return apigen.GetMeta200JSONResponse{
 		InstanceIdentity:     identity,
 		ServerVersion:        a.Version,
 		ApiRevision:          api.Revision,
-		ProtocolCapabilities: []apigen.ProtocolCapability{"local-password"},
+		ProtocolCapabilities: capabilities,
 	}, nil
 }
 
@@ -785,17 +792,35 @@ func (a *API) validateAgainstContractWith(
 			if !a.scimBodyIsOneValue(w, r) {
 				return
 			}
+		} else if operation.ID == "reportDeliveryTarget" && r.Body != nil {
+			// A delivery-target report is bounded at 8 KiB (k8s-condition-
+			// reporting ADR D6) and an over-size one is refused WITHOUT being
+			// parsed, so the refusal can never be tied to a row the body names.
+			// It still ranks behind admission, authentication and authorization.
+			raw, err := io.ReadAll(io.LimitReader(r.Body, deliverytarget.MaxReportBytes+1))
+			if err != nil {
+				writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), "")
+				return
+			}
+			if len(raw) > deliverytarget.MaxReportBytes {
+				validated, err := match.ValidateWithoutBody()
+				if err != nil {
+					a.writeValidationError(w, err)
+					return
+				}
+				if request := validated.Request(); a.requireCurrentRuntime(w, request) {
+					a.refuseOversizeReport(w, request, envScope(
+						match.PathParam("org"), match.PathParam("project"), match.PathParam("environment")))
+				}
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(raw))
 		} else if r.Body != nil {
 			r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBytes)
 		}
 		validated, err := match.Validate()
 		if err != nil {
-			var verr *api.ValidationError
-			detail := ""
-			if errors.As(err, &verr) {
-				detail = verr.Member
-			}
-			writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), detail)
+			a.writeValidationError(w, err)
 			return
 		}
 		request := validated.Request()
@@ -804,6 +829,17 @@ func (a *API) validateAgainstContractWith(
 		}
 		next.ServeHTTP(w, request)
 	})
+}
+
+// writeValidationError renders a contract-validation refusal, naming the
+// offending member.
+func (a *API) writeValidationError(w http.ResponseWriter, err error) {
+	var verr *api.ValidationError
+	detail := ""
+	if errors.As(err, &verr) {
+		detail = verr.Member
+	}
+	writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), detail)
 }
 
 // scimBodyIsOneValue enforces the single-JSON-value rule on a SCIM wire body

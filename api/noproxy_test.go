@@ -447,6 +447,14 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records": true,
 	"POST /api/v1/orgs/{org}/projects/{project}/service-accounts/{serviceAccount}/bindings":          true,
 
+	// Delivery-target condition reporting (#788). The report and tombstone
+	// write a controller's assertion, carried IN the request, into this
+	// instance's own row; the list reads those rows and this instance's own
+	// trail. The server never contacts the cluster the report names.
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets":            true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets":           true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone": true,
+
 	// The reveal ceremony's TOTP opener (#58). It opens a window on THIS
 	// instance's own session; nothing crosses a network.
 	"POST /api/v1/auth/reauth/totp": true,
