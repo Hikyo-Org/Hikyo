@@ -82,8 +82,16 @@ when the document is pairwise-only and identities are linked under the issuer.
 `CreateExternalIdentity` folds the identity-key UNIQUE violation onto
 `domain.ErrConflict` on both engines (SCIM's race path relied on this already).
 
-**Web.** `ui/auth/LoginForm` is the staged entry of prototype iteration 2;
-`ui/auth/ProviderButton` carries the brand rules (Google's standard G with
+**Web.** The atoms are #800's (the `[UI]` slice, handoff
+`607-staged-login-entry.md`): `ui/auth/LoginForm` is the staged entry of
+prototype iteration 2 and `ui/auth/ProviderButton` carries the brand rules.
+This half feeds them the wire: `routes/Login` passes each provider's `brand`
+(`google` / `microsoft` from `GET /auth/methods`; `github` stays story-side
+until #609), `signup` from `signup_open` + `signup_methods` (admitted OIDC
+providers matched by `{kind, slug}`) with the landing worded from
+`signup_landing`, `initialIntent` for `/signup`, and sends `intent` (plus
+`signup_org`) on the OIDC start. A sign-up start is always OIDC, even when a
+SAML row shares the slug. The brand rules (Google's standard G with
 "Continue with Google" / "Sign up with Google"; the Microsoft logo with "Sign
 in with Microsoft · <display name>" on every surface, one row per Entra tenant
 row, "Microsoft: work or school account" beneath; generic "Continue with
@@ -168,15 +176,17 @@ under `login.spec.ts`. The instance org list shows an origin badge
 - **Google bare `iss`** is pinned at the `oidcrp` layer: an e2e provider row
   cannot carry Google's issuer (discovery would fetch the real document).
 - The staged entry adds a click to every password sign-in (#587 d1's accepted
-  cost); every Playwright password sign-in goes through `choosePassword`.
+  cost); every Playwright password sign-in clicks the Password row by
+  `/^Password\b/` (#800): the "Last used" badge joins the row's name.
 
-- **Own accounts, own authenticators in e2e.** Flows that sign in or prove
-  repeatedly (`shell.spec.ts` sign-out, the sign-up door) no longer draw the
-  shared administrator's TOTP ledger, which every project draws at once. They
-  create throwaway accounts (`e2e/fixtures/accounts.ts`: `enrolledAccount`,
+- **Own accounts, own authenticators in e2e.** Flows that prove repeatedly
+  (the sign-up door) no longer draw the shared administrator's TOTP ledger,
+  which every project draws at once. The `shell.spec.ts` sign-out flows keep
+  #800's answer instead: the administrator's challenge is met with the shared
+  passkey, so no TOTP step is spent there at all. The door creates throwaway
+  accounts (`e2e/fixtures/accounts.ts`: `enrolledAccount`,
   `TotpLedger`). A fresh enrolment treats the step before its creation as
-  spent, so a new account presents two codes per step without waiting: the
-  sign-out flows need exactly two (enrol, sign-in) and never wait. An
+  spent, so a new account presents two codes per step without waiting. An
   instance operator needs three (enrol, step-up, proof), so the sign-up door
   enrols its opener and its closer up front; only the opener's proof may wait
   for one step boundary, and the test budget is the default plus one step
@@ -212,7 +222,7 @@ No spec-versus-resolution contradiction was found.
   and `evaluatePolicy`'s kind branch). The login page filters the door to
   `oidc` today.
 - **#612** (login handoff): the handoff page must hide the door and send
-  `sign-in`; `LoginForm` takes `door={null}` for that.
+  `sign-in`; `LoginForm` takes `signup={null}` for that.
 - **#610/#611**: `claim` and `establish` purposes; `auth.oidc_refused`
   `identity-exists` for claim.
 

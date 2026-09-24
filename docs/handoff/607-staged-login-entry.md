@@ -94,6 +94,9 @@ brand derivation is #607 work; dated amendment lines posted on #607 and #589
 
 ## How to pick this up (#607 backend)
 
+Picked up by #804 (2026-09-24): brand, door, landing and intent now ride the
+wire; see `607-federated-signup.md`. The items below record what was asked.
+
 - Pass `signup` from `signup_open && signup_methods` (slugs of `{kind, slug}`
   entries present in `providers`) and word `landing` from whatever #607 puts
   on the wire. Send `intent` on the OIDC start when `onProvider` gives
