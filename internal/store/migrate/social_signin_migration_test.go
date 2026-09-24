@@ -11,15 +11,12 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-// Migration 00057 (social sign-in, #605) is additive: every row that exists
-// before it survives with every column a later migration added (00056's
-// enrolment_required included), today's writers stay inside the widened CHECKs,
-// and the new CHECKs refuse exactly the shapes the spec (section 2) names.
-
+// TestSocialSigninMigrationSQLite verifies the 00057 upgrade on SQLite.
 func TestSocialSigninMigrationSQLite(t *testing.T) {
 	testSocialSigninMigration(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "social.db")})
 }
 
+// TestSocialSigninMigrationPostgres verifies the same upgrade on PostgreSQL.
 func TestSocialSigninMigrationPostgres(t *testing.T) {
 	testSocialSigninMigration(t, postgresTestConfig(t, "social_signin"))
 }
@@ -77,6 +74,7 @@ func socialSQL(cfg store.Config, stmt string) string {
 	return strings.NewReplacer(pairs...).Replace(stmt)
 }
 
+// sqlValue renders a nullable string literal for the shared SQL fixtures.
 func sqlValue(v string) string {
 	if v == "" {
 		return "NULL"
@@ -86,6 +84,7 @@ func sqlValue(v string) string {
 
 const socialTS = "'2026-01-01T00:00:00Z'"
 
+// socialPolicy builds a policy row with the supplied landing and org scope.
 func socialPolicy(id, orgID, landing, template, freshOrgCap string) string {
 	capValue := "NULL"
 	if freshOrgCap != "" {
@@ -115,17 +114,21 @@ func socialTx(table, id, blob, purpose, intent, scope, bindingKind, account, env
 		sqlValue(bindingKind) + "," + session + "," + binding + "," + sqlValue(account) + "," + sqlValue(environment) + "," + sqlValue(ceremony) + "," + sqlValue(authority) + ",{f},1," + socialTS + "," + socialTS + ")"
 }
 
+// socialSession builds a session row to exercise the provider one-of CHECK.
 func socialSession(id, blob, oidc, saml, oauth2 string) string {
 	return "INSERT INTO sessions (id,principal_id,verifier,artifact,session_generation,credential_epoch,auth_method,factors,authenticated_at,created_at,last_seen_at,idle_expires_at,absolute_expires_at,source_ip,user_agent,provider_id,saml_provider_id,oauth2_provider_id) VALUES (" +
 		sqlValue(id) + ",'prn_social',{b" + blob + "},'browser',1,1,'password','[\"password\"]'," + socialTS + "," + socialTS + "," + socialTS + "," + socialTS + "," + socialTS + ",'192.0.2.1','agent'," +
 		sqlValue(oidc) + "," + sqlValue(saml) + "," + sqlValue(oauth2) + ")"
 }
 
+// socialAuthority builds a credential authority row with a chosen issuer.
 func socialAuthority(id, blob, issuedBy, kind string) string {
 	return "INSERT INTO credential_authorities (id,verifier,account_id,purpose,issued_by,established_credential_kind,credential_epoch,expires_at,created_at) VALUES (" +
 		sqlValue(id) + ",{b" + blob + "},'acc_social','establish-credential'," + sqlValue(issuedBy) + "," + sqlValue(kind) + ",1," + socialTS + "," + socialTS + ")"
 }
 
+// testSocialSigninMigration upgrades a populated 00056 database to only 00057,
+// preserving existing rows while checking legacy writers and new constraints.
 func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 	t.Helper()
 	ctx := t.Context()
@@ -185,7 +188,7 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 		}
 	}
 
-	if err := Run(ctx, cfg); err != nil {
+	if err := RunUpTo(ctx, cfg, 57); err != nil {
 		t.Fatal(err)
 	}
 
@@ -394,19 +397,20 @@ func testSocialSigninMigration(t *testing.T, cfg store.Config) {
 	}
 }
 
-// The sqlite GLOBs and the postgres regex that decide which 00049 contact
-// values 00057 keeps must accept exactly the same set. One fixture of
-// character-class edges runs through the real migration on both engines; each
-// engine must reach the expected outcome (hence the same one), and every kept
-// value must be what domain.CanonicalEmail returns.
+// TestSocialSigninEmailValidityParitySQLite exercises the email conversion
+// against SQLite's GLOB-based rules.
 func TestSocialSigninEmailValidityParitySQLite(t *testing.T) {
 	testSocialSigninEmailValidityParity(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "parity.db")})
 }
 
+// TestSocialSigninEmailValidityParityPostgres exercises the same conversion
+// against PostgreSQL's regex-based rules.
 func TestSocialSigninEmailValidityParityPostgres(t *testing.T) {
 	testSocialSigninEmailValidityParity(t, postgresTestConfig(t, "email_parity"))
 }
 
+// testSocialSigninEmailValidityParity verifies both engines keep the same
+// legacy contact values, matching domain.CanonicalEmail for every kept value.
 func testSocialSigninEmailValidityParity(t *testing.T, cfg store.Config) {
 	t.Helper()
 	ctx := t.Context()
@@ -462,7 +466,7 @@ func testSocialSigninEmailValidityParity(t *testing.T, cfg store.Config) {
 			}
 		}
 	}
-	if err := Run(ctx, cfg); err != nil {
+	if err := RunUpTo(ctx, cfg, 57); err != nil {
 		t.Fatal(err)
 	}
 	var verified int

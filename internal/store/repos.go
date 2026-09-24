@@ -355,6 +355,7 @@ func (o sqliteOrgs) Delete(ctx context.Context, p authz.Proof) error {
 	return affected(o.q.DeleteOrg(ctx, string(chain.Org)))
 }
 
+// orgFromSQLite converts a queried organization into the shared store model.
 func orgFromSQLite(row sqlitegen.GetOrgRow) (Org, error) {
 	created, err := parseTime("org", row.ID, row.CreatedAt)
 	if err != nil {
@@ -1021,6 +1022,7 @@ func (o pgOrgs) Delete(ctx context.Context, p authz.Proof) error {
 	return affected(o.q.DeleteOrg(ctx, string(chain.Org)))
 }
 
+// orgFromPG converts a queried organization into the shared store model.
 func orgFromPG(row pggen.GetOrgRow) (Org, error) {
 	if !row.CreatedAt.Valid {
 		return Org{}, fmt.Errorf("store: org %s: null created_at", row.ID)

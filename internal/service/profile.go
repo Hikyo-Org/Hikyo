@@ -35,6 +35,7 @@ type ProfileUpdate struct {
 	DisplayName string
 }
 
+// MyProfile reads the authenticated account's editable names and read-only email.
 func (s *Auth) MyProfile(ctx context.Context, presented string) (AccountProfile, error) {
 	var out AccountProfile
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
@@ -56,6 +57,7 @@ func (s *Auth) MyProfile(ctx context.Context, presented string) (AccountProfile,
 	return out, err
 }
 
+// validateAccountProfile rejects malformed or out-of-bounds editable names.
 func validateAccountProfile(profile ProfileUpdate) error {
 	for label, value := range map[string]string{"username": profile.Username, "display name": profile.DisplayName} {
 		if !utf8.ValidString(value) || strings.TrimSpace(value) != value || len(value) > 256 {

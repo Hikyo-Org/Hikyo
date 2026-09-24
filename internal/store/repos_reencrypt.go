@@ -161,6 +161,7 @@ func (r sqliteReencrypt) ReencryptOidcProvider(ctx context.Context, p authz.Proo
 	return n == 1, err
 }
 
+// ListOauth2ProvidersForReencrypt pages through SQLite provider ciphertexts.
 func (r sqliteReencrypt) ListOauth2ProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
 	if _, err := authz.Verify(p, authz.StoreReencryptListOauth2Providers, r.tok); err != nil {
 		return nil, err
@@ -176,6 +177,7 @@ func (r sqliteReencrypt) ListOauth2ProvidersForReencrypt(ctx context.Context, p 
 	return out, nil
 }
 
+// ReencryptOauth2Provider replaces SQLite ciphertext when its version matches.
 func (r sqliteReencrypt) ReencryptOauth2Provider(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error) {
 	if _, err := authz.Verify(p, authz.StoreReencryptOauth2Provider, r.tok); err != nil {
 		return false, err
@@ -324,6 +326,7 @@ func (r pgReencrypt) ReencryptOidcProvider(ctx context.Context, p authz.Proof, i
 	return n == 1, err
 }
 
+// ListOauth2ProvidersForReencrypt pages through PostgreSQL provider ciphertexts.
 func (r pgReencrypt) ListOauth2ProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
 	if _, err := authz.Verify(p, authz.StoreReencryptListOauth2Providers, r.tok); err != nil {
 		return nil, err
@@ -339,6 +342,7 @@ func (r pgReencrypt) ListOauth2ProvidersForReencrypt(ctx context.Context, p auth
 	return out, nil
 }
 
+// ReencryptOauth2Provider replaces PostgreSQL ciphertext when its version matches.
 func (r pgReencrypt) ReencryptOauth2Provider(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error) {
 	if _, err := authz.Verify(p, authz.StoreReencryptOauth2Provider, r.tok); err != nil {
 		return false, err

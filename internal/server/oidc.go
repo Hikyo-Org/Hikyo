@@ -56,6 +56,7 @@ func (r oidcStartResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
 	return json.NewEncoder(w).Encode(r.body)
 }
 
+// OidcStart validates the requested OIDC purpose before starting the flow.
 func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) (apigen.OidcStartResponseObject, error) {
 	if req.Body == nil {
 		// A missing body folds into the uniform 401 like every other start

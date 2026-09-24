@@ -10,6 +10,12 @@ The spec calls these 00042 and 00043; MCP had already taken both numbers.
 This ticket is **00057_social_signin.sql** (sqlite and postgres). **00058 is
 reserved for #607** (the registration switch: `intent` required on
 `oidc_transactions`, live-transaction purge). Do not reuse 00058 elsewhere.
+The migration acceptance fixtures start at 00056 and apply only 00057 with
+`RunUpTo`, on each engine. They check the existing OIDC session survives and
+that login/link transaction shapes still satisfy the widened CHECKs. The OIDC
+isolation tests exercise login, link and reauth against the current schema;
+00057 is the latest migration on this PR. Issue #605's 00042 acceptance number
+cannot be used without replacing the existing MCP audit origin migration.
 
 ## What landed
 
