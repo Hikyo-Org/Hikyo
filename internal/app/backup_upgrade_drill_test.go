@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 58, while the
+// The runtime-created fixture includes migrations 45 through 59, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+14 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 58 only")
+	if len(current.Entries) != len(legacy.Entries)+15 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 59 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -302,6 +302,16 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		if err != nil || evidence != 0 {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter or registration evidence", query, err)
 		}
+	}
+	// Reverse 00059 (delivery-target condition reporting) first: newest
+	// migration first, before 00057's reversal rebuilds tables its rows
+	// reference.
+	for _, query := range []string{
+		"DROP INDEX audit_tenant_events_env_actor_type_seq",
+		"DROP TABLE delivery_target_quota_notices",
+		"DROP TABLE delivery_target_reports",
+	} {
+		drillExec(t, db, query)
 	}
 	if db.Engine() == store.EngineSQLite {
 		// Recreate the empty table from its immutable legacy declaration so
@@ -406,7 +416,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59)",
 	} {
 		drillExec(t, db, query)
 	}
