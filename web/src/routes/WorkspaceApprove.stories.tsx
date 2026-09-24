@@ -140,6 +140,7 @@ export const SignIn: Story = {
     await expect(
       await canvas.findByRole('heading', { name: /sign in to hikyo/i }),
     ).toBeVisible();
-    await expect(canvas.getByLabelText('Username')).toBeVisible();
+    // The staged entry (#607): the credential form sits behind the Password row.
+    await expect(canvas.getByRole('button', { name: /^Password\b/ })).toBeVisible();
   },
 };
