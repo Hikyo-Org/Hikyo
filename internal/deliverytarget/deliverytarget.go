@@ -131,18 +131,20 @@ func AllReasons(v int) []string {
 }
 
 // Refusal causes: the closed set the audit trail records (ADR D8). Only
-// RefusalVocabulary is ever recorded on a row (D5).
+// RefusalVocabulary is ever recorded on a row (D5). An authorization refusal
+// has no cause here: it is the chokepoint's uniform nonexistent answer, and
+// its record is the chokepoint's own grant.denied naming the operation, since
+// no tenant proof exists to write a delivery-target event under.
 const (
-	RefusalAuthorization = "authorization"
-	RefusalVocabulary    = "vocabulary"
-	RefusalOrdering      = "ordering"
-	RefusalQuota         = "quota"
-	RefusalSize          = "size"
+	RefusalVocabulary = "vocabulary"
+	RefusalOrdering   = "ordering"
+	RefusalQuota      = "quota"
+	RefusalSize       = "size"
 )
 
 // RefusalCauses returns the closed refusal-cause enum, sorted.
 func RefusalCauses() []string {
-	return []string{RefusalAuthorization, RefusalOrdering, RefusalQuota, RefusalSize, RefusalVocabulary}
+	return []string{RefusalOrdering, RefusalQuota, RefusalSize, RefusalVocabulary}
 }
 
 // Derived UI states (ADR D5). Computed at read time; nothing stores "healthy".
@@ -205,27 +207,30 @@ func (e *VocabularyError) Error() string {
 	return fmt.Sprintf("deliverytarget: %s is outside the advertised vocabulary", e.Field)
 }
 
-var (
+// Grammar patterns, exported so the OpenAPI pin test holds the wire contract
+// to the exact grammar the server applies.
+const (
 	// DNS-1123 label: namespace names (63 chars).
-	dns1123Label = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+	DNS1123LabelPattern = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
 	// DNS-1123 subdomain: object names (253 chars).
-	dns1123Subdomain = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+	DNS1123SubdomainPattern = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
 	// Kubernetes object UIDs are RFC 4122 UUIDs in canonical lower-case form.
-	uidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+	UIDPattern = `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`
 	// SemVer 2.0.0, the official grammar.
-	semverPattern = regexp.MustCompile(`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
+	SemVerPattern = `^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)` +
 		`(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?` +
-		`(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`)
+		`(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$`
+	MaxLabelLength     = 63
+	MaxSubdomainLength = 253
+	MaxUIDLength       = 36
+	MaxVersionLength   = 64
 )
 
-// Grammar patterns, exported for the OpenAPI pin test.
-const (
-	DNS1123LabelPattern     = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`
-	DNS1123SubdomainPattern = `^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`
-	UIDPattern              = `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`
-	MaxLabelLength          = 63
-	MaxSubdomainLength      = 253
-	MaxVersionLength        = 64
+var (
+	dns1123Label     = regexp.MustCompile(DNS1123LabelPattern)
+	dns1123Subdomain = regexp.MustCompile(DNS1123SubdomainPattern)
+	uidPattern       = regexp.MustCompile(UIDPattern)
+	semverPattern    = regexp.MustCompile(SemVerPattern)
 )
 
 // IsDNS1123Label reports whether s is a Kubernetes namespace name.

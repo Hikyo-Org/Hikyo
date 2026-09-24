@@ -2846,7 +2846,7 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailTenant: true},
 		Schema: Schema{
 			// The closed refusal cause; never the refused value.
-			"cause": {Kind: KindString, Required: true, Enum: []string{"authorization", "ordering", "quota", "size", "vocabulary"}},
+			"cause": {Kind: KindString, Required: true, Enum: []string{"ordering", "quota", "size", "vocabulary"}},
 			// The JSON member a vocabulary refusal names.
 			"field": {Kind: KindString, MaxBytes: 64},
 			// Present only when the refusal is tied to an existing row.
