@@ -1635,6 +1635,9 @@ test.describe('browser-only lifecycle', () => {
       await page.goto(`${base}/matrix/history?env=${dev}`);
       const drawer = page.getByRole('complementary', { name: 'Revision history' });
       await expect(drawer).toBeVisible();
+      // The drawer opens while the revision list is still loading, and
+      // evaluateAll does not wait: read the rows only once the list renders.
+      await expect(drawer.getByRole('list', { name: 'Revisions, newest first' })).toBeVisible();
       const revisions = await drawer.locator('[data-history-revision]').evaluateAll((nodes) =>
         nodes.map((node) => Number(node.getAttribute('data-history-revision'))),
       );
@@ -1654,6 +1657,8 @@ test.describe('browser-only lifecycle', () => {
       }
       // One key from the changed-key row: a config-only restore opens no
       // secret plaintext, so it takes no ceremony and stages an ordinary draft.
+      // Landing on the current revision (restore gated off) fails here, fast.
+      await expect(restoreKey).toBeEnabled();
       await restoreKey.click();
       const restore = page.getByRole('dialog');
       await restore.getByRole('button', { name: /^Stage the restore from r/ }).click();
