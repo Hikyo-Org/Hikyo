@@ -172,21 +172,24 @@ server_pid=$(<"$work_dir/server.pid")
 # /readyz, not /healthz: readiness includes the datastore probe and the
 # runtime-configuration capture. Probing right after liveness raced the
 # self-configuration reconciliation and got a 503 from instance doctor (#694).
-healthy=false
-for _ in {1..200}; do
-	if curl -fsS "$ops_origin/readyz" >/dev/null 2>&1; then
-		healthy=true
-		break
+wait_ready() {
+	local healthy=false
+	for _ in {1..200}; do
+		if curl -fsS "$ops_origin/readyz" >/dev/null 2>&1; then
+			healthy=true
+			break
+		fi
+		if ! kill -0 "$server_pid" 2>/dev/null; then
+			break
+		fi
+		sleep 0.1
+	done
+	if [[ "$healthy" != true ]]; then
+		sed -n '1,200p' "$work_dir/server.log" >&2
+		fail "server did not become ready at $ops_origin ($1)"
 	fi
-	if ! kill -0 "$server_pid" 2>/dev/null; then
-		break
-	fi
-	sleep 0.1
-done
-if [[ "$healthy" != true ]]; then
-	sed -n '1,200p' "$work_dir/server.log" >&2
-	fail "server did not become healthy at $ops_origin"
-fi
+}
+wait_ready 'after boot'
 
 root_key=$(tr -d '\n' <"$work_dir/hikyo-dev.rootkey")
 admin_log="$work_dir/admin.log"
@@ -204,6 +207,13 @@ admin_principal=$(sed -n 's/.*principal \([^)]*\)).*/\1/p' "$admin_log")
 	HIKYO_DB=sqlite:hikyo-dev.db HIKYO_ROOT_KEY="$root_key" \
 		"$binary" admin --dev grant --principal "$admin_principal" --capability instance-config >/dev/null
 )
+# The offline `admin create` adopts the running server's seed into a managed
+# self-configuration binding (BootstrapAdmin -> SelfConfig.provision). The live
+# server keeps admitting only its seed generation until its next reconcile tick
+# (up to selfConfigReconcileInterval later), so business operations such as
+# instance doctor answer 503 in that window. Readiness is the signal that the
+# server has installed the committed generation (#694 raced the same fence).
+wait_ready 'after offline admin provisioning'
 
 authority=$(tr -d '\n' <"$work_dir/authority")
 password='compose-demo-password-long-enough'
