@@ -94,7 +94,7 @@ test.describe('machine access', () => {
     await expect(tabs).toHaveCount(5);
     await expect(tabs.nth(0)).toHaveText(/Service accounts \(3\)/);
     await expect(tabs.nth(1)).toHaveText(/Federation \(1\)/);
-    await expect(tabs.nth(2)).toHaveText(/^Kubernetes targets$/);
+    await expect(tabs.nth(2)).toHaveText(/Kubernetes targets \(0\)/);
     await expect(tabs.nth(3)).toHaveText(/Providers \(0\)/);
     await expect(tabs.nth(4)).toHaveText(/Leases \(0\)/);
 
@@ -122,13 +122,14 @@ test.describe('machine access', () => {
     await expect(page.getByText(seed.machine.subject, { exact: true })).toBeVisible();
     await expect(page.getByText(seed.machine.audience, { exact: true })).toBeVisible();
 
-    // The Kubernetes tab is EMPTY and says why. An empty list here must not
-    // read as "everything is healthy".
+    // The Kubernetes tab reads the real report list (#790). No controller has
+    // reported on a fresh project, and an empty list must say exactly that,
+    // never read as "everything is healthy".
     await page.getByRole('tab', { name: 'Kubernetes targets' }).click();
-    const empty = page.getByRole('status').filter({ hasText: 'No delivery targets are reported' });
-    await expect(empty).toContainText('never that everything is healthy');
-    await expect(empty).toContainText('Check HikyoSecret conditions with kubectl');
-    await expect(empty).not.toContainText('not part of this build');
+    await expect(page.getByRole('heading', { name: 'Reported by controllers' })).toBeVisible();
+    const empty = page.getByRole('status').filter({ hasText: 'No reports.' });
+    await expect(empty).toBeVisible();
+    await expect(page.locator('#machine-panel .badge--ok')).toHaveCount(0);
     await expectStatusIsTextAndAria(page, empty);
 
     // The Providers tab is empty on a fresh project and says so.
