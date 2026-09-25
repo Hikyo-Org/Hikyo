@@ -1068,6 +1068,13 @@ var caches = map[string]Cache{
 		KeyConstructor: "singleton: github.com/Hikyo-Org/hikyo releases",
 		ProofGatedAt:   "not proof-gated: public release metadata; endpoint authorization precedes access",
 	},
+	"operator.delivery-capabilities": {
+		// One probe result per HikyoInstance, held for 10 minutes: the highest
+		// delivery-target-report vocabulary the instance advertises in /meta.
+		// The CR UID keys nothing here; only the instance does.
+		KeyConstructor: "internal/operator.statusReporter.capabilities: HikyoInstance UID",
+		ProofGatedAt:   "not proof-gated: public tenant-free /meta capability list; every report is authorized by the server under the CR's own credential",
+	},
 	"parameters.patterns": {
 		// Compiled RE2 programs are pure functions of bounded public pattern
 		// text. Entries contain no values, tenant identifiers or authorization
