@@ -4,7 +4,9 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/mailtest"
 	"github.com/Hikyo-Org/hikyo/internal/runtimeconfig"
@@ -80,6 +82,13 @@ func TestSelfConfigTestMailChargesFivePerPrincipalPerHour(t *testing.T) {
 		}
 		if attempt == 6 && !errors.Is(err, ErrSelfConfigMailLimited) {
 			t.Fatalf("sixth test got %v, want rate refusal", err)
+		}
+		if attempt == 6 {
+			// The hourly window names its own reopening instead of the fixed guess.
+			limited, ok := errors.AsType[*admission.RateLimitedError](err)
+			if !ok || limited.Wait <= 0 || limited.Wait > time.Hour {
+				t.Fatalf("sixth test refusal %v carries no wait within its hourly window", err)
+			}
 		}
 	}
 	if len(sink.Messages()) != 5 {

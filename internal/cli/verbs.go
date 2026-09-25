@@ -560,6 +560,7 @@ target resolution, per dimension, first hit wins:
 exit codes:
   0 success   1 internal   2 usage   3 authentication   4 refused
   5 not found (also unauthorized - indistinguishable by design)   6 unavailable
+  7 rate limited (Retry-After seconds on stderr)
 `
 
 // ---------------------------------------------------------------------------

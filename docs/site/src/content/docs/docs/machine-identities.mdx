@@ -126,6 +126,12 @@ The server revokes the predecessor and inserts the successor in one transaction.
 There is no overlap window in which to verify both. Validate the new formula
 before invoking replacement, then test the successor immediately afterward.
 
+Each federation token presentation is verified before the caller is known, so
+it counts against the per-source-IP allowance of 10 attempts per sliding
+minute. CI jobs sharing one egress address share that allowance; see
+[Rate limits](/docs/cli-reference/#rate-limits) for how to spread calls and
+reuse one export per job.
+
 ## Delete
 
 ```bash

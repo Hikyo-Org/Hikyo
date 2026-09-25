@@ -607,7 +607,7 @@ func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn a
 	if err != nil {
 		return OIDCCallbackResult{}, err
 	}
-	if refused := attempt.refused.err(); refused != nil {
+	if refused := attempt.refusal(); refused != nil {
 		return OIDCCallbackResult{}, refused
 	}
 	return OIDCCallbackResult{Login: attempt.result, Purpose: purposeLogin}, nil
@@ -680,7 +680,7 @@ func (s *Auth) completeLink(ctx context.Context, prov authz.OIDCProvider, txn au
 	if err != nil {
 		return OIDCCallbackResult{}, err
 	}
-	if refused := attempt.refused.err(); refused != nil {
+	if refused := attempt.refusal(); refused != nil {
 		return OIDCCallbackResult{}, refused
 	}
 	return OIDCCallbackResult{Login: attempt.result, Purpose: purposeLink}, nil
@@ -842,7 +842,7 @@ func (s *Auth) completeReauth(ctx context.Context, prov authz.OIDCProvider, txn 
 	if err != nil {
 		return OIDCCallbackResult{}, err
 	}
-	if refused := attempt.refused.err(); refused != nil {
+	if refused := attempt.refusal(); refused != nil {
 		return OIDCCallbackResult{}, refused
 	}
 	return OIDCCallbackResult{Login: attempt.result, Purpose: purposeReauth}, nil

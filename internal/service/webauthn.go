@@ -543,7 +543,7 @@ func (s *Auth) attemptPasskeyLogin(ctx context.Context, responseJSON []byte) (Lo
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if refused := attempt.refused.err(); refused != nil {
+	if refused := attempt.refusal(); refused != nil {
 		return LoginResult{}, refused
 	}
 	return attempt.result, nil
@@ -1008,7 +1008,7 @@ func (s *Auth) finishAssertionElevation(ctx context.Context, presented string, r
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if refused := attempt.refused.err(); refused != nil {
+	if refused := attempt.refusal(); refused != nil {
 		return LoginResult{}, refused
 	}
 	s.Admission.RecordSuccess(account.ID)

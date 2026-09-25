@@ -46,7 +46,7 @@ func (a *API) SamlStart(ctx context.Context, req apigen.SamlStartRequestObject) 
 	if err != nil {
 		switch wireErrorFor(err).code {
 		case apigen.ErrorCodeTooManyRequests:
-			return apigen.SamlStart429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+			return apigen.SamlStart429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		case apigen.ErrorCodeInternal:
 			a.fault(ctx, "saml start", err)
 			return apigen.SamlStart500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
@@ -118,7 +118,7 @@ func (a *API) SamlACS(ctx context.Context, req apigen.SamlACSRequestObject) (api
 		var inner apigen.SamlACSResponseObject
 		switch wireErrorFor(err).code {
 		case apigen.ErrorCodeTooManyRequests:
-			inner = apigen.SamlACS429JSONResponse{TooManyRequestsJSONResponse: tooMany()}
+			inner = apigen.SamlACS429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
 		case apigen.ErrorCodeInternal:
 			a.fault(ctx, "saml acs", err)
 			inner = apigen.SamlACS500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}

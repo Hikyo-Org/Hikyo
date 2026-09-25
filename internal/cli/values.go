@@ -439,7 +439,7 @@ func runValues(ctx context.Context, ios IO, args []string) (returnErr error) {
 			return exportSecretKeyIDs(ctx, client, base, revision)
 		}
 		if artifact.Kind() == AuthKindMachineCredential {
-			out, err = machineExport(ctx, client, base, reveal, revision, parameters)
+			out, err = machineExport(ctx, client, ios.Stderr, base, reveal, revision, parameters)
 			if err != nil {
 				return err
 			}

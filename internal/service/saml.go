@@ -514,7 +514,7 @@ func (s *Auth) SAMLACS(ctx context.Context, slug, encodedResponse, relayState, i
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if refused := attempt.refused.err(); refused != nil {
+	if refused := attempt.refusal(); refused != nil {
 		return LoginResult{}, refused
 	}
 	return attempt.result, nil

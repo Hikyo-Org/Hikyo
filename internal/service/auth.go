@@ -535,7 +535,7 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if refused := committed.refused.err(); refused != nil {
+	if refused := committed.refusal(); refused != nil {
 		return LoginResult{}, refused
 	}
 	return committed.result, nil

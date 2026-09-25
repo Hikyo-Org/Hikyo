@@ -17,7 +17,7 @@ func TestExitForStatusMatchesTheRefusalCodes(t *testing.T) {
 		http.StatusUnprocessableEntity:   ExitRefused,
 		http.StatusUnauthorized:          ExitAuth,
 		http.StatusNotFound:              ExitNotFound,
-		http.StatusTooManyRequests:       ExitUnavailable,
+		http.StatusTooManyRequests:       ExitRateLimited,
 		http.StatusServiceUnavailable:    ExitUnavailable,
 		http.StatusTeapot:                ExitInternal,
 	} {

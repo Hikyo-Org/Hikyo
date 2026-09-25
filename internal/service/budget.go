@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -441,7 +442,15 @@ func (b *Budget) acquireAt(cat budgetCategory, keys budgetKeys, at time.Time) (f
 			}
 		}
 		if len(kept) >= r.limit {
-			return noopBudgetRelease, fmt.Errorf("%w: service: %s rate budget exhausted", admission.ErrOverloaded, cat.name)
+			// The instant is read before b.mu, so concurrent charges may land out
+			// of order. kept is this call's own storage and a refusal publishes
+			// nothing, so sort it here: the hit whose departure admits the next
+			// request is then len(kept)-limit from the oldest.
+			slices.SortFunc(kept, time.Time.Compare)
+			return noopBudgetRelease, &admission.RateLimitedError{
+				Cause: fmt.Errorf("%w: service: %s rate budget exhausted", admission.ErrOverloaded, cat.name),
+				Wait:  kept[len(kept)-r.limit].Add(r.window).Sub(at),
+			}
 		}
 		pending = append(pending, slid{key: key, kept: kept, window: r.window})
 	}
@@ -450,6 +459,8 @@ func (b *Budget) acquireAt(cat budgetCategory, keys budgetKeys, at time.Time) (f
 	for _, c := range cat.concs {
 		key := budgetMapKey(cat.name, c.dim, keys.value(c.dim))
 		if b.inflight[key] >= c.limit {
+			// No window says when a slot frees, so this refusal advertises the
+			// fixed admission.RetryAfter.
 			return noopBudgetRelease, fmt.Errorf("%w: service: %s concurrency budget exhausted", admission.ErrOverloaded, cat.name)
 		}
 	}

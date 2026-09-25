@@ -1,11 +1,16 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -96,7 +101,7 @@ func TestMachineExportRefusesOldServerAndUnexpectedConditionalResponse(t *testin
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, err := machineExport(t.Context(), client, api.PathPrefix+"/orgs/org_test/projects/prj_test/environments/env_test", false, 0, nil)
+			out, err := machineExport(t.Context(), client, io.Discard, api.PathPrefix+"/orgs/org_test/projects/prj_test/environments/env_test", false, 0, nil)
 			if err == nil || len(out.Items) != 0 {
 				t.Fatalf("out=%v err=%v", out, err)
 			}
@@ -105,6 +110,102 @@ func TestMachineExportRefusesOldServerAndUnexpectedConditionalResponse(t *testin
 			}
 			if revision >= 3 && (requests != 1 || !strings.Contains(err.Error(), "unconditional machine export")) {
 				t.Fatalf("requests=%d err=%v", requests, err)
+			}
+		})
+	}
+}
+
+// throttledDelivery answers each /delivery request with the next scripted
+// Retry-After ("" for a 429 without one, "ok" for success) and counts requests.
+func throttledDelivery(t *testing.T, script []string, requests *int) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == api.PathPrefix+"/meta" {
+			_ = json.NewEncoder(w).Encode(apigen.Meta{ServerVersion: "fixture-current", ApiRevision: api.Revision})
+			return
+		}
+		step := script[min(*requests, len(script)-1)]
+		*requests++
+		if step == "ok" {
+			_ = json.NewEncoder(w).Encode(apigen.DeliveryResponse{Revision: 7})
+			return
+		}
+		if step != "" {
+			w.Header().Set("Retry-After", step)
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+		var body apigen.Error
+		body.Error.Code, body.Error.Message = apigen.ErrorCodeTooManyRequests, "too many requests"
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// A throttled export is recognisable without reading prose (#806): it exits
+// with the distinct rate-limited code and prints the server's Retry-After.
+func TestThrottledMachineExportExitsRateLimitedWithRetryAfter(t *testing.T) {
+	requests := 0
+	// 61 s is past the retry ceiling, so the CLI reports rather than sleeps.
+	srv := throttledDelivery(t, []string{"61"}, &requests)
+	_, stateDir := machineState(t, srv.URL)
+	ios, stdout, stderr := composeIO(stateDir, t.TempDir(), "automation-token", nil)
+	code := Run(t.Context(), ios, []string{"values", "export", "--format", "json", "--instance", "local", "--org", "org_one", "--project", "prj_one", "--env", "env_one"})
+	if code != ExitRateLimited {
+		t.Fatalf("exit %d, want %d (rate limited); stderr=%s", code, ExitRateLimited, stderr)
+	}
+	if !strings.Contains(stderr.String(), "Retry-After: 61") {
+		t.Fatalf("stderr does not carry the Retry-After seconds: %q", stderr)
+	}
+	if requests != 1 || stdout.Len() != 0 {
+		t.Fatalf("requests=%d stdout=%q, want one request and no output", requests, stdout)
+	}
+}
+
+func TestMachineExportRetriesThrottledReadWithinItsBound(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		script       []string
+		wantSleeps   []time.Duration
+		wantRequests int
+		wantOK       bool
+	}{
+		{"honours Retry-After then succeeds", []string{"12", "ok"}, []time.Duration{12 * time.Second}, 2, true},
+		{"stops after the retry cap", []string{"5"}, []time.Duration{5 * time.Second, 5 * time.Second}, maxThrottledRetries + 1, false},
+		{"never sleeps past the total ceiling", []string{"40"}, []time.Duration{40 * time.Second}, 2, false},
+		{"a wait beyond the ceiling is not slept", []string{"61"}, nil, 1, false},
+		{"no Retry-After, no retry", []string{""}, nil, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := 0
+			srv := throttledDelivery(t, tc.script, &requests)
+			client, err := NewClient(TrustEntry{Origin: srv.URL}, "machine-test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var slept []time.Duration
+			client.sleep = func(_ context.Context, d time.Duration) error {
+				slept = append(slept, d)
+				return nil
+			}
+			var stderr strings.Builder
+			out, err := machineExport(t.Context(), client, &stderr, api.PathPrefix+"/orgs/org_test/projects/prj_test/environments/env_test", false, 0, nil)
+			if tc.wantOK != (err == nil) || requests != tc.wantRequests || !slices.Equal(slept, tc.wantSleeps) {
+				t.Fatalf("err=%v requests=%d slept=%v, want ok=%v requests=%d slept=%v", err, requests, slept, tc.wantOK, tc.wantRequests, tc.wantSleeps)
+			}
+			if tc.wantOK {
+				if out.Revision != 7 {
+					t.Fatalf("revision %d after retry", out.Revision)
+				}
+				return
+			}
+			var ce *Error
+			if !errors.As(err, &ce) || ce.Code != ExitRateLimited {
+				t.Fatalf("final error %v is not the rate-limited exit", err)
+			}
+			if got := strings.Count(stderr.String(), "retrying in"); got != len(tc.wantSleeps) {
+				t.Fatalf("announced %d retries on stderr, want %d: %q", got, len(tc.wantSleeps), stderr.String())
 			}
 		})
 	}

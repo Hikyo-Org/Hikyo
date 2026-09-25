@@ -60,6 +60,50 @@ func TestBudgetRateWindowSlides(t *testing.T) {
 	}
 }
 
+// A rate refusal carries when its own window admits the subject again (#806),
+// so the export budget's Retry-After is not a guess. Waiting exactly that long
+// is enough; a concurrency refusal has no window and carries no wait.
+func TestBudgetRateRefusalCarriesItsWindowWait(t *testing.T) {
+	c := &clock{t: time.Unix(1_700_000_000, 0)}
+	b := newTestBudget(c)
+	keys := principalKeys("p1", "org1", "proj1")
+	for range BudgetExportRatePerMin {
+		if _, err := b.acquire(budgetExportRate, keys); err != nil {
+			t.Fatal(err)
+		}
+		c.add(7 * time.Second)
+	}
+	_, err := b.acquire(budgetExportRate, keys)
+	limited, ok := errors.AsType[*admission.RateLimitedError](err)
+	if !ok || !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("export rate refusal = %v, want a RateLimitedError that is ErrOverloaded", err)
+	}
+	// Five hits 7 s apart; the oldest leaves 60 s after it, 25 s from now.
+	if limited.Wait != 25*time.Second {
+		t.Fatalf("wait = %s, want 25s", limited.Wait)
+	}
+	c.add(limited.Wait)
+	if _, err := b.acquire(budgetExportRate, keys); err != nil {
+		t.Fatalf("refused after the advertised wait: %v", err)
+	}
+
+	release, err := b.acquire(budgetValuesExport, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	release2, err := b.acquire(budgetValuesExport, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release2()
+	if _, err := b.acquire(budgetValuesExport, keys); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("third concurrent export = %v, want ErrOverloaded", err)
+	} else if _, ok := errors.AsType[*admission.RateLimitedError](err); ok {
+		t.Fatal("a concurrency refusal claimed a window wait it cannot know")
+	}
+}
+
 func TestBudgetConcurrencyReleases(t *testing.T) {
 	c := &clock{t: time.Unix(1_700_000_000, 0)}
 	b := newTestBudget(c)

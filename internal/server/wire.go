@@ -4,14 +4,9 @@ import (
 	"encoding/json"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
-	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
-
-// retryAfterSeconds is what an overloaded instance advertises, in whole
-// seconds, on every pre-auth path alike.
-var retryAfterSeconds = int(admission.RetryAfter.Seconds())
 
 // wireOrg converts a service organisation to its wire shape.
 //

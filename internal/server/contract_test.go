@@ -1024,6 +1024,87 @@ func TestOverloadIsUniformAndCarriesRetryAfter(t *testing.T) {
 	}
 }
 
+// TestPerIPRefusalAdvertisesTheWaitThatReopensItsWindow is #806's wire half: a
+// 429 from the per-IP limiter carries the wait until this source's own window
+// admits it again, not a fixed guess, and after waiting exactly that long (on
+// the limiter's injectable clock) the same limiter does not refuse again. The
+// body stays byte-identical to every other overload refusal.
+func TestPerIPRefusalAdvertisesTheWaitThatReopensItsWindow(t *testing.T) {
+	start := time.Unix(1_800_000_000, 0)
+	now := start
+	limiter, err := admission.New(admission.Config{ArgonMemoryKiB: 64 * 1024, Now: func() time.Time { return now }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const source = "203.0.113.9"
+	for i := range admission.PerIPPerMinute {
+		now = start.Add(time.Duration(i) * 2 * time.Second)
+		release, err := limiter.Enter(t.Context(), source)
+		if err != nil {
+			t.Fatalf("attempt %d refused inside the allowance: %v", i, err)
+		}
+		release()
+	}
+	srv := newTestServer(t, stubAuth{
+		login: func(ctx context.Context, _, _ string, _ service.Artifact) (service.LoginResult, error) {
+			release, err := limiter.Enter(ctx, source)
+			if err != nil {
+				return service.LoginResult{}, err
+			}
+			release()
+			return service.LoginResult{}, domain.ErrUnauthenticated
+		},
+	}, stubOrgs{})
+	login := func() (*http.Response, []byte) {
+		return call(t, srv, http.MethodPost, api.PathPrefix+"/auth/local/login", "",
+			map[string]any{"username": "admin", "password": "whatever at all"})
+	}
+
+	now = start.Add(20*time.Second + 400*time.Millisecond)
+	resp, payload := login()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status %d, want 429", resp.StatusCode)
+	}
+	// The oldest counted attempt (at start) leaves 39.6 s from now: rounded up.
+	retry, err := strconv.Atoi(resp.Header.Get("Retry-After"))
+	if err != nil || retry != 40 {
+		t.Fatalf("Retry-After = %q, want 40 (the oldest attempt's exit, rounded up)", resp.Header.Get("Retry-After"))
+	}
+
+	fixed := newTestServer(t, stubAuth{
+		login: func(context.Context, string, string, service.Artifact) (service.LoginResult, error) {
+			return service.LoginResult{}, admission.ErrOverloaded
+		},
+	}, stubOrgs{})
+	fixedResp, fixedPayload := call(t, fixed, http.MethodPost, api.PathPrefix+"/auth/local/login", "",
+		map[string]any{"username": "admin", "password": "whatever at all"})
+	if !bytes.Equal(payload, fixedPayload) {
+		t.Fatalf("per-IP refusal body %s differs from the uniform overload body %s", payload, fixedPayload)
+	}
+	if got, want := fixedResp.Header.Get("Retry-After"), strconv.Itoa(admission.RetryAfterSeconds(admission.RetryAfter)); got != want {
+		t.Fatalf("instance-wide overload Retry-After = %q, want the fixed %s", got, want)
+	}
+
+	now = now.Add(time.Duration(retry) * time.Second)
+	if resp, payload := login(); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("after waiting the advertised %ds: status %d (%s), want the limiter to admit", retry, resp.StatusCode, payload)
+	}
+}
+
+// The typed 429 responses (discovery, passkey, OIDC, SAML) render the same
+// derived wait as the generic error writer.
+func TestTypedTooManyResponsesCarryTheWindowWait(t *testing.T) {
+	srv := newTestServer(t, stubAuth{
+		passkeyStart: func(context.Context) ([]byte, error) {
+			return nil, &admission.RateLimitedError{Cause: admission.ErrOverloaded, Wait: 42300 * time.Millisecond}
+		},
+	}, stubOrgs{})
+	resp, _ := call(t, srv, http.MethodPost, api.PathPrefix+"/auth/webauthn/login/start", "", nil)
+	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") != "43" {
+		t.Fatalf("status %d, Retry-After %q; want 429 with 43", resp.StatusCode, resp.Header.Get("Retry-After"))
+	}
+}
+
 func TestHealthProbesSitOutsideTheAPIStack(t *testing.T) {
 	// A liveness probe refused by the admission budget would turn a login
 	// flood into a restart loop, so the probes must not carry the API

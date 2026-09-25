@@ -37,10 +37,15 @@ const (
 	// by design: unauthorized ≡ nonexistent holds on the CLI exactly as it
 	// does on the wire.
 	ExitNotFound = 5
-	// ExitUnavailable is the server or transport being unreachable — including
-	// admission overload, which is a temporary unavailability rather than a
-	// refusal of this particular request.
+	// ExitUnavailable is the server or transport being unreachable, or the
+	// server failing (5xx).
 	ExitUnavailable = 6
+	// ExitRateLimited is the server throttling this caller (429): it is up and
+	// answering, and asks the caller to come back later. The Retry-After
+	// seconds, when the server sent them, are printed on stderr. Split from
+	// ExitUnavailable by declared amendment (#806) so a script can tell
+	// throttling from an outage without matching message text.
+	ExitRateLimited = 7
 )
 
 // 126 and 127 are the ONLY exits outside the closed set above, and they are

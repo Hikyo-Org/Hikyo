@@ -665,9 +665,13 @@ func loadLocalKeys(stateDir string) (*crypto.LocalKeys, error) {
 // small pure helpers
 // ---------------------------------------------------------------------------
 
+// isUnavailable decides whether a failed fetch may fall back to offline serve.
+// A throttled fetch qualifies exactly as it did before throttling had its own
+// exit code (#806): the server cannot serve this box right now, which is the
+// case the opt-in stale serve exists for.
 func isUnavailable(err error) bool {
 	var ce *Error
-	return asCLIError(err, &ce) && ce.Code == ExitUnavailable
+	return asCLIError(err, &ce) && (ce.Code == ExitUnavailable || ce.Code == ExitRateLimited)
 }
 
 func allTargetKeyIDs(cfg *compose.Config) []string {

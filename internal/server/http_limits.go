@@ -27,6 +27,8 @@ func boundPublicRequests(next http.Handler) http.Handler {
 			defer func() { <-slots }()
 			next.ServeHTTP(w, r)
 		default:
+			// An in-flight cap has no window that says when a slot frees, so
+			// this refusal carries the fixed admission.RetryAfter hint.
 			writeError(w, wirePolicyForCode(apigen.ErrorCodeTooManyRequests), "")
 		}
 	})

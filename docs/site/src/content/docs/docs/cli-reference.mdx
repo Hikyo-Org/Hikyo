@@ -222,8 +222,37 @@ stdout and an error exits 4. See [Docker Compose delivery](/docs/compose/).
 | `4` | Refused | Satisfy the named safety or policy condition. |
 | `5` | Not found or unauthorized | Check target and authorization. |
 | `6` | Unavailable | Retry only after checking service health. |
+| `7` | Rate limited | Wait the `Retry-After` seconds printed on stderr, then retry. |
 
-Code `5` deliberately combines missing and unauthorized resources.
+Code `5` deliberately combines missing and unauthorized resources. Code `7`
+means the server is up and throttling this caller; before it existed a
+throttled call exited `6`.
+
+## Rate limits
+
+A throttled request answers `429` with a `Retry-After` header naming the whole
+seconds until the refusing limit admits the caller again, absent new traffic.
+The CLI exits `7` and prints the value on stderr, for example
+`hikyo: too many requests; Retry-After: 23`.
+
+Machine `values export` reads are idempotent, so the CLI re-sends a throttled
+one after the advertised wait, at most twice and never waiting more than 60
+seconds in total. A longer wait is reported at once instead of slept.
+
+Paths that verify a presented credential with expensive work (password login,
+recovery, and OIDC federation tokens presented by CI jobs and workloads) share
+a per-source-IP allowance of **10 attempts per sliding minute**. The discovery
+endpoint the CLI calls before each command has its own 60 per minute. The
+delivery read behind a machine `values export` shares 300 per minute per
+organization; a human export is limited to 5 per minute. Every CI job behind
+one runner egress address draws on the same per-IP allowance. On shared egress:
+
+- run `values export` once per job and reuse its output for every later step,
+  rather than exporting per step or per service;
+- spread parallel jobs that authenticate with federation tokens over time, or
+  give runners distinct egress addresses;
+- branch on exit `7` and honour `Retry-After` rather than retrying on a fixed
+  short interval, which only renews the window.
 
 ## Import and migration
 

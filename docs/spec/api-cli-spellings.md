@@ -221,7 +221,8 @@ MUST be tmpfs-backed on Linux (`compose.IsTmpfs`) or `render` refuses; an
 ### Exit codes
 
 The closed set (0 ok, 1 internal, 2 usage, 3 auth, 4 refused, 5 not-found,
-6 unavailable) applies, plus the two child-side codes that `run` alone uses and
+6 unavailable, 7 rate-limited per the #806 amendment of the api-cli-surface
+ADR) applies, plus the two child-side codes that `run` alone uses and
 that are **not** hikyo's own:
 
 | Code | Meaning |
@@ -237,7 +238,8 @@ Notable mappings: a machine credential missing → **3**; the human-session
 refusal → **3**; all-or-nothing over undeliverable secrets, loader-control
 refusal, merge collision, ARG_MAX overage, an offline-serve refusal (snapshot
 expired / rolled back / undecryptable), and a `compose` lock held by another
-process → **4**; a transport/5xx fetch failure → **6**; a snapshot save failure
+process → **4**; a transport/5xx fetch failure → **6**; a throttled (429)
+fetch → **7**, which opt-in offline serve treats exactly like **6**; a snapshot save failure
 (a silent stale fallback is forbidden) → **1**.
 
 ### Stderr strings that are stable surface

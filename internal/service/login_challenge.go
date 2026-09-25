@@ -498,7 +498,7 @@ func (s *Auth) LoginChallengeWebauthnFinish(ctx context.Context, challengeID str
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if refused := attempt.refused.err(); refused != nil {
+	if refused := attempt.refusal(); refused != nil {
 		return LoginResult{}, refused
 	}
 	s.Admission.RecordSuccess(account.ID)

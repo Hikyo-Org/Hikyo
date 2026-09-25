@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -11,19 +12,13 @@ import (
 
 // Machine exports share delivery's live authority and durable pin selection.
 // The human historical-export endpoint must remain unavailable to machines.
-func machineExport(ctx context.Context, client *Client, base string, reveal bool, revision int64, parameters map[string]string) (apigen.ExportedValues, error) {
+//
+// Both requests are idempotent reads, so a throttled one is re-sent once the
+// server's Retry-After has passed, within the client's bounded retry (#806).
+func machineExport(ctx context.Context, client *Client, stderr io.Writer, base string, reveal bool, revision int64, parameters map[string]string) (apigen.ExportedValues, error) {
 	out := apigen.ExportedValues{Items: []apigen.ExportedValue{}}
 	if revision != 0 {
 		return out, failf(ExitRefused, "machine values export does not accept --revision; delivery selects the authorized current or pinned snapshot")
-	}
-	meta, err := client.Meta(ctx)
-	if err != nil {
-		return out, err
-	}
-	// Revision 3 introduced delivery's selected snapshot revision. An older
-	// response would otherwise silently become an export of revision zero.
-	if meta.ApiRevision < 3 {
-		return out, failf(ExitRefused, "this instance is running %s (API revision %d); machine values export needs revision 3. Upgrade the server.", meta.ServerVersion, meta.ApiRevision)
 	}
 	query := url.Values{}
 	if !reveal {
@@ -41,7 +36,19 @@ func machineExport(ctx context.Context, client *Client, base string, reveal bool
 		path += "?" + query.Encode()
 	}
 	var fetched apigen.DeliveryResponse
-	if err := client.Do(ctx, http.MethodGet, path, nil, &fetched); err != nil {
+	err := client.retryThrottled(ctx, stderr, func() error {
+		meta, err := client.Meta(ctx)
+		if err != nil {
+			return err
+		}
+		// Revision 3 introduced delivery's selected snapshot revision. An older
+		// response would otherwise silently become an export of revision zero.
+		if meta.ApiRevision < 3 {
+			return failf(ExitRefused, "this instance is running %s (API revision %d); machine values export needs revision 3. Upgrade the server.", meta.ServerVersion, meta.ApiRevision)
+		}
+		return client.Do(ctx, http.MethodGet, path, nil, &fetched)
+	})
+	if err != nil {
 		return out, err
 	}
 	if fetched.Current {
