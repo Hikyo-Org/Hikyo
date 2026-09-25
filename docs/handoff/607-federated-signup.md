@@ -245,3 +245,14 @@ HIKYO_E2E_PORT=46071 HIKYO_E2E_PORT_B=46072 HIKYO_E2E_PORT_TLS=46073 \
 # and --project=mobile; the password step touches members, shell, workspace
 # and instance-admin specs too.
 ```
+
+## CI: internal/lint left out of the race shards
+
+`race shard (0)` failed on this branch with a `DATA RACE` inside Go 1.27's
+`go/types` (`Named.unpack` against `isComplete`), raised while `internal/lint`
+type-checks the repository through `x/tools/go/packages` under the detector.
+Upstream: golang/go#81138, open. The planner
+(`scripts/ci/analysis-shards-go`) now excludes `internal/lint` from the race
+plan beside the isolation suite; the package still runs in `test_core`. Put it
+back once the pinned toolchain carries the fix.
+
