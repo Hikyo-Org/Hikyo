@@ -4386,16 +4386,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/OidcStartResult"
         # Every expected start refusal (unknown or disabled slug, bad purpose,
-        # policy-less or environment-less reauth, unauthenticated link/reauth,
-        # and a missing body) collapses to one uniform 401 so a pre-auth prober
-        # cannot enumerate provider config. 429/500 are the cross-cutting
-        # admission and fault responses. The one exception is a request-shape
-        # refusal that depends on nothing but the body: `environment_id` on a
-        # purpose other than `reauth` is a 400 naming the field. A `reauth`
-        # on a provider row with no assurance policy is refused by name (409,
-        # the remedy in `detail`) before any round-trip (#588 d4): the caller
-        # has already authenticated a session through that very provider, so
-        # naming the row's policy state discloses nothing to a prober.
+        # environment-less reauth, unauthenticated link/reauth, and a missing
+        # body) collapses to one uniform 401 so a pre-auth prober cannot
+        # enumerate provider config. 429/500 are the cross-cutting admission
+        # and fault responses. There are two exceptions. First, a
+        # request-shape refusal that depends on nothing but the body:
+        # `environment_id` on a purpose other than `reauth` is a 400 naming
+        # the field. Second, a `reauth` on a provider row with no assurance
+        # policy is refused by name (409, the remedy in `detail`) before any
+        # round-trip (#588 d4): the caller has already authenticated a session
+        # through that very provider, so naming the row's policy state
+        # discloses nothing to a prober.
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":

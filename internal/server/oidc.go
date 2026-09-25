@@ -125,12 +125,12 @@ func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) 
 // policy-less reauth as 409. Other expected refusals become uniform 401 or
 // shared 429 responses; unexpected faults become 500.
 func oidcStartError(a *API, ctx context.Context, err error) apigen.OidcStartResponseObject {
-	// Every expected start refusal collapses to one uniform 401 body: an
-	// unknown or disabled slug, a bad purpose, and a reauth against a
-	// policy-less provider or with no environment all look identical to an
-	// unauthenticated link/reauth, so a pre-auth prober cannot enumerate
-	// provider config by status (the timing is uniform too — login admission
-	// runs before provider resolution in the service).
+	// Every other expected start refusal collapses to one uniform 401 body:
+	// an unknown or disabled slug, a bad purpose, and a reauth with no
+	// environment all look identical to an unauthenticated link/reauth, so
+	// a pre-auth prober cannot enumerate provider config by status (the
+	// timing is uniform too — login admission runs before provider
+	// resolution in the service).
 	if errors.Is(err, service.ErrEnvironmentNotForPurpose) {
 		return apigen.OidcStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "environment_id is only valid with purpose reauth"))}
 	}
