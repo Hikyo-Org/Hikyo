@@ -73,6 +73,16 @@ describe('scopeOf', () => {
     expect(scope[1]?.origins).toEqual([]);
   });
 
+  it('carries the origins of a report-delivery-status row that reaches alone', () => {
+    const manual = { kind: 'manual', subject: 'usr_admin' };
+    const scope = scopeOf(
+      [{ ...grant('mp_a', 'report-delivery-status', { environment_id: 'env_prod' }), origins: [manual] }],
+      'mp_a',
+      ENVS,
+    );
+    expect(scope[1]).toMatchObject({ read: false, report: true, origins: [manual] });
+  });
+
   it('lets a project-scoped grant reach every environment beneath it', () => {
     // The ordinary downward inheritance. A listing confined to one project has
     // no wider row, so an absent environment_id can only mean project scope.

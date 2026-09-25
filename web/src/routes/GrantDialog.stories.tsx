@@ -199,6 +199,11 @@ export const ReportAfterTheFact: Story = {
   play: async ({ canvas }) => {
     await expect(await canvas.findByLabelText('Capability')).toHaveValue('report-delivery-status');
     await expect(canvas.getByText(/this grant makes nothing\s+reachable/i)).toBeVisible();
+    // The report atom's authority is org or instance manage-members, not the
+    // environment-scope formula read and reveal carry.
+    await expect(
+      canvas.getByText(/^manage-members at organisation or instance scope/),
+    ).toBeVisible();
     await expect(
       canvas.getByRole('button', { name: 'Grant report-delivery-status' }),
     ).toBeEnabled();

@@ -2414,11 +2414,12 @@ export function GrantDialog({
   onClose: () => void;
   onGranted: (environment: string, results: readonly GrantResult[]) => void;
 }) {
-  const support = useReportingSupport();
   const reportCandidate =
     mayGrantReporting &&
     account.kind === 'workload' &&
     grantableFor(scope, 'report-delivery-status', machineReveal).length > 0;
+  // `/meta` is read only where the atom could be offered at all.
+  const support = useReportingSupport(reportCandidate);
   const reportGrantable = support === 'supported' && reportCandidate;
   const grantable =
     grantableFor(scope, 'read', machineReveal).length > 0 ||
@@ -2428,6 +2429,12 @@ export function GrantDialog({
   // while the mutation lives in GrantBody, a ref, because the gate needs the
   // truth at event time, not a render.
   const inFlight = useRef(false);
+  // The same latch as render state: a landing grant refreshes the scope before
+  // the submission settles, and a grant that took the last grantable option
+  // must not swap GrantBody (and its navigation guard) for a bare Close while
+  // the request is still in flight.
+  const [submitting, setSubmitting] = useState(false);
+  const showBody = grantable || submitting;
 
   return (
     <Dialog
@@ -2443,16 +2450,16 @@ export function GrantDialog({
       // nothing to widen, so that branch would otherwise leave Escape as the
       // only way out. Nothing to reorder: Close is the only button.
       actions={
-        grantable ? undefined : (
+        showBody ? undefined : (
           <Button type="button" onClick={onClose}>
             Close
           </Button>
         )
       }
     >
-      {!grantable && reportCandidate && support === 'pending' ? (
+      {!showBody && reportCandidate && support === 'pending' ? (
         <p role="status">Checking whether this server accepts delivery-target reports…</p>
-      ) : !grantable ? (
+      ) : !showBody ? (
         <p role="status">
           {machineReveal
             ? 'This account already reads and reveals every environment in the project. There is nothing to widen.'
@@ -2467,6 +2474,7 @@ export function GrantDialog({
           reportGrantable={reportGrantable}
           liveCredentials={liveCredentials}
           inFlightRef={inFlight}
+          onSubmitting={setSubmitting}
           onClose={onClose}
           onGranted={onGranted}
         />
@@ -2489,6 +2497,7 @@ function GrantBody({
   reportGrantable,
   liveCredentials,
   inFlightRef,
+  onSubmitting,
   onClose,
   onGranted,
 }: {
@@ -2501,6 +2510,8 @@ function GrantBody({
   liveCredentials: number;
   /** GrantDialog's Escape gate, held while the mutation is in flight. */
   inFlightRef: MutableRefObject<boolean>;
+  /** GrantDialog keeps this body mounted while a submission is in flight. */
+  onSubmitting: (submitting: boolean) => void;
   onClose: () => void;
   onGranted: (environment: string, results: readonly GrantResult[]) => void;
 }) {
@@ -2582,6 +2593,7 @@ function GrantBody({
   const submit = async () => {
     setBusy(true);
     inFlightRef.current = true;
+    onSubmitting(true);
     setFailure(null);
     // Issued-vs-nothing-happened, the mint's line: once the request leaves, a
     // failure does not mean the widening did not land, and a widening that
@@ -2616,6 +2628,7 @@ function GrantBody({
       }
     } finally {
       inFlightRef.current = false;
+      onSubmitting(false);
       setBusy(false);
     }
   };
@@ -2696,13 +2709,22 @@ function GrantBody({
           ⚿
         </span>
         <span>
-          <strong>The formula.</strong> manage-identities on this project, manage-members over the
-          environment, and a disclosure capability over every environment this grant NEWLY lets the
-          account decrypt, the delta, not the whole post-state, because that is what the grant
-          adds.{' '}
-          {widening.length === 0
-            ? 'This grant newly decrypts nothing, so the disclosure conjunct is vacuous and no reauthentication is required.'
-            : `It newly decrypts ${widening.map((w) => w.name).join(', ')}, so each takes its own passkey reauthentication before the grant lands.`}
+          <strong>The formula.</strong>{' '}
+          {reporting ? (
+            'manage-members at organisation or instance scope: no human holds report-delivery-status, so every grant of it is an unheld grant, which a project- or environment-scope member manager may not make. It decrypts nothing, so there is no disclosure conjunct and no reauthentication.'
+          ) : (
+            <>
+              manage-identities on this project, manage-members over the environment, and a
+              disclosure capability over every environment this grant NEWLY lets the account
+              decrypt, the delta, not the whole post-state, because that is what the grant adds.{' '}
+              {widening.length === 0
+                ? 'This grant newly decrypts nothing, so the disclosure conjunct is vacuous and no reauthentication is required.'
+                : `It newly decrypts ${widening.map((w) => w.name).join(', ')}, so each takes its own passkey reauthentication before the grant lands.`}
+              {withReport
+                ? ' report-delivery-status additionally takes manage-members at organisation or instance scope: no human holds it, so it is always an unheld grant.'
+                : ''}
+            </>
+          )}
         </span>
       </p>
 

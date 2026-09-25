@@ -420,7 +420,11 @@ export function scopeOf(
         (g.scope.environment_id === undefined || g.scope.environment_id === environment),
     );
   return environments.map((env) => {
-    const rows = [...reaching('read', env.id), ...reaching('reveal', env.id)];
+    const rows = [
+      ...reaching('read', env.id),
+      ...reaching('reveal', env.id),
+      ...reaching('report-delivery-status', env.id),
+    ];
     const origins = new Map(
       rows.flatMap((g) => g.origins.map((origin) => [`${origin.kind}:${origin.subject}`, origin])),
     );

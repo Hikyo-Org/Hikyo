@@ -75,10 +75,12 @@ export function reportingSupport(capabilities: readonly string[]): 'supported' |
 
 /**
  * useReportingSupport reads `/meta` once for every consumer (one query key):
- * the Kubernetes tab's listings and the grant dialog's report checkbox.
+ * the Kubernetes tab's listings and the grant dialog's report checkbox. A
+ * disabled caller issues no request and reads `pending`.
  */
-export function useReportingSupport(): ReportingSupport {
+export function useReportingSupport(enabled = true): ReportingSupport {
   const meta = useQuery({
+    enabled,
     queryKey: ['meta', 'protocol-capabilities'] as const,
     queryFn: async () =>
       (await parsedPick(getMetaOp, {}, { protocol_capabilities: true })).protocol_capabilities,
