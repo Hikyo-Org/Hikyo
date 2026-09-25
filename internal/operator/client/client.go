@@ -9,6 +9,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -21,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/freetext"
 )
 
@@ -248,11 +250,7 @@ func (c *Client) Fetch(ctx context.Context, r FetchRequest) (*DeliveryResponse, 
 	// socket goroutines after the response body closes, instead of retaining
 	// one transport per CR on every resync indefinitely.
 	defer c.http.CloseIdleConnections()
-	endpoint := c.origin + pathPrefix +
-		"/orgs/" + url.PathEscape(r.Org) +
-		"/projects/" + url.PathEscape(r.Project) +
-		"/environments/" + url.PathEscape(r.Environment) +
-		"/delivery"
+	endpoint := c.environmentURL(r.Org, r.Project, r.Environment) + "/delivery"
 
 	q := url.Values{}
 	if r.Cursor != "" {
@@ -351,4 +349,86 @@ func (c *Client) Fetch(ctx context.Context, r FetchRequest) (*DeliveryResponse, 
 		// is case 2).
 		return nil, OutcomeFetchFailed, fmt.Errorf("operator client: unexpected status %d treated as fetch-failed", resp.StatusCode)
 	}
+}
+
+// environmentURL is the environment-scoped route prefix on the bound origin.
+func (c *Client) environmentURL(org, project, environment string) string {
+	return c.origin + pathPrefix +
+		"/orgs/" + url.PathEscape(org) +
+		"/projects/" + url.PathEscape(project) +
+		"/environments/" + url.PathEscape(environment)
+}
+
+// Capabilities reads the unauthenticated `/meta` protocol capabilities
+// (k8s-condition-reporting ADR D10). Only that member is decoded; a response
+// without it is an error, never an empty capability set.
+func (c *Client) Capabilities(ctx context.Context) ([]string, error) {
+	defer c.http.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.origin+pathPrefix+"/meta", nil)
+	if err != nil {
+		return nil, fmt.Errorf("operator client: build meta request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("operator client: meta: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("operator client: meta answered status %d", resp.StatusCode)
+	}
+	payload, err := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	if err != nil {
+		return nil, fmt.Errorf("operator client: read meta body: %w", err)
+	}
+	var meta struct {
+		ProtocolCapabilities *[]string `json:"protocol_capabilities"`
+	}
+	if err := json.Unmarshal(payload, &meta); err != nil {
+		return nil, fmt.Errorf("operator client: decode meta response: %w", err)
+	}
+	if meta.ProtocolCapabilities == nil {
+		return nil, errors.New("operator client: meta response missing required member: protocol_capabilities")
+	}
+	return *meta.ProtocolCapabilities, nil
+}
+
+// Report sends one delivery-target report (ADR D4) under the CR's own
+// credential and returns the answered status. The caller classifies it.
+func (c *Client) Report(ctx context.Context, org, project, environment, bearer string, body apigen.DeliveryTargetReportRequest) (int, error) {
+	return c.post(ctx, c.environmentURL(org, project, environment)+"/delivery-targets", bearer, body)
+}
+
+// Tombstone removes the caller's row for one deleted target (ADR D6).
+func (c *Client) Tombstone(ctx context.Context, org, project, environment, bearer string, body apigen.DeliveryTargetTombstoneRequest) (int, error) {
+	return c.post(ctx, c.environmentURL(org, project, environment)+"/delivery-targets/tombstone", bearer, body)
+}
+
+// post sends one JSON body and returns the status. The response body is
+// drained and never relayed: nothing the server answers reaches an Event.
+func (c *Client) post(ctx context.Context, endpoint, bearer string, body any) (int, error) {
+	defer c.http.CloseIdleConnections()
+	if bearer == "" {
+		return 0, errors.New("operator client: refusing to report without a credential")
+	}
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return 0, fmt.Errorf("operator client: encode report: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(raw))
+	if err != nil {
+		return 0, fmt.Errorf("operator client: build report request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+	req.Header.Set("Authorization", "Bearer "+bearer)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("operator client: report: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 16<<10))
+	return resp.StatusCode, nil
 }

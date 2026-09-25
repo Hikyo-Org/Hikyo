@@ -165,6 +165,12 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
   {{- if not (hasKey .Values.operator "triggerRollouts") -}}
     {{- fail "operator.triggerRollouts is required" -}}
   {{- end -}}
+  {{- if not (hasKey .Values.operator "statusReporting") -}}
+    {{- fail "operator.statusReporting is required" -}}
+  {{- end -}}
+  {{- if not (kindIs "bool" .Values.operator.statusReporting) -}}
+    {{- fail "operator.statusReporting must be a boolean" -}}
+  {{- end -}}
   {{- if not (hasKey .Values.operator "designatedServiceAccounts") -}}
     {{- fail "operator.designatedServiceAccounts is required" -}}
   {{- end -}}
@@ -201,6 +207,27 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | quote }}
     {{- fail "operator.leaderElection must be true" -}}
   {{- end -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+hikyo.operator.clusterReads is the cluster-scoped read rule set of the operator
+ClusterRole in both authority modes. Status reporting adds `get` on exactly the
+kube-system Namespace, whose UID is the reported cluster id.
+*/}}
+{{- define "hikyo.operator.clusterReads" -}}
+- apiGroups: ["hikyo.dev"]
+  resources: ["hikyoinstances"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apiextensions.k8s.io"]
+  resources: ["customresourcedefinitions"]
+  resourceNames: ["hikyoinstances.hikyo.dev", "hikyosecrets.hikyo.dev"]
+  verbs: ["get"]
+{{- if .Values.operator.statusReporting }}
+- apiGroups: [""]
+  resources: ["namespaces"]
+  resourceNames: ["kube-system"]
+  verbs: ["get"]
+{{- end }}
 {{- end -}}
 
 {{/*

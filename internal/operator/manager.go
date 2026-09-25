@@ -22,6 +22,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
@@ -67,7 +68,7 @@ func Run(ctx context.Context, log *slog.Logger) error {
 		return fmt.Errorf("operator: build clientset for token minting: %w", err)
 	}
 
-	if err := (&HikyoSecretReconciler{
+	reconciler := &HikyoSecretReconciler{
 		Client:          mgr.GetClient(),
 		Reader:          mgr.GetAPIReader(), // uncached: Secret/SA reads, post-write verify, stamp root
 		Scheme:          mgr.GetScheme(),
@@ -76,13 +77,30 @@ func Run(ctx context.Context, log *slog.Logger) error {
 		Log:             log,
 		NewClientForURL: nil, // nil ⇒ default HTTPS client; tests inject a stub
 		TokenMinter:     clientsetMinter{cs: cs},
-	}).SetupWithManager(mgr); err != nil {
+	}
+	if cfg.StatusReporting {
+		switch {
+		case !deliverytarget.IsSemVer(Version):
+			// The report's reporter version is SemVer by contract, so an
+			// unversioned build cannot report. Say so loudly and run on.
+			log.Error("status reporting disabled: this build's version is not SemVer 2.0; build with -X main.version or set operator.statusReporting=false",
+				"version", Version)
+		default:
+			// The uncached reader serves before the manager starts.
+			rep, err := newStatusReporter(ctx, mgr.GetAPIReader(), Version)
+			if err != nil {
+				return fmt.Errorf("operator: status reporting: %w", err)
+			}
+			reconciler.reporter = rep
+		}
+	}
+	if err := reconciler.SetupWithManager(mgr); err != nil {
 		return err
 	}
 
 	log.Info("hikyo operator starting",
 		"namespaces", cfg.Namespaces, "triggerRollouts", cfg.TriggerRollouts, "nativeSecretTypes", cfg.NativeSecretTypes,
-		"ownNamespace", cfg.OwnNamespace, "version", Version)
+		"statusReporting", reconciler.reporter != nil, "ownNamespace", cfg.OwnNamespace, "version", Version)
 	if err := mgr.Start(ctx); err != nil {
 		return fmt.Errorf("operator: manager exited: %w", err)
 	}

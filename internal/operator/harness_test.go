@@ -1,13 +1,18 @@
 package operator
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -26,6 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
+	"github.com/Hikyo-Org/hikyo/api/apigen"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 	opclient "github.com/Hikyo-Org/hikyo/internal/operator/client"
 )
@@ -39,8 +45,17 @@ const (
 
 var testClock = time.Date(2026, 8, 19, 12, 0, 0, 0, time.UTC)
 
+const (
+	testClusterID       = "0b3c1f6e-2d4a-4e8b-9c7d-5a6b7c8d9e0f"
+	testReporterVersion = "0.0.0-test"
+	advertisingMeta     = `{"server_version":"0.0.0-test","api_revision":5,"protocol_capabilities":["local-password","delivery-target-report/1"]}`
+	oldServerMeta       = `{"server_version":"0.0.0-test","api_revision":4,"protocol_capabilities":["local-password"]}`
+)
+
 // deliveryStub is a programmable Hikyo delivery server. Tests set status/json
 // before each reconcile and read back the query params the operator sent.
+// It also serves `/meta` and the delivery-target report and tombstone routes;
+// requests counts delivery fetches only.
 type deliveryStub struct {
 	mu             sync.Mutex
 	status         int
@@ -49,6 +64,31 @@ type deliveryStub struct {
 	lastAck        string
 	lastProjection string
 	requests       int
+	bearers        []string
+
+	meta         string
+	metaRequests int
+	// reportStatus answers a report; nil answers 204.
+	reportStatus  func(body apigen.DeliveryTargetReportRequest) int
+	reportDelay   time.Duration
+	reports       [][]byte
+	reportBearers []string
+	tombstones    [][]byte
+	// events records "report" and "tombstone" receipts in order, beside any
+	// test-recorded writes, under the same lock.
+	events []string
+}
+
+func (s *deliveryStub) record(event string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, event)
+}
+
+func (s *deliveryStub) reportBodies() [][]byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.reports)
 }
 
 func (s *deliveryStub) set(status int, json string) {
@@ -58,9 +98,21 @@ func (s *deliveryStub) set(status int, json string) {
 }
 
 func (s *deliveryStub) handler(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case strings.HasSuffix(r.URL.Path, "/meta"):
+		s.serveMeta(w)
+		return
+	case strings.HasSuffix(r.URL.Path, "/delivery-targets/tombstone"):
+		s.serveTombstone(w, r)
+		return
+	case strings.HasSuffix(r.URL.Path, "/delivery-targets"):
+		s.serveReport(w, r)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.requests++
+	s.bearers = append(s.bearers, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 	q := r.URL.Query()
 	s.lastCursor = q.Get("cursor")
 	s.lastAck = q.Get("acknowledged_keys")
@@ -76,6 +128,53 @@ func (s *deliveryStub) handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *deliveryStub) serveMeta(w http.ResponseWriter) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.metaRequests++
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = io.WriteString(w, s.meta)
+}
+
+func (s *deliveryStub) serveReport(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	s.mu.Lock()
+	delay, statusFor := s.reportDelay, s.reportStatus
+	s.reports = append(s.reports, body)
+	s.reportBearers = append(s.reportBearers, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	s.events = append(s.events, "report")
+	s.mu.Unlock()
+	if delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-r.Context().Done():
+			return
+		}
+	}
+	status := http.StatusNoContent
+	if statusFor != nil {
+		var decoded apigen.DeliveryTargetReportRequest
+		if json.Unmarshal(body, &decoded) == nil {
+			status = statusFor(decoded)
+		}
+	}
+	w.WriteHeader(status)
+}
+
+func (s *deliveryStub) serveTombstone(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.tombstones = append(s.tombstones, body)
+	s.reportBearers = append(s.reportBearers, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+	s.events = append(s.events, "tombstone")
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func serverCAPEM(t *testing.T, srv *httptest.Server) []byte {
 	t.Helper()
 	c := srv.Certificate()
@@ -88,9 +187,11 @@ type stubMinter struct {
 	token string
 	err   error
 	last  struct{ ns, sa, audience string }
+	calls int
 }
 
 func (m *stubMinter) Mint(_ context.Context, ns, sa, audience string) (string, error) {
+	m.calls++
 	m.last.ns, m.last.sa, m.last.audience = ns, sa, audience
 	if m.err != nil {
 		return "", m.err
@@ -109,6 +210,12 @@ type harness struct {
 	recorder *record.FakeRecorder
 	events   chan string
 	minter   *stubMinter
+	// clock is the reconciler's time; tests advance it for heartbeats.
+	clock time.Time
+	// denied collects, after every reconcile, the strings no report may carry:
+	// condition messages, mapped key names, cursor, binding, stamp, managed
+	// Secret UID and the bearer credentials the stub saw.
+	denied map[string]bool
 }
 
 func testScheme(t *testing.T) *runtime.Scheme {
@@ -128,7 +235,7 @@ func testScheme(t *testing.T) *runtime.Scheme {
 func newHarness(t *testing.T, interceptors interceptor.Funcs, objs ...client.Object) *harness {
 	t.Helper()
 	sch := testScheme(t)
-	stub := &deliveryStub{}
+	stub := &deliveryStub{meta: advertisingMeta}
 	srv := httptest.NewTLSServer(http.HandlerFunc(stub.handler))
 	t.Cleanup(srv.Close)
 	ca := serverCAPEM(t, srv)
@@ -159,16 +266,88 @@ func newHarness(t *testing.T, interceptors interceptor.Funcs, objs ...client.Obj
 			return opclient.NewClient(srv.URL, ca, "hikyo-operator/test")
 		},
 		TokenMinter: minter,
-		now:         func() time.Time { return testClock },
+		// Reporting is on across the whole suite, so every scenario's reports
+		// pass the value-free check below.
+		reporter: newReporterState(testClusterID, testReporterVersion),
 	}
-	return &harness{t: t, scheme: sch, cl: cl, r: r, stub: stub, server: srv, recorder: rec, events: rec.Events, minter: minter}
+	h := &harness{t: t, scheme: sch, cl: cl, r: r, stub: stub, server: srv, recorder: rec, events: rec.Events, minter: minter,
+		clock: testClock, denied: map[string]bool{}}
+	r.now = func() time.Time { return h.clock }
+	t.Cleanup(h.requireValueFreeReports)
+	return h
 }
 
 func (h *harness) reconcile(name string) (ctrl.Result, error) {
 	h.t.Helper()
-	return h.r.Reconcile(context.Background(), ctrl.Request{
+	res, err := h.r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Namespace: testNS, Name: name},
 	})
+	h.collectDenied(name)
+	return res, err
+}
+
+// collectDenied records every string of the CR's status and mapping, and every
+// credential presented so far, that a report must never carry.
+func (h *harness) collectDenied(name string) {
+	var cr hikyov1.HikyoSecret
+	if err := h.cl.Get(context.Background(), types.NamespacedName{Namespace: testNS, Name: name}, &cr); err == nil {
+		for _, c := range cr.Status.Conditions {
+			h.denied[c.Message] = true
+		}
+		for _, m := range cr.Spec.Mapping {
+			// Quoted: a key name must never appear as a JSON string.
+			h.denied[strconv.Quote(string(m.Key))] = true
+			h.denied[strconv.Quote(m.EffectiveSecretKey())] = true
+		}
+		for _, v := range []string{cr.Status.Cursor, cr.Status.CursorBinding, cr.Status.Stamp, cr.Status.ManagedSecretUID} {
+			h.denied[v] = true
+		}
+	}
+	h.stub.mu.Lock()
+	defer h.stub.mu.Unlock()
+	for _, b := range slices.Concat(h.stub.bearers, h.stub.reportBearers) {
+		h.denied[b] = true
+	}
+}
+
+// requireValueFreeReports fails the test if any report or tombstone body sent
+// during it is not the closed contract shape, or carries a denied string.
+func (h *harness) requireValueFreeReports() {
+	h.stub.mu.Lock()
+	reports, tombstones := slices.Clone(h.stub.reports), slices.Clone(h.stub.tombstones)
+	h.stub.mu.Unlock()
+	denied := slices.Collect(maps.Keys(h.denied))
+
+	for _, v := range valueFreeViolations(reports, tombstones, denied) {
+		h.t.Error(v)
+	}
+}
+
+// valueFreeViolations decodes every body strictly into its contract type and
+// reports any denied string found in its bytes.
+func valueFreeViolations(reports, tombstones [][]byte, denied []string) []string {
+	var out []string
+	check := func(kind string, body []byte, into any) {
+		dec := json.NewDecoder(bytes.NewReader(body))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(into); err != nil {
+			out = append(out, fmt.Sprintf("%s body is not the contract shape: %v: %s", kind, err, body))
+		}
+		for _, d := range denied {
+			if d != "" && bytes.Contains(body, []byte(d)) {
+				out = append(out, fmt.Sprintf("%s body carries %q: %s", kind, d, body))
+			}
+		}
+	}
+	for _, b := range reports {
+		var r apigen.DeliveryTargetReportRequest
+		check("report", b, &r)
+	}
+	for _, b := range tombstones {
+		var r apigen.DeliveryTargetTombstoneRequest
+		check("tombstone", b, &r)
+	}
+	return out
 }
 
 func (h *harness) getCR(name string) *hikyov1.HikyoSecret {

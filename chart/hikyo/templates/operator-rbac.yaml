@@ -14,13 +14,7 @@ metadata:
     {{- include "hikyo.labels" . | nindent 4 }}
     app.kubernetes.io/component: operator
 rules:
-  - apiGroups: ["hikyo.dev"]
-    resources: ["hikyoinstances"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["apiextensions.k8s.io"]
-    resources: ["customresourcedefinitions"]
-    resourceNames: ["hikyoinstances.hikyo.dev", "hikyosecrets.hikyo.dev"]
-    verbs: ["get"]
+  {{- include "hikyo.operator.clusterReads" . | nindent 2 }}
   {{- include "hikyo.operator.namespaceRules" . | nindent 2 }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -49,13 +43,7 @@ metadata:
     {{- include "hikyo.labels" . | nindent 4 }}
     app.kubernetes.io/component: operator
 rules:
-  - apiGroups: ["hikyo.dev"]
-    resources: ["hikyoinstances"]
-    verbs: ["get", "list", "watch"]
-  - apiGroups: ["apiextensions.k8s.io"]
-    resources: ["customresourcedefinitions"]
-    resourceNames: ["hikyoinstances.hikyo.dev", "hikyosecrets.hikyo.dev"]
-    verbs: ["get"]
+  {{- include "hikyo.operator.clusterReads" . | nindent 2 }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

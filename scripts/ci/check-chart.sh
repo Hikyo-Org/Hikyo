@@ -54,6 +54,10 @@ render_mode namespaced \
 	--set 'operator.designatedServiceAccounts.ns-a={sa-a,sa-shared}' \
 	--set 'operator.designatedServiceAccounts.ns-b={sa-b}'
 render_mode no-rollouts --set operator.triggerRollouts=false
+render_mode no-status-reporting --set operator.statusReporting=false
+if render_mode invalid-status-reporting --set-string operator.statusReporting=yes >/dev/null 2>&1; then
+	fail "chart accepted a non-boolean operator.statusReporting"
+fi
 render_mode storage-monitoring --namespace database-app \
 	--set database.storageMonitoring.enabled=true \
 	--set database.storageMonitoring.kubeletURL=https://192.0.2.10:10250 \
@@ -165,7 +169,7 @@ assert verification[0]["attestors"] == [{"entries": [{"keyless": {
 }}]}], "keyless admission must require exact workflow/tag identity and transparency proof"
 PY
 
-python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" "$tmp/native-tls.yaml" "$tmp/mcp-enabled.yaml" "$tmp/native-secrets.yaml" "$tmp/native-secrets-namespaced.yaml" <<'PY' || exit 1
+python3 - "$tmp/cluster-wide.yaml" "$tmp/namespaced.yaml" "$tmp/no-rollouts.yaml" "$tmp/native-tls.yaml" "$tmp/mcp-enabled.yaml" "$tmp/native-secrets.yaml" "$tmp/native-secrets-namespaced.yaml" "$tmp/no-status-reporting.yaml" <<'PY' || exit 1
 import sys, yaml
 
 cluster_wide, namespaced, no_rollouts, native_tls, mcp_enabled = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
@@ -235,9 +239,12 @@ SECRETS = rule([""], ["secrets"], ["get", "create", "update", "patch"])
 NATIVE_SECRETS = rule([""], ["secrets"], ["get", "create", "update", "patch", "delete"])
 WORKLOAD = rule(["apps"], ["deployments", "statefulsets", "daemonsets"], ["get", "list", "watch", "patch"])
 SERVICEACCOUNTS = rule([""], ["serviceaccounts"], ["get"])
+# Status reporting's cluster id: get on exactly the kube-system Namespace.
+CLUSTER_ID = rule([""], ["namespaces"], ["get"], ["kube-system"])
 
-# Cluster-scoped reads that always live on the ClusterRole.
-CLUSTER_READS = [INSTANCES, CRD]
+# Cluster-scoped reads that always live on the ClusterRole (status reporting on,
+# the default).
+CLUSTER_READS = [INSTANCES, CRD, CLUSTER_ID]
 # Per-CR converge rules; native mode alone adds Secret delete (never list/watch).
 CONVERGE = [HIKYOSECRETS, STATUS, FINALIZERS, EVENTS, SECRETS, SERVICEACCOUNTS]
 
@@ -308,6 +315,9 @@ def assert_hardened(docs, mode):
     expected_native = "true" if mode.startswith("native-secrets") else "false"
     if env.get("HIKYO_OPERATOR_NATIVE_SECRET_TYPES") != expected_native:
         fail(f"{mode}: native Secret type runtime gate differs from RBAC")
+    expected_reporting = "false" if mode == "no-status-reporting" else "true"
+    if env.get("HIKYO_OPERATOR_STATUS_REPORTING") != expected_reporting:
+        fail(f"{mode}: status reporting runtime gate differs from RBAC")
     return op
 
 def assert_server_network(docs, mode, tls):
@@ -427,6 +437,7 @@ ALLOWED_ENV = {
     "HIKYO_OPERATOR_NAMESPACES",
     "HIKYO_OPERATOR_TRIGGER_ROLLOUTS",
     "HIKYO_OPERATOR_NATIVE_SECRET_TYPES",
+    "HIKYO_OPERATOR_STATUS_REPORTING",
     "HIKYO_OPERATOR_NAMESPACE",
     "POD_NAMESPACE",
 }
@@ -505,6 +516,16 @@ assert_leader_election(nr, "no-rollouts")
 assert_hardened(nr, "no-rollouts")
 assert_server_network(nr, "no-rollouts", False)
 
+# ---- no-status-reporting ----
+# statusReporting=false drops the kube-system Namespace get and nothing else.
+nsr = load(sys.argv[8])
+assert_rbac_inventory(nsr, [
+    ("ClusterRole", OP, None),
+    ("Role", f"{OP}-leader-election", "default"),
+], "no-status-reporting")
+expect_rules(one(nsr, "ClusterRole", OP)["rules"], [INSTANCES, CRD] + CONVERGE + [WORKLOAD], "no-status-reporting ClusterRole")
+assert_hardened(nsr, "no-status-reporting")
+
 native_converge = [r for r in CONVERGE if r != SECRETS] + [NATIVE_SECRETS]
 nt = load(sys.argv[6])
 expect_rules(one(nt, "ClusterRole", OP)["rules"], CLUSTER_READS + native_converge + [WORKLOAD], "native-secrets ClusterRole")
@@ -536,7 +557,7 @@ for mode_name, docs in (("cluster-wide", load(cluster_wide)), ("namespaced", loa
     if env_names & {"HIKYO_MCP_ENABLED", "HIKYO_MCP_WRITE_ENABLED", "HIKYO_MCP_ALLOWED_ORIGINS"}:
         fail(f"{mode_name}: MCP env present while mcp.enabled is false")
 
-print("Chart check: every RBAC rule set, TokenRequest scope, stamp-root grant, hardening, MCP config, args and the exact env allowlist asserted")
+print("Chart check: every RBAC rule set, TokenRequest scope, stamp-root grant, cluster-id read, hardening, MCP config, args and the exact env allowlist asserted")
 PY
 
 python3 - "$tmp/populated-upgrade.yaml" <<'PY'

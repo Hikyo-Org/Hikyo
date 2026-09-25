@@ -40,6 +40,8 @@ spec:
               value: {{ ternary "true" "false" .Values.operator.nativeSecretTypes | quote }}
             - name: HIKYO_OPERATOR_TRIGGER_ROLLOUTS
               value: {{ ternary "true" "false" .Values.operator.triggerRollouts | quote }}
+            - name: HIKYO_OPERATOR_STATUS_REPORTING
+              value: {{ ternary "true" "false" .Values.operator.statusReporting | quote }}
             - name: HIKYO_OPERATOR_NAMESPACE
               valueFrom:
                 fieldRef:
