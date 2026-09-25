@@ -102,7 +102,7 @@ func (c *Client) retryThrottled(ctx context.Context, stderr io.Writer, read func
 		}
 		fmt.Fprintf(stderr, "hikyo: throttled by the server; retrying in %d s (Retry-After)\n", int(limited.RetryAfter/time.Second))
 		if sleepErr := c.wait(ctx, limited.RetryAfter); sleepErr != nil {
-			return err
+			return sleepErr
 		}
 		waited += limited.RetryAfter
 	}

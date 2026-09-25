@@ -163,6 +163,23 @@ func TestThrottledMachineExportExitsRateLimitedWithRetryAfter(t *testing.T) {
 	}
 }
 
+// Cancelling during a Retry-After wait reports the cancellation, not the
+// throttle: the caller stopped waiting, the server did not refuse again.
+func TestMachineExportCancelledDuringThrottleWaitReportsCancellation(t *testing.T) {
+	requests := 0
+	srv := throttledDelivery(t, []string{"12", "ok"}, &requests)
+	client, err := NewClient(TrustEntry{Origin: srv.URL}, "machine-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.sleep = func(context.Context, time.Duration) error { return context.Canceled }
+	var stderr strings.Builder
+	_, err = machineExport(t.Context(), client, &stderr, api.PathPrefix+"/orgs/org_test/projects/prj_test/environments/env_test", false, 0, nil)
+	if !errors.Is(err, context.Canceled) || requests != 1 {
+		t.Fatalf("err=%v requests=%d, want context.Canceled after one request", err, requests)
+	}
+}
+
 func TestMachineExportRetriesThrottledReadWithinItsBound(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
