@@ -2,7 +2,7 @@
 import { beforeEach, expect, it } from 'vitest';
 
 import { installMemoryStorage } from '../testkit/storage.ts';
-import { isLastSignIn, readLastSignIn, rememberLastSignIn } from './lastSignIn.ts';
+import { isLastSignIn, readLastSignIn, rememberLastSignIn, type LastSignIn } from './lastSignIn.ts';
 
 beforeEach(() => installMemoryStorage());
 
@@ -10,18 +10,22 @@ it('reads nothing on a first visit', () => {
   expect(readLastSignIn()).toBeNull();
 });
 
-it('round-trips each kind, the provider by slug', () => {
+it('round-trips each kind, the provider by its kind and slug', () => {
   rememberLastSignIn({ kind: 'password' });
   expect(readLastSignIn()).toEqual({ kind: 'password' });
   rememberLastSignIn({ kind: 'passkey' });
   expect(readLastSignIn()).toEqual({ kind: 'passkey' });
-  rememberLastSignIn({ kind: 'provider', slug: 'corp' });
-  expect(readLastSignIn()).toEqual({ kind: 'provider', slug: 'corp' });
+  rememberLastSignIn({ kind: 'provider', providerKind: 'saml', slug: 'corp' });
+  expect(globalThis.localStorage.getItem('hikyo.last-sign-in')).toBe('provider:saml:corp');
+  expect(readLastSignIn()).toEqual({ kind: 'provider', providerKind: 'saml', slug: 'corp' });
 });
 
 it('reads malformed storage as nothing rather than trusting it', () => {
-  for (const junk of ['', 'provider:', 'totp', '{"kind":"password"}']) {
-    globalThis.localStorage.setItem('hikyo.last-sign-in', junk);
+  // `provider:corp` is the older slug-only shape: it names no kind, so a
+  // returning browser simply shows no badge once.
+  const junk = ['', 'provider:', 'provider:corp', 'provider:oidc:', 'provider::corp', 'provider:oidc:corp:x'];
+  for (const value of [...junk, 'totp', '{"kind":"password"}']) {
+    globalThis.localStorage.setItem('hikyo.last-sign-in', value);
     expect(readLastSignIn()).toBeNull();
   }
 });
@@ -44,9 +48,11 @@ it('reads nothing and swallows the write when storage is absent or refuses', () 
 });
 
 it('badges only the matching row', () => {
-  const last = { kind: 'provider', slug: 'corp' } as const;
-  expect(isLastSignIn(last, { kind: 'provider', slug: 'corp' })).toBe(true);
-  expect(isLastSignIn(last, { kind: 'provider', slug: 'sso' })).toBe(false);
+  const last: LastSignIn = { kind: 'provider', providerKind: 'oidc', slug: 'corp' };
+  expect(isLastSignIn(last, { kind: 'provider', providerKind: 'oidc', slug: 'corp' })).toBe(true);
+  expect(isLastSignIn(last, { kind: 'provider', providerKind: 'oidc', slug: 'sso' })).toBe(false);
+  // A slug is unique per kind only: the SAML `corp` is another row.
+  expect(isLastSignIn(last, { kind: 'provider', providerKind: 'saml', slug: 'corp' })).toBe(false);
   expect(isLastSignIn(last, { kind: 'password' })).toBe(false);
   expect(isLastSignIn(null, { kind: 'password' })).toBe(false);
   expect(isLastSignIn({ kind: 'passkey' }, { kind: 'passkey' })).toBe(true);

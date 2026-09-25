@@ -11,8 +11,19 @@ import { ProviderButton, type LoginProvider, type SignInIntent } from './Provide
 
 export type { LoginProvider, ProviderBrand, SignInIntent, SignInProvider } from './ProviderButton.tsx';
 
-/** Which sign-in leg is in flight, so only ITS control shows the busy label. */
-export type SignInBusy = 'password' | 'passkey' | { provider: string } | null;
+/**
+ * One configured provider as the card names it back: a slug is unique per kind
+ * only (an OIDC and a SAML provider can both be `corp`), so the pair is the
+ * identity.
+ */
+export type ProviderIdentity = { readonly kind: LoginProvider['kind']; readonly slug: string };
+
+/**
+ * Which sign-in leg is in flight, so only ITS control shows the busy label. A
+ * provider leg whose row is not known yet names `null`: every control is still
+ * barred, and no row wears a label it did not earn.
+ */
+export type SignInBusy = 'password' | 'passkey' | { provider: ProviderIdentity | null } | null;
 
 /**
  * The open sign-up door: the providers the scope's registration policy admits
@@ -31,7 +42,7 @@ type Stage =
   | { at: 'choose' }
   | { at: 'password' }
   | { at: 'sign-up' }
-  | { at: 'confirm'; slug: string };
+  | { at: 'confirm'; provider: ProviderIdentity };
 
 /**
  * The sign-in card, prop-driven. It is the presentational half of the Login
@@ -80,7 +91,7 @@ export function LoginForm({
   error: string | null;
   onPassword: (credentials: { username: string; password: string }) => void;
   onPasskey: () => void;
-  onProvider: (slug: string, intent: SignInIntent) => void;
+  onProvider: (provider: ProviderIdentity, intent: SignInIntent) => void;
   /** The quiet links under the card (establish a credential, recover). */
   links?: ReactNode;
   /** The door the card opens on: `/signup` opens on "Create an account" while it is open. */
@@ -114,7 +125,8 @@ export function LoginForm({
   // setter captured before a session change cannot repopulate the field.
   const [password, setPassword] = useSensitiveState('');
   const anyBusy = busy !== null;
-  const providerBusy = (slug: string) => typeof busy === 'object' && busy !== null && busy.provider === slug;
+  const providerBusy = ({ kind, slug }: ProviderIdentity) =>
+    typeof busy === 'object' && busy?.provider?.kind === kind && busy.provider.slug === slug;
   const alert = error !== null ? <Alert>{error}</Alert> : null;
   // The hint says "work or school account" once the door has an Entra row
   // (research section 3.7); one line for every tenant row, not one each.
@@ -190,7 +202,7 @@ export function LoginForm({
                 intent="sign-up"
                 busy={false}
                 disabled={anyBusy}
-                onClick={() => setStage({ at: 'confirm', slug: provider.slug })}
+                onClick={() => setStage({ at: 'confirm', provider: { kind: provider.kind, slug: provider.slug } })}
               />
             ))}
           </div>
@@ -200,7 +212,9 @@ export function LoginForm({
     }
 
     case 'confirm': {
-      const provider = signup?.providers.find((candidate) => candidate.slug === stage.slug);
+      const provider = signup?.providers.find(
+        (candidate) => candidate.kind === stage.provider.kind && candidate.slug === stage.provider.slug,
+      );
       if (signup === null || provider === undefined) return null;
       return (
         <div className="login__card">
@@ -216,9 +230,9 @@ export function LoginForm({
             variant="primary"
             type="button"
             disabled={anyBusy}
-            onClick={() => onProvider(provider.slug, 'sign-up')}
+            onClick={() => onProvider({ kind: provider.kind, slug: provider.slug }, 'sign-up')}
           >
-            {providerBusy(provider.slug) ? 'Contacting identity provider…' : `Continue to ${provider.display_name}`}
+            {providerBusy(provider) ? 'Contacting identity provider…' : `Continue to ${provider.display_name}`}
           </Button>
         </div>
       );
@@ -263,10 +277,10 @@ export function LoginForm({
                 key={`${provider.kind}:${provider.slug}`}
                 provider={provider}
                 intent="sign-in"
-                busy={providerBusy(provider.slug)}
+                busy={providerBusy(provider)}
                 disabled={anyBusy}
-                lastUsed={isLastSignIn(lastUsed, { kind: 'provider', slug: provider.slug })}
-                onClick={() => onProvider(provider.slug, 'sign-in')}
+                lastUsed={isLastSignIn(lastUsed, { kind: 'provider', providerKind: provider.kind, slug: provider.slug })}
+                onClick={() => onProvider({ kind: provider.kind, slug: provider.slug }, 'sign-in')}
               />
             ))}
           </div>

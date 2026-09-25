@@ -182,7 +182,7 @@ it('opens the password form from its row, and comes back to the rows', async () 
 });
 
 it('badges the row this browser used last time, and remembers the one chosen now', async () => {
-  globalThis.localStorage.setItem('hikyo.last-sign-in', 'provider:sso');
+  globalThis.localStorage.setItem('hikyo.last-sign-in', 'provider:saml:sso');
   const container = document.createElement('div');
   const { render, unmount } = mount(container);
   await render();
@@ -192,7 +192,7 @@ it('badges the row this browser used last time, and remembers the one chosen now
   expect(badged.map((button) => button.textContent)).toEqual(['Continue with SAML SSOLast used']);
 
   await act(async () => buttonNamed(container, 'Continue with Corporate IdP')?.click());
-  expect(globalThis.localStorage.getItem('hikyo.last-sign-in')).toBe('provider:strict');
+  expect(globalThis.localStorage.getItem('hikyo.last-sign-in')).toBe('provider:oidc:strict');
   await unmount();
 });
 
@@ -576,6 +576,54 @@ it('starts an OIDC sign-up even when a SAML provider shares the slug', async () 
   expect(container.querySelector('h1')?.textContent).toBe('Create an account with Corp OIDC');
   await act(async () => buttonNamed(container, 'Continue to Corp OIDC')?.click());
   expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'corp', intent: 'sign-up', signupOrg: undefined });
+  await unmount();
+});
+
+// Slugs are unique per kind only: the row pressed, not its slug, names the
+// protocol, the busy label and nothing else.
+const sharedSlug = [
+  { kind: 'saml', slug: 'corp', display_name: 'Corp SAML' },
+  { kind: 'oidc', slug: 'corp', display_name: 'Corp OIDC' },
+];
+
+it('starts an OIDC sign-in, and marks only its row, when a SAML provider shares the slug', async () => {
+  mocks.methods.data.providers = sharedSlug;
+  const fetchMock = vi.fn();
+  vi.stubGlobal('fetch', fetchMock);
+  mocks.oidc.mutate.mockImplementation(() => {
+    mocks.oidc.isPending = true;
+  });
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+
+  await act(async () => buttonNamed(container, 'Continue with Corp OIDC')?.click());
+  await render();
+  expect(mocks.oidc.mutate).toHaveBeenCalledWith({ provider: 'corp', intent: 'sign-in', signupOrg: undefined });
+  expect(fetchMock).not.toHaveBeenCalled();
+  const labels = [...container.querySelectorAll('button')].map((button) => button.textContent);
+  expect(labels.filter((label) => label === 'Contacting identity provider…')).toHaveLength(1);
+  expect(labels).toContain('Continue with Corp SAML');
+  await unmount();
+});
+
+it('starts a SAML sign-in when an OIDC provider shares the slug', async () => {
+  mocks.methods.data.providers = sharedSlug;
+  const fetchMock = vi.fn((_request: RequestInfo | URL) =>
+    Promise.resolve(Response.json({ redirect_url: 'https://idp.example/sso' })),
+  );
+  vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('location', { ...globalThis.location, assign: vi.fn() });
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+
+  await act(async () => buttonNamed(container, 'Continue with Corp SAML')?.click());
+  for (let round = 0; round < 10; round += 1) await act(async () => Promise.resolve());
+  const request = fetchMock.mock.calls[0]?.[0];
+  expect(request).toBeInstanceOf(Request);
+  if (request instanceof Request) expect(new URL(request.url).pathname).toBe('/api/v1/auth/saml/corp/start');
+  expect(mocks.oidc.mutate).not.toHaveBeenCalled();
   await unmount();
 });
 

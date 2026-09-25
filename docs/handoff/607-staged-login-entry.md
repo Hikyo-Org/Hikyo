@@ -55,7 +55,7 @@ SQL changed here.
    and the second waited most of its 30 s budget for the next one (they ran
    at 28 to 30 s before, 1.5 to 2.3 s now).
 6. **"Last used" badge** (Marc, 2026-09-23). `api/lastSignIn.ts` keeps the
-   way in this browser used last (`password`, `passkey`, `provider:<slug>`)
+   way in this browser used last (`password`, `passkey`, `provider:<kind>:<slug>`)
    in localStorage beside the theme choice, best-effort and Zod-parsed on
    read; never a credential, identifier or token. The route reads it once per
    mount and hands `lastUsed` to the card, which badges that one row with a

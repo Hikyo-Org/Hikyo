@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { expect, userEvent, waitFor } from 'storybook/test';
 
-import { LoginForm, type SignInBusy, type SignInIntent } from './LoginForm.tsx';
+import { LoginForm, type ProviderIdentity, type SignInBusy, type SignInIntent } from './LoginForm.tsx';
 import { SecondFactorChallenge } from './SecondFactorChallenge.tsx';
 import { SecondFactorSetup, type SetupStep } from './SecondFactorSetup.tsx';
 import { codesStep, github, google, socialProviders, totpStep } from './fixtures.ts';
@@ -80,10 +80,12 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
     setStage({ at: 'done', how: 'Passkey (passwordless)', assurance: 'webauthn, user-verified' });
   };
 
-  const provider = async (slug: string, intent: SignInIntent) => {
-    setStage({ at: 'sign-in', busy: { provider: slug }, error: null });
+  const provider = async (chosen: ProviderIdentity, intent: SignInIntent) => {
+    setStage({ at: 'sign-in', busy: { provider: chosen }, error: null });
     await tick();
-    const name = socialProviders.find((candidate) => candidate.slug === slug)?.display_name ?? slug;
+    const name =
+      socialProviders.find((candidate) => candidate.kind === chosen.kind && candidate.slug === chosen.slug)
+        ?.display_name ?? chosen.slug;
     setStage({
       at: 'done',
       how: `Redirected to ${name} with intent ${intent}`,
@@ -144,7 +146,7 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
           error={stage.error}
           onPassword={(credentials) => void password(credentials)}
           onPasskey={() => void passkey()}
-          onProvider={(slug, intent) => void provider(slug, intent)}
+          onProvider={(chosen, intent) => void provider(chosen, intent)}
           links={links}
         />
       );

@@ -65,9 +65,12 @@ export const SocialProviders: Story = {
   },
 };
 
-/** The row this browser used last time wears the badge; a provider is matched by slug. */
+/** The row this browser used last time wears the badge; a provider is matched by kind and slug. */
 export const LastUsedProvider: Story = {
-  args: { providers: socialProviders, lastUsed: { kind: 'provider', slug: 'github' } },
+  args: {
+    providers: socialProviders,
+    lastUsed: { kind: 'provider', providerKind: github.kind, slug: github.slug },
+  },
   play: async ({ canvas }) => {
     const row = canvas.getByRole('button', { name: /continue with github/i });
     await expect(row).toHaveTextContent('Last used');
@@ -114,7 +117,7 @@ export const WaitingForPasskey: Story = {
 
 /** Only the provider being contacted wears the busy label; every control, the door included, is barred. */
 export const ContactingProvider: Story = {
-  args: { busy: { provider: 'corp' }, signup: { providers: [corp], landing: acmeLanding } },
+  args: { busy: { provider: { kind: corp.kind, slug: corp.slug } }, signup: { providers: [corp], landing: acmeLanding } },
   play: async ({ canvas }) => {
     await expect(canvas.getByRole('button', { name: 'Contacting identity provider…' })).toBeDisabled();
     await expect(canvas.getByRole('button', { name: 'Continue with SAML SSO' })).toBeDisabled();
@@ -190,7 +193,7 @@ export const SignUpConfirmation: Story = {
     await expect(canvas.getByRole('heading', { name: 'Create an account with GitHub' })).toBeVisible();
     await expect(canvas.getByText(/this creates a new account/i)).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Continue to GitHub' }));
-    await expect(args.onProvider).toHaveBeenCalledWith(github.slug, 'sign-up');
+    await expect(args.onProvider).toHaveBeenCalledWith({ kind: github.kind, slug: github.slug }, 'sign-up');
   },
 };
 
@@ -212,7 +215,7 @@ export const ProviderStartsFromStepOne: Story = {
   args: { providers: [google, corp] },
   play: async ({ canvas, args }) => {
     await userEvent.click(canvas.getByRole('button', { name: 'Continue with Google' }));
-    await expect(args.onProvider).toHaveBeenCalledWith(google.slug, 'sign-in');
+    await expect(args.onProvider).toHaveBeenCalledWith({ kind: google.kind, slug: google.slug }, 'sign-in');
   },
 };
 

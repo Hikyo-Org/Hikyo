@@ -15,7 +15,13 @@ import {
   usePasskeyLogin,
 } from '../api/stepup.ts';
 import { surfaceById } from '../app/navigation.ts';
-import { LoginForm, type SignInBusy, type SignInIntent, type SignupDoor } from '../ui/auth/LoginForm.tsx';
+import {
+  LoginForm,
+  type ProviderIdentity,
+  type SignInBusy,
+  type SignInIntent,
+  type SignupDoor,
+} from '../ui/auth/LoginForm.tsx';
 import { SecondFactorChallenge } from '../ui/auth/SecondFactorChallenge.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
@@ -113,7 +119,7 @@ export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
   const challengeTotp = useLoginChallengeTotp(challenge?.id ?? '');
   const challengePasskey = useLoginChallengePasskey(challenge?.id ?? '');
   // The provider being contacted, so only ITS button shows the busy label.
-  const [contacting, setContacting] = useState<string | null>(null);
+  const [contacting, setContacting] = useState<ProviderIdentity | null>(null);
   // Read once per mount: the badge describes the previous visit, and the row
   // being remembered right now is the one the person just chose.
   const [lastUsed] = useState(readLastSignIn);
@@ -124,14 +130,14 @@ export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
   );
   const providerPending = oidc.isPending || saml.isPending;
   // A provider ceremony ends in a redirect or a session change, so every
-  // control is barred while one is in flight, even before a slug is known.
-  // The empty slug matches no provider: nothing wears a label it did not earn.
+  // control is barred while one is in flight, even before the row is known;
+  // an unknown row marks no provider, so nothing wears a label it did not earn.
   const busy: SignInBusy = login.isPending
     ? 'password'
     : passkey.isPending
       ? 'passkey'
       : providerPending
-        ? { provider: contacting ?? '' }
+        ? { provider: contacting }
         : null;
   // The card has one refusal slot, and the latest attempt is what the person
   // is waiting on: starting ANY leg retires every leg's refusal, so a stale
@@ -219,15 +225,15 @@ export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
           retireEveryLeg();
           passkey.mutate(undefined, { onSuccess: () => rememberLastSignIn({ kind: 'passkey' }) });
         }}
-        onProvider={(slug, startIntent) => {
+        onProvider={(provider, startIntent) => {
           retireEveryLeg();
-          setContacting(slug);
+          setContacting(provider);
           // The round-trip leaves no later moment: remembered at the start.
-          rememberLastSignIn({ kind: 'provider', slug });
-          // A slug is unique per kind only; the door admits the OIDC kind alone.
-          const provider = providers.find((candidate) => candidate.slug === slug);
-          if (startIntent === 'sign-in' && provider?.kind === 'saml') saml.mutate(slug);
-          else oidc.mutate({ provider: slug, intent: startIntent, signupOrg });
+          rememberLastSignIn({ kind: 'provider', providerKind: provider.kind, slug: provider.slug });
+          // The row names its protocol (a slug is unique per kind only); the
+          // sign-up door admits the OIDC kind alone, so a SAML start signs in.
+          if (provider.kind === 'saml') saml.mutate(provider.slug);
+          else oidc.mutate({ provider: provider.slug, intent: startIntent, signupOrg });
         }}
         /* Quiet links, demoted from buttons: the CSS keeps them on the 44px
            touch floor (#567) without reading as a third way to sign in. */
