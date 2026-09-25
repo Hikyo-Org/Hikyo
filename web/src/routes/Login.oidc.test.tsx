@@ -579,6 +579,34 @@ it('starts an OIDC sign-up even when a SAML provider shares the slug', async () 
   await unmount();
 });
 
+it('falls back to the sign-up door when the refreshed door drops the chosen provider', async () => {
+  mocks.methods.data.providers = [
+    { kind: 'oidc', slug: 'corp', display_name: 'Corp OIDC' },
+    { kind: 'oidc', slug: 'other', display_name: 'Other IdP' },
+  ];
+  mocks.methods.data.signup_open = true;
+  mocks.methods.data.signup_methods = [
+    { kind: 'oidc', slug: 'corp' },
+    { kind: 'oidc', slug: 'other' },
+  ];
+  mocks.methods.data.signup_landing = 'none';
+  const container = document.createElement('div');
+  const { render, unmount } = mount(container);
+  await render();
+
+  await act(async () => buttonNamed(container, 'Create an account')?.click());
+  await act(async () => buttonNamed(container, 'Continue with Corp OIDC')?.click());
+  expect(container.querySelector('h1')?.textContent).toBe('Create an account with Corp OIDC');
+  // Discovery refreshed: the policy still admits a provider, just not this
+  // one. The card falls back to the door, not to a blank.
+  mocks.methods.data = { ...mocks.methods.data, signup_methods: [{ kind: 'oidc', slug: 'other' }] };
+  await render();
+  expect(container.querySelector('h1')?.textContent).toBe('Create an account');
+  expect(buttonNamed(container, 'Continue with Other IdP')).toBeDefined();
+  expect(container.textContent).not.toContain('Corp OIDC');
+  await unmount();
+});
+
 // Slugs are unique per kind only: the row pressed, not its slug, names the
 // protocol, the busy label and nothing else.
 const sharedSlug = [

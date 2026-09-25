@@ -45,6 +45,28 @@ type Stage =
   | { at: 'confirm'; provider: ProviderIdentity };
 
 /**
+ * The step the card shows, from the one chosen and the door as it stands
+ * now. The door and its confirmation exist only while `signup` stands: the
+ * link that opens them renders only then, and a door that closes underneath
+ * (discovery refetched, policy gone) falls back to the first step. A
+ * confirmation whose provider the refreshed door no longer admits falls back
+ * to the door, where the rows it still admits are.
+ */
+function shownStage(chosen: Stage, signup: SignupDoor | null): Stage {
+  if (chosen.at !== 'sign-up' && chosen.at !== 'confirm') return chosen;
+  if (signup === null) return { at: 'choose' };
+  if (
+    chosen.at === 'confirm' &&
+    !signup.providers.some(
+      (provider) => provider.kind === chosen.provider.kind && provider.slug === chosen.provider.slug,
+    )
+  ) {
+    return { at: 'sign-up' };
+  }
+  return chosen;
+}
+
+/**
  * The sign-in card, prop-driven. It is the presentational half of the Login
  * route: the `.login__card` markup, with the ways in (local password,
  * discoverable passkey, an identity provider) named as callbacks so Storybook
@@ -98,11 +120,7 @@ export function LoginForm({
   initialIntent?: SignInIntent;
 }) {
   const [chosen, setStage] = useState<Stage>({ at: initialIntent === 'sign-up' ? 'sign-up' : 'choose' });
-  // The door and its confirmation exist only while `signup` stands: the link
-  // that opens them renders only then, and a door that closes underneath
-  // (discovery refetched, policy gone) falls back to the first step.
-  const stage: Stage =
-    (chosen.at === 'sign-up' || chosen.at === 'confirm') && signup === null ? { at: 'choose' } : chosen;
+  const stage = shownStage(chosen, signup);
   // A step change unmounts the control that was pressed, which would drop
   // focus to the document: the new step's heading takes it instead, so a
   // keyboard or screen-reader user lands on what changed. Not on mount, where
