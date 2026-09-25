@@ -1,0 +1,215 @@
+---
+title: Local development and coding agents
+description: Choose how local commands, scripts, and coding agents receive development values, and know what each choice protects.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/local-development.mdx
+---
+
+Coding agents (Claude Code, Codex, IDE agents) and scripted test runs start
+most local commands. These processes have no terminal and no human at the
+keyboard. This guide shows the options for local delivery, what each option
+protects, and how to compose `hikyo run` with an application loader such as
+varlock.
+
+## Threat model
+
+No tool in this guide keeps plaintext from a process that the agent controls.
+If an agent can start the child process, it can also run `env` or read
+`/proc/<pid>/environ`.
+
+- Injection without printing keeps values out of files and shell history.
+- Output redaction keeps values out of logs and out of the output that the
+  model reads.
+- A local cache changes latency and offline behavior. It does not change who
+  can read a value.
+
+None of these controls makes a value secret from the agent. The real controls
+are two: what the development environment contains, and how long the
+credential lives.
+
+## Keep development values dev-safe
+
+The development environment holds only values that you accept an agent to
+read.
+
+- Use sandbox API keys, test accounts, and local database passwords.
+- Mark production-only keys `forbidden` in the development environment with a
+  [presence rule](/docs/values-and-secrets/#presence-rules). A publish that
+  sets them there then fails.
+- Grant a local credential `read` and `reveal` on the development environment
+  only. Never grant it at project or organization scope.
+
+## Options
+
+| Option | Works without a terminal | Plaintext file | Credential file | Audit names |
+| --- | --- | --- | --- | --- |
+| `values export --reveal` to `.env` | Yes, after the export | Yes | No | The human, once, at export |
+| `run` with a service-account token | Yes | No | Yes | The service account |
+| `run --config-only` with a token | Yes | No, and no secrets | Yes | The service account |
+| `run --use-human-session` | No | No | No | The human, at each launch |
+
+- An exported `.env` file goes stale when a value changes. Hikyo audits the
+  export. Hikyo cannot see later reads of the file.
+- `run` fetches on each launch, writes no plaintext file, and replaces itself
+  with the command. It removes `HIKYO_TOKEN` from the child environment.
+- `--config-only` delivers configuration only. It needs no machine-reveal
+  opt-in. Use it when the application can start without secrets.
+
+### Why the human session needs a terminal
+
+`--use-human-session` is a locked exception to the machine-only rule. Each
+launch must meet all four conditions:
+
+1. The `--use-human-session` flag.
+2. A controlling terminal, with stderr on that terminal.
+3. A y/N confirmation of the environment and the exact key names.
+4. A live disclosure window, or a reauthentication that opens one.
+
+The gate stops an unattended process from running silently with a
+developer's full authority. That authority can include `reveal` on
+production. A terminal alone is not the control, because CI runners and
+`script` can allocate one. The confirmation and the reauthentication are the
+control. An agent cannot answer them, so Hikyo refuses the agent. This is
+intentional.
+
+## Run with a short-lived token
+
+Use one service account for each developer machine, and one short-lived
+credential for each working session.
+
+1. Pin the repository to the development environment with a
+   [`.hikyo.json`](/docs/contexts/#pin-a-repository) file.
+2. Create the service account:
+
+   ```bash
+   hikyo sa create --name local-dev-<you> --kind workload
+   ```
+
+3. Grant it `read` on the development environment only:
+
+   ```bash
+   hikyo access grant add --principal <mch_...> --capability read --env <development-env-id>
+   ```
+
+4. If the application needs secrets, the project must allow machine reveal.
+   This opt-in applies to the whole project, so grant `reveal` on the
+   development environment only:
+
+   ```bash
+   hikyo project-settings machine-reveal set --enabled true
+   hikyo access grant add --principal <mch_...> --capability reveal --env <development-env-id>
+   ```
+
+5. Mint a credential with a short lifetime to a new file outside the
+   repository. On Linux, `$XDG_RUNTIME_DIR` is a tmpfs that the system clears
+   at logout:
+
+   ```bash
+   hikyo sa credential mint --sa <sa-id> --lifetime 8h \
+     --output-file "$XDG_RUNTIME_DIR/hikyo-dev-token"
+   ```
+
+   The instance [credential policy](/docs/machine-identities/#credential-policy)
+   can shorten the lifetime. It cannot make it longer.
+
+6. Start the command. Agents and scripts can use the same command without a
+   terminal:
+
+   ```bash
+   hikyo run --token-file "$XDG_RUNTIME_DIR/hikyo-dev-token" -- pnpm dev
+   ```
+
+7. Revoke the credential when you stop work:
+
+   ```bash
+   hikyo sa credential list --sa <sa-id>
+   hikyo sa credential revoke --sa <sa-id> --id <credential-id>
+   ```
+
+Know the limits of this setup:
+
+- The agent runs as your operating-system user, so it can read the token file.
+- Audit links each delivery to the service account. It does not link the
+  delivery to the human who minted the credential.
+- Hikyo has no short-lived developer credential that carries human
+  attribution. [Issue #807](https://github.com/Hikyo-Org/Hikyo/issues/807)
+  tracks a proposal, which needs its own ADR first.
+
+## Compose with varlock
+
+Hikyo and [varlock](https://varlock.dev) do different jobs:
+
+- Hikyo stores the values, applies presence rules, audits disclosure, and
+  delivers the values.
+- varlock owns the application contract: the `.env.schema` file, types,
+  fail-fast validation, and redaction of `@sensitive` values.
+
+Put Hikyo outside and varlock inside:
+
+```bash
+hikyo run --token-file "$XDG_RUNTIME_DIR/hikyo-dev-token" -- varlock run -- pnpm dev
+```
+
+- `hikyo run` puts the values in the process environment of `varlock run`.
+- varlock gives process environment variables
+  [the highest precedence](https://varlock.dev/guides/environments/), so the
+  values from Hikyo win over any local `.env` file.
+- `hikyo run` replaces itself with the child, so it cannot redact the child
+  output. `varlock run` redacts `@sensitive` values when output goes to a pipe
+  or a file. It does not redact output that goes to a terminal. Check how
+  your agent captures command output.
+
+This composition needs no plugin.
+
+### Map classification to `@sensitive`
+
+| Hikyo classification | varlock decorator |
+| --- | --- |
+| `secret` | `@sensitive` |
+| `config` | `@public` (the same as `@sensitive=false`) |
+
+Read the class of each key with `hikyo key list -o json`. Declare each key in
+`.env.schema` without a value, because Hikyo supplies the value:
+
+```dotenv
+# @defaultSensitive=true
+# ---
+# @public
+API_BASE_URL=
+DATABASE_PASSWORD=
+```
+
+`@defaultSensitive=true` makes a key without a decorator sensitive, so a
+missing decorator fails safe. Hikyo does not write this file. When you run
+`hikyo key reclassify`, update the schema too.
+
+### Stale `.env` files and `--allow-override`
+
+- `--allow-override` applies only to the environment that `hikyo run`
+  inherits from its parent. Hikyo does not read `.env` files.
+- If your shell already exports a key with a different value, for example from
+  direnv or a shell profile, `hikyo run` refuses and names the key. Unset the
+  variable, or name the key in `--allow-override`. The Hikyo value wins in
+  both cases.
+- A `.env` file that the child reads is outside Hikyo. With varlock, the Hikyo
+  value wins. Other loaders use other rules. Keys that exist only in the file
+  still reach the application.
+- Delete old exported `.env` files. They hold stale plaintext.
+
+`hikyo run` also refuses loader-control keys such as `NODE_OPTIONS` and `PATH`
+unless `run.acknowledge_loader_control` in `hikyo-compose.yaml` names them.
+See [Docker Compose delivery](/docs/compose/#project-configuration).
+
+## Hikyo and other tools
+
+| Tool | Model | Relation to Hikyo |
+| --- | --- | --- |
+| varlock | Schema, validation, and redaction in the application. No store of its own. | Complementary. Compose it inside `hikyo run`. |
+| dotenvx | An encrypted `.env` file in Git. One private key for each environment decrypts all values. | Overlapping store with a different trade-off. Choose one. |
+| `op run`, `infisical run`, `doppler run` | A secret store with a `run` wrapper. | The same role as `hikyo run`. Use one wrapper, not two. |
+
+- Hikyo does not build a schema, type-generation, or redaction layer. It
+  delivers to the loader that the application already uses.
+- A shared decryption key, as in dotenvx, gives up per-key presence rules,
+  reveal audit, and revocation. Hikyo keeps these controls on the server.
+
+Next: [connect automation](/docs/machine-identities/).

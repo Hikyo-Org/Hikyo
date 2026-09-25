@@ -36,6 +36,7 @@
     "dynamic-secrets",
     "mcp",
     "compose",
+    "local-development",
     "kubernetes-operator",
     "configuration-rollouts",
     "---Identity providers---",
