@@ -285,8 +285,7 @@ operations:
   reconcileOfflineRecords:     {exception: client-local-delivery}
   reportDeliveryTarget:        {exception: client-local-delivery}
   tombstoneDeliveryTarget:     {exception: client-local-delivery}
-  # The Kubernetes tab rows land with the web UI ticket.
-  listDeliveryTargets:         {issue: 790}
+  listDeliveryTargets:         {webui: machine-access}
 
   # scim
   listScimBindings:            {webui: scim}
