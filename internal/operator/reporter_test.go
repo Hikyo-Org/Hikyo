@@ -578,4 +578,10 @@ func TestNewStatusReporterReadsClusterID(t *testing.T) {
 	if _, err := newStatusReporter(context.Background(), fake.NewClientBuilder().WithScheme(sch).Build(), "1.2.3"); err == nil {
 		t.Fatal("an unreadable cluster id must be a hard error")
 	}
+	for _, version := range []string{"dev", "v1.2.3", ""} {
+		_, err := newStatusReporter(context.Background(), fake.NewClientBuilder().WithScheme(sch).WithObjects(ns).Build(), version)
+		if err == nil || !strings.Contains(err.Error(), "HIKYO_OPERATOR_STATUS_REPORTING=false") {
+			t.Fatalf("version %q: err = %v, want a refusal naming the remedy", version, err)
+		}
+	}
 }

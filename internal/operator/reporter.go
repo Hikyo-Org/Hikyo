@@ -107,8 +107,13 @@ func (s *reportSuppressed) holds(now time.Time, generation int64, credRef, crede
 }
 
 // newStatusReporter reads the cluster id once at start (D3): the kube-system
-// Namespace UID, through the uncached reader.
+// Namespace UID, through the uncached reader. The report's reporter version is
+// SemVer by contract, so an unversioned build refuses to start with reporting
+// enabled rather than silently not reporting.
 func newStatusReporter(ctx context.Context, reader client.Reader, version string) (*statusReporter, error) {
+	if !deliverytarget.IsSemVer(version) {
+		return nil, fmt.Errorf("build version %q is not SemVer 2.0; build with -X main.version=<semver> or set HIKYO_OPERATOR_STATUS_REPORTING=false (Helm operator.statusReporting=false)", version)
+	}
 	var ns corev1.Namespace
 	if err := reader.Get(ctx, types.NamespacedName{Name: clusterIDNamespace}, &ns); err != nil {
 		return nil, fmt.Errorf("read the %s Namespace UID as the cluster id (the chart grants get on it while operator.statusReporting is true): %w", clusterIDNamespace, err)

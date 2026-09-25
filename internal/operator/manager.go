@@ -22,7 +22,6 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
@@ -79,20 +78,12 @@ func Run(ctx context.Context, log *slog.Logger) error {
 		TokenMinter:     clientsetMinter{cs: cs},
 	}
 	if cfg.StatusReporting {
-		switch {
-		case !deliverytarget.IsSemVer(Version):
-			// The report's reporter version is SemVer by contract, so an
-			// unversioned build cannot report. Say so loudly and run on.
-			log.Error("status reporting disabled: this build's version is not SemVer 2.0; build with -X main.version or set operator.statusReporting=false",
-				"version", Version)
-		default:
-			// The uncached reader serves before the manager starts.
-			rep, err := newStatusReporter(ctx, mgr.GetAPIReader(), Version)
-			if err != nil {
-				return fmt.Errorf("operator: status reporting: %w", err)
-			}
-			reconciler.reporter = rep
+		// The uncached reader serves before the manager starts.
+		rep, err := newStatusReporter(ctx, mgr.GetAPIReader(), Version)
+		if err != nil {
+			return fmt.Errorf("operator: status reporting: %w", err)
 		}
+		reconciler.reporter = rep
 	}
 	if err := reconciler.SetupWithManager(mgr); err != nil {
 		return err
