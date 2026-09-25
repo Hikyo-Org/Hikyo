@@ -251,7 +251,7 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	// budget would make the client's own capability check the thing that
 	// throttles the client.
 	if a.Admission != nil && !a.Admission.AllowDiscovery(audit.FromContext(ctx).SourceIP) {
-		return apigen.GetMeta429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+		return apigen.GetMeta429JSONResponse{TooManyRequestsJSONResponse: tooMany(nil)}, nil
 	}
 	// The closed allowlist, and nothing else. `login` needs the protocol
 	// capabilities before any session exists; everything past protocol
@@ -920,10 +920,12 @@ func (a *API) fault(ctx context.Context, what string, err error) {
 	a.Log.ErrorContext(ctx, "request failed", "op", what, "err", err)
 }
 
-func tooMany() apigen.TooManyRequestsJSONResponse {
+// tooMany is the uniform overload answer. err is the refusal, or nil where the
+// handler refused on its own; only the advertised wait depends on it.
+func tooMany(err error) apigen.TooManyRequestsJSONResponse {
 	return apigen.TooManyRequestsJSONResponse{
 		Body:    errorBody(apigen.ErrorCodeTooManyRequests, ""),
-		Headers: apigen.TooManyRequestsResponseHeaders{RetryAfter: retryAfterSeconds},
+		Headers: apigen.TooManyRequestsResponseHeaders{RetryAfter: retryAfterSeconds(err)},
 	}
 }
 

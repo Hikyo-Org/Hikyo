@@ -126,6 +126,50 @@ The server revokes the predecessor and inserts the successor in one transaction.
 There is no overlap window in which to verify both. Validate the new formula
 before invoking replacement, then test the successor immediately afterward.
 
+## Rate limits for CI
+
+The server limits pre-authentication work per source IP address. Each federated
+token presentation (the OIDC federation path above) counts as one attempt. The
+default allowance is 10 attempts per minute per source IP address, in a
+sliding one-minute window. Under multi-node HA, the window is a fixed calendar
+minute that all nodes share.
+
+CI jobs on shared runners often use one egress IP address. Parallel jobs then
+share one allowance, and a burst of jobs can use it up.
+
+When the server refuses an attempt for this reason:
+
+- The response is `429`. The `Retry-After` header gives the number of seconds
+  until the window admits the next attempt, rounded up to 10 seconds. If no
+  other traffic comes from the same address, a retry after that wait succeeds.
+- The CLI exits with code `7` and prints the wait on stderr.
+
+Other overloads also answer `429` with exit code `7`, but with a short fixed
+wait. Examples are a full admission queue and the per-account backoff.
+
+Recommended patterns for shared-egress CI:
+
+- Run `hikyo values export` once per job, and reuse the output in later steps.
+  Do not call it again for each step.
+- Spread parallel jobs over time, or limit their concurrency.
+- On exit code `7`, wait for the time that the error names, then retry a small
+  number of times:
+
+  ```bash
+  for attempt in 1 2 3; do
+    status=0
+    hikyo values export > values.env 2> export.err || status=$?
+    [ "$status" -eq 7 ] || break
+    wait=$(sed -n 's/.*retry after \([0-9]*\)s.*/\1/p' export.err)
+    sleep "${wait:-60}"
+  done
+  cat export.err >&2
+  [ "$status" -eq 0 ] || exit "$status"
+  ```
+
+Operators can watch the `hikyo_admission_throttled_total` metric to see how
+often the per-IP window refuses attempts.
+
 ## Delete
 
 ```bash

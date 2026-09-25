@@ -152,6 +152,70 @@ func TestPerIPSlidingWindow(t *testing.T) {
 	rel()
 }
 
+// TestPerIPRefusalAdvertisesTheWindowsOwnWait is the #806 acceptance: a caller
+// that waits the advertised time is not refused again by the same window.
+func TestPerIPRefusalAdvertisesTheWindowsOwnWait(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	l, err := New(Config{BudgetMiB: DefaultBudgetMiB, ArgonMemoryKiB: 64 * 1024, Now: fixedClock(&now)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Spread the allowance over 13 seconds, so the oldest hit leaves the
+	// window 47 seconds after the last one.
+	for i := range PerIPPerMinute {
+		if i > 0 {
+			now = now.Add(time.Second + time.Second/3)
+		}
+		rel, err := l.Enter(context.Background(), "203.0.113.7")
+		if err != nil {
+			t.Fatalf("attempt %d refused inside the allowance: %v", i, err)
+		}
+		rel()
+	}
+	_, err = l.Enter(context.Background(), "203.0.113.7")
+	var throttled *Throttled
+	if !errors.As(err, &throttled) || !errors.Is(err, ErrOverloaded) {
+		t.Fatalf("per-IP refusal = %v, want *Throttled that is ErrOverloaded", err)
+	}
+	wait := RetryAfterOf(err)
+	if wait != 50*time.Second {
+		t.Fatalf("advertised wait = %v, want the exact 48s rounded up to 50s", wait)
+	}
+	if got := l.Snapshot().Throttled; got != 1 {
+		t.Fatalf("throttle counter = %d, want 1", got)
+	}
+	// One step short of the advertised wait may still be refused; the
+	// advertised wait itself must not be.
+	now = now.Add(wait)
+	rel, err := l.Enter(context.Background(), "203.0.113.7")
+	if err != nil {
+		t.Fatalf("refused again after waiting the advertised %v: %v", wait, err)
+	}
+	rel()
+}
+
+func TestNonWindowOverloadKeepsTheFixedWait(t *testing.T) {
+	for _, err := range []error{ErrOverloaded, errors.Join(errors.New("budget"), ErrOverloaded), &Throttled{}} {
+		if got := RetryAfterOf(err); got != RetryAfter {
+			t.Fatalf("RetryAfterOf(%v) = %v, want the fixed %v", err, got, RetryAfter)
+		}
+	}
+}
+
+func TestThrottleWaitRoundsUpToTheStep(t *testing.T) {
+	for in, want := range map[time.Duration]time.Duration{
+		time.Nanosecond:                ThrottleStep,
+		ThrottleStep:                   ThrottleStep,
+		ThrottleStep + time.Nanosecond: 2 * ThrottleStep,
+		time.Minute - time.Millisecond: time.Minute,
+		time.Minute:                    time.Minute,
+	} {
+		if got := roundUpToStep(in); got != want {
+			t.Fatalf("roundUpToStep(%v) = %v, want %v", in, got, want)
+		}
+	}
+}
+
 func TestDiscoveryAllowanceUsesItsLockedFloor(t *testing.T) {
 	l, err := New(Config{
 		BudgetMiB:      DefaultBudgetMiB,

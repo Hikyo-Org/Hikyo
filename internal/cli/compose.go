@@ -665,9 +665,12 @@ func loadLocalKeys(stateDir string) (*crypto.LocalKeys, error) {
 // small pure helpers
 // ---------------------------------------------------------------------------
 
+// isUnavailable reports a fetch the server could not serve right now. A
+// throttled fetch counts: offline serve and doctor's warning exist for exactly
+// that temporary state.
 func isUnavailable(err error) bool {
 	var ce *Error
-	return asCLIError(err, &ce) && ce.Code == ExitUnavailable
+	return asCLIError(err, &ce) && (ce.Code == ExitUnavailable || ce.Code == ExitThrottled)
 }
 
 func allTargetKeyIDs(cfg *compose.Config) []string {

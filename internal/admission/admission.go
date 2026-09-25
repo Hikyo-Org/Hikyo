@@ -68,6 +68,10 @@ const (
 	MaxAccountBackoff = 60 * time.Second
 	// RetryAfter is what an overloaded instance advertises.
 	RetryAfter = 5 * time.Second
+	// ThrottleStep is the granularity of the wait a per-source-IP refusal
+	// advertises. The exact wait is rounded UP to it, so the answer never
+	// falls short of the window and carries no finer timing than the step.
+	ThrottleStep = 10 * time.Second
 	// MaxTrackedSubjects bounds how many source IPs and account buckets the
 	// limiter remembers. Both maps are keyed by attacker-chosen values — any
 	// source address, any presented username — so without a bound the
@@ -84,6 +88,36 @@ const (
 // enumeration-uniformity rule one layer earlier than unauthorized ≡
 // nonexistent.
 var ErrOverloaded = errors.New("admission: instance-wide budget exhausted")
+
+// Throttled is the per-source-IP window refusal. It IS ErrOverloaded to every
+// errors.Is check, so the status, the body and every caller's branch stay the
+// uniform overload answer; only the advertised wait differs. The wait is a
+// function of the caller's own source address and the clock, never of an
+// account, so it discloses nothing the caller did not send.
+type Throttled struct {
+	// RetryAfter is when the window next admits this source, rounded up to
+	// ThrottleStep.
+	RetryAfter time.Duration
+}
+
+func (e *Throttled) Error() string { return ErrOverloaded.Error() }
+func (e *Throttled) Unwrap() error { return ErrOverloaded }
+
+// RetryAfterOf is the wait an overload refusal advertises: the window's own
+// wait for a per-source-IP refusal, and the fixed RetryAfter for everything
+// else (queue full, a cancelled wait, account backoff, a budget refusal).
+func RetryAfterOf(err error) time.Duration {
+	var t *Throttled
+	if errors.As(err, &t) && t.RetryAfter > 0 {
+		return t.RetryAfter
+	}
+	return RetryAfter
+}
+
+// roundUpToStep rounds a positive wait up to the next ThrottleStep.
+func roundUpToStep(d time.Duration) time.Duration {
+	return max(ThrottleStep, (d+ThrottleStep-1)/ThrottleStep*ThrottleStep)
+}
 
 // Config is the tunable half. ArgonMemoryKiB must be the value the login path
 // actually uses: the derived concurrency is a function of it, so raising the
@@ -160,10 +194,12 @@ type Limiter struct {
 	// visible in slots until their release function returns the slot.
 	lifecycle sync.RWMutex
 
-	mu       sync.Mutex
-	waiting  int
-	ipHits   map[string][]time.Time
-	metaHits map[string][]time.Time
+	mu      sync.Mutex
+	waiting int
+	// throttled counts per-source-IP refusals on this node since boot.
+	throttled uint64
+	ipHits    map[string][]time.Time
+	metaHits  map[string][]time.Time
 	// issuerRefreshes is keyed by configured issuer, not by source IP: the
 	// amplification an unknown `kid` buys is aimed at the ISSUER, so one
 	// fabricated-`kid` stream from a thousand addresses is one outbound flood.
@@ -263,25 +299,30 @@ func (l *Limiter) logger() *slog.Logger {
 
 // allowShared charges one hit against a fixed one-minute window in the shared
 // backend and reports whether the subject is still within its allowance. A
-// coordination error fails closed (the attempt is refused), because a
-// pre-authentication limiter that cannot reach its shared state must not admit
-// unbounded distributed work.
-func (l *Limiter) allowShared(bucket, subject string, allowance int) bool {
+// refusal carries the wait until the next window opens. A coordination error
+// fails closed with no wait (the attempt is refused as a plain overload),
+// because a pre-authentication limiter that cannot reach its shared state must
+// not admit unbounded distributed work.
+func (l *Limiter) allowShared(bucket, subject string, allowance int) (wait time.Duration, ok bool) {
 	if subject == "" {
-		return true
+		return 0, true
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), sharedTimeout)
 	defer cancel()
-	window := l.now().UTC().Truncate(time.Minute)
+	now := l.now().UTC()
+	window := now.Truncate(time.Minute)
 	count, err := l.shared.BumpWindow(ctx, bucket, subject, window)
 	if err != nil {
 		// A backend error may echo subject, which is derived from an untrusted
 		// request header on proxy-aware discovery paths. Keep the failure visible
 		// without copying attacker-controlled or credential material into logs.
 		l.logger().Error("admission: shared counter unreachable, refusing", "bucket", bucket)
-		return false
+		return 0, false
 	}
-	return count <= int64(allowance)
+	if count <= int64(allowance) {
+		return 0, true
+	}
+	return window.Add(time.Minute).Sub(now), false
 }
 
 // Snapshot is a point-in-time read of the limiter's pressure, for the
@@ -300,6 +341,9 @@ type Snapshot struct {
 	// ActiveBackoffs is how many per-account buckets carry a live delay right
 	// now — the count of accounts currently past the failure threshold.
 	ActiveBackoffs int
+	// Throttled is how many attempts the per-source-IP window refused on this
+	// node since boot. It is a monotonic counter, not a gauge.
+	Throttled uint64
 }
 
 // Snapshot is a race-free observational read. Slot acquisition/release uses the
@@ -324,6 +368,7 @@ func (l *Limiter) Snapshot() Snapshot {
 		QueueDepthLimit:  QueueDepth,
 		Waiting:          l.waiting,
 		ActiveBackoffs:   active,
+		Throttled:        l.throttled,
 	}
 }
 
@@ -335,8 +380,14 @@ func (l *Limiter) Snapshot() Snapshot {
 func (l *Limiter) Enter(ctx context.Context, sourceIP string) (release func(), err error) {
 	l.lifecycle.RLock()
 	defer l.lifecycle.RUnlock()
-	if !l.allowIP(sourceIP) {
-		return nil, ErrOverloaded
+	if wait, ok := l.allowIP(sourceIP); !ok {
+		if wait <= 0 {
+			return nil, ErrOverloaded
+		}
+		l.mu.Lock()
+		l.throttled++
+		l.mu.Unlock()
+		return nil, &Throttled{RetryAfter: roundUpToStep(wait)}
 	}
 	if !l.enqueue() {
 		return nil, ErrOverloaded
@@ -376,9 +427,11 @@ func (l *Limiter) AllowDiscovery(ip string) bool {
 	l.lifecycle.RLock()
 	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
-		return l.allowShared(sharedBucketMeta, ip, l.discoveryPerIP)
+		_, ok := l.allowShared(sharedBucketMeta, ip, l.discoveryPerIP)
+		return ok
 	}
-	return l.allowIPIn(l.metaHits, ip, l.discoveryPerIP)
+	_, ok := l.allowIPIn(l.metaHits, ip, l.discoveryPerIP)
+	return ok
 }
 
 // AllowIssuerRefresh admits one OUTBOUND JWKS refresh triggered by an unknown
@@ -400,25 +453,33 @@ func (l *Limiter) AllowIssuerRefresh(issuer string) bool {
 	l.lifecycle.RLock()
 	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
-		return l.allowShared(sharedBucketIssuer, issuer, IssuerRefreshPerMinute)
+		_, ok := l.allowShared(sharedBucketIssuer, issuer, IssuerRefreshPerMinute)
+		return ok
 	}
-	return l.allowIPIn(l.issuerRefreshes, issuer, IssuerRefreshPerMinute)
+	_, ok := l.allowIPIn(l.issuerRefreshes, issuer, IssuerRefreshPerMinute)
+	return ok
 }
 
-func (l *Limiter) allowIP(ip string) bool {
+// allowIP reports whether ip is within its allowance. A refusal carries the
+// exact wait until the window next admits ip, or zero when no wait is known.
+func (l *Limiter) allowIP(ip string) (wait time.Duration, ok bool) {
 	if l.shared != nil {
 		return l.allowShared(sharedBucketIP, ip, l.perIP)
 	}
 	return l.allowIPIn(l.ipHits, ip, l.perIP)
 }
 
-func (l *Limiter) allowIPIn(bucket map[string][]time.Time, ip string, allowance int) bool {
+// allowIPIn charges one hit to ip's sliding window. A refusal carries the wait
+// until the oldest counted hit leaves the window. A refused hit is not counted,
+// so after that wait the window holds one fewer hit than the allowance and
+// admits the next attempt.
+func (l *Limiter) allowIPIn(bucket map[string][]time.Time, ip string, allowance int) (wait time.Duration, ok bool) {
 	if ip == "" {
 		// An unattributable source still consumes the instance-wide budget;
 		// it simply has no per-IP bucket to charge. Refusing outright would
 		// break loopback callers behind an untrusted-proxy configuration,
 		// which is a deployment mistake to surface elsewhere, not here.
-		return true
+		return 0, true
 	}
 	now := l.now()
 	cutoff := now.Add(-time.Minute)
@@ -433,13 +494,13 @@ func (l *Limiter) allowIPIn(bucket map[string][]time.Time, ip string, allowance 
 	}
 	if len(kept) >= allowance {
 		bucket[ip] = kept
-		return false
+		return kept[0].Sub(cutoff), false
 	}
 	if len(kept) == 0 && len(bucket) >= MaxTrackedSubjects {
 		evictStale(bucket, cutoff)
 	}
 	bucket[ip] = append(kept, now)
-	return true
+	return 0, true
 }
 
 // evictStale drops buckets whose windows have entirely elapsed. They carry no

@@ -25,7 +25,7 @@ func (a *API) ResetCredential(ctx context.Context, req apigen.ResetCredentialReq
 		// enumeration-uniform route; only overload and faults remain distinct.
 		switch wireErrorFor(err).code {
 		case apigen.ErrorCodeTooManyRequests:
-			return apigen.ResetCredential429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+			return apigen.ResetCredential429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		case apigen.ErrorCodeInternal:
 			a.fault(ctx, "credential reset", err)
 			return apigen.ResetCredential500JSONResponse{

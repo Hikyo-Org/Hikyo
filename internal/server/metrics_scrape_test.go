@@ -26,7 +26,7 @@ func (s stubAdmissionSnapshot) Snapshot() admission.Snapshot { return s.snap }
 // the server-level presence-and-shape test the acceptance criteria demand.
 func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 	metrics := server.NewMetrics(stubAdmissionSnapshot{snap: admission.Snapshot{
-		ConcurrencyLimit: 8, InFlight: 2, QueueDepthLimit: 16, Waiting: 3, ActiveBackoffs: 1,
+		ConcurrencyLimit: 8, InFlight: 2, QueueDepthLimit: 16, Waiting: 3, ActiveBackoffs: 1, Throttled: 4,
 	}})
 	apiSrv := &server.API{
 		Auth: stubAuth{}, Orgs: stubOrgs{}, Providers: stubProviders{}, Version: "test",
@@ -103,6 +103,7 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 		"# TYPE " + server.MetricAdmissionQueueDepthLimit + " gauge",
 		"# TYPE " + server.MetricAdmissionQueueWaiting + " gauge",
 		"# TYPE " + server.MetricAdmissionActiveBackoffs + " gauge",
+		"# TYPE " + server.MetricAdmissionThrottled + " counter",
 		"# TYPE " + server.MetricHAIsLeader + " gauge",
 		"# TYPE " + server.MetricHANodesSeen + " gauge",
 		"# TYPE " + server.MetricHALeaseAgeSecond + " gauge",
@@ -132,6 +133,7 @@ func TestMetricsExposeREDCountersAndAdmissionGauges(t *testing.T) {
 	mustContain(t, body, server.MetricAdmissionQueueDepthLimit+" 16")
 	mustContain(t, body, server.MetricAdmissionQueueWaiting+" 3")
 	mustContain(t, body, server.MetricAdmissionActiveBackoffs+" 1")
+	mustContain(t, body, server.MetricAdmissionThrottled+" 4")
 
 	// HA gauges render the single-node defaults when no HA source is wired, and
 	// carry no per-node label (bounded cardinality: one series each).

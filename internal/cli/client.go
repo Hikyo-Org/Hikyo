@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -197,7 +198,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 		return failf(ExitUnavailable, "reading the response: %v", err)
 	}
 	if resp.StatusCode >= 400 {
-		return errorFromResponse(resp.StatusCode, payload)
+		return errorFromResponse(resp.StatusCode, resp.Header, payload)
 	}
 	c.lastStatus = resp.StatusCode
 	if out == nil || len(payload) == 0 {
@@ -222,10 +223,10 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 // grows a new status without a code the client knows is a skew problem the
 // minimum-revision registry is for, and it lands as ExitInternal rather than
 // being silently reinterpreted.
-func errorFromResponse(status int, payload []byte) error {
+func errorFromResponse(status int, header http.Header, payload []byte) error {
 	var body apigen.Error
 	if err := json.Unmarshal(payload, &body); err != nil {
-		return failf(exitForStatus(status), "server returned %d", status)
+		return failf(exitForStatus(status), "server returned %d%s", status, retryAfterHint(status, header))
 	}
 	code := body.Error.Code
 	message := body.Error.Message
@@ -255,7 +256,7 @@ func errorFromResponse(status int, payload []byte) error {
 	case apigen.ErrorCodeNotFound:
 		return failf(ExitNotFound, "%s", message)
 	case apigen.ErrorCodeTooManyRequests:
-		return failf(ExitUnavailable, "%s", message)
+		return failf(ExitThrottled, "%s%s", message, retryAfterHint(status, header))
 	case apigen.ErrorCodeInternal:
 		return failf(ExitInternal, "%s", message)
 	default:
@@ -273,11 +274,27 @@ func exitForStatus(status int) int {
 		status == http.StatusConflict, status == http.StatusUnprocessableEntity,
 		status == http.StatusRequestEntityTooLarge:
 		return ExitRefused
-	case status >= 500, status == http.StatusTooManyRequests:
+	case status == http.StatusTooManyRequests:
+		return ExitThrottled
+	case status >= 500:
 		return ExitUnavailable
 	default:
 		return ExitInternal
 	}
+}
+
+// retryAfterHint names the wait a 429 advertises, so an operator or a script
+// log shows how long to back off. Only the delay-seconds form is read; an
+// absent or unparseable header adds nothing.
+func retryAfterHint(status int, header http.Header) string {
+	if status != http.StatusTooManyRequests {
+		return ""
+	}
+	seconds, err := strconv.Atoi(strings.TrimSpace(header.Get("Retry-After")))
+	if err != nil || seconds <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (retry after %ds)", seconds)
 }
 
 // Meta fetches the instance's capability advertisement. `login` needs it

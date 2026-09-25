@@ -160,11 +160,18 @@ func safeDetailOf(err error) string {
 // writeError renders a refusal. It never writes anything derived from the
 // cause beyond the code itself; the cause is the process log's business.
 func writeError(w http.ResponseWriter, policy WireError, detail string) {
+	writeRefusal(w, policy, detail, nil)
+}
+
+// writeRefusal is writeError for a handler that holds the refusal. The cause
+// can change only the advertised wait of a 429 (see retryAfterSeconds), never
+// the status or the body.
+func writeRefusal(w http.ResponseWriter, policy WireError, detail string, cause error) {
 	if policy.code == apigen.ErrorCodeServiceUnavailable {
 		w.Header().Set("Retry-After", "2")
 	}
 	if policy.code == apigen.ErrorCodeTooManyRequests {
-		w.Header().Set("Retry-After", strconv.Itoa(int(admission.RetryAfter.Seconds())))
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds(cause)))
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(policy.status)

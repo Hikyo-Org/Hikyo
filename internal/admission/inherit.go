@@ -58,6 +58,7 @@ func (l *Limiter) InheritCounters(previous *Limiter) error {
 	l.metaHits = cloneWindows(previous.metaHits)
 	l.issuerRefreshes = cloneWindows(previous.issuerRefreshes)
 	l.accounts = maps.Clone(previous.accounts)
+	l.throttled = previous.throttled
 	l.shared = previous.shared
 	if l.log == nil {
 		l.log = previous.log

@@ -65,6 +65,7 @@ const (
 	MetricAdmissionQueueDepthLimit  = "hikyo_admission_queue_depth_limit"
 	MetricAdmissionQueueWaiting     = "hikyo_admission_queue_waiting"
 	MetricAdmissionActiveBackoffs   = "hikyo_admission_active_backoffs"
+	MetricAdmissionThrottled        = "hikyo_admission_throttled_total"
 
 	// Multi-node HA gauges (#146). Label-free, so their cardinality is one each
 	// regardless of cluster size (the ops-spec bounded-cardinality posture: no
@@ -409,16 +410,17 @@ func (m *Metrics) record(class surfaceClass, code int, d time.Duration) {
 
 type admissionCollector struct {
 	source AdmissionSnapshotter
-	descs  [5]*prometheus.Desc
+	descs  [6]*prometheus.Desc
 }
 
 func newAdmissionCollector(source AdmissionSnapshotter) *admissionCollector {
-	return &admissionCollector{source: source, descs: [5]*prometheus.Desc{
+	return &admissionCollector{source: source, descs: [6]*prometheus.Desc{
 		prometheus.NewDesc(MetricAdmissionConcurrencyLimit, "Configured admission concurrency limit.", nil, nil),
 		prometheus.NewDesc(MetricAdmissionInFlight, "Current admission work in flight.", nil, nil),
 		prometheus.NewDesc(MetricAdmissionQueueDepthLimit, "Configured admission queue depth limit.", nil, nil),
 		prometheus.NewDesc(MetricAdmissionQueueWaiting, "Current requests waiting for admission.", nil, nil),
 		prometheus.NewDesc(MetricAdmissionActiveBackoffs, "Current active admission backoff buckets.", nil, nil),
+		prometheus.NewDesc(MetricAdmissionThrottled, "Pre-auth attempts refused by the per-source-IP window since boot.", nil, nil),
 	}}
 }
 
@@ -440,9 +442,10 @@ func (c *admissionCollector) Collect(ch chan<- prometheus.Metric) {
 		float64(snap.Waiting),
 		float64(snap.ActiveBackoffs),
 	}
-	for i, desc := range c.descs {
+	for i, desc := range c.descs[:len(values)] {
 		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
 	}
+	ch <- prometheus.MustNewConstMetric(c.descs[len(values)], prometheus.CounterValue, float64(snap.Throttled))
 }
 
 // haCollector emits the three label-free multi-node HA gauges. Its source is

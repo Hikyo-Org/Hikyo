@@ -87,6 +87,8 @@ func sharedLimiter(t *testing.T, store SharedStore, now *time.Time) *Limiter {
 	return l
 }
 
+func admitted(_ time.Duration, ok bool) bool { return ok }
+
 func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func TestSharedIPBudgetIsInstanceWideAcrossNodes(t *testing.T) {
@@ -104,20 +106,58 @@ func TestSharedIPBudgetIsInstanceWideAcrossNodes(t *testing.T) {
 		if i%2 == 1 {
 			l = nodeB
 		}
-		if l.allowIP("1.2.3.4") {
+		if admitted(l.allowIP("1.2.3.4")) {
 			allowed++
 		}
 	}
 	if allowed != PerIPPerMinute {
 		t.Fatalf("allowed %d of the first %d, want all", allowed, PerIPPerMinute)
 	}
-	if nodeB.allowIP("1.2.3.4") {
+	if admitted(nodeB.allowIP("1.2.3.4")) {
 		t.Fatal("node B admitted an attempt past the shared per-IP budget (node hopping bypassed the limit)")
 	}
 	// A different window resets the budget.
 	now = now.Add(time.Minute)
-	if !nodeA.allowIP("1.2.3.4") {
+	if !admitted(nodeA.allowIP("1.2.3.4")) {
 		t.Fatal("new window did not reset the shared per-IP budget")
+	}
+}
+
+func TestSharedPerIPRefusalWaitsForTheNextWindow(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 12, 0, time.UTC)
+	store := newFakeShared()
+	l := sharedLimiter(t, store, &now)
+	for i := range PerIPPerMinute {
+		rel, err := l.Enter(context.Background(), "1.2.3.4")
+		if err != nil {
+			t.Fatalf("attempt %d refused inside the allowance: %v", i, err)
+		}
+		rel()
+	}
+	_, err := l.Enter(context.Background(), "1.2.3.4")
+	if wait := RetryAfterOf(err); wait != 50*time.Second {
+		t.Fatalf("advertised wait = %v (err %v), want 48s to the next minute rounded up to 50s", wait, err)
+	}
+	now = now.Add(50 * time.Second)
+	rel, err := l.Enter(context.Background(), "1.2.3.4")
+	if err != nil {
+		t.Fatalf("refused again after the advertised wait: %v", err)
+	}
+	rel()
+}
+
+func TestSharedCounterErrorKeepsTheFixedWait(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 12, 0, time.UTC)
+	store := newFakeShared()
+	l := sharedLimiter(t, store, &now)
+	store.setErr(errors.New("offline"))
+	_, err := l.Enter(context.Background(), "1.2.3.4")
+	var throttled *Throttled
+	if !errors.Is(err, ErrOverloaded) || errors.As(err, &throttled) || RetryAfterOf(err) != RetryAfter {
+		t.Fatalf("unreachable shared counter: err %v, want the plain overload with the fixed wait", err)
+	}
+	if got := l.Snapshot().Throttled; got != 0 {
+		t.Fatalf("throttle counter = %d, want 0: a coordination failure is not a window refusal", got)
 	}
 }
 
@@ -160,7 +200,7 @@ func TestSharedCounterErrorsFailClosed(t *testing.T) {
 	l.UseShared(store, slog.New(slog.NewTextHandler(&logs, nil)))
 	store.setErr(errors.New("datastore unreachable with CANARY-HEADER-VALUE"))
 
-	if l.allowIP("1.2.3.4") {
+	if admitted(l.allowIP("1.2.3.4")) {
 		t.Fatal("allowIP admitted while the shared counter was unreachable (must fail closed)")
 	}
 	if l.AllowDiscovery("1.2.3.4") {

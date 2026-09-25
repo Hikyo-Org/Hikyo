@@ -222,8 +222,14 @@ stdout and an error exits 4. See [Docker Compose delivery](/docs/compose/).
 | `4` | Refused | Satisfy the named safety or policy condition. |
 | `5` | Not found or unauthorized | Check target and authorization. |
 | `6` | Unavailable | Retry only after checking service health. |
+| `7` | Throttled (`429`) | Wait the time the error names, then retry. |
 
 Code `5` deliberately combines missing and unauthorized resources.
+
+Code `7` means that the server is up but refused the call because of a rate
+limit or overload. The error line on stderr names the wait, for example
+`hikyo: too many requests (retry after 40s)`. Scripts must branch on the exit
+code, not on the message text.
 
 ## Import and migration
 

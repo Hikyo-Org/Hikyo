@@ -149,7 +149,7 @@ func (a *API) writeHandlerError(w http.ResponseWriter, r *http.Request, err erro
 		_ = json.NewEncoder(w).Encode(body)
 		return
 	}
-	writeError(w, policy, safeDetailOf(err))
+	writeRefusal(w, policy, safeDetailOf(err), err)
 }
 
 // ---------------------------------------------------------------------------

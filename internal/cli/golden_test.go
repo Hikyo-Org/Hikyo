@@ -325,6 +325,8 @@ func exitName(code int) string {
 		return "5 not found"
 	case cli.ExitUnavailable:
 		return "6 unavailable"
+	case cli.ExitThrottled:
+		return "7 throttled"
 	default:
 		return "unknown"
 	}

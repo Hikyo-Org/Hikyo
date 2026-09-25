@@ -1024,6 +1024,39 @@ func TestOverloadIsUniformAndCarriesRetryAfter(t *testing.T) {
 	}
 }
 
+// TestPerIPThrottleAdvertisesTheWindowsWait pins #806: a per-source-IP refusal
+// keeps the uniform 429 body but advertises the window's own wait, while every
+// other overload keeps the fixed value.
+func TestPerIPThrottleAdvertisesTheWindowsWait(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"window", fmt.Errorf("wrapped: %w", &admission.Throttled{RetryAfter: 40 * time.Second}), "40"},
+		{"overload", admission.ErrOverloaded, strconv.Itoa(int(admission.RetryAfter / time.Second))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := newTestServer(t, stubAuth{
+				login: func(context.Context, string, string, service.Artifact) (service.LoginResult, error) {
+					return service.LoginResult{}, tc.err
+				},
+			}, stubOrgs{})
+			resp, payload := call(t, srv, http.MethodPost, api.PathPrefix+"/auth/local/login", "",
+				map[string]any{"username": "admin", "password": "whatever at all"})
+			if resp.StatusCode != http.StatusTooManyRequests {
+				t.Fatalf("status %d, want 429", resp.StatusCode)
+			}
+			if got := resp.Header.Get("Retry-After"); got != tc.want {
+				t.Fatalf("Retry-After = %q, want %q", got, tc.want)
+			}
+			if code := decodeError(t, payload).Error.Code; code != apigen.ErrorCodeTooManyRequests {
+				t.Errorf("code %q", code)
+			}
+		})
+	}
+}
+
 func TestHealthProbesSitOutsideTheAPIStack(t *testing.T) {
 	// A liveness probe refused by the admission budget would turn a login
 	// flood into a restart loop, so the probes must not carry the API

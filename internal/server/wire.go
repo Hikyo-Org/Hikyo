@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
@@ -9,9 +10,12 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
-// retryAfterSeconds is what an overloaded instance advertises, in whole
-// seconds, on every pre-auth path alike.
-var retryAfterSeconds = int(admission.RetryAfter.Seconds())
+// retryAfterSeconds is the wait an overload refusal advertises, in whole
+// seconds: the per-source-IP window's own wait when err is that refusal, and
+// the fixed instance-wide value for every other overload (and for nil).
+func retryAfterSeconds(err error) int {
+	return int(admission.RetryAfterOf(err) / time.Second)
+}
 
 // wireOrg converts a service organisation to its wire shape.
 //

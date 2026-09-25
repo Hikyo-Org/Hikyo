@@ -26,7 +26,7 @@ import (
 // conversion failures become 500 responses.
 func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObject) (apigen.AuthMethodsResponseObject, error) {
 	if a.Admission != nil && !a.Admission.AllowDiscovery(audit.FromContext(ctx).SourceIP) {
-		return apigen.AuthMethods429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+		return apigen.AuthMethods429JSONResponse{TooManyRequestsJSONResponse: tooMany(nil)}, nil
 	}
 	providers, localEnabled, err := a.Auth.AuthMethods(ctx)
 	if err != nil {
@@ -143,7 +143,7 @@ func oidcStartError(a *API, ctx context.Context, err error) apigen.OidcStartResp
 	policy := wireErrorFor(err)
 	switch policy.code {
 	case apigen.ErrorCodeTooManyRequests:
-		return apigen.OidcStart429JSONResponse{TooManyRequestsJSONResponse: tooMany()}
+		return apigen.OidcStart429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}
 	case apigen.ErrorCodeInternal:
 		a.fault(ctx, "oidc start", err)
 		return apigen.OidcStart500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}
@@ -188,7 +188,7 @@ func (a *API) OidcCallback(ctx context.Context, req apigen.OidcCallbackRequestOb
 		policy := wireErrorFor(err)
 		switch policy.code {
 		case apigen.ErrorCodeTooManyRequests:
-			return apigen.OidcCallback429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+			return apigen.OidcCallback429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		case apigen.ErrorCodeInternal:
 			a.fault(ctx, "oidc callback", err)
 			return apigen.OidcCallback500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil

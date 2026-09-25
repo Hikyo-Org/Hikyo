@@ -153,6 +153,7 @@ matter the traffic.
 | `hikyo_admission_queue_depth_limit` | gauge | none | Bound on simultaneous pre-auth waiters. |
 | `hikyo_admission_queue_waiting` | gauge | none | Waiters currently queued for a slot. |
 | `hikyo_admission_active_backoffs` | gauge | none | Accounts currently past the failure-backoff threshold. |
+| `hikyo_admission_throttled_total` | counter | none | Pre-auth attempts the per-source-IP window refused on this node since boot. |
 
 Counters cover all `/api/v1/*` traffic. Unmatched paths, unsupported methods,
 and CORS preflights use the closed `other` class.

@@ -131,7 +131,7 @@ func TestInheritCountersKeepsSharedBackendAndFailsClosed(t *testing.T) {
 	if err := configured.InheritCounters(previous); err != nil {
 		t.Fatalf("same preconfigured backend refused: %v", err)
 	}
-	if next.allowIP("source") || next.AllowDiscovery("source") || next.AllowIssuerRefresh("issuer") || next.AccountDelay("account") <= 0 {
+	if admitted(next.allowIP("source")) || next.AllowDiscovery("source") || next.AllowIssuerRefresh("issuer") || next.AccountDelay("account") <= 0 {
 		t.Fatal("shared counters reset")
 	}
 	backend.setErr(errors.New("offline"))
