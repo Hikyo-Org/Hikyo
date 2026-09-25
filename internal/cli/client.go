@@ -322,6 +322,11 @@ func errorFromResponse(status int, header http.Header, payload []byte) error {
 			"resubmit with --acknowledge <token>[,<token>] to override, or remove the credential.",
 			len(*body.Error.Findings), formatFindings(*body.Error.Findings))
 	}
+	// HTTP 429 is throttling whatever code a JSON body carries (a proxy's own
+	// error document, say), so it keeps exit 7 and its Retry-After.
+	if status == http.StatusTooManyRequests {
+		return rateLimited(message, header)
+	}
 	switch code {
 	case apigen.ErrorCodeUnauthenticated:
 		return failf(ExitAuth, "%s", message)
@@ -336,8 +341,6 @@ func errorFromResponse(status int, header http.Header, payload []byte) error {
 		return failf(ExitRefused, "%s", message)
 	case apigen.ErrorCodeNotFound:
 		return failf(ExitNotFound, "%s", message)
-	case apigen.ErrorCodeTooManyRequests:
-		return rateLimited(message, header)
 	case apigen.ErrorCodeInternal:
 		return failf(ExitInternal, "%s", message)
 	default:

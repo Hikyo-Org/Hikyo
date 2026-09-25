@@ -230,8 +230,12 @@ throttled call exited `6`.
 
 ## Rate limits
 
-A throttled request answers `429` with a `Retry-After` header naming the whole
-seconds until the refusing limit admits the caller again, absent new traffic.
+A throttled request answers `429` with a `Retry-After` header. When the refusing
+limit is a rate window (the per-IP allowance, discovery, the export and other
+budgets), the value is the whole seconds until that window admits the caller
+again, absent new traffic. When no reopening time is known (the admission queue,
+concurrency caps, per-account backoff), it is a fixed five-second hint, not a
+guarantee.
 The CLI exits `7` and prints the value on stderr, for example
 `hikyo: too many requests; Retry-After: 23`.
 

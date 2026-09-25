@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"errors"
 	"net/http"
 	"testing"
+	"time"
 )
 
 // A non-JSON refusal falls back to its status. Every status the wire error
@@ -24,5 +26,17 @@ func TestExitForStatusMatchesTheRefusalCodes(t *testing.T) {
 		if got := exitForStatus(status); got != want {
 			t.Errorf("exitForStatus(%d) = %d, want %d", status, got, want)
 		}
+	}
+}
+
+// A 429 whose JSON body carries some other code (a proxy's own error
+// document) is still throttling: exit 7 with its Retry-After kept.
+func TestJSON429WithForeignCodeIsRateLimited(t *testing.T) {
+	header := http.Header{"Retry-After": []string{"9"}}
+	err := errorFromResponse(http.StatusTooManyRequests, header, []byte(`{"error":{"code":"internal","message":"slow down"}}`))
+	var ce *Error
+	var limited *RateLimitedError
+	if !errors.As(err, &ce) || ce.Code != ExitRateLimited || !errors.As(err, &limited) || limited.RetryAfter != 9*time.Second {
+		t.Fatalf("err=%v, want exit %d with Retry-After 9s", err, ExitRateLimited)
 	}
 }
