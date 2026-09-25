@@ -449,10 +449,11 @@ func shardFor(kind, relativePath string, shardCount int) int {
 // raceExcluded names the packages the race shards never run. The isolation
 // suite has its own shards. internal/lint's tests type-check the repository
 // through x/tools go/packages, whose per-package goroutines race inside Go's
-// own go/types under Go 1.27 (Named.unpack against isComplete, golang/go#81138,
-// open): the detector fires on the toolchain, not on Hikyo code, and the
-// analyzers themselves run on one goroutine. The package still runs in
-// test_core. Re-include it once #81138 is fixed in the toolchain go.mod pins.
+// own go/types under Go 1.27 (Named.unpack against isComplete, golang/go#81122,
+// open; go 1.26 is race-clean there): the detector fires on the toolchain, not
+// on Hikyo code, and the analyzers themselves run on one goroutine. The package
+// still runs in test_core. Re-include it once the toolchain go.mod pins carries
+// the fix for #81122.
 var raceExcluded = map[string]bool{
 	"internal/isolation": true,
 	"internal/lint":      true,
