@@ -385,6 +385,17 @@ fieldset.field > legend {
   color: var(--danger);
 }
 
+/* Delivery-target states (#790): stale is a warning, neutral hairline on a
+   slate tint; unknown is unmeasured, a dashed hairline. Reported keeps the
+   neutral badge: a controller's assertion is not a measured-good condition. */
+.badge[data-state='stale'] {
+  background: var(--changed-soft);
+}
+
+.badge[data-state='unknown'] {
+  border-style: dashed;
+}
+
 /* Identity circles and count badges, the only pills outside the matrix. */
 .avatar {
   display: grid;
@@ -3214,6 +3225,16 @@ fieldset.field > legend {
 
 .cred__meta {
   color: var(--tx-dim);
+}
+
+.delivery-targets__group {
+  margin-block-end: var(--space-4);
+}
+
+.delivery-targets__conditions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .machine__actions {

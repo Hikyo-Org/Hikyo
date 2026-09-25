@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { zKeyList } from '@hikyo/zod';
-import { expect, fn, waitFor } from 'storybook/test';
+import { expect, fn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MachineEnvScope } from '../api/identities.ts';
@@ -14,6 +14,10 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // and classifications, never a value), which the harness answers; the grant
 // itself has no story route, so the plays stop short of submitting.
 const KEYS_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/keys`;
+// The org membership listing: readable only with org- or instance-scope
+// manage-members, the one authority that may grant report-delivery-status.
+// Unlisted, it 404s and the checkbox is not offered.
+const ORG_GRANTS_URL = `/api/v1/orgs/${ORG}/grants`;
 
 const key = (
   n: number,
@@ -130,5 +134,38 @@ export const CatalogueLoading: Story = {
       expect(canvas.getByText(/reading what this grant would make reachable/i)).toBeVisible(),
     );
     await expect(canvas.getByRole('button', { name: 'Grant read' })).toBeDisabled();
+  },
+};
+
+// A workload account and an org member manager: report-delivery-status is one
+// checkbox beside read, and ticking it names both grants on the button.
+export const ReportingGrantable: Story = {
+  parameters: {
+    app: {
+      responses: [
+        { url: KEYS_URL, body: catalogue },
+        { url: ORG_GRANTS_URL, body: { count: 0, items: [] } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(
+      await canvas.findByRole('checkbox', { name: /also grant report-delivery-status/i }),
+    );
+    await expect(
+      canvas.getByRole('button', { name: 'Grant read and report-delivery-status' }),
+    ).toBeVisible();
+  },
+};
+
+// A project-scope member manager cannot grant the atom (the org membership
+// listing 404s), so the checkbox is not offered: read alone.
+export const ReportingNotGrantable: Story = {
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText('LOG_LEVEL · config')).toBeVisible();
+    await expect(
+      canvas.queryByRole('checkbox', { name: /also grant report-delivery-status/i }),
+    ).not.toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Grant read' })).toBeEnabled();
   },
 };
