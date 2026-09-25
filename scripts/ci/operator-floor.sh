@@ -62,7 +62,7 @@ helm template floor chart/hikyo "${chart_flags[@]}" --show-only templates/operat
 helm template floor chart/hikyo "${chart_flags[@]}" --show-only templates/operator-deployment.yaml >"$work/deployment.yaml"
 echo 'operator-floor: building binaries outside the measurement cgroup'
 # Status reporting is on by chart default and needs a SemVer build version.
-GOMAXPROCS=2 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -p 1 -trimpath -ldflags "-X main.version=0.0.0-operator-floor" -o "$work/hikyo" ./cmd/hikyo
+GOMAXPROCS=2 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -p 1 -trimpath -ldflags "-X main.version=${HIKYO_OPERATOR_FLOOR_VERSION:-0.0.0-operator-floor}" -o "$work/hikyo" ./cmd/hikyo
 GOMAXPROCS=2 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -p 1 -trimpath -o "$work/fixture" ./scripts/operator-floor
 GOMAXPROCS=2 go build -p 1 -trimpath -o "$work/driver" ./scripts/operator-floor
 binary_sha=$(shasum -a 256 "$work/hikyo" | awk '{print $1}')

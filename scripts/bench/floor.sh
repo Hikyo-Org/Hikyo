@@ -35,7 +35,11 @@ mkdir -p "$output"
 output=$(cd "$output" && pwd)
 mkdir "$work/image" "$work/runtime"
 export CGO_ENABLED=0 GOOS=linux GOARCH=arm64 GOMAXPROCS=2
-go build -p 1 -trimpath -o "$work/image/hikyo" ./cmd/hikyo
+# The operator floor (run below) must measure this exact binary: its evidence
+# pins operator_binary_sha256 to provenance's hikyo hash, so both builds share
+# one reporter version (a SemVer version is required with status reporting on).
+export HIKYO_OPERATOR_FLOOR_VERSION=0.0.0-operator-floor
+go build -p 1 -trimpath -ldflags "-X main.version=$HIKYO_OPERATOR_FLOOR_VERSION" -o "$work/image/hikyo" ./cmd/hikyo
 go build -p 1 -trimpath -o "$work/image/bench-scan" ./cmd/bench-scan
 go test -p 1 -c -tags floorbench -o "$work/image/isolation.test" ./internal/isolation
 go test -p 1 -c -tags floorbench -o "$work/image/floor.test" ./internal/bench
