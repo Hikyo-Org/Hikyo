@@ -62,6 +62,7 @@ for its ripple register.
 | system-architecture ADR | [system-architecture.md](./system-architecture.md) |
 | tenant-isolation ADR | [tenant-isolation.md](./tenant-isolation.md) |
 | threat-model ADR | [threat-model.md](./threat-model.md) |
+| workload-push-delivery ADR (proposed) | [workload-push-delivery.md](./workload-push-delivery.md) |
 
 Background research the ADRs cite lives in [`../research/`](../research/).
 
