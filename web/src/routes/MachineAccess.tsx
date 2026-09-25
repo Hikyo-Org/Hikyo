@@ -59,6 +59,7 @@ import {
   type JourneyAction,
   type MachineCredential,
   type MachineEnvScope,
+  type MachineGrantCapability,
   type ProjectRef,
   type ServiceAccount,
 } from '../api/identities.ts';
@@ -184,12 +185,11 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
 ];
 
 /**
- * tabLabel spells a count the surface knows, says "unknown" for one it does
- * not (a pending or failed listing is not zero), and carries no count at all
- * when `count` is null.
+ * tabLabel spells a count the surface knows and says "unknown" for one it does
+ * not (a pending or failed listing is not zero).
  */
-export function tabLabel(label: string, count: number | 'unknown' | null): string {
-  return count === null ? label : `${label} (${count === 'unknown' ? 'unknown' : String(count)})`;
+export function tabLabel(label: string, count: number | 'unknown'): string {
+  return `${label} (${count === 'unknown' ? 'unknown' : String(count)})`;
 }
 
 /**
@@ -231,9 +231,11 @@ export function MachineAccessPage() {
   const leases = useLeases(project, environments);
   const deliveryTargets = useDeliveryTargets(project, environments);
   // Until the environments are read the fan-out is empty, which would read as
-  // "no reports": the reports are known only once every listing settled.
+  // "no reports": the reports are known only once the server says it accepts
+  // them and every listing settled.
   const targetsKnown =
     environmentsQuery.isSuccess &&
+    deliveryTargets.support === 'supported' &&
     !deliveryTargets.isPending &&
     deliveryTargets.failures.length === 0;
   const providersQuery = useDynamicProviders(project);
@@ -373,7 +375,7 @@ export function MachineAccessPage() {
     mintableProviders.length > 0 &&
     environments.length > 0;
 
-  const tabCount: Record<Tab, number | 'unknown' | null> = {
+  const tabCount: Record<Tab, number | 'unknown'> = {
     accounts: accountsQuery.isSuccess ? accounts.length : 'unknown',
     // Unknown is rendered as unknown: "Federation (0)" on a failed listing
     // reads as "there are none", which is the one thing it does not know.
@@ -526,6 +528,7 @@ export function MachineAccessPage() {
                         machineReveal={machineReveal}
                         deliveryTargets={deliveryTargets}
                         targetsKnown={targetsKnown}
+                        reportingUnsupported={deliveryTargets.support === 'unsupported'}
                         bearers={bearers(rows)}
                         bindings={bindings(rows)}
                         now={now}
@@ -1310,6 +1313,7 @@ function ExpansionBody({
   machineReveal,
   deliveryTargets,
   targetsKnown,
+  reportingUnsupported,
   bearers,
   bindings,
   now,
@@ -1328,6 +1332,8 @@ function ExpansionBody({
   deliveryTargets: DeliveryTargetsView;
   /** Every readable environment's reports have been read (see targetsKnown). */
   targetsKnown: boolean;
+  /** The server does not advertise delivery-target reporting at all. */
+  reportingUnsupported: boolean;
   bearers: readonly MachineCredential[];
   bindings: readonly MachineCredential[];
   now: Date;
@@ -1409,7 +1415,9 @@ function ExpansionBody({
         <div>
           <h2 className="machine__subhead">Delivery targets</h2>
           <p role="status" className="machine__none">
-            {!targetsKnown
+            {reportingUnsupported
+              ? 'This server does not support delivery-target reporting.'
+              : !targetsKnown
               ? 'unknown: not every environment\'s reports have been read. The Kubernetes targets tab says why.'
               : reported === 0
                 ? 'No reports from this account in the environments you can read. No report is not health.'
@@ -2363,9 +2371,18 @@ export function BindingDialog({
  * how many live credentials that is, and exactly which keys become reachable.
  *
  * Only `read` is offered in this setup journey, with `report-delivery-status`
- * beside it for a workload account. Conditional disclosure grants are separate
- * operator acts: `reveal` needs the live project opt-in, while `reveal-history`
- * additionally needs an active non-current workload pin.
+ * beside it for a workload account, and on its own where the account already
+ * reads. Conditional disclosure grants are separate operator acts: `reveal`
+ * needs the live project opt-in, while `reveal-history` additionally needs an
+ * active non-current workload pin.
+ *
+ * `report-delivery-status` (condition-reporting ADR D1) is workload-only, and
+ * no human can hold it, so the server grants it only from `manage-members` at
+ * org or instance scope (the grant-unheld rule, grants.go mayGrantUnheld).
+ * Reading the org membership listing takes exactly that (`manage-members@org`,
+ * instance by inheritance), so its success is the server's own predicate. It
+ * is not offered to a caller the server would refuse, as reveal is not offered
+ * without the opt-in.
  */
 export function GrantDialog({
   project,
@@ -2385,9 +2402,16 @@ export function GrantDialog({
   onClose: () => void;
   onGranted: (environment: string, results: readonly GrantResult[]) => void;
 }) {
+  const reportable =
+    account.kind === 'workload' &&
+    grantableFor(scope, 'report-delivery-status', machineReveal).length > 0;
+  // An empty org leaves the query idle where there is nothing to report on.
+  const reportAuthority = useOrgGrants(reportable ? project.org : '');
+  const reportGrantable = reportable && reportAuthority.isSuccess;
   const grantable =
     grantableFor(scope, 'read', machineReveal).length > 0 ||
-    grantableFor(scope, 'reveal', machineReveal).length > 0;
+    grantableFor(scope, 'reveal', machineReveal).length > 0 ||
+    reportGrantable;
   // The in-flight latch lives here because the dialog's cancel event does,
   // while the mutation lives in GrantBody, a ref, because the gate needs the
   // truth at event time, not a render.
@@ -2414,7 +2438,9 @@ export function GrantDialog({
         )
       }
     >
-      {!grantable ? (
+      {!grantable && reportable && reportAuthority.isPending ? (
+        <p role="status">Checking whether you can grant report-delivery-status…</p>
+      ) : !grantable ? (
         <p role="status">
           {machineReveal
             ? 'This account already reads and reveals every environment in the project. There is nothing to widen.'
@@ -2426,6 +2452,7 @@ export function GrantDialog({
           account={account}
           scope={scope}
           machineReveal={machineReveal}
+          reportGrantable={reportGrantable}
           liveCredentials={liveCredentials}
           inFlightRef={inFlight}
           onClose={onClose}
@@ -2447,6 +2474,7 @@ function GrantBody({
   account,
   scope,
   machineReveal,
+  reportGrantable,
   liveCredentials,
   inFlightRef,
   onClose,
@@ -2456,6 +2484,8 @@ function GrantBody({
   account: ServiceAccount;
   scope: readonly MachineEnvScope[];
   machineReveal: boolean;
+  /** A workload account, and a caller the server lets grant report-delivery-status. */
+  reportGrantable: boolean;
   liveCredentials: number;
   /** GrantDialog's Escape gate, held while the mutation is in flight. */
   inFlightRef: MutableRefObject<boolean>;
@@ -2466,8 +2496,12 @@ function GrantBody({
   const refreshGrants = useRefreshGrants(project);
   // Reveal is offered only while the project opt-in is on: the UI grants read
   // by default, and the select widens to reveal under the same ceremony.
-  const [capability, setCapability] = useState<'read' | 'reveal'>(
-    grantableFor(scope, 'read', machineReveal).length > 0 ? 'read' : 'reveal',
+  const [capability, setCapability] = useState<MachineGrantCapability>(
+    grantableFor(scope, 'read', machineReveal).length > 0
+      ? 'read'
+      : grantableFor(scope, 'reveal', machineReveal).length > 0
+        ? 'reveal'
+        : 'report-delivery-status',
   );
   // The inputs can move under an open dialog (the opt-in withdrawn, the
   // account's scope refreshed). Derive the effective selection during render so
@@ -2476,8 +2510,11 @@ function GrantBody({
   // follows the effective capability (grantableFor('reveal', false) is empty,
   // so read's list is what a withdrawn opt-in must fall back to), and an
   // environment no longer in that list snaps to its head.
-  const effectiveCapability: 'read' | 'reveal' =
-    capability === 'reveal' && !machineReveal ? 'read' : capability;
+  const effectiveCapability: MachineGrantCapability =
+    (capability === 'reveal' && !machineReveal) ||
+    (capability === 'report-delivery-status' && !reportGrantable)
+      ? 'read'
+      : capability;
   const grantable = grantableFor(scope, effectiveCapability, machineReveal);
   const [environment, setEnvironment] = useState(grantable[0]?.id ?? '');
   const effectiveEnvironment =
@@ -2487,19 +2524,16 @@ function GrantBody({
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // `report-delivery-status` (condition-reporting ADR D1) rides beside read for
-  // a workload account. No human can hold the atom, so the server grants it
-  // only from `manage-members` at org or instance scope (the grant-unheld rule,
-  // grants.go mayGrantUnheld). Reading the org membership listing takes exactly
-  // that (`manage-members@org`, instance by inheritance), so its success is the
-  // server's own predicate; an empty org leaves the query idle for automation.
-  const offersReporting = account.kind === 'workload' && effectiveCapability === 'read';
-  const reportAuthority = useOrgGrants(account.kind === 'workload' ? project.org : '');
+  // The report atom rides beside read where the chosen environment lacks it.
+  const chosen = grantable.find((s) => s.id === effectiveEnvironment);
+  const offersReporting =
+    reportGrantable && effectiveCapability === 'read' && chosen?.report === false;
   const [report, setReport] = useState(false);
-  const withReport = offersReporting && reportAuthority.isSuccess && report;
+  const withReport = offersReporting && report;
   const capabilities = withReport
     ? [effectiveCapability, 'report-delivery-status']
     : [effectiveCapability];
+  const reporting = effectiveCapability === 'report-delivery-status';
 
   // An in-flight grant is not dismissible by Back or unload either: a widening
   // that commits behind a dismissed dialog is invisible at the moment it most
@@ -2525,7 +2559,6 @@ function GrantBody({
     effectiveCapability === 'reveal'
       ? catalogue.filter((key) => key.classification === 'secret')
       : catalogue;
-  const chosen = grantable.find((s) => s.id === effectiveEnvironment);
   // The opt-in can be withdrawn while this dialog is open: the capability
   // select disappears, but a stale reveal choice or a stale environment must
   // not stay submittable.
@@ -2575,25 +2608,36 @@ function GrantBody({
     }
   };
 
-  const chooseCapability = (next: 'read' | 'reveal') => {
+  const chooseCapability = (next: MachineGrantCapability) => {
     setCapability(next);
     setEnvironment(grantableFor(scope, next, machineReveal)[0]?.id ?? '');
   };
 
   return (
     <>
-      {machineReveal ? (
+      {machineReveal || reportGrantable ? (
         <div className="field">
           <label htmlFor="grant-capability">Capability</label>
           <select
             id="grant-capability"
             value={effectiveCapability}
             onChange={(event) =>
-              chooseCapability(event.target.value === 'reveal' ? 'reveal' : 'read')
+              chooseCapability(
+                event.target.value === 'reveal' || event.target.value === 'report-delivery-status'
+                  ? event.target.value
+                  : 'read',
+              )
             }
           >
             <option value="read">read (configuration and secret presence)</option>
-            <option value="reveal">reveal (standing secret plaintext)</option>
+            {machineReveal ? (
+              <option value="reveal">reveal (standing secret plaintext)</option>
+            ) : null}
+            {reportGrantable ? (
+              <option value="report-delivery-status">
+                report-delivery-status (value-free delivery-target status)
+              </option>
+            ) : null}
           </select>
         </div>
       ) : null}
@@ -2612,9 +2656,7 @@ function GrantBody({
           ))}
         </select>
       </div>
-      {/* Not offered to a caller the server would refuse, as reveal is not
-          offered without the opt-in. */}
-      {offersReporting && reportAuthority.isSuccess ? (
+      {offersReporting ? (
         <Checkbox
           label="Also grant report-delivery-status: its controller may report value-free delivery-target status here"
           checked={withReport}
@@ -2630,7 +2672,9 @@ function GrantBody({
           {`This grant re-scopes every credential already in circulation. ${account.name} has ${String(liveCredentials)} live credential${liveCredentials === 1 ? '' : 's'}, and each one gains ${
             effectiveCapability === 'read'
               ? 'read (configuration and secret presence)'
-              : 'reveal (standing secret plaintext decryption)'
+              : reporting
+                ? 'report-delivery-status (value-free delivery-target status reports)'
+                : 'reveal (standing secret plaintext decryption)'
           }${withReport ? ' and report-delivery-status' : ''} on ${chosen?.name ?? 'that environment'} the moment this lands.`}
         </span>
       </p>
@@ -2653,7 +2697,12 @@ function GrantBody({
       {/* FAIL CLOSED. A pending or failed catalogue read cannot be rendered as
           "nothing becomes reachable": that is the one answer it does not have,
           and it is the answer that makes the grant look harmless. */}
-      {values.isSuccess ? (
+      {reporting ? (
+        <p className="ceremony__scope">
+          A status report carries no key name and no value, so this grant makes nothing
+          reachable.
+        </p>
+      ) : values.isSuccess ? (
         <>
           <p className="ceremony__scope">
             {reachable.length === 0
@@ -2702,7 +2751,7 @@ function GrantBody({
         <Button
           variant="primary"
           type="button"
-          disabled={busy || !submittable || !values.isSuccess}
+          disabled={busy || !submittable || !(reporting || values.isSuccess)}
           onClick={() => void submit()}
         >
           {busy ? 'Granting…' : `Grant ${capabilities.join(' and ')}`}

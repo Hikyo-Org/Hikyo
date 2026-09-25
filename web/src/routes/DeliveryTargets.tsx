@@ -1,13 +1,11 @@
 import { Link } from 'react-router';
 
 import {
-  deliveryTargetsRefusalText,
   groupTargets,
   type DeliveryTarget,
   type DeliveryTargetsView,
 } from '../api/deliveryTargets.ts';
 import type { ProjectRef, ServiceAccount } from '../api/identities.ts';
-import { useWorkspaceContext, withRemote } from '../api/transport.tsx';
 import { Alert } from '../ui/Alert.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Glyph } from '../ui/Glyph.tsx';
@@ -99,8 +97,6 @@ export function DeliveryTargetsPanel({
   accounts: readonly ServiceAccount[];
   now: Date;
 }) {
-  const workspace = useWorkspaceContext();
-  const remote = workspace?.remote ?? '';
   const nameOf = (principal: string) =>
     accounts.find((account) => account.principal_id === principal)?.name ?? principal;
   const groups = groupTargets(view.reports);
@@ -112,12 +108,8 @@ export function DeliveryTargetsPanel({
     })),
   );
   const keysPath = (environment: string) =>
-    withRemote(
-      `/orgs/${project.org}/projects/${project.project}/environments/${environment}/values`,
-      remote,
-    );
-
-  return (
+    `/orgs/${project.org}/projects/${project.project}/environments/${environment}/values`;
+  const heading = (
     <>
       <h2>Kubernetes delivery targets</h2>
       <p className="machine__lede">
@@ -125,10 +117,34 @@ export function DeliveryTargetsPanel({
         report is the controller&apos;s own assertion; this server holds no cluster credential and
         verifies none of it.
       </p>
+    </>
+  );
 
-      {view.failures.map(({ environment, error }) => (
+  if (view.support === 'unsupported') {
+    return (
+      <>
+        {heading}
+        <p role="status">
+          This server does not support delivery-target reporting: it does not advertise
+          delivery-target-report, so no controller can report here and there is nothing to list.
+          This says nothing about the targets themselves.
+        </p>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {heading}
+      {view.support === 'failed' ? (
+        <Alert>
+          The server&apos;s capabilities could not be read, so whether it accepts delivery-target
+          reports is unknown. Reload to try again.
+        </Alert>
+      ) : null}
+      {view.failures.map((environment) => (
         <Alert key={environment.id}>
-          {deliveryTargetsRefusalText(error, environment.name, remote !== '')}
+          {`The delivery-target reports for ${environment.name} could not be read, so they are unknown here. Reload to try again.`}
         </Alert>
       ))}
       {view.isPending ? <p role="status">Reading delivery-target reports…</p> : null}

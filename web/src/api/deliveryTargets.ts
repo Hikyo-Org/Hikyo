@@ -1,12 +1,9 @@
-import { listDeliveryTargetsOp } from '@hikyo/operations';
+import { getMetaOp, listDeliveryTargetsOp } from '@hikyo/operations';
 import type { zDeliveryTarget, zDeliveryTargetList, zDeliveryTargetPrincipal } from '@hikyo/zod';
-import { useQueries, type UseQueryResult } from '@tanstack/react-query';
+import { useQueries, useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { ApiError, parsed } from './client.ts';
-import { remoteStateText } from './remotes.ts';
-import { useTransport } from './transport.tsx';
-import { WorkspaceError } from './workspace.ts';
+import { ApiError, parsed, parsedPick } from './client.ts';
 
 /**
  * Delivery-target condition reports, as the machine-access Kubernetes tab reads
@@ -28,11 +25,19 @@ type EnvRef = { readonly id: string; readonly name: string };
 /** One readable environment's listing. */
 export type EnvironmentReports = { readonly environment: EnvRef; readonly list: DeliveryTargetList };
 
+/**
+ * Whether the server accepts delivery-target reports at all: it advertises
+ * `delivery-target-report/<vocabulary>` in `/meta` (D10). A server that does
+ * not is never asked for a list, and says so rather than "no reports".
+ */
+export type ReportingSupport = 'supported' | 'unsupported' | 'pending' | 'failed';
+
 export type DeliveryTargetsView = {
+  readonly support: ReportingSupport;
   /** Readable environments only: an unreadable one is absent, never redacted (D7). */
   readonly reports: readonly EnvironmentReports[];
-  /** Listings that failed for any reason other than "not readable". */
-  readonly failures: readonly { readonly environment: EnvRef; readonly error: Error }[];
+  /** Environments whose listing failed for any reason other than "not readable". */
+  readonly failures: readonly EnvRef[];
   readonly isPending: boolean;
 };
 
@@ -49,62 +54,65 @@ type ListResult = Pick<UseQueryResult<DeliveryTargetList>, 'data' | 'error' | 'i
 export function combineDeliveryTargets(
   environments: readonly EnvRef[],
   results: readonly ListResult[],
-): DeliveryTargetsView {
+): Omit<DeliveryTargetsView, 'support'> {
   const reports: EnvironmentReports[] = [];
-  const failures: { environment: EnvRef; error: Error }[] = [];
+  const failures: EnvRef[] = [];
   environments.forEach((environment, index) => {
     const result = results[index];
     if (result?.data !== undefined) {
       reports.push({ environment, list: result.data });
     } else if (result?.error != null && !(result.error instanceof ApiError && result.error.status === 404)) {
-      failures.push({ environment, error: result.error });
+      failures.push(environment);
     }
   });
   return { reports, failures, isPending: results.some((r) => r.isPending) };
 }
 
+/** reportingSupport reads the advertised protocols; any vocabulary counts. */
+export function reportingSupport(capabilities: readonly string[]): 'supported' | 'unsupported' {
+  return capabilities.some((c) => c.startsWith('delivery-target-report/')) ? 'supported' : 'unsupported';
+}
+
 /**
- * useDeliveryTargets lists the reports in every environment of a project.
- * Reports are environment-scoped (`read` on the environment, D7), so the
- * project-scoped surface fans out like the lease listing does. Inside a remote
- * workspace the transport sends each call to the remote itself (D11).
+ * useDeliveryTargets lists the reports in every environment of a project,
+ * once `/meta` says the server accepts them. Reports are environment-scoped
+ * (`read` on the environment, D7), so the project-scoped surface fans out like
+ * the lease listing does.
  */
 export function useDeliveryTargets(
   p: { readonly org: string; readonly project: string },
   environments: readonly EnvRef[],
 ): DeliveryTargetsView {
-  const transport = useTransport();
-  return useQueries({
+  const meta = useQuery({
+    queryKey: ['meta', 'protocol-capabilities'] as const,
+    queryFn: async () =>
+      (await parsedPick(getMetaOp, {}, { protocol_capabilities: true })).protocol_capabilities,
+    // Fixed for the life of the process, like the server version.
+    staleTime: Infinity,
+  });
+  const support: ReportingSupport = meta.isSuccess
+    ? reportingSupport(meta.data)
+    : meta.isError
+      ? 'failed'
+      : 'pending';
+  const lists = useQueries({
     queries: environments.map((env) => ({
       queryKey: ['delivery-targets', p.org, p.project, env.id] as const,
       queryFn: () =>
         parsed(listDeliveryTargetsOp, {
           path: { org: p.org, project: p.project, environment: env.id },
-          ...transport,
         }),
+      enabled: support === 'supported',
     })),
     combine: (results) => combineDeliveryTargets(environments, results),
   });
-}
-
-/**
- * deliveryTargetsRefusalText names a failed listing. Inside a workspace the
- * two remote failures take the multi-instance words, and they stay apart: a
- * rejected credential and an unreachable remote have different fixes. Either
- * way the environment's reports are `unknown` here, never empty.
- */
-export function deliveryTargetsRefusalText(error: Error, environment: string, remote: boolean): string {
-  if (error instanceof WorkspaceError) {
-    return error.message;
-  }
-  if (remote && error instanceof ApiError && error.status === 401) {
-    return `${remoteStateText('credential-rejected')}: the remote refused this workspace's credential, so the reports for ${environment} are unknown. Reconnect to continue.`;
-  }
-  // fetch rejects with a TypeError when the request never got an answer.
-  if (remote && error instanceof TypeError) {
-    return `${remoteStateText('unreachable')}: the remote did not answer, so the reports for ${environment} are unknown.`;
-  }
-  return `The delivery-target reports for ${environment} could not be read, so they are unknown here. Reload to try again.`;
+  // A disabled query stays pending forever, so only a supported server's
+  // listings can hold the view in flight.
+  return {
+    ...lists,
+    support,
+    isPending: support === 'pending' || (support === 'supported' && lists.isPending),
+  };
 }
 
 /** One target with the environment it reports on. */

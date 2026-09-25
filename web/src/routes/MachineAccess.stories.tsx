@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
   zDeliveryTargetList,
   zDynamicLeaseList,
+  zMeta,
   zDynamicProviderList,
   zEnvironmentList,
   zGrantList,
@@ -186,6 +187,11 @@ const prodTargets = {
   targets: [target(0, 'reported')],
 } satisfies z.input<typeof zDeliveryTargetList>;
 
+// The server advertises the report vocabulary, or the tab reads no list.
+const META_URL = '/api/v1/meta';
+const metaBody = (protocol_capabilities: string[]) =>
+  ({ server_version: '1.4.0', api_revision: 5, protocol_capabilities }) satisfies z.input<typeof zMeta>;
+
 const optIn = (enabled: boolean) => ({ enabled }) satisfies z.input<typeof zMachineRevealSettings>;
 
 const ACCOUNTS_URL = `${BASE}/service-accounts`;
@@ -210,6 +216,7 @@ const populatedResponses: readonly MockRoute[] = [
   // Production carries one fresh report; staging is unreadable, so its 404 is
   // the uniform nonexistent answer and it contributes no rows.
   { url: targetsUrl(PROD), body: prodTargets },
+  { url: META_URL, body: metaBody(['local-password', 'delivery-target-report/1']) },
 ];
 
 const app = (responses: readonly MockRoute[]) => ({
@@ -277,6 +284,23 @@ export const KubernetesTab: Story = {
     await expect(await canvas.findByText('api-secrets-0')).toBeVisible();
     await expect(canvas.getByText(/^reported by the controller, /)).toBeVisible();
     await expect(canvas.queryByText('staging')).not.toBeInTheDocument();
+  },
+};
+
+// A server without delivery-target reporting: the tab says so, reads no list
+// (production's report is on offer and never shown), and counts unknown.
+export const KubernetesTabUnsupported: Story = {
+  parameters: {
+    app: app([{ url: META_URL, body: metaBody(['local-password']) }, ...populatedResponses]),
+  },
+  play: async ({ canvas }) => {
+    // "(unknown)" also matches the loading page: wait for the settled one.
+    await canvas.findByRole('tab', { name: 'Service accounts (3)' });
+    await userEvent.click(canvas.getByRole('tab', { name: 'Kubernetes targets (unknown)' }));
+    await expect(
+      await canvas.findByText(/this server does not support delivery-target reporting:/i),
+    ).toBeVisible();
+    await expect(canvas.queryByText('api-secrets-0')).not.toBeInTheDocument();
   },
 };
 

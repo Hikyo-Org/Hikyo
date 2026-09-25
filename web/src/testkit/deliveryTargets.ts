@@ -80,5 +80,10 @@ export const staging = { id: STAGING, name: 'staging' };
 
 /** A settled view over production only. */
 export function viewOf(list: ReturnType<typeof listing>): DeliveryTargetsView {
-  return { reports: [{ environment: production, list }], failures: [], isPending: false };
+  return {
+    support: 'supported',
+    reports: [{ environment: production, list }],
+    failures: [],
+    isPending: false,
+  };
 }

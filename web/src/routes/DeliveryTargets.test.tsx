@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError } from '../api/client.ts';
 import {
   combineDeliveryTargets,
-  deliveryTargetsRefusalText,
+  reportingSupport,
   type DeliveryTargetsView,
 } from '../api/deliveryTargets.ts';
 import { ORG, PRJ, PROD } from '../testkit/ids.ts';
@@ -97,9 +97,9 @@ describe('DeliveryTargetsPanel', () => {
       ],
     );
     expect(view.reports.map((r) => r.environment.name)).toEqual(['production']);
-    expect(view.failures.map((f) => f.environment.name)).toEqual(['development']);
+    expect(view.failures.map((f) => f.name)).toEqual(['development']);
 
-    const page = await render(view);
+    const page = await render({ ...view, support: 'supported' });
     expect(page.textContent).not.toContain('staging');
     expect(page.textContent).toContain('The delivery-target reports for development could not be read');
   });
@@ -107,8 +107,9 @@ describe('DeliveryTargetsPanel', () => {
   it('gives an empty panel "unknown" rather than "no reports" while a listing failed', async () => {
     const page = await render(
       {
+        support: 'supported',
         reports: [],
-        failures: [{ environment: { id: PROD, name: 'production' }, error: new ApiError(500, 'boom') }],
+        failures: [{ id: PROD, name: 'production' }],
         isPending: false,
       },
       false,
@@ -120,18 +121,29 @@ describe('DeliveryTargetsPanel', () => {
 
 describe('DeliveryTargetsPanel before the environments are read', () => {
   it('says unknown, never "no reports", for an empty view that is not yet known', async () => {
-    const page = await render({ reports: [], failures: [], isPending: false }, false);
+    const page = await render(
+      { support: 'supported', reports: [], failures: [], isPending: false },
+      false,
+    );
     expect(page.textContent).not.toContain('No reports.');
     expect(page.textContent).not.toContain('No reporting service account');
     expect(page.textContent).toContain('unknown');
   });
 });
 
-describe('deliveryTargetsRefusalText', () => {
-  it('maps remote failures to the multi-instance vocabulary, kept apart', () => {
-    expect(deliveryTargetsRefusalText(new ApiError(401, 'no'), 'production', true)).toMatch(/^Credential rejected: /);
-    expect(deliveryTargetsRefusalText(new TypeError('Failed to fetch'), 'production', true)).toMatch(/^Unreachable: /);
-    expect(deliveryTargetsRefusalText(new ApiError(500, 'boom'), 'production', true)).toMatch(/could not be read/);
-    expect(deliveryTargetsRefusalText(new TypeError('Failed to fetch'), 'production', false)).toMatch(/could not be read/);
+describe('delivery-target reporting support', () => {
+  it('reads support from any advertised report vocabulary', () => {
+    expect(reportingSupport(['local-password', 'delivery-target-report/1'])).toBe('supported');
+    expect(reportingSupport(['local-password', 'oidc'])).toBe('unsupported');
+  });
+
+  it('says the server does not support reporting, never "no reports"', async () => {
+    const page = await render(
+      { support: 'unsupported', reports: [], failures: [], isPending: false },
+      false,
+    );
+    expect(page.textContent).toContain('This server does not support delivery-target reporting');
+    expect(page.textContent).not.toContain('No reports.');
+    expect(healthyTreatment(page)).toEqual([]);
   });
 });

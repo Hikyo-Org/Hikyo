@@ -53,8 +53,8 @@ describe('scopeOf', () => {
   it('reads one environment-scoped grant as reach on that environment only', () => {
     const scope = scopeOf([grant('mp_a', 'read', { environment_id: 'env_dev' })], 'mp_a', ENVS);
     expect(scope).toEqual([
-      { id: 'env_dev', name: 'development', read: true, reveal: false, origins: [] },
-      { id: 'env_prod', name: 'production', read: false, reveal: false, origins: [] },
+      { id: 'env_dev', name: 'development', read: true, reveal: false, report: false, origins: [] },
+      { id: 'env_prod', name: 'production', read: false, reveal: false, report: false, origins: [] },
     ]);
   });
 
@@ -171,6 +171,23 @@ describe('grantableFor', () => {
   it('offers reveal only where read is held without reveal, and only under the opt-in', () => {
     expect(grantableFor(scope, 'reveal', true).map((s) => s.id)).toEqual(['env_prod']);
     expect(grantableFor(scope, 'reveal', false)).toEqual([]);
+  });
+
+  it('offers report-delivery-status wherever it is not held, read or not', () => {
+    // Every environment is read here, so read has nothing left; the report
+    // atom is still grantable after the fact, and only where it is not held.
+    expect(grantableFor(scope, 'report-delivery-status', false).map((s) => s.id)).toEqual([
+      'env_dev',
+      'env_prod',
+    ]);
+    const reporting = scopeOf(
+      [grant('mp_a', 'report-delivery-status', { environment_id: 'env_dev' })],
+      'mp_a',
+      ENVS,
+    );
+    expect(grantableFor(reporting, 'report-delivery-status', false).map((s) => s.id)).toEqual([
+      'env_prod',
+    ]);
   });
 });
 

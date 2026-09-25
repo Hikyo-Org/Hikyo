@@ -108,3 +108,15 @@ export const Empty: Story = {
     await expect(canvas.getByText('No reports.')).toBeVisible();
   },
 };
+
+// A server that does not advertise delivery-target-report: no list is read,
+// and the panel says reporting is unsupported rather than "no reports".
+export const Unsupported: Story = {
+  args: { view: { support: 'unsupported', reports: [], failures: [], isPending: false } },
+  play: async ({ canvas }) => {
+    await expect(
+      canvas.getByText(/this server does not support delivery-target reporting/i),
+    ).toBeVisible();
+    await expect(canvas.queryByText('No reports.')).not.toBeInTheDocument();
+  },
+};

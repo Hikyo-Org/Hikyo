@@ -53,6 +53,7 @@ const env = (n: number, name: string, read: boolean, reveal: boolean): MachineEn
   name,
   read,
   reveal,
+  report: false,
   origins: read ? [{ kind: 'direct', subject: 'dana@example.com' }] : [],
 });
 // Production read and revealed, staging read only, development unreached.
@@ -111,7 +112,8 @@ export const RevealGrant: Story = {
 export const NothingToWiden: Story = {
   args: { scope: scope.slice(0, 2) },
   play: async ({ canvas }) => {
-    await expect(canvas.getByText(/there is nothing to widen; reveal needs/i)).toBeVisible();
+    // The org membership read settles first: it 404s, so reporting is not offered.
+    await expect(await canvas.findByText(/there is nothing to widen; reveal needs/i)).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Close' })).toBeVisible();
   },
 };
@@ -167,5 +169,26 @@ export const ReportingNotGrantable: Story = {
       canvas.queryByRole('checkbox', { name: /also grant report-delivery-status/i }),
     ).not.toBeInTheDocument();
     await expect(canvas.getByRole('button', { name: 'Grant read' })).toBeEnabled();
+  },
+};
+
+// Every environment already read, and an org member manager: the report atom
+// is still grantable on its own, and it makes no key reachable.
+export const ReportAfterTheFact: Story = {
+  args: { scope: scope.slice(0, 2) },
+  parameters: {
+    app: {
+      responses: [
+        { url: KEYS_URL, body: catalogue },
+        { url: ORG_GRANTS_URL, body: { count: 0, items: [] } },
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByLabelText('Capability')).toHaveValue('report-delivery-status');
+    await expect(canvas.getByText(/this grant makes nothing\s+reachable/i)).toBeVisible();
+    await expect(
+      canvas.getByRole('button', { name: 'Grant report-delivery-status' }),
+    ).toBeEnabled();
   },
 };

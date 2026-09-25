@@ -393,6 +393,8 @@ export type MachineEnvScope = {
   readonly read: boolean;
   /** `reveal` is the standing decryption capability, the ◆ in the prototype. */
   readonly reveal: boolean;
+  /** `report-delivery-status`: the controller may send value-free status reports (#790). */
+  readonly report: boolean;
   /** Every origin behind the grant rows that reach this environment, deduplicated. */
   readonly origins: readonly GrantOriginRef[];
 };
@@ -427,6 +429,7 @@ export function scopeOf(
       name: env.name,
       read: reaching('read', env.id).length > 0,
       reveal: reaching('reveal', env.id).length > 0,
+      report: reaching('report-delivery-status', env.id).length > 0,
       origins: [...origins.values()].map(({ kind, subject }) => ({ kind, subject })),
     };
   });
@@ -461,7 +464,7 @@ export function postStateReach(scope: readonly MachineEnvScope[]): MachineEnvSco
 export function grantWideningReach(
   scope: readonly MachineEnvScope[],
   environmentId: string,
-  capability: 'read' | 'reveal',
+  capability: MachineGrantCapability,
 ): MachineEnvScope[] {
   const after = scope.map((s) =>
     s.id === environmentId
@@ -472,21 +475,30 @@ export function grantWideningReach(
   return postStateReach(after).filter((s) => !before.has(s.id));
 }
 
+/** The capabilities the machine-access grant dialog hands out. */
+export type MachineGrantCapability = 'read' | 'reveal' | 'report-delivery-status';
+
 /**
  * grantableFor lists the environments a grant of `capability` would still
  * widen: `read` where the account has none, `reveal` where it reads but does
- * not yet decrypt. Reveal is refused by the grant API until the project's
- * machine-reveal opt-in is on, so it is empty until then.
+ * not yet decrypt, `report-delivery-status` where it is not yet held. Reveal is
+ * refused by the grant API until the project's machine-reveal opt-in is on, so
+ * it is empty until then. Whether the caller may grant the report atom at all
+ * is the dialog's question, not this one's.
  */
 export function grantableFor(
   scope: readonly MachineEnvScope[],
-  capability: 'read' | 'reveal',
+  capability: MachineGrantCapability,
   machineReveal: boolean,
 ): MachineEnvScope[] {
-  if (capability === 'read') {
-    return scope.filter((s) => !s.read);
+  switch (capability) {
+    case 'read':
+      return scope.filter((s) => !s.read);
+    case 'reveal':
+      return machineReveal ? scope.filter((s) => s.read && !s.reveal) : [];
+    case 'report-delivery-status':
+      return scope.filter((s) => !s.report);
   }
-  return machineReveal ? scope.filter((s) => s.read && !s.reveal) : [];
 }
 
 /**
@@ -498,7 +510,7 @@ export function grantableFor(
 export function grantSubmittable(
   scope: readonly MachineEnvScope[],
   environment: string,
-  capability: 'read' | 'reveal',
+  capability: MachineGrantCapability,
   machineReveal: boolean,
 ): boolean {
   return grantableFor(scope, capability, machineReveal).some((s) => s.id === environment);
