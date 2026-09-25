@@ -261,9 +261,9 @@ func (s *statusReporter) buildReport(cr *hikyov1.HikyoSecret, inst *hikyov1.Hiky
 }
 
 // reportStatus runs after a successful status write (D9). It sends a report
-// when the reportable content changed or the heartbeat is due, and clamps the
-// requeue to 24 h while the instance advertises reporting, so a long
-// resyncInterval still heartbeats. It never changes the reconcile error.
+// when the reportable content changed or the heartbeat is due. It never
+// changes the reconcile result or error; the 24 h requeue cap lives in
+// resyncResult.
 func (r *HikyoSecretReconciler) reportStatus(ctx context.Context, cr *hikyov1.HikyoSecret, in *reportInput, res ctrl.Result) ctrl.Result {
 	rep := r.reporter
 	now := r.clock()
@@ -292,10 +292,6 @@ func (r *HikyoSecretReconciler) reportStatus(ctx context.Context, cr *hikyov1.Hi
 	if vocabulary == 0 {
 		return res
 	}
-	if res.RequeueAfter > deliverytarget.MaxReportInterval {
-		res.RequeueAfter = deliverytarget.MaxReportInterval
-	}
-
 	conditions := reportConditions(cr)
 	body := rep.buildReport(cr, in.inst, vocabulary, conditions, r.reportInterval(cr))
 	content, err := json.Marshal(body)

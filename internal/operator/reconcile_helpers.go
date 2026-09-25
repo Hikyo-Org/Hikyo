@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
@@ -422,13 +423,18 @@ func validateResyncInterval(cr *hikyov1.HikyoSecret) error {
 // resyncResult is the success-path requeue at spec.resyncInterval (default 5m).
 // The value was already validated by validateResyncInterval at the top of the
 // reconcile, so a parse failure here is unreachable; the 5m fallback covers only
-// the empty (defaulted) case.
+// the empty (defaulted) case. With status reporting enabled the requeue is
+// min(spec.resyncInterval, 24 h) (k8s-condition-reporting ADR D9), whatever
+// the server advertises, so a long resyncInterval never reads stale.
 func (r *HikyoSecretReconciler) resyncResult(cr *hikyov1.HikyoSecret) ctrl.Result {
 	d := 5 * time.Minute
 	if cr.Spec.ResyncInterval != "" {
 		if parsed, err := time.ParseDuration(cr.Spec.ResyncInterval); err == nil && parsed > 0 {
 			d = parsed
 		}
+	}
+	if r.reporter != nil {
+		d = min(d, deliverytarget.MaxReportInterval)
 	}
 	return ctrl.Result{RequeueAfter: d}
 }

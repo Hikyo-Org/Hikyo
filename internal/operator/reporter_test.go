@@ -239,7 +239,7 @@ func TestOldServerSendsNoReports(t *testing.T) {
 	}
 }
 
-func TestCapabilityProbeCached(t *testing.T) {
+func TestCapabilityProbeReusedWithinWindow(t *testing.T) {
 	h := deliveredHarness(t, interceptor.Funcs{})
 	for range 3 {
 		if _, err := h.reconcile("app"); err != nil {
@@ -452,10 +452,21 @@ func TestLongResyncRequeuesWithin24h(t *testing.T) {
 		t.Fatalf("report_interval_seconds = %d, want the 24 h cap", r.ReportIntervalSeconds)
 	}
 
-	old := deliveredHarness(t, interceptor.Funcs{}, long)
-	old.stub.meta = oldServerMeta
-	if res, err := old.reconcile("app"); err != nil || res.RequeueAfter != 72*time.Hour {
-		t.Fatalf("capability absent: requeue = %v (err %v), want the 72h resync", res.RequeueAfter, err)
+	// ADR D9: "with reporting enabled the operator requeues at
+	// min(spec.resyncInterval, 24 h)". Enabled is the operator setting, not
+	// the server's answer, so capability absence and a failed probe clamp too.
+	for name, meta := range map[string]string{"capability absent": oldServerMeta, "probe failure": "{"} {
+		h := deliveredHarness(t, interceptor.Funcs{}, long)
+		h.stub.meta = meta
+		if res, err := h.reconcile("app"); err != nil || res.RequeueAfter != 24*time.Hour {
+			t.Fatalf("%s: requeue = %v (err %v), want 24h while reporting is enabled", name, res.RequeueAfter, err)
+		}
+	}
+
+	disabled := deliveredHarness(t, interceptor.Funcs{}, long)
+	disabled.r.reporter = nil
+	if res, err := disabled.reconcile("app"); err != nil || res.RequeueAfter != 72*time.Hour {
+		t.Fatalf("reporting disabled: requeue = %v (err %v), want the 72h resync", res.RequeueAfter, err)
 	}
 }
 
