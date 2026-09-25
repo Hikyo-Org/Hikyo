@@ -992,18 +992,20 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 		// flag would mis-gate the other, and the honest fix is a second
 		// capability, not a wider reading of this one.
 		//
-		// It is a HINT: if it cannot be computed we return it false rather than
-		// fail identity resolution, because a chrome affordance must never be the
-		// reason whoami — the request the whole SPA depends on — refuses.
-		if operator, capErr := az.HoldsInstanceCapability(ctx, id, authz.OpRetentionHealthRead); capErr == nil {
-			out.InstanceOperator = operator
+		// A failed read fails whoami rather than rendering the hint false: a
+		// false hint is indistinguishable from a real "not an operator", and on
+		// PostgreSQL a failed statement aborts this transaction anyway, so
+		// swallowing it here would only move the failure to commit.
+		operator, err := az.HoldsInstanceCapability(ctx, id, authz.OpRetentionHealthRead)
+		if err != nil {
+			return err
 		}
+		out.InstanceOperator = operator
 		// The caller's own grant rows, read without an operation or an audit
 		// record, the same footing as the check above: the grant dialog gates
 		// its report-delivery-status offer on this rather than probing the org
 		// membership listing, which is an audited read and, for a project-scope
-		// administrator, an audited denial. A failed read fails whoami: an
-		// empty reach would be indistinguishable from a real "no reach".
+		// administrator, an audited denial. Same failure rule as above.
 		rows, err := az.GrantRowsForPrincipal(ctx, id.Principal)
 		if err != nil {
 			return err

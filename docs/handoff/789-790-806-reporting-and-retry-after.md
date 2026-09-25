@@ -75,6 +75,12 @@ grant dialog in `web/src/routes/MachineAccess.tsx`.
   the fact to an account that already reads. The earlier `GET /orgs/{org}/grants`
   probe was dropped: it was an audited read and an audited denial for project
   admins.
+- **Hint cost and failure rule:** `Auth.Identity` computes both whoami hints
+  (`instance_operator`, `delivery_report_grant`) and fails on a read error
+  rather than rendering either false (on PostgreSQL a failed statement aborts
+  the transaction anyway). `auditPrincipal` also resolves through
+  `Auth.Identity`, so each audit list or export page pays one extra indexed
+  grant-rows read; accepted, the same as the pre-existing operator hint.
 - **Remote workspaces:** Machine Access is not mounted under `WorkspaceScope`, so
   no remote transport code ships for this tab.
 - **Parity:** `listDeliveryTargets` is `{webui: machine-access}` in `api/parity.yaml`.
@@ -114,3 +120,8 @@ receivers only via the operator egress policy file, and four ADR amendments.
 Fable 5.1 adversarial review round 1: NOT CLEAN, five findings, all fixed on
 this branch (24 h requeue on probe failure, test registered as a cache,
 audited org-grants probe, missing handoff, cancel during Retry-After wait).
+Round 2: three minors. Fixed: the two whoami hints had opposite failure
+policies (both fail loud now). Accepted and noted above: the extra read on the
+audit path. Rejected: re-gofmt `internal/config/config_test.go`; the pinned
+formatter `scripts/ci/check-go-imports.sh` (run in CI) requires main's layout
+and a newer local gofmt disagrees with it.
