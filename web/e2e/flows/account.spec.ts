@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test';
-import { zLoginChallenge, zLoginResult, zPasskeyList, zWhoAmI } from '@hikyo/zod';
+import { zPasskeyList, zWhoAmI } from '@hikyo/zod';
 
 import { browserApi } from '../fixtures/api.ts';
 import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
@@ -8,9 +8,11 @@ import {
   BASE_URL,
   nextTotpCode,
   OIDC_PROVIDER,
+  readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
-import { test } from '../fixtures/passkey.ts';
+import { enrolledAccount, signInAs } from '../fixtures/accounts.ts';
+import { test, withPasskeyPage } from '../fixtures/passkey.ts';
 
 /**
  * Flow: account & security (registry surface `settings`), mvp-boundary S3's
@@ -21,9 +23,10 @@ import { test } from '../fixtures/passkey.ts';
  * The surface absorbed #71's standalone session list, so the kill switch is
  * asserted here as one panel of the account rather than as a page of its own.
  *
- * What this flow does NOT do, deliberately: enrol or remove a factor. Every
- * one of those is an account-security mutation that advances the principal's
- * session generation and deletes every other session the account holds, and
+ * What this flow does NOT do, deliberately: enrol or remove a factor on the
+ * shared administrator (the passkey drill does both on an account of its
+ * own). Every one of those is an account-security mutation that advances the
+ * principal's session generation and deletes every other session it holds, and
  * this suite has exactly ONE administrator per instance, whose TOTP seed and
  * whose passkey are the fixture every other flow's ceremonies stand on.
  * Removing the authenticator would break the TOTP ledger for the whole run.
@@ -46,7 +49,8 @@ test.describe('account and security', () => {
     const profile = page.locator('#account-profile');
     await expect(profile.getByLabel('Display name', { exact: true })).toBeEditable();
     await expect(profile.getByLabel('Username', { exact: true })).toBeEditable();
-    await expect(profile.getByLabel('Email address', { exact: true })).toBeEditable();
+    // The email is never profile data: whatever the account holds is read-only.
+    await expect(profile.locator('input[name="email"]:not([readonly])')).toHaveCount(0);
     await expect(profile.getByRole('button', { name: 'Save profile' })).toBeDisabled();
 
     // Passkeys are listable, so they are listed. The authenticator factor is
@@ -76,24 +80,21 @@ test.describe('account and security', () => {
     ).toBeVisible();
   });
 
-  test('saves profile labels and contact email, persists them, and refreshes the account menu', async ({ page }) => {
+  test('saves profile labels, persists them, and refreshes the account menu', async ({ page }) => {
     const profile = page.locator('#account-profile');
     const name = profile.getByLabel('Display name', { exact: true });
-    const email = profile.getByLabel('Email address', { exact: true });
     const originalName = await name.inputValue();
-    const originalEmail = await email.inputValue();
+    // The sign-in email is not profile data: no editable email field exists.
+    await expect(profile.locator('input[name="email"]:not([readonly])')).toHaveCount(0);
     try {
       await name.fill('Readable Account Name');
-      await email.fill('profile-test@example.com');
       await profile.getByRole('button', { name: 'Save profile' }).click();
       await expect(profile.getByRole('status')).toContainText('Profile saved.');
       await expect(page.getByRole('button', { name: 'Account: Readable Account Name', exact: true })).toBeVisible();
       await page.reload();
       await expect(name).toHaveValue('Readable Account Name');
-      await expect(email).toHaveValue('profile-test@example.com');
     } finally {
       await name.fill(originalName);
-      await email.fill(originalEmail);
       await profile.getByRole('button', { name: 'Save profile' }).click();
       await expect(profile.getByRole('status')).toContainText('Profile saved.');
     }
@@ -187,37 +188,32 @@ test.describe('account and security', () => {
   test('revokes a second browser session without killing the current one', async ({ browser, page }) => {
     const context = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     try {
-      const second = await context.newPage();
-      await second.goto(BASE_URL);
-      // ADMIN carries a factor, so the password answers a login challenge, not a
-      // session (#760): present the authenticator code to mint the second
-      // browser session this test then revokes.
-      const challengeResp = await second.request.post(`${BASE_URL}/api/v1/auth/local/login`, {
-        data: { username: ADMIN.username, password: ADMIN.password, artifact: 'browser' },
+      // The second browser session is the shared administrator's too, minted
+      // with the shared passkey (multi-factor on its own, discoverable, so it
+      // selects the account): it spends no TOTP step, so nothing here waits on
+      // where the ledger stands.
+      await withPasskeyPage(await context.newPage(), 'shared', async (second) => {
+        await second.goto(`${BASE_URL}/login`);
+        await second.getByRole('button', { name: 'Passkey', exact: true }).click();
+        await expect(second.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+        const minted = zWhoAmI.parse(await (await second.request.get(`${BASE_URL}/api/v1/auth/whoami`)).json());
+        expect(minted.principal.id).toBe(readSeed().principal);
+
+        await page.reload();
+        const row = page.locator('.session').filter({ hasText: minted.session.id });
+        await expect(row).toBeVisible();
+        await row.getByRole('button', { name: new RegExp(minted.session.id) }).click();
+        await expect(
+          page.getByRole('status').filter({ hasText: `Revoked the browser session ${minted.session.id}` }),
+        ).toBeVisible();
+        await expect(row).toHaveCount(0);
+
+        const refused = await second.request.get(`${BASE_URL}/api/v1/auth/whoami`);
+        expect(refused.status()).toBe(401);
+        const current = await page.request.get(`${BASE_URL}/api/v1/auth/whoami`);
+        expect(current.status()).toBe(200);
+        zWhoAmI.parse(await current.json());
       });
-      expect(challengeResp.status()).toBe(202);
-      const challenge = zLoginChallenge.parse(await challengeResp.json());
-      const login = await second.request.post(
-        `${BASE_URL}/api/v1/auth/login/challenge/${challenge.challenge_id}/totp`,
-        { data: { code: await nextTotpCode() } },
-      );
-      expect(login.status()).toBe(200);
-      const minted = zLoginResult.parse(await login.json());
-
-      await page.reload();
-      const row = page.locator('.session').filter({ hasText: minted.session.id });
-      await expect(row).toBeVisible();
-      await row.getByRole('button', { name: new RegExp(minted.session.id) }).click();
-      await expect(
-        page.getByRole('status').filter({ hasText: `Revoked the browser session ${minted.session.id}` }),
-      ).toBeVisible();
-      await expect(row).toHaveCount(0);
-
-      const refused = await second.request.get(`${BASE_URL}/api/v1/auth/whoami`);
-      expect(refused.status()).toBe(401);
-      const current = await page.request.get(`${BASE_URL}/api/v1/auth/whoami`);
-      expect(current.status()).toBe(200);
-      zWhoAmI.parse(await current.json());
     } finally {
       await context.close();
     }
@@ -268,14 +264,20 @@ test.describe('account and security', () => {
   test.describe('passkey mutation', () => {
     test.use({ passkeyCredential: 'empty' });
 
-    test('reports the existing TOTP factor and enrols then removes an additional passkey', async ({ passkeyPage: page }) => {
-      // Two possession-first ceremonies, each spending a single-use TOTP code,
-      // so the second waits out the current 30s step before it can mint a fresh
-      // one: a deterministic span of the factor's own period, not a flaky race.
+    test('reports the existing TOTP factor and enrols then removes an additional passkey', async ({ passkeyPage: page, browser }) => {
+      // Its own account with its own authenticator: two proofs on the shared
+      // administrator would leave that ledger a step ahead of the clock for the
+      // next flow to wait out. The account spends four codes (enrol, sign-in,
+      // two proofs); the proofs may each wait one boundary of the factor's own
+      // period, which the tripled budget covers.
       test.slow();
-      // The factor state is now readable: the suite's administrator has a
-      // confirmed authenticator, and the panel reports it rather than
-      // disclaiming knowledge.
+      const account = await enrolledAccount(browser, 'passkey-drill', 'org');
+      await signInAs(page, account);
+      await page.goto('/settings');
+      await expect(page.getByRole('heading', { name: 'Account & security', level: 1 })).toBeVisible();
+      // The factor state is readable: the account has a confirmed
+      // authenticator, and the panel reports it rather than disclaiming
+      // knowledge.
       await expect(
         page.getByRole('button', { name: 'Remove the authenticator' }),
       ).toContainText('enrolled');
@@ -289,7 +291,7 @@ test.describe('account and security', () => {
       const before = await rows.count();
       await page.getByRole('button', { name: 'Add a passkey' }).click();
       const addProof = page.getByRole('dialog');
-      await addProof.getByLabel('Authenticator code').fill(await nextTotpCode());
+      await addProof.getByLabel('Authenticator code').fill(await account.ledger.next());
       await addProof.getByRole('button', { name: 'Confirm' }).click();
       await expect(rows).toHaveCount(before + 1);
       await expect(page.getByRole('status').filter({ hasText: 'Passkey enrolled' })).toBeVisible();
@@ -304,7 +306,7 @@ test.describe('account and security', () => {
       expect(passkeys.every((passkey) => passkey.discoverable)).toBe(true);
       await added.getByRole('button', { name: /Remove passkey/ }).click();
       const removeProof = page.getByRole('dialog');
-      await removeProof.getByLabel('Authenticator code').fill(await nextTotpCode());
+      await removeProof.getByLabel('Authenticator code').fill(await account.ledger.next());
       await removeProof.getByRole('button', { name: 'Confirm' }).click();
       await expect(rows).toHaveCount(before);
       await expect(page.getByRole('status').filter({ hasText: 'Passkey removed' })).toBeVisible();
@@ -321,10 +323,6 @@ test.describe('account and security', () => {
    * that file.
    */
   test('replaces the recovery codes and shows them exactly once', async ({ passkeyPage: page }) => {
-      // Runs right after the two passkey ceremonies spent this account's next
-      // two TOTP steps, so this proof's fresh code busy-waits out the current
-      // step: the same deterministic factor-period span, not a flaky race.
-      test.slow();
       await page.getByRole('button', { name: 'Replace recovery codes' }).click();
       const proof = page.getByRole('dialog');
       await expect(proof).toContainText('never authorise their own regeneration');

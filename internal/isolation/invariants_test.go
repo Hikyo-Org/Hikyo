@@ -368,6 +368,10 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		authz.StoreApprovalRequestSelectExpiry: true,
 		authz.StoreApprovalRequestMarkExpired:  true,
 		authz.StoreApprovalRequestCounts:       true,
+		// The delivery-target 30-day purge (#788): the installation-wide read
+		// of expired rows and the guarded per-row delete. A reviewed widening.
+		authz.StoreDeliveryTargetsSelectExpired: true,
+		authz.StoreDeliveryTargetsPurge:         true,
 		// Disaster-recovery program (#145): the export and prune jobs write
 		// the DR health row, /metrics reads it through the scheduler door,
 		// and the host-local restore drill rides the same authority for its

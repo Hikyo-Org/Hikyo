@@ -65,6 +65,8 @@ const withRouteFallback = (element: ReactElement) => (
  */
 const ELEMENTS: Record<SurfaceId, ReactElement> = {
   login: withRouteFallback(<Login />),
+  // The same page opened on the addressed scope's sign-up door (#607).
+  signup: withRouteFallback(<Login intent="sign-up" />),
   'establish-credential': withRouteFallback(<EstablishCredential />),
   overview: <Overview />,
   projects: withRouteFallback(<Projects />),
@@ -147,9 +149,12 @@ const shellSurfaces = SURFACES.filter((surface) => surface.chrome === 'shell');
  */
 const anonymousSurfaces = SURFACES.filter(allowsAnonymousSession);
 
-/** Every non-login route that renders without shell chrome after sign-in. */
+/**
+ * Every chromeless route that still renders after sign-in. The sign-in and
+ * sign-up doors do not: a signed-in person lands on their projects instead.
+ */
 const sessionChromelessSurfaces = SURFACES.filter(
-  (surface) => surface.chrome === 'none' && surface.id !== 'login',
+  (surface) => surface.chrome === 'none' && surface.id !== 'login' && surface.id !== 'signup',
 );
 
 /**
@@ -208,10 +213,9 @@ export function App() {
         </Routes>
       ) : (
         <Routes>
-          <Route
-            path={surfaceById('login').path}
-            element={<Navigate to={surfaceById('projects').path} replace />}
-          />
+          {(['login', 'signup'] as const).map((id) => (
+            <Route key={id} path={surfaceById(id).path} element={<Navigate to={surfaceById('projects').path} replace />} />
+          ))}
           {sessionChromelessSurfaces.map((surface) => (
             <Route key={surface.id} path={surface.path} element={ELEMENTS[surface.id]} />
           ))}

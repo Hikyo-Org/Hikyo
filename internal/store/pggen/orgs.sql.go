@@ -25,16 +25,18 @@ func (q *Queries) CountOrgs(ctx context.Context, includeSelfConfig interface{}) 
 
 const createOrg = `-- name: CreateOrg :exec
 
-INSERT INTO orgs (id, name, active, metadata, created_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO orgs (id, name, active, metadata, created_at, origin, registration_policy_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 `
 
 type CreateOrgParams struct {
-	ID        string
-	Name      string
-	Active    bool
-	Metadata  string
-	CreatedAt pgtype.Timestamptz
+	ID                   string
+	Name                 string
+	Active               bool
+	Metadata             string
+	CreatedAt            pgtype.Timestamptz
+	Origin               string
+	RegistrationPolicyID pgtype.Text
 }
 
 // The Org aggregate. Creation, listing and counting are instance-scoped
@@ -55,6 +57,8 @@ func (q *Queries) CreateOrg(ctx context.Context, arg CreateOrgParams) error {
 		arg.Active,
 		arg.Metadata,
 		arg.CreatedAt,
+		arg.Origin,
+		arg.RegistrationPolicyID,
 	)
 	return err
 }
@@ -73,7 +77,8 @@ func (q *Queries) DeleteOrg(ctx context.Context, chainOrgID string) (int64, erro
 
 const getOrg = `-- name: GetOrg :one
 SELECT id, name, active, metadata, created_at,
-       retention_mode, retention_age_seconds, retention_revision_count
+       retention_mode, retention_age_seconds, retention_revision_count,
+       origin, registration_policy_id
 FROM orgs WHERE id = $1
 `
 
@@ -89,13 +94,16 @@ func (q *Queries) GetOrg(ctx context.Context, chainOrgID string) (Org, error) {
 		&i.RetentionMode,
 		&i.RetentionAgeSeconds,
 		&i.RetentionRevisionCount,
+		&i.Origin,
+		&i.RegistrationPolicyID,
 	)
 	return i, err
 }
 
 const listOrgs = `-- name: ListOrgs :many
 SELECT id, name, active, metadata, created_at,
-       retention_mode, retention_age_seconds, retention_revision_count
+       retention_mode, retention_age_seconds, retention_revision_count,
+       origin, registration_policy_id
 FROM orgs WHERE ($1 = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name
 `
 
@@ -118,6 +126,8 @@ func (q *Queries) ListOrgs(ctx context.Context, includeSelfConfig interface{}) (
 			&i.RetentionMode,
 			&i.RetentionAgeSeconds,
 			&i.RetentionRevisionCount,
+			&i.Origin,
+			&i.RegistrationPolicyID,
 		); err != nil {
 			return nil, err
 		}

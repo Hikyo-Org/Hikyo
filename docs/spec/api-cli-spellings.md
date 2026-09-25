@@ -287,6 +287,8 @@ administer, vote, merge or bypass.
 
 Semantics in [social-signin.md](./social-signin.md); this section fixes spellings only.
 
+> **Amended 2026-09-23 ([#606](https://github.com/Hikyo-Org/Hikyo/issues/606), [#607](https://github.com/Hikyo-Org/Hikyo/issues/607)): the spellings as implemented.** `GET /api/v1/auth/methods` also carries `signup_paused: bool` (the addressed scope has a policy that is inactive; the public page says only "Sign-up is paused."), `signup_landing?: org-template | none | fresh-org` (the open door's landing, for the confirmation step), and, on each provider entry, `brand?: google | microsoft` (presentation only, derived from the pinned issuer). `signup_methods` entries are `ProviderRef {kind, slug}` or the string `"local"`. `RegistrationPolicy` responses add `org`, `inactive_precondition` (the failing precondition by name, with the provider when one is involved), `row_version`, `created_at`, `updated_at`, and `display_name` on each external entry; `PUT` and `DELETE` bodies carry the reauthentication `proof`. The OIDC `start` answers a `reauth` on a provider with no assurance policy with `409` naming the remedy. `GET /api/v1/orgs` answers `400` on an unknown `origin`. `hikyo org list --origin` renders an `ORIGIN` column.
+
 ### OAuth2 providers (mirror the SAML family; `instance-config@instance` ∧ reauth on write)
 
 ```
@@ -309,7 +311,7 @@ hikyo access registration set    [--org <org> | --instance-scope] --file <policy
 hikyo access registration delete [--org <org> | --instance-scope]
 ```
 
-REST: `GET|PUT|DELETE /api/v1/orgs/{org}/registration-policy` and `/api/v1/instance/registration-policy`. `PUT` body `RegistrationPolicy {external: [{provider, claim?, values?}], local?: {domains?: [...]}, landing: {kind: org-template, template} | {kind: none} | {kind: fresh-org, cap}}`; the response adds `authority_principal_id`, `state: active | inactive`, `inactive_cause?`, `fresh_org_count?`. Write-time refusals are `400` naming the failing precondition (`no-public-origin`, `mailer-unconfigured`, `provider-disabled`, `provider-missing-email-scope`, `cap-zero`, `template-not-org-applicable`).
+REST: `GET|PUT|DELETE /api/v1/orgs/{org}/registration-policy` and `/api/v1/instance/registration-policy`. `PUT` body `RegistrationPolicy {external: [{provider, claim?, values?}], local?: {domains?: [...]}, landing: {kind: org-template, template} | {kind: none} | {kind: fresh-org, cap}}`; the response adds `authority_principal_id`, `state: active | inactive`, `inactive_cause?`, `inactive_precondition?` (the failing precondition by name when the cause is `precondition`, the provider as `<kind>:<slug>` where one is involved), `fresh_org_count?`. Write-time refusals are `400` naming the failing precondition (`no-public-origin`, `mailer-unconfigured`, `provider-disabled`, `provider-kind-unsupported`, `provider-missing-email-scope`, `cap-zero`, `template-not-org-applicable`).
 
 ### Public sign-up (pre-auth, admission-bounded, uniform responses)
 

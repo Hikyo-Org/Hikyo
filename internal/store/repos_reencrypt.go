@@ -29,6 +29,8 @@ type ReencryptRepo interface {
 	ReencryptRecoveryCodes(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 	ListOidcProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
 	ReencryptOidcProvider(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
+	ListOauth2ProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
+	ReencryptOauth2Provider(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 	ListSamlKeysForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
 	ReencryptSamlKey(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 	ListRemotesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
@@ -156,6 +158,31 @@ func (r sqliteReencrypt) ReencryptOidcProvider(ctx context.Context, p authz.Proo
 		return false, err
 	}
 	n, err := r.q.ReencryptOidcProvider(ctx, sqlitegen.ReencryptOidcProviderParams{Ct: newCiphertext, DekVersion: int64(dekVersion), ID: id, RowVersion: int64(rowVersion)})
+	return n == 1, err
+}
+
+// ListOauth2ProvidersForReencrypt pages through SQLite provider ciphertexts.
+func (r sqliteReencrypt) ListOauth2ProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListOauth2Providers, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListOauth2ProvidersForReencrypt(ctx, sqlitegen.ListOauth2ProvidersForReencryptParams{ID: cursor, Limit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.ClientSecret, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+	}
+	return out, nil
+}
+
+// ReencryptOauth2Provider replaces SQLite ciphertext when its version matches.
+func (r sqliteReencrypt) ReencryptOauth2Provider(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptOauth2Provider, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptOauth2Provider(ctx, sqlitegen.ReencryptOauth2ProviderParams{Ct: newCiphertext, DekVersion: int64(dekVersion), ID: id, RowVersion: int64(rowVersion)})
 	return n == 1, err
 }
 
@@ -296,6 +323,31 @@ func (r pgReencrypt) ReencryptOidcProvider(ctx context.Context, p authz.Proof, i
 		return false, err
 	}
 	n, err := r.q.ReencryptOidcProvider(ctx, pggen.ReencryptOidcProviderParams{Ct: newCiphertext, DekVersion: int64(dekVersion), ID: id, RowVersion: int64(rowVersion)})
+	return n == 1, err
+}
+
+// ListOauth2ProvidersForReencrypt pages through PostgreSQL provider ciphertexts.
+func (r pgReencrypt) ListOauth2ProvidersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListOauth2Providers, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListOauth2ProvidersForReencrypt(ctx, pggen.ListOauth2ProvidersForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.ClientSecret, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+	}
+	return out, nil
+}
+
+// ReencryptOauth2Provider replaces PostgreSQL ciphertext when its version matches.
+func (r pgReencrypt) ReencryptOauth2Provider(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptOauth2Provider, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptOauth2Provider(ctx, pggen.ReencryptOauth2ProviderParams{Ct: newCiphertext, DekVersion: int64(dekVersion), ID: id, RowVersion: int64(rowVersion)})
 	return n == 1, err
 }
 

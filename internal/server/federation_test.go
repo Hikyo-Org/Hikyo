@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api"
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/delivery"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/jwkssource"
 	"github.com/Hikyo-Org/hikyo/internal/server"
@@ -82,6 +83,20 @@ func (s stubDelivery) ReconcileOfflineRecords(_ context.Context, presented strin
 		return service.ReconcileResult{}, domain.ErrUnauthenticated
 	}
 	return service.ReconcileResult{Accepted: len(records)}, nil
+}
+
+func (s stubDelivery) ReportTarget(context.Context, string, domain.Scope, deliverytarget.Report) error {
+	return s.err
+}
+
+func (s stubDelivery) TombstoneTarget(context.Context, string, domain.Scope, service.DeliveryTargetKey) error {
+	return s.err
+}
+
+func (s stubDelivery) RefuseOversizeReport(context.Context, string, domain.Scope) error { return s.err }
+
+func (s stubDelivery) ListTargets(context.Context, service.Actor, domain.Scope) (service.DeliveryTargetList, error) {
+	return service.DeliveryTargetList{}, s.err
 }
 
 type stubFederation struct {

@@ -686,6 +686,45 @@ func (e ApprovalVoteRequestDecision) Valid() bool {
 	}
 }
 
+// Defines values for AuthMethodProviderBrand.
+const (
+	Google    AuthMethodProviderBrand = "google"
+	Microsoft AuthMethodProviderBrand = "microsoft"
+)
+
+// Valid indicates whether the value is a known member of the AuthMethodProviderBrand enum.
+func (e AuthMethodProviderBrand) Valid() bool {
+	switch e {
+	case Google:
+		return true
+	case Microsoft:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AuthMethodsSignupLanding.
+const (
+	AuthMethodsSignupLandingFreshOrg    AuthMethodsSignupLanding = "fresh-org"
+	AuthMethodsSignupLandingNone        AuthMethodsSignupLanding = "none"
+	AuthMethodsSignupLandingOrgTemplate AuthMethodsSignupLanding = "org-template"
+)
+
+// Valid indicates whether the value is a known member of the AuthMethodsSignupLanding enum.
+func (e AuthMethodsSignupLanding) Valid() bool {
+	switch e {
+	case AuthMethodsSignupLandingFreshOrg:
+		return true
+	case AuthMethodsSignupLandingNone:
+		return true
+	case AuthMethodsSignupLandingOrgTemplate:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CLIReauthStartRequestOperation.
 const (
 	CLIReauthStartRequestOperationAdapterAdopt         CLIReauthStartRequestOperation = "adapter.adopt"
@@ -1067,6 +1106,108 @@ func (e DeliveredKeyPresence) Valid() bool {
 	}
 }
 
+// Defines values for DeliveryTargetRefusalCause.
+const (
+	Vocabulary DeliveryTargetRefusalCause = "vocabulary"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetRefusalCause enum.
+func (e DeliveryTargetRefusalCause) Valid() bool {
+	switch e {
+	case Vocabulary:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetConditionStatus.
+const (
+	DeliveryTargetConditionStatusFalse   DeliveryTargetConditionStatus = "False"
+	DeliveryTargetConditionStatusTrue    DeliveryTargetConditionStatus = "True"
+	DeliveryTargetConditionStatusUnknown DeliveryTargetConditionStatus = "Unknown"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetConditionStatus enum.
+func (e DeliveryTargetConditionStatus) Valid() bool {
+	switch e {
+	case DeliveryTargetConditionStatusFalse:
+		return true
+	case DeliveryTargetConditionStatusTrue:
+		return true
+	case DeliveryTargetConditionStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetLifecycle.
+const (
+	DeliveryTargetLifecycleRefused      DeliveryTargetLifecycle = "Refused"
+	DeliveryTargetLifecycleRetained     DeliveryTargetLifecycle = "Retained"
+	DeliveryTargetLifecycleScrubbed     DeliveryTargetLifecycle = "Scrubbed"
+	DeliveryTargetLifecycleSynced       DeliveryTargetLifecycle = "Synced"
+	DeliveryTargetLifecycleUnreconciled DeliveryTargetLifecycle = "Unreconciled"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetLifecycle enum.
+func (e DeliveryTargetLifecycle) Valid() bool {
+	switch e {
+	case DeliveryTargetLifecycleRefused:
+		return true
+	case DeliveryTargetLifecycleRetained:
+		return true
+	case DeliveryTargetLifecycleScrubbed:
+		return true
+	case DeliveryTargetLifecycleSynced:
+		return true
+	case DeliveryTargetLifecycleUnreconciled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetReporterIntegration.
+const (
+	KubernetesOperator DeliveryTargetReporterIntegration = "kubernetes-operator"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetReporterIntegration enum.
+func (e DeliveryTargetReporterIntegration) Valid() bool {
+	switch e {
+	case KubernetesOperator:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DeliveryTargetState.
+const (
+	DeliveryTargetStateRefused         DeliveryTargetState = "refused"
+	DeliveryTargetStateReported        DeliveryTargetState = "reported"
+	DeliveryTargetStateReporterRevoked DeliveryTargetState = "reporter-revoked"
+	DeliveryTargetStateStale           DeliveryTargetState = "stale"
+)
+
+// Valid indicates whether the value is a known member of the DeliveryTargetState enum.
+func (e DeliveryTargetState) Valid() bool {
+	switch e {
+	case DeliveryTargetStateRefused:
+		return true
+	case DeliveryTargetStateReported:
+		return true
+	case DeliveryTargetStateReporterRevoked:
+		return true
+	case DeliveryTargetStateStale:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for DynamicLeaseState.
 const (
 	DynamicLeaseStateActive   DynamicLeaseState = "active"
@@ -1159,9 +1300,11 @@ const (
 	ErrorCodeInternal           ErrorCode = "internal"
 	ErrorCodeLimitExceeded      ErrorCode = "limit_exceeded"
 	ErrorCodeNotFound           ErrorCode = "not_found"
+	ErrorCodePayloadTooLarge    ErrorCode = "payload_too_large"
 	ErrorCodeServiceUnavailable ErrorCode = "service_unavailable"
 	ErrorCodeTooManyRequests    ErrorCode = "too_many_requests"
 	ErrorCodeUnauthenticated    ErrorCode = "unauthenticated"
+	ErrorCodeUnprocessable      ErrorCode = "unprocessable"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -1179,11 +1322,15 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeNotFound:
 		return true
+	case ErrorCodePayloadTooLarge:
+		return true
 	case ErrorCodeServiceUnavailable:
 		return true
 	case ErrorCodeTooManyRequests:
 		return true
 	case ErrorCodeUnauthenticated:
+		return true
+	case ErrorCodeUnprocessable:
 		return true
 	default:
 		return false
@@ -1526,6 +1673,39 @@ func (e LocalLoginRequestArtifact) Valid() bool {
 	}
 }
 
+// Defines values for LocalSignupMethod.
+const (
+	Local LocalSignupMethod = "local"
+)
+
+// Valid indicates whether the value is a known member of the LocalSignupMethod enum.
+func (e LocalSignupMethod) Valid() bool {
+	switch e {
+	case Local:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OidcStartRequestIntent.
+const (
+	SignIn OidcStartRequestIntent = "sign-in"
+	SignUp OidcStartRequestIntent = "sign-up"
+)
+
+// Valid indicates whether the value is a known member of the OidcStartRequestIntent enum.
+func (e OidcStartRequestIntent) Valid() bool {
+	switch e {
+	case SignIn:
+		return true
+	case SignUp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OpsDiagnosticFindingSeverity.
 const (
 	OpsDiagnosticFindingSeverityError   OpsDiagnosticFindingSeverity = "error"
@@ -1544,6 +1724,24 @@ func (e OpsDiagnosticFindingSeverity) Valid() bool {
 	case OpsDiagnosticFindingSeverityUnknown:
 		return true
 	case OpsDiagnosticFindingSeverityWarn:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrgOrigin.
+const (
+	OrgOriginManual       OrgOrigin = "manual"
+	OrgOriginRegistration OrgOrigin = "registration"
+)
+
+// Valid indicates whether the value is a known member of the OrgOrigin enum.
+func (e OrgOrigin) Valid() bool {
+	switch e {
+	case OrgOriginManual:
+		return true
+	case OrgOriginRegistration:
 		return true
 	default:
 		return false
@@ -1679,6 +1877,66 @@ func (e ReencryptResultScope) Valid() bool {
 	}
 }
 
+// Defines values for RegistrationLandingKind.
+const (
+	RegistrationLandingKindFreshOrg    RegistrationLandingKind = "fresh-org"
+	RegistrationLandingKindNone        RegistrationLandingKind = "none"
+	RegistrationLandingKindOrgTemplate RegistrationLandingKind = "org-template"
+)
+
+// Valid indicates whether the value is a known member of the RegistrationLandingKind enum.
+func (e RegistrationLandingKind) Valid() bool {
+	switch e {
+	case RegistrationLandingKindFreshOrg:
+		return true
+	case RegistrationLandingKindNone:
+		return true
+	case RegistrationLandingKindOrgTemplate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegistrationPolicyInactiveCause.
+const (
+	AuthorityLost       RegistrationPolicyInactiveCause = "authority-lost"
+	AuthorityUnassigned RegistrationPolicyInactiveCause = "authority-unassigned"
+	Precondition        RegistrationPolicyInactiveCause = "precondition"
+)
+
+// Valid indicates whether the value is a known member of the RegistrationPolicyInactiveCause enum.
+func (e RegistrationPolicyInactiveCause) Valid() bool {
+	switch e {
+	case AuthorityLost:
+		return true
+	case AuthorityUnassigned:
+		return true
+	case Precondition:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RegistrationPolicyState.
+const (
+	RegistrationPolicyStateActive   RegistrationPolicyState = "active"
+	RegistrationPolicyStateInactive RegistrationPolicyState = "inactive"
+)
+
+// Valid indicates whether the value is a known member of the RegistrationPolicyState enum.
+func (e RegistrationPolicyState) Valid() bool {
+	switch e {
+	case RegistrationPolicyStateActive:
+		return true
+	case RegistrationPolicyStateInactive:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RemoteState.
 const (
 	RemoteStateCredentialRejected RemoteState = "credential-rejected"
@@ -1738,19 +1996,19 @@ func (e ResumeAdapterTargetMoveRequestVisibility) Valid() bool {
 
 // Defines values for RetentionConsequence.
 const (
-	AlreadyCollected   RetentionConsequence = "already_collected"
-	CollectionEligible RetentionConsequence = "collection_eligible"
-	Retained           RetentionConsequence = "retained"
+	RetentionConsequenceAlreadyCollected   RetentionConsequence = "already_collected"
+	RetentionConsequenceCollectionEligible RetentionConsequence = "collection_eligible"
+	RetentionConsequenceRetained           RetentionConsequence = "retained"
 )
 
 // Valid indicates whether the value is a known member of the RetentionConsequence enum.
 func (e RetentionConsequence) Valid() bool {
 	switch e {
-	case AlreadyCollected:
+	case RetentionConsequenceAlreadyCollected:
 		return true
-	case CollectionEligible:
+	case RetentionConsequenceCollectionEligible:
 		return true
-	case Retained:
+	case RetentionConsequenceRetained:
 		return true
 	default:
 		return false
@@ -2558,6 +2816,24 @@ func (e DeliveryProjection) Valid() bool {
 	}
 }
 
+// Defines values for ListOrgsParamsOrigin.
+const (
+	ListOrgsParamsOriginManual       ListOrgsParamsOrigin = "manual"
+	ListOrgsParamsOriginRegistration ListOrgsParamsOrigin = "registration"
+)
+
+// Valid indicates whether the value is a known member of the ListOrgsParamsOrigin enum.
+func (e ListOrgsParamsOrigin) Valid() bool {
+	switch e {
+	case ListOrgsParamsOriginManual:
+		return true
+	case ListOrgsParamsOriginRegistration:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for QueryOrgAuditParamsOutcome.
 const (
 	QueryOrgAuditParamsOutcomeDenied       QueryOrgAuditParamsOutcome = "denied"
@@ -2957,7 +3233,12 @@ func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
 // AccountProfile defines model for AccountProfile.
 type AccountProfile struct {
 	DisplayName string `json:"display_name"`
-	Email       string `json:"email"`
+
+	// Email The account email in canonical form (domain lowercased), or null when the account has none. Read-only. See email_verified for what it is used for. Never an identity linking key.
+	Email *string `json:"email"`
+
+	// EmailVerified True when email is the verified sign-in email, set only by verified local sign-up. False when email is null or is a contact address kept from before sign-in email existed; such an address is display-only and is never used to sign in.
+	EmailVerified bool `json:"email_verified"`
 
 	// Managed SCIM controls the username and display name.
 	Managed  bool   `json:"managed"`
@@ -3726,18 +4007,60 @@ type AuthMethod = string
 
 // AuthMethodProvider defines model for AuthMethodProvider.
 type AuthMethodProvider struct {
-	DisplayName string `json:"display_name"`
+	// Brand The provider's published button rules apply (#587 d4,
+	// docs/research/social-providers.md): Google's standard-colour G,
+	// or the Microsoft logo with the row's display name as the tenant.
+	// Derived from the pinned issuer (Google's, or an Entra
+	// tenant-specific issuer); absent for a generic OIDC provider.
+	// Presentation only: admission never keys on it.
+	Brand       *AuthMethodProviderBrand `json:"brand,omitempty"`
+	DisplayName string                   `json:"display_name"`
 
 	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
 	Kind IdentityProviderKind `json:"kind"`
 	Slug string               `json:"slug"`
 }
 
+// AuthMethodProviderBrand The provider's published button rules apply (#587 d4,
+// docs/research/social-providers.md): Google's standard-colour G,
+// or the Microsoft logo with the row's display name as the tenant.
+// Derived from the pinned issuer (Google's, or an Entra
+// tenant-specific issuer); absent for a generic OIDC provider.
+// Presentation only: admission never keys on it.
+type AuthMethodProviderBrand string
+
 // AuthMethods defines model for AuthMethods.
 type AuthMethods struct {
 	LocalLoginEnabled bool                 `json:"local_login_enabled"`
 	Providers         []AuthMethodProvider `json:"providers"`
+
+	// SignupLanding Where an admitted sign-up lands, present only while the door is
+	// open (#607): the addressed org (`org-template`), an account with
+	// no grants (`none`), or a fresh org of its own (`fresh-org`). Not
+	// secret: the landing kind is what the confirmation step tells the
+	// signer before the round-trip (#585 d5, #587 d1).
+	SignupLanding *AuthMethodsSignupLanding `json:"signup_landing,omitempty"`
+
+	// SignupMethods The methods the open door admits, empty unless `signup_open`
+	// (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
+	SignupMethods []SignupMethod `json:"signup_methods"`
+
+	// SignupOpen The addressed scope (the instance, or `?org=`) has an active
+	// registration policy: the sign-up door is open.
+	SignupOpen bool `json:"signup_open"`
+
+	// SignupPaused The addressed scope has a policy that is inactive. The public page
+	// renders only "Sign-up is paused."; the cause renders on the
+	// Members panel (#587 d3). False when the scope has no policy.
+	SignupPaused bool `json:"signup_paused"`
 }
+
+// AuthMethodsSignupLanding Where an admitted sign-up lands, present only while the door is
+// open (#607): the addressed org (`org-template`), an account with
+// no grants (`none`), or a fresh org of its own (`fresh-org`). Not
+// secret: the landing kind is what the confirmation step tells the
+// signer before the round-trip (#585 d5, #587 d1).
+type AuthMethodsSignupLanding string
 
 // BackupHealth Disaster-recovery health: the latest successful export, its age against the configured recovery point objective, the latest failure, and the latest restore drill. Names archives and versions only; never a recipient, an identity or a key.
 type BackupHealth struct {
@@ -4639,6 +4962,162 @@ type DeliveryResponse struct {
 	SnapshotExpiresAt Timestamp `json:"snapshot_expires_at"`
 }
 
+// DeliveryTarget One target's latest accepted report, as its controller asserted it.
+type DeliveryTarget struct {
+	Conditions []DeliveryTargetCondition `json:"conditions"`
+	Generation int64                     `json:"generation"`
+	Id         string                    `json:"id"`
+
+	// Lifecycle The target's closed `status.lifecycle`.
+	Lifecycle          DeliveryTargetLifecycle `json:"lifecycle"`
+	ObservedGeneration int64                   `json:"observed_generation"`
+	PrincipalId        string                  `json:"principal_id"`
+
+	// ReceivedAt RFC 3339 UTC, microsecond precision.
+	ReceivedAt Timestamp `json:"received_at"`
+
+	// Refusal Present only while `state` is `refused`. The closed cause, never the refused value.
+	Refusal *struct {
+		Cause DeliveryTargetRefusalCause `json:"cause"`
+
+		// RefusedAt RFC 3339 UTC, microsecond precision.
+		RefusedAt Timestamp `json:"refused_at"`
+	} `json:"refusal,omitempty"`
+	ReportIntervalSeconds int64 `json:"report_interval_seconds"`
+
+	// ReportedAt RFC 3339 UTC, microsecond precision.
+	ReportedAt Timestamp `json:"reported_at"`
+
+	// Reporter The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+	Reporter DeliveryTargetReporter `json:"reporter"`
+
+	// State Derived at read time, never stored (ADR D5). `unknown` is the absence
+	// of a row, so no row carries it.
+	State DeliveryTargetState `json:"state"`
+
+	// Target The target's identity plus the namespace and name an operator types into `kubectl`.
+	Target     DeliveryTargetRef `json:"target"`
+	Vocabulary int               `json:"vocabulary"`
+}
+
+// DeliveryTargetRefusalCause defines model for DeliveryTarget.Refusal.Cause.
+type DeliveryTargetRefusalCause string
+
+// DeliveryTargetCondition One asserted condition. `type` and `reason` are bounded by the
+// Kubernetes condition grammar (k8s.io/apimachinery `metav1.Condition`
+// Type and Reason validation), not enumerated: a value outside the
+// vocabulary `/meta` advertises (`delivery-target-report/<vocabulary>`)
+// refuses the whole report with 422 naming the member, so the refusal is
+// recorded on the target's row. A string outside the grammar is a 400.
+type DeliveryTargetCondition struct {
+	ObservedGeneration int64                         `json:"observed_generation"`
+	Reason             string                        `json:"reason"`
+	Status             DeliveryTargetConditionStatus `json:"status"`
+	Type               string                        `json:"type"`
+}
+
+// DeliveryTargetConditionStatus defines model for DeliveryTargetCondition.Status.
+type DeliveryTargetConditionStatus string
+
+// DeliveryTargetIdentity The target's identity under the reporting principal: the cluster
+// (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+// target object's UID. A recreated object is a new target.
+type DeliveryTargetIdentity struct {
+	// ClusterId A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	ClusterId KubernetesUID `json:"cluster_id"`
+
+	// InstanceUid A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	InstanceUid KubernetesUID `json:"instance_uid"`
+
+	// Uid A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	Uid KubernetesUID `json:"uid"`
+}
+
+// DeliveryTargetLifecycle The target's closed `status.lifecycle`.
+type DeliveryTargetLifecycle string
+
+// DeliveryTargetList defines model for DeliveryTargetList.
+type DeliveryTargetList struct {
+	Principals []DeliveryTargetPrincipal `json:"principals"`
+	Targets    []DeliveryTarget          `json:"targets"`
+}
+
+// DeliveryTargetPrincipal The server-observed layer for one reporting principal (ADR D2).
+type DeliveryTargetPrincipal struct {
+	// LastContactAt Its last authenticated delivery fetch in this environment. Absent when never observed.
+	LastContactAt *Timestamp `json:"last_contact_at,omitempty"`
+	PrincipalId   string     `json:"principal_id"`
+
+	// QuotaRefusedAt The closed `quota-refused` notice's last time. Absent when never refused.
+	QuotaRefusedAt *Timestamp `json:"quota_refused_at,omitempty"`
+}
+
+// DeliveryTargetRef The target's identity plus the namespace and name an operator types into `kubectl`.
+type DeliveryTargetRef struct {
+	// ClusterId A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	ClusterId KubernetesUID `json:"cluster_id"`
+
+	// InstanceUid A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	InstanceUid KubernetesUID `json:"instance_uid"`
+
+	// Name An object name (DNS-1123 subdomain). A display label, never interpreted.
+	Name KubernetesObjectName `json:"name"`
+
+	// Namespace A namespace name (DNS-1123 label). A display label, never interpreted.
+	Namespace KubernetesNamespace `json:"namespace"`
+
+	// Uid A Kubernetes object UID, canonical lower-case RFC 4122 form.
+	Uid KubernetesUID `json:"uid"`
+}
+
+// DeliveryTargetReportRequest One closed, value-free report (ADR D4). It carries no condition
+// message, event text, secret value, key name, cursor or credential
+// material; there is no member that could.
+type DeliveryTargetReportRequest struct {
+	Conditions []DeliveryTargetCondition `json:"conditions"`
+	Generation int64                     `json:"generation"`
+
+	// Lifecycle The target's closed `status.lifecycle`.
+	Lifecycle          DeliveryTargetLifecycle `json:"lifecycle"`
+	ObservedGeneration int64                   `json:"observed_generation"`
+
+	// ReportIntervalSeconds The target's heartbeat interval. The server clamps it to [300, 86400].
+	ReportIntervalSeconds int64 `json:"report_interval_seconds"`
+
+	// ReportedAt RFC 3339 UTC, microsecond precision.
+	ReportedAt Timestamp `json:"reported_at"`
+
+	// Reporter The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+	Reporter DeliveryTargetReporter `json:"reporter"`
+
+	// Target The target's identity plus the namespace and name an operator types into `kubectl`.
+	Target DeliveryTargetRef `json:"target"`
+
+	// Vocabulary The vocabulary version `/meta` advertised. One this server does not accept is a 422.
+	Vocabulary int `json:"vocabulary"`
+}
+
+// DeliveryTargetReporter The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+type DeliveryTargetReporter struct {
+	Integration DeliveryTargetReporterIntegration `json:"integration"`
+	Version     string                            `json:"version"`
+}
+
+// DeliveryTargetReporterIntegration defines model for DeliveryTargetReporter.Integration.
+type DeliveryTargetReporterIntegration string
+
+// DeliveryTargetState Derived at read time, never stored (ADR D5). `unknown` is the absence
+// of a row, so no row carries it.
+type DeliveryTargetState string
+
+// DeliveryTargetTombstoneRequest defines model for DeliveryTargetTombstoneRequest.
+type DeliveryTargetTombstoneRequest struct {
+	// Target The target's identity under the reporting principal: the cluster
+	// (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+	// target object's UID. A recreated object is a new target.
+	Target DeliveryTargetIdentity `json:"target"`
+}
+
 // DirectoryListing What a connection credential authorizes, exhaustively. There is no field
 // here that could carry a value, a key, an environment, a membership, a
 // setting or an audit row, and adding one would widen every credential in
@@ -4834,9 +5313,10 @@ type Error struct {
 		// Code Closed response-code set. Clients branch on this, not on prose.
 		Code ErrorCode `json:"code"`
 
-		// Detail Present only on `bad_request`, where it names the offending
-		// request member. `null` and absent are equivalent; every other
-		// error code omits the member entirely.
+		// Detail Present on `bad_request` and `unprocessable`, where it names
+		// the offending request member, and on a `conflict` whose refusal
+		// names the caller's own state. `null` and absent are
+		// equivalent; every other error code omits the member entirely.
 		Detail *string `json:"detail,omitempty"`
 
 		// Findings Secret-scanning refusal detail (#74, Surface 2). Present only on
@@ -5762,6 +6242,15 @@ type KeyRule struct {
 // KeyRuleType defines model for KeyRule.Type.
 type KeyRuleType string
 
+// KubernetesNamespace A namespace name (DNS-1123 label). A display label, never interpreted.
+type KubernetesNamespace = string
+
+// KubernetesObjectName An object name (DNS-1123 subdomain). A display label, never interpreted.
+type KubernetesObjectName = string
+
+// KubernetesUID A Kubernetes object UID, canonical lower-case RFC 4122 form.
+type KubernetesUID = string
+
 // LocalLoginRequest defines model for LocalLoginRequest.
 type LocalLoginRequest struct {
 	// Artifact Which session artifact to mint. Omitted or `cli` mints a CLI
@@ -5786,6 +6275,9 @@ type LocalLoginRequest struct {
 // surfaces, so the caller states which one it is asking for rather
 // than the server guessing from a header.
 type LocalLoginRequestArtifact string
+
+// LocalSignupMethod The email + password sign-up entry.
+type LocalSignupMethod string
 
 // LoginChallenge A single-use, expiring authority proving the password step passed for
 // one account, issued by `localLogin` (202) when a factor stands and a
@@ -5914,8 +6406,11 @@ type Meta struct {
 	// InstanceIdentity Stable server-generated instance identity, independent of URL aliases.
 	InstanceIdentity *string `json:"instance_identity,omitempty"`
 
-	// ProtocolCapabilities Which authentication protocol flows this instance serves. `login`
-	// needs this before any session exists.
+	// ProtocolCapabilities Which protocols this instance serves: the authentication flows
+	// `login` needs before any session exists, and the machine protocols
+	// an integration probes before using them, such as
+	// `delivery-target-report/<vocabulary>` for each delivery-target
+	// report vocabulary this server accepts.
 	ProtocolCapabilities []ProtocolCapability `json:"protocol_capabilities"`
 
 	// ServerVersion The build's version string; `dev` for unreleased builds.
@@ -6093,13 +6588,33 @@ type OidcStartRequest struct {
 	// Browser Redirect the callback to the SPA done page instead of returning JSON.
 	Browser *bool `json:"browser,omitempty"`
 
-	// EnvironmentId Required for reauth; the window scope.
+	// EnvironmentId Required for reauth; the window scope. Refused (400) on any other purpose.
 	EnvironmentId *string `json:"environment_id,omitempty"`
+
+	// Intent Valid only with purpose `login` (#604); absent = `sign-in`. It
+	// decides only what happens to an unknown identity at the callback:
+	// `sign-in` refuses it uniformly, `sign-up` enters the registration
+	// policy of the addressed scope. A known identity signs in under
+	// either. Supplied on any other purpose, the start refuses uniformly.
+	Intent *OidcStartRequestIntent `json:"intent,omitempty"`
 
 	// Proof Required for link; the pre-existing password.
 	Proof   *string `json:"proof,omitempty"`
 	Purpose string  `json:"purpose"`
+
+	// SignupOrg The org whose registration policy a `sign-up` addresses; absent =
+	// the instance scope. Valid only with intent `sign-up`. The start
+	// reads no policy: an unknown org refuses at the callback as a closed
+	// door.
+	SignupOrg *string `json:"signup_org,omitempty"`
 }
+
+// OidcStartRequestIntent Valid only with purpose `login` (#604); absent = `sign-in`. It
+// decides only what happens to an unknown identity at the callback:
+// `sign-in` refuses it uniformly, `sign-up` enters the registration
+// policy of the addressed scope. A known identity signs in under
+// either. Supplied on any other purpose, the start refuses uniformly.
+type OidcStartRequestIntent string
 
 // OidcStartResult defines model for OidcStartResult.
 type OidcStartResult struct {
@@ -6128,7 +6643,22 @@ type Org struct {
 	Id       ID                      `json:"id"`
 	Metadata *map[string]interface{} `json:"metadata,omitempty"`
 	Name     string                  `json:"name"`
+
+	// Origin How the org came to exist (#585 d8): `manual` (an operator's
+	// create) or `registration` (a sign-up under a registration policy,
+	// a self-served org). Typed on the row, never editable.
+	Origin OrgOrigin `json:"origin"`
+
+	// RegistrationPolicyId The registration policy that minted the org, a trail pointer with
+	// no foreign key (the org keeps it after the policy is deleted); null
+	// for a manual org.
+	RegistrationPolicyId *string `json:"registration_policy_id,omitempty"`
 }
+
+// OrgOrigin How the org came to exist (#585 d8): `manual` (an operator's
+// create) or `registration` (a sign-up under a registration policy,
+// a self-served org). Typed on the row, never editable.
+type OrgOrigin string
 
 // OrgList defines model for OrgList.
 type OrgList struct {
@@ -6319,6 +6849,13 @@ type ProjectRetentionPolicyMode string
 // unknown value rather than reject the response.
 type ProtocolCapability = string
 
+// ProviderRef A federated provider named by kind and slug (slugs are unique per kind only).
+type ProviderRef struct {
+	// Kind OPEN protocol discriminator in the byte-exact external-identity key.
+	Kind IdentityProviderKind `json:"kind"`
+	Slug string               `json:"slug"`
+}
+
 // PublishRequest defines model for PublishRequest.
 type PublishRequest struct {
 	// ApprovalRequestId Secret-change approvals (#151). Merge or bypass this approval
@@ -6476,6 +7013,105 @@ type ReencryptResult struct {
 
 // ReencryptResultScope defines model for ReencryptResult.Scope.
 type ReencryptResultScope string
+
+// RegistrationExternalEntry defines model for RegistrationExternalEntry.
+type RegistrationExternalEntry struct {
+	// Claim One issuer-specific string claim the signed ID token must carry,
+	// with a value in `values`. Never `email`.
+	Claim *string `json:"claim,omitempty"`
+
+	// DisplayName The provider's display name; on responses only, ignored on input.
+	DisplayName *string `json:"display_name,omitempty"`
+
+	// Provider A federated provider named by kind and slug (slugs are unique per kind only).
+	Provider ProviderRef `json:"provider"`
+	Values   *[]string   `json:"values,omitempty"`
+}
+
+// RegistrationLanding Where a sign-up lands. An organisation policy is `org-template` with a
+// template applicable at organisation scope; an instance policy is
+// `none` (zero grants) or `fresh-org` (a new organisation with the
+// signer as its first administrator) with a cap on live orgs minted.
+type RegistrationLanding struct {
+	Cap  *int                    `json:"cap,omitempty"`
+	Kind RegistrationLandingKind `json:"kind"`
+
+	// Template The closed v1 role template set.
+	Template *RoleTemplate `json:"template,omitempty"`
+}
+
+// RegistrationLandingKind defines model for RegistrationLanding.Kind.
+type RegistrationLandingKind string
+
+// RegistrationLocalEntry Email + password sign-up; present means enabled.
+type RegistrationLocalEntry struct {
+	// Domains Admitted address domains; empty or absent admits any address.
+	Domains *[]string `json:"domains,omitempty"`
+}
+
+// RegistrationPolicy defines model for RegistrationPolicy.
+type RegistrationPolicy struct {
+	// AuthorityPrincipalId The standing delegation's authority principal (empty when
+	// unassigned); re-checked against its current grants on every read
+	// and every sign-up.
+	AuthorityPrincipalId string                      `json:"authority_principal_id"`
+	CreatedAt            time.Time                   `json:"created_at"`
+	External             []RegistrationExternalEntry `json:"external"`
+
+	// FreshOrgCount For a `fresh-org` landing, the live orgs this policy minted (the `n` of `n / cap`).
+	FreshOrgCount *int                             `json:"fresh_org_count,omitempty"`
+	Id            string                           `json:"id"`
+	InactiveCause *RegistrationPolicyInactiveCause `json:"inactive_cause,omitempty"`
+
+	// InactivePrecondition When `inactive_cause` is `precondition`, the failing precondition
+	// by name, with the provider as `<kind>:<slug>` where one is involved.
+	InactivePrecondition *string `json:"inactive_precondition,omitempty"`
+
+	// Landing Where a sign-up lands. An organisation policy is `org-template` with a
+	// template applicable at organisation scope; an instance policy is
+	// `none` (zero grants) or `fresh-org` (a new organisation with the
+	// signer as its first administrator) with a cap on live orgs minted.
+	Landing RegistrationLanding `json:"landing"`
+
+	// Local Email + password sign-up; present means enabled.
+	Local *RegistrationLocalEntry `json:"local,omitempty"`
+
+	// Org The organisation; absent for the instance policy.
+	Org        *string                 `json:"org,omitempty"`
+	RowVersion int                     `json:"row_version"`
+	State      RegistrationPolicyState `json:"state"`
+	UpdatedAt  time.Time               `json:"updated_at"`
+}
+
+// RegistrationPolicyInactiveCause defines model for RegistrationPolicy.InactiveCause.
+type RegistrationPolicyInactiveCause string
+
+// RegistrationPolicyState defines model for RegistrationPolicy.State.
+type RegistrationPolicyState string
+
+// RegistrationPolicyDeleteRequest defines model for RegistrationPolicyDeleteRequest.
+type RegistrationPolicyDeleteRequest struct {
+	// Proof The reauthentication proof, as on `put`.
+	Proof string `json:"proof"`
+}
+
+// RegistrationPolicyPutRequest defines model for RegistrationPolicyPutRequest.
+type RegistrationPolicyPutRequest struct {
+	External []RegistrationExternalEntry `json:"external"`
+
+	// Landing Where a sign-up lands. An organisation policy is `org-template` with a
+	// template applicable at organisation scope; an instance policy is
+	// `none` (zero grants) or `fresh-org` (a new organisation with the
+	// signer as its first administrator) with a cap on live orgs minted.
+	Landing RegistrationLanding `json:"landing"`
+
+	// Local Email + password sign-up; present means enabled.
+	Local *RegistrationLocalEntry `json:"local,omitempty"`
+
+	// Proof The reauthentication proof: a TOTP code, or the account password
+	// where no factor is enrolled.
+	Proof string `json:"proof"`
+}
 
 // Remote One connection entry and its last-known state. There is deliberately no
 // credential field: the stored credential is write-only after storage and
@@ -7661,6 +8297,11 @@ type SetValueRequest struct {
 	Value string `json:"value"`
 }
 
+// SignupMethod A federated provider by `{kind, slug}`, or the string `local` for the email + password entry.
+type SignupMethod struct {
+	union json.RawMessage
+}
+
 // SnapshotKey defines model for SnapshotKey.
 type SnapshotKey struct {
 	// Classification Classification IS the sensitivity boundary. A matrix row is uniformly
@@ -7803,12 +8444,9 @@ type TotpStatus struct {
 
 // UpdateAccountProfileRequest defines model for UpdateAccountProfileRequest.
 type UpdateAccountProfileRequest struct {
-	DisplayName string `json:"display_name"`
-
-	// Email Contact address, or empty to clear. Never used for authentication.
-	Email    string  `json:"email"`
-	Proof    *string `json:"proof,omitempty"`
-	Username string  `json:"username"`
+	DisplayName string  `json:"display_name"`
+	Proof       *string `json:"proof,omitempty"`
+	Username    string  `json:"username"`
 }
 
 // UpdateAdapterOriginRequest defines model for UpdateAdapterOriginRequest.
@@ -8532,6 +9170,9 @@ type Internal = Error
 // NotFound defines model for NotFound.
 type NotFound = Error
 
+// PayloadTooLarge defines model for PayloadTooLarge.
+type PayloadTooLarge = Error
+
 // ScimServiceUnavailable A SCIM 2.0 resource or message, as RFC 7643/7644 shapes it. It is
 // deliberately open: identity providers send and expect attributes this
 // provider stores as round-tripped display metadata, and pinning the
@@ -8550,6 +9191,18 @@ type TooManyRequests = Error
 // Unauthenticated defines model for Unauthenticated.
 type Unauthenticated = Error
 
+// UnprocessableContent defines model for UnprocessableContent.
+type UnprocessableContent = Error
+
+// AuthMethodsParams defines parameters for AuthMethods.
+type AuthMethodsParams struct {
+	// Org The organisation whose sign-up door to render (`signup_open`,
+	// `signup_paused`, `signup_methods`); absent means the instance
+	// scope. An unknown organisation and one without a policy are the
+	// same closed door.
+	Org *string `form:"org,omitempty" json:"org,omitempty"`
+}
+
 // OidcCallbackParams defines parameters for OidcCallback.
 type OidcCallbackParams struct {
 	Code  *string `form:"code,omitempty" json:"code,omitempty"`
@@ -8566,6 +9219,16 @@ type RevokeInstanceGrantParams struct {
 	// Capability The capability atom being revoked.
 	Capability GrantCapability `form:"capability" json:"capability"`
 }
+
+// ListOrgsParams defines parameters for ListOrgs.
+type ListOrgsParams struct {
+	// Origin Only orgs of this origin: the operator's filter for self-served
+	// (`registration`) orgs, pruned with the ordinary delete (#585 d9).
+	Origin *ListOrgsParamsOrigin `form:"origin,omitempty" json:"origin,omitempty"`
+}
+
+// ListOrgsParamsOrigin defines parameters for ListOrgs.
+type ListOrgsParamsOrigin string
 
 // QueryOrgAuditParams defines parameters for QueryOrgAudit.
 type QueryOrgAuditParams struct {
@@ -9250,6 +9913,12 @@ type InviteInstanceMemberJSONRequestBody = InviteMemberRequest
 // PutOidcProviderJSONRequestBody defines body for PutOidcProvider for application/json ContentType.
 type PutOidcProviderJSONRequestBody = OidcProviderInput
 
+// DeleteInstanceRegistrationPolicyJSONRequestBody defines body for DeleteInstanceRegistrationPolicy for application/json ContentType.
+type DeleteInstanceRegistrationPolicyJSONRequestBody = RegistrationPolicyDeleteRequest
+
+// PutInstanceRegistrationPolicyJSONRequestBody defines body for PutInstanceRegistrationPolicy for application/json ContentType.
+type PutInstanceRegistrationPolicyJSONRequestBody = RegistrationPolicyPutRequest
+
 // AddRemoteJSONRequestBody defines body for AddRemote for application/json ContentType.
 type AddRemoteJSONRequestBody = AddRemoteRequest
 
@@ -9364,6 +10033,12 @@ type RenameEnvironmentJSONRequestBody = RenameRequest
 // VoteApprovalRequestJSONRequestBody defines body for VoteApprovalRequest for application/json ContentType.
 type VoteApprovalRequestJSONRequestBody = ApprovalVoteRequest
 
+// ReportDeliveryTargetJSONRequestBody defines body for ReportDeliveryTarget for application/json ContentType.
+type ReportDeliveryTargetJSONRequestBody = DeliveryTargetReportRequest
+
+// TombstoneDeliveryTargetJSONRequestBody defines body for TombstoneDeliveryTarget for application/json ContentType.
+type TombstoneDeliveryTargetJSONRequestBody = DeliveryTargetTombstoneRequest
+
 // ReconcileOfflineRecordsJSONRequestBody defines body for ReconcileOfflineRecords for application/json ContentType.
 type ReconcileOfflineRecordsJSONRequestBody = ReconcileOfflineRecordsRequest
 
@@ -9471,6 +10146,12 @@ type DeclareValuesJSONRequestBody = DeclareValuesRequest
 
 // RevealValueDiffJSONRequestBody defines body for RevealValueDiff for application/json ContentType.
 type RevealValueDiffJSONRequestBody = RevealDiffRequest
+
+// DeleteOrgRegistrationPolicyJSONRequestBody defines body for DeleteOrgRegistrationPolicy for application/json ContentType.
+type DeleteOrgRegistrationPolicyJSONRequestBody = RegistrationPolicyDeleteRequest
+
+// PutOrgRegistrationPolicyJSONRequestBody defines body for PutOrgRegistrationPolicy for application/json ContentType.
+type PutOrgRegistrationPolicyJSONRequestBody = RegistrationPolicyPutRequest
 
 // SetOrgRetentionJSONRequestBody defines body for SetOrgRetention for application/json ContentType.
 type SetOrgRetentionJSONRequestBody = RetentionPolicy
@@ -9581,6 +10262,68 @@ func (t ResumeAdapterMoveRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (t *ResumeAdapterMoveRequest) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
+
+// AsProviderRef returns the union data inside the SignupMethod as a ProviderRef
+func (t SignupMethod) AsProviderRef() (ProviderRef, error) {
+	var body ProviderRef
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromProviderRef overwrites any union data inside the SignupMethod as the provided ProviderRef
+func (t *SignupMethod) FromProviderRef(v ProviderRef) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeProviderRef performs a merge with any union data inside the SignupMethod, using the provided ProviderRef
+func (t *SignupMethod) MergeProviderRef(v ProviderRef) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsLocalSignupMethod returns the union data inside the SignupMethod as a LocalSignupMethod
+func (t SignupMethod) AsLocalSignupMethod() (LocalSignupMethod, error) {
+	var body LocalSignupMethod
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromLocalSignupMethod overwrites any union data inside the SignupMethod as the provided LocalSignupMethod
+func (t *SignupMethod) FromLocalSignupMethod(v LocalSignupMethod) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeLocalSignupMethod performs a merge with any union data inside the SignupMethod, using the provided LocalSignupMethod
+func (t *SignupMethod) MergeLocalSignupMethod(v LocalSignupMethod) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t SignupMethod) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *SignupMethod) UnmarshalJSON(b []byte) error {
 	err := t.union.UnmarshalJSON(b)
 	return err
 }
@@ -9781,7 +10524,7 @@ type ServerInterface interface {
 	Logout(w http.ResponseWriter, r *http.Request)
 	// AuthMethods Enabled login methods for this instance.
 	// (GET /api/v1/auth/methods)
-	AuthMethods(w http.ResponseWriter, r *http.Request)
+	AuthMethods(w http.ResponseWriter, r *http.Request, params AuthMethodsParams)
 	// OidcCallback Complete an OIDC transaction from the IdP redirect.
 	// (GET /api/v1/auth/oidc/{provider}/callback)
 	OidcCallback(w http.ResponseWriter, r *http.Request, provider ProviderSlug, params OidcCallbackParams)
@@ -9944,6 +10687,15 @@ type ServerInterface interface {
 	// ReencryptInstance Walk the instance credential ciphertext onto the active DEK version.
 	// (POST /api/v1/instance/reencrypt)
 	ReencryptInstance(w http.ResponseWriter, r *http.Request)
+	// DeleteInstanceRegistrationPolicy Close registration at this scope.
+	// (DELETE /api/v1/instance/registration-policy)
+	DeleteInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request)
+	// GetInstanceRegistrationPolicy Read the instance registration policy.
+	// (GET /api/v1/instance/registration-policy)
+	GetInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request)
+	// PutInstanceRegistrationPolicy Create or replace the instance registration policy.
+	// (PUT /api/v1/instance/registration-policy)
+	PutInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request)
 	// ListRemotes The directory of connected instances.
 	// (GET /api/v1/instance/remotes)
 	ListRemotes(w http.ResponseWriter, r *http.Request)
@@ -10045,7 +10797,7 @@ type ServerInterface interface {
 	GetMeta(w http.ResponseWriter, r *http.Request)
 	// ListOrgs List organisations.
 	// (GET /api/v1/orgs)
-	ListOrgs(w http.ResponseWriter, r *http.Request)
+	ListOrgs(w http.ResponseWriter, r *http.Request, params ListOrgsParams)
 	// CreateOrg Create an organisation.
 	// (POST /api/v1/orgs)
 	CreateOrg(w http.ResponseWriter, r *http.Request)
@@ -10253,6 +11005,15 @@ type ServerInterface interface {
 	// FetchDelivery Fetch the authorized projection, conditionally.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 	FetchDelivery(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params FetchDeliveryParams)
+	// ListDeliveryTargets List the environment's delivery targets and their derived state.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+	ListDeliveryTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ReportDeliveryTarget Report one delivery target's asserted conditions.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+	ReportDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// TombstoneDeliveryTarget Remove the caller's row for one deleted delivery target.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone)
+	TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
 	// ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 	ReconcileOfflineRecords(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -10478,6 +11239,15 @@ type ServerInterface interface {
 	// RevealValueDiff Compare two environments with `secret` plaintext.
 	// (POST /api/v1/orgs/{org}/projects/{project}/values/diff/reveal)
 	RevealValueDiff(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// DeleteOrgRegistrationPolicy Close registration at this scope.
+	// (DELETE /api/v1/orgs/{org}/registration-policy)
+	DeleteOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID)
+	// GetOrgRegistrationPolicy Read the organisation registration policy.
+	// (GET /api/v1/orgs/{org}/registration-policy)
+	GetOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID)
+	// PutOrgRegistrationPolicy Create or replace the organisation registration policy.
+	// (PUT /api/v1/orgs/{org}/registration-policy)
+	PutOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID)
 	// GetOrgRetention Read the organisation retention cap.
 	// (GET /api/v1/orgs/{org}/retention)
 	GetOrgRetention(w http.ResponseWriter, r *http.Request, org OrgID)
@@ -10678,7 +11448,7 @@ func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
 
 // AuthMethods Enabled login methods for this instance.
 // (GET /api/v1/auth/methods)
-func (_ Unimplemented) AuthMethods(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) AuthMethods(w http.ResponseWriter, r *http.Request, params AuthMethodsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -11006,6 +11776,24 @@ func (_ Unimplemented) ReencryptInstance(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// DeleteInstanceRegistrationPolicy Close registration at this scope.
+// (DELETE /api/v1/instance/registration-policy)
+func (_ Unimplemented) DeleteInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetInstanceRegistrationPolicy Read the instance registration policy.
+// (GET /api/v1/instance/registration-policy)
+func (_ Unimplemented) GetInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PutInstanceRegistrationPolicy Create or replace the instance registration policy.
+// (PUT /api/v1/instance/registration-policy)
+func (_ Unimplemented) PutInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListRemotes The directory of connected instances.
 // (GET /api/v1/instance/remotes)
 func (_ Unimplemented) ListRemotes(w http.ResponseWriter, r *http.Request) {
@@ -11206,7 +11994,7 @@ func (_ Unimplemented) GetMeta(w http.ResponseWriter, r *http.Request) {
 
 // ListOrgs List organisations.
 // (GET /api/v1/orgs)
-func (_ Unimplemented) ListOrgs(w http.ResponseWriter, r *http.Request) {
+func (_ Unimplemented) ListOrgs(w http.ResponseWriter, r *http.Request, params ListOrgsParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -11621,6 +12409,24 @@ func (_ Unimplemented) ExportEnvAudit(w http.ResponseWriter, r *http.Request, or
 // FetchDelivery Fetch the authorized projection, conditionally.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 func (_ Unimplemented) FetchDelivery(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params FetchDeliveryParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListDeliveryTargets List the environment's delivery targets and their derived state.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+func (_ Unimplemented) ListDeliveryTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReportDeliveryTarget Report one delivery target's asserted conditions.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+func (_ Unimplemented) ReportDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TombstoneDeliveryTarget Remove the caller's row for one deleted delivery target.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone)
+func (_ Unimplemented) TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -12071,6 +12877,24 @@ func (_ Unimplemented) DiffValues(w http.ResponseWriter, r *http.Request, org Or
 // RevealValueDiff Compare two environments with `secret` plaintext.
 // (POST /api/v1/orgs/{org}/projects/{project}/values/diff/reveal)
 func (_ Unimplemented) RevealValueDiff(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteOrgRegistrationPolicy Close registration at this scope.
+// (DELETE /api/v1/orgs/{org}/registration-policy)
+func (_ Unimplemented) DeleteOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetOrgRegistrationPolicy Read the organisation registration policy.
+// (GET /api/v1/orgs/{org}/registration-policy)
+func (_ Unimplemented) GetOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PutOrgRegistrationPolicy Create or replace the organisation registration policy.
+// (PUT /api/v1/orgs/{org}/registration-policy)
+func (_ Unimplemented) PutOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -12570,8 +13394,27 @@ func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request
 // AuthMethods operation middleware
 func (siw *ServerInterfaceWrapper) AuthMethods(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params AuthMethodsParams
+
+	// ------------- Optional query parameter "org" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "org", r.URL.Query(), &params.Org, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "org"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.AuthMethods(w, r)
+		siw.Handler.AuthMethods(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13592,6 +14435,48 @@ func (siw *ServerInterfaceWrapper) ReencryptInstance(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteInstanceRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInstanceRegistrationPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInstanceRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInstanceRegistrationPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutInstanceRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) PutInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutInstanceRegistrationPolicy(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListRemotes operation middleware
 func (siw *ServerInterfaceWrapper) ListRemotes(w http.ResponseWriter, r *http.Request) {
 
@@ -14201,8 +15086,27 @@ func (siw *ServerInterfaceWrapper) GetMeta(w http.ResponseWriter, r *http.Reques
 // ListOrgs operation middleware
 func (siw *ServerInterfaceWrapper) ListOrgs(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOrgsParams
+
+	// ------------- Optional query parameter "origin" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "origin", r.URL.Query(), &params.Origin, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "origin"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "origin", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListOrgs(w, r)
+		siw.Handler.ListOrgs(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -17935,6 +18839,138 @@ func (siw *ServerInterfaceWrapper) FetchDelivery(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListDeliveryTargets operation middleware
+func (siw *ServerInterfaceWrapper) ListDeliveryTargets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDeliveryTargets(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReportDeliveryTarget operation middleware
+func (siw *ServerInterfaceWrapper) ReportDeliveryTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReportDeliveryTarget(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TombstoneDeliveryTarget operation middleware
+func (siw *ServerInterfaceWrapper) TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TombstoneDeliveryTarget(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReconcileOfflineRecords operation middleware
 func (siw *ServerInterfaceWrapper) ReconcileOfflineRecords(w http.ResponseWriter, r *http.Request) {
 
@@ -21261,6 +22297,84 @@ func (siw *ServerInterfaceWrapper) RevealValueDiff(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteOrgRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOrgRegistrationPolicy(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrgRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) GetOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrgRegistrationPolicy(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutOrgRegistrationPolicy operation middleware
+func (siw *ServerInterfaceWrapper) PutOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutOrgRegistrationPolicy(w, r, org)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetOrgRetention operation middleware
 func (siw *ServerInterfaceWrapper) GetOrgRetention(w http.ResponseWriter, r *http.Request) {
 
@@ -23002,6 +24116,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/instance/invitations", wrapper.InviteInstanceMember)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.DeleteInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.GetInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/instance/registration-policy", wrapper.PutInstanceRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/grants", wrapper.RevokeOrgGrant)
 	})
 	r.Group(func(r chi.Router) {
@@ -23015,6 +24138,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/invitations", wrapper.InviteOrgMember)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.DeleteOrgRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.GetOrgRegistrationPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/registration-policy", wrapper.PutOrgRegistrationPolicy)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/grants", wrapper.RevokeProjectGrant)
@@ -23339,6 +24471,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records", wrapper.ReconcileOfflineRecords)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets", wrapper.ListDeliveryTargets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets", wrapper.ReportDeliveryTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone", wrapper.TombstoneDeliveryTarget)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/scim-bindings", wrapper.ListScimBindings)
@@ -23708,6 +24849,8 @@ type InternalJSONResponse Error
 
 type NotFoundJSONResponse Error
 
+type PayloadTooLargeJSONResponse Error
+
 type ScimServiceUnavailableResponseHeaders struct {
 	RetryAfter int
 }
@@ -23736,6 +24879,8 @@ type TooManyRequestsJSONResponse struct {
 }
 
 type UnauthenticatedJSONResponse Error
+
+type UnprocessableContentJSONResponse Error
 
 type ResetCredentialRequestObject struct {
 	Principal ResetTargetPrincipal `json:"principal"`
@@ -25166,6 +26311,7 @@ func (response Logout503JSONResponse) VisitLogoutResponse(w http.ResponseWriter)
 }
 
 type AuthMethodsRequestObject struct {
+	Params AuthMethodsParams
 }
 
 type AuthMethodsResponseObject interface {
@@ -25376,6 +26522,20 @@ func (response OidcStart200JSONResponse) VisitOidcStartResponse(w http.ResponseW
 	return err
 }
 
+type OidcStart400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response OidcStart400JSONResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type OidcStart401JSONResponse struct{ UnauthenticatedJSONResponse }
 
 func (response OidcStart401JSONResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
@@ -25400,6 +26560,20 @@ func (response OidcStart404JSONResponse) VisitOidcStartResponse(w http.ResponseW
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OidcStart409JSONResponse struct{ ConflictJSONResponse }
+
+func (response OidcStart409JSONResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -31310,6 +32484,379 @@ func (response ReencryptInstance503JSONResponse) VisitReencryptInstanceResponse(
 	return err
 }
 
+type DeleteInstanceRegistrationPolicyRequestObject struct {
+	Body *DeleteInstanceRegistrationPolicyJSONRequestBody
+}
+
+type DeleteInstanceRegistrationPolicyResponseObject interface {
+	VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type DeleteInstanceRegistrationPolicy204Response struct {
+}
+
+func (response DeleteInstanceRegistrationPolicy204Response) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInstanceRegistrationPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy400JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy401JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy403JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy404JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy409JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy429JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy500JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteInstanceRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteInstanceRegistrationPolicy503JSONResponse) VisitDeleteInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicyRequestObject struct {
+}
+
+type GetInstanceRegistrationPolicyResponseObject interface {
+	VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetInstanceRegistrationPolicy200JSONResponse RegistrationPolicy
+
+func (response GetInstanceRegistrationPolicy200JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetInstanceRegistrationPolicy401JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetInstanceRegistrationPolicy403JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetInstanceRegistrationPolicy404JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetInstanceRegistrationPolicy429JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetInstanceRegistrationPolicy500JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetInstanceRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetInstanceRegistrationPolicy503JSONResponse) VisitGetInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicyRequestObject struct {
+	Body *PutInstanceRegistrationPolicyJSONRequestBody
+}
+
+type PutInstanceRegistrationPolicyResponseObject interface {
+	VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type PutInstanceRegistrationPolicy200JSONResponse RegistrationPolicy
+
+func (response PutInstanceRegistrationPolicy200JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutInstanceRegistrationPolicy400JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PutInstanceRegistrationPolicy401JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutInstanceRegistrationPolicy403JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutInstanceRegistrationPolicy404JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PutInstanceRegistrationPolicy409JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PutInstanceRegistrationPolicy429JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response PutInstanceRegistrationPolicy500JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutInstanceRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PutInstanceRegistrationPolicy503JSONResponse) VisitPutInstanceRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListRemotesRequestObject struct {
 }
 
@@ -34993,6 +36540,7 @@ func (response GetMeta503JSONResponse) VisitGetMetaResponse(w http.ResponseWrite
 }
 
 type ListOrgsRequestObject struct {
+	Params ListOrgsParams
 }
 
 type ListOrgsResponseObject interface {
@@ -35009,6 +36557,20 @@ func (response ListOrgs200JSONResponse) VisitListOrgsResponse(w http.ResponseWri
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListOrgs400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ListOrgs400JSONResponse) VisitListOrgsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -42620,6 +44182,356 @@ func (response FetchDelivery500JSONResponse) VisitFetchDeliveryResponse(w http.R
 type FetchDelivery503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response FetchDelivery503JSONResponse) VisitFetchDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargetsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListDeliveryTargetsResponseObject interface {
+	VisitListDeliveryTargetsResponse(w http.ResponseWriter) error
+}
+
+type ListDeliveryTargets200JSONResponse DeliveryTargetList
+
+func (response ListDeliveryTargets200JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListDeliveryTargets401JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListDeliveryTargets404JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListDeliveryTargets429JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListDeliveryTargets500JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeliveryTargets503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListDeliveryTargets503JSONResponse) VisitListDeliveryTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTargetRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *ReportDeliveryTargetJSONRequestBody
+}
+
+type ReportDeliveryTargetResponseObject interface {
+	VisitReportDeliveryTargetResponse(w http.ResponseWriter) error
+}
+
+type ReportDeliveryTarget204Response struct {
+}
+
+func (response ReportDeliveryTarget204Response) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ReportDeliveryTarget400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReportDeliveryTarget400JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ReportDeliveryTarget401JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReportDeliveryTarget404JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReportDeliveryTarget409JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget413JSONResponse struct{ PayloadTooLargeJSONResponse }
+
+func (response ReportDeliveryTarget413JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(413)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget422JSONResponse struct {
+	UnprocessableContentJSONResponse
+}
+
+func (response ReportDeliveryTarget422JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ReportDeliveryTarget429JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response ReportDeliveryTarget500JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportDeliveryTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReportDeliveryTarget503JSONResponse) VisitReportDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTargetRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *TombstoneDeliveryTargetJSONRequestBody
+}
+
+type TombstoneDeliveryTargetResponseObject interface {
+	VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error
+}
+
+type TombstoneDeliveryTarget204Response struct {
+}
+
+func (response TombstoneDeliveryTarget204Response) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type TombstoneDeliveryTarget400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TombstoneDeliveryTarget400JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TombstoneDeliveryTarget401JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TombstoneDeliveryTarget404JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TombstoneDeliveryTarget429JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response TombstoneDeliveryTarget500JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TombstoneDeliveryTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TombstoneDeliveryTarget503JSONResponse) VisitTombstoneDeliveryTargetResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -51012,6 +52924,382 @@ func (response RevealValueDiff503JSONResponse) VisitRevealValueDiffResponse(w ht
 	return err
 }
 
+type DeleteOrgRegistrationPolicyRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *DeleteOrgRegistrationPolicyJSONRequestBody
+}
+
+type DeleteOrgRegistrationPolicyResponseObject interface {
+	VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type DeleteOrgRegistrationPolicy204Response struct {
+}
+
+func (response DeleteOrgRegistrationPolicy204Response) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteOrgRegistrationPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy400JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy401JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy403JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy404JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy409JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy429JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy500JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteOrgRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteOrgRegistrationPolicy503JSONResponse) VisitDeleteOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicyRequestObject struct {
+	Org OrgID `json:"org"`
+}
+
+type GetOrgRegistrationPolicyResponseObject interface {
+	VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type GetOrgRegistrationPolicy200JSONResponse RegistrationPolicy
+
+func (response GetOrgRegistrationPolicy200JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetOrgRegistrationPolicy401JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetOrgRegistrationPolicy403JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetOrgRegistrationPolicy404JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetOrgRegistrationPolicy429JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetOrgRegistrationPolicy500JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetOrgRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetOrgRegistrationPolicy503JSONResponse) VisitGetOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicyRequestObject struct {
+	Org  OrgID `json:"org"`
+	Body *PutOrgRegistrationPolicyJSONRequestBody
+}
+
+type PutOrgRegistrationPolicyResponseObject interface {
+	VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error
+}
+
+type PutOrgRegistrationPolicy200JSONResponse RegistrationPolicy
+
+func (response PutOrgRegistrationPolicy200JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PutOrgRegistrationPolicy400JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PutOrgRegistrationPolicy401JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PutOrgRegistrationPolicy403JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PutOrgRegistrationPolicy404JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PutOrgRegistrationPolicy409JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PutOrgRegistrationPolicy429JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response PutOrgRegistrationPolicy500JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutOrgRegistrationPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PutOrgRegistrationPolicy503JSONResponse) VisitPutOrgRegistrationPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetOrgRetentionRequestObject struct {
 	Org OrgID `json:"org"`
 }
@@ -55295,6 +57583,15 @@ type StrictServerInterface interface {
 	// ReencryptInstance Walk the instance credential ciphertext onto the active DEK version.
 	// (POST /api/v1/instance/reencrypt)
 	ReencryptInstance(ctx context.Context, request ReencryptInstanceRequestObject) (ReencryptInstanceResponseObject, error)
+	// DeleteInstanceRegistrationPolicy Close registration at this scope.
+	// (DELETE /api/v1/instance/registration-policy)
+	DeleteInstanceRegistrationPolicy(ctx context.Context, request DeleteInstanceRegistrationPolicyRequestObject) (DeleteInstanceRegistrationPolicyResponseObject, error)
+	// GetInstanceRegistrationPolicy Read the instance registration policy.
+	// (GET /api/v1/instance/registration-policy)
+	GetInstanceRegistrationPolicy(ctx context.Context, request GetInstanceRegistrationPolicyRequestObject) (GetInstanceRegistrationPolicyResponseObject, error)
+	// PutInstanceRegistrationPolicy Create or replace the instance registration policy.
+	// (PUT /api/v1/instance/registration-policy)
+	PutInstanceRegistrationPolicy(ctx context.Context, request PutInstanceRegistrationPolicyRequestObject) (PutInstanceRegistrationPolicyResponseObject, error)
 	// ListRemotes The directory of connected instances.
 	// (GET /api/v1/instance/remotes)
 	ListRemotes(ctx context.Context, request ListRemotesRequestObject) (ListRemotesResponseObject, error)
@@ -55604,6 +57901,15 @@ type StrictServerInterface interface {
 	// FetchDelivery Fetch the authorized projection, conditionally.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 	FetchDelivery(ctx context.Context, request FetchDeliveryRequestObject) (FetchDeliveryResponseObject, error)
+	// ListDeliveryTargets List the environment's delivery targets and their derived state.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+	ListDeliveryTargets(ctx context.Context, request ListDeliveryTargetsRequestObject) (ListDeliveryTargetsResponseObject, error)
+	// ReportDeliveryTarget Report one delivery target's asserted conditions.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets)
+	ReportDeliveryTarget(ctx context.Context, request ReportDeliveryTargetRequestObject) (ReportDeliveryTargetResponseObject, error)
+	// TombstoneDeliveryTarget Remove the caller's row for one deleted delivery target.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone)
+	TombstoneDeliveryTarget(ctx context.Context, request TombstoneDeliveryTargetRequestObject) (TombstoneDeliveryTargetResponseObject, error)
 	// ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 	ReconcileOfflineRecords(ctx context.Context, request ReconcileOfflineRecordsRequestObject) (ReconcileOfflineRecordsResponseObject, error)
@@ -55829,6 +58135,15 @@ type StrictServerInterface interface {
 	// RevealValueDiff Compare two environments with `secret` plaintext.
 	// (POST /api/v1/orgs/{org}/projects/{project}/values/diff/reveal)
 	RevealValueDiff(ctx context.Context, request RevealValueDiffRequestObject) (RevealValueDiffResponseObject, error)
+	// DeleteOrgRegistrationPolicy Close registration at this scope.
+	// (DELETE /api/v1/orgs/{org}/registration-policy)
+	DeleteOrgRegistrationPolicy(ctx context.Context, request DeleteOrgRegistrationPolicyRequestObject) (DeleteOrgRegistrationPolicyResponseObject, error)
+	// GetOrgRegistrationPolicy Read the organisation registration policy.
+	// (GET /api/v1/orgs/{org}/registration-policy)
+	GetOrgRegistrationPolicy(ctx context.Context, request GetOrgRegistrationPolicyRequestObject) (GetOrgRegistrationPolicyResponseObject, error)
+	// PutOrgRegistrationPolicy Create or replace the organisation registration policy.
+	// (PUT /api/v1/orgs/{org}/registration-policy)
+	PutOrgRegistrationPolicy(ctx context.Context, request PutOrgRegistrationPolicyRequestObject) (PutOrgRegistrationPolicyResponseObject, error)
 	// GetOrgRetention Read the organisation retention cap.
 	// (GET /api/v1/orgs/{org}/retention)
 	GetOrgRetention(ctx context.Context, request GetOrgRetentionRequestObject) (GetOrgRetentionResponseObject, error)
@@ -56390,8 +58705,10 @@ func (sh *strictHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 // AuthMethods operation middleware
-func (sh *strictHandler) AuthMethods(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) AuthMethods(w http.ResponseWriter, r *http.Request, params AuthMethodsParams) {
 	var request AuthMethodsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.AuthMethods(ctx, request.(AuthMethodsRequestObject))
@@ -57961,6 +60278,92 @@ func (sh *strictHandler) ReencryptInstance(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// DeleteInstanceRegistrationPolicy operation middleware
+func (sh *strictHandler) DeleteInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	var request DeleteInstanceRegistrationPolicyRequestObject
+
+	var body DeleteInstanceRegistrationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInstanceRegistrationPolicy(ctx, request.(DeleteInstanceRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInstanceRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInstanceRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitDeleteInstanceRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInstanceRegistrationPolicy operation middleware
+func (sh *strictHandler) GetInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	var request GetInstanceRegistrationPolicyRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInstanceRegistrationPolicy(ctx, request.(GetInstanceRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInstanceRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInstanceRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitGetInstanceRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutInstanceRegistrationPolicy operation middleware
+func (sh *strictHandler) PutInstanceRegistrationPolicy(w http.ResponseWriter, r *http.Request) {
+	var request PutInstanceRegistrationPolicyRequestObject
+
+	var body PutInstanceRegistrationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutInstanceRegistrationPolicy(ctx, request.(PutInstanceRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutInstanceRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutInstanceRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitPutInstanceRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListRemotes operation middleware
 func (sh *strictHandler) ListRemotes(w http.ResponseWriter, r *http.Request) {
 	var request ListRemotesRequestObject
@@ -58855,8 +61258,10 @@ func (sh *strictHandler) GetMeta(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListOrgs operation middleware
-func (sh *strictHandler) ListOrgs(w http.ResponseWriter, r *http.Request) {
+func (sh *strictHandler) ListOrgs(w http.ResponseWriter, r *http.Request, params ListOrgsParams) {
 	var request ListOrgsRequestObject
+
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.ListOrgs(ctx, request.(ListOrgsRequestObject))
@@ -60960,6 +63365,104 @@ func (sh *strictHandler) FetchDelivery(w http.ResponseWriter, r *http.Request, o
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(FetchDeliveryResponseObject); ok {
 		if err := validResponse.VisitFetchDeliveryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDeliveryTargets operation middleware
+func (sh *strictHandler) ListDeliveryTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListDeliveryTargetsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDeliveryTargets(ctx, request.(ListDeliveryTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDeliveryTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDeliveryTargetsResponseObject); ok {
+		if err := validResponse.VisitListDeliveryTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReportDeliveryTarget operation middleware
+func (sh *strictHandler) ReportDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ReportDeliveryTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body ReportDeliveryTargetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReportDeliveryTarget(ctx, request.(ReportDeliveryTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReportDeliveryTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReportDeliveryTargetResponseObject); ok {
+		if err := validResponse.VisitReportDeliveryTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TombstoneDeliveryTarget operation middleware
+func (sh *strictHandler) TombstoneDeliveryTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request TombstoneDeliveryTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body TombstoneDeliveryTargetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TombstoneDeliveryTarget(ctx, request.(TombstoneDeliveryTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TombstoneDeliveryTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TombstoneDeliveryTargetResponseObject); ok {
+		if err := validResponse.VisitTombstoneDeliveryTargetResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -63312,6 +65815,98 @@ func (sh *strictHandler) RevealValueDiff(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RevealValueDiffResponseObject); ok {
 		if err := validResponse.VisitRevealValueDiffResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteOrgRegistrationPolicy operation middleware
+func (sh *strictHandler) DeleteOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request DeleteOrgRegistrationPolicyRequestObject
+
+	request.Org = org
+
+	var body DeleteOrgRegistrationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteOrgRegistrationPolicy(ctx, request.(DeleteOrgRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteOrgRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteOrgRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitDeleteOrgRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetOrgRegistrationPolicy operation middleware
+func (sh *strictHandler) GetOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request GetOrgRegistrationPolicyRequestObject
+
+	request.Org = org
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetOrgRegistrationPolicy(ctx, request.(GetOrgRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetOrgRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetOrgRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitGetOrgRegistrationPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutOrgRegistrationPolicy operation middleware
+func (sh *strictHandler) PutOrgRegistrationPolicy(w http.ResponseWriter, r *http.Request, org OrgID) {
+	var request PutOrgRegistrationPolicyRequestObject
+
+	request.Org = org
+
+	var body PutOrgRegistrationPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutOrgRegistrationPolicy(ctx, request.(PutOrgRegistrationPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutOrgRegistrationPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutOrgRegistrationPolicyResponseObject); ok {
+		if err := validResponse.VisitPutOrgRegistrationPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -1,24 +1,33 @@
 import { readFileSync } from 'node:fs';
 
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { zScimBinding, zScimBindingList, zServiceAccountList } from '@hikyo/zod';
+import {
+  zAuthMethods,
+  zRegistrationPolicy,
+  zScimBinding,
+  zScimBindingList,
+  zServiceAccountList,
+} from '@hikyo/zod';
 import { z } from 'zod';
 
-import { expectPinnedAssertionSet, expectStatusIsTextAndAria } from '../fixtures/assertions.ts';
-import { browserApi } from '../fixtures/api.ts';
+import { expectPinnedAssertionSet, expectStatusIsTextAndAria, expectTouchTargets } from '../fixtures/assertions.ts';
+import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
 import {
   ADMIN,
   BASE_URL,
+  OIDC_PROVIDER,
+  WEBUI_OIDC,
   nextTotpCode,
   passEnrolmentGate,
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
 import { totpCode } from '../fixtures/seed.ts';
+import { surfacesForFlow } from '../registry.ts';
+import { enrolledAccount, signInAs, withSharedAdmin, type EnrolledAccount } from '../fixtures/accounts.ts';
 
 /** One TOTP time step: a code for `now + step` is the next step's, inside the skew window. */
 const TOTP_PERIOD_MS = 30_000;
-import { surfacesForFlow } from '../registry.ts';
 
 /**
  * Flow: members & grants (registry surface `members`), mvp-boundary S3's
@@ -488,9 +497,10 @@ test.describe('members and grants', () => {
       const signIn = async (password: string) => {
         await invitee.getByRole('link', { name: 'Sign in' }).click();
         await expect(invitee).toHaveURL(/\/login$/);
+        await invitee.getByRole('button', { name: /^Password\b/ }).click();
         await invitee.getByLabel('Username').fill(username);
         await invitee.getByLabel('Password').fill(password);
-        await invitee.getByRole('button', { name: 'Sign in' }).click();
+        await invitee.getByRole('button', { name: 'Sign in', exact: true }).click();
       };
       // The invitee has no factor, so under the product-default `required`
       // policy its first sign-in lands on the enrolment gate (#785).
@@ -1103,5 +1113,248 @@ test.describe('audit trail', () => {
         }
       });
     }
+  }
+});
+
+/**
+ * Open registration at organisation scope (#606; locked prototype
+ * social-signin iteration 2): the panel beside invite, its editor with a
+ * requirement line per entry, the blue reauth-gated save, the org sign-up
+ * link, a write-time 400 naming the row (a provider really seeded without
+ * the email scope), inactive-with-cause with re-save (a second organisation
+ * administrator really becomes the authority and really loses the grant),
+ * and closing. Everything here is real server state; nothing is substituted
+ * on the route. Every proof is a fresh code, drawn from the ledger of an
+ * organisation administrator of the test's own: a flow proving three times on
+ * the shared administrator leaves that ledger a step ahead of the clock for the
+ * next flow to wait out. Instance-scope set-up (the provider rows) and the
+ * grant revocation stay with the shared administrator, which draws no code.
+ */
+test.describe('open registration at organisation scope', () => {
+  test.use({ storageState: STORAGE_STATE });
+  const POLICY = `/api/v1/orgs/${seed.org}/registration-policy`;
+  /** A provider on the second fake IdP whose row does not request `email`. */
+  const NO_EMAIL = { slug: 'e2e-reg-noemail', displayName: 'Registration No Email' };
+
+  /** The page's own organisation administrator, signed in by `beforeEach`. */
+  let author: EnrolledAccount;
+
+  /** closeOrgPolicy deletes a policy a previous run or project left behind. */
+  async function closeOrgPolicy(page: Page) {
+    try {
+      await browserApi(page, 'GET', POLICY, zRegistrationPolicy);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('answered 404:')) return;
+      throw error;
+    }
+    await browserApi(page, 'DELETE', POLICY, z.null(), { proof: await author.ledger.next() });
+  }
+
+  async function dropNoEmailProvider(browser: Browser) {
+    await withSharedAdmin(browser, (admin) => browserApi(admin, 'DELETE', `/api/v1/instance/oidc-providers/${NO_EMAIL.slug}`, z.null()).catch(
+      (error: unknown) => {
+        if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
+      },
+    ));
+  }
+
+  async function confirmProof(page: Page) {
+    const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
+    await expect(proof).toBeVisible();
+    const confirm = proof.getByRole('button', { name: 'Confirm' });
+    await expect(confirm).toHaveClass(/btn--reauth/);
+    await proof.getByLabel('Authenticator code or password').fill(await author.ledger.next());
+    await confirm.click();
+    await expect(proof).toBeHidden();
+  }
+
+  async function publicDoor(page: Page) {
+    const response = await page.request.get(`${BASE_URL}/api/v1/auth/methods?org=${seed.org}`);
+    expect(response.ok()).toBe(true);
+    return zAuthMethods.parse(await response.json());
+  }
+
+  test.beforeEach(async ({ page, browser }) => {
+    // An organisation `admin`: manage-members at the org, which is what writing
+    // and closing its registration policy takes. No bearer: the account signs
+    // the page in with its second code, so its proofs start at the third.
+    author = await enrolledAccount(browser, 'reg-org-admin', 'org-admin');
+    await signInAs(page, author);
+    await page.goto(PATH);
+    await expect(page.getByRole('heading', { name: 'Members', level: 1 })).toBeVisible();
+    await closeOrgPolicy(page);
+    await dropNoEmailProvider(browser);
+    await page.reload();
+  });
+
+  test.afterEach(async ({ page, browser }) => {
+    await closeOrgPolicy(page);
+    await dropNoEmailProvider(browser);
+  });
+
+  test('refuses a provider row without the email scope, opens, and closes behind fresh proof', async ({ page, browser }, testInfo) => {
+    testInfo.setTimeout(240_000);
+    await withSharedAdmin(browser, (admin) =>
+      browserApi(admin, 'PUT', `/api/v1/instance/oidc-providers/${NO_EMAIL.slug}`, z.unknown(), {
+        display_name: NO_EMAIL.displayName,
+        issuer: WEBUI_OIDC.issuer,
+        client_id: 'e2e-reg-client',
+        client_secret: 'e2e-reg-secret',
+        scopes: 'openid',
+        enabled: true,
+      }),
+    );
+    await page.reload();
+    const panel = page.locator('#members-registration');
+    await expect(panel.getByText('closed', { exact: true })).toBeVisible();
+    await expect(panel).toContainText('without an invitation');
+
+    await panel.getByRole('button', { name: 'Open registration…' }).click();
+    const editor = page.getByRole('dialog');
+    await expect(editor.getByRole('heading', { level: 2 })).toContainText('open registration');
+    // A write-time precondition the server alone knows: this provider row
+    // does not request `email`. The refusal names the row, lands on it, and
+    // focus moves to it.
+    await editor.getByLabel(NO_EMAIL.displayName).check();
+    await editor.getByRole('button', { name: 'Save' }).click();
+    await confirmProof(page);
+    const refused = page.getByRole('dialog');
+    await expect(refused.getByRole('alert')).toContainText(`${NO_EMAIL.slug}: this provider row does not request the email scope`);
+    await expect(refused.getByLabel(NO_EMAIL.displayName)).toBeFocused();
+    await refused.getByLabel(NO_EMAIL.displayName).uncheck();
+
+    await refused.getByLabel(OIDC_PROVIDER.displayName).check();
+    // One requirement line per admitted entry.
+    await expect(refused.getByText('The ID token must carry email plus email_verified or xms_edov as boolean true.')).toBeVisible();
+    await refused.getByLabel('Allowlist claim').fill('hd');
+    await refused.getByLabel('Accepted values').fill('acme.example');
+    await refused.getByLabel(/^Role template in/).selectOption('viewer');
+    const save = refused.getByRole('button', { name: 'Save' });
+    await expect(save).toHaveClass(/btn--reauth/);
+    await save.click();
+    await confirmProof(page);
+
+    await expect(page.locator('.notice').filter({ hasText: 'registration.policy_created' })).toBeVisible();
+    await expect(panel.getByText('active', { exact: true })).toBeVisible();
+    await expect(panel).toContainText(OIDC_PROVIDER.displayName);
+    await expect(panel).toContainText('hd ∈ {acme.example}');
+    await expect(panel).toContainText('viewer template');
+    await expect(panel.getByText('The ID token must carry email')).toBeVisible();
+    await expect(panel).toContainText(`/signup?org=${seed.org}`);
+    await expect(panel.getByRole('button', { name: 'Copy sign-up link' })).toBeVisible();
+    const open = await publicDoor(page);
+    expect(open.signup_open).toBe(true);
+    expect(open.signup_paused).toBe(false);
+    expect(open.signup_methods).toEqual([{ kind: 'oidc', slug: OIDC_PROVIDER.slug }]);
+    // The instance door is a different scope and stays closed.
+    const instanceDoor = zAuthMethods.parse(await (await page.request.get(`${BASE_URL}/api/v1/auth/methods`)).json());
+    expect(instanceDoor.signup_open).toBe(false);
+
+    await panel.getByRole('button', { name: 'Close registration' }).click();
+    await confirmProof(page);
+    await expect(panel.getByText('closed', { exact: true })).toBeVisible();
+    const closed = await publicDoor(page);
+    expect(closed.signup_open).toBe(false);
+    expect(closed.signup_paused).toBe(false);
+  });
+
+  test('pauses when its authority loses the grant, and re-saves as authority', async ({ page, browser }, testInfo) => {
+    testInfo.setTimeout(300_000);
+    // A second organisation administrator with its own authenticator, its CLI
+    // session stepped up with its second code, so it can write the policy
+    // (its third) and become its authority.
+    const second = await enrolledAccount(browser, `reg-authority-${testInfo.project.name}`, 'org-admin', true);
+    const username = second.username;
+    // The second administrator writes the policy: it becomes the authority.
+    await fixtureApiCall(second.bearer, 'PUT', POLICY, zRegistrationPolicy, {
+      external: [{ provider: { kind: 'oidc', slug: OIDC_PROVIDER.slug } }],
+      landing: { kind: 'org-template', template: 'viewer' },
+      proof: await second.ledger.next(),
+    });
+    const panel = page.locator('#members-registration');
+    await page.reload();
+    await expect(panel.getByText('active', { exact: true })).toBeVisible();
+    await expect(panel).toContainText(`${username} · re-checked`);
+
+    // The shared administrator revokes the authority's manage-members: the
+    // standing delegation no longer holds, on the very next read.
+    const query = `principal=${encodeURIComponent(second.principal)}&capability=manage-members`;
+    await withSharedAdmin(browser, (admin) => browserApi(admin, 'DELETE', `/api/v1/orgs/${seed.org}/grants?${query}`, z.null()));
+    await page.reload();
+    await expect(panel.getByText('inactive · authority-lost')).toBeVisible();
+    await expect(panel.getByRole('alert')).toContainText(`${username} no longer holds the grant this policy hands out`);
+    const paused = await publicDoor(page);
+    expect(paused.signup_open).toBe(false);
+    expect(paused.signup_paused).toBe(true);
+
+    const resave = panel.getByRole('button', { name: 'Re-save as authority' });
+    await expect(resave).toHaveClass(/btn--reauth/);
+    await resave.click();
+    await confirmProof(page);
+    await expect(page.locator('.notice').filter({ hasText: 'You are now its authority.' })).toBeVisible();
+    await expect(panel.getByText('active', { exact: true })).toBeVisible();
+    const saved = await browserApi(page, 'GET', POLICY, zRegistrationPolicy);
+    expect(saved.state).toBe('active');
+    expect(saved.authority_principal_id).toBe(author.principal);
+  });
+
+  for (const scheme of ['dark', 'light'] as const) {
+    test(`meets the pinned assertion set on the registration editor and its proof step (${scheme})`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      try {
+        const panel = page.locator('#members-registration');
+        await panel.getByRole('button', { name: 'Open registration…' }).click();
+        const editor = page.getByRole('dialog');
+        await editor.getByLabel(OIDC_PROVIDER.displayName).check();
+        const save = editor.getByRole('button', { name: 'Save' });
+        // Every entry's checkbox is a touch target on its own (ui-spec S3).
+        await expectTouchTargets(page, await editor.locator('.registration-editor__entry input[type="checkbox"]').all());
+        await expectPinnedAssertionSet(page, {
+          flow: 'members',
+          surface: 'members',
+          theme: scheme,
+          text: [editor.getByRole('heading', { level: 2 }), editor.locator('.registration__requirement').first()],
+          radii: [
+            [editor, 'container'],
+            [save, 'control'],
+          ],
+          fonts: [[editor.getByRole('heading', { level: 2 }), 'ui']],
+          colours: [
+            [editor, 'backgroundColor', '--bg-panel'],
+            // Reauth-gated is the CHANGED slate, not the primary accent.
+            [save, 'color', '--changed'],
+          ],
+          hairlines: [editor],
+          density: [[save, '--control']],
+        });
+        await save.click();
+        const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
+        const confirm = proof.getByRole('button', { name: 'Confirm' });
+        const field = proof.getByLabel('Authenticator code or password');
+        // A password field, never autofilled with a one-time code.
+        await expect(field).toHaveAttribute('type', 'password');
+        await expect(field).toHaveAttribute('autocomplete', 'current-password');
+        await field.fill('000000');
+        await expectPinnedAssertionSet(page, {
+          flow: 'members',
+          surface: 'members',
+          theme: scheme,
+          text: [proof.getByRole('heading', { level: 2 })],
+          radii: [[confirm, 'control']],
+          fonts: [[proof.getByRole('heading', { level: 2 }), 'ui']],
+          colours: [[confirm, 'color', '--changed']],
+          hairlines: [proof],
+          density: [[confirm, '--control']],
+        });
+        // Cancelling the proof returns to the editor, draft intact; the
+        // editor's own Cancel closes it.
+        await proof.getByRole('button', { name: 'Cancel' }).click();
+        await expect(page.getByRole('dialog').getByLabel(OIDC_PROVIDER.displayName)).toBeChecked();
+        await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+        await expect(page.getByRole('dialog')).toBeHidden();
+      } finally {
+        await page.emulateMedia({ colorScheme: null });
+      }
+    });
   }
 });

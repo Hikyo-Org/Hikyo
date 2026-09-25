@@ -100,11 +100,7 @@ func (r *Resolver) RestoreState(ctx context.Context) (RestoreState, error) {
 // instant at which restored rows are reachable under the old epoch.
 func (r *Resolver) AdvanceRestoreEpoch(ctx context.Context, now time.Time) error {
 	if r.sq != nil {
-		maxEpoch, err := r.sq.MaxKnownCredentialEpoch(ctx)
-		if err != nil {
-			return fmt.Errorf("authn: read max credential epoch: %w", err)
-		}
-		next, err := nextEpoch(maxEpoch)
+		next, err := r.restoreNextEpoch(ctx)
 		if err != nil {
 			return err
 		}
@@ -122,11 +118,7 @@ func (r *Resolver) AdvanceRestoreEpoch(ctx context.Context, now time.Time) error
 		}
 		return nil
 	}
-	maxEpoch, err := r.pg.MaxKnownCredentialEpoch(ctx)
-	if err != nil {
-		return fmt.Errorf("authn: read max credential epoch: %w", err)
-	}
-	next, err := nextEpoch(maxEpoch)
+	next, err := r.restoreNextEpoch(ctx)
 	if err != nil {
 		return err
 	}
@@ -174,6 +166,77 @@ func (r *Resolver) InvalidateRestoredDynamicProviderCredentials(ctx context.Cont
 		return fmt.Errorf("authn: invalidate restored dynamic provider credentials: %w", err)
 	}
 	return nil
+}
+
+// restoreNextEpoch is one past the largest epoch stamp in the restored state.
+// A restore runs against the ARCHIVE's schema before rolling forward, so the
+// credential tables added after the pinned legacy genesis (00057:
+// oauth2_transactions, registration_signups) exist only in an archive new
+// enough to have them. Their presence is read from the restored catalog, not
+// from the archive's claimed version: a table that is absent can hold no
+// stamp, and one that is present is always scanned. They arrive in one
+// migration, so a schema holding only one of them is not one this binary
+// wrote and is refused.
+func (r *Resolver) restoreNextEpoch(ctx context.Context) (int64, error) {
+	var legacy any
+	var err error
+	if r.sq != nil {
+		legacy, err = r.sq.MaxKnownCredentialEpoch(ctx)
+	} else {
+		legacy, err = r.pg.MaxKnownCredentialEpoch(ctx)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("authn: read max credential epoch: %w", err)
+	}
+	next, err := nextEpoch(legacy)
+	if err != nil {
+		return 0, err
+	}
+	present, err := r.restoredPostLegacyTables(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("authn: probe post-legacy credential tables: %w", err)
+	}
+	switch present {
+	case 0:
+		return next, nil
+	case postLegacyEpochTables:
+	default:
+		return 0, fmt.Errorf("authn: restored schema carries %d of the %d post-legacy credential tables: refusing an unknown schema", present, postLegacyEpochTables)
+	}
+	var post any
+	if r.sq != nil {
+		post, err = r.sq.PostLegacyMaxCredentialEpoch(ctx)
+	} else {
+		post, err = r.pg.PostLegacyMaxCredentialEpoch(ctx)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("authn: read post-legacy max credential epoch: %w", err)
+	}
+	postNext, err := nextEpoch(post)
+	if err != nil {
+		return 0, err
+	}
+	return max(next, postNext), nil
+}
+
+// postLegacyEpochTables is how many tables PostLegacyMaxCredentialEpoch scans.
+const postLegacyEpochTables = 2
+
+// restoredPostLegacyTables counts the post-legacy credential tables present in
+// the restored schema. sqlc cannot parse a catalog read, so this is the one
+// raw statement here; it names tables, never data.
+func (r *Resolver) restoredPostLegacyTables(ctx context.Context) (int64, error) {
+	var present int64
+	if r.sq != nil {
+		err := r.sqdb.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name IN ('oauth2_transactions', 'registration_signups')`).Scan(&present)
+		return present, err
+	}
+	// Tables only, as sqlite's type = 'table': to_regclass would also resolve
+	// a view or sequence of the same name.
+	err := r.pgdb.QueryRow(ctx,
+		`SELECT COUNT(*) FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid IN (to_regclass('oauth2_transactions'), to_regclass('registration_signups'))`).Scan(&present)
+	return present, err
 }
 
 // maxSaneEpoch bounds the epoch a restore will accept from restored state.

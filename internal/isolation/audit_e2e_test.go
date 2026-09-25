@@ -480,6 +480,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// OIDC federation and the delivery surface (#62): the same obligation, one
 		// ticket later.
 		runFederationLifecycle(t, db)
+		// Delivery-target condition reporting (#788): a new row, a vocabulary
+		// refusal, a tombstone and the scheduled 30-day purge, each through
+		// the real service under a real workload credential.
+		runDeliveryTargetAuditLifecycle(t, db)
 		// SCIM provisioning (#73): every `scim.*` type gets a real emitter —
 		// binding, credential, user, group, mapping, attention and the lockout
 		// pair — before the trails are read.
@@ -512,6 +516,9 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// expired and bypassed — driven through the real publish gate, vote
 		// path, expiry sweep and a reauthenticated bypass.
 		runApprovalLifecycle(t, db)
+		// Registration policy (#606): the three policy events and
+		// registration.signup_expired get a real emitter through the service.
+		runRegistrationLifecycle(t, db)
 		beforeUpdateReads := queryInt(t, db, "SELECT COUNT(*) FROM audit_instance_events WHERE type = 'system.update_status_read'")
 		if _, err := (&service.Updates{
 			DB: db, Version: "1.0.0", Channel: updatecheck.ChannelStable,

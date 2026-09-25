@@ -122,6 +122,13 @@ type Config struct {
 	// build per-provider OIDC redirect URIs (A1). Never derived from a request
 	// header. Defaults to http://<Listen> when unset.
 	ExternalOrigin string
+	// ExternalOriginExplicit records whether the operator supplied
+	// ExternalOrigin (flag, HIKYO_EXTERNAL_ORIGIN or a managed value) rather
+	// than it falling back to the listen address. A registration policy
+	// refuses to open on a derived origin (#579 d6, `no-public-origin`): a
+	// sign-up mail or redirect naming 127.0.0.1 or a container hostname is
+	// useless to a stranger.
+	ExternalOriginExplicit bool
 
 	// MCPEnabled gates the separately versioned MCP protocol endpoint. It is
 	// off unless the operator explicitly enables it. MCPAllowedOrigins is the
@@ -570,6 +577,7 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 	if cfg.ExternalOrigin == "" {
 		cfg.ExternalOrigin = getenv("HIKYO_EXTERNAL_ORIGIN")
 	}
+	cfg.ExternalOriginExplicit = cfg.ExternalOrigin != ""
 	if cfg.ExternalOrigin == "" {
 		scheme := "http://"
 		if cfg.TLSCertFile != "" {

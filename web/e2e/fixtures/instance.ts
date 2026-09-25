@@ -277,7 +277,13 @@ async function spawnIdP(
   } else {
     run('go', ['build', '-o', binary, './internal/oidctest/cmd'], { cwd: repoRoot });
   }
-  const args = ['-listen', `127.0.0.1:${String(port)}`, '-amr', 'mfa,otp'];
+  // Every token asserts a provider-verified address (#598), so a sign-up
+  // through the registration door (#607) is admitted; the address is never
+  // stored and never a linking key, so sign-in is unaffected.
+  const args = [
+    '-listen', `127.0.0.1:${String(port)}`, '-amr', 'mfa,otp',
+    '-claims', JSON.stringify({ email: 'e2e-signup@hikyo.test', email_verified: true }),
+  ];
   for (const redirect of redirects) {
     args.push('-redirect-uri', redirect);
   }
@@ -370,7 +376,10 @@ async function configureAndLinkOIDC(instance: Instance, issuer: string): Promise
     issuer,
     client_id: 'e2e-client',
     client_secret: 'e2e-secret',
-    scopes: 'openid',
+    // `email` makes the provider admissible as a registration-policy entry
+    // (#598: a provider that cannot assert a verified address cannot be
+    // admitted). The fake IdP ignores requested scopes.
+    scopes: 'openid email',
     assurance_policy: '{"amr_sets":[["mfa"]]}',
     enabled: true,
   });
@@ -749,6 +758,12 @@ async function startInstanceAt(
         // presented at sign-in, and an unenrolled account (an invitee, a
         // recovered account) lands on the SPA enrolment gate; flows walk it
         // with `passEnrolmentGate`.
+        // The instance's public origin, stated rather than derived from the
+        // listen address (#606): a registration policy refuses to open on a
+        // derived origin (`no-public-origin`), and the members flows open one.
+        // The value is the same origin the listener derives, so nothing else
+        // about the instance changes.
+        HIKYO_EXTERNAL_ORIGIN: base,
       },
     },
   );

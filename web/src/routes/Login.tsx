@@ -1,9 +1,10 @@
 import { samlStartOp } from '@hikyo/operations';
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 
 import { useAuthMethods } from '../api/account.ts';
 import { ApiError, parsed } from '../api/client.ts';
+import { readLastSignIn, rememberLastSignIn } from '../api/lastSignIn.ts';
 import { useSensitiveMutation } from '../api/sensitiveMutation.ts';
 import { loginFailureText, useLogin, useLoginChallengeTotp, useOIDCLogin } from '../api/session.ts';
 import {
@@ -14,26 +15,16 @@ import {
   usePasskeyLogin,
 } from '../api/stepup.ts';
 import { surfaceById } from '../app/navigation.ts';
-import { LoginForm, type SignInBusy } from '../ui/auth/LoginForm.tsx';
+import {
+  LoginForm,
+  type ProviderIdentity,
+  type SignInBusy,
+  type SignInIntent,
+  type SignupDoor,
+} from '../ui/auth/LoginForm.tsx';
 import { SecondFactorChallenge } from '../ui/auth/SecondFactorChallenge.tsx';
 import { ProviderDiscoveryAlert } from './ProviderDiscoveryAlert.tsx';
 
-/**
- * The local password login page.
- *
- * Local credentials and every configured OIDC provider establish the same
- * browser-session artifact. The provider callback returns through OIDCDone.
- *
- * Refusal presentation follows the locked rule that no state is carried by
- * colour alone: the message is text, it is announced through `role="alert"`,
- * and it carries a glyph. The wording never distinguishes an unknown account
- * from a wrong password, because the server deliberately does not either.
- *
- * The card itself is ui/auth/LoginForm: this route owns the transport (the
- * four mutations and the discovery query) and hands the atom the three ways
- * in as callbacks. Provider discovery, which is about the page rather than
- * the credential, stays outside the card.
- */
 /** A SAML provider's login leg: the same artifact as OIDC, over the SP-initiated redirect. */
 function useSAMLLogin() {
   return useSensitiveMutation({
@@ -55,12 +46,66 @@ function challengeFailureText(error: unknown, otherwise: (error: unknown) => str
   return otherwise(error);
 }
 
-export function Login() {
+type AuthMethods = NonNullable<ReturnType<typeof useAuthMethods>['data']>;
+
+/** The landing line on the sign-up door and its confirmation step (#585 d5). */
+function landingText(landing: AuthMethods['signup_landing']): string | null {
+  switch (landing) {
+    case 'org-template':
+      return 'You’ll join this organisation.';
+    case 'none':
+      return 'You’ll get an account with no organisation yet. An administrator grants access afterwards.';
+    case 'fresh-org':
+      return 'You’ll get your own organisation, with you as its first administrator.';
+    case undefined:
+      return null;
+  }
+}
+
+/**
+ * The page's sign-up door (#607): the open door of the addressed scope,
+ * reduced to the configured providers it admits. Only the OIDC kind signs up
+ * here; the local entry (#608) and the OAuth2 kind (#609) join it later.
+ * Returns null until methods arrive, while the policy is closed, or when no
+ * admitted OIDC provider is configured.
+ */
+function signupDoor(methods: AuthMethods | undefined): SignupDoor | null {
+  if (methods === undefined || !methods.signup_open) return null;
+  const admitted = methods.providers.filter((provider) =>
+    provider.kind === 'oidc' &&
+    methods.signup_methods.some((method) => method !== 'local' && method.kind === provider.kind && method.slug === provider.slug),
+  );
+  return admitted.length === 0 ? null : { providers: admitted, landing: landingText(methods.signup_landing) };
+}
+
+/**
+ * The staged login page (#587 d1) and, when the addressed registration policy
+ * admits a configured OIDC provider, its sign-up door (#607). `intent` selects
+ * the initial door: `/login` opens on sign-in; `/signup` opens on sign-up and
+ * may address an org with `?org=<id>` (the link the Members panel hands out).
+ *
+ * Local credentials and configured OIDC or SAML providers establish the same
+ * browser session. OIDC callbacks return through OIDCDone.
+ *
+ * Refusal presentation follows the locked rule that no state is carried by
+ * colour alone: the message is text, it is announced through `role="alert"`,
+ * and it carries a glyph. The wording never distinguishes an unknown account
+ * from a wrong password, because the server deliberately does not either.
+ *
+ * This route owns the transport (the mutations and the discovery query);
+ * ui/auth/LoginForm renders the card and invokes their callbacks. Provider
+ * discovery, which is about the page rather than the credential, stays outside
+ * the card.
+ */
+export function Login({ intent = 'sign-in' }: { intent?: SignInIntent } = {}) {
+  const [search] = useSearchParams();
+  const signupOrg = intent === 'sign-up' ? (search.get('org') ?? undefined) : undefined;
   const login = useLogin();
   const passkey = usePasskeyLogin();
   const oidc = useOIDCLogin();
   const saml = useSAMLLogin();
-  const methods = useAuthMethods();
+  const methods = useAuthMethods(signupOrg);
+  const door = signupDoor(methods.data);
   // A password login on an account with an enrolled factor answers a challenge,
   // not a session (#760): the route then presents the second factor. The
   // sensitive-mutation surface retains no result, so the challenge is captured
@@ -74,7 +119,10 @@ export function Login() {
   const challengeTotp = useLoginChallengeTotp(challenge?.id ?? '');
   const challengePasskey = useLoginChallengePasskey(challenge?.id ?? '');
   // The provider being contacted, so only ITS button shows the busy label.
-  const [contacting, setContacting] = useState<string | null>(null);
+  const [contacting, setContacting] = useState<ProviderIdentity | null>(null);
+  // Read once per mount: the badge describes the previous visit, and the row
+  // being remembered right now is the one the person just chose.
+  const [lastUsed] = useState(readLastSignIn);
   // The kind discriminator is open (zIdentityProviderKind is a string), so the
   // card is only offered the two protocols this route can actually start.
   const providers = (methods.data?.providers ?? []).filter(
@@ -82,14 +130,14 @@ export function Login() {
   );
   const providerPending = oidc.isPending || saml.isPending;
   // A provider ceremony ends in a redirect or a session change, so every
-  // control is barred while one is in flight, even before a slug is known.
-  // The empty slug matches no provider: nothing wears a label it did not earn.
+  // control is barred while one is in flight, even before the row is known;
+  // an unknown row marks no provider, so nothing wears a label it did not earn.
   const busy: SignInBusy = login.isPending
     ? 'password'
     : passkey.isPending
       ? 'passkey'
       : providerPending
-        ? { provider: contacting ?? '' }
+        ? { provider: contacting }
         : null;
   // The card has one refusal slot, and the latest attempt is what the person
   // is waiting on: starting ANY leg retires every leg's refusal, so a stale
@@ -149,12 +197,20 @@ export function Login() {
       <LoginForm
         providers={providers}
         passkeys={passkeysAvailable()}
+        /* The open door of the addressed scope (#607). Paused is #606's one
+           public fact about an inactive policy, said and never explained
+           (#587 d3); the cause renders on the Members panel. */
+        signup={door}
+        initialIntent={intent}
+        paused={methods.data?.signup_paused === true}
+        lastUsed={lastUsed}
         busy={busy}
         error={error}
         onPassword={(credentials) => {
           retireEveryLeg();
           login.mutate(credentials, {
             onSuccess: (outcome) => {
+              rememberLastSignIn({ kind: 'password' });
               if (outcome.kind === 'challenge') {
                 setChallenge({
                   id: outcome.challenge.challenge_id,
@@ -167,14 +223,17 @@ export function Login() {
         }}
         onPasskey={() => {
           retireEveryLeg();
-          passkey.mutate();
+          passkey.mutate(undefined, { onSuccess: () => rememberLastSignIn({ kind: 'passkey' }) });
         }}
-        onProvider={(slug) => {
+        onProvider={(provider, startIntent) => {
           retireEveryLeg();
-          setContacting(slug);
-          const provider = providers.find((candidate) => candidate.slug === slug);
-          if (provider?.kind === 'saml') saml.mutate(slug);
-          else oidc.mutate(slug);
+          setContacting(provider);
+          // The round-trip leaves no later moment: remembered at the start.
+          rememberLastSignIn({ kind: 'provider', providerKind: provider.kind, slug: provider.slug });
+          // The row names its protocol (a slug is unique per kind only); the
+          // sign-up door admits the OIDC kind alone, so a SAML start signs in.
+          if (provider.kind === 'saml') saml.mutate(provider.slug);
+          else oidc.mutate({ provider: provider.slug, intent: startIntent, signupOrg });
         }}
         /* Quiet links, demoted from buttons: the CSS keeps them on the 44px
            touch floor (#567) without reading as a third way to sign in. */

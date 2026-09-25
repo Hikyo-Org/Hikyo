@@ -317,3 +317,15 @@ required evidence before starting the upgraded server. Keep current privacy acti
 receipts separately from backups and use the
 [restore reconciliation procedure](/docs/privacy/#backups-and-restoration) before
 reopening a restored installation.
+
+## Social sign-in schema upgrade
+
+The version that adds the social sign-in schema (migration 00057) closes every
+open reauthentication window while it reshapes the sessions table. Sessions
+survive, so nobody is signed out, but a user who had just reauthenticated for a
+protected environment reauthenticates again. OIDC sign-ins in progress during
+the migration are cancelled and simply restart. The contact email an account
+had keeps its value, in canonical form (domain lowercased), when it is a valid
+plain address, and is cleared otherwise; kept addresses are marked unverified
+and are never used to sign in. Nothing else changes until registration is
+enabled.

@@ -7,19 +7,22 @@ package pggen
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getAccountProfile = `-- name: GetAccountProfile :one
-SELECT username, display_name, email, EXISTS(SELECT 1 FROM scim_users WHERE scim_users.account_id = accounts.id) AS managed, EXISTS(SELECT 1 FROM password_credentials WHERE password_credentials.account_id = accounts.id) AS has_password, EXISTS(SELECT 1 FROM totp_credentials WHERE totp_credentials.account_id = accounts.id AND confirmed_at IS NOT NULL) AS has_totp FROM accounts WHERE accounts.id = $1
+SELECT username, display_name, email, email_verified_at, EXISTS(SELECT 1 FROM scim_users WHERE scim_users.account_id = accounts.id) AS managed, EXISTS(SELECT 1 FROM password_credentials WHERE password_credentials.account_id = accounts.id) AS has_password, EXISTS(SELECT 1 FROM totp_credentials WHERE totp_credentials.account_id = accounts.id AND confirmed_at IS NOT NULL) AS has_totp FROM accounts WHERE accounts.id = $1
 `
 
 type GetAccountProfileRow struct {
-	Username    string
-	DisplayName string
-	Email       string
-	Managed     bool
-	HasPassword bool
-	HasTotp     bool
+	Username        string
+	DisplayName     string
+	Email           pgtype.Text
+	EmailVerifiedAt pgtype.Timestamptz
+	Managed         bool
+	HasPassword     bool
+	HasTotp         bool
 }
 
 // The authenticated account owns these fields. SCIM ownership is only a boolean
@@ -32,6 +35,7 @@ func (q *Queries) GetAccountProfile(ctx context.Context, accountID string) (GetA
 		&i.Username,
 		&i.DisplayName,
 		&i.Email,
+		&i.EmailVerifiedAt,
 		&i.Managed,
 		&i.HasPassword,
 		&i.HasTotp,
@@ -40,23 +44,17 @@ func (q *Queries) GetAccountProfile(ctx context.Context, accountID string) (GetA
 }
 
 const updateAccountProfile = `-- name: UpdateAccountProfile :exec
-UPDATE accounts SET username = $1, display_name = $2, email = $3 WHERE id = $4
+UPDATE accounts SET username = $1, display_name = $2 WHERE id = $3
 `
 
 type UpdateAccountProfileParams struct {
 	Username    string
 	DisplayName string
-	Email       string
 	AccountID   string
 }
 
 // hikyo:authn-resolution
 func (q *Queries) UpdateAccountProfile(ctx context.Context, arg UpdateAccountProfileParams) error {
-	_, err := q.db.Exec(ctx, updateAccountProfile,
-		arg.Username,
-		arg.DisplayName,
-		arg.Email,
-		arg.AccountID,
-	)
+	_, err := q.db.Exec(ctx, updateAccountProfile, arg.Username, arg.DisplayName, arg.AccountID)
 	return err
 }

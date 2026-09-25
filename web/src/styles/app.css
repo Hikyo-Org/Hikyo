@@ -5221,10 +5221,290 @@ label.chk:has(input:disabled) {
   flex-basis: 100%;
 }
 
-.login__or {
-  margin: var(--space-1) 0;
-  text-align: center;
+/* "Sign-up is paused." (#606): the one public fact about an inactive
+   registration policy. The text carries the state; the colour only echoes. */
+.login__paused {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
   color: var(--tx-dim);
+}
+
+/* The staged sign-in entry (prototype social-signin/2, #587 locked): one row
+   per way in, then only the chosen method's form. A method row is the house
+   secondary button, left-aligned, with a quiet hint at its far edge. */
+.login__methods {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.login__methods .login__method,
+.login__methods .login__brand {
+  min-height: var(--touch);
+  width: 100%;
+}
+
+.login__method {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* "Last used": a filled accent tag riding the row's top edge, the one place
+   the accent fills a badge, so the returning person's row is found at a
+   glance. The rows are relatively positioned for it; the grid gap leaves
+   room for the half of the badge above the row. */
+.login__methods .login__method,
+.login__methods .login__brand {
+  position: relative;
+}
+
+.login__last-used {
+  position: absolute;
+  top: 0;
+  right: var(--space-3);
+  transform: translateY(-50%);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.login__method-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--tx-faint);
+}
+
+.login__back {
+  align-self: flex-start;
+  color: var(--tx-dim);
+}
+
+/* Where a new account lands, the one fact the sign-up door leads with. */
+.login__landing {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-container);
+  background: var(--accent-soft);
+  font-size: var(--fs-sm);
+}
+
+.login__signup {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  color: var(--tx-dim);
+}
+
+/* Identity-provider rows. A plain row is `.btn` with the mark slot; a branded
+   row wears the vendor's published fill, hairline and ink for the theme, from
+   the brand pages cited in docs/research/social-providers.md. Vendor colours
+   are the one place a hex is allowed in a component: they are the vendor's
+   tokens, not ours, and each pair passes AA on its own fill. */
+:root {
+  --brand-google-bg: #131314;
+  --brand-google-line: #8e918f;
+  --brand-google-tx: #e3e3e3;
+  --brand-microsoft-bg: #2f2f2f;
+  --brand-microsoft-line: #2f2f2f;
+  --brand-microsoft-tx: #ffffff;
+  --brand-github-bg: #24292f;
+  --brand-github-line: #24292f;
+  --brand-github-tx: #ffffff;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --brand-google-bg: #ffffff;
+    --brand-google-line: #747775;
+    --brand-google-tx: #1f1f1f;
+    --brand-microsoft-bg: #ffffff;
+    --brand-microsoft-line: #8c8c8c;
+    --brand-microsoft-tx: #5e5e5e;
+    --brand-github-bg: #ffffff;
+    --brand-github-line: #d0d7de;
+    --brand-github-tx: #24292f;
+  }
+}
+
+:root[data-theme='light'] {
+  --brand-google-bg: #ffffff;
+  --brand-google-line: #747775;
+  --brand-google-tx: #1f1f1f;
+  --brand-microsoft-bg: #ffffff;
+  --brand-microsoft-line: #8c8c8c;
+  --brand-microsoft-tx: #5e5e5e;
+  --brand-github-bg: #ffffff;
+  --brand-github-line: #d0d7de;
+  --brand-github-tx: #24292f;
+}
+
+.login__brand {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: filter var(--dur) var(--ease);
+}
+
+.login__brand svg {
+  flex: none;
+  width: var(--icon);
+  height: var(--icon);
+}
+
+/* Inline-block, not inline: the accessible-name algorithm trims a text node
+   at each element edge, so an inline span would glue the tenant to the
+   fixed text ("Microsoft· Contoso"); a block-level child gets a space. */
+.login__brand-tenant {
+  display: inline-block;
+  margin-left: 0.35em;
+  font-weight: 400;
+}
+
+.login__brand--google {
+  background: var(--brand-google-bg);
+  border-color: var(--brand-google-line);
+  color: var(--brand-google-tx);
+}
+
+.login__brand--microsoft {
+  background: var(--brand-microsoft-bg);
+  border-color: var(--brand-microsoft-line);
+  color: var(--brand-microsoft-tx);
+}
+
+.login__brand--github {
+  background: var(--brand-github-bg);
+  border-color: var(--brand-github-line);
+  color: var(--brand-github-tx);
+}
+
+.login__brand--google:hover,
+.login__brand--microsoft:hover,
+.login__brand--github:hover {
+  filter: brightness(1.08);
+}
+
+.login__brand[disabled] {
+  opacity: var(--opacity-disabled);
+  cursor: not-allowed;
+  filter: none;
+}
+
+.login__brand-hint {
+  margin: calc(-1 * var(--space-2)) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--tx-faint);
+}
+
+/* The Open registration panel on Members (#606). */
+.registration {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.registration__status,
+.registration__note {
+  margin: 0;
+}
+
+.registration__note,
+.registration__requirement {
+  color: var(--tx-dim);
+}
+
+.registration__facts {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+}
+
+.registration__facts dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.registration__entries {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.registration__entries li,
+.registration-editor__entry {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.registration__link {
+  overflow-wrap: anywhere;
+}
+
+.registration-editor {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.registration-editor__group {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.registration-editor__group legend {
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+
+.registration-editor__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.registration-editor__sub {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+/* Reauth-gated actions are the CHANGED slate, like the step-up banner: the
+   ADR #16 distinction between "confirm it's you" and "disclose a secret". */
+.btn--reauth {
+  color: var(--changed);
+  border-color: var(--changed);
+}
+
+.btn--reauth:hover {
+  background: var(--changed-soft);
+}
+
+.dialog--reauth {
+  border-color: var(--changed);
+}
+
+@media (max-width: 40rem) {
+  .registration__facts {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* A long command in an empty state must wrap on a phone rather than make the
@@ -6277,6 +6557,20 @@ label.chk:has(input:disabled) {
   padding: 2px 0;
 }
 
+/* The "or" divider and the stacked actions of the second-factor steps
+   (SecondFactorChallenge, SecondFactorSetup, AuthenticatorCodeField). */
+.login__or {
+  margin: var(--space-1) 0;
+  text-align: center;
+  color: var(--tx-dim);
+}
+
+.login__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .login__links {
   display: flex;
   flex-wrap: wrap;
@@ -6305,12 +6599,6 @@ label.chk:has(input:disabled) {
   font-family: var(--font-mono);
   font-size: var(--fs-lg);
   letter-spacing: 0.2em;
-}
-
-.login__actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
 }
 
 .login__account {
@@ -6375,3 +6663,7 @@ label.chk:has(input:disabled) {
 }
 
 .self-config-plan { overflow-wrap: anywhere; }
+
+.instance-org-filter {
+  max-width: 24rem;
+}

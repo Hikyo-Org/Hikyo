@@ -87,6 +87,10 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 		"getMachineReveal":        "non-value-bearing settings",
 		"fetchDelivery":           "pin-bound value delivery",
 		"reconcileOfflineRecords": "write-only disclosure records",
+		// Delivery-target reports (#788): the value-free, closed-vocabulary
+		// status write, never reachable with workload read alone.
+		"reportDeliveryTarget":    "value-free status report, report-delivery-status required",
+		"tombstoneDeliveryTarget": "value-free status tombstone, report-delivery-status required",
 		"publishPendingChanges":   "not reachable with workload read",
 		"getRevision":             "non-value-bearing revision metadata",
 		// Dynamic secrets (#147): a workload mints and manages its OWN leased

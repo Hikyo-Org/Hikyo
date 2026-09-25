@@ -233,7 +233,7 @@ func (s *SelfConfig) provision(ctx context.Context, r store.Repos, az *authz.TxA
 	if err := r.Orgs().Create(ctx, orgProof, store.Org{ID: orgID, Name: name, Active: true, Metadata: json.RawMessage(`{}`), CreatedAt: store.CanonTime(now)}); err != nil {
 		return store.SelfConfigBinding{}, err
 	}
-	if err := selfConfigSeedEvent(ctx, r, orgProof, caller.Principal, audit.EventOrgCreated, "org", orgID, audit.Payload{"org_id": orgID, "org_name": name}, true); err != nil {
+	if err := selfConfigSeedEvent(ctx, r, orgProof, caller.Principal, audit.EventOrgCreated, "org", orgID, audit.Payload{"org_id": orgID, "org_name": name, "origin": "manual"}, true); err != nil {
 		return store.SelfConfigBinding{}, err
 	}
 	orgScope := domain.Scope{Org: domain.OrgID(orgID)}

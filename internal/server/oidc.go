@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 )
 
@@ -19,7 +20,11 @@ import (
 // browser-binding and session cookies from the stashed raw request; the
 // security decisions all live in the service.
 
-func (a *API) AuthMethods(ctx context.Context, _ apigen.AuthMethodsRequestObject) (apigen.AuthMethodsResponseObject, error) {
+// AuthMethods returns public login methods and the sign-up door for the
+// requested org, or the instance when no org is supplied. An unknown or empty
+// org selects a closed door. Discovery throttling returns 429; service and
+// conversion failures become 500 responses.
+func (a *API) AuthMethods(ctx context.Context, req apigen.AuthMethodsRequestObject) (apigen.AuthMethodsResponseObject, error) {
 	if a.Admission != nil && !a.Admission.AllowDiscovery(audit.FromContext(ctx).SourceIP) {
 		return apigen.AuthMethods429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
 	}
@@ -33,9 +38,31 @@ func (a *API) AuthMethods(ctx context.Context, _ apigen.AuthMethodsRequestObject
 		Providers:         make([]apigen.AuthMethodProvider, 0, len(providers)),
 	}
 	for _, p := range providers {
-		out.Providers = append(out.Providers, apigen.AuthMethodProvider{
+		provider := apigen.AuthMethodProvider{
 			Slug: p.Slug, DisplayName: p.DisplayName, Kind: apigen.IdentityProviderKind(p.Kind),
-		})
+		}
+		if p.Brand != "" {
+			brand := apigen.AuthMethodProviderBrand(p.Brand)
+			provider.Brand = &brand
+		}
+		out.Providers = append(out.Providers, provider)
+	}
+	// The sign-up door of the addressed scope (#606): the instance when
+	// `org` is absent, else `?org=`. An unknown org, and a supplied but empty
+	// one, is the same closed door as one without a policy.
+	door := service.SignupDoor{Methods: []service.SignupMethod{}}
+	switch {
+	case req.Params.Org == nil:
+		door, err = a.Registration.SignupDoor(ctx, service.InstanceRegistrationScope())
+	case *req.Params.Org != "":
+		door, err = a.Registration.SignupDoor(ctx, service.OrgRegistrationScope(domain.OrgID(*req.Params.Org)))
+	}
+	if err == nil {
+		err = wireSignupDoor(&out, door)
+	}
+	if err != nil {
+		a.fault(ctx, "auth methods sign-up door", err)
+		return apigen.AuthMethods500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
 	}
 	return apigen.AuthMethods200JSONResponse(out), nil
 }
@@ -56,6 +83,9 @@ func (r oidcStartResponse) VisitOidcStartResponse(w http.ResponseWriter) error {
 	return json.NewEncoder(w).Encode(r.body)
 }
 
+// OidcStart forwards the purpose, login intent and optional sign-up org to the
+// service. A successful anonymous start sets the browser-binding cookie; its
+// expected refusals are rendered by oidcStartError.
 func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) (apigen.OidcStartResponseObject, error) {
 	if req.Body == nil {
 		// A missing body folds into the uniform 401 like every other start
@@ -69,8 +99,12 @@ func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) 
 	if req.Body.Proof != nil {
 		proof = *req.Body.Proof
 	}
+	intent, signupOrg := "", strDeref(req.Body.SignupOrg)
+	if req.Body.Intent != nil {
+		intent = string(*req.Body.Intent)
+	}
 	browser := req.Body.Browser != nil && *req.Body.Browser
-	result, err := a.Auth.OIDCStart(ctx, string(req.Provider), string(req.Body.Purpose), env, bearer(ctx), proof, browser)
+	result, err := a.Auth.OIDCStart(ctx, string(req.Provider), string(req.Body.Purpose), intent, signupOrg, env, bearer(ctx), proof, browser)
 	if err != nil {
 		return oidcStartError(a, ctx, err), nil
 	}
@@ -87,13 +121,25 @@ func (a *API) OidcStart(ctx context.Context, req apigen.OidcStartRequestObject) 
 	return resp, nil
 }
 
+// oidcStartError renders an invalid reauth environment as 400 and a
+// policy-less reauth as 409. Other expected refusals become uniform 401 or
+// shared 429 responses; unexpected faults become 500.
 func oidcStartError(a *API, ctx context.Context, err error) apigen.OidcStartResponseObject {
-	// Every expected start refusal collapses to one uniform 401 body: an
-	// unknown or disabled slug, a bad purpose, and a reauth against a
-	// policy-less provider or with no environment all look identical to an
-	// unauthenticated link/reauth, so a pre-auth prober cannot enumerate
-	// provider config by status (the timing is uniform too — login admission
-	// runs before provider resolution in the service).
+	// Every other expected start refusal collapses to one uniform 401 body:
+	// an unknown or disabled slug, a bad purpose, and a reauth with no
+	// environment all look identical to an unauthenticated link/reauth, so
+	// a pre-auth prober cannot enumerate provider config by status (the
+	// timing is uniform too — login admission runs before provider
+	// resolution in the service).
+	if errors.Is(err, service.ErrEnvironmentNotForPurpose) {
+		return apigen.OidcStart400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, "environment_id is only valid with purpose reauth"))}
+	}
+	// A reauth on a policy-less row is refused by name with its remedy
+	// (#588 d4). It is reached only after the caller authenticated a session
+	// through this very provider, so it is not an enumeration answer.
+	if errors.Is(err, service.ErrReauthNoPolicy) {
+		return apigen.OidcStart409JSONResponse{ConflictJSONResponse: apigen.ConflictJSONResponse(errorBody(apigen.ErrorCodeConflict, safeDetailOf(err)))}
+	}
 	policy := wireErrorFor(err)
 	switch policy.code {
 	case apigen.ErrorCodeTooManyRequests:
@@ -222,12 +268,14 @@ func (a *API) ListIdentities(ctx context.Context, _ apigen.ListIdentitiesRequest
 	return apigen.ListIdentities200JSONResponse(out), nil
 }
 
+// LinkIdentity starts a session-bound OIDC linking ceremony using the caller's
+// proof. A browser start sets a return marker cookie; service errors propagate.
 func (a *API) LinkIdentity(ctx context.Context, req apigen.LinkIdentityRequestObject) (apigen.LinkIdentityResponseObject, error) {
 	if req.Body == nil {
 		return apigen.LinkIdentity400JSONResponse{BadRequestJSONResponse: apigen.BadRequestJSONResponse(errorBody(apigen.ErrorCodeBadRequest, ""))}, nil
 	}
 	browser := req.Body.Browser != nil && *req.Body.Browser
-	result, err := a.Auth.OIDCStart(ctx, req.Body.Provider, "link", "", bearer(ctx), req.Body.Proof, browser)
+	result, err := a.Auth.OIDCStart(ctx, req.Body.Provider, "link", "", "", "", bearer(ctx), req.Body.Proof, browser)
 	if err != nil {
 		return nil, err
 	}

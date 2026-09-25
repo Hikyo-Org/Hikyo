@@ -133,7 +133,7 @@ func TestPinWireCarriesServerReleasePreview(t *testing.T) {
 		ID: "pin_a", WorkloadPrincipalID: "mch_a", Revision: 3,
 		ReleaseRetentionConsequence: service.RetentionCollectionEligible,
 	})
-	if got.ReleaseRetentionConsequence != apigen.CollectionEligible {
+	if got.ReleaseRetentionConsequence != apigen.RetentionConsequenceCollectionEligible {
 		t.Fatalf("pin release preview = %q, want collection_eligible", got.ReleaseRetentionConsequence)
 	}
 }

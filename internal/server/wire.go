@@ -26,6 +26,10 @@ func wireOrg(o service.Org) apigen.Org {
 		Name:      o.Name,
 		Active:    o.Active,
 		CreatedAt: o.CreatedAt,
+		Origin:    apigen.OrgOrigin(o.Origin),
+	}
+	if o.RegistrationPolicyID != "" {
+		out.RegistrationPolicyId = &o.RegistrationPolicyID
 	}
 	if len(o.Metadata) == 0 {
 		return out

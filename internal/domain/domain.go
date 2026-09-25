@@ -72,6 +72,11 @@ const (
 	// CapCredentialReset is the human-auth ADR's administrator-issued reset
 	// authority (#54), valid at org and instance scope.
 	CapCredentialReset Capability = "credential-reset"
+
+	// CapReportDeliveryStatus is the condition-reporting ADR's D1(b) atom: one
+	// value-free, closed-vocabulary delivery-target status report for an
+	// environment. Workload-only, never implied by `read`.
+	CapReportDeliveryStatus Capability = "report-delivery-status"
 )
 
 // capabilityLevels is the closed atom table: each atom mapped to the DEEPEST
@@ -86,6 +91,8 @@ var capabilityLevels = map[Capability]Level{
 	CapEdit:          LevelEnv,
 	CapPublish:       LevelEnv,
 	CapPin:           LevelEnv,
+
+	CapReportDeliveryStatus: LevelEnv,
 
 	CapDefinitionsEdit:  LevelProject,
 	CapProjectSettings:  LevelProject,

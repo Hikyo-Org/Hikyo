@@ -323,6 +323,28 @@ func TestExternalOriginMustBeCanonicalAndCannotContainCredentials(t *testing.T) 
 	}
 }
 
+// A listen-derived origin is not an explicit public origin (#606,
+// `no-public-origin`): only an operator-supplied value counts.
+func TestExternalOriginExplicitness(t *testing.T) {
+	derived, _, err := Load("server", nil, env("HIKYO_DB", "sqlite:/data/hikyo.db"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if derived.ExternalOrigin == "" || derived.ExternalOriginExplicit {
+		t.Fatalf("derived origin %q explicit=%t, want a listen default that is not explicit", derived.ExternalOrigin, derived.ExternalOriginExplicit)
+	}
+	explicit, _, err := Load("server", nil, env(
+		"HIKYO_DB", "sqlite:/data/hikyo.db",
+		"HIKYO_EXTERNAL_ORIGIN", "https://hikyo.example.com",
+	), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !explicit.ExternalOriginExplicit {
+		t.Fatal("an operator-supplied HIKYO_EXTERNAL_ORIGIN is explicit")
+	}
+}
+
 func TestMCPIsFeatureGatedAndRequiresItsPinnedPublicOriginProfile(t *testing.T) {
 	base := []string{"HIKYO_DB", "sqlite:/data/hikyo.db"}
 

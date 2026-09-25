@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
@@ -156,6 +158,9 @@ const (
 	BudgetDefaultOrgConcurrency = 8
 	// § 151 (§ 8) schema-revision rate limit, per project.
 	BudgetSchemaRevisionPerHour = 60
+	// § 10 signup (ops-spec banner 2026-09-03, #579 d7): rate-only and
+	// instance-wide, shared by the `none` and `fresh-org` landings.
+	BudgetSignupPerHour = 20
 
 	// budgetMaxTrackedSubjects bounds how many rate buckets are remembered.
 	// Rate keys carry attacker-influenced values (a principal id, an org id), so
@@ -261,9 +266,31 @@ var (
 			{dimInstance, BudgetMachineFetchInstancePerMin, time.Minute},
 		},
 	}
+	// budgetDeliveryTarget is the delivery-target report bucket
+	// (k8s-condition-reporting ADR D8): separate from machine-fetch so a report
+	// storm cannot starve fetches. Both keys resolve only after authorization,
+	// so it is charged in-tx via chargeOnce.
+	budgetDeliveryTarget = budgetCategory{
+		name: "delivery-target",
+		rates: []budgetRateRule{
+			{dimPrincipal, deliverytarget.PrincipalBudget, time.Minute},
+			{dimOrg, deliverytarget.OrgBudget, time.Minute},
+		},
+	}
 	budgetSchemaRevision = budgetCategory{
 		name:  "schema-revision",
 		rates: []budgetRateRule{{dimProject, BudgetSchemaRevisionPerHour, time.Hour}},
+	}
+	// budgetSignup is the sign-up budget (#579 d7 as amended by #584, #585,
+	// #604 and the spec's admission gate): one instance-wide bucket, rate
+	// only, charged once at the first leg that would create state (the local
+	// sign-up request, #608; an unknown identity on a sign-up callback, #607),
+	// after the admission gate and before any write. Overflow is the uniform
+	// 429. It is not an authz operation's budget, so the totality map has no
+	// row for it: the pre-auth legs that charge it are not registry operations.
+	budgetSignup = budgetCategory{
+		name:  "signup",
+		rates: []budgetRateRule{{dimInstance, BudgetSignupPerHour, time.Hour}},
 	}
 	// budgetDefault is the §179 fail-closed default: 60/min per principal, 8
 	// concurrent per org, applied to expensive operations that have no named
@@ -329,6 +356,41 @@ func budgetMapKey(cat string, dim budgetDimension, value string) string {
 
 func noopBudgetRelease() {}
 
+// chargeSignup charges one sign-up against the instance-wide `signup` budget.
+// Rate-only, so there is nothing to release. The charge sites are the
+// sign-up legs of #607 and #608.
+//
+// It returns the charge's refund. A committed charge is never refunded, but
+// the federated sign-up charges inside a retried transaction, and a charge
+// made by an attempt that rolled back must not stay counted, or the budget
+// would record sign-ups that never happened. An exhausted budget returns
+// admission.ErrOverloaded; a nil budget returns an error rather than charging.
+func (b *Budget) chargeSignup() (refund func(), err error) {
+	if b == nil {
+		return func() {}, errors.New("service: no signup budget is wired; sign-up refuses rather than run unbudgeted")
+	}
+	at := b.clock()
+	if _, err := b.acquireAt(budgetSignup, budgetKeys{}, at); err != nil {
+		return nil, err
+	}
+	key := budgetMapKey(budgetSignup.name, dimInstance, "")
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			b.mu.Lock()
+			defer b.mu.Unlock()
+			bucket := b.rate[key]
+			for i, t := range bucket.hits {
+				if t.Equal(at) {
+					bucket.hits = append(append([]time.Time{}, bucket.hits[:i]...), bucket.hits[i+1:]...)
+					b.rate[key] = bucket
+					return
+				}
+			}
+		})
+	}, nil
+}
+
 // acquire charges the category's rate rules and takes its concurrency slots
 // atomically: it records nothing unless every rule passes, so a refusal on one
 // bound never half-charges another. It returns a release that frees the
@@ -338,11 +400,19 @@ func (b *Budget) acquire(cat budgetCategory, keys budgetKeys) (func(), error) {
 	if b == nil {
 		return noopBudgetRelease, nil
 	}
-	now := time.Now
+	return b.acquireAt(cat, keys, b.clock())
+}
+
+func (b *Budget) clock() time.Time {
 	if b.now != nil {
-		now = b.now
+		return b.now()
 	}
-	at := now()
+	return time.Now()
+}
+
+// acquireAt is acquire at a stated instant, so a caller can later identify
+// the one rate hit it recorded (chargeSignup's refund).
+func (b *Budget) acquireAt(cat budgetCategory, keys budgetKeys, at time.Time) (func(), error) {
 
 	b.mu.Lock()
 	defer b.mu.Unlock()

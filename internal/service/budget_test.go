@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
@@ -187,6 +188,31 @@ func TestBudgetMachineFetchAggregates(t *testing.T) {
 	}
 	if _, err := b.acquire(budgetMachineFetch, budgetKeys{Org: domain.OrgID("org1")}); !errors.Is(err, admission.ErrOverloaded) {
 		t.Fatalf("301st org fetch = %v, want ErrOverloaded", err)
+	}
+}
+
+// TestBudgetDeliveryTargetBucket: the delivery-target report bucket is 60/min
+// per principal and 300/min per org (k8s-condition-reporting ADR D8).
+func TestBudgetDeliveryTargetBucket(t *testing.T) {
+	b := newTestBudget(&clock{t: time.Unix(1_700_000_000, 0)})
+	one := budgetKeys{Principal: "mch_1", Org: "org1"}
+	for i := range deliverytarget.PrincipalBudget {
+		if _, err := b.acquire(budgetDeliveryTarget, one); err != nil {
+			t.Fatalf("report %d refused early: %v", i+1, err)
+		}
+	}
+	if _, err := b.acquire(budgetDeliveryTarget, one); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("61st principal report = %v, want ErrOverloaded", err)
+	}
+	for i := 1; i < deliverytarget.OrgBudget/deliverytarget.PrincipalBudget; i++ {
+		for range deliverytarget.PrincipalBudget {
+			if _, err := b.acquire(budgetDeliveryTarget, budgetKeys{Principal: domain.PrincipalID("mch_" + strconv.Itoa(i+1)), Org: "org1"}); err != nil {
+				t.Fatalf("principal %d refused before the org bound: %v", i+1, err)
+			}
+		}
+	}
+	if _, err := b.acquire(budgetDeliveryTarget, budgetKeys{Principal: "mch_fresh", Org: "org1"}); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("301st org report = %v, want ErrOverloaded", err)
 	}
 }
 
@@ -373,5 +399,49 @@ func TestBudgetDevelopmentEnforcementRetainsRateAndOutstandingSlots(t *testing.T
 	}
 	for _, release := range releases {
 		release()
+	}
+}
+
+// The signup budget (#606, ops-spec banner 2026-09-03): 20/h for the whole
+// instance, rate only. Every caller shares one bucket, whoever they are.
+func TestBudgetSignupInstanceWide(t *testing.T) {
+	c := &clock{t: time.Unix(1_700_000_000, 0)}
+	b := newTestBudget(c)
+	var refunds []func()
+	for i := range BudgetSignupPerHour {
+		refund, err := b.chargeSignup()
+		if err != nil {
+			t.Fatalf("sign-up charge %d/%d refused early: %v", i+1, BudgetSignupPerHour, err)
+		}
+		refunds = append(refunds, refund)
+		c.add(time.Millisecond)
+	}
+	if _, err := b.chargeSignup(); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("sign-up charge %d = %v, want ErrOverloaded", BudgetSignupPerHour+1, err)
+	}
+	// A refunded charge (its attempt rolled back) frees exactly one slot,
+	// once, however often the refund runs.
+	refunds[3]()
+	refunds[3]()
+	if _, err := b.chargeSignup(); err != nil {
+		t.Fatalf("after one refund: %v", err)
+	}
+	if _, err := b.chargeSignup(); !errors.Is(err, admission.ErrOverloaded) {
+		t.Fatalf("a refund freed more than one slot: %v", err)
+	}
+	c.add(time.Hour + time.Second)
+	if _, err := b.chargeSignup(); err != nil {
+		t.Fatalf("after the window: %v", err)
+	}
+	if len(budgetSignup.concs) != 0 {
+		t.Fatal("the signup budget is rate-only")
+	}
+	// No budget wired is a refusal, never an unbudgeted sign-up.
+	var none *Budget
+	if _, err := none.chargeSignup(); err == nil {
+		t.Fatal("a nil signup budget charged")
+	}
+	if err := (&Auth{}).EnableSignup(&Registration{}, nil); err == nil {
+		t.Fatal("EnableSignup accepted a nil budget")
 	}
 }

@@ -317,6 +317,17 @@ func reencInstanceCycle(t *testing.T, open func(*testing.T) *store.DB, inject fu
 		`INSERT INTO remotes (id, name, url, spki_pin, credential_sealed, created_at, created_by) VALUES ('rmt_rs','rs-remote','https://r','sha256-x',?, '2026-01-01T00:00:00Z','usr_root')`,
 		`INSERT INTO remotes (id, name, url, spki_pin, credential_sealed, created_at, created_by) VALUES ('rmt_rs','rs-remote','https://r','sha256-x',$1, '2026-01-01T00:00:00Z','usr_root')`,
 		rmCT)
+	// An OAuth2 provider secret (#605): the walk must move it, or the dryness
+	// gate refuses to retire v1.
+	o2AAD := crypto.InstanceFieldAAD{OwnerTable: "oauth2_providers", OwnerRowID: "prv_rs", FieldTag: "client_secret"}
+	o2CT, err := inst.SealField(o2AAD, []byte("oauth2-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reencExec(t, db, ctx,
+		`INSERT INTO oauth2_providers (id, slug, display_name, kind, profile, issuer, client_id, client_secret, redirect_uri, enabled, dek_version, row_version, created_at, updated_at) VALUES ('prv_rs','rs-github','GitHub','oauth2','github','https://github.com','client',?,'https://hikyo.test/cb',1,1,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+		`INSERT INTO oauth2_providers (id, slug, display_name, kind, profile, issuer, client_id, client_secret, redirect_uri, enabled, dek_version, row_version, created_at, updated_at) VALUES ('prv_rs','rs-github','GitHub','oauth2','github','https://github.com','client',$1,'https://hikyo.test/cb',1,1,1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`,
+		o2CT)
 	rotation := &service.Rotation{DB: db, Keyring: kr, RootKey: probeRootSource{db: db}}
 	if _, err := rotation.RotateDEK(ctx, service.LocalPrincipal(root), service.DEKScope{Instance: true}); err != nil {
 		t.Fatalf("rotate-dek --instance: %v", err)
@@ -326,6 +337,10 @@ func reencInstanceCycle(t *testing.T, open func(*testing.T) *store.DB, inject fu
 	out := reencOutcome{db: db, moved: res.RowsMoved, err: err}
 	if err != nil {
 		return out
+	}
+	o2Moved, err := kr.ForInstance().OpenField(o2AAD, reencReadBlob(t, db, ctx, `SELECT client_secret FROM oauth2_providers WHERE id = 'prv_rs'`))
+	if err != nil || string(o2Moved) != "oauth2-secret" {
+		t.Fatalf("oauth2 provider secret after reencrypt: %q, %v", o2Moved, err)
 	}
 	states, serr := queryTier3StatesPurpose(db, ctx, "instance", "", "")
 	if serr != nil {

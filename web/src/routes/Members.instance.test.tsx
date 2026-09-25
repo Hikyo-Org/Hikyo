@@ -72,7 +72,7 @@ vi.mock('../api/settings.ts', async (importActual) => {
     useOrg: () => ({ data: undefined, isError: false }),
     useOrgTopology: () => ({ projects: [], isError: false, isPending: false, ready: false }),
     useInstanceOrgs: () => ({
-      data: { items: [{ id: 'org_acme', name: 'Acme', active: true, created_at: '2026-08-24T08:00:00Z' }], count: 1 },
+      data: { items: [{ id: 'org_acme', name: 'Acme', active: true, created_at: '2026-08-24T08:00:00Z', origin: 'manual' }], count: 1 },
       isError: false,
       isPending: false,
       isSuccess: true,

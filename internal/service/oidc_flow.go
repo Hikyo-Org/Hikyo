@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/admission"
@@ -24,11 +26,38 @@ var ErrBadPurpose = errors.New("service: OIDC purpose must be login, link or rea
 var ErrAlreadyLinked = errors.New("service: that identity is already linked")
 
 // ErrReauthNoPolicy refuses starting a reauth against a provider with no
-// assurance policy (A5): an unconstrained provider cannot open a window.
-var ErrReauthNoPolicy = errors.New("service: provider has no assurance policy; OIDC reauthentication is refused")
+// assurance policy (A5, #588 d4): such a row is not reauth-capable, so the
+// start refuses by name, before any round-trip and before any row is written,
+// naming the remedy. The caller has already authenticated a session through
+// this very provider, so the refusal discloses nothing to a prober.
+var ErrReauthNoPolicy error = reauthNoPolicyError{}
+
+type reauthNoPolicyError struct{}
+
+const reauthNoPolicyRemedy = "this sign-in provider cannot confirm it's you again: enrol WebAuthn or TOTP and use it instead"
+
+func (reauthNoPolicyError) Error() string {
+	return "service: provider has no assurance policy; OIDC reauthentication is refused (" + reauthNoPolicyRemedy + ")"
+}
+
+// SafeDetail is the remedy the wire carries in the 409's detail.
+func (reauthNoPolicyError) SafeDetail() string { return reauthNoPolicyRemedy }
+
+// Login intents (#604): recorded on a purpose-login transaction, absent on
+// the wire = sign-in.
+const (
+	IntentSignIn = "sign-in"
+	IntentSignUp = "sign-up"
+)
 
 // ErrReauthNoEnvironment refuses a reauth with no environment scope.
 var ErrReauthNoEnvironment = errors.New("service: OIDC reauthentication requires an environment_id")
+
+// ErrEnvironmentNotForPurpose refuses an environment_id on a login or link
+// start: only reauth scopes a window, and the transaction CHECK refuses the
+// field on every other purpose. It depends on the request body alone, so it
+// is the one start refusal that is not folded into the uniform 401.
+var ErrEnvironmentNotForPurpose = fmt.Errorf("%w: environment_id is only valid with purpose reauth", domain.ErrInvalid)
 
 // OIDCStartResult is the authorization URL plus the artifacts the transport
 // carries: the state value (used to derive the per-transaction binding-cookie
@@ -46,7 +75,15 @@ type OIDCStartResult struct {
 // authenticated session and are session-bound, and link additionally verifies
 // the account-security proof (the pre-existing password) up front, binding it to
 // the transaction ceremony (A6). PKCE S256 is always used.
-func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string, browser bool) (OIDCStartResult, error) {
+//
+// A login records its intent (#604 d1, d2; absent = sign-in) and, for a
+// sign-up, the addressed scope (signupOrg, absent = instance). Intent on any
+// other purpose, and a scope without sign-up, refuse uniformly in the
+// ErrBadPurpose shape. The start reads no registration policy (#604 d5).
+// Reauth without an assurance policy returns ErrReauthNoPolicy before redirect;
+// admission, authentication and transaction-write errors propagate, while a
+// discovery failure returns ErrProviderDiscovery.
+func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (OIDCStartResult, error) {
 	// Admission is entered FIRST, uniformly for every purpose and BEFORE the
 	// provider is resolved or the purpose/environment validated. An unknown
 	// slug, a bad purpose, a missing environment and a fully resolved provider
@@ -65,10 +102,24 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 	default:
 		return OIDCStartResult{}, ErrBadPurpose
 	}
+	switch {
+	case intent != "" && purpose != purposeLogin:
+		return OIDCStartResult{}, ErrBadPurpose
+	case intent != "" && intent != IntentSignIn && intent != IntentSignUp:
+		return OIDCStartResult{}, ErrBadPurpose
+	case signupOrg != "" && intent != IntentSignUp:
+		return OIDCStartResult{}, ErrBadPurpose
+	}
+	if purpose == purposeLogin && intent == "" {
+		intent = IntentSignIn
+	}
 	// reauth scopes a window to one environment; without it the transaction
 	// CHECK would reject the row as a raw fault. Refuse loudly up front.
 	if purpose == purposeReauth && environmentID == "" {
 		return OIDCStartResult{}, ErrReauthNoEnvironment
+	}
+	if purpose != purposeReauth && environmentID != "" {
+		return OIDCStartResult{}, ErrEnvironmentNotForPurpose
 	}
 
 	// Phase 1 - resolve the provider and, for a session-bound purpose, the
@@ -187,6 +238,7 @@ func (s *Auth) OIDCStart(ctx context.Context, slug, purpose, environmentID, pres
 		ID: txID, StateVerifier: stateVerifier, Nonce: crypto.ArtifactVerifier(nonce), PKCEVerifier: pkce,
 		ProviderID: provider.ID, Issuer: provider.Issuer, RedirectURI: provider.RedirectURI,
 		Purpose: purpose, EnvironmentID: environmentID, Browser: browser, CredentialEpoch: epoch,
+		Intent: intent, SignupScopeOrgID: signupOrg,
 	}
 	var bindingCookie string
 	if purpose == purposeLogin {
@@ -405,14 +457,13 @@ func (s *Auth) exchangeAndVerify(ctx context.Context, prov authz.OIDCProvider, t
 	}
 	claims, err := rp.Verify(ctx, prov.ClientID, rawIDToken, s.now)
 	if err != nil {
-		switch {
-		case errors.Is(err, oidcrp.ErrIssuer):
-			return oidcrp.Claims{}, causeIssuer
-		case errors.Is(err, oidcrp.ErrAudience):
+		// An ID-token issuer mismatch is go-oidc's refusal (#588 d3, no Hikyo
+		// belt) and audits under the default token-validation cause; `issuer`
+		// is the row-versus-transaction check (A11) alone.
+		if errors.Is(err, oidcrp.ErrAudience) {
 			return oidcrp.Claims{}, causeAudience
-		default:
-			return oidcrp.Claims{}, causeSignature
 		}
+		return oidcrp.Claims{}, causeSignature
 	}
 	// Constant-time: the nonce is a bearer-class secret stored as its
 	// artifact verifier, and the ID token replays it. Same primitive as every
@@ -453,20 +504,40 @@ func (s *Auth) revalidateProvider(ctx context.Context, az *authz.TxAuthorizer, s
 	return "", nil
 }
 
-// completeLogin resolves the identity three ways (live / epoch-inert / unknown,
-// A8) and mints a browser session or refuses
-// uniformly. An epoch-inert identity is terminal and never provisioned.
+// completeLogin resolves the identity three ways (live / epoch-inert /
+// unknown, A8) and mints a browser session or refuses uniformly, in the
+// order of spec section 4: provider revalidation, epoch, the instance-wide
+// (kind, issuer, subject) resolution (intent-blind: the tenant-isolation
+// third member's one query path), then a known identity signs in under
+// either intent (#604 d3). An unknown identity under `sign-in` refuses
+// `unknown-identity` with no registration event and no charge; under
+// `sign-up` it enters the registration leg (registration_signup.go), in this
+// same transaction.
+//
+// A sign-up-intent callback runs under WriteSerialized on the org-create key
+// whatever the landing: the landing is known only after the policy read
+// inside the transaction, and a fresh-org mint must serialize its cap count
+// and admin grant against operator creates. A sign-in callback keeps
+// tx.Write. Committed registration refusals return domain.ErrUnauthenticated,
+// except budget overflow, which returns admission.ErrOverloaded. Transaction
+// and audit errors propagate without publishing a session.
 func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims) (OIDCCallbackResult, error) {
-	attempt, err := writeCommittedSessionAttempt(ctx, s.DB, func(ctx context.Context, _ store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt) error {
+	signup := newOIDCSignup(s, prov, txn, claims)
+	fn := func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer, attempt *sessionCompletionAttempt) error {
+		// A rerun means the previous attempt rolled back: its charge goes.
+		signup.rollback()
 		now := s.now()
-		if cause, e := s.revalidateProvider(ctx, az, prov); e != nil {
-			return e
-		} else if cause != "" {
-			if aerr := s.stageOIDCRefuse(ctx, az, cause, prov.ID); aerr != nil {
+		refuse := func(cause string) error {
+			if aerr := s.stageLoginRefuse(ctx, az, cause, prov.ID, txn); aerr != nil {
 				return aerr
 			}
 			attempt.refused = sessionRefusedUnauthenticated
 			return nil
+		}
+		if cause, e := s.revalidateProvider(ctx, az, prov); e != nil {
+			return e
+		} else if cause != "" {
+			return refuse(cause)
 		}
 		epoch, e := az.CredentialEpoch(ctx)
 		if e != nil {
@@ -476,34 +547,29 @@ func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn a
 		identity, e := az.ExternalIdentityByKey(ctx, OIDCKind, txn.Issuer, claims.Subject)
 		switch {
 		case errors.Is(e, domain.ErrNotFound):
-			// Login never creates accounts. Invitation and explicit linking are
-			// required before this identity may authenticate.
-			if aerr := s.stageOIDCRefuse(ctx, az, causeUnknownIdentity, prov.ID); aerr != nil {
-				return aerr
+			// Login never creates accounts; only a sign-up intent enters a
+			// registration policy (#604 d3). Invitation and explicit linking
+			// remain the other ways this identity may authenticate.
+			if txn.Intent != IntentSignUp {
+				return refuse(causeUnknownIdentity)
 			}
-			attempt.refused = sessionRefusedUnauthenticated
-			return nil
+			account, e = signup.run(ctx, r, az, attempt, epoch, now)
+			if e != nil || attempt.refused != sessionNotRefused {
+				return e
+			}
 		case e != nil:
 			return e
 		default:
 			// A8: epoch-inert is terminal, never provisioned.
 			if identity.CredentialEpoch != epoch {
-				if aerr := s.stageOIDCRefuse(ctx, az, causeEpoch, prov.ID); aerr != nil {
-					return aerr
-				}
-				attempt.refused = sessionRefusedUnauthenticated
-				return nil
+				return refuse(causeEpoch)
 			}
 			// A3: the recorded provider must be the currently enabled one for
 			// this issuer (which is prov, since we exchanged there and it is
 			// enabled). A mismatch is a restored/superseded link: refuse to
 			// operator reconciliation.
 			if identity.ProviderID != prov.ID {
-				if aerr := s.stageOIDCRefuse(ctx, az, causeReconciliation, prov.ID); aerr != nil {
-					return aerr
-				}
-				attempt.refused = sessionRefusedUnauthenticated
-				return nil
+				return refuse(causeReconciliation)
 			}
 			account, e = az.AccountByID(ctx, identity.AccountID)
 			if e != nil {
@@ -514,9 +580,30 @@ func (s *Auth) completeLogin(ctx context.Context, prov authz.OIDCProvider, txn a
 		if e != nil {
 			return e
 		}
-		attempt.result, e = s.mintOIDCSession(ctx, az, account, prov, txn.Issuer, purposeLogin, claims, mfa, now)
+		attempt.result, e = s.mintOIDCSession(ctx, az, account, prov, txn, claims, mfa, now)
 		return e
-	})
+	}
+	var (
+		attempt sessionCompletionAttempt
+		err     error
+	)
+	if txn.Intent == IntentSignUp {
+		err = tx.WriteSerialized(ctx, s.DB, orgCreateSerialization, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+			attempt = sessionCompletionAttempt{}
+			return fn(ctx, r, az, &attempt)
+		})
+	} else {
+		attempt, err = writeCommittedSessionAttempt(ctx, s.DB, fn)
+	}
+	if err != nil {
+		signup.rollback()
+	}
+	if errors.Is(err, errSignupIdentityRace) {
+		// The UNIQUE key arbitrated a concurrent bind of the same identity:
+		// the failed insert aborted the transaction (nothing of this sign-up
+		// survives, no org row either), so the refusal commits on its own.
+		return OIDCCallbackResult{}, signup.refuseAfterRace(ctx)
+	}
 	if err != nil {
 		return OIDCCallbackResult{}, err
 	}
@@ -766,7 +853,8 @@ func (s *Auth) completeReauth(ctx context.Context, prov authz.OIDCProvider, txn 
 // row_version are recorded in the audit event, read in this same mint tx (A12);
 // the provider-change sweep by provider_id keeps a stale evaluation from
 // lingering (A4).
-func (s *Auth) mintOIDCSession(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, prov authz.OIDCProvider, issuer, purpose string, claims oidcrp.Claims, mfa bool, now time.Time) (LoginResult, error) {
+func (s *Auth) mintOIDCSession(ctx context.Context, az *authz.TxAuthorizer, account authz.Account, prov authz.OIDCProvider, txn authz.OIDCTransaction, claims oidcrp.Claims, mfa bool, now time.Time) (LoginResult, error) {
+	issuer := txn.Issuer
 	factorClasses := oidcFactors(mfa)
 	assuranceLabel := "single-factor"
 	if mfa {
@@ -784,11 +872,11 @@ func (s *Auth) mintOIDCSession(ctx context.Context, az *authz.TxAuthorizer, acco
 		typ     audit.EventType
 		payload audit.Payload
 	}{
-		{audit.EventOIDCLogin, audit.Payload{
-			"method": oidcMethod(issuer), "purpose": purpose, "account_id": account.ID,
+		{audit.EventOIDCLogin, withLoginIntent(audit.Payload{
+			"method": oidcMethod(issuer), "purpose": purposeLogin, "account_id": account.ID,
 			"assurance": assuranceLabel, "provider_id": prov.ID, "acr": claims.ACR,
 			"amr": joinAMR(claims.AMR), "provider_row_version": int(prov.RowVersion),
-		}},
+		}, txn)},
 		{audit.EventAuthSessionCreated, audit.Payload{
 			"session_id": result.SessionID, "artifact": ArtifactBrowser.String(),
 			"method": oidcMethod(issuer), "assurance": assuranceLabel,
@@ -827,7 +915,17 @@ func (s *Auth) refuseOIDC(ctx context.Context, cause, providerID, backoffKey str
 // returns only the audit-write error, on the same fail-closed contract as
 // failLogin.
 func (s *Auth) stageOIDCRefuse(ctx context.Context, az *authz.TxAuthorizer, cause, providerID string) error {
-	payload := audit.Payload{"cause": cause}
+	return s.stageOIDCRefusePayload(ctx, az, cause, providerID, audit.Payload{})
+}
+
+// stageLoginRefuse is stageOIDCRefuse for a resolved login transaction: the
+// refusal carries the recorded intent and sign-up scope (#604 d8).
+func (s *Auth) stageLoginRefuse(ctx context.Context, az *authz.TxAuthorizer, cause, providerID string, txn authz.OIDCTransaction) error {
+	return s.stageOIDCRefusePayload(ctx, az, cause, providerID, withLoginIntent(audit.Payload{}, txn))
+}
+
+func (s *Auth) stageOIDCRefusePayload(ctx context.Context, az *authz.TxAuthorizer, cause, providerID string, payload audit.Payload) error {
+	payload["cause"] = cause
 	if providerID != "" {
 		payload["provider_id"] = providerID
 	}
@@ -837,6 +935,18 @@ func (s *Auth) stageOIDCRefuse(ctx context.Context, az *authz.TxAuthorizer, caus
 		return err
 	}
 	return az.RecordAuthEvent(ctx, e)
+}
+
+// withLoginIntent adds a login transaction's intent and sign-up scope to an
+// auth.oidc_login / auth.oidc_refused payload.
+func withLoginIntent(payload audit.Payload, txn authz.OIDCTransaction) audit.Payload {
+	if txn.Intent != "" {
+		payload["intent"] = txn.Intent
+	}
+	if txn.SignupScopeOrgID != "" {
+		payload["signup_org"] = txn.SignupScopeOrgID
+	}
+	return payload
 }
 
 func joinAMR(amr []string) string {
@@ -855,10 +965,34 @@ type AuthMethodProvider struct {
 	Slug        string
 	DisplayName string
 	Kind        string
+	// Brand names the provider whose published button rules the sign-in
+	// surface follows (#587 d4): "google", "microsoft", or "" for generic.
+	Brand string
 }
 
-// AuthMethods returns the enabled OIDC providers and whether local login is on.
-// Public discovery: proof-free, instance-level, never per-account.
+// Brand issuers (docs/research/social-providers.md 2.1, 3.1): Google's one
+// issuer, and the Entra authority host of every tenant-specific row.
+const (
+	googleIssuer         = "https://accounts.google.com"
+	microsoftIssuerStart = "https://login.microsoftonline.com/"
+)
+
+// providerBrand derives the presentation brand from a pinned issuer. It is
+// display only; nothing admits or refuses on it.
+func providerBrand(issuer string) string {
+	switch {
+	case issuer == googleIssuer:
+		return "google"
+	case strings.HasPrefix(issuer, microsoftIssuerStart):
+		return "microsoft"
+	default:
+		return ""
+	}
+}
+
+// AuthMethods returns enabled OIDC and SAML providers and reports local login
+// enabled. OIDC brands are derived from the pinned issuer. This is proof-free,
+// instance-level discovery; repository read errors propagate.
 func (s *Auth) AuthMethods(ctx context.Context) ([]AuthMethodProvider, bool, error) {
 	var out []AuthMethodProvider
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
@@ -868,7 +1002,7 @@ func (s *Auth) AuthMethods(ctx context.Context) ([]AuthMethodProvider, bool, err
 		}
 		for _, p := range rows {
 			if p.Enabled {
-				out = append(out, AuthMethodProvider{Slug: p.Slug, DisplayName: p.DisplayName, Kind: OIDCKind})
+				out = append(out, AuthMethodProvider{Slug: p.Slug, DisplayName: p.DisplayName, Kind: OIDCKind, Brand: providerBrand(p.Issuer)})
 			}
 		}
 		samlProviders, e := az.ListSAMLProviders(ctx)

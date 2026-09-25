@@ -259,9 +259,14 @@ func TestSCIMOriginKindsAreNotHumanReleasable(t *testing.T) {
 			t.Errorf("origin kind %q is on neither writer's gate, so nothing can create it", kind)
 		}
 	}
-	for _, kind := range []domain.OriginKind{domain.OriginManual, domain.OriginBreakGlass} {
+	// A registration grant (#607) is released by an administrator's revoke
+	// like a manual one (permission-model 2026-09-03 (b)), never by SCIM.
+	for _, kind := range []domain.OriginKind{domain.OriginManual, domain.OriginBreakGlass, domain.OriginRegistration} {
 		if domain.IsSystemOrigin(kind) {
 			t.Errorf("origin kind %q is on the SCIM engine's gate", kind)
+		}
+		if !domain.IsMintableOrigin(kind) {
+			t.Errorf("origin kind %q is not on the human surface's release gate", kind)
 		}
 	}
 }

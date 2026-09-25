@@ -388,13 +388,25 @@ export function useOrgTopology(org: string): {
  * are no organisations", it is "this session has not presented a second
  * factor". The navigation rail asks a different question entirely
  * (`listMyOrgs`, #56) and needs no factor at all.
+ * `origin` filters the operator list to manually created or self-served orgs;
+ * omitted means all origins. `enabled` controls whether the query runs.
  */
-export function useInstanceOrgs(enabled = true): UseQueryResult<OrgList> {
+export function useInstanceOrgs(enabled = true, origin?: OrgOrigin): UseQueryResult<OrgList> {
   return useQuery({
-    queryKey: orgsListKey,
-    queryFn: () => parsed(listOrgsOp, {}),
+    queryKey: [...orgsListKey, origin ?? 'all'],
+    // `?origin=` is the operator's filter for self-served orgs (#585 d9):
+    // pruning them is the ordinary delete.
+    queryFn: () => parsed(listOrgsOp, origin === undefined ? {} : { query: { origin } }),
     enabled,
   });
+}
+
+/** How an org came to exist (#585 d8): an operator's create or a sign-up. */
+export type OrgOrigin = Org['origin'];
+
+/** The operator-facing word for an origin: a sign-up's org is self-served. */
+export function orgOriginLabel(origin: OrgOrigin): string {
+  return origin === 'registration' ? 'self-serve' : 'manual';
 }
 
 export function useCreateOrg(onCreated?: (org: Org) => void) {

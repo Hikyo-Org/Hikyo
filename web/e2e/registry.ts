@@ -38,7 +38,7 @@ export const FLOWS: readonly Flow[] = [
   // `establish-credential` (#568) is a new SURFACE and rides `login.spec.ts`
   // (group 1 on main) for the closure reason the SCIM and audit entries below
   // spell out: a spec file a PR adds to a `ci.yml` group never runs on that PR.
-  { id: 'login', spec: 'flows/login.spec.ts', surfaces: ['login', 'oidc-done', 'establish-credential'] },
+  { id: 'login', spec: 'flows/login.spec.ts', surfaces: ['login', 'signup', 'oidc-done', 'establish-credential'] },
   // `settings` moved to the account flow when the skeleton's session list grew
   // into the whole account & security surface (#60): the chrome flow is about
   // navigation, and a surface with six panels of its own earns its own flow.

@@ -10,7 +10,7 @@ UPDATE principals SET privacy_state = sqlc.arg(privacy_state), session_generatio
 
 -- hikyo:authn-resolution
 -- name: PrivacyEraseAccount :exec
-UPDATE accounts SET username = sqlc.arg(username), display_name = '', email = '', webauthn_user_handle = NULL WHERE id = sqlc.arg(account_id);
+UPDATE accounts SET username = sqlc.arg(username), display_name = '', email = NULL, email_verified_at = NULL, webauthn_user_handle = NULL WHERE id = sqlc.arg(account_id);
 
 -- hikyo:authn-resolution
 -- name: PrivacySessions :many

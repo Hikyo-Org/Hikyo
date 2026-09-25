@@ -6,6 +6,7 @@ import {
   zUpdateStatus,
   zGrantList,
   zOrg,
+  zRegistrationPolicy,
   zSamlProviderMutationResult,
   zSamlSpKeyList,
   zScimBinding,
@@ -35,6 +36,7 @@ import {
   STORAGE_STATE,
   WEBUI_OIDC,
 } from '../fixtures/instance.ts';
+import { enrolledAccount, signInAs, type EnrolledAccount } from '../fixtures/accounts.ts';
 import { test } from '../fixtures/passkey.ts';
 
 /**
@@ -804,9 +806,10 @@ test.describe('instance administration', () => {
     try {
       const operatorPage = await context.newPage();
       await operatorPage.goto('/login');
+      await operatorPage.getByRole('button', { name: /^Password\b/ }).click();
       await operatorPage.getByLabel('Username').fill(username);
       await operatorPage.getByLabel('Password').fill(password);
-      await operatorPage.getByRole('button', { name: 'Sign in' }).click();
+      await operatorPage.getByRole('button', { name: 'Sign in', exact: true }).click();
       await passEnrolmentGate(operatorPage, password);
       // The account entry is shell chrome that renders even for an operator with
       // no organisations of its own, so it is the honest "signed in" settle point.
@@ -1182,4 +1185,76 @@ test.describe('instance administration', () => {
       }
     });
   }
+});
+
+/**
+ * Open registration at instance scope (#606): the instance Members panel's
+ * editor lands `none` or `fresh-org` (no organisation to pick), and a
+ * fresh-org policy renders `n / cap`. Every mutation takes the blue proof
+ * step; the policy is closed again afterwards so no other flow sees a door.
+ * The proofs come from an instance operator of the test's own: two on the
+ * shared administrator leave its ledger a step ahead of the clock for the next
+ * flow to wait out.
+ */
+test.describe('open registration at instance scope', () => {
+  test.use({ storageState: STORAGE_STATE });
+  const POLICY = '/api/v1/instance/registration-policy';
+
+  async function closeInstancePolicy(page: Page, operator: EnrolledAccount) {
+    try {
+      await browserApi(page, 'GET', POLICY, zRegistrationPolicy);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('answered 404:')) return;
+      throw error;
+    }
+    await browserApi(page, 'DELETE', POLICY, z.null(), { proof: await operator.ledger.next() });
+  }
+
+  test('opens a fresh-org policy with n / cap and closes it', async ({ page, browser }, testInfo) => {
+    testInfo.setTimeout(90_000);
+    // No bearer: the operator signs the page in with its second code, so its
+    // two proofs start at the third and wait at most one boundary each.
+    // An instance operator holds manage-members and instance-config there.
+    const operator = await enrolledAccount(browser, 'reg-instance-operator', 'instance', false);
+    await signInAs(page, operator);
+    await page.goto('/instance/members');
+    await closeInstancePolicy(page, operator);
+    await page.reload();
+    const panel = page.locator('#members-registration');
+    try {
+      await expect(panel).toContainText('No one can sign up on this instance without an invitation.');
+      await panel.getByRole('button', { name: 'Open registration…' }).click();
+      const editor = page.getByRole('dialog');
+      await expect(editor.getByRole('heading', { level: 2 })).toHaveText('Instance · open registration');
+      // Instance scope has no organisation to land in: none or a fresh org.
+      await expect(editor.getByLabel(/^Role template/)).toHaveCount(0);
+      await editor.getByLabel(OIDC_PROVIDER.displayName).check();
+      await editor.getByLabel(/^A new organisation per sign-up/).check();
+      await editor.getByLabel('Cap on organisations minted').fill('0');
+      await editor.getByRole('button', { name: 'Save' }).click();
+      // A zero cap is refused before any proof is asked.
+      await expect(editor.getByText('A cap of at least 1 is required for this landing.')).toBeVisible();
+      await editor.getByLabel('Cap on organisations minted').fill('5');
+      await editor.getByRole('button', { name: 'Save' }).click();
+      const proof = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
+      await proof.getByLabel('Authenticator code or password').fill(await operator.ledger.next());
+      await proof.getByRole('button', { name: 'Confirm' }).click();
+      await expect(page.locator('.notice').filter({ hasText: 'registration.policy_created' })).toBeVisible();
+      await expect(panel).toContainText('0 / 5 minted');
+      await expect(panel.getByText('active', { exact: true })).toBeVisible();
+      // No org sign-up link at instance scope: the login page is that door.
+      await expect(panel.getByRole('button', { name: 'Copy sign-up link' })).toHaveCount(0);
+      const door = zAuthMethods.parse(await (await page.request.get(`${BASE_URL}/api/v1/auth/methods`)).json());
+      expect(door.signup_open).toBe(true);
+      expect(door.signup_methods).toEqual([{ kind: 'oidc', slug: OIDC_PROVIDER.slug }]);
+
+      await panel.getByRole('button', { name: 'Close registration' }).click();
+      const closing = page.getByRole('dialog').filter({ hasText: "Confirm it's you" });
+      await closing.getByLabel('Authenticator code or password').fill(await operator.ledger.next());
+      await closing.getByRole('button', { name: 'Confirm' }).click();
+      await expect(panel).toContainText('No one can sign up on this instance without an invitation.');
+    } finally {
+      await closeInstancePolicy(page, operator);
+    }
+  });
 });

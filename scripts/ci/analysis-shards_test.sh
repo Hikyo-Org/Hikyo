@@ -150,7 +150,9 @@ for shard_count in 1 3 6; do
 	done
 	split_suites='internal/(app|service|store|store/upgrade|upgradegate)$'
 	awk -F '\t' -v suites="$split_suites" '$2 !~ suites { print $2 }' "$race_actual" | sort >"$fixture_dir/whole-actual"
-	printf '%s\n' extra internal/crypto internal/lint |
+	# internal/lint is in the fixture and never planned: excluded from the
+	# race shards with the isolation suite (raceExcluded in the planner).
+	printf '%s\n' extra internal/crypto |
 		sed 's|^|example.com/shards/|' | sort >"$fixture_dir/whole-expected"
 	cmp "$fixture_dir/whole-expected" "$fixture_dir/whole-actual"
 	if awk -F '\t' -v suites="$split_suites" '$2 !~ suites && NF != 2 { found=1 } END { exit !found }' "$race_actual"; then

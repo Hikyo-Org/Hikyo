@@ -63,6 +63,10 @@ func TestDefinitionBodyTransportPreservesTheDomainBound(t *testing.T) {
 				}
 			} else if resp.StatusCode != http.StatusBadRequest {
 				t.Fatalf("global transport bound: %d %s", resp.StatusCode, body)
+			} else if !resp.Close {
+				// MaxBytesReader on the root writer: past the bound net/http
+				// closes the connection rather than draining the body.
+				t.Fatal("global transport bound kept the connection open")
 			}
 			select {
 			case got := <-parsed:

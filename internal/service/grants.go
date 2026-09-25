@@ -120,6 +120,10 @@ type Grants struct {
 	// start now.
 	Auth *Auth
 	Now  func() time.Time
+	// originKind is the origin a template application records; empty means
+	// manual. Only the registration sign-up (#607) sets it, to registration,
+	// with the policy's authority principal as the granting caller.
+	originKind domain.OriginKind
 }
 
 func (s *Grants) now() time.Time {
@@ -269,6 +273,11 @@ func (s *Grants) grantOneDeferredInvalidation(
 	return s.grantOneWithInvalidation(ctx, az, caller, spec, level, template, false)
 }
 
+// grantOneWithInvalidation applies one grant under the caller's authority and
+// returns the lifecycle events for the enclosing transaction. A configured
+// originKind marks template grants made during registration; otherwise the
+// origin is manual. Session invalidation is deferred when requested, and an
+// unchanged grant emits no events.
 func (s *Grants) grantOneWithInvalidation(
 	ctx context.Context, az *authz.TxAuthorizer, caller authz.Identity,
 	spec GrantSpec, level domain.Level, template domain.Template,
@@ -313,6 +322,9 @@ func (s *Grants) grantOneWithInvalidation(
 	}
 
 	origin := authz.Origin{Kind: domain.OriginManual, Subject: string(grantor)}
+	if s.originKind != "" {
+		origin.Kind = s.originKind
+	}
 	out, err := writeGrantRowState(ctx, az, spec, origin, now)
 	if err != nil {
 		return zero, nil, err
@@ -1273,6 +1285,11 @@ func checkPrincipalClass(class domain.PrincipalClass, capability domain.Capabili
 		return fmt.Errorf("%w: %q", ErrSystemCreatedOnly, capability)
 	}
 	if class == domain.ClassHuman {
+		if capability == domain.CapReportDeliveryStatus {
+			// Workload-only (condition-reporting ADR D1): a human never
+			// reports a delivery target.
+			return fmt.Errorf("%w: class %q may not hold %q", ErrMachineCapability, class, capability)
+		}
 		// `instance-directory` is deliberately NOT refused here. It is the
 		// multi-instance ADR's own grantable atom for the viewing side — "on a
 		// multi-user install the admin grants the hop to exactly the humans who

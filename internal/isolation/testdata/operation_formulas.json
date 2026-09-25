@@ -334,6 +334,30 @@
     ]
   },
   {
+    "operation": "delivery-target.list",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "delivery-target.report",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "report-delivery-status@environment"
+    ]
+  },
+  {
+    "operation": "delivery-target.tombstone",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "report-delivery-status@environment"
+    ]
+  },
+  {
     "operation": "delivery.fetch",
     "class": "tenant",
     "level": "environment",
@@ -1087,6 +1111,54 @@
     "level": "project",
     "formula": [
       "manage-projects@org"
+    ]
+  },
+  {
+    "operation": "registration-policy.delete-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "registration-policy.delete-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "registration-policy.get-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "registration-policy.get-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
+    ]
+  },
+  {
+    "operation": "registration-policy.put-instance",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "manage-members@instance"
+    ]
+  },
+  {
+    "operation": "registration-policy.put-org",
+    "class": "tenant",
+    "level": "org",
+    "formula": [
+      "manage-members@org"
     ]
   },
   {

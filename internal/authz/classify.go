@@ -225,6 +225,8 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// reauth). link start mirrors start; unlink emits the unlink plus the
 	// reissued session. Provider administration is operation-modeled (Ops).
 	"http:POST /api/v1/auth/oidc/{provider}/start": {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventAuthThrottleCrossed}},
+	// A sign-up-intent login (#607) adds the registration outcomes and, for
+	// a landing, the org creation and template grants its authority writes.
 	"http:GET /api/v1/auth/oidc/{provider}/callback": {Class: ClassUnauthenticated, Events: []audit.EventType{
 		audit.EventOIDCLogin,
 		audit.EventOIDCRefused,
@@ -232,6 +234,12 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 		audit.EventAuthSessionCreated,
 		audit.EventAuthReauthenticated,
 		audit.EventAuthThrottleCrossed,
+		audit.EventRegistrationSignupAdmitted,
+		audit.EventRegistrationSignupRefused,
+		audit.EventRegistrationSignupCompleted,
+		audit.EventOrgCreated,
+		audit.EventGrantCreated,
+		audit.EventGrantTemplateApplied,
 	}},
 	"http:GET /api/v1/auth/identities":       {Class: ClassUnauthenticated},
 	"http:POST /api/v1/auth/identities/link": {Class: ClassUnauthenticated, Events: []audit.EventType{audit.EventAuthThrottleCrossed}},
@@ -468,8 +476,14 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:DELETE /api/v1/orgs/{org}/grants":        {Class: ClassTenant, Ops: []Operation{OpGrantRevokeOrg}},
 	"http:POST /api/v1/orgs/{org}/grants/template": {Class: ClassTenant, Ops: []Operation{OpTemplateApplyOrg}},
 	// Member invitation (#568): one route per depth, like grant.create.
-	"http:POST /api/v1/orgs/{org}/invitations": {Class: ClassTenant, Ops: []Operation{OpMemberInviteOrg}},
-	"http:POST /api/v1/instance/invitations":   {Class: ClassInstance, Ops: []Operation{OpMemberInviteInstance}},
+	"http:POST /api/v1/orgs/{org}/invitations":           {Class: ClassTenant, Ops: []Operation{OpMemberInviteOrg}},
+	"http:POST /api/v1/instance/invitations":             {Class: ClassInstance, Ops: []Operation{OpMemberInviteInstance}},
+	"http:GET /api/v1/orgs/{org}/registration-policy":    {Class: ClassTenant, Ops: []Operation{OpRegistrationPolicyGetOrg}},
+	"http:PUT /api/v1/orgs/{org}/registration-policy":    {Class: ClassTenant, Ops: []Operation{OpRegistrationPolicyPutOrg}},
+	"http:DELETE /api/v1/orgs/{org}/registration-policy": {Class: ClassTenant, Ops: []Operation{OpRegistrationPolicyDeleteOrg}},
+	"http:GET /api/v1/instance/registration-policy":      {Class: ClassInstance, Ops: []Operation{OpRegistrationPolicyGetInstance}},
+	"http:PUT /api/v1/instance/registration-policy":      {Class: ClassInstance, Ops: []Operation{OpRegistrationPolicyPutInstance}},
+	"http:DELETE /api/v1/instance/registration-policy":   {Class: ClassInstance, Ops: []Operation{OpRegistrationPolicyDeleteInstance}},
 
 	// Machine identities (#61). Tenant-class at project depth: an identity
 	// surface a caller may not administer answers exactly like a project
@@ -575,6 +589,18 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 		audit.EventFederationRefused,
 		audit.EventJWKSRefreshFailed,
 	}},
+	// Delivery-target reports (#788) ride the fetch credential, so a federated
+	// presentation carries the same pre-authentication refusals. The list is a
+	// human read.
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets": {Class: ClassTenant, Ops: []Operation{OpDeliveryTargetReport}, Events: []audit.EventType{
+		audit.EventFederationRefused,
+		audit.EventJWKSRefreshFailed,
+	}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone": {Class: ClassTenant, Ops: []Operation{OpDeliveryTargetTombstone}, Events: []audit.EventType{
+		audit.EventFederationRefused,
+		audit.EventJWKSRefreshFailed,
+	}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets": {Class: ClassTenant, Ops: []Operation{OpDeliveryTargetList}},
 
 	"http:GET /api/v1/orgs/{org}/projects/{project}/grants":                                      {Class: ClassTenant, Ops: []Operation{OpGrantListProject}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/grants":                                     {Class: ClassTenant, Ops: []Operation{OpGrantCreateProject}},

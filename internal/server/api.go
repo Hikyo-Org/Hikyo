@@ -16,6 +16,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/scimproto"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -32,7 +33,7 @@ import (
 // AuthService is the human-authentication surface this transport needs.
 type AuthService interface {
 	MyProfile(ctx context.Context, presented string) (service.AccountProfile, error)
-	UpdateMyProfile(ctx context.Context, presented string, profile service.AccountProfile, proof string) (service.AccountProfile, error)
+	UpdateMyProfile(ctx context.Context, presented string, profile service.ProfileUpdate, proof string) (service.AccountProfile, error)
 	LocalLogin(ctx context.Context, username, password string, artifact service.Artifact) (service.LoginResult, error)
 	LoginChallengeTOTP(ctx context.Context, challengeID, code string) (service.LoginResult, error)
 	LoginChallengeWebauthnStart(ctx context.Context, challengeID string) ([]byte, error)
@@ -50,7 +51,7 @@ type AuthService interface {
 	GenerateRecoveryCodes(ctx context.Context, presented, proof string) ([]string, service.LoginResult, error)
 	ConsumeRecoveryCode(ctx context.Context, username, code string) (service.RecoveryResult, error)
 	AuthMethods(ctx context.Context) ([]service.AuthMethodProvider, bool, error)
-	OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
+	OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error)
 	OIDCCallback(ctx context.Context, slug, code, state, iss, idpError, bindingCookie, presented string) (service.OIDCCallbackResult, error)
 	ListIdentities(ctx context.Context, presented string) ([]authnIdentity, error)
 	UnlinkIdentity(ctx context.Context, presented, identityID, proof string) (service.LoginResult, error)
@@ -141,25 +142,28 @@ type DefinitionsService interface {
 
 // API implements the generated strict server.
 type API struct {
-	Runtime         RuntimeStatusSource
-	SelfConfig      *service.SelfConfig
-	Discovery       *service.Discovery
-	Auth            AuthService
-	SAMLAuth        SAMLAuthService
-	Orgs            OrgService
-	Projects        ProjectService
-	Environments    EnvironmentService
-	Folders         FolderService
-	Keys            KeyService
-	Definitions     DefinitionsService
-	Values          ValueService
-	Revisions       RevisionService
-	Rotation        RotationService
-	Reencrypt       ReencryptService
-	Pins            PinService
-	Reveal          RevealService
-	KeyGroups       KeyGroupService
-	Grants          GrantService
+	Runtime      RuntimeStatusSource
+	SelfConfig   *service.SelfConfig
+	Discovery    *service.Discovery
+	Auth         AuthService
+	SAMLAuth     SAMLAuthService
+	Orgs         OrgService
+	Projects     ProjectService
+	Environments EnvironmentService
+	Folders      FolderService
+	Keys         KeyService
+	Definitions  DefinitionsService
+	Values       ValueService
+	Revisions    RevisionService
+	Rotation     RotationService
+	Reencrypt    ReencryptService
+	Pins         PinService
+	Reveal       RevealService
+	KeyGroups    KeyGroupService
+	Grants       GrantService
+	// Registration is the registration policy surface (#606) and the public
+	// sign-up door `/auth/methods` renders.
+	Registration    RegistrationService
 	Identities      IdentityService
 	Federation      FederationService
 	Delivery        DeliveryService
@@ -264,11 +268,17 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 		}
 		identity = &value
 	}
+	// The delivery-target report tokens (#788, ADR D10): one per accepted
+	// vocabulary. An integration reports only when one is advertised.
+	capabilities := []apigen.ProtocolCapability{"local-password"}
+	for _, token := range deliverytarget.CapabilityTokens() {
+		capabilities = append(capabilities, apigen.ProtocolCapability(token))
+	}
 	return apigen.GetMeta200JSONResponse{
 		InstanceIdentity:     identity,
 		ServerVersion:        a.Version,
 		ApiRevision:          api.Revision,
-		ProtocolCapabilities: []apigen.ProtocolCapability{"local-password"},
+		ProtocolCapabilities: capabilities,
 	}, nil
 }
 
@@ -527,13 +537,20 @@ func (a *API) ListMyOrgs(ctx context.Context, _ apigen.ListMyOrgsRequestObject) 
 	return apigen.ListMyOrgs200JSONResponse{Items: items, Count: len(items)}, nil
 }
 
-func (a *API) ListOrgs(ctx context.Context, _ apigen.ListOrgsRequestObject) (apigen.ListOrgsResponseObject, error) {
+// ListOrgs enumerates organizations for an authorized operator. An origin
+// query narrows the returned items and count after the service read; list
+// authorization and read errors propagate.
+func (a *API) ListOrgs(ctx context.Context, req apigen.ListOrgsRequestObject) (apigen.ListOrgsResponseObject, error) {
 	orgs, err := a.Orgs.List(ctx, service.Bearer(bearer(ctx)))
 	if err != nil {
 		return nil, err
 	}
 	items := make([]apigen.Org, 0, len(orgs))
 	for _, o := range orgs {
+		// `?origin=` narrows the rendered list; the audited read is the list.
+		if req.Params.Origin != nil && o.Origin != string(*req.Params.Origin) {
+			continue
+		}
 		items = append(items, wireOrg(o))
 	}
 	return apigen.ListOrgs200JSONResponse{Items: items, Count: len(items)}, nil
@@ -775,17 +792,40 @@ func (a *API) validateAgainstContractWith(
 			if !a.scimBodyIsOneValue(w, r) {
 				return
 			}
+		} else if operation.ID == "reportDeliveryTarget" && r.Body != nil {
+			// A delivery-target report is bounded at 8 KiB (k8s-condition-
+			// reporting ADR D6) and an over-size one is refused WITHOUT being
+			// parsed, so the refusal can never be tied to a row the body names.
+			// It still ranks behind admission, authentication and authorization.
+			// MaxBytesReader, not LimitReader: past the bound it tells net/http
+			// to close the connection after the refusal instead of draining the
+			// rest of the body. The read happens here, before the contract
+			// validator, so the SCIM caveat above does not apply.
+			raw, err := io.ReadAll(http.MaxBytesReader(rootResponseWriter(w), r.Body, deliverytarget.MaxReportBytes))
+			var oversize *http.MaxBytesError
+			if err != nil && !errors.As(err, &oversize) {
+				writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), "")
+				return
+			}
+			if oversize != nil {
+				validated, err := match.ValidateWithoutBody()
+				if err != nil {
+					a.writeValidationError(w, err)
+					return
+				}
+				if request := validated.Request(); a.requireCurrentRuntime(w, request) {
+					a.refuseOversizeReport(w, request, envScope(
+						match.PathParam("org"), match.PathParam("project"), match.PathParam("environment")))
+				}
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(raw))
 		} else if r.Body != nil {
-			r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBytes)
+			r.Body = http.MaxBytesReader(rootResponseWriter(w), r.Body, MaxRequestBytes)
 		}
 		validated, err := match.Validate()
 		if err != nil {
-			var verr *api.ValidationError
-			detail := ""
-			if errors.As(err, &verr) {
-				detail = verr.Member
-			}
-			writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), detail)
+			a.writeValidationError(w, err)
 			return
 		}
 		request := validated.Request()
@@ -794,6 +834,17 @@ func (a *API) validateAgainstContractWith(
 		}
 		next.ServeHTTP(w, request)
 	})
+}
+
+// writeValidationError renders a contract-validation refusal, naming the
+// offending member.
+func (a *API) writeValidationError(w http.ResponseWriter, err error) {
+	var verr *api.ValidationError
+	detail := ""
+	if errors.As(err, &verr) {
+		detail = verr.Member
+	}
+	writeError(w, wirePolicyForCode(apigen.ErrorCodeBadRequest), detail)
 }
 
 // scimBodyIsOneValue enforces the single-JSON-value rule on a SCIM wire body

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,9 +29,10 @@ import (
 // evaluation - lives here.
 
 const (
-	// OIDCKind is the identity-key discriminator. Only 'oidc' exists in v1; the
-	// column reserves room for SAML (#72) without reshaping the key.
-	OIDCKind = "oidc"
+	// OIDCKind and OAuth2Kind are the identity-key discriminators, spelled once
+	// in domain.ProviderKind.
+	OIDCKind   = string(domain.ProviderOIDC)
+	OAuth2Kind = string(domain.ProviderOAuth2)
 	// oidcTxLifetime is the transaction's single-use window.
 	oidcTxLifetime = 10 * time.Minute
 	// oidcAuthTimeBound is the reauth freshness bound on the provider-asserted
@@ -105,6 +107,12 @@ var (
 	ErrProviderRace = errors.New("service: provider row changed underneath this write")
 	// ErrProviderDiscovery reports a discovery failure at provider write time.
 	ErrProviderDiscovery = errors.New("service: provider discovery failed")
+	// ErrPairwiseClientID refuses a client_id change on a provider whose
+	// discovery advertises pairwise subjects only while identities are linked
+	// under its issuer (#588 d2): every linked subject is bound to the old
+	// client registration. Remedy: delete and recreate the provider, which
+	// strands them explicitly. The ErrIssuerImmutable shape.
+	ErrPairwiseClientID error = pairwiseClientIDError{}
 	// ErrLastCredential refuses unlinking the last remaining credential.
 	ErrLastCredential = errors.New("service: cannot unlink the last remaining credential")
 	// ErrIdentityNotFound reports an unknown identity id on unlink.
@@ -113,6 +121,29 @@ var (
 	// (a 0-window gate needs WebAuthn, which alone can bind the enumerated unit).
 	ErrReauthWindowClosed = errors.New("service: reauthentication window is 0; a WebAuthn ceremony is required here")
 )
+
+type pairwiseClientIDError struct{}
+
+func (pairwiseClientIDError) Error() string {
+	return "service: " + pairwiseClientIDError{}.SafeDetail()
+}
+func (pairwiseClientIDError) SafeDetail() string {
+	return "client_id: this provider issues pairwise subjects and has linked identities, so its client_id cannot change; delete and recreate the provider instead"
+}
+
+// providerIssuerMismatch is ErrProviderDiscovery naming the issuer the
+// discovery document carries (a 400 whose detail is the remedy). It is
+// reached only after instance-config authorization, and names only what the
+// operator's own issuer URL published.
+type providerIssuerMismatch struct{ discovered string }
+
+func (e providerIssuerMismatch) Error() string {
+	return "service: provider discovery failed: " + e.SafeDetail()
+}
+func (e providerIssuerMismatch) Unwrap() error { return ErrProviderDiscovery }
+func (e providerIssuerMismatch) SafeDetail() string {
+	return "issuer: the discovery document names issuer " + strconv.Quote(e.discovered) + "; configure that issuer instead"
+}
 
 // providerSecretAAD binds a sealed client secret to the provider row that owns
 // it, so a secret lifted from one row cannot be replayed into another's.
@@ -262,6 +293,11 @@ func (s *Providers) redirectURI(slug string) string {
 // immutable on update (A3): a changed issuer is refused by name. Discovery is
 // re-run at write time and the document's issuer must byte-equal the configured
 // one. A reconfigure that changes security material sweeps federated sessions.
+// Changing the client ID is refused with ErrPairwiseClientID when discovery
+// advertises only pairwise subjects and identities remain linked under the
+// issuer. Discovery failures return ErrProviderDiscovery, with the discovered
+// issuer named when it differs. Authorization, storage and sealing errors
+// propagate.
 func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in ProviderInput) (ProviderView, error) {
 	var out ProviderView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
@@ -278,9 +314,17 @@ func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in Provid
 		if err != nil {
 			return err
 		}
-		if _, derr := oidcrp.DiscoverWithPolicy(ctx, in.Issuer, s.FederationPolicy); derr != nil {
+		rp, derr := oidcrp.DiscoverWithPolicy(ctx, in.Issuer, s.FederationPolicy)
+		if derr != nil {
 			if s.Log != nil {
 				s.Log.WarnContext(ctx, "oidc provider discovery failed", "slug", slug, "err", derr)
+			}
+			// A document naming another issuer names the remedy (#588 d1):
+			// an Entra `common`, `organizations` or domain-name authority
+			// discovers to the tenant GUID issuer the row must carry.
+			var mismatch *oidcrp.IssuerMismatchError
+			if errors.As(derr, &mismatch) {
+				return providerIssuerMismatch{discovered: mismatch.Discovered}
 			}
 			return ErrProviderDiscovery
 		}
@@ -293,6 +337,15 @@ func (s *Providers) Put(ctx context.Context, actor Actor, slug string, in Provid
 		}
 		if existing.Issuer != in.Issuer {
 			return ErrIssuerImmutable
+		}
+		if existing.ClientID != in.ClientID && rp.PairwiseSubjectsOnly() {
+			linked, err := az.CountExternalIdentitiesForIssuer(ctx, OIDCKind, existing.Issuer)
+			if err != nil {
+				return err
+			}
+			if linked > 0 {
+				return ErrPairwiseClientID
+			}
 		}
 		return s.update(ctx, r, az, p, caller.Principal, existing, in, &out)
 	})

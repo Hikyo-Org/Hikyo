@@ -73,6 +73,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpAdapterSync, authz.OpAdapterConfigure)
 	add(budgetClassNamed, "machine-fetch §179: Delivery.FetchAs (300/min·org + 1000/min·instance)",
 		authz.OpDeliveryFetch)
+	add(budgetClassNamed, "delivery-target report: separate bucket, 60/min·principal + 300/min·org, charged after authorization (k8s-condition-reporting ADR D8)",
+		authz.OpDeliveryTargetReport, authz.OpDeliveryTargetTombstone)
 	add(budgetClassNamed, "schema-revision §151: chargeOnce before BumpSchemaRevision (60/h·project)",
 		authz.OpKeyCreate, authz.OpKeyRename, authz.OpKeyUpdateDeclaration, authz.OpKeyUpdateMetadata,
 		authz.OpKeySetGroup, authz.OpKeyDelete, authz.OpKeyReclassify,
@@ -103,6 +105,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpAdvisoryWatch, authz.OpAdvisoryEvent)
 	add(budgetClassExempt, "reveal ceremony + per-key gate limiter (GateAttemptsPerMinute) bound it",
 		authz.OpValueReveal)
+	add(budgetClassExempt, "delivery-target list: one environment, at most 100 rows per reporting principal (§10 authenticated API)",
+		authz.OpDeliveryTargetList)
 	add(budgetClassExempt, "paged audit read ≤1000/page (§2/§10)",
 		authz.OpAuditQueryOrg, authz.OpAuditQueryProject, authz.OpAuditQueryEnv, authz.OpAuditInstanceQuery)
 	add(budgetClassExempt, "outbox worker push; §12 outbox concurrency (1/target, 4/org) bounds it",
@@ -189,6 +193,11 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// authority mint; frequency governed by the §10 authenticated-API budget
 		// exactly as the template and credential-reset operations beside it.
 		authz.OpMemberInviteOrg, authz.OpMemberInviteInstance,
+		// registration policy (#606): one policy row and its child rows per
+		// scope. The sign-up legs the policy opens are charged to the named
+		// `signup` category at their own charge points (#607, #608), never here.
+		authz.OpRegistrationPolicyGetOrg, authz.OpRegistrationPolicyPutOrg, authz.OpRegistrationPolicyDeleteOrg,
+		authz.OpRegistrationPolicyGetInstance, authz.OpRegistrationPolicyPutInstance, authz.OpRegistrationPolicyDeleteInstance,
 		// instance operational reads
 		authz.OpRetentionHealthRead, authz.OpUpdateStatusRead, authz.OpUpdateRequest, authz.OpUpdateJobRead,
 		// dynamic secrets: reads, revoke/delete, and the enqueue-only lease

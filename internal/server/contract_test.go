@@ -162,7 +162,7 @@ func (s stubAuth) AuthMethods(context.Context) ([]service.AuthMethodProvider, bo
 	return nil, true, nil
 }
 
-func (s stubAuth) OIDCStart(ctx context.Context, slug, purpose, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error) {
+func (s stubAuth) OIDCStart(ctx context.Context, slug, purpose, intent, signupOrg, environmentID, presented, proof string, browser bool) (service.OIDCStartResult, error) {
 	if s.oidcStart != nil {
 		return s.oidcStart(ctx, slug, purpose, environmentID, presented, proof, browser)
 	}
@@ -473,6 +473,8 @@ func newTestServer(t *testing.T, auth server.AuthService, orgs server.OrgService
 	t.Helper()
 	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
 		Auth: auth, Orgs: orgs, Providers: stubProviders{}, Version: "test",
+		// Every door closed: the public discovery read always asks for one.
+		Registration: stubRegistration{},
 		// The hierarchy services default to the uniform nonexistent answer, so a
 		// contract test that does not care about them still exercises the real
 		// router and the real response validation rather than nil-panicking.
@@ -634,6 +636,21 @@ func TestOIDCBrowserLinkCarriesBrowserIntent(t *testing.T) {
 	}
 	if cookies := response.Cookies(); len(cookies) != 1 || !strings.HasPrefix(cookies[0].Name, "__Host-hikyo-oidc-browser-") || cookies[0].Value != "link" {
 		t.Fatalf("link marker cookies = %#v", cookies)
+	}
+}
+
+// An environment_id on a non-reauth start is a request-shape refusal: a 400
+// naming the field, the one start refusal outside the uniform 401.
+func TestOIDCStartRefusesEnvironmentOutsideReauth(t *testing.T) {
+	auth := stubAuth{oidcStart: func(context.Context, string, string, string, string, string, bool) (service.OIDCStartResult, error) {
+		return service.OIDCStartResult{}, service.ErrEnvironmentNotForPurpose
+	}}
+	srv := newTestServer(t, auth, stubOrgs{})
+	response, body := call(t, srv, http.MethodPost, api.PathPrefix+"/auth/oidc/corp/start", "", map[string]any{
+		"purpose": "login", "environment_id": "env_stray",
+	})
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(string(body), "environment_id") {
+		t.Fatalf("status=%d body=%s, want 400 naming environment_id", response.StatusCode, body)
 	}
 }
 
@@ -958,7 +975,7 @@ func TestNullableMetadataRoundTripsAbsentNullAndValue(t *testing.T) {
 			seen = append(seen, meta)
 			return service.Org{
 				ID: testOrgID, Name: name, Active: active, Metadata: meta,
-				CreatedAt: liveIdentity.CreatedAt,
+				CreatedAt: liveIdentity.CreatedAt, Origin: "manual",
 			}, nil
 		},
 	})
@@ -1549,6 +1566,101 @@ func (s stubGrants) InviteMember(context.Context, service.Actor, service.InviteS
 	return service.InvitationResult{}, s.outcome()
 }
 
+// stubRegistration is the registration surface's fixture (#606): the policy
+// verbs answer the uniformity outcome, the public door answers door, and put
+// answers putErr when set so a precondition refusal can be rendered.
+type stubRegistration struct {
+	stubHierarchy
+	door    service.SignupDoor
+	putErr  error
+	doorOrg *service.RegistrationScope
+}
+
+func (s stubRegistration) Get(context.Context, service.Actor, service.RegistrationScope) (*service.RegistrationPolicyView, error) {
+	return nil, s.outcome()
+}
+
+func (s stubRegistration) Put(context.Context, service.Actor, service.RegistrationScope, service.RegistrationPolicyInput, string) (service.RegistrationPolicyView, error) {
+	if s.putErr != nil {
+		return service.RegistrationPolicyView{}, s.putErr
+	}
+	return service.RegistrationPolicyView{}, s.outcome()
+}
+
+func (s stubRegistration) Delete(context.Context, service.Actor, service.RegistrationScope, string) error {
+	return s.outcome()
+}
+
+func (s stubRegistration) SignupDoor(_ context.Context, scope service.RegistrationScope) (service.SignupDoor, error) {
+	if s.doorOrg != nil {
+		*s.doorOrg = scope
+	}
+	return s.door, nil
+}
+
+// namedRefusal is a precondition refusal as the service shapes it: invalid,
+// with a caller-safe detail naming the failing item.
+type namedRefusal struct{ detail string }
+
+func (e namedRefusal) Error() string      { return "refused: " + e.detail }
+func (e namedRefusal) Unwrap() error      { return domain.ErrInvalid }
+func (e namedRefusal) SafeDetail() string { return e.detail }
+
+// A write-time precondition refuses 400 and names the failing item and the
+// provider row in `detail`, the one member a bad_request may carry (#606).
+func TestRegistrationPolicyPreconditionIsNamedOnTheWire(t *testing.T) {
+	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, Version: "test",
+		Registration: stubRegistration{putErr: namedRefusal{detail: "provider-disabled: oidc:off"}},
+	}, nil))
+	t.Cleanup(srv.Close)
+	body := apigen.RegistrationPolicyPutRequest{
+		External: []apigen.RegistrationExternalEntry{{Provider: apigen.ProviderRef{Kind: "oidc", Slug: "off"}}},
+		Landing:  apigen.RegistrationLanding{Kind: apigen.RegistrationLandingKindNone},
+	}
+	resp, payload := call(t, srv, http.MethodPut, api.PathPrefix+"/instance/registration-policy", "hik_1_cli_x", body)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("precondition refusal answered %d, want 400", resp.StatusCode)
+	}
+	e := decodeError(t, payload)
+	if e.Error.Code != apigen.ErrorCodeBadRequest || e.Error.Detail == nil || *e.Error.Detail != "provider-disabled: oidc:off" {
+		t.Fatalf("refusal body = %s, want bad_request naming provider-disabled: oidc:off", payload)
+	}
+}
+
+// `/auth/methods?org=<id>` renders that org's door (#606): the org reaches
+// the service unchanged and the door fields are on the contract.
+func TestAuthMethodsRendersTheAddressedSignupDoor(t *testing.T) {
+	var seen service.RegistrationScope
+	srv := httptest.NewServer(server.New(stubReady{}, &server.API{
+		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{}, Version: "test",
+		Registration: stubRegistration{doorOrg: &seen, door: service.SignupDoor{Open: true, Methods: []service.SignupMethod{
+			{Kind: service.SignupMethodOIDC, Slug: "corp"}, {Kind: service.SignupMethodLocal},
+		}}},
+	}, nil))
+	t.Cleanup(srv.Close)
+	resp, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/methods?org="+testOrgID, "", nil)
+	if resp.StatusCode != http.StatusOK || seen.Instance() || seen.Org() != testOrgID {
+		t.Fatalf("auth methods ?org answered %d for scope %+v", resp.StatusCode, seen)
+	}
+	// The spelling is `[{kind, slug} | "local"]` (api-cli-spellings section 8).
+	if !strings.Contains(string(payload), `"signup_methods":[{"kind":"oidc","slug":"corp"},"local"]`) ||
+		!strings.Contains(string(payload), `"signup_open":true`) || !strings.Contains(string(payload), `"signup_paused":false`) {
+		t.Fatalf("door = %s", payload)
+	}
+	// Without ?org= the instance door is asked.
+	if resp, _ := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/methods", "", nil); resp.StatusCode != http.StatusOK || !seen.Instance() {
+		t.Fatalf("auth methods without ?org answered %d for scope %+v", resp.StatusCode, seen)
+	}
+	// A supplied but empty ?org= is a closed door, never the instance's.
+	seen = service.RegistrationScope{}
+	resp, payload = call(t, srv, http.MethodGet, api.PathPrefix+"/auth/methods?org=", "", nil)
+	if resp.StatusCode != http.StatusOK || seen.Instance() || seen.Org() != "" ||
+		!strings.Contains(string(payload), `"signup_open":false`) || !strings.Contains(string(payload), `"signup_methods":[]`) {
+		t.Fatalf("auth methods ?org= answered %d for scope %+v: %s", resp.StatusCode, seen, payload)
+	}
+}
+
 type stubSettings struct{ stubHierarchy }
 
 func (s stubSettings) GetEnvironment(context.Context, service.Actor, domain.Scope) (service.EnvironmentSettings, error) {
@@ -1615,14 +1727,15 @@ func hierarchyServer(t *testing.T, outcome error) *httptest.Server {
 		Auth: stubAuth{identity: liveIdentityFn}, Orgs: stubOrgs{}, Providers: stubProviders{},
 		Projects:     stubHierarchy{err: outcome},
 		Environments: stubEnvs{stubHierarchy{err: outcome}}, Values: stubValues{stubHierarchy{err: outcome}},
-		Folders:   stubFolders{stubHierarchy{err: outcome}},
-		Keys:      stubKeys{stubHierarchy{err: outcome}},
-		KeyGroups: stubKeyGroups{stubHierarchy{err: outcome}},
-		Grants:    stubGrants{stubHierarchy{err: outcome}},
-		Settings:  stubSettings{stubHierarchy{err: outcome}},
-		SCIM:      stubSCIM{stubHierarchy{err: outcome}},
-		Revisions: stubRevisions{stubHierarchy{err: outcome}},
-		Version:   "test",
+		Folders:      stubFolders{stubHierarchy{err: outcome}},
+		Keys:         stubKeys{stubHierarchy{err: outcome}},
+		KeyGroups:    stubKeyGroups{stubHierarchy{err: outcome}},
+		Grants:       stubGrants{stubHierarchy{err: outcome}},
+		Settings:     stubSettings{stubHierarchy{err: outcome}},
+		SCIM:         stubSCIM{stubHierarchy{err: outcome}},
+		Revisions:    stubRevisions{stubHierarchy{err: outcome}},
+		Registration: stubRegistration{stubHierarchy: stubHierarchy{err: outcome}},
+		Version:      "test",
 	}, nil))
 	t.Cleanup(srv.Close)
 	return srv
@@ -1641,6 +1754,10 @@ func hierarchyRoutes() []struct {
 	grantBody := apigen.CreateGrantRequest{Principal: testPrincipalID, Capability: "read"}
 	templateBody := apigen.ApplyTemplateRequest{Principal: testPrincipalID, Template: apigen.Viewer}
 	inviteBody := apigen.InviteMemberRequest{Username: "dana"}
+	registrationBody := apigen.RegistrationPolicyPutRequest{
+		External: []apigen.RegistrationExternalEntry{{Provider: apigen.ProviderRef{Kind: "oidc", Slug: "corp"}}},
+		Landing:  apigen.RegistrationLanding{Kind: apigen.RegistrationLandingKindNone},
+	}
 	scimBase := base + "/scim-bindings"
 	scimBinding := scimBase + "/" + testBindingID
 	mappingBody := apigen.ScimMappingRequest{GroupId: testSCIMGroupID, Template: "viewer"}
@@ -1683,6 +1800,11 @@ func hierarchyRoutes() []struct {
 		// Member invitation (#568): a refused invitation is the uniform 404,
 		// never a 409 that would confirm the username or the organisation.
 		{http.MethodPost, base + "/invitations", inviteBody},
+		// Registration policy (#606): an org the caller may not manage has no
+		// policy to read, write or close, byte for byte.
+		{http.MethodGet, base + "/registration-policy", nil},
+		{http.MethodPut, base + "/registration-policy", registrationBody},
+		{http.MethodDelete, base + "/registration-policy", apigen.RegistrationPolicyDeleteRequest{}},
 		{http.MethodGet, project + "/grants", nil},
 		{http.MethodPost, project + "/grants", grantBody},
 		{http.MethodDelete, project + "/grants?principal=" + testPrincipalID + "&capability=read", nil},
@@ -2224,7 +2346,7 @@ func (stubRevisions) Diff(context.Context, service.Actor, domain.Scope, int64, i
 func (s stubAuth) MyProfile(context.Context, string) (service.AccountProfile, error) {
 	return service.AccountProfile{}, domain.ErrUnauthenticated
 }
-func (s stubAuth) UpdateMyProfile(context.Context, string, service.AccountProfile, string) (service.AccountProfile, error) {
+func (s stubAuth) UpdateMyProfile(context.Context, string, service.ProfileUpdate, string) (service.AccountProfile, error) {
 	return service.AccountProfile{}, domain.ErrUnauthenticated
 }
 

@@ -308,7 +308,13 @@ class OIDCCeremonyError extends Error {
   override readonly name = 'OIDCCeremonyError';
 }
 
-/** Re-run the current OIDC provider in a popup and await its same-origin return. */
+/**
+ * Re-run the selected OIDC provider for an environment in a popup and await
+ * its same-origin return. A blocked popup falls back to a full-page redirect.
+ * Start refusals close the popup: 401 and 409 responses become
+ * OIDCCeremonyError messages, while other API errors propagate. A missing
+ * transaction state or a callback timeout rejects with an Error.
+ */
 export async function runOIDCCeremony(providerSlug: string, environmentId: string): Promise<void> {
   const epoch = captureSessionEpoch();
   // Open synchronously while the click still carries user activation. A
@@ -329,6 +335,14 @@ export async function runOIDCCeremony(providerSlug: string, environmentId: strin
     if (error instanceof ApiError && error.status === 401) {
       throw new OIDCCeremonyError(
         'The identity provider refused this reauthentication. Its assurance policy may not permit disclosure reauthentication.',
+      );
+    }
+    // A provider row with no assurance policy is refused by name at start
+    // (#588 d4): no round-trip is made, because a fresh sign-in there proves
+    // nothing about who is present. The remedy is a local possession factor.
+    if (error instanceof ApiError && error.status === 409) {
+      throw new OIDCCeremonyError(
+        'This sign-in provider cannot confirm it’s you again. Enrol WebAuthn or TOTP under Settings › Security and use it instead.',
       );
     }
     throw error;

@@ -2,15 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
 import { expect, userEvent, waitFor } from 'storybook/test';
 
-import { LoginForm, type SignInBusy, type SignInProvider } from './LoginForm.tsx';
+import { LoginForm, type ProviderIdentity, type SignInBusy, type SignInIntent } from './LoginForm.tsx';
 import { SecondFactorChallenge } from './SecondFactorChallenge.tsx';
 import { SecondFactorSetup, type SetupStep } from './SecondFactorSetup.tsx';
-import { codesStep, totpStep } from './fixtures.ts';
+import { codesStep, github, google, socialProviders, totpStep } from './fixtures.ts';
 
-const providers: readonly SignInProvider[] = [
-  { slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' },
-  { slug: 'sso', display_name: 'SAML SSO', kind: 'saml' },
-];
 
 const links = (
   <>
@@ -27,8 +23,10 @@ const links = (
 // Rules (storybook-ui-consistency handoff, decision 2B): a factor that stands
 // is presented, never skipped; an account with none is gated into enrolment
 // when the policy requires it. Passkey and provider legs never see either step.
+// `sign-up` opens the door (an org-scope registration policy): a provider
+// chosen there passes the confirmation and starts with intent sign-up (#604).
 
-type Scenario = 'password-enrolled' | 'password-unenrolled' | 'passkey' | 'provider';
+type Scenario = 'password-enrolled' | 'password-unenrolled' | 'passkey' | 'provider' | 'sign-up';
 type Policy = 'require-second-factor' | 'allow-unenrolled';
 type Stage =
   | { at: 'sign-in'; busy: SignInBusy; error: string | null }
@@ -82,13 +80,15 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
     setStage({ at: 'done', how: 'Passkey (passwordless)', assurance: 'webauthn, user-verified' });
   };
 
-  const provider = async (slug: string) => {
-    setStage({ at: 'sign-in', busy: { provider: slug }, error: null });
+  const provider = async (chosen: ProviderIdentity, intent: SignInIntent) => {
+    setStage({ at: 'sign-in', busy: { provider: chosen }, error: null });
     await tick();
-    const name = providers.find((candidate) => candidate.slug === slug)?.display_name ?? slug;
+    const name =
+      socialProviders.find((candidate) => candidate.kind === chosen.kind && candidate.slug === chosen.slug)
+        ?.display_name ?? chosen.slug;
     setStage({
       at: 'done',
-      how: `Redirected to ${name}`,
+      how: `Redirected to ${name} with intent ${intent}`,
       assurance: 'as asserted by the provider (acr/amr policy); no local factor asked',
     });
   };
@@ -133,13 +133,20 @@ function LoginFlow({ scenario, policy }: { scenario: Scenario; policy: Policy })
     case 'sign-in':
       return (
         <LoginForm
-          providers={scenario === 'provider' ? providers : []}
+          providers={scenario === 'provider' || scenario === 'sign-up' ? socialProviders : []}
           passkeys={scenario !== 'provider'}
+          signup={
+            scenario === 'sign-up'
+              ? { providers: [google, github], landing: "You'll join Acme Corp as Developer." }
+              : null
+          }
+          paused={false}
+          lastUsed={null}
           busy={stage.busy}
           error={stage.error}
           onPassword={(credentials) => void password(credentials)}
           onPasskey={() => void passkey()}
-          onProvider={(slug) => void provider(slug)}
+          onProvider={(chosen, intent) => void provider(chosen, intent)}
           links={links}
         />
       );
@@ -193,7 +200,7 @@ const meta = {
   argTypes: {
     scenario: {
       control: 'select',
-      options: ['password-enrolled', 'password-unenrolled', 'passkey', 'provider'],
+      options: ['password-enrolled', 'password-unenrolled', 'passkey', 'provider', 'sign-up'],
     },
     policy: { control: 'select', options: ['require-second-factor', 'allow-unenrolled'] },
   },
@@ -211,6 +218,7 @@ export default meta;
 type FlowStory = StoryObj<typeof meta>;
 
 async function signInWithPassword(canvas: Parameters<NonNullable<FlowStory['play']>>[0]['canvas']) {
+  await userEvent.click(canvas.getByRole('button', { name: 'Password' }));
   await userEvent.type(canvas.getByLabelText('Username'), 'alex');
   await userEvent.type(canvas.getByLabelText('Password'), 'correct');
   await userEvent.click(canvas.getByRole('button', { name: 'Sign in' }));
@@ -280,7 +288,7 @@ export const UnenrolledAllowedByPolicy: FlowStory = {
 export const PasskeyPasswordless: FlowStory = {
   args: { scenario: 'passkey', policy: 'require-second-factor' },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole('button', { name: 'Use a passkey instead' }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Passkey' }));
     await expect(await canvas.findByRole('heading', { name: 'Signed in' })).toBeVisible();
     await expect(canvas.getByText('webauthn, user-verified')).toBeVisible();
   },
@@ -290,8 +298,22 @@ export const PasskeyPasswordless: FlowStory = {
 export const IdentityProvider: FlowStory = {
   args: { scenario: 'provider', policy: 'require-second-factor' },
   play: async ({ canvas }) => {
-    await userEvent.click(canvas.getByRole('button', { name: 'Continue with Corporate IdP' }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Continue with Google' }));
     await expect(await canvas.findByRole('heading', { name: 'Signed in' })).toBeVisible();
+    await expect(canvas.getByText('Redirected to Google with intent sign-in')).toBeVisible();
     await waitFor(() => expect(canvas.getByText(/no local factor asked/)).toBeVisible());
+  },
+};
+
+/** Through the sign-up door: the confirmation names the new account, the start carries intent sign-up. */
+export const SignUpThroughProvider: FlowStory = {
+  args: { scenario: 'sign-up', policy: 'require-second-factor' },
+  play: async ({ canvas }) => {
+    await userEvent.click(canvas.getByRole('button', { name: 'Create an account' }));
+    await userEvent.click(canvas.getByRole('button', { name: 'Sign up with GitHub' }));
+    await expect(canvas.getByRole('heading', { name: 'Create an account with GitHub' })).toBeVisible();
+    await userEvent.click(canvas.getByRole('button', { name: 'Continue to GitHub' }));
+    await expect(await canvas.findByRole('heading', { name: 'Signed in' })).toBeVisible();
+    await expect(canvas.getByText('Redirected to GitHub with intent sign-up')).toBeVisible();
   },
 };

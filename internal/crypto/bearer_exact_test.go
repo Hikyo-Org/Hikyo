@@ -1,6 +1,10 @@
 package crypto
 
-import "testing"
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
 
 // The accepted grammar must be EXACTLY the emittable one: every mint round-
 // trips, and a body one byte too long or too short is refused. This is the
@@ -43,5 +47,43 @@ func TestParseArtifactAcceptsOnlyEmittableBodies(t *testing.T) {
 	nonCanonical := prefix + "0" + body + sum
 	if err := ParseArtifact(nonCanonical, ArtifactBootstrap); err == nil {
 		t.Fatal("a non-canonical encoding was accepted")
+	}
+}
+
+// The sign-up verification token (social-signin spec 2.4, #605) rides the one
+// grammar beside the handoff pair: pinned spelling, round trip, and refusal
+// under any other type, so a `su` value can never be presented as `hs`/`hc`
+// or the reverse.
+func TestSignupArtifactGrammar(t *testing.T) {
+	pins := map[ArtifactType]string{ArtifactHandoffState: "hs", ArtifactHandoffCode: "hc", ArtifactSignup: "su"}
+	for typ, spelling := range pins {
+		if string(typ) != spelling {
+			t.Fatalf("artifact type %q, pinned spelling %q", typ, spelling)
+		}
+	}
+	v, verifier, err := NewArtifact(ArtifactSignup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(v, "hik_1_su_") {
+		t.Fatalf("sign-up token %q does not carry the su type", v)
+	}
+	if !bytes.Equal(verifier, ArtifactVerifier(v)) {
+		t.Fatal("the stored verifier is not the hash of the value")
+	}
+	if err := ParseArtifact(v, ArtifactSignup); err != nil {
+		t.Fatalf("a minted su artifact was refused: %v", err)
+	}
+	for _, other := range []ArtifactType{ArtifactHandoffState, ArtifactHandoffCode, ArtifactBootstrap} {
+		if ParseArtifact(v, other) == nil {
+			t.Fatalf("an su artifact parsed as %q", other)
+		}
+		o, _, err := NewArtifact(other)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ParseArtifact(o, ArtifactSignup) == nil {
+			t.Fatalf("a %q artifact parsed as su", other)
+		}
 	}
 }

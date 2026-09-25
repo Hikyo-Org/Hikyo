@@ -146,6 +146,12 @@ const CAPABILITY_REGISTRY: readonly RegistryCapability[] = [
     covers: 'operate one SCIM provisioning connection',
     humanGrantable: false,
   },
+  {
+    id: 'report-delivery-status',
+    deepest: 'environment',
+    covers: 'send one value-free, closed-vocabulary delivery-target status report; workload service accounts only',
+    humanGrantable: false,
+  },
 ];
 
 /**
@@ -154,7 +160,8 @@ const CAPABILITY_REGISTRY: readonly RegistryCapability[] = [
  * Instance-only atoms are deliberately absent from this tenant subset because
  * offering them on an org surface would offer a refusal. `scim-provision` is
  * absent for a different reason, it is system-created with its SCIM binding
- * and refused BY NAME through the grant API (#73).
+ * and refused BY NAME through the grant API (#73). `report-delivery-status`
+ * is absent because only a workload service account may hold it.
  */
 export const TENANT_CAPABILITIES: readonly CapabilityAtom[] = CAPABILITY_REGISTRY.filter(
   (atom) => atom.deepest !== 'instance' && atom.humanGrantable,

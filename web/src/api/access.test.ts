@@ -406,9 +406,11 @@ describe('the domain registry fixture', () => {
     JSON.parse(readFileSync(new URL('../../../internal/domain/testdata/capabilities.json', import.meta.url), 'utf8')),
   );
 
+  const machineOnly = new Set(['scim-provision', 'report-delivery-status']);
+
   it('pins the TS grantable atoms and per-level template expansion to internal/domain', () => {
     const expectedTenant = fixture.capabilities
-      .filter((atom) => atom.deepest !== 'instance' && atom.id !== 'scim-provision')
+      .filter((atom) => atom.deepest !== 'instance' && !machineOnly.has(atom.id))
       .map((atom) => ({ id: atom.id, deepest: atom.deepest }));
     const actualTenant = TENANT_CAPABILITIES
       .map((atom) => ({ id: atom.id, deepest: atom.deepest }))
@@ -427,7 +429,7 @@ describe('the domain registry fixture', () => {
     expect(actualTemplates).toEqual(fixture.templates);
 
     expect(capabilitiesAt('instance').map((atom) => atom.id).sort()).toEqual(
-      fixture.capabilities.filter((atom) => atom.id !== 'scim-provision').map((atom) => atom.id),
+      fixture.capabilities.filter((atom) => !machineOnly.has(atom.id)).map((atom) => atom.id),
     );
   });
 });

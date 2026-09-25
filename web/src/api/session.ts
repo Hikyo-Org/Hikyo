@@ -149,13 +149,25 @@ export function useLogout() {
   });
 }
 
-/** Start a browser OIDC login whose callback returns through the SPA. */
+/**
+ * Start a browser OIDC login and redirect to the provider. `intent` selects
+ * sign-in or sign-up; `signupOrg` addresses an org's registration policy only
+ * for sign-up. The callback returns through the SPA.
+ */
 export function useOIDCLogin() {
   return useSensitiveMutation({
-    mutationFn: (provider: string) =>
+    // The intent is a server fact (#604): the sign-in door sends `sign-in`,
+    // which never creates an account; only the sign-up door's confirmation
+    // step sends `sign-up`, with the addressed org when there is one.
+    mutationFn: (start: { provider: string; intent: 'sign-in' | 'sign-up'; signupOrg?: string }) =>
       parsed(oidcStartOp, {
-        path: { provider },
-        body: { purpose: 'login', browser: true },
+        path: { provider: start.provider },
+        body: {
+          purpose: 'login',
+          browser: true,
+          intent: start.intent,
+          ...(start.intent === 'sign-up' && start.signupOrg !== undefined ? { signup_org: start.signupOrg } : {}),
+        },
       }),
     onSuccess: (result) => globalThis.location.assign(result.authorization_url),
   });

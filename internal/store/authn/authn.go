@@ -39,6 +39,10 @@ type Resolver struct {
 	selfConfigOrgID                    domain.OrgID
 	sq                                 *sqlitegen.Queries
 	pg                                 *pggen.Queries
+	// The raw handles behind sq/pg, for the one catalog probe no sqlc query
+	// can express (restoredPostLegacyTables).
+	sqdb sqlitegen.DBTX
+	pgdb pggen.DBTX
 }
 
 // NewSQLite binds a Resolver to an open sqlite transaction (or, for
@@ -49,7 +53,7 @@ func NewSQLite(db sqlitegen.DBTX) *Resolver {
 	if observer != nil || failure != nil {
 		db = observedSQLite{db: db, observer: observer, failure: failure}
 	}
-	return &Resolver{sq: sqlitegen.New(db)}
+	return &Resolver{sq: sqlitegen.New(db), sqdb: db}
 }
 
 // NewPG binds a Resolver to an open postgres transaction.
@@ -59,7 +63,7 @@ func NewPG(db pggen.DBTX) *Resolver {
 	if observer != nil || failure != nil {
 		db = observedPG{db: db, observer: observer, failure: failure}
 	}
-	return &Resolver{pg: pggen.New(db)}
+	return &Resolver{pg: pggen.New(db), pgdb: db}
 }
 
 // The query-observer seam. It exists so the acceptance suite can count the

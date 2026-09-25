@@ -10,7 +10,7 @@ vi.mock('../app/AuthProvider.tsx', () => ({
   useAuth: () => ({ identity: { principal: { id: 'prn_alice' } }, refreshSession }),
 }));
 
-const profile = { username: 'alice', display_name: 'Alice Example', email: '', managed: false, username_editable: true };
+const profile = { username: 'alice', display_name: 'Alice Example', email: null, email_verified: false, managed: false, username_editable: true };
 let unmount: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
@@ -45,8 +45,8 @@ async function submit(container: HTMLElement) {
 }
 
 describe('account profile', () => {
-  it('saves readable names and email through the API, clears proof, and refreshes the signed-in name', async () => {
-    const saved = { ...profile, username: 'alice-new', display_name: 'Alice New', email: 'alice@example.com' };
+  it('saves readable names through the API, clears proof, and refreshes the signed-in name', async () => {
+    const saved = { ...profile, username: 'alice-new', display_name: 'Alice New' };
     const fetchMock = vi.fn((request: Request) => Promise.resolve(json(request.method === 'PATCH' ? saved : profile)));
     vi.stubGlobal('fetch', fetchMock);
     const { container, client } = await mount();
@@ -55,14 +55,13 @@ describe('account profile', () => {
     await act(async () => {
       typeInto(input(container, 'username'), saved.username);
       typeInto(input(container, 'display_name'), saved.display_name);
-      typeInto(input(container, 'email'), saved.email);
     });
     await act(async () => { typeInto(input(container, 'proof'), 'existing-password'); });
     await submit(container);
     const request = fetchMock.mock.calls.find(([candidate]) => candidate.method === 'PATCH')?.[0];
     expect(request).toBeDefined();
     expect(new URL(request?.url ?? '').pathname).toBe('/api/v1/me/profile');
-    expect(await request?.json()).toEqual({ username: saved.username, display_name: saved.display_name, email: saved.email, proof: 'existing-password' });
+    expect(await request?.json()).toEqual({ username: saved.username, display_name: saved.display_name, proof: 'existing-password' });
     expect(container.querySelector('input[name="proof"]')).toBeNull();
     expect(container.textContent).toContain('Profile saved.');
     expect(refreshSession).toHaveBeenCalledOnce();
@@ -89,24 +88,68 @@ describe('account profile', () => {
     const { container } = await mount();
     expect(container.querySelector('input[name="username"]')).toBeNull();
     expect(input(container, 'display_name').readOnly).toBe(true);
-    expect(input(container, 'email').readOnly).toBe(false);
     expect(container.textContent).toContain('Your identity provider manages your username and display name.');
   });
 
-  it.each([false, true])('saves an SSO contact email with an empty display name and no local password (managed: %s)', async (managed) => {
-    const sso = { ...profile, username: 'scim_internal_handle', display_name: '', managed, username_editable: false };
+  it('saves an SSO display name with an empty start and no local password', async () => {
+    const sso = { ...profile, username: 'scim_internal_handle', display_name: '', username_editable: false };
     const fetchMock = vi.fn((request: Request) => Promise.resolve(json(request.method === 'PATCH'
-      ? { ...sso, email: 'alice@example.com' } : sso)));
+      ? { ...sso, display_name: 'Alice' } : sso)));
     vi.stubGlobal('fetch', fetchMock);
     const { container } = await mount();
     expect(container.textContent).not.toContain('scim_internal_handle');
     expect(container.querySelector('input[name="proof"]')).toBeNull();
     expect(input(container, 'display_name').required).toBe(false);
-    await act(async () => { typeInto(input(container, 'email'), 'alice@example.com'); });
+    await act(async () => { typeInto(input(container, 'display_name'), 'Alice'); });
     await submit(container);
     const request = fetchMock.mock.calls.find(([candidate]) => candidate.method === 'PATCH')?.[0];
-    expect(await request?.json()).toEqual({ username: sso.username, display_name: sso.display_name, email: 'alice@example.com' });
+    expect(await request?.json()).toEqual({ username: sso.username, display_name: 'Alice' });
     expect(container.textContent).toContain('Profile saved.');
+  });
+
+  it('shows the sign-in email read-only with truthful copy and never sends it', async () => {
+    const verified = { ...profile, email: 'alice@example.com', email_verified: true };
+    const fetchMock = vi.fn((request: Request) => Promise.resolve(json(request.method === 'PATCH'
+      ? { ...verified, display_name: 'Alice New' } : verified)));
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = await mount();
+    expect(input(container, 'email').value).toBe('alice@example.com');
+    expect(input(container, 'email').readOnly).toBe(true);
+    expect(container.querySelector('label[for$="-email"]')?.textContent).toBe('Sign-in email');
+    expect(container.textContent).toContain('Used to sign in. Set when you sign up with email');
+    expect(container.textContent).not.toContain('not used to sign in');
+    await act(async () => { typeInto(input(container, 'display_name'), 'Alice New'); });
+    await submit(container);
+    const request = fetchMock.mock.calls.find(([candidate]) => candidate.method === 'PATCH')?.[0];
+    expect(await request?.json()).toEqual({ username: verified.username, display_name: 'Alice New' });
+  });
+
+  it('shows an unverified legacy email as contact data that is not used to sign in', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json({ ...profile, email: 'alice@example.com' }))));
+    const { container } = await mount();
+    expect(input(container, 'email').value).toBe('alice@example.com');
+    expect(input(container, 'email').readOnly).toBe(true);
+    expect(container.querySelector('label[for$="-email"]')?.textContent).toBe('Contact email');
+    expect(container.textContent).toContain('A contact address from before sign-in email existed. It is not used to sign in');
+    expect(container.textContent).not.toContain('Sign-in email');
+    expect(container.textContent).not.toContain('Used to sign in.');
+  });
+
+  it('follows a refetched profile when the email is cleared under the open form', async () => {
+    let current: typeof profile | (Omit<typeof profile, 'email'> & { email: string }) = { ...profile, email: 'alice@example.com' };
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json(current))));
+    const { container, client } = await mount();
+    expect(input(container, 'email').value).toBe('alice@example.com');
+    current = profile;
+    await act(async () => { await client.refetchQueries(); });
+    await settleTask();
+    expect(container.querySelector('input[name="email"]')).toBeNull();
+  });
+
+  it('shows no email field when the account has no sign-in email', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(json(profile))));
+    const { container } = await mount();
+    expect(container.querySelector('input[name="email"]')).toBeNull();
   });
 
   it('does not display an editable empty profile when loading fails', async () => {

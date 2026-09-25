@@ -49,7 +49,9 @@ var SpecYAML []byte
 // Revision 3 adds environment parameter operations and delivery snapshot revision
 // metadata. Existing operation minimums remain stable for older clients.
 // Revision 4 adds public runtime maintenance status.
-const Revision = 4
+// Revision 5 adds delivery-target condition reporting (report, tombstone,
+// list) and its `/meta` protocol capability.
+const Revision = 5
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.
@@ -67,6 +69,14 @@ const (
 	extFormula     = "x-hikyo-formula"
 	extArtifacts   = "x-hikyo-artifacts"
 	extMinRevision = "x-hikyo-min-revision"
+	// extReauth marks an operation gated on fresh proof of a pre-existing
+	// credential (spec social-signin 3.1). It is an object naming the body
+	// members that carry the proof and when the proof is required; the reader
+	// checks the declaration against the request schema, and the isolation
+	// suite drives every marked operation's service without its proof.
+	extReauth = "x-hikyo-reauth"
+	// ReauthAccountSecurity is the one reauth class the contract names.
+	ReauthAccountSecurity = "account-security"
 	// ExtOpenEnum marks an enum declared OPEN: it may gain values additively
 	// and every generated consumer must tolerate unknown ones. Open enums
 	// deliberately carry no `enum` keyword, so runtime validation tolerates
@@ -185,6 +195,9 @@ type Operation struct {
 	formula     []string
 	artifacts   []string
 	MinRevision int
+	// Reauth is the x-hikyo-reauth declaration; the zero value (Class "")
+	// means the operation is not reauthentication-gated.
+	Reauth ReauthGate
 	// Secured reports whether the operation inherits the document's session
 	// security requirement. An operation that clears it with `security: []`
 	// is a pre-authentication path and must be classified as one.
@@ -319,6 +332,9 @@ func collectOperations(d *openapi3.T) (map[string]Operation, error) {
 			if row.MinRevision, err = extInt(op.Extensions, extMinRevision); err != nil {
 				return nil, fmt.Errorf("api: %s %s: %w", method, path, err)
 			}
+			if row.Reauth, err = readReauthGate(op); err != nil {
+				return nil, fmt.Errorf("api: %s %s: %w", method, path, err)
+			}
 			if row.ID == "" {
 				return nil, fmt.Errorf("api: %s %s has no operationId", method, path)
 			}
@@ -413,6 +429,10 @@ func MatchRequest(r *http.Request) (*MatchedRequest, error) {
 // Consumers may hold and read it but must not mutate its slice fields.
 func (m *MatchedRequest) Operation() Operation { return m.op }
 
+// PathParam returns one path parameter as the contract route matched it, for
+// middleware that answers before the router hands the request to a handler.
+func (m *MatchedRequest) PathParam(name string) string { return m.params[name] }
+
 // Validate checks the matched request against the contract and reports the
 // offending member on failure. The request is validated AS MATCHED: a caller
 // that replaces r.Body on the same *http.Request between MatchRequest and
@@ -426,6 +446,20 @@ func (m *MatchedRequest) Operation() Operation { return m.op }
 // security requirement so it validates shape only. Only successful validation
 // returns a value capable of attaching the matched operation to context.
 func (m *MatchedRequest) Validate() (*ValidatedRequest, error) {
+	return m.validate(IsSCIMWireOperation(m.op.ID))
+}
+
+// ValidateWithoutBody is Validate with the body excluded, for a request whose
+// over-bound body the server refuses UNREAD (the delivery-target report's
+// 413): path, query and headers are still checked, and the returned request
+// carries the operation row, so artifact admission and authorization run on
+// the refusal exactly as on an accepted request. The caller must never read
+// the body from it.
+func (m *MatchedRequest) ValidateWithoutBody() (*ValidatedRequest, error) {
+	return m.validate(true)
+}
+
+func (m *MatchedRequest) validate(excludeBody bool) (*ValidatedRequest, error) {
 	input := &openapi3filter.RequestValidationInput{
 		Request:    m.request,
 		PathParams: m.params,
@@ -446,7 +480,7 @@ func (m *MatchedRequest) Validate() (*ValidatedRequest, error) {
 			// check only ever rejected "not a JSON object" — which
 			// `scimproto.DecodeUser`/`DecodeGroup`/`ParsePatch` reject
 			// themselves, post-auth, as an RFC 7644 `invalidSyntax`.
-			ExcludeRequestBody: IsSCIMWireOperation(m.op.ID),
+			ExcludeRequestBody: excludeBody,
 		},
 	}
 	if err := openapi3filter.ValidateRequest(m.request.Context(), input); err != nil {
@@ -567,6 +601,178 @@ func extString(ext map[string]any, key string) (string, error) {
 		return "", fmt.Errorf("missing required extension %s", key)
 	}
 	return v, nil
+}
+
+// Reauth presence rules: WHEN the proof members must carry a value.
+const (
+	// ReauthRequired: one member, a required string in the schema.
+	ReauthRequired = "required"
+	// ReauthSelected: two or more optional string members; the service
+	// selects which one the account's standing credentials make the proof
+	// (a confirmed TOTP code where one stands, else the password) and refuses
+	// a request without it.
+	ReauthSelected = "selected"
+	// ReauthSession: one optional string member, required for every session
+	// caller (the schema admits its absence only because local host
+	// authority, which has no session, is exempt).
+	ReauthSession = "session"
+	// ReauthWhenValue: one optional string member, required when the body
+	// member `member` carries one of `values`.
+	ReauthWhenValue = "when-value"
+	// ReauthWhenChanged: one optional string member, required when the body
+	// member `member` changes the stored value.
+	ReauthWhenChanged = "when-changed"
+)
+
+// ReauthGate is an operation's x-hikyo-reauth declaration.
+type ReauthGate struct {
+	Class    string
+	Proof    []string
+	Presence string
+	Member   string
+	Values   []string
+}
+
+// readReauthGate reads and checks x-hikyo-reauth against the operation's
+// required JSON request body: every proof member is a string, required or
+// optional exactly as the presence rule says, and a conditioning member
+// exists (with its values in its declared enum, closed or open).
+func readReauthGate(op *openapi3.Operation) (ReauthGate, error) {
+	raw, ok := op.Extensions[extReauth]
+	if !ok {
+		return ReauthGate{}, nil
+	}
+	fail := func(format string, args ...any) (ReauthGate, error) {
+		return ReauthGate{}, fmt.Errorf("extension %s: %s", extReauth, fmt.Sprintf(format, args...))
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return fail("must be an object {class, proof, presence[, member, values]}")
+	}
+	var gate ReauthGate
+	for key, value := range obj {
+		switch key {
+		case "class", "presence", "member":
+			text, ok := value.(string)
+			if !ok {
+				return fail("%s must be a string", key)
+			}
+			switch key {
+			case "class":
+				gate.Class = text
+			case "presence":
+				gate.Presence = text
+			default:
+				gate.Member = text
+			}
+		case "proof", "values":
+			list, ok := value.([]any)
+			if !ok {
+				return fail("%s must be a list of strings", key)
+			}
+			for _, item := range list {
+				text, ok := item.(string)
+				if !ok || text == "" {
+					return fail("%s must be a list of non-empty strings", key)
+				}
+				if key == "proof" {
+					gate.Proof = append(gate.Proof, text)
+				} else {
+					gate.Values = append(gate.Values, text)
+				}
+			}
+		default:
+			return fail("unknown member %q", key)
+		}
+	}
+	if gate.Class != ReauthAccountSecurity {
+		return fail("class must be %q", ReauthAccountSecurity)
+	}
+	if op.RequestBody == nil || op.RequestBody.Value == nil || !op.RequestBody.Value.Required {
+		return fail("needs a required request body to carry the proof")
+	}
+	media := op.RequestBody.Value.Content.Get("application/json")
+	if media == nil || media.Schema == nil || media.Schema.Value == nil {
+		return fail("needs a JSON request body schema")
+	}
+	schema := media.Schema.Value
+	required := map[string]bool{}
+	for _, name := range schema.Required {
+		required[name] = true
+	}
+	for _, member := range gate.Proof {
+		prop := schema.Properties[member]
+		if prop == nil || prop.Value == nil || !prop.Value.Type.Is(openapi3.TypeString) {
+			return fail("proof member %q is not a string member of the request body", member)
+		}
+	}
+	optionalOnly := func() error {
+		for _, member := range gate.Proof {
+			if required[member] {
+				return fmt.Errorf("extension %s: proof member %q is required in the schema but presence %q makes it conditional", extReauth, member, gate.Presence)
+			}
+		}
+		return nil
+	}
+	conditioned := gate.Presence == ReauthWhenValue || gate.Presence == ReauthWhenChanged
+	if !conditioned && (gate.Member != "" || gate.Values != nil) {
+		return fail("member and values belong to a conditional presence only")
+	}
+	switch gate.Presence {
+	case ReauthRequired:
+		if len(gate.Proof) != 1 || !required[gate.Proof[0]] {
+			return fail("presence %q needs exactly one proof member, required in the schema", gate.Presence)
+		}
+	case ReauthSelected:
+		if len(gate.Proof) < 2 {
+			return fail("presence %q needs two or more proof members to select from", gate.Presence)
+		}
+		if err := optionalOnly(); err != nil {
+			return ReauthGate{}, err
+		}
+	case ReauthSession, ReauthWhenValue, ReauthWhenChanged:
+		if len(gate.Proof) != 1 {
+			return fail("presence %q needs exactly one proof member", gate.Presence)
+		}
+		if err := optionalOnly(); err != nil {
+			return ReauthGate{}, err
+		}
+	default:
+		return fail("presence must be one of required, selected, session, when-value, when-changed")
+	}
+	if conditioned {
+		prop := schema.Properties[gate.Member]
+		if gate.Member == "" || prop == nil || prop.Value == nil {
+			return fail("presence %q names member %q, which the request body does not declare", gate.Presence, gate.Member)
+		}
+		if gate.Presence == ReauthWhenChanged && gate.Values != nil {
+			return fail("presence %q takes no values", gate.Presence)
+		}
+		if gate.Presence == ReauthWhenValue {
+			if len(gate.Values) == 0 {
+				return fail("presence %q needs the values that require the proof", gate.Presence)
+			}
+			declared := map[string]bool{}
+			for _, value := range prop.Value.Enum {
+				if text, ok := value.(string); ok {
+					declared[text] = true
+				}
+			}
+			if open, ok := prop.Value.Extensions[ExtOpenEnum].([]any); ok {
+				for _, value := range open {
+					if text, ok := value.(string); ok {
+						declared[text] = true
+					}
+				}
+			}
+			for _, value := range gate.Values {
+				if !declared[value] {
+					return fail("value %q is not declared on member %q", value, gate.Member)
+				}
+			}
+		}
+	}
+	return gate, nil
 }
 
 func optionalString(ext map[string]any, key string) (string, error) {

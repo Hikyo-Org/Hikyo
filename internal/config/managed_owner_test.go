@@ -149,3 +149,34 @@ func TestManagedOwnerRefusalNamesKeyAndHidesSecretValues(t *testing.T) {
 		})
 	}
 }
+
+// A snapshot saved before #606 holds the listen-derived origin as a value.
+// Re-applying it must not turn the derivation into an explicit statement;
+// a genuinely different managed origin still is one.
+func TestManagedLegacyDerivedOriginIsNotExplicit(t *testing.T) {
+	base, _, err := Load("server", []string{"--dev"}, func(string) string { return "" }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base.ExternalOriginExplicit {
+		t.Fatal("a listen-derived origin loaded as explicit")
+	}
+	legacy := base.ManagedOwnerValues()
+	legacy["HIKYO_EXTERNAL_ORIGIN"] = base.ExternalOrigin
+	result, err := ApplyManagedOwnerValues(base, legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ExternalOriginExplicit || result.ExternalOrigin != base.ExternalOrigin {
+		t.Fatalf("legacy derived origin = %q explicit=%t, want the derivation, not explicit", result.ExternalOrigin, result.ExternalOriginExplicit)
+	}
+	stated := base.ManagedOwnerValues()
+	stated["HIKYO_EXTERNAL_ORIGIN"] = "https://hikyo.example.com"
+	result, err = ApplyManagedOwnerValues(base, stated)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.ExternalOriginExplicit || result.ExternalOrigin != "https://hikyo.example.com" {
+		t.Fatalf("stated managed origin = %q explicit=%t, want explicit", result.ExternalOrigin, result.ExternalOriginExplicit)
+	}
+}

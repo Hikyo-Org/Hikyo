@@ -113,6 +113,15 @@ type IdP struct {
 	// `http://` key endpoint is exactly the attack, and no amount of mocking our
 	// own code exercises it.
 	JWKSURIOverride string
+	// SubjectTypes, when set, is advertised as `subject_types_supported`
+	// instead of ["public"]: the pairwise-subject client_id guard (#588 d2)
+	// needs an Entra-shaped ["pairwise"] document.
+	SubjectTypes []string
+	// Claims, when set, are merged into every ID token the token endpoint
+	// mints (after the defaults, before the per-code subject), so a fixture
+	// can shape a Google- or Entra-shaped token: `email`, `email_verified`,
+	// `xms_edov`, an allowlist claim, or an overridden `iss`.
+	Claims map[string]any
 	// RedirectJWKSTo, when set, makes `/jwks-redirect` answer 302 to it. The
 	// second half of the same fixture: an HTTPS `jwks_uri` that redirects to
 	// plaintext passes a scheme check on the initial URL and must still be
@@ -222,6 +231,8 @@ func (p *IdP) RegisterRedirectURI(raw string) error {
 	return nil
 }
 
+// discovery advertises the fixture's endpoints and configured subject types,
+// defaulting to public subjects when no type is set.
 func (p *IdP) discovery(w http.ResponseWriter, _ *http.Request) {
 	if p.down(w) {
 		return
@@ -229,9 +240,13 @@ func (p *IdP) discovery(w http.ResponseWriter, _ *http.Request) {
 	base := p.Server.URL
 	p.mu.Lock()
 	jwksURI := p.JWKSURIOverride
+	subjectTypes := p.SubjectTypes
 	p.mu.Unlock()
 	if jwksURI == "" {
 		jwksURI = base + "/jwks"
+	}
+	if len(subjectTypes) == 0 {
+		subjectTypes = []string{"public"}
 	}
 	writeJSON(w, map[string]any{
 		"issuer":                                         p.Issuer(),
@@ -239,7 +254,7 @@ func (p *IdP) discovery(w http.ResponseWriter, _ *http.Request) {
 		"token_endpoint":                                 base + "/token",
 		"jwks_uri":                                       jwksURI,
 		"response_types_supported":                       []string{"code"},
-		"subject_types_supported":                        []string{"public"},
+		"subject_types_supported":                        subjectTypes,
 		"id_token_signing_alg_values_supported":          []string{"RS256"},
 		"code_challenge_methods_supported":               []string{"S256"},
 		"authorization_response_iss_parameter_supported": p.SendIssParam,
@@ -378,6 +393,8 @@ func (p *IdP) authorize(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, u.String(), http.StatusFound)
 }
 
+// token exchanges a single-use code and merges fixture claims into the signed
+// ID token before applying the code's subject claim.
 func (p *IdP) token(w http.ResponseWriter, r *http.Request) {
 	p.mu.Lock()
 	p.TokenEndpointHits++
@@ -428,6 +445,11 @@ func (p *IdP) token(w http.ResponseWriter, r *http.Request) {
 	if len(p.AMR) > 0 {
 		claims["amr"] = p.AMR
 	}
+	p.mu.Lock()
+	for k, v := range p.Claims {
+		claims[k] = v
+	}
+	p.mu.Unlock()
 	for k, v := range c.Claims {
 		claims[k] = v
 	}

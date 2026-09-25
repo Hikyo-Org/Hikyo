@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"net/mail"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -15,16 +14,28 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
-// AccountProfile contains only the authenticated holder's editable labels.
-// Email is contact metadata, never a login, recovery, or linking identifier.
+// AccountProfile is the authenticated holder's profile. Username and display
+// name are editable (ProfileUpdate); Email is read-only, nil when none. When
+// EmailVerified it is the login email, written only by verified local sign-up
+// (#608) and never here; otherwise it is a legacy contact address, display-only
+// and never used to sign in. It is never a recovery or linking identifier.
 type AccountProfile struct {
 	Username         string
 	DisplayName      string
-	Email            string
+	Email            *string
+	EmailVerified    bool
 	Managed          bool
 	UsernameEditable bool
 }
 
+// ProfileUpdate is everything the profile surface may change. It carries no
+// email by construction.
+type ProfileUpdate struct {
+	Username    string
+	DisplayName string
+}
+
+// MyProfile reads the authenticated account's editable names and read-only email.
 func (s *Auth) MyProfile(ctx context.Context, presented string) (AccountProfile, error) {
 	var out AccountProfile
 	err := tx.Read(ctx, s.DB, func(ctx context.Context, _ store.ReadRepos, az *authz.TxAuthorizer) error {
@@ -46,8 +57,9 @@ func (s *Auth) MyProfile(ctx context.Context, presented string) (AccountProfile,
 	return out, err
 }
 
-func validateAccountProfile(profile AccountProfile) error {
-	for label, value := range map[string]string{"username": profile.Username, "display name": profile.DisplayName, "email": profile.Email} {
+// validateAccountProfile rejects malformed or out-of-bounds editable names.
+func validateAccountProfile(profile ProfileUpdate) error {
+	for label, value := range map[string]string{"username": profile.Username, "display name": profile.DisplayName} {
 		if !utf8.ValidString(value) || strings.TrimSpace(value) != value || len(value) > 256 {
 			return fmt.Errorf("%w: %s must be valid text with no surrounding whitespace and at most 256 bytes", domain.ErrInvalid, label)
 		}
@@ -60,19 +72,13 @@ func validateAccountProfile(profile AccountProfile) error {
 	if profile.Username == "" {
 		return fmt.Errorf("%w: username is required", domain.ErrInvalid)
 	}
-	if profile.Email != "" {
-		address, err := mail.ParseAddress(profile.Email)
-		if err != nil || address.Address != profile.Email || len(profile.Email) > 254 {
-			return fmt.Errorf("%w: enter a valid email address", domain.ErrInvalid)
-		}
-	}
 	return nil
 }
 
 // UpdateMyProfile requires fresh proof for username changes and preserves sessions: no credential,
 // assurance, immutable principal, or grant changes. Provider subject keys and
 // SCIM-owned names are never rewritten through this surface.
-func (s *Auth) UpdateMyProfile(ctx context.Context, presented string, profile AccountProfile, proof string) (AccountProfile, error) {
+func (s *Auth) UpdateMyProfile(ctx context.Context, presented string, profile ProfileUpdate, proof string) (AccountProfile, error) {
 	if err := validateAccountProfile(profile); err != nil {
 		return AccountProfile{}, err
 	}
@@ -120,7 +126,7 @@ func (s *Auth) UpdateMyProfile(ctx context.Context, presented string, profile Ac
 				return err
 			}
 		}
-		next := authz.AccountProfile{Username: profile.Username, DisplayName: profile.DisplayName, Email: profile.Email, Managed: current.Managed, UsernameEditable: current.UsernameEditable}
+		next := authz.AccountProfile{Username: profile.Username, DisplayName: profile.DisplayName, Email: current.Email, EmailVerified: current.EmailVerified, Managed: current.Managed, UsernameEditable: current.UsernameEditable}
 		if err := az.UpdateAccountProfile(ctx, account.ID, next); err != nil {
 			return err
 		}

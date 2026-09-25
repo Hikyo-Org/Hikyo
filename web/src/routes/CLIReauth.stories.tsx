@@ -86,6 +86,7 @@ const methods: MockRoute = {
   url: '/api/v1/auth/methods',
   body: {
     local_login_enabled: true,
+    signup_open: false, signup_paused: false, signup_methods: [],
     providers: [{ slug: 'corp', display_name: 'Corporate IdP', kind: 'oidc' }],
   } satisfies z.input<typeof zAuthMethods>,
 };

@@ -255,7 +255,7 @@ diagnostics:
   hikyo update check                                check the selected release track now
 
 hierarchy:
-  hikyo org list [-o table|json]
+  hikyo org list [--origin manual|registration] [-o table|json]
   hikyo org show <org> [-o table|json]
   hikyo org create --name <name>
   hikyo org rename <org> --name <new-name>
@@ -469,6 +469,9 @@ access:
   hikyo access member list [--org O] [--project P] [-o table|json]
   hikyo access member invite <username> [--display-name NAME] [--template T] [--org O | --instance-scope] [--output-file PATH | --dangerously-print]
   hikyo access member remove --principal <id>
+  hikyo access registration show [--org O | --instance-scope] [-o table|json]
+  hikyo access registration set [--org O | --instance-scope] --file <policy.json>
+  hikyo access registration delete [--org O | --instance-scope]
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false
@@ -1407,6 +1410,9 @@ func runContext(_ context.Context, ios IO, args []string) error {
 // org
 // ---------------------------------------------------------------------------
 
+// runOrg handles organization commands. List accepts an optional origin
+// filter and includes each organization's origin in table output; invalid
+// origin values return a usage error before target resolution.
 func runOrg(ctx context.Context, ios IO, args []string) error {
 	if len(args) > 0 && args[0] == "retention" {
 		return runOrgRetention(ctx, ios, args[1:])
@@ -1420,9 +1426,13 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 		format      string
 		orgName     string
 		acknowledge string
+		origin      string
 	)
 	st, flags, err := parseCommon("org "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
+		if sub == "list" {
+			fs.StringVar(&origin, "origin", "", "only orgs of this origin: manual or registration (self-served)")
+		}
 		if sub == "create" || sub == "rename" {
 			fs.StringVar(&orgName, "name", "", "organisation name")
 			ackFlag(fs, &acknowledge)
@@ -1457,6 +1467,8 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 		return failf(ExitUsage, "usage: hikyo org create --name <name>")
 	case sub == "rename" && orgName == "":
 		return failf(ExitUsage, "usage: hikyo org rename <org> --name <new-name>")
+	case origin != "" && origin != "manual" && origin != "registration":
+		return failf(ExitUsage, "usage: hikyo org list [--origin manual|registration]")
 	}
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
@@ -1466,15 +1478,19 @@ func runOrg(ctx context.Context, ios IO, args []string) error {
 	switch sub {
 	case "list":
 		var list apigen.OrgList
-		if err := client.Do(ctx, http.MethodGet, api.PathPrefix+"/orgs", nil, &list); err != nil {
+		path := api.PathPrefix + "/orgs"
+		if origin != "" {
+			path += "?origin=" + origin
+		}
+		if err := client.Do(ctx, http.MethodGet, path, nil, &list); err != nil {
 			return err
 		}
 		rows := make([][]string, 0, len(list.Items))
 		for _, o := range list.Items {
-			rows = append(rows, []string{o.Id, o.Name, boolString(o.Active), o.CreatedAt.Format("2006-01-02")})
+			rows = append(rows, []string{o.Id, o.Name, boolString(o.Active), string(o.Origin), o.CreatedAt.Format("2006-01-02")})
 		}
 		return Render(ios.Stdout, f, Table{
-			Columns: []string{"ID", "NAME", "ACTIVE", "CREATED"},
+			Columns: []string{"ID", "NAME", "ACTIVE", "ORIGIN", "CREATED"},
 			Rows:    rows,
 			JSON:    list,
 		})

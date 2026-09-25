@@ -7,6 +7,7 @@ package sqlitegen
 
 import (
 	"context"
+	"database/sql"
 )
 
 const countOrgs = `-- name: CountOrgs :one
@@ -23,16 +24,18 @@ func (q *Queries) CountOrgs(ctx context.Context, includeSelfConfig interface{}) 
 
 const createOrg = `-- name: CreateOrg :exec
 
-INSERT INTO orgs (id, name, active, metadata, created_at)
-VALUES (?, ?, ?, ?, ?)
+INSERT INTO orgs (id, name, active, metadata, created_at, origin, registration_policy_id)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateOrgParams struct {
-	ID        string
-	Name      string
-	Active    int64
-	Metadata  string
-	CreatedAt string
+	ID                   string
+	Name                 string
+	Active               int64
+	Metadata             string
+	CreatedAt            string
+	Origin               string
+	RegistrationPolicyID sql.NullString
 }
 
 // The Org aggregate. Creation, listing and counting are instance-scoped
@@ -53,6 +56,8 @@ func (q *Queries) CreateOrg(ctx context.Context, arg CreateOrgParams) error {
 		arg.Active,
 		arg.Metadata,
 		arg.CreatedAt,
+		arg.Origin,
+		arg.RegistrationPolicyID,
 	)
 	return err
 }
@@ -71,7 +76,8 @@ func (q *Queries) DeleteOrg(ctx context.Context, id string) (int64, error) {
 
 const getOrg = `-- name: GetOrg :one
 SELECT id, name, active, metadata, created_at,
-       retention_mode, retention_age_seconds, retention_revision_count
+       retention_mode, retention_age_seconds, retention_revision_count,
+       origin, registration_policy_id
 FROM orgs WHERE id = ?
 `
 
@@ -87,13 +93,16 @@ func (q *Queries) GetOrg(ctx context.Context, id string) (Org, error) {
 		&i.RetentionMode,
 		&i.RetentionAgeSeconds,
 		&i.RetentionRevisionCount,
+		&i.Origin,
+		&i.RegistrationPolicyID,
 	)
 	return i, err
 }
 
 const listOrgs = `-- name: ListOrgs :many
 SELECT id, name, active, metadata, created_at,
-       retention_mode, retention_age_seconds, retention_revision_count
+       retention_mode, retention_age_seconds, retention_revision_count,
+       origin, registration_policy_id
 FROM orgs WHERE (?1 = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name
 `
 
@@ -116,6 +125,8 @@ func (q *Queries) ListOrgs(ctx context.Context, includeSelfConfig interface{}) (
 			&i.RetentionMode,
 			&i.RetentionAgeSeconds,
 			&i.RetentionRevisionCount,
+			&i.Origin,
+			&i.RegistrationPolicyID,
 		); err != nil {
 			return nil, err
 		}

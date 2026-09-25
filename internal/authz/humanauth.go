@@ -369,6 +369,11 @@ func (a *TxAuthorizer) ExternalIdentityByKey(ctx context.Context, kind, issuer, 
 	return a.r.ExternalIdentityByKey(ctx, kind, issuer, subject)
 }
 
+// CountExternalIdentitiesForIssuer counts the links under one (kind, issuer).
+func (a *TxAuthorizer) CountExternalIdentitiesForIssuer(ctx context.Context, kind, issuer string) (int64, error) {
+	return a.r.CountExternalIdentitiesForIssuer(ctx, kind, issuer)
+}
+
 // ExternalIdentityByID resolves a link by id.
 func (a *TxAuthorizer) ExternalIdentityByID(ctx context.Context, id string) (ExternalIdentity, error) {
 	return a.r.ExternalIdentityByID(ctx, id)

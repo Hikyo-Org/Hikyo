@@ -341,6 +341,8 @@ func TestReconciledBoundsMatchOpsSpecValues(t *testing.T) {
 		{"service.BudgetDefaultRatePerMin", service.BudgetDefaultRatePerMin, 60},
 		{"service.BudgetDefaultOrgConcurrency", service.BudgetDefaultOrgConcurrency, 8},
 		{"service.BudgetSchemaRevisionPerHour", service.BudgetSchemaRevisionPerHour, 60},
+		// ops-spec banner 2026-09-03: the instance-wide signup budget (#606).
+		{"service.BudgetSignupPerHour", service.BudgetSignupPerHour, 20},
 		// Already-conformant bounds, pinned so they cannot drift unnoticed.
 		{"schema.MaxKeysPerProject", schema.MaxKeysPerProject, 1000},
 		{"schema.MaxKeyGroupsPerProject", schema.MaxKeyGroupsPerProject, 100},

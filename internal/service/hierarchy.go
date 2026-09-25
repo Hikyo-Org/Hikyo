@@ -133,10 +133,17 @@ type Org struct {
 	Active    bool
 	Metadata  json.RawMessage
 	CreatedAt time.Time
+	// Origin is `manual` or `registration` (#585 d8); RegistrationPolicyID
+	// names the minting policy of a self-served org, else empty.
+	Origin               string
+	RegistrationPolicyID string
 }
 
 func orgOf(o store.Org) Org {
-	return Org{ID: o.ID, Name: o.Name, Active: o.Active, Metadata: o.Metadata, CreatedAt: o.CreatedAt}
+	return Org{
+		ID: o.ID, Name: o.Name, Active: o.Active, Metadata: o.Metadata, CreatedAt: o.CreatedAt,
+		Origin: o.Origin, RegistrationPolicyID: o.RegistrationPolicyID,
+	}
 }
 
 // Orgs is the organisation surface. Creation and enumeration are
@@ -176,13 +183,14 @@ func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool
 		Active:    active,
 		Metadata:  metadata,
 		CreatedAt: store.CanonTime(now),
+		Origin:    "manual",
 	}
 	// Session invalidation updates the creator's shared generation row. Admit
 	// org creates before postgres takes a SERIALIZABLE snapshot so concurrent
 	// creates do not spend their bounded retries waiting on stale snapshots.
 	// This is a low-rate control-plane operation; sqlite already admits one
 	// writer at a time through BEGIN IMMEDIATE.
-	err = tx.WriteSerialized(ctx, s.DB, "hikyo:org-create", func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
+	err = tx.WriteSerialized(ctx, s.DB, orgCreateSerialization, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		caller, p, err := authorize(ctx, az, actor, authz.OpOrgCreate, domain.Scope{}, now)
 		if err != nil {
 			return err
@@ -192,7 +200,7 @@ func (s *Orgs) Create(ctx context.Context, actor Actor, name string, active bool
 		}
 		ev, err := domainEvent(ctx, audit.EventOrgCreated, caller.Principal,
 			audit.Object{Type: "org", ID: org.ID},
-			audit.Payload{"org_id": org.ID, "org_name": audit.SanitizeFreeText(org.Name)})
+			audit.Payload{"org_id": org.ID, "org_name": audit.SanitizeFreeText(org.Name), "origin": "manual"})
 		if err != nil {
 			return err
 		}

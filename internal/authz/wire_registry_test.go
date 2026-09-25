@@ -30,14 +30,18 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// #781 adds four unauthenticated, stateless Codex lifecycle methods.
 	// #760 adds three unauthenticated login-challenge finish routes (two carrying
 	// login/session/clone events, the webauthn start carrying none).
-	if got := len(facts.Wire()); got != 337 {
-		t.Fatalf("wire entries = %d, want 337", got)
+	// #606 adds six registration-policy routes (get/put/delete at org and
+	// instance scope), each linked to its own operation.
+	// #788 adds the delivery-target report, tombstone and list routes; the two
+	// machine writes carry the federated pre-authentication refusal events.
+	if got := len(facts.Wire()); got != 346 {
+		t.Fatalf("wire entries = %d, want 346", got)
 	}
-	if got := len(facts.WireRoutes()); got != 234 {
-		t.Fatalf("operation-linked entries = %d, want 234", got)
+	if got := len(facts.WireRoutes()); got != 243 {
+		t.Fatalf("operation-linked entries = %d, want 243", got)
 	}
-	if got := len(facts.WireEvents()); got != 72 {
-		t.Fatalf("direct-event entries = %d, want 72", got)
+	if got := len(facts.WireEvents()); got != 74 {
+		t.Fatalf("direct-event entries = %d, want 74", got)
 	}
 }
 

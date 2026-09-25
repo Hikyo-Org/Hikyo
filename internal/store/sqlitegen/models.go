@@ -15,7 +15,8 @@ type Account struct {
 	DisplayName        string
 	CreatedAt          string
 	WebauthnUserHandle []byte
-	Email              string
+	Email              sql.NullString
+	EmailVerifiedAt    sql.NullString
 }
 
 type Adapter struct {
@@ -438,6 +439,39 @@ type DefinitionsPlan struct {
 	ScanSnapshot       string
 }
 
+type DeliveryTargetQuotaNotice struct {
+	PrincipalID string
+	OrgID       string
+	ProjectID   string
+	RefusedAt   string
+}
+
+type DeliveryTargetReport struct {
+	ID                    string
+	OrgID                 string
+	ProjectID             string
+	EnvironmentID         string
+	PrincipalID           string
+	ClusterID             string
+	InstanceUid           string
+	TargetUid             string
+	Namespace             string
+	Name                  string
+	Vocabulary            int64
+	Generation            int64
+	ObservedGeneration    int64
+	ReportedAt            string
+	ReceivedAt            string
+	ReportIntervalSeconds int64
+	Lifecycle             string
+	Conditions            string
+	Reporter              string
+	ReporterVersion       string
+	RefusalCause          sql.NullString
+	RefusedAt             sql.NullString
+	CreatedAt             string
+}
+
 type DynamicEffect struct {
 	ID             string
 	OrgID          string
@@ -671,6 +705,46 @@ type McpRateBucket struct {
 	NextAt      string
 }
 
+type Oauth2Provider struct {
+	ID           string
+	Slug         string
+	DisplayName  string
+	Kind         string
+	Profile      string
+	Issuer       string
+	ClientID     string
+	ClientSecret []byte
+	RedirectUri  string
+	Enabled      int64
+	DekVersion   int64
+	RowVersion   int64
+	CreatedAt    string
+	UpdatedAt    string
+}
+
+type Oauth2Transaction struct {
+	ID                     string
+	StateVerifier          []byte
+	PkceVerifier           string
+	ProviderID             string
+	Issuer                 string
+	RedirectUri            string
+	Purpose                string
+	Intent                 sql.NullString
+	SignupScopeOrgID       sql.NullString
+	BindingKind            string
+	InitiatingSessionID    sql.NullString
+	BrowserBindingVerifier []byte
+	AccountID              sql.NullString
+	AuthorityID            sql.NullString
+	CeremonyID             sql.NullString
+	Browser                int64
+	CredentialEpoch        int64
+	CreatedAt              string
+	ExpiresAt              string
+	ConsumedAt             sql.NullString
+}
+
 type OfflineRecord struct {
 	PrincipalID string
 	RecordID    string
@@ -715,6 +789,9 @@ type OidcTransaction struct {
 	ExpiresAt              string
 	ConsumedAt             sql.NullString
 	Browser                int64
+	Intent                 sql.NullString
+	SignupScopeOrgID       sql.NullString
+	AuthorityID            sql.NullString
 }
 
 type OpsDiagnostic struct {
@@ -735,6 +812,8 @@ type Org struct {
 	RetentionMode          string
 	RetentionAgeSeconds    int64
 	RetentionRevisionCount int64
+	Origin                 string
+	RegistrationPolicyID   sql.NullString
 }
 
 type PasswordCredential struct {
@@ -826,6 +905,49 @@ type RecoveryCode struct {
 	CredentialEpoch int64
 	RowVersion      int64
 	GeneratedAt     string
+}
+
+type RegistrationPolicy struct {
+	ID                   string
+	OrgID                sql.NullString
+	AuthorityPrincipalID sql.NullString
+	Landing              string
+	Template             sql.NullString
+	LocalEnabled         int64
+	FreshOrgCap          sql.NullInt64
+	RowVersion           int64
+	CreatedAt            string
+	UpdatedAt            string
+}
+
+type RegistrationPolicyDomain struct {
+	PolicyID string
+	Domain   string
+}
+
+type RegistrationPolicyEntry struct {
+	ID           string
+	PolicyID     string
+	ProviderKind string
+	ProviderID   string
+	Claim        sql.NullString
+	CreatedAt    string
+}
+
+type RegistrationPolicyEntryValue struct {
+	EntryID string
+	Value   string
+}
+
+type RegistrationSignup struct {
+	ID               string
+	Email            string
+	TokenVerifier    []byte
+	PolicyID         string
+	SignupScopeOrgID sql.NullString
+	CredentialEpoch  int64
+	CreatedAt        string
+	ExpiresAt        string
 }
 
 type Remote struct {
@@ -1170,6 +1292,7 @@ type Session struct {
 	RequestingOrigin  sql.NullString
 	HandoffID         sql.NullString
 	EnrolmentRequired int64
+	Oauth2ProviderID  sql.NullString
 }
 
 type SingletonLease struct {

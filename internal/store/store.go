@@ -63,6 +63,12 @@ type Org struct {
 	Metadata  json.RawMessage
 	CreatedAt time.Time
 	Retention RetentionPolicy
+	// Origin is how the org came to exist (#585 d8): `manual` (an operator's
+	// org.create) or `registration` (a sign-up). Empty on create means manual.
+	// RegistrationPolicyID is the minting policy's id, a trail pointer with no
+	// foreign key; empty for a manual org.
+	Origin               string
+	RegistrationPolicyID string
 }
 
 // Project is a tenant-owned aggregate (chain: org). OrgID appears on reads
@@ -452,6 +458,8 @@ type Repos interface {
 	// inside the publish transaction, and every read runs beside its own
 	// lifecycle event, so a read-only twin would have no caller.
 	Approvals() ApprovalRepo
+	// DeliveryTargets is the delivery-target condition-report surface (#788).
+	DeliveryTargets() DeliveryTargetRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,
@@ -500,6 +508,7 @@ type ReadRepos interface {
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
 	Definitions() DefinitionsReader
+	DeliveryTargets() DeliveryTargetReader
 }
 
 // DefinitionsPlan is a stored plan row (#70). Bundle holds the canonical bundle

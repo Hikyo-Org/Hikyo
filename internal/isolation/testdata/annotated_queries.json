@@ -175,6 +175,12 @@
   },
   {
     "engine": "postgres",
+    "name": "CountExternalIdentitiesForIssuer",
+    "annotation": "authn-resolution",
+    "hash": "b4c66bcfed159804e8b7e491bfc9a99d2ad787159c0cd2e86568a1a744abab3d"
+  },
+  {
+    "engine": "postgres",
     "name": "CountGrantOrigins",
     "annotation": "authn-resolution",
     "hash": "c0b35a1d2aaefea234d06693e608f33023aea3a7424e9fe9da8275b0bfc62d25"
@@ -208,6 +214,12 @@
     "name": "CountRecentSelfConfigJobs",
     "annotation": "instance-scoped",
     "hash": "3509874cb10071447071f9a86f8036b6198ed23e092cb3f7545448408efaf683"
+  },
+  {
+    "engine": "postgres",
+    "name": "CountRegistrationPolicyOrgs",
+    "annotation": "authn-resolution",
+    "hash": "018a36bad45e957cd9930702110b890a8a4f58b1aa03ddab29ea7ee7cf14665e"
   },
   {
     "engine": "postgres",
@@ -255,7 +267,7 @@
     "engine": "postgres",
     "name": "CreateOrg",
     "annotation": "instance-scoped",
-    "hash": "cdff0423a21c54bfd9c34a8cd5d0a1ec1c7b4ca87527082d5b43591bec2403b3"
+    "hash": "6bfa6f97a8601ca8a4659fc42548437fee514c09bf8b614c8e60fbe340ce5794"
   },
   {
     "engine": "postgres",
@@ -370,6 +382,36 @@
     "name": "DeleteReauthWindowsForEnvironment",
     "annotation": "authn-resolution",
     "hash": "b9467726d5d8eaed94a629f6c4eb9cf55e7124e385876c361ec38981cf4c8edc"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "048b1c029dbabe591b94fed5269f27bdd051593abd82d5152957c93743875c4a"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationPolicyDomains",
+    "annotation": "authn-resolution",
+    "hash": "a3d1211320aa0d77537944909ca6e34eba06628e9e6f1a7d5d7809cf0ce51793"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationPolicyEntries",
+    "annotation": "authn-resolution",
+    "hash": "c35518d6b3a46627ea3a9881bd4b38629c7fa511454d5e0293646173d4254e2e"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationPolicyEntryValues",
+    "annotation": "authn-resolution",
+    "hash": "9ce6960f1e994592471b5d3e9d7be5695ff1b8b8f364198c6732cc3338592aa2"
+  },
+  {
+    "engine": "postgres",
+    "name": "DeleteRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "711b10f7414e521f246d8f9ce2e25f35aa842923a7618c0cd2fe623b8a894653"
   },
   {
     "engine": "postgres",
@@ -555,7 +597,7 @@
     "engine": "postgres",
     "name": "GetAccountProfile",
     "annotation": "authn-resolution",
-    "hash": "8b582d1194fbf5b401f5577707ffa96c821626adac297395bc73f5b7f5606725"
+    "hash": "886341e782d77e059fa312c91ba73f9a8ef5b50977a417664cb4415a7026cb20"
   },
   {
     "engine": "postgres",
@@ -631,6 +673,12 @@
   },
   {
     "engine": "postgres",
+    "name": "GetInstanceRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "4d03873298192baa3f2482d9f7855c369141c604068525ebdd2c32c3ea18d799"
+  },
+  {
+    "engine": "postgres",
     "name": "GetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "c7b306eee3ac685784898bc2e65b0689770d9298de994b4ba77fdeb09ee609d0"
@@ -657,13 +705,19 @@
     "engine": "postgres",
     "name": "GetOIDCTransactionByState",
     "annotation": "authn-resolution",
-    "hash": "492caca08fd5e8794498a7e4e02861d1ca50a505cab9c35b18dca66c76ed08cc"
+    "hash": "c89322d69c0c1bb97a1dfa481dbc35d27463a55ad2bb4fccf10c4ed4cdd060c6"
   },
   {
     "engine": "postgres",
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "a802e9ed5095b702172266766e4e06b874a5533c361ae6482cbd8fadcb9f44c3"
+  },
+  {
+    "engine": "postgres",
+    "name": "GetOrgRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "19358ef3101a8dddd403b8bf1c1b21421cc8b79f016db1e1b5c7f325ed017767"
   },
   {
     "engine": "postgres",
@@ -951,7 +1005,7 @@
     "engine": "postgres",
     "name": "InsertOIDCTransaction",
     "annotation": "authn-resolution",
-    "hash": "a6d7c029475a40d96a199a36eef6fdc4c28ce2a7e94eb7956e48697881623dac"
+    "hash": "47bb1531eadd8a2617f46f5068b876f143a7597047744a592303b927d294493e"
   },
   {
     "engine": "postgres",
@@ -976,6 +1030,36 @@
     "name": "InsertRecoveryCodes",
     "annotation": "authn-resolution",
     "hash": "eed39f37e353496e182619314423ce3b99bb755c88fc658df60db0176bc7f03f"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "05ffdb3c92567993232489a47a09879a5aa1e0fb97c0a0c2179cb777203dfe0a"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationPolicyDomain",
+    "annotation": "authn-resolution",
+    "hash": "20bd3ebf74d9b84e5d7e29985d535e6c5cc1895f731d93b35eefac1302343fba"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationPolicyEntry",
+    "annotation": "authn-resolution",
+    "hash": "597cfbfe4d3968bf98209bc0b1f7c14220c5612c27a8f09ad570d72a229d18a0"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationPolicyEntryValue",
+    "annotation": "authn-resolution",
+    "hash": "f80bda82b220f18f12d3f5646d949075841d927e02a08ac3a9f5d73e944f7ff6"
+  },
+  {
+    "engine": "postgres",
+    "name": "InsertRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "009abfdf722a083dffc07f9d013f7b0327790f908f5f398d0711514a075f8cf0"
   },
   {
     "engine": "postgres",
@@ -1219,6 +1303,12 @@
   },
   {
     "engine": "postgres",
+    "name": "ListOauth2ProvidersForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "b8aae00f48de609ac97da867cd07b17dbe8adfea5a7c6d8f785d69161594223a"
+  },
+  {
+    "engine": "postgres",
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "b5359d612f0ff91290b7188db97f939e0f2b29dfe516aee2dc4f920fce1d669e"
@@ -1227,7 +1317,7 @@
     "engine": "postgres",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
-    "hash": "53b9ce1b26b1e7b4466e21bc53a42b35e8d5d11357a5809b73808367eb9ea0a4"
+    "hash": "c3985019d09e03cc0e095c5c111adbb5f96047cc8d76f38e504667b09beebedb"
   },
   {
     "engine": "postgres",
@@ -1240,6 +1330,30 @@
     "name": "ListRecoveryCodesForReencrypt",
     "annotation": "authn-resolution",
     "hash": "a7a14fc8bea73a38860b072af45c62beec749bd54ffd9783ba20fcaf5ab790c5"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRegistrationPolicyDomains",
+    "annotation": "authn-resolution",
+    "hash": "118bf8546a2ead196c68fd728f9a30854ddc0aee559f89443b59bbda5c0e6757"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRegistrationPolicyEntries",
+    "annotation": "authn-resolution",
+    "hash": "0db551025eeec5d3ea590606ccdae326ed7150c95e1644903112743b229e04a1"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRegistrationPolicyEntryValues",
+    "annotation": "authn-resolution",
+    "hash": "44a4ab1879ada76b00c31ff0cb8341fa6e3854ff2274ebf71c9c1f07c98f3cd9"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListRegistrationSignupsForPolicy",
+    "annotation": "authn-resolution",
+    "hash": "34c056512e15669c5253265fe7107850a4c483e9c2c87871f9304076f3881564"
   },
   {
     "engine": "postgres",
@@ -1441,6 +1555,12 @@
   },
   {
     "engine": "postgres",
+    "name": "PostLegacyMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "fc0e657b407efb67ecc1393a4c8f63563f391fe5cd5b7433acd3b2ddc0341c32"
+  },
+  {
+    "engine": "postgres",
     "name": "PrivacyAccount",
     "annotation": "authn-resolution",
     "hash": "65fe215299887024477ce25288511423c58d67de1faa4cae51d466a7ec6b9e9c"
@@ -1467,7 +1587,7 @@
     "engine": "postgres",
     "name": "PrivacyEraseAccount",
     "annotation": "authn-resolution",
-    "hash": "2521f51dd3b5beb99e7830c69003118bc4559ad04327836fb55afe9085acd199"
+    "hash": "27f3b91717d5258b21bec6f9d7db2ee3cdd7b3f4a2205a4ac50f87d85abaacc1"
   },
   {
     "engine": "postgres",
@@ -1597,6 +1717,12 @@
   },
   {
     "engine": "postgres",
+    "name": "PurgeDeliveryTargetReport",
+    "annotation": "instance-scoped",
+    "hash": "8377f6d8459f6bd35db9df71b5a2c8592f4c2c34e521300f02b1bd16d5b4b65a"
+  },
+  {
+    "engine": "postgres",
     "name": "PutSelfConfigNode",
     "annotation": "instance-scoped",
     "hash": "3391c221f943f1719fedecb0ec91918013b339ad533ea834496d40492609f698"
@@ -1654,6 +1780,12 @@
     "name": "RecoveryListGrantsBeforeSelfConfig",
     "annotation": "authn-resolution",
     "hash": "c91703459f54308af0ba16ccc53fff975691badb06445e4608ba3f3815129164"
+  },
+  {
+    "engine": "postgres",
+    "name": "ReencryptOauth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "b1fb941e2e17f7c510e30b5ae50b08a5366e689ebc92409382a13e79fb536d6f"
   },
   {
     "engine": "postgres",
@@ -1768,6 +1900,12 @@
     "name": "SelectExpiredApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "896064f8657efa87226742640506e246641372ce1425156e3f7ac1e2ad3d5d13"
+  },
+  {
+    "engine": "postgres",
+    "name": "SelectExpiredDeliveryTargetReports",
+    "annotation": "instance-scoped",
+    "hash": "dda1a132ba2a7add5ac2167dc87a92a73adb69ec8f90873392cdea9c6e66aa65"
   },
   {
     "engine": "postgres",
@@ -1899,7 +2037,7 @@
     "engine": "postgres",
     "name": "UpdateAccountProfile",
     "annotation": "authn-resolution",
-    "hash": "81ae44338c4aaedfee46a6ab2e2a2f934693cbf28ad1933c32e126325f74990d"
+    "hash": "4356d285d4bfe10ed1781e4d7954311f00683d3eac43cd4ec31130c81ef558c4"
   },
   {
     "engine": "postgres",
@@ -1924,6 +2062,12 @@
     "name": "UpdateRecoveryCodesCAS",
     "annotation": "authn-resolution",
     "hash": "4667385c505bd218fcedcb6ecb7feb637dd6526c55fa2733757431ff15121e66"
+  },
+  {
+    "engine": "postgres",
+    "name": "UpdateRegistrationPolicyCAS",
+    "annotation": "authn-resolution",
+    "hash": "4cfa982512fad8c574d78672432e396dc2b0ed31c852e58f2f5eefdd48a091db"
   },
   {
     "engine": "postgres",
@@ -2143,6 +2287,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "CountExternalIdentitiesForIssuer",
+    "annotation": "authn-resolution",
+    "hash": "1c03f4feaade85ff94f08592f6ac0e8c6ef8db2fdc51fb83aca20f1a9ec633d2"
+  },
+  {
+    "engine": "sqlite",
     "name": "CountGrantOrigins",
     "annotation": "authn-resolution",
     "hash": "8cdfcb0b0673b9d4c0e9cfb497752f42e8894170e2a4b0d58a56d55214c1f7e9"
@@ -2176,6 +2326,12 @@
     "name": "CountRecentSelfConfigJobs",
     "annotation": "instance-scoped",
     "hash": "3509874cb10071447071f9a86f8036b6198ed23e092cb3f7545448408efaf683"
+  },
+  {
+    "engine": "sqlite",
+    "name": "CountRegistrationPolicyOrgs",
+    "annotation": "authn-resolution",
+    "hash": "9f2ae5d2c8f270d4788623e3012b1367fe79bbfcfcd9ed297619b9632c9d9bfe"
   },
   {
     "engine": "sqlite",
@@ -2223,7 +2379,7 @@
     "engine": "sqlite",
     "name": "CreateOrg",
     "annotation": "instance-scoped",
-    "hash": "44fad26ccfb907a29f577de5526304360423c7fc7a3243e816e05e60842572ef"
+    "hash": "f937744a45555d9ae5076039dd61b9b6d25e9436c94efa93695053838a8be011"
   },
   {
     "engine": "sqlite",
@@ -2338,6 +2494,36 @@
     "name": "DeleteReauthWindowsForEnvironment",
     "annotation": "authn-resolution",
     "hash": "372ea6e9510bc1fdf82032650c82f4240acb6c502a068f091ed3673bf7f61ef6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "04c72124bf9c36ac46dc7361aaa983ee4487daed4477d209fd72d4b114a5d077"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationPolicyDomains",
+    "annotation": "authn-resolution",
+    "hash": "371439fe52f65ff3480c93b30485e5d7e22015e6803a91c9f129dc32325f1ac3"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationPolicyEntries",
+    "annotation": "authn-resolution",
+    "hash": "1092a62f864c7236b56705cee0097445d879aefa19b2d8810079aecd3fd152f3"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationPolicyEntryValues",
+    "annotation": "authn-resolution",
+    "hash": "9cb4d5ecb4c2f0284c904c1cbfca5f754fdcec3ad674714dc9fa9aa737fbac23"
+  },
+  {
+    "engine": "sqlite",
+    "name": "DeleteRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "401957b6fa088e446e6aa640602baf9c8e0c6e80159cbd471da427d00b96fb1a"
   },
   {
     "engine": "sqlite",
@@ -2523,7 +2709,7 @@
     "engine": "sqlite",
     "name": "GetAccountProfile",
     "annotation": "authn-resolution",
-    "hash": "8b582d1194fbf5b401f5577707ffa96c821626adac297395bc73f5b7f5606725"
+    "hash": "886341e782d77e059fa312c91ba73f9a8ef5b50977a417664cb4415a7026cb20"
   },
   {
     "engine": "sqlite",
@@ -2599,6 +2785,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "GetInstanceRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "4d03873298192baa3f2482d9f7855c369141c604068525ebdd2c32c3ea18d799"
+  },
+  {
+    "engine": "sqlite",
     "name": "GetLastPruneSuccess",
     "annotation": "instance-scoped",
     "hash": "c7b306eee3ac685784898bc2e65b0689770d9298de994b4ba77fdeb09ee609d0"
@@ -2625,13 +2817,19 @@
     "engine": "sqlite",
     "name": "GetOIDCTransactionByState",
     "annotation": "authn-resolution",
-    "hash": "39ce25c1dc42fceac7529b2bb91ea748b05b6c05c6efc1eab0acef3b9e8d00c3"
+    "hash": "c736f9d0f6b7cc0f765e009d9791bf1e6226ff6e54c441283e7cf1aa66d5477f"
   },
   {
     "engine": "sqlite",
     "name": "GetOpsDiagnostics",
     "annotation": "instance-scoped",
     "hash": "02e196d1a8a8e6e0deaba49cd10fe2169a6fd1d83eb44a2c69bd258413afc2f6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "GetOrgRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "cc2212863a1b618cca167348da2bc3bdd891871af0ace950deb6ba260d4d7f90"
   },
   {
     "engine": "sqlite",
@@ -2919,7 +3117,7 @@
     "engine": "sqlite",
     "name": "InsertOIDCTransaction",
     "annotation": "authn-resolution",
-    "hash": "951af64d8d33b954d53abb5eb2f5990a81a43988a488ff7652ad9ff2b3f1177a"
+    "hash": "3039e6aa6047ca03bd3b9d91a2a1f6fee2a421486f60897c9cc4296a567feeb1"
   },
   {
     "engine": "sqlite",
@@ -2944,6 +3142,36 @@
     "name": "InsertRecoveryCodes",
     "annotation": "authn-resolution",
     "hash": "704efac3a17b238e4539a94d1d5e494f362ce133c288a9f6236bb04067fb0585"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationPolicy",
+    "annotation": "authn-resolution",
+    "hash": "5463c12ac3a2cda766be6cd1a19c2d6291a3e7a1836895f9b83f56caa4a081ed"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationPolicyDomain",
+    "annotation": "authn-resolution",
+    "hash": "30a6b96457d74337562aa959b48f9ea75b2829df46e0414055b76053e089ab48"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationPolicyEntry",
+    "annotation": "authn-resolution",
+    "hash": "3b6b292105bf6d98edc4ca37b7207476600a84c5d3bf01ed0b993d18f73bc539"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationPolicyEntryValue",
+    "annotation": "authn-resolution",
+    "hash": "c99b196fa0fe1ae39880578e54bcc5cc961af8004f827495a64f85fdc93b6a54"
+  },
+  {
+    "engine": "sqlite",
+    "name": "InsertRegistrationSignup",
+    "annotation": "authn-resolution",
+    "hash": "3d9bd59b88a0ab04ffe54c75c5f6757f81ed0339a92acbdaf3446f892cece361"
   },
   {
     "engine": "sqlite",
@@ -3187,6 +3415,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "ListOauth2ProvidersForReencrypt",
+    "annotation": "authn-resolution",
+    "hash": "511371aa5b69d480da6dc4e7a3b82d558063f3658d0c4a7c7516f3d68c9b7f77"
+  },
+  {
+    "engine": "sqlite",
     "name": "ListOidcProvidersForReencrypt",
     "annotation": "authn-resolution",
     "hash": "0df9d463d9a4c8cd88e4f194352647544bdd81502c21186a90b2698efaf9a331"
@@ -3195,7 +3429,7 @@
     "engine": "sqlite",
     "name": "ListOrgs",
     "annotation": "instance-scoped",
-    "hash": "53b9ce1b26b1e7b4466e21bc53a42b35e8d5d11357a5809b73808367eb9ea0a4"
+    "hash": "c3985019d09e03cc0e095c5c111adbb5f96047cc8d76f38e504667b09beebedb"
   },
   {
     "engine": "sqlite",
@@ -3208,6 +3442,30 @@
     "name": "ListRecoveryCodesForReencrypt",
     "annotation": "authn-resolution",
     "hash": "74c4977eccce71aec43a5beab43648e6954173581a755903760695bb13b55ae7"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRegistrationPolicyDomains",
+    "annotation": "authn-resolution",
+    "hash": "37005d4f204ca14a75dffc4ca496e865e2ec4107c247f338d110709e8102cf6c"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRegistrationPolicyEntries",
+    "annotation": "authn-resolution",
+    "hash": "de5e641d735446b19d65f35b89796e103403969d39aa0a8f8a4a7f5d2cfdfd84"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRegistrationPolicyEntryValues",
+    "annotation": "authn-resolution",
+    "hash": "5f8bccc93504b28e8115e58372ed5deebceeefcdee9b7fcf1448f85bfa7758a1"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListRegistrationSignupsForPolicy",
+    "annotation": "authn-resolution",
+    "hash": "44209503b1feac0ade57c457479955c766870aa35b7b6efcd3e52005a3257aa3"
   },
   {
     "engine": "sqlite",
@@ -3409,6 +3667,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "PostLegacyMaxCredentialEpoch",
+    "annotation": "authn-resolution",
+    "hash": "0126ad2a2d9c54a32eb996497128454cb28e26b80187585c3533e1cc81f5f01b"
+  },
+  {
+    "engine": "sqlite",
     "name": "PrivacyAccount",
     "annotation": "authn-resolution",
     "hash": "65fe215299887024477ce25288511423c58d67de1faa4cae51d466a7ec6b9e9c"
@@ -3435,7 +3699,7 @@
     "engine": "sqlite",
     "name": "PrivacyEraseAccount",
     "annotation": "authn-resolution",
-    "hash": "2521f51dd3b5beb99e7830c69003118bc4559ad04327836fb55afe9085acd199"
+    "hash": "27f3b91717d5258b21bec6f9d7db2ee3cdd7b3f4a2205a4ac50f87d85abaacc1"
   },
   {
     "engine": "sqlite",
@@ -3565,6 +3829,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "PurgeDeliveryTargetReport",
+    "annotation": "instance-scoped",
+    "hash": "40a1e1350b990edc9e745d998d873b0365fde154b334881fb86eb40dae14c69e"
+  },
+  {
+    "engine": "sqlite",
     "name": "PutSelfConfigNode",
     "annotation": "instance-scoped",
     "hash": "3391c221f943f1719fedecb0ec91918013b339ad533ea834496d40492609f698"
@@ -3622,6 +3892,12 @@
     "name": "RecoveryListGrantsBeforeSelfConfig",
     "annotation": "authn-resolution",
     "hash": "cd384604164fdafe0ff2563899c0c6815c6d39a418f9dada2a847a185e6526ad"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ReencryptOauth2Provider",
+    "annotation": "authn-resolution",
+    "hash": "b1fb941e2e17f7c510e30b5ae50b08a5366e689ebc92409382a13e79fb536d6f"
   },
   {
     "engine": "sqlite",
@@ -3736,6 +4012,12 @@
     "name": "SelectExpiredApprovalRequests",
     "annotation": "instance-scoped",
     "hash": "40062b1fa416bebf73b53261fcbc18accb98220557ddf471cd5a59ddb410b727"
+  },
+  {
+    "engine": "sqlite",
+    "name": "SelectExpiredDeliveryTargetReports",
+    "annotation": "instance-scoped",
+    "hash": "dda1a132ba2a7add5ac2167dc87a92a73adb69ec8f90873392cdea9c6e66aa65"
   },
   {
     "engine": "sqlite",
@@ -3867,7 +4149,7 @@
     "engine": "sqlite",
     "name": "UpdateAccountProfile",
     "annotation": "authn-resolution",
-    "hash": "81ae44338c4aaedfee46a6ab2e2a2f934693cbf28ad1933c32e126325f74990d"
+    "hash": "4356d285d4bfe10ed1781e4d7954311f00683d3eac43cd4ec31130c81ef558c4"
   },
   {
     "engine": "sqlite",
@@ -3892,6 +4174,12 @@
     "name": "UpdateRecoveryCodesCAS",
     "annotation": "authn-resolution",
     "hash": "c8d3cd4c31fef6bb52b9c001422cc2f3814afbe415f5dc637f86d1ca63e72d39"
+  },
+  {
+    "engine": "sqlite",
+    "name": "UpdateRegistrationPolicyCAS",
+    "annotation": "authn-resolution",
+    "hash": "298dfbea452203c6c4e20cd93d490eea96d701162a20b4da4ce8a68549592f36"
   },
   {
     "engine": "sqlite",

@@ -8,6 +8,7 @@ import {
   expectStatusIsTextAndAria,
   measureSurfaceLuminance,
 } from '../fixtures/assertions.ts';
+import { zAuthMethods, zOrgList, zRegistrationPolicy } from '@hikyo/zod';
 import { z } from 'zod';
 
 import { browserApi, fixtureApiCall } from '../fixtures/api.ts';
@@ -15,11 +16,13 @@ import {
   ADMIN,
   BASE_URL,
   OIDC_PROVIDER,
+  WEBUI_OIDC,
   nextTotpCode,
   passEnrolmentGate,
   readSeed,
   STORAGE_STATE,
 } from '../fixtures/instance.ts';
+import { enrolledAccount, TOTP_STEP_MS } from '../fixtures/accounts.ts';
 import { withPasskeyPage } from '../fixtures/passkey.ts';
 
 /** publicPost is an unauthenticated JSON POST, parsed at the boundary. */
@@ -39,15 +42,23 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
   await page.emulateMedia({ colorScheme: theme });
   await page.goto('/login');
 
+  // Step one of the staged entry (#587 locked, spec section 6): one row per
+  // way in, no credential field yet. The e2e browser can assert, so the
+  // passkey row stands beside the password row and the seeded provider. The
+  // Password row is matched by prefix: after a sign-in its name carries the
+  // "Last used" badge.
   const card = page.locator('.login__card');
-  const submit = page.getByRole('button', { name: 'Sign in' });
-  const username = page.getByLabel('Username');
-  const password = page.getByLabel('Password');
   const heading = page.getByRole('heading', { name: 'Sign in to Hikyo' });
-  const lede = page.getByText('Use the credential you established');
-
-  await expectBoundaryContrast(page, username);
-  await expectBoundaryContrast(page, password);
+  const lede = page.getByText('Choose how you sign in.');
+  const passwordRow = card.getByRole('button', { name: /^Password\b/ });
+  const provider = card.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` });
+  await expect(heading).toBeVisible();
+  await expect(lede).toBeVisible();
+  await expect(passwordRow).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Passkey', exact: true })).toBeVisible();
+  await expect(provider).toBeVisible();
+  await expect(card.getByLabel('Username')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Create an account' })).toHaveCount(0);
 
   await expectPinnedAssertionSet(page, {
     flow: 'login',
@@ -56,9 +67,8 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
     text: [heading, lede],
     radii: [
       [card, 'container'],
-      [submit, 'control'],
-      [username, 'control'],
-      [password, 'control'],
+      [passwordRow, 'control'],
+      [provider, 'control'],
     ],
     fonts: [
       [heading, 'ui'],
@@ -67,6 +77,46 @@ async function expectLoginSurface(page: Page, theme: 'dark' | 'light') {
     colours: [
       [heading, 'color', '--tx'],
       [lede, 'color', '--tx-dim'],
+      [card, 'backgroundColor', '--bg-raise'],
+      [card, 'borderTopColor', '--line'],
+      // A generic provider row is the house secondary button.
+      [provider, 'backgroundColor', '--bg-panel'],
+    ],
+    hairlines: [card, provider],
+    density: [[passwordRow, '--touch'], [provider, '--touch']],
+  });
+
+  // Step two: only the chosen method's form.
+  await passwordRow.click();
+  const submit = page.getByRole('button', { name: 'Sign in', exact: true });
+  const username = page.getByLabel('Username');
+  const password = page.getByLabel('Password');
+  const stepHeading = page.getByRole('heading', { name: 'Sign in with a password' });
+  const stepLede = page.getByText('Use the credential you established');
+  // The way back is on the card, and it returns to the rows without a reload.
+  await expect(card.getByRole('button', { name: 'Other ways to sign in' })).toBeVisible();
+
+  await expectBoundaryContrast(page, username);
+  await expectBoundaryContrast(page, password);
+
+  await expectPinnedAssertionSet(page, {
+    flow: 'login',
+    surface: 'login',
+    theme,
+    text: [stepHeading, stepLede],
+    radii: [
+      [card, 'container'],
+      [submit, 'control'],
+      [username, 'control'],
+      [password, 'control'],
+    ],
+    fonts: [
+      [stepHeading, 'ui'],
+      [stepLede, 'ui'],
+    ],
+    colours: [
+      [stepHeading, 'color', '--tx'],
+      [stepLede, 'color', '--tx-dim'],
       [card, 'backgroundColor', '--bg-raise'],
       [card, 'borderTopColor', '--line'],
       [submit, 'backgroundColor', '--accent'],
@@ -213,9 +263,10 @@ test.describe('login', () => {
     await page.goto('/login');
     await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
 
+    await page.getByRole('button', { name: /^Password\b/ }).click();
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill('not the password at all');
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
     // Scoped to the card for the same reason as the OIDC-done surface above:
     // the toast announcer is a second, always-present role="alert".
@@ -231,6 +282,67 @@ test.describe('login', () => {
     expect(await page.context().cookies()).toEqual([]);
   });
 
+  // An inactive registration policy (#606, #587 d3): the public page says
+  // only "Sign-up is paused." and nothing about why. Real state: an instance
+  // policy is opened on a provider seeded for the purpose, then the provider
+  // is disabled, which makes the policy inactive (a failing precondition).
+  // With registration closed there is no line at all.
+  //
+  // Its own instance operator, like the sign-up door's: three codes (step-up,
+  // two proofs) on the shared administrator leave its ledger a step ahead of
+  // the clock, and the next flow to draw from it waits out that step inside a
+  // default budget. The fresh account spends four (enrol, step-up, two
+  // proofs); the last two may each wait one boundary, which the budget below
+  // covers.
+  test('says only "Sign-up is paused." while registration is inactive', async ({ page, browser }, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const provider = { slug: 'e2e-reg-paused', displayName: 'Registration Paused' };
+    const policyPath = '/api/v1/instance/registration-policy';
+    const providerPath = `/api/v1/instance/oidc-providers/${provider.slug}`;
+    const providerBody = (enabled: boolean) => ({
+      display_name: provider.displayName,
+      issuer: WEBUI_OIDC.issuer,
+      client_id: 'e2e-reg-client',
+      client_secret: 'e2e-reg-secret',
+      scopes: 'openid email',
+      enabled,
+    });
+    const operator = await enrolledAccount(browser, 'reg-paused-operator', 'instance');
+    const admin = operator.bearer;
+    const methods = async () => {
+      const response = await fetch(`${BASE_URL}/api/v1/auth/methods`);
+      return zAuthMethods.parse(await response.json());
+    };
+
+    await page.goto('/login');
+    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(page.getByText('Sign-up is paused.')).toHaveCount(0);
+    try {
+      await fixtureApiCall(admin, 'PUT', providerPath, z.unknown(), providerBody(true));
+      await fixtureApiCall(admin, 'PUT', policyPath, zRegistrationPolicy, {
+        external: [{ provider: { kind: 'oidc', slug: provider.slug } }],
+        landing: { kind: 'none' },
+        proof: await operator.ledger.next(),
+      });
+      expect((await methods()).signup_open).toBe(true);
+      await fixtureApiCall(admin, 'PUT', providerPath, z.unknown(), providerBody(false));
+      const door = await methods();
+      expect(door.signup_open).toBe(false);
+      expect(door.signup_paused).toBe(true);
+
+      await page.reload();
+      await expect(page.getByText('Sign-up is paused.', { exact: true })).toBeVisible();
+      await expect(page.locator('main')).not.toContainText(/authority-lost|no longer holds|mailer|precondition|inactive|disabled/i);
+    } finally {
+      await fixtureApiCall(admin, 'DELETE', policyPath, z.unknown(), { proof: await operator.ledger.next() }).catch((error: unknown) => {
+        if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
+      });
+      await fixtureApiCall(admin, 'DELETE', providerPath, z.unknown()).catch((error: unknown) => {
+        if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
+      });
+    }
+  });
+
   test('redirects an anonymous authenticated-route deep link to login', async ({ page }) => {
     await page.goto('/projects');
 
@@ -243,9 +355,10 @@ test.describe('login', () => {
     page,
   }) => {
     await page.goto('/login');
+    await page.getByRole('button', { name: /^Password\b/ }).click();
     await page.getByLabel('Username').fill(ADMIN.username);
     await page.getByLabel('Password').fill(ADMIN.password);
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
 
     // ADMIN carries an enrolled authenticator, so the password answers a login
     // challenge, not a session (#760). The factor is never skippable: the code
@@ -286,7 +399,7 @@ test.describe('login', () => {
     // credential as non-discoverable and refuses it at sign-in with a 401.
     await withPasskeyPage(page, 'shared', async (passkeyPage) => {
       await passkeyPage.goto('/login');
-      await passkeyPage.getByRole('button', { name: 'Use a passkey instead' }).click();
+      await passkeyPage.getByRole('button', { name: 'Passkey', exact: true }).click();
 
       // A passkey is multi-factor on its own: no second step is presented.
       await expect(passkeyPage.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
@@ -330,8 +443,10 @@ test.describe('login', () => {
         page.getByRole('button', { name: 'Contacting identity provider…' }),
       ).toBeDisabled();
 
+      // Step one of the staged entry: the password row, the passkey row and
+      // the seeded provider's row; no field until a method is chosen.
       const controls = page.locator('input, button');
-      await expect(controls).toHaveCount(5);
+      await expect(controls).toHaveCount(3);
       for (const control of await controls.all()) {
         await expect(control).toBeDisabled();
       }
@@ -499,12 +614,13 @@ test.describe('login', () => {
       // The old password is gone and the new one signs in. Nothing about the
       // authority or the code survives in the page.
       await page.getByRole('link', { name: 'Sign in' }).click();
+      await page.getByRole('button', { name: /^Password\b/ }).click();
       await page.getByLabel('Username').fill(username);
       await page.getByLabel('Password').fill(firstPassword);
-      await page.getByRole('button', { name: 'Sign in' }).click();
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await expect(page.locator('.login__card').getByRole('alert')).toBeVisible();
       await page.getByLabel('Password').fill(newPassword);
-      await page.getByRole('button', { name: 'Sign in' }).click();
+      await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       // No factor stands on this account, so the product-default `required`
       // policy gates the new session into enrolment (#785) before the shell.
       await passEnrolmentGate(page, newPassword);
@@ -548,9 +664,10 @@ test.describe('login', () => {
       await withPasskeyPage(await context.newPage(), 'empty', async (page) => {
         const signIn = async () => {
           await page.goto('/login');
+          await page.getByRole('button', { name: /^Password\b/ }).click();
           await page.getByLabel('Username').fill(username);
           await page.getByLabel('Password').fill(password);
-          await page.getByRole('button', { name: 'Sign in' }).click();
+          await page.getByRole('button', { name: 'Sign in', exact: true }).click();
         };
 
         await signIn();
@@ -621,8 +738,145 @@ test.describe('login', () => {
     for (const scheme of ['dark', 'light'] as const) {
       await page.emulateMedia({ colorScheme: scheme });
       await expectContrast(page, page.getByRole('heading', { name: 'Sign in to Hikyo' }));
+      await expectContrast(page, page.getByText('Choose how you sign in.'));
+    }
+    // Step two, once: the theme is re-emulated in place, the step holds.
+    await page.getByRole('button', { name: /^Password\b/ }).click();
+    for (const scheme of ['dark', 'light'] as const) {
+      await page.emulateMedia({ colorScheme: scheme });
+      await expectContrast(page, page.getByRole('heading', { name: 'Sign in with a password' }));
       await expectContrast(page, page.getByText('Use the credential you established'));
       await expectContrast(page, page.getByText('Username'));
     }
+  });
+});
+
+/**
+ * Flow: login, registry surface `signup` (#607): the staged entry's sign-up
+ * door, against real server state. An instance registration policy is opened
+ * over the API on the fixture provider (fresh-org landing), the door renders
+ * on `/login` and on `/signup`, the confirmation step names the provider and
+ * the landing, and the round-trip with a subject no account holds creates the
+ * account and its self-served org and lands signed in. Before the door opens,
+ * the same unknown subject on the sign-in door is refused: sign-in never
+ * creates an account (#604). The only interception is the fake IdP's
+ * authorize request, given a fresh subject the way a different person would
+ * bring one; the Hikyo server is never substituted.
+ */
+test.describe('sign-up door', () => {
+  test.use({ storageState: { cookies: [], origins: [] } });
+  const policyPath = '/api/v1/instance/registration-policy';
+
+  /** Give the fake IdP's authorize request a subject no account holds. */
+  async function freshSubject(page: Page, subject: string) {
+    await page.route(/\/authorize\?/, async (route) => {
+      await route.continue({ url: `${route.request().url()}&sub=${encodeURIComponent(subject)}` });
+    });
+  }
+
+  test('opens only while registration is open, confirms, and lands a new account in its own org', async ({ page, browser }, testInfo) => {
+    const subject = `signup-${testInfo.project.name}-${Date.now().toString(36)}`;
+    // Its own instance operators, with their own authenticators: two codes
+    // enrol and step each up, a third proves its write. A fresh account holds
+    // two codes per TOTP step, so the opening proof may wait for one step
+    // boundary; the closer is enrolled now, so its proof, drawn at the end,
+    // is due by then. The budget is the default plus that one step.
+    testInfo.setTimeout(testInfo.timeout + TOTP_STEP_MS);
+    const [operator, closer] = await Promise.all([
+      enrolledAccount(browser, 'signup-operator', 'instance'),
+      enrolledAccount(browser, 'signup-closer', 'instance'),
+    ]);
+    const admin = operator.bearer;
+    await freshSubject(page, subject);
+
+    // Closed: nothing hints at sign-up, and the sign-in door refuses an
+    // unknown identity instead of creating one.
+    await page.goto('/login');
+    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(page.getByText('New here?')).toHaveCount(0);
+    await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+    await expect(page).toHaveURL(/error=unauthenticated/);
+    expect((await page.context().cookies()).find((c) => c.name === '__Host-hikyo')).toBeUndefined();
+
+    let created: string | undefined;
+    try {
+      await fixtureApiCall(admin, 'PUT', policyPath, zRegistrationPolicy, {
+        external: [{ provider: { kind: 'oidc', slug: OIDC_PROVIDER.slug } }],
+        landing: { kind: 'fresh-org', cap: 5 },
+        proof: await operator.ledger.next(),
+      });
+
+      // The door on /login, and the pinned set on /signup in both schemes.
+      await page.goto('/login');
+      await page.getByRole('button', { name: 'Create an account' }).click();
+      await expect(page.getByRole('heading', { name: 'Create an account' })).toBeVisible();
+      for (const scheme of ['dark', 'light'] as const) {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.goto('/signup');
+        const card = page.locator('.login__card');
+        const heading = page.getByRole('heading', { name: 'Create an account' });
+        const landing = page.locator('.login__landing');
+        const provider = page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` });
+        await expect(landing).toHaveText('You’ll get your own organisation, with you as its first administrator.');
+        await expectPinnedAssertionSet(page, {
+          flow: 'login',
+          surface: 'signup',
+          theme: scheme,
+          text: [heading, landing],
+          radii: [[card, 'container'], [landing, 'container'], [provider, 'control']],
+          fonts: [[heading, 'ui'], [landing, 'ui']],
+          colours: [
+            [heading, 'color', '--tx'],
+            [landing, 'color', '--tx'],
+            [landing, 'borderTopColor', '--accent'],
+            [card, 'backgroundColor', '--bg-raise'],
+          ],
+          hairlines: [card, landing, provider],
+          density: [[provider, '--touch']],
+        });
+      }
+
+      // The confirmation step, then the real round-trip under `sign-up`.
+      await page.getByRole('button', { name: `Continue with ${OIDC_PROVIDER.displayName}` }).click();
+      await expect(page.getByRole('heading', { name: `Create an account with ${OIDC_PROVIDER.displayName}` })).toBeVisible();
+      await expect(page.locator('.login__card')).toContainText(
+        `This creates a new account. Already have one? Sign in with it first, then add ${OIDC_PROVIDER.displayName} under Settings › Security.`,
+      );
+      await page.getByRole('button', { name: `Continue to ${OIDC_PROVIDER.displayName}` }).click();
+      await expect(page.getByRole('list', { name: 'Breadcrumb' })).toBeVisible();
+      expect((await page.context().cookies()).find((c) => c.name === '__Host-hikyo')).toBeDefined();
+
+      // The self-served org the sign-up minted, on the operator's origin filter.
+      const selfServed = await fixtureApiCall(admin, 'GET', '/api/v1/orgs?origin=registration', zOrgList);
+      const minted = selfServed.items.filter((org) => org.origin === 'registration' && org.name === `org-${org.id}`);
+      expect(minted.length).toBeGreaterThan(0);
+      created = minted.at(-1)?.id;
+      const adminView = await browser.newContext({ storageState: STORAGE_STATE });
+      try {
+        const operatorPage = await adminView.newPage();
+        await operatorPage.goto('/instance');
+        const orgs = operatorPage.locator('#instance-orgs');
+        await orgs.getByLabel('Show').selectOption('registration');
+        await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toBeVisible();
+        await expect(orgs.getByText('self-serve', { exact: true }).first()).toBeVisible();
+        await orgs.getByLabel('Show').selectOption('manual');
+        await expect(orgs.getByRole('link', { name: `org-${created ?? ''}` })).toHaveCount(0);
+      } finally {
+        await adminView.close();
+      }
+    } finally {
+      const toleratingGone = (error: unknown) => {
+        if (!(error instanceof Error && error.message.includes('answered 404:'))) throw error;
+      };
+      if (created !== undefined) {
+        await fixtureApiCall(admin, 'DELETE', `/api/v1/orgs/${created}`, z.unknown()).catch(toleratingGone);
+      }
+      await fixtureApiCall(closer.bearer, 'DELETE', policyPath, z.unknown(), { proof: await closer.ledger.next() }).catch(toleratingGone);
+    }
+    // Closed again: the door is gone (a fresh, signed-out page).
+    await page.context().clearCookies();
+    await page.goto('/login');
+    await expect(page.getByRole('heading', { name: 'Sign in to Hikyo' })).toBeVisible();
+    await expect(page.getByText('New here?')).toHaveCount(0);
   });
 });

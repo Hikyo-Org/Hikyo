@@ -12,7 +12,14 @@ export type RuntimeStatus = {
 export type AccountProfile = {
     username: string;
     display_name: string;
-    email: string;
+    /**
+     * The account email in canonical form (domain lowercased), or null when the account has none. Read-only. See email_verified for what it is used for. Never an identity linking key.
+     */
+    email: string | null;
+    /**
+     * True when email is the verified sign-in email, set only by verified local sign-up. False when email is null or is a contact address kept from before sign-in email existed; such an address is display-only and is never used to sign in.
+     */
+    email_verified: boolean;
     /**
      * SCIM controls the username and display name.
      */
@@ -26,10 +33,6 @@ export type AccountProfile = {
 export type UpdateAccountProfileRequest = {
     username: string;
     display_name: string;
-    /**
-     * Contact address, or empty to clear. Never used for authentication.
-     */
-    email: string;
     proof?: string;
 };
 
@@ -480,9 +483,10 @@ export type Error = {
          */
         message: string;
         /**
-         * Present only on `bad_request`, where it names the offending
-         * request member. `null` and absent are equivalent; every other
-         * error code omits the member entirely.
+         * Present on `bad_request` and `unprocessable`, where it names
+         * the offending request member, and on a `conflict` whose refusal
+         * names the caller's own state. `null` and absent are
+         * equivalent; every other error code omits the member entirely.
          *
          */
         detail?: string | null;
@@ -540,7 +544,7 @@ export type ScanFinding = {
 /**
  * Closed response-code set. Clients branch on this, not on prose.
  */
-export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'too_many_requests' | 'service_unavailable' | 'internal';
+export type ErrorCode = 'bad_request' | 'unauthenticated' | 'forbidden' | 'not_found' | 'conflict' | 'limit_exceeded' | 'unprocessable' | 'payload_too_large' | 'too_many_requests' | 'service_unavailable' | 'internal';
 
 /**
  * An exact closed allowlist. `additionalProperties: false` is the
@@ -565,8 +569,11 @@ export type Meta = {
      */
     api_revision: number;
     /**
-     * Which authentication protocol flows this instance serves. `login`
-     * needs this before any session exists.
+     * Which protocols this instance serves: the authentication flows
+     * `login` needs before any session exists, and the machine protocols
+     * an integration probes before using them, such as
+     * `delivery-target-report/<vocabulary>` for each delivery-target
+     * report vocabulary this server accepts.
      *
      */
     protocol_capabilities: Array<ProtocolCapability>;
@@ -1052,6 +1059,20 @@ export type Org = {
         [key: string]: unknown;
     } | null;
     created_at: Timestamp;
+    /**
+     * How the org came to exist (#585 d8): `manual` (an operator's
+     * create) or `registration` (a sign-up under a registration policy,
+     * a self-served org). Typed on the row, never editable.
+     *
+     */
+    origin: 'manual' | 'registration';
+    /**
+     * The registration policy that minted the org, a trail pointer with
+     * no foreign key (the org keeps it after the policy is deleted); null
+     * for a manual org.
+     *
+     */
+    registration_policy_id?: string | null;
 };
 
 export type OrgList = {
@@ -2728,6 +2749,154 @@ export type ReconcileOfflineRecordsResponse = {
     duplicates: number;
 };
 
+/**
+ * A Kubernetes object UID, canonical lower-case RFC 4122 form.
+ */
+export type KubernetesUid = string;
+
+/**
+ * A namespace name (DNS-1123 label). A display label, never interpreted.
+ */
+export type KubernetesNamespace = string;
+
+/**
+ * An object name (DNS-1123 subdomain). A display label, never interpreted.
+ */
+export type KubernetesObjectName = string;
+
+/**
+ * The target's identity under the reporting principal: the cluster
+ * (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+ * target object's UID. A recreated object is a new target.
+ *
+ */
+export type DeliveryTargetIdentity = {
+    cluster_id: KubernetesUid;
+    instance_uid: KubernetesUid;
+    uid: KubernetesUid;
+};
+
+/**
+ * The target's identity plus the namespace and name an operator types into `kubectl`.
+ */
+export type DeliveryTargetRef = {
+    cluster_id: KubernetesUid;
+    instance_uid: KubernetesUid;
+    namespace: KubernetesNamespace;
+    name: KubernetesObjectName;
+    uid: KubernetesUid;
+};
+
+/**
+ * One asserted condition. `type` and `reason` are bounded by the
+ * Kubernetes condition grammar (k8s.io/apimachinery `metav1.Condition`
+ * Type and Reason validation), not enumerated: a value outside the
+ * vocabulary `/meta` advertises (`delivery-target-report/<vocabulary>`)
+ * refuses the whole report with 422 naming the member, so the refusal is
+ * recorded on the target's row. A string outside the grammar is a 400.
+ *
+ */
+export type DeliveryTargetCondition = {
+    type: string;
+    status: 'False' | 'True' | 'Unknown';
+    reason: string;
+    observed_generation: number;
+};
+
+/**
+ * The target's closed `status.lifecycle`.
+ */
+export type DeliveryTargetLifecycle = 'Refused' | 'Retained' | 'Scrubbed' | 'Synced' | 'Unreconciled';
+
+/**
+ * The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+ */
+export type DeliveryTargetReporter = {
+    integration: 'kubernetes-operator';
+    version: string;
+};
+
+/**
+ * One closed, value-free report (ADR D4). It carries no condition
+ * message, event text, secret value, key name, cursor or credential
+ * material; there is no member that could.
+ *
+ */
+export type DeliveryTargetReportRequest = {
+    /**
+     * The vocabulary version `/meta` advertised. One this server does not accept is a 422.
+     */
+    vocabulary: number;
+    target: DeliveryTargetRef;
+    generation: number;
+    observed_generation: number;
+    reported_at: Timestamp;
+    /**
+     * The target's heartbeat interval. The server clamps it to [300, 86400].
+     */
+    report_interval_seconds: number;
+    lifecycle: DeliveryTargetLifecycle;
+    conditions: Array<DeliveryTargetCondition>;
+    reporter: DeliveryTargetReporter;
+};
+
+export type DeliveryTargetTombstoneRequest = {
+    target: DeliveryTargetIdentity;
+};
+
+/**
+ * Derived at read time, never stored (ADR D5). `unknown` is the absence
+ * of a row, so no row carries it.
+ *
+ */
+export type DeliveryTargetState = 'refused' | 'reported' | 'reporter-revoked' | 'stale';
+
+/**
+ * One target's latest accepted report, as its controller asserted it.
+ */
+export type DeliveryTarget = {
+    id: string;
+    principal_id: string;
+    target: DeliveryTargetRef;
+    vocabulary: number;
+    generation: number;
+    observed_generation: number;
+    reported_at: Timestamp;
+    received_at: Timestamp;
+    report_interval_seconds: number;
+    lifecycle: DeliveryTargetLifecycle;
+    conditions: Array<DeliveryTargetCondition>;
+    reporter: DeliveryTargetReporter;
+    state: DeliveryTargetState;
+    /**
+     * Present only while `state` is `refused`. The closed cause, never the refused value.
+     */
+    refusal?: {
+        cause: 'vocabulary';
+        refused_at: Timestamp;
+    };
+};
+
+/**
+ * The server-observed layer for one reporting principal (ADR D2).
+ */
+export type DeliveryTargetPrincipal = {
+    principal_id: string;
+    /**
+     * Its last authenticated delivery fetch in this environment. Absent when never observed.
+     */
+    last_contact_at?: Timestamp;
+    /**
+     * The closed `quota-refused` notice's last time. Absent when never refused.
+     */
+    quota_refused_at?: Timestamp;
+};
+
+export type DeliveryTargetList = {
+    principals: Array<DeliveryTargetPrincipal>;
+    targets: Array<DeliveryTarget>;
+};
+
 export type InstanceConfigBinding = {
     org_id: string;
     project_id: string;
@@ -3349,18 +3518,181 @@ export type RenameKeyGroupRequest = {
 export type AuthMethods = {
     providers: Array<AuthMethodProvider>;
     local_login_enabled: boolean;
+    /**
+     * The addressed scope (the instance, or `?org=`) has an active
+     * registration policy: the sign-up door is open.
+     *
+     */
+    signup_open: boolean;
+    /**
+     * The addressed scope has a policy that is inactive. The public page
+     * renders only "Sign-up is paused."; the cause renders on the
+     * Members panel (#587 d3). False when the scope has no policy.
+     *
+     */
+    signup_paused: boolean;
+    /**
+     * The methods the open door admits, empty unless `signup_open`
+     * (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
+     *
+     */
+    signup_methods: Array<SignupMethod>;
+    /**
+     * Where an admitted sign-up lands, present only while the door is
+     * open (#607): the addressed org (`org-template`), an account with
+     * no grants (`none`), or a fresh org of its own (`fresh-org`). Not
+     * secret: the landing kind is what the confirmation step tells the
+     * signer before the round-trip (#585 d5, #587 d1).
+     *
+     */
+    signup_landing?: 'org-template' | 'none' | 'fresh-org';
+};
+
+/**
+ * A federated provider by `{kind, slug}`, or the string `local` for the email + password entry.
+ */
+export type SignupMethod = ProviderRef | LocalSignupMethod;
+
+/**
+ * The email + password sign-up entry.
+ */
+export type LocalSignupMethod = 'local';
+
+/**
+ * A federated provider named by kind and slug (slugs are unique per kind only).
+ */
+export type ProviderRef = {
+    kind: IdentityProviderKind;
+    slug: string;
+};
+
+export type RegistrationExternalEntry = {
+    provider: ProviderRef;
+    /**
+     * The provider's display name; on responses only, ignored on input.
+     */
+    display_name?: string;
+    /**
+     * One issuer-specific string claim the signed ID token must carry,
+     * with a value in `values`. Never `email`.
+     *
+     */
+    claim?: string;
+    values?: Array<string>;
+};
+
+/**
+ * Email + password sign-up; present means enabled.
+ */
+export type RegistrationLocalEntry = {
+    /**
+     * Admitted address domains; empty or absent admits any address.
+     */
+    domains?: Array<string>;
+};
+
+/**
+ * Where a sign-up lands. An organisation policy is `org-template` with a
+ * template applicable at organisation scope; an instance policy is
+ * `none` (zero grants) or `fresh-org` (a new organisation with the
+ * signer as its first administrator) with a cap on live orgs minted.
+ *
+ */
+export type RegistrationLanding = {
+    kind: 'org-template' | 'none' | 'fresh-org';
+    template?: RoleTemplate;
+    cap?: number;
+};
+
+export type RegistrationPolicyPutRequest = {
+    external: Array<RegistrationExternalEntry>;
+    local?: RegistrationLocalEntry;
+    landing: RegistrationLanding;
+    /**
+     * The reauthentication proof: a TOTP code, or the account password
+     * where no factor is enrolled.
+     *
+     */
+    proof: string;
+};
+
+export type RegistrationPolicyDeleteRequest = {
+    /**
+     * The reauthentication proof, as on `put`.
+     */
+    proof: string;
+};
+
+export type RegistrationPolicy = {
+    id: string;
+    /**
+     * The organisation; absent for the instance policy.
+     */
+    org?: string;
+    external: Array<RegistrationExternalEntry>;
+    local?: RegistrationLocalEntry;
+    landing: RegistrationLanding;
+    /**
+     * The standing delegation's authority principal (empty when
+     * unassigned); re-checked against its current grants on every read
+     * and every sign-up.
+     *
+     */
+    authority_principal_id: string;
+    state: 'active' | 'inactive';
+    inactive_cause?: 'authority-lost' | 'authority-unassigned' | 'precondition';
+    /**
+     * When `inactive_cause` is `precondition`, the failing precondition
+     * by name, with the provider as `<kind>:<slug>` where one is involved.
+     *
+     */
+    inactive_precondition?: string;
+    /**
+     * For a `fresh-org` landing, the live orgs this policy minted (the `n` of `n / cap`).
+     */
+    fresh_org_count?: number;
+    row_version: number;
+    created_at: string;
+    updated_at: string;
 };
 
 export type AuthMethodProvider = {
     slug: string;
     display_name: string;
     kind: IdentityProviderKind;
+    /**
+     * The provider's published button rules apply (#587 d4,
+     * docs/research/social-providers.md): Google's standard-colour G,
+     * or the Microsoft logo with the row's display name as the tenant.
+     * Derived from the pinned issuer (Google's, or an Entra
+     * tenant-specific issuer); absent for a generic OIDC provider.
+     * Presentation only: admission never keys on it.
+     *
+     */
+    brand?: 'google' | 'microsoft';
 };
 
 export type OidcStartRequest = {
     purpose: string;
     /**
-     * Required for reauth; the window scope.
+     * Valid only with purpose `login` (#604); absent = `sign-in`. It
+     * decides only what happens to an unknown identity at the callback:
+     * `sign-in` refuses it uniformly, `sign-up` enters the registration
+     * policy of the addressed scope. A known identity signs in under
+     * either. Supplied on any other purpose, the start refuses uniformly.
+     *
+     */
+    intent?: 'sign-in' | 'sign-up';
+    /**
+     * The org whose registration policy a `sign-up` addresses; absent =
+     * the instance scope. Valid only with intent `sign-up`. The start
+     * reads no policy: an unknown org refuses at the callback as a closed
+     * door.
+     *
+     */
+    signup_org?: string;
+    /**
+     * Required for reauth; the window scope. Refused (400) on any other purpose.
      */
     environment_id?: string;
     /**
@@ -6026,11 +6358,25 @@ export type BeginRecoveryResponse = BeginRecoveryResponses[keyof BeginRecoveryRe
 export type ListOrgsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Only orgs of this origin: the operator's filter for self-served
+         * (`registration`) orgs, pruned with the ordinary delete (#585 d9).
+         *
+         */
+        origin?: 'manual' | 'registration';
+    };
     url: '/api/v1/orgs';
 };
 
 export type ListOrgsErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
     /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts
@@ -8123,6 +8469,233 @@ export type InviteInstanceMemberResponses = {
 
 export type InviteInstanceMemberResponse = InviteInstanceMemberResponses[keyof InviteInstanceMemberResponses];
 
+export type DeleteInstanceRegistrationPolicyData = {
+    body: RegistrationPolicyDeleteRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/registration-policy';
+};
+
+export type DeleteInstanceRegistrationPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteInstanceRegistrationPolicyError = DeleteInstanceRegistrationPolicyErrors[keyof DeleteInstanceRegistrationPolicyErrors];
+
+export type DeleteInstanceRegistrationPolicyResponses = {
+    /**
+     * Registration is closed at this scope.
+     */
+    204: void;
+};
+
+export type DeleteInstanceRegistrationPolicyResponse = DeleteInstanceRegistrationPolicyResponses[keyof DeleteInstanceRegistrationPolicyResponses];
+
+export type GetInstanceRegistrationPolicyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/registration-policy';
+};
+
+export type GetInstanceRegistrationPolicyErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetInstanceRegistrationPolicyError = GetInstanceRegistrationPolicyErrors[keyof GetInstanceRegistrationPolicyErrors];
+
+export type GetInstanceRegistrationPolicyResponses = {
+    /**
+     * The policy with its live state.
+     */
+    200: RegistrationPolicy;
+};
+
+export type GetInstanceRegistrationPolicyResponse = GetInstanceRegistrationPolicyResponses[keyof GetInstanceRegistrationPolicyResponses];
+
+export type PutInstanceRegistrationPolicyData = {
+    body: RegistrationPolicyPutRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/instance/registration-policy';
+};
+
+export type PutInstanceRegistrationPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PutInstanceRegistrationPolicyError = PutInstanceRegistrationPolicyErrors[keyof PutInstanceRegistrationPolicyErrors];
+
+export type PutInstanceRegistrationPolicyResponses = {
+    /**
+     * The saved policy with its live state.
+     */
+    200: RegistrationPolicy;
+};
+
+export type PutInstanceRegistrationPolicyResponse = PutInstanceRegistrationPolicyResponses[keyof PutInstanceRegistrationPolicyResponses];
+
 export type RevokeOrgGrantData = {
     body?: never;
     path: {
@@ -8527,6 +9100,248 @@ export type InviteOrgMemberResponses = {
 };
 
 export type InviteOrgMemberResponse = InviteOrgMemberResponses[keyof InviteOrgMemberResponses];
+
+export type DeleteOrgRegistrationPolicyData = {
+    body: RegistrationPolicyDeleteRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/registration-policy';
+};
+
+export type DeleteOrgRegistrationPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteOrgRegistrationPolicyError = DeleteOrgRegistrationPolicyErrors[keyof DeleteOrgRegistrationPolicyErrors];
+
+export type DeleteOrgRegistrationPolicyResponses = {
+    /**
+     * Registration is closed at this scope.
+     */
+    204: void;
+};
+
+export type DeleteOrgRegistrationPolicyResponse = DeleteOrgRegistrationPolicyResponses[keyof DeleteOrgRegistrationPolicyResponses];
+
+export type GetOrgRegistrationPolicyData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/registration-policy';
+};
+
+export type GetOrgRegistrationPolicyErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetOrgRegistrationPolicyError = GetOrgRegistrationPolicyErrors[keyof GetOrgRegistrationPolicyErrors];
+
+export type GetOrgRegistrationPolicyResponses = {
+    /**
+     * The policy with its live state.
+     */
+    200: RegistrationPolicy;
+};
+
+export type GetOrgRegistrationPolicyResponse = GetOrgRegistrationPolicyResponses[keyof GetOrgRegistrationPolicyResponses];
+
+export type PutOrgRegistrationPolicyData = {
+    body: RegistrationPolicyPutRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/registration-policy';
+};
+
+export type PutOrgRegistrationPolicyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type PutOrgRegistrationPolicyError = PutOrgRegistrationPolicyErrors[keyof PutOrgRegistrationPolicyErrors];
+
+export type PutOrgRegistrationPolicyResponses = {
+    /**
+     * The saved policy with its live state.
+     */
+    200: RegistrationPolicy;
+};
+
+export type PutOrgRegistrationPolicyResponse = PutOrgRegistrationPolicyResponses[keyof PutOrgRegistrationPolicyResponses];
 
 export type RevokeProjectGrantData = {
     body?: never;
@@ -11831,7 +12646,16 @@ export type RevealValueDiffResponse = RevealValueDiffResponses[keyof RevealValue
 export type AuthMethodsData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * The organisation whose sign-up door to render (`signup_open`,
+         * `signup_paused`, `signup_methods`); absent means the instance
+         * scope. An unknown organisation and one without a policy are the
+         * same closed door.
+         *
+         */
+        org?: string;
+    };
     url: '/api/v1/auth/methods';
 };
 
@@ -11877,6 +12701,13 @@ export type OidcStartData = {
 
 export type OidcStartErrors = {
     /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts
      * are indistinguishable.
@@ -11889,6 +12720,15 @@ export type OidcStartErrors = {
      *
      */
     404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
     /**
      * The instance-wide admission budget or a per-source limit is
      * exhausted. Uniform on every path, with no unbounded work performed.
@@ -16048,6 +16888,226 @@ export type ReconcileOfflineRecordsResponses = {
 };
 
 export type ReconcileOfflineRecordsResponse2 = ReconcileOfflineRecordsResponses[keyof ReconcileOfflineRecordsResponses];
+
+export type ListDeliveryTargetsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets';
+};
+
+export type ListDeliveryTargetsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListDeliveryTargetsError = ListDeliveryTargetsErrors[keyof ListDeliveryTargetsErrors];
+
+export type ListDeliveryTargetsResponses = {
+    /**
+     * The environment's delivery targets.
+     */
+    200: DeliveryTargetList;
+};
+
+export type ListDeliveryTargetsResponse = ListDeliveryTargetsResponses[keyof ListDeliveryTargetsResponses];
+
+export type ReportDeliveryTargetData = {
+    body: DeliveryTargetReportRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets';
+};
+
+export type ReportDeliveryTargetErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The request body exceeds this operation's bound. The body is not
+     * parsed, so the refusal is tied to nothing it carries. Decided after
+     * authorization.
+     *
+     */
+    413: Error;
+    /**
+     * The caller is authorized and the request is well formed, but a value
+     * is outside the vocabulary this server accepts for it. `detail` names
+     * the member, never its value. Decided after authorization.
+     *
+     */
+    422: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ReportDeliveryTargetError = ReportDeliveryTargetErrors[keyof ReportDeliveryTargetErrors];
+
+export type ReportDeliveryTargetResponses = {
+    /**
+     * Accepted.
+     */
+    204: void;
+};
+
+export type ReportDeliveryTargetResponse = ReportDeliveryTargetResponses[keyof ReportDeliveryTargetResponses];
+
+export type TombstoneDeliveryTargetData = {
+    body: DeliveryTargetTombstoneRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone';
+};
+
+export type TombstoneDeliveryTargetErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TombstoneDeliveryTargetError = TombstoneDeliveryTargetErrors[keyof TombstoneDeliveryTargetErrors];
+
+export type TombstoneDeliveryTargetResponses = {
+    /**
+     * The row is removed.
+     */
+    204: void;
+};
+
+export type TombstoneDeliveryTargetResponse = TombstoneDeliveryTargetResponses[keyof TombstoneDeliveryTargetResponses];
 
 export type ListScimBindingsData = {
     body?: never;

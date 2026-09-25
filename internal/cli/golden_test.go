@@ -684,7 +684,7 @@ func TestHierarchyJSONShapesAreFrozen(t *testing.T) {
 		{"org-json.json", apigen.OrgList{
 			Items: []apigen.Org{{
 				Id: "org_0193f0b4-1f2a-7c31-9c1e-2a4b6d8e0f11", Name: "acme",
-				Active: true, CreatedAt: stamp,
+				Active: true, CreatedAt: stamp, Origin: apigen.OrgOriginManual,
 			}},
 			Count: 1,
 		}},
@@ -1031,7 +1031,7 @@ func TestPinReleasePrintsServerRetentionConsequence(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
 		t.Fatalf("decode pin release output: %v", err)
 	}
-	if result.Revision != 3 || result.RetentionConsequence != apigen.CollectionEligible {
+	if result.Revision != 3 || result.RetentionConsequence != apigen.RetentionConsequenceCollectionEligible {
 		t.Fatalf("pin release output = %+v", result)
 	}
 }

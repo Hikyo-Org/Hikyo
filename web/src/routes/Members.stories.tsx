@@ -28,6 +28,7 @@ const org = {
   name: 'Acme',
   active: true,
   created_at: '2026-01-01T00:00:00Z',
+  origin: 'manual',
 } satisfies z.input<typeof zOrg>;
 
 const noProjects = { count: 0, items: [] } satisfies z.input<typeof zProjectList>;

@@ -92,6 +92,11 @@ const (
 	// with zero server calls.
 	ArtifactHandoffState ArtifactType = "hs"
 	ArtifactHandoffCode  ArtifactType = "hc"
+	// ArtifactSignup is the local sign-up verification token (social-signin
+	// spec 2.4): mailed in a URL fragment, stored only as its verifier on the
+	// pending registration_signups row, single-use. It crosses a mail client and
+	// a browser, so it carries full artifact entropy and redacts like `hs`/`hc`.
+	ArtifactSignup ArtifactType = "su"
 )
 
 // artifactFormatVersion is the grammar's `version` field. It exists so a

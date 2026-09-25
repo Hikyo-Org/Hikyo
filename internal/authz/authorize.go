@@ -483,14 +483,24 @@ func (a *TxAuthorizer) HoldsInstanceCapability(ctx context.Context, caller Ident
 	if (op == OpSelfConfigStatus || op == OpSelfConfigAdopt || op == OpSelfConfigPreview) && !selfConfigSessionEligible(caller) {
 		return false, nil
 	}
-	grants, err := a.r.Grants(ctx, caller.Principal)
+	holds, err := a.principalInstanceHolds(ctx, caller.Principal, spec)
+	if err != nil || !holds {
+		return false, err
+	}
+	return !a.assuranceInadequate(caller, op), nil
+}
+
+// principalInstanceHolds is the grant half of an instance-scoped evaluation:
+// the principal's current grants against the formula at the empty scope.
+// Grant resolution returns nothing for a principal that is not active
+// (restricted, erased) or not reconciled after a restore, so status is part
+// of the answer, not a separate check.
+func (a *TxAuthorizer) principalInstanceHolds(ctx context.Context, principal domain.PrincipalID, spec authorizationSpec) (bool, error) {
+	grants, err := a.r.Grants(ctx, principal)
 	if err != nil {
 		return false, err
 	}
-	if !evaluate(spec.formula, domain.Scope{}, grants) {
-		return false, nil
-	}
-	return !a.assuranceInadequate(caller, op), nil
+	return evaluate(spec.formula, domain.Scope{}, grants), nil
 }
 
 // RecordedPrincipalHolds checks the grant formula for a principal recorded as

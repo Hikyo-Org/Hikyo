@@ -361,6 +361,15 @@ const (
 	// per depth exactly as grant.create does; each route names one.
 	OpMemberInviteOrg      Operation = "member.invite-org"
 	OpMemberInviteInstance Operation = "member.invite-instance"
+	// Registration policy (#606, #579): one policy per scope, administered by
+	// the scope's manage-members holder. One operation per depth and verb,
+	// the member.invite shape; the mutations are reauth-gated in the service.
+	OpRegistrationPolicyGetOrg         Operation = "registration-policy.get-org"
+	OpRegistrationPolicyPutOrg         Operation = "registration-policy.put-org"
+	OpRegistrationPolicyDeleteOrg      Operation = "registration-policy.delete-org"
+	OpRegistrationPolicyGetInstance    Operation = "registration-policy.get-instance"
+	OpRegistrationPolicyPutInstance    Operation = "registration-policy.put-instance"
+	OpRegistrationPolicyDeleteInstance Operation = "registration-policy.delete-instance"
 
 	OpGrantRevokeOrg      Operation = "grant.revoke-org"
 	OpGrantRevokeProject  Operation = "grant.revoke-project"
@@ -461,6 +470,14 @@ const (
 	// Offline disclosure records are accepted only through a live machine
 	// presentation holding the same environment read authority as delivery.
 	OpDeliveryReconcileOffline Operation = "delivery.reconcile-offline"
+	// Delivery-target condition reporting (#788, k8s-condition-reporting ADR).
+	// Report and tombstone are the machine half: `report-delivery-status` at
+	// environment depth, the workload's one value-free write (D1). List is the
+	// human half: bare `read` on the environment (D7), so rows of an
+	// environment the viewer cannot read are absent, never redacted.
+	OpDeliveryTargetReport    Operation = "delivery-target.report"
+	OpDeliveryTargetTombstone Operation = "delivery-target.tombstone"
+	OpDeliveryTargetList      Operation = "delivery-target.list"
 	// SCIM provisioning (#73, scim-provisioning ADR). Two families, two
 	// formulas, one depth.
 	//
@@ -858,6 +875,20 @@ const (
 	StorePinsDelete            StoreOp = "pins.Delete"
 	StorePinsDeleteEnvironment StoreOp = "pins.DeleteEnvironment"
 
+	StoreDeliveryTargetsGet            StoreOp = "deliverytargets.Get"
+	StoreDeliveryTargetsList           StoreOp = "deliverytargets.List"
+	StoreDeliveryTargetsQuotaNotices   StoreOp = "deliverytargets.QuotaNotices"
+	StoreDeliveryTargetsLastFetch      StoreOp = "deliverytargets.LastFetchAt"
+	StoreDeliveryTargetsCountPrincipal StoreOp = "deliverytargets.CountForPrincipal"
+	StoreDeliveryTargetsInsert         StoreOp = "deliverytargets.Insert"
+	StoreDeliveryTargetsUpdate         StoreOp = "deliverytargets.Update"
+	StoreDeliveryTargetsRecordRefusal  StoreOp = "deliverytargets.RecordRefusal"
+	StoreDeliveryTargetsDelete         StoreOp = "deliverytargets.Delete"
+	StoreDeliveryTargetsRecordQuota    StoreOp = "deliverytargets.RecordQuotaRefusal"
+	// The hourly 30-day purge (ADR D6): scheduler authority only.
+	StoreDeliveryTargetsSelectExpired StoreOp = "deliverytargets.SelectExpired"
+	StoreDeliveryTargetsPurge         StoreOp = "deliverytargets.Purge"
+
 	StoreRetentionAuditPolicy    StoreOp = "retention.AuditPolicy"
 	StoreRetentionSetAuditPolicy StoreOp = "retention.SetAuditPolicy"
 	StoreRetentionPruneAudit     StoreOp = "retention.PruneAudit"
@@ -924,6 +955,8 @@ const (
 	StoreReencryptRecoveryCodes            StoreOp = "reencrypt.ReencryptRecoveryCodes"
 	StoreReencryptListOidcProviders        StoreOp = "reencrypt.ListOidcProvidersForReencrypt"
 	StoreReencryptOidcProvider             StoreOp = "reencrypt.ReencryptOidcProvider"
+	StoreReencryptListOauth2Providers      StoreOp = "reencrypt.ListOauth2ProvidersForReencrypt"
+	StoreReencryptOauth2Provider           StoreOp = "reencrypt.ReencryptOauth2Provider"
 	StoreReencryptListSelfConfigSeedInputs StoreOp = "reencrypt.ListSelfConfigSeedInputsForReencrypt"
 	StoreReencryptSelfConfigSeedInput      StoreOp = "reencrypt.ReencryptSelfConfigSeedInput"
 	StoreReencryptListSamlKeys             StoreOp = "reencrypt.ListSamlKeysForReencrypt"
@@ -1151,6 +1184,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreReencryptListTotpCreds:               true,
 	StoreReencryptListRecoveryCodes:           true,
 	StoreReencryptListOidcProviders:           true,
+	StoreReencryptListOauth2Providers:         true,
 	StoreReencryptListSamlKeys:                true,
 	StoreReencryptListRemotes:                 true,
 	StoreAuditTenantPage:                      true,
@@ -1182,6 +1216,11 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSnapshotsChangesInRange:              true,
 	StorePinsGetForWorkload:                   true,
 	StorePinsList:                             true,
+	StoreDeliveryTargetsGet:                   true,
+	StoreDeliveryTargetsList:                  true,
+	StoreDeliveryTargetsQuotaNotices:          true,
+	StoreDeliveryTargetsLastFetch:             true,
+	StoreDeliveryTargetsCountPrincipal:        true,
 	// Secret-change approvals (#151): the read-only doors, licensed on the
 	// audited-none request-read operation and the scheduler expiry read.
 	StoreApprovalPolicyGet:           true,
@@ -2816,6 +2855,7 @@ var operationTable = map[Operation]opSpec{
 			StoreReencryptListTotpCreds: true, StoreReencryptTotpCred: true,
 			StoreReencryptListRecoveryCodes: true, StoreReencryptRecoveryCodes: true,
 			StoreReencryptListOidcProviders: true, StoreReencryptOidcProvider: true,
+			StoreReencryptListOauth2Providers: true, StoreReencryptOauth2Provider: true,
 			StoreReencryptListSamlKeys: true, StoreReencryptSamlKey: true,
 			StoreReencryptListSelfConfigSeedInputs: true, StoreReencryptSelfConfigSeedInput: true,
 			StoreReencryptListRemotes: true, StoreReencryptRemote: true,
@@ -3377,6 +3417,53 @@ var operationTable = map[Operation]opSpec{
 		}, grantCureEvents...),
 	},
 
+	// Registration policy (#606). The policy tables are class=authn, so the
+	// read and the mutation ride the proof-free resolution surface AFTER the
+	// operation authorizes the caller (provider administration's shape); only
+	// the audit write is a store op. Neither read may be audited-none (the
+	// formula is manage-members, not read), and the audit-model banner names
+	// no registration read event, so the reads record the membership-surface
+	// read the Members panel is part of.
+	OpRegistrationPolicyGetOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
+	},
+	OpRegistrationPolicyPutOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRegistrationPolicyCreated, audit.EventRegistrationPolicyUpdated},
+	},
+	OpRegistrationPolicyDeleteOrg: {
+		class:    ClassTenant,
+		level:    domain.LevelOrg,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelOrg}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventRegistrationPolicyDeleted, audit.EventRegistrationSignupExpired},
+	},
+	OpRegistrationPolicyGetInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventGrantMembershipRead},
+	},
+	OpRegistrationPolicyPutInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventRegistrationPolicyCreated, audit.EventRegistrationPolicyUpdated},
+	},
+	OpRegistrationPolicyDeleteInstance: {
+		class:    ClassInstance,
+		formula:  Formula{{Cap: domain.CapManageMembers, At: domain.LevelNone}},
+		storeOps: map[StoreOp]bool{StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventRegistrationPolicyDeleted, audit.EventRegistrationSignupExpired},
+	},
+
 	// The protected flag and the per-environment reauthentication window.
 	OpEnvSettingsRead: {
 		class:       ClassTenant,
@@ -3641,6 +3728,44 @@ var operationTable = map[Operation]opSpec{
 		events: []audit.EventType{
 			audit.EventOfflineRecordsReconciled, audit.EventValueRevealed,
 		},
+	},
+	// Delivery-target reports (#788). The report upserts one latest-state row;
+	// the tombstone deletes it. Neither emits an event for an accepted repeat
+	// report (ADR D8): only a new row, a tombstone and each refusal are
+	// recorded. An authorization refusal is the chokepoint's own denial.
+	OpDeliveryTargetReport: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapReportDeliveryStatus, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StoreDeliveryTargetsGet: true, StoreDeliveryTargetsCountPrincipal: true,
+			StoreDeliveryTargetsInsert: true, StoreDeliveryTargetsUpdate: true,
+			StoreDeliveryTargetsRecordRefusal: true, StoreDeliveryTargetsRecordQuota: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventDeliveryTargetCreated, audit.EventDeliveryTargetRefused},
+	},
+	OpDeliveryTargetTombstone: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapReportDeliveryStatus, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StoreDeliveryTargetsGet: true, StoreDeliveryTargetsDelete: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventDeliveryTargetTombstoned},
+	},
+	// The list is metadata under `read` (D7) and a pure read: the trail would
+	// only duplicate it.
+	OpDeliveryTargetList: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StoreDeliveryTargetsList: true, StoreDeliveryTargetsQuotaNotices: true,
+			StoreDeliveryTargetsLastFetch: true,
+		},
+		auditedNone: true,
 	},
 	// --- SCIM provisioning (#73) ---------------------------------------------
 	//
@@ -4345,6 +4470,11 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		// label-free gauges and `hikyo doctor` read them beside the storage
 		// high-water.
 		StoreAdaptersHealthCounts: true,
+		// The delivery-target 30-day purge (#788): the installation-wide read
+		// and the per-row guarded delete, plus the tenant-trail purge event
+		// emitted per row under scoped authority.
+		StoreDeliveryTargetsSelectExpired: true,
+		StoreDeliveryTargetsPurge:         true,
 	},
 }
 
@@ -4365,6 +4495,8 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 		// The scheduled export's loud failure (#145): the scheduler is the
 		// only emitter, so it is registered here rather than on an operation.
 		audit.EventBackupExportFailed,
+		// The delivery-target 30-day purge (#788).
+		audit.EventDeliveryTargetPurged,
 	},
 }
 

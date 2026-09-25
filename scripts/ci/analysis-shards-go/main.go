@@ -210,7 +210,7 @@ func planRace(packages []packageInfo, shardCount int) ([]raceShard, error) {
 	units := make([]raceUnit, 0, len(packages))
 	for index := range packages {
 		pkg := &packages[index]
-		if pkg.relativePath == "internal/isolation" {
+		if raceExcluded[pkg.relativePath] {
 			continue
 		}
 		weights, split := raceTargetSeconds[pkg.relativePath]
@@ -446,6 +446,19 @@ func shardFor(kind, relativePath string, shardCount int) int {
 	return int(hash.Sum32() % uint32(shardCount))
 }
 
+// raceExcluded names the packages the race shards never run. The isolation
+// suite has its own shards. internal/lint's tests type-check the repository
+// through x/tools go/packages, whose per-package goroutines race inside Go's
+// own go/types under Go 1.27 (Named.unpack against isComplete, golang/go#81122,
+// open; go 1.26 is race-clean there): the detector fires on the toolchain, not
+// on Hikyo code, and the analyzers themselves run on one goroutine. The package
+// still runs in test_core. Re-include it once the toolchain go.mod pins carries
+// the fix for #81122.
+var raceExcluded = map[string]bool{
+	"internal/isolation": true,
+	"internal/lint":      true,
+}
+
 // raceSequentialSuites mirrors test-race-packages.sh, which runs these
 // filtered suites one at a time after the concurrent pool.
 var raceSequentialSuites = map[string]bool{
@@ -468,7 +481,6 @@ var racePackageSeconds = map[string]float64{
 	"internal/conformance":                163,
 	"internal/crypto/backup":              23,
 	"internal/importer":                   17,
-	"internal/lint":                       307,
 	"internal/mcpserver":                  6,
 	"internal/operator":                   7,
 	"internal/releasetrust":               6,

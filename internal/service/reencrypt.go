@@ -347,6 +347,13 @@ func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (Reencry
 				return crypto.InstanceFieldAAD{OwnerTable: "oidc_providers", OwnerRowID: id, FieldTag: "client_secret"}
 			},
 			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptOidcProvider)},
+		{table: "oauth2_providers",
+			list:      store.ReencryptRepo.ListOauth2ProvidersForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad: func(id string) crypto.InstanceFieldAAD {
+				return crypto.InstanceFieldAAD{OwnerTable: "oauth2_providers", OwnerRowID: id, FieldTag: "client_secret"}
+			},
+			reseal: versionedInstanceReseal(store.ReencryptRepo.ReencryptOauth2Provider)},
 		{table: "saml_sp_keys",
 			list:      store.ReencryptRepo.ListSamlKeysForReencrypt,
 			versionOf: instanceColumnVersion,

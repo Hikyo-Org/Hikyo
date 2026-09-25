@@ -70,6 +70,7 @@ var approvedParameterNames = map[string]map[string]string{
 	"GetOrg":                               aliases("ID", "OrgID"),
 	"GetProject":                           aliases("ID", "ProjectID"),
 	"ListCredentialsBeyondCeiling":         aliases("ExpiresAt", "Ceiling"),
+	"ListOauth2ProvidersForReencrypt":      aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListOidcProvidersForReencrypt":        aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListPasswordCredsForReencrypt":        aliases("AccountID", "Cursor", "Limit", "PageLimit"),
 	"ListPendingForReencrypt":              aliases("ID", "Cursor", "Limit", "PageLimit"),
@@ -675,6 +676,7 @@ var booleanContractFields = map[string]bool{
 	"EnrolmentRequired": true,                                                        // the sign-in enrolment gate (#760): sqlite INTEGER, postgres BOOLEAN
 	"Prepared":          true, "Suspended": true, "ConfirmRestoredCredentials": true, // runtime configuration booleans map INTEGER to BOOLEAN
 	"PayloadPresent": true, "Protected": true, "SchemaOverride": true, "Secret": true,
+	"LocalEnabled": true, // registration_policies.local_enabled (#606): sqlite INTEGER, postgres BOOLEAN
 }
 
 func isTimestampContractField(name string) bool {

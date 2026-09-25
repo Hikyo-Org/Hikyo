@@ -201,7 +201,29 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	environmentsSvc := &service.Environments{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget, Scan: ruleset}
 	keysSvc := &service.Keys{DB: db, Keyring: kr, Advisory: advisory, Budget: budget, Scan: ruleset}
 	valuesSvc := &service.Values{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Scan: ruleset, Budget: budget}
+	// One Delivery across the fetch surface and the delivery-target reports:
+	// they ride the same credential, federation cache and budget.
+	deliverySvc := &service.Delivery{DB: db, Keyring: kr, Federation: federation, Budget: budget}
 	revisionsSvc := &service.Revisions{DB: db, Keyring: kr, Auth: authSvc, Advisory: advisory, Budget: budget}
+	// The registration policy (#606): reauth through the one Auth; the
+	// `no-public-origin` and `mailer-unconfigured` preconditions read the
+	// operator's explicit origin and the active runtime mail transport. A
+	// missing predicate is a boot refusal, never a silent "unconfigured".
+	mailConfigured, err := service.SelfConfigMailConfigured(selfConfig)
+	if err != nil {
+		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+	}
+	registrationSvc, err := service.NewRegistration(service.RegistrationConfig{
+		DB: db, Auth: authSvc, PublicOriginExplicit: cfg.ExternalOriginExplicit, MailConfigured: mailConfigured,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+	}
+	// The federated sign-up leg (#607) consults the policy from the OIDC
+	// callback and charges the one `signup` budget.
+	if err := authSvc.EnableSignup(registrationSvc, budget); err != nil {
+		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+	}
 	api := &server.API{
 		Runtime:  &service.System{DB: db, Store: sc},
 		Auth:     authSvc,
@@ -235,8 +257,9 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// identity surface: the reauthentication conjunct a machine widening
 		// carries is the SAME window machinery human disclosure consumes, so
 		// they cannot come from two configurations.
-		Grants:     &service.Grants{DB: db, Auth: authSvc},
-		Identities: &service.Identities{DB: db, Auth: authSvc},
+		Grants:       &service.Grants{DB: db, Auth: authSvc},
+		Registration: registrationSvc,
+		Identities:   &service.Identities{DB: db, Auth: authSvc},
 		// One Federation across the issuer surface and the delivery surface, and
 		// one JWKS cache inside it: the cache's staleness bound is an instance
 		// property, so two caches would mean two answers to "are this issuer's
@@ -244,9 +267,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		// every other pre-authentication path rides, which is what the ADR means
 		// by putting the trigger under the instance-wide budget.
 		Federation: federation,
-		Delivery: &service.Delivery{
-			DB: db, Keyring: kr, Federation: federation, Budget: budget,
-		},
+		Delivery:   deliverySvc,
 		// The settings knob calls LowerEffectiveWindow, which is the Auth
 		// service's library; one Auth, so the window the knob writes and the
 		// window the reveal guard reads cannot come from two configurations.
@@ -372,6 +393,12 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			// event. Idempotent and cross-tenant, like payload_gc beside it.
 			Name: "approval_expiry_sweep",
 			Run:  approvalsSvc.ExpireDue,
+		}, {
+			// Delivery-target condition reporting (#788, ADR D6): purge rows
+			// with no accepted report for 30 days, across all tenants, each
+			// with its tenant-trail purge event.
+			Name: "delivery_target_purge",
+			Run:  deliverySvc.PurgeExpiredTargets,
 		}, {
 			// Read-only operator nudge (#75/#187, scheduler option A): warn when a
 			// scope still carries a retiring DEK version so an operator runs

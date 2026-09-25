@@ -76,7 +76,7 @@ export function useUpdateMyProfile() {
   const queries = useQueryClient();
   const after = useAfterAccountMutation();
   return useSensitiveMutation({
-    mutationFn: (input: { username: string; display_name: string; email: string; proof?: string }) =>
+    mutationFn: (input: { username: string; display_name: string; proof?: string }) =>
       parsed(updateMyProfileOp, { body: input }),
     onSuccess: (profile) => { queries.setQueryData(profileKey, profile); },
     onSettled: after,
@@ -111,15 +111,22 @@ export function useIdentities(): UseQueryResult<IdentityList> {
 }
 
 /**
- * useAuthMethods is what makes the "link another identity" affordance honest:
- * linking starts an OIDC transaction against a CONFIGURED provider, so where
+ * useAuthMethods loads the public login methods and sign-up door. `org`
+ * selects that organization's door; without it the query selects the instance
+ * door. The provider list and local-login flag are instance-wide in either
+ * response. A discovery 429 is retried once, using Retry-After when present.
+ *
+ * It is also what keeps the "link another identity" affordance honest:
+ * linking starts an OIDC transaction against a configured provider, so where
  * an instance has none the surface says so instead of offering a button that
  * could only ever 400.
  */
-export function useAuthMethods(): UseQueryResult<AuthMethods> {
+export function useAuthMethods(org?: string): UseQueryResult<AuthMethods> {
   return useQuery({
-    queryKey: authMethodsKey,
-    queryFn: () => parsed(authMethodsOp, {}),
+    // `?org=` addresses that org's sign-up door (#606); the providers and the
+    // local login bit are instance-wide either way.
+    queryKey: org === undefined ? authMethodsKey : [...authMethodsKey, org],
+    queryFn: () => parsed(authMethodsOp, org === undefined ? {} : { query: { org } }),
     // This public discovery read is invalidated when login establishes a new
     // session. A nearby whoami can consume the shared rate-limit budget first;
     // unlike an authorization refusal, that 429 is safe to retry once and the

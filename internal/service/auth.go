@@ -168,12 +168,31 @@ type Auth struct {
 	// today's local floor.
 	SecondFactorRequired bool
 
+	// registration is the policy surface a sign-up-intent OIDC login consults
+	// for an unknown identity (#607), and signupBudget the instance-wide
+	// `signup` category it charges (#579 d7 as amended). EnableSignup sets
+	// both or neither; with neither, every sign-up door is closed and the
+	// callback refuses `closed`, uncharged.
+	registration *Registration
+	signupBudget *Budget
+
 	// dummyRecoverySealed is a batch sealed once and opened on every
 	// non-matching recovery path, so a miss costs the same envelope decrypt +
 	// JSON decode + set scan as a hit — the recovery analogue of the login
 	// dummy verifier, closing the account/batch existence timing oracle.
 	dummyRecoveryOnce   sync.Once
 	dummyRecoverySealed []byte
+}
+
+// EnableSignup wires the federated sign-up leg. Both halves are required: a
+// policy without a budget would admit sign-ups unbudgeted (fail-open), so a
+// nil budget is refused here, at construction, not discovered at a callback.
+func (s *Auth) EnableSignup(registration *Registration, budget *Budget) error {
+	if registration == nil || budget == nil {
+		return errors.New("service: federated sign-up needs both the registration policy and the signup budget")
+	}
+	s.registration, s.signupBudget = registration, budget
+	return nil
 }
 
 func (s *Auth) now() time.Time {

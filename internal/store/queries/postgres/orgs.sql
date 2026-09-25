@@ -11,12 +11,13 @@
 
 -- hikyo:instance-scoped
 -- name: CreateOrg :exec
-INSERT INTO orgs (id, name, active, metadata, created_at)
-VALUES ($1, $2, $3, $4, $5);
+INSERT INTO orgs (id, name, active, metadata, created_at, origin, registration_policy_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7);
 
 -- name: GetOrg :one
 SELECT id, name, active, metadata, created_at,
-       retention_mode, retention_age_seconds, retention_revision_count
+       retention_mode, retention_age_seconds, retention_revision_count,
+       origin, registration_policy_id
 FROM orgs WHERE id = sqlc.arg(chain_org_id);
 
 -- LockOrg serializes retention-cap changes with project override changes, so
@@ -27,7 +28,8 @@ SELECT id FROM orgs WHERE id = sqlc.arg(chain_org_id) FOR UPDATE;
 -- hikyo:instance-scoped
 -- name: ListOrgs :many
 SELECT id, name, active, metadata, created_at,
-       retention_mode, retention_age_seconds, retention_revision_count
+       retention_mode, retention_age_seconds, retention_revision_count,
+       origin, registration_policy_id
 FROM orgs WHERE (sqlc.arg(include_self_config) = 1 OR NOT EXISTS (SELECT 1 FROM self_config_binding b WHERE b.org_id=orgs.id)) ORDER BY name;
 
 -- hikyo:instance-scoped

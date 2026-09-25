@@ -224,6 +224,27 @@ const (
 	// lives on the scope's trail so an org administrator can answer "who
 	// invited whom" without instance access.
 	EventMemberInvited EventType = "member.invited"
+	// registration.* (#606, audit-model banner 2026-09-03). The policy events
+	// land on the scope's trail (tenant for an org policy, instance for the
+	// instance policy) and carry the authority reassignment every edit makes.
+	// registration.signup_expired records a pending local sign-up removed
+	// before verification: by the reaper (#608) or, here, by deleting the
+	// policy that admitted it.
+	EventRegistrationPolicyCreated EventType = "registration.policy_created"
+	EventRegistrationPolicyUpdated EventType = "registration.policy_updated"
+	EventRegistrationPolicyDeleted EventType = "registration.policy_deleted"
+	EventRegistrationSignupExpired EventType = "registration.signup_expired"
+	// The sign-up outcomes (#607 federated; #608 local): admitted (the
+	// admission predicate passed, written before the account exists, actor
+	// unauthenticated), refused by one closed cause (uncharged before the
+	// `signup` budget, charged after it), and completed (actor = the new
+	// principal). They land on the instance trail, the pre-authentication
+	// plane the auth.* refusals share, carrying the policy id and scope. The
+	// landing org's own trail records the grants the sign-up received
+	// (grant.created / grant.template_applied, origin_kind registration).
+	EventRegistrationSignupAdmitted  EventType = "registration.signup_admitted"
+	EventRegistrationSignupRefused   EventType = "registration.signup_refused"
+	EventRegistrationSignupCompleted EventType = "registration.signup_completed"
 
 	// settings.reauthentication_window_changed and
 	// settings.protected_flag_changed are the `project-settings` security
@@ -587,6 +608,13 @@ const (
 	// delivered nothing — never aggregated, never a counter, never a mutable
 	// last-seen field.
 	EventDeliveryFetched EventType = "identity.delivery_fetched"
+	// Delivery-target condition reporting (#788, k8s-condition-reporting ADR
+	// D8): a new row, a tombstone, a purge and each refused report. An
+	// accepted repeat report emits nothing.
+	EventDeliveryTargetCreated    EventType = "identity.delivery_target_created"
+	EventDeliveryTargetTombstoned EventType = "identity.delivery_target_tombstoned"
+	EventDeliveryTargetPurged     EventType = "identity.delivery_target_purged"
+	EventDeliveryTargetRefused    EventType = "identity.delivery_target_refused"
 	// identity.offline_records_reconciled is one access-class envelope per
 	// reconciliation call; per-key disclosures remain separate immutable events.
 	EventOfflineRecordsReconciled EventType = "identity.offline_records_reconciled"
@@ -1184,6 +1212,10 @@ var registry = map[EventType]TypeSpec{
 			"acr":                  {Kind: KindString},              // provider-asserted, raw (A12)
 			"amr":                  {Kind: KindString},              // provider-asserted, raw joined (A12)
 			"provider_row_version": {Kind: KindInt, Required: true}, // policy read in the mint tx (A12)
+			// The login's recorded intent and sign-up scope (#604 d8);
+			// absent on reauth.
+			"intent":     {Kind: KindString, Enum: []string{"sign-in", "sign-up"}},
+			"signup_org": {Kind: KindString},
 		},
 	},
 	EventOIDCRefused: {
@@ -1199,6 +1231,9 @@ var registry = map[EventType]TypeSpec{
 				"reconciliation", "window-zero", "no-possession", "downgrade",
 			}},
 			"provider_id": {Kind: KindString},
+			// A refused login's recorded intent and sign-up scope (#604 d8).
+			"intent":     {Kind: KindString, Enum: []string{"sign-in", "sign-up"}},
+			"signup_org": {Kind: KindString},
 		},
 	},
 	EventIdentityLinked: {
@@ -1353,6 +1388,10 @@ var registry = map[EventType]TypeSpec{
 		Schema: Schema{
 			"org_id":   {Kind: KindString, Required: true},
 			"org_name": {Kind: KindFreeText, Required: true},
+			// How the org came to exist (#585 d11): an operator's create, or
+			// a sign-up under a registration policy (actor = its authority).
+			"origin":    {Kind: KindString, Required: true, Enum: []string{"manual", "registration"}},
+			"policy_id": {Kind: KindString},
 		},
 	},
 	EventProjectCreated: {
@@ -1805,6 +1844,78 @@ var registry = map[EventType]TypeSpec{
 			"grants_created": {Kind: KindInt, Required: true},
 			"authority_id":   {Kind: KindString, Required: true},
 			"delivery":       {Kind: KindString, Required: true, Enum: []string{"file", "terminal", "stdout", "response"}},
+		},
+	},
+	EventRegistrationPolicyCreated: registrationPolicySpec(),
+	EventRegistrationPolicyUpdated: registrationPolicySpec(),
+	EventRegistrationPolicyDeleted: registrationPolicySpec(),
+	EventRegistrationSignupExpired: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"signup_id": {Kind: KindString, Required: true},
+			"policy_id": {Kind: KindString, Required: true},
+			"cause":     {Kind: KindString, Required: true, Enum: []string{"expired", "policy-deleted"}},
+		},
+	},
+	EventRegistrationSignupAdmitted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"policy_id": {Kind: KindString, Required: true},
+			"scope":     {Kind: KindString, Required: true},
+			"landing":   {Kind: KindString, Required: true, Enum: []string{"org-template", "none", "fresh-org"}},
+			// Federated: the kind, the pinned issuer, the provider row, the
+			// asserted address and which assertion admitted it (#598 d9).
+			"kind":        {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"issuer":      {Kind: KindString},
+			"provider_id": {Kind: KindString},
+			"address":     {Kind: KindFreeText},
+			"verified_by": {Kind: KindString, Enum: []string{"email_verified", "xms_edov", "github-primary"}},
+		},
+	},
+	EventRegistrationSignupRefused: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			// The closed cause enum of the audit-model banner (2026-09-03).
+			"cause": {Kind: KindString, Required: true, Enum: []string{
+				"closed", "predicate", "precondition", "budget", "authority-lost", "identity-exists",
+				"cap", "email-exists", "no-verified-email", "malformed", "unknown", "expired",
+				"epoch-superseded",
+			}},
+			"scope":       {Kind: KindString, Required: true},
+			"policy_id":   {Kind: KindString},
+			"kind":        {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"provider_id": {Kind: KindString},
+			// Set on a no-verified-email refusal only (#598 d9).
+			"verified_by": {Kind: KindString, Enum: []string{"none"}},
+		},
+	},
+	EventRegistrationSignupCompleted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"policy_id":   {Kind: KindString, Required: true},
+			"account_id":  {Kind: KindString, Required: true},
+			"landing":     {Kind: KindString, Required: true, Enum: []string{"org-template", "none", "fresh-org"}},
+			"org_id":      {Kind: KindString},
+			"kind":        {Kind: KindString, Enum: []string{"oidc", "oauth2"}},
+			"provider_id": {Kind: KindString},
+			"address":     {Kind: KindFreeText},
+			"verified_by": {Kind: KindString, Enum: []string{"email_verified", "xms_edov", "github-primary"}},
+			// Where the new account's display name came from: the token's
+			// `name` claim, or the opaque handle when that was absent or not
+			// valid profile text.
+			"display_name_from": {Kind: KindString, Enum: []string{"name-claim", "handle"}},
 		},
 	},
 	EventGrantTemplateApplied: {
@@ -2688,6 +2799,62 @@ var registry = map[EventType]TypeSpec{
 			"cause":      {Kind: KindString, Required: true}, // by class, never by detail
 		},
 	},
+	EventDeliveryTargetCreated: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"target_id":     {Kind: KindString, Required: true},
+			"cluster_id":    {Kind: KindString, Required: true, MaxBytes: 36},
+			"instance_uid":  {Kind: KindString, Required: true, MaxBytes: 36},
+			"target_uid":    {Kind: KindString, Required: true, MaxBytes: 36},
+			"namespace":     {Kind: KindString, Required: true, MaxBytes: 63},
+			"name":          {Kind: KindString, Required: true, MaxBytes: 253},
+			"reporter":      {Kind: KindString, Required: true, Enum: []string{"kubernetes-operator"}},
+			"vocabulary":    {Kind: KindInt, Required: true, AtLeast: 1},
+			"credential_id": {Kind: KindString, Required: true},
+			"scope":         {Kind: KindString, Required: true},
+		},
+	},
+	EventDeliveryTargetTombstoned: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"target_id":     {Kind: KindString, Required: true},
+			"credential_id": {Kind: KindString, Required: true},
+			"scope":         {Kind: KindString, Required: true},
+		},
+	},
+	EventDeliveryTargetPurged: {
+		SchemaVersion: 1,
+		Retention:     RetentionAccess,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"target_id":        {Kind: KindString, Required: true},
+			"principal_id":     {Kind: KindString, Required: true},
+			"last_received_at": {Kind: KindString, Required: true},
+		},
+	},
+	EventDeliveryTargetRefused: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeDenied: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			// The closed refusal cause; never the refused value.
+			"cause": {Kind: KindString, Required: true, Enum: []string{"ordering", "quota", "size", "vocabulary"}},
+			// The JSON member a vocabulary refusal names.
+			"field": {Kind: KindString, MaxBytes: 64},
+			// Present only when the refusal is tied to an existing row.
+			"target_id":     {Kind: KindString},
+			"credential_id": {Kind: KindString, Required: true},
+			"scope":         {Kind: KindString, Required: true},
+		},
+	},
 	EventDeliveryFetched: {
 		SchemaVersion: 1,
 		Retention:     RetentionAccess,
@@ -3277,6 +3444,25 @@ func hierarchyFailureEvent(schema Schema) TypeSpec {
 		Outcomes:      map[Outcome]bool{OutcomeFailure: true},
 		Trails:        map[Trail]bool{TrailTenant: true},
 		Schema:        schema,
+	}
+}
+
+// registrationPolicySpec is the shared row of the three policy events (spec
+// section 5): the policy, its landing, and the authority the write recorded,
+// with the authority it replaced when an edit reassigned it.
+func registrationPolicySpec() TypeSpec {
+	return TypeSpec{
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true, TrailInstance: true},
+		Schema: Schema{
+			"policy_id":                       {Kind: KindString, Required: true},
+			"scope":                           {Kind: KindString, Required: true},
+			"landing":                         {Kind: KindString, Required: true, Enum: []string{"org-template", "none", "fresh-org"}},
+			"authority_principal_id":          {Kind: KindString, Required: true},
+			"previous_authority_principal_id": {Kind: KindString},
+		},
 	}
 }
 

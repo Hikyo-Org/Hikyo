@@ -471,6 +471,7 @@ paths:
         factor already standing is refused (`400`).
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [password], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -759,6 +760,7 @@ paths:
         password class; the reissued token is returned.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [password], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -799,6 +801,7 @@ paths:
         returned and MUST replace the old one.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -885,9 +888,21 @@ paths:
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 1
+      parameters:
+        - name: origin
+          in: query
+          required: false
+          description: |
+            Only orgs of this origin: the operator's filter for self-served
+            (`registration`) orgs, pruned with the ordinary delete (#585 d9).
+          schema:
+            type: string
+            enum: [manual, registration]
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "200":
           description: The organisations this principal may administer.
           content:
@@ -2035,6 +2050,133 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/instance/registration-policy:
+    get:
+      operationId: getInstanceRegistrationPolicy
+      tags: [access]
+      summary: Read the instance registration policy.
+      description: |
+        The instance's open-registration policy (#579), or `404` when the
+        scope has none: registration is closed. The standing delegation and
+        the preconditions are re-checked on this read, so `state` is live: an
+        authority principal who no longer holds the landing's grants, or a
+        failing precondition, reads `inactive` with its cause. Recorded as a
+        membership-surface read.
+      x-hikyo-class: instance
+      x-hikyo-operation: registration-policy.get-instance
+      x-hikyo-formula: [manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The policy with its live state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: putInstanceRegistrationPolicy
+      tags: [access]
+      summary: Create or replace the instance registration policy.
+      description: |
+        A full replacement; the caller becomes the authority principal (any
+        edit reassigns it, #579 d4). Reauthentication-gated: `proof` carries a
+        TOTP code, or the password where no factor is enrolled, consumed in
+        the write transaction. No session is purged. Write-time preconditions
+        refuse `400` naming the failing item in `detail`: `no-public-origin`,
+        `mailer-unconfigured`, `provider-disabled`,
+        `provider-kind-unsupported`, `provider-missing-email-scope`, `cap-zero`,
+        `template-not-org-applicable`, with the provider as `<kind>:<slug>`
+        where one is involved. `email` is never an allowlist claim.
+      x-hikyo-class: instance
+      x-hikyo-operation: registration-policy.put-instance
+      x-hikyo-formula: [manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationPolicyPutRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The saved policy with its live state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteInstanceRegistrationPolicy
+      tags: [access]
+      summary: Close registration at this scope.
+      description: |
+        Deletes the policy and, in the same transaction, the pending local
+        sign-ups it admitted (each audited `registration.signup_expired`,
+        cause `policy-deleted`). Orgs the policy minted keep their origin and
+        policy pointer. Reauthentication-gated like `put`; no session is
+        purged.
+      x-hikyo-class: instance
+      x-hikyo-operation: registration-policy.delete-instance
+      x-hikyo-formula: [manage-members@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationPolicyDeleteRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Registration is closed at this scope.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/grants:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -2238,6 +2380,135 @@ paths:
           $ref: "#/components/responses/NotFound"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/registration-policy:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+    get:
+      operationId: getOrgRegistrationPolicy
+      tags: [access]
+      summary: Read the organisation registration policy.
+      description: |
+        The organisation's open-registration policy (#579), or `404` when the
+        scope has none: registration is closed. The standing delegation and
+        the preconditions are re-checked on this read, so `state` is live: an
+        authority principal who no longer holds the landing's grants, or a
+        failing precondition, reads `inactive` with its cause. Recorded as a
+        membership-surface read.
+      x-hikyo-class: tenant
+      x-hikyo-operation: registration-policy.get-org
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The policy with its live state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPolicy"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    put:
+      operationId: putOrgRegistrationPolicy
+      tags: [access]
+      summary: Create or replace the organisation registration policy.
+      description: |
+        A full replacement; the caller becomes the authority principal (any
+        edit reassigns it, #579 d4). Reauthentication-gated: `proof` carries a
+        TOTP code, or the password where no factor is enrolled, consumed in
+        the write transaction. No session is purged. Write-time preconditions
+        refuse `400` naming the failing item in `detail`: `no-public-origin`,
+        `mailer-unconfigured`, `provider-disabled`,
+        `provider-kind-unsupported`, `provider-missing-email-scope`, `cap-zero`,
+        `template-not-org-applicable`, with the provider as `<kind>:<slug>`
+        where one is involved. `email` is never an allowlist claim.
+      x-hikyo-class: tenant
+      x-hikyo-operation: registration-policy.put-org
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationPolicyPutRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The saved policy with its live state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrationPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteOrgRegistrationPolicy
+      tags: [access]
+      summary: Close registration at this scope.
+      description: |
+        Deletes the policy and, in the same transaction, the pending local
+        sign-ups it admitted (each audited `registration.signup_expired`,
+        cause `policy-deleted`). Orgs the policy minted keep their origin and
+        policy pointer. Reauthentication-gated like `put`; no session is
+        purged.
+      x-hikyo-class: tenant
+      x-hikyo-operation: registration-policy.delete-org
+      x-hikyo-formula: [manage-members@org]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrationPolicyDeleteRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Registration is closed at this scope.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
         "429":
@@ -4053,6 +4324,18 @@ paths:
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [none]
       x-hikyo-min-revision: 1
+      parameters:
+        - name: org
+          in: query
+          required: false
+          description: |
+            The organisation whose sign-up door to render (`signup_open`,
+            `signup_paused`, `signup_methods`); absent means the instance
+            scope. An unknown organisation and one without a policy are the
+            same closed door.
+          schema:
+            type: string
+            maxLength: 128
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -4079,9 +4362,13 @@ paths:
         returns the IdP authorization URL. `login` is anonymous and bound by a
         `__Host-` browser-binding cookie set on this response (A2/A16); `link`
         and `reauth` require an authenticated session and are session-bound, and
-        `link` verifies the account-security proof up front (A6).
+        `link` verifies the account-security proof up front (A6). A `login`
+        records its `intent` (absent = `sign-in`) and, for a `sign-up`, the
+        addressed scope (`signup_org`, absent = instance); the start reads no
+        registration policy (#604 d5).
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: when-value, member: purpose, values: [link]}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4099,12 +4386,23 @@ paths:
               schema:
                 $ref: "#/components/schemas/OidcStartResult"
         # Every expected start refusal (unknown or disabled slug, bad purpose,
-        # policy-less or environment-less reauth, unauthenticated link/reauth,
-        # and a missing body) collapses to one uniform 401 so a pre-auth prober
-        # cannot enumerate provider config. 429/500 are the cross-cutting
-        # admission and fault responses.
+        # environment-less reauth, unauthenticated link/reauth, and a missing
+        # body) collapses to one uniform 401 so a pre-auth prober cannot
+        # enumerate provider config. 429/500 are the cross-cutting admission
+        # and fault responses. There are two exceptions. First, a
+        # request-shape refusal that depends on nothing but the body:
+        # `environment_id` on a purpose other than `reauth` is a 400 naming
+        # the field. Second, a `reauth` on a provider row with no assurance
+        # policy is refused by name (409, the remedy in `detail`) before any
+        # round-trip (#588 d4): the caller has already authenticated a session
+        # through that very provider, so naming the row's policy state
+        # discloses nothing to a prober.
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "404":
           $ref: "#/components/responses/NotFound"
         "429":
@@ -4187,6 +4485,7 @@ paths:
         this provider's ACS path; it is never returned in JSON.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [none, human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: when-value, member: purpose, values: [link]}
       x-hikyo-min-revision: 1
       security:
         - {}
@@ -4317,9 +4616,10 @@ paths:
       operationId: updateMyProfile
       tags: [auth]
       summary: Update your own account profile.
-      description: Email is contact metadata and never a login or identity linking key. Provisioned names remain controlled by SCIM. Username changes require current account proof.
+      description: Updates the username and display name. The email is not profile data and cannot be set here; only verified local sign-up writes a verified one. Provisioned names remain controlled by SCIM. Username changes require current account proof.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: when-changed, member: username}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4433,6 +4733,7 @@ paths:
         Returns the IdP authorization URL; the link lands at the callback.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4473,6 +4774,7 @@ paths:
         reissues the acting session. The reissued token replaces the old one.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: required}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4560,6 +4862,7 @@ paths:
         `enrol/finish` completes the enrolment.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [password, code], presence: selected}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -4885,6 +5188,7 @@ paths:
         delivered on the `__Host-hikyo` cookie.
       x-hikyo-class: unauthenticated
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [password, code], presence: selected}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -6453,6 +6757,148 @@ paths:
           $ref: "#/components/responses/Internal"
 
   # ---------------------------------------------------------------------------
+  # Delivery-target condition reporting (#788, k8s-condition-reporting ADR).
+  #
+  # The report and tombstone are the workload's one value-free write
+  # (`report-delivery-status`, D1), integration-neutral: any integration
+  # presenting a machine credential with the atom may report. The list is the
+  # human view under `read` on the environment (D7). Every request string is a
+  # closed enum or a fixed grammar; nothing free-form crosses (D4).
+  # ---------------------------------------------------------------------------
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listDeliveryTargets
+      tags: [delivery]
+      summary: List the environment's delivery targets and their derived state.
+      description: |
+        Two labelled layers, never merged into one health bit (ADR D2): per
+        reporting principal, the server's own observation (its last
+        authenticated delivery fetch here) and its quota notice; per target,
+        the conditions its controller asserted, with a state derived at read
+        time. `reporter-revoked`, `refused` and `stale` take precedence over
+        `reported`, in that order; nothing is stored as healthy. An
+        environment the caller cannot read is the uniform nonexistent answer,
+        never an empty or redacted list.
+      x-hikyo-class: tenant
+      x-hikyo-operation: delivery-target.list
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 5
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The environment's delivery targets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryTargetList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: reportDeliveryTarget
+      tags: [delivery]
+      summary: Report one delivery target's asserted conditions.
+      description: |
+        Upserts the caller's latest-state row for one target, keyed by the
+        presenting principal (never the credential, so rotation keeps one row)
+        and the target's cluster, instance and object UIDs. An accepted repeat
+        report is not audited; a new row, and every refusal, is.
+
+        Refusals: a caller without `report-delivery-status` on this
+        environment is the uniform 404; a value outside the advertised
+        vocabulary refuses the whole report with 422 naming the member and
+        stores none of it (only the closed cause, on an existing row); a lower
+        `observed_generation`, a not-later `reported_at` within one
+        generation, or a `reported_at` more than 5 minutes ahead is a 409 that
+        is audited and dropped; a principal already reporting 100 targets is
+        the named 409 `limit_exceeded`; a body over 8 KiB is a 413 that is
+        never tied to a row. Charged to a separate budget, 60/min per principal
+        and 300/min per organisation, after authorization.
+      x-hikyo-class: tenant
+      x-hikyo-operation: delivery-target.report
+      x-hikyo-formula: [report-delivery-status@environment]
+      x-hikyo-artifacts: [machine-credential]
+      x-hikyo-min-revision: 5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryTargetReportRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: Accepted.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "422":
+          $ref: "#/components/responses/UnprocessableContent"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery-targets/tombstone:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    post:
+      operationId: tombstoneDeliveryTarget
+      tags: [delivery]
+      summary: Remove the caller's row for one deleted delivery target.
+      description: |
+        The best-effort tombstone a controller sends when its target is
+        deleted (ADR D6): the row is removed right after the tombstone event.
+        A target the caller has no row for is the uniform 404.
+      x-hikyo-class: tenant
+      x-hikyo-operation: delivery-target.tombstone
+      x-hikyo-formula: [report-delivery-status@environment]
+      x-hikyo-artifacts: [machine-credential]
+      x-hikyo-min-revision: 5
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeliveryTargetTombstoneRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: The row is removed.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  # ---------------------------------------------------------------------------
   # SCIM administration (#73, scim-provisioning ADR §8; spellings §1).
   #
   # Domain surface with full UI<->CLI parity: binding CRUD, mapping-table
@@ -6850,6 +7296,7 @@ paths:
       x-hikyo-operation: scim-credential.mint
       x-hikyo-formula: [manage-members@org]
       x-hikyo-artifacts: [human-session]
+      x-hikyo-reauth: {class: account-security, proof: [proof], presence: session}
       x-hikyo-min-revision: 1
       requestBody:
         required: true
@@ -11732,6 +12179,24 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    UnprocessableContent:
+      description: |
+        The caller is authorized and the request is well formed, but a value
+        is outside the vocabulary this server accepts for it. `detail` names
+        the member, never its value. Decided after authorization.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PayloadTooLarge:
+      description: |
+        The request body exceeds this operation's bound. The body is not
+        parsed, so the refusal is tied to nothing it carries. Decided after
+        authorization.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     TooManyRequests:
       description: |
         The instance-wide admission budget or a per-source limit is
@@ -11789,14 +12254,18 @@ components:
 
     AccountProfile:
       type: object
-      required: [username, display_name, email, managed, username_editable]
+      required: [username, display_name, email, email_verified, managed, username_editable]
       properties:
         username:
           type: string
         display_name:
           type: string
         email:
-          type: string
+          type: [string, "null"]
+          description: The account email in canonical form (domain lowercased), or null when the account has none. Read-only. See email_verified for what it is used for. Never an identity linking key.
+        email_verified:
+          type: boolean
+          description: True when email is the verified sign-in email, set only by verified local sign-up. False when email is null or is a contact address kept from before sign-in email existed; such an address is display-only and is never used to sign in.
         managed:
           type: boolean
           description: SCIM controls the username and display name.
@@ -11806,7 +12275,7 @@ components:
     UpdateAccountProfileRequest:
       type: object
       additionalProperties: false
-      required: [username, display_name, email]
+      required: [username, display_name]
       properties:
         username:
           type: string
@@ -11815,10 +12284,6 @@ components:
         display_name:
           type: string
           maxLength: 256
-        email:
-          type: string
-          maxLength: 254
-          description: Contact address, or empty to clear. Never used for authentication.
         proof:
           type: string
     ID:
@@ -12439,9 +12904,10 @@ components:
             detail:
               type: [string, "null"]
               description: |
-                Present only on `bad_request`, where it names the offending
-                request member. `null` and absent are equivalent; every other
-                error code omits the member entirely.
+                Present on `bad_request` and `unprocessable`, where it names
+                the offending request member, and on a `conflict` whose refusal
+                names the caller's own state. `null` and absent are
+                equivalent; every other error code omits the member entirely.
             findings:
               type: array
               description: |
@@ -12500,6 +12966,8 @@ components:
         - not_found
         - conflict
         - limit_exceeded
+        - unprocessable
+        - payload_too_large
         - too_many_requests
         - service_unavailable
         - internal
@@ -12530,8 +12998,11 @@ components:
         protocol_capabilities:
           type: array
           description: |
-            Which authentication protocol flows this instance serves. `login`
-            needs this before any session exists.
+            Which protocols this instance serves: the authentication flows
+            `login` needs before any session exists, and the machine protocols
+            an integration probes before using them, such as
+            `delivery-target-report/<vocabulary>` for each delivery-target
+            report vocabulary this server accepts.
           items:
             $ref: "#/components/schemas/ProtocolCapability"
 
@@ -12548,6 +13019,7 @@ components:
         - oidc
         - saml
         - webauthn
+        - delivery-target-report/1
 
     EstablishCredentialRequest:
       description: |
@@ -13190,7 +13662,7 @@ components:
 
     Org:
       type: object
-      required: [id, name, active, created_at]
+      required: [id, name, active, created_at, origin]
       properties:
         id:
           $ref: "#/components/schemas/ID"
@@ -13202,6 +13674,19 @@ components:
           type: [object, "null"]
         created_at:
           $ref: "#/components/schemas/Timestamp"
+        origin:
+          type: string
+          enum: [manual, registration]
+          description: |
+            How the org came to exist (#585 d8): `manual` (an operator's
+            create) or `registration` (a sign-up under a registration policy,
+            a self-served org). Typed on the row, never editable.
+        registration_policy_id:
+          type: [string, "null"]
+          description: |
+            The registration policy that minted the org, a trail pointer with
+            no foreign key (the org keeps it after the policy is deleted); null
+            for a manual org.
 
     OrgList:
       type: object
@@ -15549,6 +16034,196 @@ components:
           type: integer
           minimum: 0
 
+    # Delivery-target condition reporting (#788). Every string below is a
+    # closed enum or a fixed grammar, pinned to internal/deliverytarget by
+    # TestDeliveryTargetContractIsValueFree.
+    KubernetesUID:
+      type: string
+      description: A Kubernetes object UID, canonical lower-case RFC 4122 form.
+      maxLength: 36
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    KubernetesNamespace:
+      type: string
+      description: A namespace name (DNS-1123 label). A display label, never interpreted.
+      maxLength: 63
+      pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$'
+    KubernetesObjectName:
+      type: string
+      description: An object name (DNS-1123 subdomain). A display label, never interpreted.
+      maxLength: 253
+      pattern: '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$'
+    DeliveryTargetIdentity:
+      type: object
+      description: |
+        The target's identity under the reporting principal: the cluster
+        (the `kube-system` namespace UID), the `HikyoInstance` UID and the
+        target object's UID. A recreated object is a new target.
+      additionalProperties: false
+      required: [cluster_id, instance_uid, uid]
+      properties:
+        cluster_id: {$ref: "#/components/schemas/KubernetesUID"}
+        instance_uid: {$ref: "#/components/schemas/KubernetesUID"}
+        uid: {$ref: "#/components/schemas/KubernetesUID"}
+    DeliveryTargetRef:
+      type: object
+      description: The target's identity plus the namespace and name an operator types into `kubectl`.
+      additionalProperties: false
+      required: [cluster_id, instance_uid, namespace, name, uid]
+      properties:
+        cluster_id: {$ref: "#/components/schemas/KubernetesUID"}
+        instance_uid: {$ref: "#/components/schemas/KubernetesUID"}
+        namespace: {$ref: "#/components/schemas/KubernetesNamespace"}
+        name: {$ref: "#/components/schemas/KubernetesObjectName"}
+        uid: {$ref: "#/components/schemas/KubernetesUID"}
+    DeliveryTargetCondition:
+      type: object
+      description: |
+        One asserted condition. `type` and `reason` are bounded by the
+        Kubernetes condition grammar (k8s.io/apimachinery `metav1.Condition`
+        Type and Reason validation), not enumerated: a value outside the
+        vocabulary `/meta` advertises (`delivery-target-report/<vocabulary>`)
+        refuses the whole report with 422 naming the member, so the refusal is
+        recorded on the target's row. A string outside the grammar is a 400.
+      additionalProperties: false
+      required: [type, status, reason, observed_generation]
+      properties:
+        type:
+          type: string
+          minLength: 1
+          maxLength: 316
+          pattern: '^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$'
+        status:
+          type: string
+          enum: ["False", "True", Unknown]
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          pattern: '^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$'
+        observed_generation:
+          type: integer
+          format: int64
+          minimum: 0
+    DeliveryTargetLifecycle:
+      type: string
+      description: The target's closed `status.lifecycle`.
+      enum: [Refused, Retained, Scrubbed, Synced, Unreconciled]
+    DeliveryTargetReporter:
+      type: object
+      description: The reporting integration, from a closed enum, and its SemVer 2.0 version. Never a free string.
+      additionalProperties: false
+      required: [integration, version]
+      properties:
+        integration:
+          type: string
+          enum: [kubernetes-operator]
+        version:
+          type: string
+          maxLength: 64
+          pattern: '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
+    DeliveryTargetReportRequest:
+      type: object
+      description: |
+        One closed, value-free report (ADR D4). It carries no condition
+        message, event text, secret value, key name, cursor or credential
+        material; there is no member that could.
+      additionalProperties: false
+      required: [vocabulary, target, generation, observed_generation, reported_at, report_interval_seconds, lifecycle, conditions, reporter]
+      properties:
+        vocabulary:
+          type: integer
+          minimum: 1
+          description: The vocabulary version `/meta` advertised. One this server does not accept is a 422.
+        target: {$ref: "#/components/schemas/DeliveryTargetRef"}
+        generation:
+          type: integer
+          format: int64
+          minimum: 1
+        observed_generation:
+          type: integer
+          format: int64
+          minimum: 0
+        reported_at:
+          $ref: "#/components/schemas/Timestamp"
+        report_interval_seconds:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The target's heartbeat interval. The server clamps it to [300, 86400].
+        lifecycle: {$ref: "#/components/schemas/DeliveryTargetLifecycle"}
+        conditions:
+          type: array
+          maxItems: 10
+          items: {$ref: "#/components/schemas/DeliveryTargetCondition"}
+        reporter: {$ref: "#/components/schemas/DeliveryTargetReporter"}
+    DeliveryTargetTombstoneRequest:
+      type: object
+      additionalProperties: false
+      required: [target]
+      properties:
+        target: {$ref: "#/components/schemas/DeliveryTargetIdentity"}
+    DeliveryTargetState:
+      type: string
+      description: |
+        Derived at read time, never stored (ADR D5). `unknown` is the absence
+        of a row, so no row carries it.
+      enum: [refused, reported, reporter-revoked, stale]
+    DeliveryTarget:
+      type: object
+      description: One target's latest accepted report, as its controller asserted it.
+      additionalProperties: false
+      required: [id, principal_id, target, vocabulary, generation, observed_generation, reported_at, received_at, report_interval_seconds, lifecycle, conditions, reporter, state]
+      properties:
+        id: {type: string}
+        principal_id: {type: string}
+        target: {$ref: "#/components/schemas/DeliveryTargetRef"}
+        vocabulary: {type: integer, minimum: 1}
+        generation: {type: integer, format: int64, minimum: 1}
+        observed_generation: {type: integer, format: int64, minimum: 0}
+        reported_at: {$ref: "#/components/schemas/Timestamp"}
+        received_at: {$ref: "#/components/schemas/Timestamp"}
+        report_interval_seconds: {type: integer, format: int64, minimum: 300, maximum: 86400}
+        lifecycle: {$ref: "#/components/schemas/DeliveryTargetLifecycle"}
+        conditions:
+          type: array
+          items: {$ref: "#/components/schemas/DeliveryTargetCondition"}
+        reporter: {$ref: "#/components/schemas/DeliveryTargetReporter"}
+        state: {$ref: "#/components/schemas/DeliveryTargetState"}
+        refusal:
+          type: object
+          description: Present only while `state` is `refused`. The closed cause, never the refused value.
+          additionalProperties: false
+          required: [cause, refused_at]
+          properties:
+            cause:
+              type: string
+              enum: [vocabulary]
+            refused_at: {$ref: "#/components/schemas/Timestamp"}
+    DeliveryTargetPrincipal:
+      type: object
+      description: The server-observed layer for one reporting principal (ADR D2).
+      additionalProperties: false
+      required: [principal_id]
+      properties:
+        principal_id: {type: string}
+        last_contact_at:
+          $ref: "#/components/schemas/Timestamp"
+          description: Its last authenticated delivery fetch in this environment. Absent when never observed.
+        quota_refused_at:
+          $ref: "#/components/schemas/Timestamp"
+          description: The closed `quota-refused` notice's last time. Absent when never refused.
+    DeliveryTargetList:
+      type: object
+      additionalProperties: false
+      required: [principals, targets]
+      properties:
+        principals:
+          type: array
+          items: {$ref: "#/components/schemas/DeliveryTargetPrincipal"}
+        targets:
+          type: array
+          items: {$ref: "#/components/schemas/DeliveryTarget"}
+
     InstanceConfigBinding:
       type: object
       additionalProperties: false
@@ -16431,7 +17106,7 @@ components:
     AuthMethods:
       type: object
       additionalProperties: false
-      required: [providers, local_login_enabled]
+      required: [providers, local_login_enabled, signup_open, signup_paused, signup_methods]
       properties:
         providers:
           type: array
@@ -16439,6 +17114,191 @@ components:
             $ref: "#/components/schemas/AuthMethodProvider"
         local_login_enabled:
           type: boolean
+        signup_open:
+          type: boolean
+          description: |
+            The addressed scope (the instance, or `?org=`) has an active
+            registration policy: the sign-up door is open.
+        signup_paused:
+          type: boolean
+          description: |
+            The addressed scope has a policy that is inactive. The public page
+            renders only "Sign-up is paused."; the cause renders on the
+            Members panel (#587 d3). False when the scope has no policy.
+        signup_methods:
+          type: array
+          description: |
+            The methods the open door admits, empty unless `signup_open`
+            (api-cli-spellings section 8: `[{kind, slug} | "local"]`).
+          items:
+            $ref: "#/components/schemas/SignupMethod"
+        signup_landing:
+          type: string
+          enum: [org-template, none, fresh-org]
+          description: |
+            Where an admitted sign-up lands, present only while the door is
+            open (#607): the addressed org (`org-template`), an account with
+            no grants (`none`), or a fresh org of its own (`fresh-org`). Not
+            secret: the landing kind is what the confirmation step tells the
+            signer before the round-trip (#585 d5, #587 d1).
+
+    SignupMethod:
+      description: A federated provider by `{kind, slug}`, or the string `local` for the email + password entry.
+      oneOf:
+        - $ref: "#/components/schemas/ProviderRef"
+        - $ref: "#/components/schemas/LocalSignupMethod"
+
+    LocalSignupMethod:
+      type: string
+      description: The email + password sign-up entry.
+      enum: [local]
+
+    ProviderRef:
+      type: object
+      additionalProperties: false
+      description: A federated provider named by kind and slug (slugs are unique per kind only).
+      required: [kind, slug]
+      properties:
+        kind:
+          $ref: "#/components/schemas/IdentityProviderKind"
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+    RegistrationExternalEntry:
+      type: object
+      additionalProperties: false
+      required: [provider]
+      properties:
+        provider:
+          $ref: "#/components/schemas/ProviderRef"
+        display_name:
+          type: string
+          description: The provider's display name; on responses only, ignored on input.
+        claim:
+          type: string
+          maxLength: 256
+          description: |
+            One issuer-specific string claim the signed ID token must carry,
+            with a value in `values`. Never `email`.
+        values:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            maxLength: 512
+
+    RegistrationLocalEntry:
+      type: object
+      additionalProperties: false
+      description: Email + password sign-up; present means enabled.
+      properties:
+        domains:
+          type: array
+          maxItems: 64
+          description: Admitted address domains; empty or absent admits any address.
+          items:
+            type: string
+            maxLength: 253
+
+    RegistrationLanding:
+      type: object
+      additionalProperties: false
+      required: [kind]
+      description: |
+        Where a sign-up lands. An organisation policy is `org-template` with a
+        template applicable at organisation scope; an instance policy is
+        `none` (zero grants) or `fresh-org` (a new organisation with the
+        signer as its first administrator) with a cap on live orgs minted.
+      properties:
+        kind:
+          type: string
+          enum: [org-template, none, fresh-org]
+        template:
+          $ref: "#/components/schemas/RoleTemplate"
+        cap:
+          type: integer
+
+    RegistrationPolicyPutRequest:
+      type: object
+      additionalProperties: false
+      required: [external, landing, proof]
+      properties:
+        external:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/RegistrationExternalEntry"
+        local:
+          $ref: "#/components/schemas/RegistrationLocalEntry"
+        landing:
+          $ref: "#/components/schemas/RegistrationLanding"
+        proof:
+          type: string
+          maxLength: 1024
+          description: |
+            The reauthentication proof: a TOTP code, or the account password
+            where no factor is enrolled.
+
+    RegistrationPolicyDeleteRequest:
+      type: object
+      additionalProperties: false
+      required: [proof]
+      properties:
+        proof:
+          type: string
+          maxLength: 1024
+          description: The reauthentication proof, as on `put`.
+
+    RegistrationPolicy:
+      type: object
+      additionalProperties: false
+      required: [id, external, landing, authority_principal_id, state, row_version, created_at, updated_at]
+      properties:
+        id:
+          type: string
+        org:
+          type: string
+          description: The organisation; absent for the instance policy.
+        external:
+          type: array
+          items:
+            $ref: "#/components/schemas/RegistrationExternalEntry"
+        local:
+          $ref: "#/components/schemas/RegistrationLocalEntry"
+        landing:
+          $ref: "#/components/schemas/RegistrationLanding"
+        authority_principal_id:
+          type: string
+          description: |
+            The standing delegation's authority principal (empty when
+            unassigned); re-checked against its current grants on every read
+            and every sign-up.
+        state:
+          type: string
+          enum: [active, inactive]
+        inactive_cause:
+          type: string
+          enum: [authority-lost, authority-unassigned, precondition]
+        inactive_precondition:
+          type: string
+          description: |
+            When `inactive_cause` is `precondition`, the failing precondition
+            by name, with the provider as `<kind>:<slug>` where one is involved.
+        fresh_org_count:
+          type: integer
+          minimum: 0
+          description: For a `fresh-org` landing, the live orgs this policy minted (the `n` of `n / cap`).
+        row_version:
+          type: integer
+          minimum: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     AuthMethodProvider:
       type: object
@@ -16451,6 +17311,16 @@ components:
           type: string
         kind:
           $ref: "#/components/schemas/IdentityProviderKind"
+        brand:
+          type: string
+          enum: [google, microsoft]
+          description: |
+            The provider's published button rules apply (#587 d4,
+            docs/research/social-providers.md): Google's standard-colour G,
+            or the Microsoft logo with the row's display name as the tenant.
+            Derived from the pinned issuer (Google's, or an Entra
+            tenant-specific issuer); absent for a generic OIDC provider.
+            Presentation only: admission never keys on it.
 
     OidcStartRequest:
       type: object
@@ -16460,10 +17330,27 @@ components:
         purpose:
           type: string
           x-extensible-enum: [login, link, reauth]
+        intent:
+          type: string
+          enum: [sign-in, sign-up]
+          description: |
+            Valid only with purpose `login` (#604); absent = `sign-in`. It
+            decides only what happens to an unknown identity at the callback:
+            `sign-in` refuses it uniformly, `sign-up` enters the registration
+            policy of the addressed scope. A known identity signs in under
+            either. Supplied on any other purpose, the start refuses uniformly.
+        signup_org:
+          type: string
+          maxLength: 64
+          description: |
+            The org whose registration policy a `sign-up` addresses; absent =
+            the instance scope. Valid only with intent `sign-up`. The start
+            reads no policy: an unknown org refuses at the callback as a closed
+            door.
         environment_id:
           type: string
           maxLength: 64
-          description: Required for reauth; the window scope.
+          description: Required for reauth; the window scope. Refused (400) on any other purpose.
         proof:
           type: string
           maxLength: 1024

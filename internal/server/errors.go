@@ -10,6 +10,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/admission"
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -43,8 +44,10 @@ import (
 // it — is recorded as a disposition item rather than smuggled in here.
 var limitExceededMessage = fmt.Sprintf(
 	"a structural bound was reached: a project holds at most %d environments, "+
-		"declares at most %d keys, and declares at most %d key groups",
-	service.MaxEnvironmentsPerProject, schema.MaxKeysPerProject, schema.MaxKeyGroupsPerProject)
+		"declares at most %d keys, and declares at most %d key groups, "+
+		"and a service account reports at most %d delivery targets",
+	service.MaxEnvironmentsPerProject, schema.MaxKeysPerProject, schema.MaxKeyGroupsPerProject,
+	deliverytarget.MaxRowsPerPrincipal)
 
 type detailPolicy uint8
 
@@ -74,6 +77,8 @@ var wirePolicies = map[apigen.ErrorCode]WireError{
 	apigen.ErrorCodeNotFound:           {status: http.StatusNotFound, code: apigen.ErrorCodeNotFound, message: "not found", detailPolicy: redactDetail},
 	apigen.ErrorCodeConflict:           {status: http.StatusConflict, code: apigen.ErrorCodeConflict, message: "the current state of this resource refuses the request", detailPolicy: allowSafeDetail},
 	apigen.ErrorCodeLimitExceeded:      {status: http.StatusConflict, code: apigen.ErrorCodeLimitExceeded, message: limitExceededMessage, detailPolicy: redactDetail},
+	apigen.ErrorCodeUnprocessable:      {status: http.StatusUnprocessableEntity, code: apigen.ErrorCodeUnprocessable, message: "a value is outside the vocabulary this server accepts", detailPolicy: allowSafeDetail},
+	apigen.ErrorCodePayloadTooLarge:    {status: http.StatusRequestEntityTooLarge, code: apigen.ErrorCodePayloadTooLarge, message: "the request body exceeds this operation's bound", detailPolicy: redactDetail},
 	apigen.ErrorCodeTooManyRequests:    {status: http.StatusTooManyRequests, code: apigen.ErrorCodeTooManyRequests, message: "too many requests", detailPolicy: redactDetail},
 	apigen.ErrorCodeInternal:           {status: http.StatusInternalServerError, code: apigen.ErrorCodeInternal, message: "internal error", detailPolicy: redactDetail},
 }
@@ -88,15 +93,17 @@ func wirePolicyForCode(code apigen.ErrorCode) WireError {
 }
 
 // errorBody builds the wire body for a code. detail is honoured only for
-// bad_request and conflict; everywhere else it is dropped, because a uniform
-// response with a varying member is not uniform.
+// bad_request, conflict and unprocessable (the policies that allowSafeDetail);
+// everywhere else it is dropped, because a uniform response with a varying
+// member is not uniform.
 //
 // detail ONLY ever arrives from an explicit SafeDetail-carrying error (see
 // writeHandlerError). A plain conflict — one that wraps domain.ErrConflict with
 // no SafeDetail — carries no detail and stays byte-identical to every other
-// conflict. The single conflict that opts in is the protected-destination
-// refusal, whose detail is the caller's OWN destination id (post-authorization,
-// so naming it discloses nothing).
+// conflict. Two conflicts opt in, both post-authorization so naming them
+// discloses nothing: the protected-destination refusal, whose detail is the
+// caller's OWN destination id, and the delivery-target ordering refusal, whose
+// detail names the ordering rule the caller's own report broke.
 func errorBody(code apigen.ErrorCode, detail string) apigen.Error {
 	return wirePolicyForCode(code).bodyWithDetail(detail)
 }
@@ -196,12 +203,13 @@ var wireErrorRules = []struct {
 	// OIDC and SAML provider administration.
 	{service.ErrProviderNotFound, apigen.ErrorCodeNotFound},
 	{service.ErrBadPurpose, apigen.ErrorCodeBadRequest},
-	{service.ErrReauthNoPolicy, apigen.ErrorCodeBadRequest},
+	{service.ErrReauthNoPolicy, apigen.ErrorCodeConflict},
 	{service.ErrReauthNoEnvironment, apigen.ErrorCodeBadRequest},
 	{service.ErrIdentityNotFound, apigen.ErrorCodeBadRequest},
 	{service.ErrLastCredential, apigen.ErrorCodeBadRequest},
 	{service.ErrIssuerImmutable, apigen.ErrorCodeBadRequest},
 	{service.ErrProviderDiscovery, apigen.ErrorCodeBadRequest},
+	{service.ErrPairwiseClientID, apigen.ErrorCodeBadRequest},
 	{service.ErrProviderExists, apigen.ErrorCodeBadRequest},
 	{service.ErrProviderRace, apigen.ErrorCodeConflict},
 	{service.ErrSAMLProviderNotFound, apigen.ErrorCodeNotFound},
@@ -220,6 +228,10 @@ var wireErrorRules = []struct {
 
 	// Enumeration-safe server surfaces.
 	{service.ErrNoResetTarget, apigen.ErrorCodeNotFound},
+
+	// Delivery-target reports (#788), both decided after authorization.
+	{service.ErrReportVocabulary, apigen.ErrorCodeUnprocessable},
+	{service.ErrReportTooLarge, apigen.ErrorCodePayloadTooLarge},
 
 	// Adapter provider-lease contention and generation-supersede are post-auth
 	// contention, not faults: they escape the Adopt/RemoveTarget/Delete paths
@@ -252,6 +264,8 @@ var wireErrorRules = []struct {
 //   - Anything else is a fault: 500, with the cause logged and never returned.
 //   - ErrConflict and ErrLimitExceeded are decided AFTER authorization
 //     succeeded, so they disclose nothing a caller could not already read.
+//     So are the delivery-target report's vocabulary (422) and size (413)
+//     refusals; the size refusal ranks behind authorization by construction.
 //   - ErrInvalid is decided before or independently of tenant resolution.
 //   - The reveal-ceremony refusals (#58) are `forbidden`. They are decided
 //     AFTER authorize() has already succeeded, so they disclose nothing beyond
