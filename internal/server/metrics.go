@@ -410,24 +410,26 @@ func (m *Metrics) record(class surfaceClass, code int, d time.Duration) {
 
 type admissionCollector struct {
 	source AdmissionSnapshotter
-	descs  [6]*prometheus.Desc
+	descs  [5]*prometheus.Desc
+	// throttled is the one counter beside the gauges.
+	throttled *prometheus.Desc
 }
 
 func newAdmissionCollector(source AdmissionSnapshotter) *admissionCollector {
-	return &admissionCollector{source: source, descs: [6]*prometheus.Desc{
+	return &admissionCollector{source: source, descs: [5]*prometheus.Desc{
 		prometheus.NewDesc(MetricAdmissionConcurrencyLimit, "Configured admission concurrency limit.", nil, nil),
 		prometheus.NewDesc(MetricAdmissionInFlight, "Current admission work in flight.", nil, nil),
 		prometheus.NewDesc(MetricAdmissionQueueDepthLimit, "Configured admission queue depth limit.", nil, nil),
 		prometheus.NewDesc(MetricAdmissionQueueWaiting, "Current requests waiting for admission.", nil, nil),
 		prometheus.NewDesc(MetricAdmissionActiveBackoffs, "Current active admission backoff buckets.", nil, nil),
-		prometheus.NewDesc(MetricAdmissionThrottled, "Pre-auth attempts refused by the per-source-IP window since boot.", nil, nil),
-	}}
+	}, throttled: prometheus.NewDesc(MetricAdmissionThrottled, "Pre-auth attempts refused by the per-source-IP window since boot.", nil, nil)}
 }
 
 func (c *admissionCollector) Describe(ch chan<- *prometheus.Desc) {
 	for _, desc := range c.descs {
 		ch <- desc
 	}
+	ch <- c.throttled
 }
 
 func (c *admissionCollector) Collect(ch chan<- prometheus.Metric) {
@@ -442,10 +444,10 @@ func (c *admissionCollector) Collect(ch chan<- prometheus.Metric) {
 		float64(snap.Waiting),
 		float64(snap.ActiveBackoffs),
 	}
-	for i, desc := range c.descs[:len(values)] {
+	for i, desc := range c.descs {
 		ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
 	}
-	ch <- prometheus.MustNewConstMetric(c.descs[len(values)], prometheus.CounterValue, float64(snap.Throttled))
+	ch <- prometheus.MustNewConstMetric(c.throttled, prometheus.CounterValue, float64(snap.Throttled))
 }
 
 // haCollector emits the three label-free multi-node HA gauges. Its source is

@@ -87,8 +87,6 @@ func sharedLimiter(t *testing.T, store SharedStore, now *time.Time) *Limiter {
 	return l
 }
 
-func admitted(_ time.Duration, ok bool) bool { return ok }
-
 func testLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
 func TestSharedIPBudgetIsInstanceWideAcrossNodes(t *testing.T) {

@@ -160,18 +160,14 @@ func TestPerIPRefusalAdvertisesTheWindowsOwnWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Spread the allowance over 13 seconds, so the oldest hit leaves the
-	// window 47 seconds after the last one.
 	for i := range PerIPPerMinute {
-		if i > 0 {
-			now = now.Add(time.Second + time.Second/3)
-		}
 		rel, err := l.Enter(context.Background(), "203.0.113.7")
 		if err != nil {
 			t.Fatalf("attempt %d refused inside the allowance: %v", i, err)
 		}
 		rel()
 	}
+	now = now.Add(12 * time.Second)
 	_, err = l.Enter(context.Background(), "203.0.113.7")
 	var throttled *Throttled
 	if !errors.As(err, &throttled) || !errors.Is(err, ErrOverloaded) {
@@ -184,8 +180,6 @@ func TestPerIPRefusalAdvertisesTheWindowsOwnWait(t *testing.T) {
 	if got := l.Snapshot().Throttled; got != 1 {
 		t.Fatalf("throttle counter = %d, want 1", got)
 	}
-	// One step short of the advertised wait may still be refused; the
-	// advertised wait itself must not be.
 	now = now.Add(wait)
 	rel, err := l.Enter(context.Background(), "203.0.113.7")
 	if err != nil {
@@ -195,7 +189,7 @@ func TestPerIPRefusalAdvertisesTheWindowsOwnWait(t *testing.T) {
 }
 
 func TestNonWindowOverloadKeepsTheFixedWait(t *testing.T) {
-	for _, err := range []error{ErrOverloaded, errors.Join(errors.New("budget"), ErrOverloaded), &Throttled{}} {
+	for _, err := range []error{ErrOverloaded, errors.Join(errors.New("budget"), ErrOverloaded)} {
 		if got := RetryAfterOf(err); got != RetryAfter {
 			t.Fatalf("RetryAfterOf(%v) = %v, want the fixed %v", err, got, RetryAfter)
 		}

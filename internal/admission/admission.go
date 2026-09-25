@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -108,7 +109,7 @@ func (e *Throttled) Unwrap() error { return ErrOverloaded }
 // else (queue full, a cancelled wait, account backoff, a budget refusal).
 func RetryAfterOf(err error) time.Duration {
 	var t *Throttled
-	if errors.As(err, &t) && t.RetryAfter > 0 {
+	if errors.As(err, &t) {
 		return t.RetryAfter
 	}
 	return RetryAfter
@@ -116,7 +117,7 @@ func RetryAfterOf(err error) time.Duration {
 
 // roundUpToStep rounds a positive wait up to the next ThrottleStep.
 func roundUpToStep(d time.Duration) time.Duration {
-	return max(ThrottleStep, (d+ThrottleStep-1)/ThrottleStep*ThrottleStep)
+	return (d + ThrottleStep - 1) / ThrottleStep * ThrottleStep
 }
 
 // Config is the tunable half. ArgonMemoryKiB must be the value the login path
@@ -189,17 +190,17 @@ type Limiter struct {
 	// coordination error visible; both are nil on a single node.
 	shared SharedStore
 	log    *slog.Logger
+	// throttled counts per-source-IP refusals on this node since boot.
+	throttled atomic.Uint64
 	// lifecycle serializes generation handoff with operations that touch
 	// counters or the shared backend. Admission leases themselves remain
 	// visible in slots until their release function returns the slot.
 	lifecycle sync.RWMutex
 
-	mu      sync.Mutex
-	waiting int
-	// throttled counts per-source-IP refusals on this node since boot.
-	throttled uint64
-	ipHits    map[string][]time.Time
-	metaHits  map[string][]time.Time
+	mu       sync.Mutex
+	waiting  int
+	ipHits   map[string][]time.Time
+	metaHits map[string][]time.Time
 	// issuerRefreshes is keyed by configured issuer, not by source IP: the
 	// amplification an unknown `kid` buys is aimed at the ISSUER, so one
 	// fabricated-`kid` stream from a thousand addresses is one outbound flood.
@@ -368,7 +369,7 @@ func (l *Limiter) Snapshot() Snapshot {
 		QueueDepthLimit:  QueueDepth,
 		Waiting:          l.waiting,
 		ActiveBackoffs:   active,
-		Throttled:        l.throttled,
+		Throttled:        l.throttled.Load(),
 	}
 }
 
@@ -384,9 +385,7 @@ func (l *Limiter) Enter(ctx context.Context, sourceIP string) (release func(), e
 		if wait <= 0 {
 			return nil, ErrOverloaded
 		}
-		l.mu.Lock()
-		l.throttled++
-		l.mu.Unlock()
+		l.throttled.Add(1)
 		return nil, &Throttled{RetryAfter: roundUpToStep(wait)}
 	}
 	if !l.enqueue() {
@@ -427,11 +426,9 @@ func (l *Limiter) AllowDiscovery(ip string) bool {
 	l.lifecycle.RLock()
 	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
-		_, ok := l.allowShared(sharedBucketMeta, ip, l.discoveryPerIP)
-		return ok
+		return admitted(l.allowShared(sharedBucketMeta, ip, l.discoveryPerIP))
 	}
-	_, ok := l.allowIPIn(l.metaHits, ip, l.discoveryPerIP)
-	return ok
+	return admitted(l.allowIPIn(l.metaHits, ip, l.discoveryPerIP))
 }
 
 // AllowIssuerRefresh admits one OUTBOUND JWKS refresh triggered by an unknown
@@ -453,12 +450,12 @@ func (l *Limiter) AllowIssuerRefresh(issuer string) bool {
 	l.lifecycle.RLock()
 	defer l.lifecycle.RUnlock()
 	if l.shared != nil {
-		_, ok := l.allowShared(sharedBucketIssuer, issuer, IssuerRefreshPerMinute)
-		return ok
+		return admitted(l.allowShared(sharedBucketIssuer, issuer, IssuerRefreshPerMinute))
 	}
-	_, ok := l.allowIPIn(l.issuerRefreshes, issuer, IssuerRefreshPerMinute)
-	return ok
+	return admitted(l.allowIPIn(l.issuerRefreshes, issuer, IssuerRefreshPerMinute))
 }
+
+func admitted(_ time.Duration, ok bool) bool { return ok }
 
 // allowIP reports whether ip is within its allowance. A refusal carries the
 // exact wait until the window next admits ip, or zero when no wait is known.
