@@ -74,6 +74,21 @@ export function reportingSupport(capabilities: readonly string[]): 'supported' |
 }
 
 /**
+ * useReportingSupport reads `/meta` once for every consumer (one query key):
+ * the Kubernetes tab's listings and the grant dialog's report checkbox.
+ */
+export function useReportingSupport(): ReportingSupport {
+  const meta = useQuery({
+    queryKey: ['meta', 'protocol-capabilities'] as const,
+    queryFn: async () =>
+      (await parsedPick(getMetaOp, {}, { protocol_capabilities: true })).protocol_capabilities,
+    // Fixed for the life of the process, like the server version.
+    staleTime: Infinity,
+  });
+  return meta.isSuccess ? reportingSupport(meta.data) : meta.isError ? 'failed' : 'pending';
+}
+
+/**
  * useDeliveryTargets lists the reports in every environment of a project,
  * once `/meta` says the server accepts them. Reports are environment-scoped
  * (`read` on the environment, D7), so the project-scoped surface fans out like
@@ -83,18 +98,7 @@ export function useDeliveryTargets(
   p: { readonly org: string; readonly project: string },
   environments: readonly EnvRef[],
 ): DeliveryTargetsView {
-  const meta = useQuery({
-    queryKey: ['meta', 'protocol-capabilities'] as const,
-    queryFn: async () =>
-      (await parsedPick(getMetaOp, {}, { protocol_capabilities: true })).protocol_capabilities,
-    // Fixed for the life of the process, like the server version.
-    staleTime: Infinity,
-  });
-  const support: ReportingSupport = meta.isSuccess
-    ? reportingSupport(meta.data)
-    : meta.isError
-      ? 'failed'
-      : 'pending';
+  const support = useReportingSupport();
   const lists = useQueries({
     queries: environments.map((env) => ({
       queryKey: ['delivery-targets', p.org, p.project, env.id] as const,

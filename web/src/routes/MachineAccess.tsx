@@ -17,7 +17,11 @@ import {
   grantOutcomeSummary,
   useOrgGrants,
 } from '../api/access.ts';
-import { useDeliveryTargets, type DeliveryTargetsView } from '../api/deliveryTargets.ts';
+import {
+  useDeliveryTargets,
+  useReportingSupport,
+  type DeliveryTargetsView,
+} from '../api/deliveryTargets.ts';
 import {
   BINDING_LIFETIMES,
   bindingFailureText,
@@ -2382,7 +2386,8 @@ export function BindingDialog({
  * Reading the org membership listing takes exactly that (`manage-members@org`,
  * instance by inheritance), so its success is the server's own predicate. It
  * is not offered to a caller the server would refuse, as reveal is not offered
- * without the opt-in.
+ * without the opt-in, nor on a server whose `/meta` does not advertise
+ * delivery-target-report.
  */
 export function GrantDialog({
   project,
@@ -2402,9 +2407,11 @@ export function GrantDialog({
   onClose: () => void;
   onGranted: (environment: string, results: readonly GrantResult[]) => void;
 }) {
-  const reportable =
+  const support = useReportingSupport();
+  const reportCandidate =
     account.kind === 'workload' &&
     grantableFor(scope, 'report-delivery-status', machineReveal).length > 0;
+  const reportable = support === 'supported' && reportCandidate;
   // An empty org leaves the query idle where there is nothing to report on.
   const reportAuthority = useOrgGrants(reportable ? project.org : '');
   const reportGrantable = reportable && reportAuthority.isSuccess;
@@ -2438,7 +2445,9 @@ export function GrantDialog({
         )
       }
     >
-      {!grantable && reportable && reportAuthority.isPending ? (
+      {!grantable &&
+      reportCandidate &&
+      (support === 'pending' || (reportable && reportAuthority.isPending)) ? (
         <p role="status">Checking whether you can grant report-delivery-status…</p>
       ) : !grantable ? (
         <p role="status">

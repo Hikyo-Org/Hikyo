@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zKeyList } from '@hikyo/zod';
+import { zKeyList, zMeta } from '@hikyo/zod';
 import { expect, fn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
@@ -18,6 +18,14 @@ const KEYS_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/keys`;
 // manage-members, the one authority that may grant report-delivery-status.
 // Unlisted, it 404s and the checkbox is not offered.
 const ORG_GRANTS_URL = `/api/v1/orgs/${ORG}/grants`;
+// Reporting is offered only on a server whose /meta advertises it.
+const META_URL = '/api/v1/meta';
+const metaRoute = (protocol_capabilities: string[]) => ({
+  url: META_URL,
+  body: { server_version: '1.4.0', api_revision: 5, protocol_capabilities } satisfies z.input<
+    typeof zMeta
+  >,
+});
 
 const key = (
   n: number,
@@ -147,6 +155,7 @@ export const ReportingGrantable: Story = {
       responses: [
         { url: KEYS_URL, body: catalogue },
         { url: ORG_GRANTS_URL, body: { count: 0, items: [] } },
+        metaRoute(['delivery-target-report/1']),
       ],
     },
   },
@@ -181,6 +190,7 @@ export const ReportAfterTheFact: Story = {
       responses: [
         { url: KEYS_URL, body: catalogue },
         { url: ORG_GRANTS_URL, body: { count: 0, items: [] } },
+        metaRoute(['delivery-target-report/1']),
       ],
     },
   },
@@ -190,5 +200,26 @@ export const ReportAfterTheFact: Story = {
     await expect(
       canvas.getByRole('button', { name: 'Grant report-delivery-status' }),
     ).toBeEnabled();
+  },
+};
+
+// Every environment read, an org member manager, and a server whose /meta does
+// not advertise delivery-target-report: the atom is not offered, so once /meta
+// settles there is nothing to widen.
+export const ReportingUnsupported: Story = {
+  args: { scope: scope.slice(0, 2) },
+  parameters: {
+    app: {
+      responses: [
+        { url: KEYS_URL, body: catalogue },
+        { url: ORG_GRANTS_URL, body: { count: 0, items: [] } },
+        metaRoute(['local-password']),
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/there is nothing to widen; reveal needs/i)).toBeVisible();
+    await expect(canvas.queryByLabelText('Capability')).not.toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Close' })).toBeVisible();
   },
 };
