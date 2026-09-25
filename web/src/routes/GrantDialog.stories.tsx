@@ -14,10 +14,6 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // and classifications, never a value), which the harness answers; the grant
 // itself has no story route, so the plays stop short of submitting.
 const KEYS_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/keys`;
-// The org membership listing: readable only with org- or instance-scope
-// manage-members, the one authority that may grant report-delivery-status.
-// Unlisted, it 404s and the checkbox is not offered.
-const ORG_GRANTS_URL = `/api/v1/orgs/${ORG}/grants`;
 // Reporting is offered only on a server whose /meta advertises it.
 const META_URL = '/api/v1/meta';
 const metaRoute = (protocol_capabilities: string[]) => ({
@@ -80,6 +76,8 @@ const meta = {
     account,
     scope,
     machineReveal: false,
+    // whoami's grant hint: off unless the story is about an org member manager.
+    mayGrantReporting: false,
     liveCredentials: 2,
     onClose: fn(),
     onGranted: fn(),
@@ -150,11 +148,11 @@ export const CatalogueLoading: Story = {
 // A workload account and an org member manager: report-delivery-status is one
 // checkbox beside read, and ticking it names both grants on the button.
 export const ReportingGrantable: Story = {
+  args: { mayGrantReporting: true },
   parameters: {
     app: {
       responses: [
         { url: KEYS_URL, body: catalogue },
-        { url: ORG_GRANTS_URL, body: { count: 0, items: [] } },
         metaRoute(['delivery-target-report/1']),
       ],
     },
@@ -169,9 +167,14 @@ export const ReportingGrantable: Story = {
   },
 };
 
-// A project-scope member manager cannot grant the atom (the org membership
-// listing 404s), so the checkbox is not offered: read alone.
+// A project-scope member manager cannot grant the atom (whoami's hint does not
+// cover this org), so on a reporting server the checkbox is not offered.
 export const ReportingNotGrantable: Story = {
+  parameters: {
+    app: {
+      responses: [{ url: KEYS_URL, body: catalogue }, metaRoute(['delivery-target-report/1'])],
+    },
+  },
   play: async ({ canvas }) => {
     await expect(await canvas.findByText('LOG_LEVEL · config')).toBeVisible();
     await expect(
@@ -184,12 +187,11 @@ export const ReportingNotGrantable: Story = {
 // Every environment already read, and an org member manager: the report atom
 // is still grantable on its own, and it makes no key reachable.
 export const ReportAfterTheFact: Story = {
-  args: { scope: scope.slice(0, 2) },
+  args: { scope: scope.slice(0, 2), mayGrantReporting: true },
   parameters: {
     app: {
       responses: [
         { url: KEYS_URL, body: catalogue },
-        { url: ORG_GRANTS_URL, body: { count: 0, items: [] } },
         metaRoute(['delivery-target-report/1']),
       ],
     },
@@ -207,12 +209,11 @@ export const ReportAfterTheFact: Story = {
 // not advertise delivery-target-report: the atom is not offered, so once /meta
 // settles there is nothing to widen.
 export const ReportingUnsupported: Story = {
-  args: { scope: scope.slice(0, 2) },
+  args: { scope: scope.slice(0, 2), mayGrantReporting: true },
   parameters: {
     app: {
       responses: [
         { url: KEYS_URL, body: catalogue },
-        { url: ORG_GRANTS_URL, body: { count: 0, items: [] } },
         metaRoute(['local-password']),
       ],
     },

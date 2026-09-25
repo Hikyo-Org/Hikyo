@@ -480,10 +480,19 @@ export const zLocalLoginRequest = z.object({
 });
 
 /**
+ * Where the caller may grant `report-delivery-status`. No human holds that atom, so every grant of it is an unheld grant, which only `manage-members` at instance or organisation scope may make. The machine-access grant dialog offers the atom only inside this reach.
+ */
+export const zUnheldGrantReach = z.object({
+    instance: z.boolean(),
+    orgs: z.array(z.string())
+});
+
+/**
  * UI-gating hints for the calling principal: what instance surfaces this session may even attempt, so the SPA does not fire an operator-only request it will only be refused. These are disclosure-safe reflections of the caller's own grants — never authorization itself, which is still evaluated per request at the server chokepoint.
  */
 export const zPrincipalCapabilities = z.object({
-    instance_operator: z.boolean()
+    instance_operator: z.boolean(),
+    delivery_report_grant: zUnheldGrantReach
 });
 
 export const zInstanceUpdateBackend = z.enum([

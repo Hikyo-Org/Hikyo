@@ -337,7 +337,8 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 			DisplayName: optional(id.DisplayName),
 		},
 		Capabilities: apigen.PrincipalCapabilities{
-			InstanceOperator: id.InstanceOperator,
+			InstanceOperator:    id.InstanceOperator,
+			DeliveryReportGrant: unheldGrantReachOf(id.DeliveryReportGrant),
 		},
 	}
 	// Surface the enrolment gate so the SPA renders it (#760); absent otherwise.
@@ -954,4 +955,13 @@ func optional(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// unheldGrantReachOf renders the whoami grant hint; orgs is never null.
+func unheldGrantReachOf(r service.UnheldGrantReach) apigen.UnheldGrantReach {
+	orgs := make([]string, 0, len(r.Orgs))
+	for _, org := range r.Orgs {
+		orgs = append(orgs, string(org))
+	}
+	return apigen.UnheldGrantReach{Instance: r.Instance, Orgs: orgs}
 }

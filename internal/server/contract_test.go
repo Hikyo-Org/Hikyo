@@ -753,6 +753,41 @@ func TestWhoamiCarriesOnlyOIDCProviderProvenance(t *testing.T) {
 	}
 }
 
+// The report-delivery-status grant hint travels on whoami as the service
+// computed it, and an empty reach is an empty array, never null: the SPA's
+// schema requires the member and gates the grant dialog on it.
+func TestWhoamiCarriesDeliveryReportGrantReach(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		reach service.UnheldGrantReach
+		want  string
+	}{
+		{name: "none", want: `{"instance":false,"orgs":[]}`},
+		{name: "orgs", reach: service.UnheldGrantReach{Orgs: []domain.OrgID{"org_a", "org_b"}}, want: `{"instance":false,"orgs":["org_a","org_b"]}`},
+		{name: "instance", reach: service.UnheldGrantReach{Instance: true}, want: `{"instance":true,"orgs":[]}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			identity := liveIdentity
+			identity.DeliveryReportGrant = tc.reach
+			srv := newTestServer(t, stubAuth{identity: func(context.Context, string) (service.Identity, error) {
+				return identity, nil
+			}}, stubOrgs{})
+			_, payload := call(t, srv, http.MethodGet, api.PathPrefix+"/auth/whoami", "live", nil)
+			var body struct {
+				Capabilities struct {
+					DeliveryReportGrant json.RawMessage `json:"delivery_report_grant"`
+				} `json:"capabilities"`
+			}
+			if err := json.Unmarshal(payload, &body); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(body.Capabilities.DeliveryReportGrant); got != tc.want {
+				t.Fatalf("delivery_report_grant = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestCLIReauthOnlyRedeemDisclosesRotatedBearer(t *testing.T) {
 	srv := newTestServer(t, cliReauthAuth{}, stubOrgs{})
 	environment := "env_00000000-0000-0000-0000-000000000001"

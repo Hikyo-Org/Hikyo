@@ -15,7 +15,6 @@ import {
   createGrantsSequentially,
   grantFailureText,
   grantOutcomeSummary,
-  useOrgGrants,
 } from '../api/access.ts';
 import {
   useDeliveryTargets,
@@ -224,6 +223,7 @@ export function MachineAccessPage() {
   const machineRevealQuery = useMachineReveal(project.org, project.project);
   const auth = useAuth();
   const liveSessionId = auth.identity?.session.id ?? null;
+  const reportGrant = auth.identity?.capabilities.delivery_report_grant;
   const machineReveal = machineRevealQuery.data?.enabled ?? false;
   const environmentsQuery = useEnvironments({ ...project, environment: '' });
 
@@ -915,6 +915,10 @@ export function MachineAccessPage() {
           account={currentAccount(dialog.account)}
           scope={scopeFor(dialog.account)}
           machineReveal={machineReveal}
+          mayGrantReporting={
+            reportGrant !== undefined &&
+            (reportGrant.instance || reportGrant.orgs.includes(project.org))
+          }
           // The SERVER's count, which applies the whole liveness predicate,
           // revocation, the credential epoch and expiry. Counting un-revoked
           // rows here would tell an operator that a grant re-scopes credentials
@@ -2383,9 +2387,9 @@ export function BindingDialog({
  * `report-delivery-status` (condition-reporting ADR D1) is workload-only, and
  * no human can hold it, so the server grants it only from `manage-members` at
  * org or instance scope (the grant-unheld rule, grants.go mayGrantUnheld).
- * Reading the org membership listing takes exactly that (`manage-members@org`,
- * instance by inheritance), so its success is the server's own predicate. It
- * is not offered to a caller the server would refuse, as reveal is not offered
+ * whoami's `delivery_report_grant` hint is that same predicate, computed by
+ * the server from the caller's own grants without an audited read. It is not
+ * offered to a caller the server would refuse, as reveal is not offered
  * without the opt-in, nor on a server whose `/meta` does not advertise
  * delivery-target-report.
  */
@@ -2394,6 +2398,7 @@ export function GrantDialog({
   account,
   scope,
   machineReveal,
+  mayGrantReporting,
   liveCredentials,
   onClose,
   onGranted,
@@ -2403,18 +2408,18 @@ export function GrantDialog({
   scope: readonly MachineEnvScope[];
   /** The project's machine-reveal opt-in: reveal is grantable only while it is on. */
   machineReveal: boolean;
+  /** whoami's grant hint covers this project's organisation. */
+  mayGrantReporting: boolean;
   liveCredentials: number;
   onClose: () => void;
   onGranted: (environment: string, results: readonly GrantResult[]) => void;
 }) {
   const support = useReportingSupport();
   const reportCandidate =
+    mayGrantReporting &&
     account.kind === 'workload' &&
     grantableFor(scope, 'report-delivery-status', machineReveal).length > 0;
-  const reportable = support === 'supported' && reportCandidate;
-  // An empty org leaves the query idle where there is nothing to report on.
-  const reportAuthority = useOrgGrants(reportable ? project.org : '');
-  const reportGrantable = reportable && reportAuthority.isSuccess;
+  const reportGrantable = support === 'supported' && reportCandidate;
   const grantable =
     grantableFor(scope, 'read', machineReveal).length > 0 ||
     grantableFor(scope, 'reveal', machineReveal).length > 0 ||
@@ -2445,10 +2450,8 @@ export function GrantDialog({
         )
       }
     >
-      {!grantable &&
-      reportCandidate &&
-      (support === 'pending' || (reportable && reportAuthority.isPending)) ? (
-        <p role="status">Checking whether you can grant report-delivery-status…</p>
+      {!grantable && reportCandidate && support === 'pending' ? (
+        <p role="status">Checking whether this server accepts delivery-target reports…</p>
       ) : !grantable ? (
         <p role="status">
           {machineReveal

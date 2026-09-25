@@ -237,6 +237,11 @@ type Identity struct {
 	// update status) require. It is a reflection of the caller's own grant, not
 	// an authorization — every one of those reads is still judged per request.
 	InstanceOperator bool
+	// DeliveryReportGrant is a disclosure-safe UI hint: where the caller may
+	// grant `report-delivery-status`. No human holds that atom, so every grant
+	// of it is an unheld grant, and this is exactly the grant-unheld rule's
+	// reach (mayGrantUnheld). A hint, not an authorization.
+	DeliveryReportGrant UnheldGrantReach
 	// DisplayName is the human account's chosen name, the same value login
 	// returns, so a reloaded SPA can name its holder instead of showing a
 	// principal id. Empty for principals that have no account row (a machine
@@ -993,6 +998,17 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 		if operator, capErr := az.HoldsInstanceCapability(ctx, id, authz.OpRetentionHealthRead); capErr == nil {
 			out.InstanceOperator = operator
 		}
+		// The caller's own grant rows, read without an operation or an audit
+		// record, the same footing as the check above: the grant dialog gates
+		// its report-delivery-status offer on this rather than probing the org
+		// membership listing, which is an audited read and, for a project-scope
+		// administrator, an audited denial. A failed read fails whoami: an
+		// empty reach would be indistinguishable from a real "no reach".
+		rows, err := az.GrantRowsForPrincipal(ctx, id.Principal)
+		if err != nil {
+			return err
+		}
+		out.DeliveryReportGrant = unheldGrantReach(rows)
 		return nil
 	})
 	return out, err

@@ -1337,21 +1337,38 @@ func checkPrincipalClass(class domain.PrincipalClass, capability domain.Capabili
 // instance scope FOR THE TARGET SCOPE — the only place the ADR permits handing
 // out a capability the grantor does not hold.
 func mayGrantUnheld(grantorGrants []authz.GrantRow, target domain.Scope) bool {
+	reach := unheldGrantReach(grantorGrants)
+	return reach.Instance || slices.Contains(reach.Orgs, target.Org)
+}
+
+// UnheldGrantReach is where the grant-unheld rule lets a grantor hand out a
+// capability it does not hold: every organisation under an instance-scope
+// `manage-members`, else the organisations it holds that atom at org scope.
+type UnheldGrantReach struct {
+	Instance bool
+	Orgs     []domain.OrgID
+}
+
+// unheldGrantReach is mayGrantUnheld's one predicate, shared with the whoami
+// hint so the two cannot drift.
+func unheldGrantReach(grantorGrants []authz.GrantRow) UnheldGrantReach {
+	var out UnheldGrantReach
 	for _, g := range grantorGrants {
 		if g.Grant.Capability != domain.CapManageMembers {
 			continue
 		}
-		// Instance scope (empty org) or an org-scope grant covering the
-		// target org. A project-scope `manage-members` is deliberately not
-		// enough, which is the whole point of the rule.
-		if g.Grant.Scope.Org == "" {
-			return true
-		}
-		if g.Grant.Scope.Project == "" && g.Grant.Scope.Org == target.Org {
-			return true
+		// Instance scope (empty org) or an org-scope grant. A project-scope
+		// `manage-members` is deliberately not enough, which is the whole
+		// point of the rule.
+		switch {
+		case g.Grant.Scope.Org == "":
+			out.Instance = true
+		case g.Grant.Scope.Project == "" && !slices.Contains(out.Orgs, g.Grant.Scope.Org):
+			out.Orgs = append(out.Orgs, g.Grant.Scope.Org)
 		}
 	}
-	return false
+	slices.Sort(out.Orgs)
+	return out
 }
 
 // holds reports whether the grantor currently holds the capability at or above

@@ -29,6 +29,7 @@ describe('GrantDialog with nothing to widen', () => {
         account={ACCOUNT}
         scope={[]}
         machineReveal={false}
+        mayGrantReporting={false}
         liveCredentials={1}
         onClose={onClose}
         onGranted={vi.fn()}

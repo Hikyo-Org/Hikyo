@@ -6797,6 +6797,9 @@ type Principal struct {
 
 // PrincipalCapabilities UI-gating hints for the calling principal: what instance surfaces this session may even attempt, so the SPA does not fire an operator-only request it will only be refused. These are disclosure-safe reflections of the caller's own grants — never authorization itself, which is still evaluated per request at the server chokepoint.
 type PrincipalCapabilities struct {
+	// DeliveryReportGrant Where the caller may grant `report-delivery-status`. No human holds that atom, so every grant of it is an unheld grant, which only `manage-members` at instance or organisation scope may make. The machine-access grant dialog offers the atom only inside this reach.
+	DeliveryReportGrant UnheldGrantReach `json:"delivery_report_grant"`
+
 	// InstanceOperator True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
 	InstanceOperator bool `json:"instance_operator"`
 }
@@ -8440,6 +8443,15 @@ type TotpStatus struct {
 
 	// Pending True when an enrolment is staged but its first confirming code is not yet in.
 	Pending bool `json:"pending"`
+}
+
+// UnheldGrantReach Where the caller may grant `report-delivery-status`. No human holds that atom, so every grant of it is an unheld grant, which only `manage-members` at instance or organisation scope may make. The machine-access grant dialog offers the atom only inside this reach.
+type UnheldGrantReach struct {
+	// Instance The caller holds `manage-members` at instance scope, which reaches every organisation.
+	Instance bool `json:"instance"`
+
+	// Orgs The organisations where the caller holds `manage-members` at organisation scope, sorted.
+	Orgs []string `json:"orgs"`
 }
 
 // UpdateAccountProfileRequest defines model for UpdateAccountProfileRequest.

@@ -68,7 +68,7 @@ function identity(
       kind: 'human',
       display_name: `Person ${principalSuffix}`,
     },
-    capabilities: { instance_operator: false },
+    capabilities: { instance_operator: false, delivery_report_grant: { instance: false, orgs: [] } },
   };
 }
 
@@ -80,7 +80,7 @@ function loginIdentity(sessionSuffix: string, principalSuffix: string): WhoAmI {
 }
 
 function operatorWhoAmI(sessionSuffix: string, principalSuffix: string): WhoAmI {
-  return { ...identity(sessionSuffix, principalSuffix), capabilities: { instance_operator: true } };
+  return { ...identity(sessionSuffix, principalSuffix), capabilities: { instance_operator: true, delivery_report_grant: { instance: false, orgs: [] } } };
 }
 
 function json(body: object, status = 200): Response {

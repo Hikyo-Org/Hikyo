@@ -530,7 +530,10 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       const hydrated: WhoAmI = {
         session: identity.session,
         principal: identity.principal,
-        capabilities: identity.capabilities ?? { instance_operator: false },
+        capabilities: identity.capabilities ?? {
+          instance_operator: false,
+          delivery_report_grant: { instance: false, orgs: [] },
+        },
       };
       const hydrateCapabilities = identity.capabilities === undefined;
       transitionRevisionRef.current += 1;

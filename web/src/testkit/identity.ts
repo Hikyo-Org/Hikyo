@@ -19,5 +19,5 @@ export const authenticatedIdentity: WhoAmI = {
       authenticated_at: '2026-08-22T10:00:00Z',
     },
   },
-  capabilities: { instance_operator: true },
+  capabilities: { instance_operator: true, delivery_report_grant: { instance: false, orgs: [] } },
 };

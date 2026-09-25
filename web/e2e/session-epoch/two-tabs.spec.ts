@@ -20,7 +20,7 @@ function identity(owner: string) {
       kind: 'human',
       display_name: `Person ${owner}`,
     },
-    capabilities: { instance_operator: false },
+    capabilities: { instance_operator: false, delivery_report_grant: { instance: false, orgs: [] } },
   };
 }
 

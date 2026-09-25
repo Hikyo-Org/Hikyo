@@ -39,7 +39,7 @@ const meta = {
     ...topLayerDocs,
     app: {
       auth: true,
-      identity: { ...authenticatedIdentity, capabilities: { instance_operator: false } },
+      identity: { ...authenticatedIdentity, capabilities: { instance_operator: false, delivery_report_grant: { instance: false, orgs: [] } } },
       path: '/projects',
       outlet: { activeOrgId: ORG },
       responses: [{ url: PROJECTS_URL, body: { count: 0, items: [] } }],
@@ -65,7 +65,7 @@ export const Populated: Story = {
   parameters: {
     app: {
       auth: true,
-      identity: { ...authenticatedIdentity, capabilities: { instance_operator: false } },
+      identity: { ...authenticatedIdentity, capabilities: { instance_operator: false, delivery_report_grant: { instance: false, orgs: [] } } },
       path: '/projects',
       outlet: { activeOrgId: ORG },
       responses: [{ url: PROJECTS_URL, body: populated }],
@@ -85,7 +85,7 @@ export const LoadError: Story = {
   parameters: {
     app: {
       auth: true,
-      identity: { ...authenticatedIdentity, capabilities: { instance_operator: false } },
+      identity: { ...authenticatedIdentity, capabilities: { instance_operator: false, delivery_report_grant: { instance: false, orgs: [] } } },
       path: '/projects',
       outlet: { activeOrgId: ORG },
       responses: [{ url: PROJECTS_URL, status: 500, body: { error: 'boom' } }],

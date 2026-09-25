@@ -27,7 +27,7 @@ function identity(n: number): WhoAmI {
       },
     },
     principal: { id: id('prn', n), kind: 'human', display_name: `Person ${n}` },
-    capabilities: { instance_operator: false },
+    capabilities: { instance_operator: false, delivery_report_grant: { instance: false, orgs: [] } },
   };
 }
 function SwitchSession() {
