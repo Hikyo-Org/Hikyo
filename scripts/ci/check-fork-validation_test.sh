@@ -23,7 +23,15 @@ done
 case $url in
 */pulls/7/files*) fixture=files ;;
 */pulls/7) fixture=pr ;;
-*/workflows/ci-fork.yml/runs*) fixture=runs ;;
+*/workflows/ci-fork.yml/runs*)
+	# The API filters by commit server-side; the gate must ask for exactly
+	# this head so an older head's passing run can never be selected.
+	case $url in
+	*"head_sha=$HEAD_SHA&"* | *"head_sha=$HEAD_SHA") ;;
+	*) printf 'stub gh: runs query lacks head_sha=%s: %s\n' "$HEAD_SHA" "$url" >&2; exit 1 ;;
+	esac
+	fixture=runs
+	;;
 */runs/42/jobs*) fixture=jobs ;;
 *) printf 'stub gh: unexpected %s\n' "$url" >&2; exit 1 ;;
 esac
