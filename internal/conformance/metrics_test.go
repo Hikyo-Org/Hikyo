@@ -101,6 +101,10 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_dynamic_leases_active", MaxSeries: 1},
 		{Name: "hikyo_dynamic_effects_unknown", MaxSeries: 1},
 		{Name: "hikyo_dynamic_gauges_known", MaxSeries: 1},
+		{Name: "hikyo_pki_certificates_live", MaxSeries: 1},
+		{Name: "hikyo_pki_certificates_unknown", MaxSeries: 1},
+		{Name: "hikyo_pki_issuers_on_hold", MaxSeries: 1},
+		{Name: "hikyo_pki_gauges_known", MaxSeries: 1},
 	}
 }
 

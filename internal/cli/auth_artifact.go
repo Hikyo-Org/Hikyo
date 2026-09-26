@@ -113,6 +113,11 @@ var authRuleRows = []authRuleRow{
 		"dynamic-provider create", "dynamic-provider list", "dynamic-provider show", "dynamic-provider delete",
 		"dynamic-provider credential set", "dynamic-provider credential revoke",
 		"lease settle",
+		"pki issuer list", "pki issuer show", "pki issuer create-root", "pki issuer create-intermediate",
+		"pki issuer import", "pki issuer rotate", "pki issuer install", "pki issuer retire", "pki issuer revoke",
+		"pki issuer reconcile", "pki issuer crl",
+		"pki profile list", "pki profile show", "pki profile create", "pki profile update", "pki profile delete",
+		"pki profile bind", "pki profile unbind",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations(
 		"env list", "env show", "env create", "env delete",
@@ -122,6 +127,7 @@ var authRuleRows = []authRuleRow{
 		"key group create", "key group rename", "key group delete",
 		"values export", "run",
 		"lease mint", "lease list", "lease show", "lease renew", "lease revoke",
+		"cert profiles", "cert list", "cert show", "cert issue", "cert renew", "cert revoke", "cert crl",
 	)},
 	{Kinds: machineOnly, Operations: authOperations(
 		"compose render", "compose sync", "compose doctor",
