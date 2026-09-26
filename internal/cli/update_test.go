@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"io"
 	"os"
 	"path/filepath"
@@ -419,5 +420,23 @@ func TestUpgradeRefusesSourceBuilds(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "source builds keep update checks off") {
 		t.Fatalf("stderr = %q, want source-build refusal", stderr.String())
+	}
+}
+
+func TestUpgradeHelpIsPayloadAndBadFlagsAreUsageErrors(t *testing.T) {
+	ios, stdout, stderr := updateIO(t, nil)
+	if err := RunUpgrade(t.Context(), ios, []string{"--help"}); !errors.Is(err, flag.ErrHelp) {
+		t.Fatalf("help error = %v, want flag.ErrHelp", err)
+	}
+	if !strings.Contains(stdout.String(), "Usage: hikyo [-v|-vv|-vvv] upgrade") || stderr.Len() != 0 {
+		t.Fatalf("help stdout = %q stderr = %q", stdout.String(), stderr.String())
+	}
+
+	ios, stdout, stderr = updateIO(t, nil)
+	if code := Report(ios.Stderr, RunUpgrade(t.Context(), ios, []string{"--target", "1.0.1"})); code != ExitUsage {
+		t.Fatalf("bad flag exit = %d, want %d: %s", code, ExitUsage, stderr.String())
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "flag provided but not defined: -target") {
+		t.Fatalf("bad flag stdout = %q stderr = %q", stdout.String(), stderr.String())
 	}
 }

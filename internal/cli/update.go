@@ -158,14 +158,22 @@ func runUpdate(ctx context.Context, ios IO, args []string) error {
 // Naming the command is the confirmation, so it does not prompt.
 func RunUpgrade(ctx context.Context, ios IO, args []string) error {
 	flags := flag.NewFlagSet("hikyo upgrade", flag.ContinueOnError)
-	flags.SetOutput(ios.Stdout)
+	flags.SetOutput(ios.Stderr)
 	flags.Usage = func() {
-		fmt.Fprintln(ios.Stdout, "Usage: hikyo [-v|-vv|-vvv] upgrade")
-		fmt.Fprintln(ios.Stdout, "Installs the newest verified release on this CLI's update channel over the running executable.")
-		fmt.Fprintln(ios.Stdout, "Server hosts upgrade with sudo hikyo upgrade on Linux.")
+		fmt.Fprintln(flags.Output(), "Usage: hikyo [-v|-vv|-vvv] upgrade")
+		fmt.Fprintln(flags.Output(), "Installs the newest verified release on this CLI's update channel over the running executable.")
+		fmt.Fprintln(flags.Output(), "Server hosts upgrade with sudo hikyo upgrade on Linux.")
+	}
+	// Requested help is the payload and goes to stdout; a malformed
+	// invocation is a usage error on stderr.
+	if HelpRequested(args) {
+		flags.SetOutput(ios.Stdout)
 	}
 	if err := flags.Parse(args); err != nil {
-		return err
+		if errors.Is(err, flag.ErrHelp) {
+			return err
+		}
+		return &Error{Code: ExitUsage, Err: err}
 	}
 	if flags.NArg() != 0 {
 		return failf(ExitUsage, "usage: hikyo upgrade")
