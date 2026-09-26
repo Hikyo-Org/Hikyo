@@ -26,6 +26,9 @@ import (
 // BinaryUpdater applies one selected release to the current executable.
 type BinaryUpdater interface {
 	Apply(context.Context, updatecheck.Status) error
+	// CheckReplaceable refuses before any state is written when this process
+	// could not replace the running executable.
+	CheckReplaceable() error
 }
 
 // The v1 verb table this slice ships. The full taxonomy is closed by the
