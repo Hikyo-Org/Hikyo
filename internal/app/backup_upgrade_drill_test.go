@@ -296,6 +296,12 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// notice may be discarded by the reversal below.
 		"SELECT COUNT(*) FROM delivery_target_reports",
 		"SELECT COUNT(*) FROM delivery_target_quota_notices",
+		// 00060 (private PKI): no issuer, profile, binding or certificate
+		// may be discarded by the reversal below.
+		"SELECT COUNT(*) FROM pki_issuers",
+		"SELECT COUNT(*) FROM pki_profiles",
+		"SELECT COUNT(*) FROM pki_profile_bindings",
+		"SELECT COUNT(*) FROM pki_certificates",
 	} {
 		var evidence int
 		if db.Engine() == store.EngineSQLite {
@@ -304,13 +310,17 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration or delivery-target evidence", query, err)
+			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target or PKI evidence", query, err)
 		}
 	}
-	// Reverse 00059 (delivery-target condition reporting) first: newest
-	// migration first, before 00057's reversal rebuilds tables its rows
-	// reference.
+	// Reverse 00060 (private PKI) and then 00059 (delivery-target condition
+	// reporting) first: newest migration first, before 00057's reversal
+	// rebuilds tables their rows reference.
 	for _, query := range []string{
+		"DROP TABLE pki_certificates",
+		"DROP TABLE pki_profile_bindings",
+		"DROP TABLE pki_profiles",
+		"DROP TABLE pki_issuers",
 		"DROP INDEX audit_tenant_events_env_actor_type_seq",
 		"DROP TABLE delivery_target_quota_notices",
 		"DROP TABLE delivery_target_reports",

@@ -355,7 +355,10 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// authenticates to an external engine with no Hikyo credential epoch, so the
 	// same local-host restore act erases it.
 	"InvalidateRestoredDynamicProviderCredentials": true,
-	"ReconcilePrincipal":                           true,
+	// #154: a restore can resurrect certificates revoked after the backup,
+	// so the same local-host restore act holds every restored CA issuer.
+	"HoldRestoredPKIIssuers": true,
+	"ReconcilePrincipal":     true,
 	// #73 section 9.1: the reconciliation commit drops restored `scim` origins
 	// and any grant row they were the last hold on, in the same act.
 	"dropRestoredSCIMOrigins": true,

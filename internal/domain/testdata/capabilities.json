@@ -7,6 +7,7 @@
     { "id": "edit", "deepest": "environment" },
     { "id": "instance-config", "deepest": "instance" },
     { "id": "instance-directory", "deepest": "instance" },
+    { "id": "issue-certificate", "deepest": "environment" },
     { "id": "manage-adapters", "deepest": "project" },
     { "id": "manage-identities", "deepest": "project" },
     { "id": "manage-members", "deepest": "project" },

@@ -168,6 +168,37 @@ func (r *Resolver) InvalidateRestoredDynamicProviderCredentials(ctx context.Cont
 	return nil
 }
 
+// HoldRestoredPKIIssuers suspends minting on every restored CA issuer (#154,
+// pki ADR D8): a restore can resurrect certificates revoked after the backup
+// was taken, so no issuer mints again until an operator reconciles it. An
+// archive older than migration 00060 has no pki_issuers table and nothing to
+// hold; its presence is read from the restored catalog, like the post-legacy
+// credential tables below.
+func (r *Resolver) HoldRestoredPKIIssuers(ctx context.Context) error {
+	var present int64
+	var err error
+	if r.sq != nil {
+		err = r.sqdb.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'pki_issuers'`).Scan(&present)
+	} else {
+		err = r.pgdb.QueryRow(ctx, `SELECT COUNT(*) FROM pg_catalog.pg_class WHERE relkind IN ('r', 'p') AND oid = to_regclass('pki_issuers')`).Scan(&present)
+	}
+	if err != nil {
+		return fmt.Errorf("authn: probe restored pki_issuers: %w", err)
+	}
+	if present == 0 {
+		return nil
+	}
+	if r.sq != nil {
+		err = r.sq.HoldRestoredPKIIssuers(ctx)
+	} else {
+		err = r.pg.HoldRestoredPKIIssuers(ctx)
+	}
+	if err != nil {
+		return fmt.Errorf("authn: hold restored PKI issuers: %w", err)
+	}
+	return nil
+}
+
 // restoreNextEpoch is one past the largest epoch stamp in the restored state.
 // A restore runs against the ARCHIVE's schema before rolling forward, so the
 // credential tables added after the pinned legacy genesis (00057:

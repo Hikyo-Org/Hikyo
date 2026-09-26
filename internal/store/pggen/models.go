@@ -853,6 +853,88 @@ type PinGeneration struct {
 	Generation    int64
 }
 
+type PkiCertificate struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	ProfileID        string
+	ProfileName      string
+	IssuerID         string
+	Serial           string
+	State            string
+	KeySource        string
+	KeyAlgorithm     string
+	KeyFingerprint   string
+	CommonName       string
+	Sans             string
+	NotBefore        pgtype.Timestamptz
+	NotAfter         pgtype.Timestamptz
+	CertificateDer   []byte
+	PrincipalID      string
+	PrincipalClass   string
+	RenewedFrom      pgtype.Text
+	RenewedBy        pgtype.Text
+	RevokedAt        pgtype.Timestamptz
+	RevocationReason pgtype.Text
+	IssuingDeadline  pgtype.Timestamptz
+	RowVersion       int64
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+type PkiIssuer struct {
+	ID                  string
+	Name                string
+	Version             int32
+	Kind                string
+	Origin              string
+	ParentID            pgtype.Text
+	State               string
+	KeyAlgorithm        string
+	KeyFingerprint      string
+	EncryptedPrivateKey []byte
+	DekVersion          pgtype.Int8
+	CertificateDer      []byte
+	CsrDer              []byte
+	ChainPem            string
+	SubjectCn           string
+	SubjectOrg          string
+	NotBefore           pgtype.Timestamptz
+	NotAfter            pgtype.Timestamptz
+	CrlDistributionUrl  string
+	RestoreHold         int32
+	IssuedCount         int64
+	CrlDer              []byte
+	CrlNumber           int64
+	CrlThisUpdate       pgtype.Timestamptz
+	CrlNextUpdate       pgtype.Timestamptz
+	RowVersion          int64
+	CreatedBy           string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type PkiProfile struct {
+	ID         string
+	Name       string
+	Policy     string
+	RowVersion int64
+	CreatedBy  string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+type PkiProfileBinding struct {
+	ID            string
+	ProfileID     string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID pgtype.Text
+	CreatedBy     string
+	CreatedAt     pgtype.Timestamptz
+}
+
 type Principal struct {
 	ID                string
 	Kind              string
