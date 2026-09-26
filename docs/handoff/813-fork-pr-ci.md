@@ -106,7 +106,8 @@ the single base-SHA checkout.
   auto-closed (a deliberate choice for a small repository that wants drive-by
   contributions); they simply get no CI. Pinning the requirement to the
   workflow file would need an org-level ruleset.
-- **Org Actions allowlist.** `mitchellh/vouch@*` and `hustcer/setup-nu@*` must
+- **Org Actions allowlist.** `mitchellh/vouch/action/check-user@*` (the sub-path;
+  `mitchellh/vouch@*` does not match it) and `hustcer/setup-nu@*` must
   be allowed at org level (Settings → Actions → General). Without them,
   `trusted-ci` hits `startup_failure` on every PR, because the allowlist is
   enforced at parse time, before any `if:`. `setup-nu` installs the latest
