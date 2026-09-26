@@ -5,8 +5,10 @@
 # from YAML in the PR's merge ref. Accept that result only when:
 #   1. the PR head is still HEAD_SHA (a newer push gets its own gate),
 #   2. the PR changes nothing under .github/, so the run executed base YAML,
-#   3. fork-ci's latest run for HEAD_SHA completed and its aggregate gate
-#      ("validation / ci-required") succeeded.
+#   3. fork-ci's latest run for this PR (run title "fork-ci #N") and HEAD_SHA
+#      completed, and its aggregate gate ("validation / ci-required")
+#      succeeded. Another PR sharing the commit may target a different base,
+#      so a run is never borrowed across PRs.
 # Anything else fails closed.
 set -eu
 
@@ -39,8 +41,8 @@ fi
 
 deadline=$(($(date +%s) + timeout_seconds))
 while :; do
-	run=$(gh api "repos/$GH_REPO/actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=1" \
-		--jq '.workflow_runs[0] // empty | "\(.id) \(.status)"')
+	run=$(gh api "repos/$GH_REPO/actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=100" \
+		--jq "[.workflow_runs[] | select(.display_title == \"fork-ci #$PR_NUMBER\")][0] // empty | \"\\(.id) \\(.status)\"")
 	if [ -n "$run" ] && [ "${run#* }" = completed ]; then
 		run_id=${run% *}
 		conclusion=$(gh api --paginate "repos/$GH_REPO/actions/runs/$run_id/jobs?filter=latest&per_page=100" \

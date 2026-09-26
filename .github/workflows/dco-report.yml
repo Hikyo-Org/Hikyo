@@ -30,10 +30,12 @@ jobs:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
           persist-credentials: false
+      # Objects only, at the event's exact head: nothing is checked out or run,
+      # and no credential is persisted for the fetch.
       - name: Fetch the PR commits as data
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/head"
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git fetch --no-tags origin "$HEAD_SHA"
       - name: Report missing sign-offs
         env:
           GH_TOKEN: ${{ github.token }}

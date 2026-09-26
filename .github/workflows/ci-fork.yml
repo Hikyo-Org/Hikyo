@@ -13,6 +13,9 @@
 # default branch through the API, so a PR cannot vouch for itself). trusted-ci
 # repeats the check; this copy only saves runners for unvouched authors.
 name: fork-ci
+# check-fork-validation.sh binds a run to its PR by this title. The YAML is
+# base-identical whenever that gate accepts, so a fork cannot forge it.
+run-name: "fork-ci #${{ github.event.pull_request.number }}"
 
 on:
   pull_request:

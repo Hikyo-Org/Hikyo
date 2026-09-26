@@ -58,7 +58,7 @@ expect_reject() {
 }
 
 docs='[{"filename":"docs/site/index.mdx"}]'
-done_run='{"workflow_runs":[{"id":42,"status":"completed"}]}'
+done_run='{"workflow_runs":[{"id":42,"status":"completed","display_title":"fork-ci #7"}]}'
 
 fixture 1 "$docs" "$done_run" success
 expect_accept 'a docs-only fork PR whose fork-ci gate passed'
@@ -69,7 +69,9 @@ expect_reject 'a failed fork-ci gate'
 fixture 1 "$docs" "$done_run" skipped
 expect_reject 'a skipped fork-ci gate'
 
-fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"in_progress"}]}' success
+fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","display_title":"fork-ci #8"}]}' success
+expect_reject 'a passing run that belongs to another PR on the same commit'
+fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"in_progress","display_title":"fork-ci #7"}]}' success
 expect_reject 'an unfinished fork-ci run past the deadline'
 fixture 1 "$docs" '{"workflow_runs":[]}' success
 expect_reject 'no fork-ci run at all'

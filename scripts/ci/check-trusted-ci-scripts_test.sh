@@ -84,6 +84,13 @@ if grep -Eq '^  ci-required:' "$fork_workflow"; then
 	exit 1
 fi
 require_line "$fork_workflow" "if: github.event.pull_request.head.repo.full_name != github.repository"
+# The fork gate binds runs to their PR by this exact title (quoted: a bare " #"
+# would start a YAML comment).
+# shellcheck disable=SC2016
+require_line "$fork_workflow" 'run-name: "fork-ci #${{ github.event.pull_request.number }}"'
+# shellcheck disable=SC2016
+require_line "$script_dir/check-fork-validation.sh" 'select(.display_title == \"fork-ci #$PR_NUMBER\")'
+
 require_line "$controller" "if: github.event.pull_request.head.repo.full_name == github.repository"
 controller_gate_steps=$(sed -n '/^  ci-required:/,$p' "$controller")
 printf '%s\n' "$controller_gate_steps" |
@@ -109,8 +116,8 @@ fi
 # Fork runs get no secrets and no OIDC identity (#813): nothing in the fork path
 # may reference a secret, inherit secrets, or request an ID token. GitHub already
 # withholds secrets from fork pull_request runs; this keeps the YAML from asking.
-if grep -Eq 'secrets[.:]|id-token' "$fork_workflow" ||
-	grep -Eq 'secrets[.:]|id-token: write' "$workflow"; then
+if grep -Eq 'secrets[.:[]|id-token' "$fork_workflow" ||
+	grep -Eq 'secrets[.:[]|id-token: write' "$workflow"; then
 	printf 'trusted CI scripts fixture failed: the fork validation path references secrets or an ID token\n' >&2
 	exit 1
 fi
@@ -127,7 +134,7 @@ require_line "$vouch_closer" 'auto-close: true'
 require_line "$vouch_closer" 'types: [opened, reopened]'
 require_line "$vouch_closer" "if: github.event.pull_request.head.repo.full_name != github.repository"
 if ! grep -Eq '^  pull_request_target:' "$vouch_closer" ||
-	grep -Eq 'actions/checkout|secrets[.:]|require-vouch' "$vouch_closer"; then
+	grep -Eq 'actions/checkout|secrets[.:[]|require-vouch' "$vouch_closer"; then
 	printf 'trusted CI scripts fixture failed: vouch-check-pr may run PR code, reach secrets, or admit unvouched authors\n' >&2
 	exit 1
 fi
@@ -139,7 +146,7 @@ dco_reporter="$script_dir/../../.github/workflows/dco-report.yml"
 require_line "$dco_reporter" 'ref: ${{ github.event.pull_request.base.sha }}'
 require_line "$dco_reporter" 'run: ./scripts/ci/report-dco.sh'
 if [ "$(grep -c 'ref:' "$dco_reporter")" -ne 1 ] ||
-	grep -Eq 'allow-unsafe-pr-checkout|secrets[.:]' "$dco_reporter"; then
+	grep -Eq 'allow-unsafe-pr-checkout|secrets[.:[]' "$dco_reporter"; then
 	printf 'trusted CI scripts fixture failed: dco-report may check out PR code or reach secrets\n' >&2
 	exit 1
 fi
