@@ -242,6 +242,22 @@ const (
 	OpApprovalVote        Operation = "approval.vote"
 	OpApprovalBypass      Operation = "approval.bypass"
 
+	// Approval-mediated temporary access (#152). Policy administration is
+	// member management (manage-members@project). Everything request-side is
+	// environment-scoped under read@env: a requester can only ask to be lifted
+	// inside an environment they can already see, so a request is never a
+	// discovery oracle. The approver's and revoker's authority beyond read is a
+	// post-grant check in the service (eligibility, grantability), refused with
+	// a reachable 403.
+	OpAccessPolicyWrite   Operation = "access.policy-write"
+	OpAccessPolicyRead    Operation = "access.policy-read"
+	OpAccessRequestCreate Operation = "access.request-create"
+	OpAccessRequestRead   Operation = "access.request-read"
+	OpAccessVote          Operation = "access.vote"
+	OpAccessCancel        Operation = "access.cancel"
+	OpAccessRevoke        Operation = "access.revoke"
+	OpAccessBypass        Operation = "access.bypass"
+
 	// The advisory channel's two checks: one at connect, over the project, and
 	// one PER EVENT over the environment the event names.
 	OpAdvisoryWatch Operation = "advisory.watch"
@@ -1007,6 +1023,35 @@ const (
 	StoreApprovalVoteGet             StoreOp = "approvals.GetVote"
 	StoreApprovalVoteList            StoreOp = "approvals.ListVotes"
 
+	// Approval-mediated temporary access (#152). Policy CRUD and its child
+	// sets are project-scoped; requests and votes are environment-scoped. The
+	// sweep and metric doors are cross-tenant and ride scheduler authority. The
+	// time-bound grant rows are NOT here: they are on the resolution surface.
+	StoreAccessPolicyInsert       StoreOp = "access.InsertPolicy"
+	StoreAccessPolicyGet          StoreOp = "access.GetPolicy"
+	StoreAccessPolicyCovering     StoreOp = "access.CoveringPolicy"
+	StoreAccessPolicyList         StoreOp = "access.ListPolicies"
+	StoreAccessPolicyUpdate       StoreOp = "access.UpdatePolicy"
+	StoreAccessPolicyDelete       StoreOp = "access.DeletePolicy"
+	StoreAccessApproverInsert     StoreOp = "access.InsertApprover"
+	StoreAccessApproverList       StoreOp = "access.ListApprovers"
+	StoreAccessApproverClear      StoreOp = "access.ClearApprovers"
+	StoreAccessBypasserInsert     StoreOp = "access.InsertBypasser"
+	StoreAccessBypasserList       StoreOp = "access.ListBypassers"
+	StoreAccessBypasserClear      StoreOp = "access.ClearBypassers"
+	StoreAccessBypasserGet        StoreOp = "access.IsBypasser"
+	StoreAccessRequestInsert      StoreOp = "access.InsertRequest"
+	StoreAccessRequestGet         StoreOp = "access.GetRequest"
+	StoreAccessRequestList        StoreOp = "access.ListRequests"
+	StoreAccessRequestGrant       StoreOp = "access.GrantRequest"
+	StoreAccessRequestResolve     StoreOp = "access.ResolveRequest"
+	StoreAccessRequestSelectDue   StoreOp = "access.SelectDue"
+	StoreAccessRequestMarkExpired StoreOp = "access.MarkExpired"
+	StoreAccessRequestCounts      StoreOp = "access.OperationalCounts"
+	StoreAccessVoteInsert         StoreOp = "access.InsertVote"
+	StoreAccessVoteGet            StoreOp = "access.GetVote"
+	StoreAccessVoteList           StoreOp = "access.ListVotes"
+
 	// Audit trails (#45). INSERT and SELECT only — the append-only invariant
 	// lives at the query layer; these are the only store doors to it. The
 	// denial writer does NOT pass through these: it is the authorization
@@ -1236,6 +1281,19 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreApprovalRequestCounts:       true,
 	StoreSCIMUserByAccount:           true,
 	StoreSCIMMembershipsForUser:      true,
+	// Approval-mediated temporary access (#152): the read-only doors.
+	StoreAccessPolicyGet:        true,
+	StoreAccessPolicyList:       true,
+	StoreAccessPolicyCovering:   true,
+	StoreAccessApproverList:     true,
+	StoreAccessBypasserList:     true,
+	StoreAccessBypasserGet:      true,
+	StoreAccessRequestGet:       true,
+	StoreAccessRequestList:      true,
+	StoreAccessVoteGet:          true,
+	StoreAccessVoteList:         true,
+	StoreAccessRequestSelectDue: true,
+	StoreAccessRequestCounts:    true,
 }
 
 // bootKeyringOps is boot's closed operation set. The tenant-isolation ADR
@@ -2733,6 +2791,145 @@ var operationTable = map[Operation]opSpec{
 			StoreApprovalRequestUpdateState: true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventApprovalBypassed},
+	},
+
+	// APPROVAL-MEDIATED TEMPORARY ACCESS (#152).
+	//
+	// Temporary access adds NO new authorization scope and no new capability:
+	// an approved request writes environment-scoped rows of existing
+	// capabilities, with an absolute expiry, into access_grants, which the
+	// chokepoint's own grant lookup reads (expired rows are filtered by the
+	// transaction clock). The grant writes ride the resolution surface under
+	// the operation proved here, exactly as grant.create's do.
+	OpAccessPolicyWrite: {
+		class:   ClassTenant,
+		level:   domain.LevelProject,
+		formula: Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{
+			StoreAccessPolicyInsert: true, StoreAccessPolicyGet: true,
+			StoreAccessPolicyList: true, StoreAccessPolicyUpdate: true,
+			StoreAccessPolicyDelete: true, StoreAccessPolicyCovering: true,
+			StoreAccessApproverInsert: true, StoreAccessApproverList: true,
+			StoreAccessApproverClear:  true,
+			StoreAccessBypasserInsert: true, StoreAccessBypasserList: true,
+			StoreAccessBypasserClear: true,
+			StoreAuditTenantInsert:   true,
+		},
+		// A policy change bumps its version; open requests pinned to the old
+		// version are invalidated at their next decision (from the env-scoped
+		// proof those paths carry). Granted access keeps its absolute expiry.
+		events: []audit.EventType{audit.EventAccessPolicyChanged},
+	},
+	// manage-members is not a read capability, so the administrative inspect
+	// emits a listing event rather than being audited-none.
+	OpAccessPolicyRead: {
+		class:   ClassTenant,
+		level:   domain.LevelProject,
+		formula: Formula{{Cap: domain.CapManageMembers, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{
+			StoreAccessPolicyGet: true, StoreAccessPolicyList: true,
+			StoreAccessApproverList: true, StoreAccessBypasserList: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventAccessPolicyRead},
+	},
+	OpAccessRequestCreate: {
+		class:   ClassTenant,
+		level:   domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		// A request the covering policy does not admit (no policy, disabled,
+		// capability not requestable, duration over the cap) is refused after
+		// the grant check, by name.
+		postGrantForbidden: true,
+		storeOps: map[StoreOp]bool{
+			StoreAccessPolicyCovering: true, StoreAccessRequestInsert: true,
+			StoreAccessRequestGet: true, StoreAccessVoteList: true,
+			StoreAccessPolicyGet: true, StoreAccessApproverList: true,
+			StoreSCIMUserByAccount: true, StoreSCIMMembershipsForUser: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventAccessRequested},
+	},
+	// The request queue and the covering policy summary are visible to anyone
+	// who may see the environment; they carry no value material. A pure read
+	// under a read conjunction, so audited-none.
+	OpAccessRequestRead: {
+		class:       ClassTenant,
+		level:       domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		auditedNone: true,
+		storeOps: map[StoreOp]bool{
+			StoreAccessRequestGet: true, StoreAccessRequestList: true,
+			StoreAccessVoteList: true, StoreAccessPolicyGet: true,
+			StoreAccessPolicyCovering: true, StoreAccessApproverList: true,
+			StoreAccessBypasserGet: true,
+			StoreSCIMUserByAccount: true, StoreSCIMMembershipsForUser: true,
+		},
+	},
+	// A vote. The voter must additionally be a currently-eligible approver and
+	// able to grant every requested capability themselves; otherwise a
+	// reachable 403 after the grant check. The quorum-reaching approve writes
+	// the time-bound grant rows in this same transaction.
+	OpAccessVote: {
+		class:              ClassTenant,
+		level:              domain.LevelEnv,
+		formula:            Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		postGrantForbidden: true,
+		storeOps: map[StoreOp]bool{
+			StoreAccessRequestGet: true, StoreAccessRequestGrant: true,
+			StoreAccessRequestResolve: true, StoreAccessVoteGet: true,
+			StoreAccessVoteInsert: true, StoreAccessVoteList: true,
+			StoreAccessPolicyGet: true, StoreAccessApproverList: true,
+			StoreSCIMUserByAccount: true, StoreSCIMMembershipsForUser: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{
+			audit.EventAccessVoted, audit.EventAccessGranted, audit.EventAccessInvalidated,
+		},
+	},
+	// The requester withdraws their own open request.
+	OpAccessCancel: {
+		class:              ClassTenant,
+		level:              domain.LevelEnv,
+		formula:            Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		postGrantForbidden: true,
+		storeOps: map[StoreOp]bool{
+			StoreAccessRequestGet: true, StoreAccessRequestResolve: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventAccessCancelled},
+	},
+	// Early revocation of granted access: by the holder, by an eligible
+	// approver of the policy, or by a member manager of the project. Narrowing
+	// authority rotates the holder's sessions in the same transaction.
+	OpAccessRevoke: {
+		class:              ClassTenant,
+		level:              domain.LevelEnv,
+		formula:            Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		postGrantForbidden: true,
+		storeOps: map[StoreOp]bool{
+			StoreAccessRequestGet: true, StoreAccessRequestResolve: true,
+			StoreAccessPolicyGet: true, StoreAccessApproverList: true,
+			StoreSCIMUserByAccount: true, StoreSCIMMembershipsForUser: true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventAccessRevoked},
+	},
+	// Emergency access: a named bypasser takes the policy's capabilities
+	// without the quorum, with current reauthentication and a reason, for a
+	// bounded duration. The reauthentication purpose `access` binds here.
+	OpAccessBypass: {
+		class:              ClassTenant,
+		level:              domain.LevelEnv,
+		formula:            Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		postGrantForbidden: true,
+		storeOps: map[StoreOp]bool{
+			StoreAccessPolicyCovering: true, StoreAccessBypasserGet: true,
+			StoreAccessRequestInsert: true, StoreAccessRequestGet: true,
+			StoreCatalogueList:     true,
+			StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventAccessBypassed},
 	},
 
 	// The export triple. `read` alone exports `config` plaintext and `secret`
@@ -4446,6 +4643,13 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		StoreApprovalRequestSelectExpiry: true,
 		StoreApprovalRequestMarkExpired:  true,
 		StoreApprovalRequestCounts:       true,
+		// The same hourly GC sweeps temporary access (#152): open requests past
+		// their review window and granted requests past their expiry. Expiry is
+		// already enforced by the chokepoint's row filter; the sweep releases
+		// the rows, rotates the holder's sessions and records the event.
+		StoreAccessRequestSelectDue:   true,
+		StoreAccessRequestMarkExpired: true,
+		StoreAccessRequestCounts:      true,
 		// The unauthenticated /metrics scrape rides scheduler authority to read
 		// the same operational storage high-water the audited health read serves
 		// (#185): a shared door, like the retention health read beside it.
@@ -4492,6 +4696,8 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 		audit.EventUpdateOutcome,
 		// Expired change-approval requests swept by the hourly GC (#151).
 		audit.EventApprovalExpired,
+		// Temporary access requests and grants swept by the hourly GC (#152).
+		audit.EventAccessExpired,
 		// The scheduled export's loud failure (#145): the scheduler is the
 		// only emitter, so it is registered here rather than on an operation.
 		audit.EventBackupExportFailed,

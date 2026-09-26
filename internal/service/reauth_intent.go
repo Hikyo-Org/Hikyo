@@ -34,6 +34,7 @@ const (
 	intentApprove
 	intentReject
 	intentBypass
+	intentAccessBypass
 	intentAdapterConfigure
 	intentAdapterCredentialSet
 	intentAdapterAdopt
@@ -78,6 +79,7 @@ var reauthIntentDescriptors = [...]reauthIntentDescriptor{
 	{variant: intentApprove, purpose: PurposeApprove, operation: authz.OpApprovalVote},
 	{variant: intentReject, purpose: PurposeReject, operation: authz.OpApprovalVote},
 	{variant: intentBypass, purpose: PurposeBypass, operation: authz.OpApprovalBypass},
+	{variant: intentAccessBypass, purpose: PurposeAccess, operation: authz.OpAccessBypass},
 	{variant: intentAdapterConfigure, purpose: PurposeAdapter, operation: authz.OpAdapterConfigure, adapter: true},
 	{variant: intentAdapterCredentialSet, purpose: PurposeAdapter, operation: authz.OpAdapterCredentialSet, adapter: true},
 	{variant: intentAdapterAdopt, purpose: PurposeAdapter, operation: authz.OpAdapterAdopt, adapter: true},
@@ -143,6 +145,13 @@ func NewRejectReauthIntent(environmentID string, keyIDs []string) (ReauthIntent,
 // and exact key set (#151).
 func NewBypassReauthIntent(environmentID string, keyIDs []string) (ReauthIntent, error) {
 	return NewDisclosureReauthIntent(PurposeBypass, []string{environmentID}, keyIDs)
+}
+
+// NewAccessBypassReauthIntent binds an emergency temporary-access decision to
+// the environment (#152). Its unit is the environment alone: the decision is
+// about standing authority there, not about any key's material.
+func NewAccessBypassReauthIntent(environmentID string) (ReauthIntent, error) {
+	return NewDisclosureReauthIntent(PurposeAccess, []string{environmentID}, nil)
 }
 
 // NewDisclosureReauthIntent parses the wire purpose at the transport boundary.

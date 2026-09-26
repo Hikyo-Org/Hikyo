@@ -160,3 +160,35 @@ func (a *TxAuthorizer) TouchSCIMCredential(ctx context.Context, id string, at ti
 func (a *TxAuthorizer) CreateProvisioningPrincipal(ctx context.Context, id domain.PrincipalID, at time.Time) error {
 	return a.r.CreateProvisioningPrincipal(ctx, id, at)
 }
+
+// ---------------------------------------------------------------------------
+// Approval-mediated temporary access (#152)
+//
+// The time-bound grant rows ride the resolution surface because authorize()
+// reads them. The access service reaches them only through these, after its
+// own chokepoint operation has been proved in the same transaction.
+// ---------------------------------------------------------------------------
+
+// AccessGrant is re-exported so the service layer never names authn.
+type AccessGrant = authn.AccessGrant
+
+// SetClock fixes the instant time-bound grants are evaluated against for the
+// rest of this transaction. The service layer's authorize prelude sets it from
+// the service clock, so expiry is judged by one clock per operation.
+func (a *TxAuthorizer) SetClock(now time.Time) { a.r.SetClock(now) }
+
+// CreateAccessGrant writes one environment-scoped temporary grant row.
+func (a *TxAuthorizer) CreateAccessGrant(ctx context.Context, id string, p domain.PrincipalID, g domain.Grant,
+	requestID string, at, expiresAt time.Time) error {
+	return a.r.CreateAccessGrant(ctx, id, p, g, requestID, at, expiresAt)
+}
+
+// DeleteAccessGrantsForRequest releases every temporary row one request wrote.
+func (a *TxAuthorizer) DeleteAccessGrantsForRequest(ctx context.Context, p domain.PrincipalID, requestID string) (int64, error) {
+	return a.r.DeleteAccessGrantsForRequest(ctx, p, requestID)
+}
+
+// LiveAccessGrants lists a principal's unexpired temporary grants.
+func (a *TxAuthorizer) LiveAccessGrants(ctx context.Context, p domain.PrincipalID, now time.Time) ([]AccessGrant, error) {
+	return a.r.LiveAccessGrants(ctx, p, now)
+}

@@ -1,5 +1,74 @@
 [
   {
+    "operation": "access.bypass",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "access.cancel",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "access.policy-read",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "access.policy-write",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-members@project"
+    ]
+  },
+  {
+    "operation": "access.request-create",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "access.request-read",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "access.revoke",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "access.vote",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
     "operation": "adapter.adopt",
     "class": "tenant",
     "level": "project",

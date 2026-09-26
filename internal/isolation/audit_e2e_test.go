@@ -516,6 +516,11 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// expired and bypassed — driven through the real publish gate, vote
 		// path, expiry sweep and a reauthenticated bypass.
 		runApprovalLifecycle(t, db)
+		// Temporary access (#152): the ten access.* types get a real emitter -
+		// policy change/read, requested, voted, granted, cancelled,
+		// invalidated, revoked, expired and bypassed - through the real
+		// services, the expiry sweep and a reauthenticated emergency access.
+		runAccessLifecycle(t, db)
 		// Registration policy (#606): the three policy events and
 		// registration.signup_expired get a real emitter through the service.
 		runRegistrationLifecycle(t, db)

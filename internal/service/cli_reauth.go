@@ -87,6 +87,8 @@ func cliReauthPurposeOperation(purpose ReauthPurpose, operation authz.Operation)
 		return operation == authz.OpApprovalVote
 	case PurposeBypass:
 		return operation == authz.OpApprovalBypass
+	case PurposeAccess:
+		return operation == authz.OpAccessBypass
 	}
 	return false
 }

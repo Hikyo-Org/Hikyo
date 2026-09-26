@@ -27,7 +27,7 @@ func LocklessWriter(ctx context.Context, q *sqlitegen.Queries, p sqlitegen.Inser
 
 // GrantReadIsFine proves the analyzer does not flag a grant read.
 func GrantReadIsFine(ctx context.Context, q *sqlitegen.Queries, id string) ([]sqlitegen.ListGrantsForPrincipalRow, error) {
-	return q.ListGrantsForPrincipal(ctx, id)
+	return q.ListGrantsForPrincipal(ctx, sqlitegen.ListGrantsForPrincipalParams{PrincipalID: id})
 }
 
 // fakeLocker carries a method spelled exactly like the real principal-row lock

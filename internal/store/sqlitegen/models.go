@@ -8,6 +8,86 @@ import (
 	"database/sql"
 )
 
+type AccessGrant struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       string
+	ProjectID   string
+	EnvID       string
+	RequestID   string
+	CreatedAt   string
+	ExpiresAt   string
+}
+
+type AccessPolicy struct {
+	ID                 string
+	OrgID              string
+	ProjectID          string
+	EnvironmentID      string
+	Capabilities       string
+	MaxDurationSeconds int64
+	MinApprovals       int64
+	AllowSelfApproval  int64
+	RequestTtlSeconds  int64
+	Enabled            int64
+	Version            int64
+	CreatedBy          string
+	CreatedAt          string
+	UpdatedAt          string
+}
+
+type AccessPolicyApprover struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	PolicyID       string
+	Kind           string
+	SubjectID      string
+	ScopeBindingID string
+}
+
+type AccessPolicyBypasser struct {
+	ID          string
+	OrgID       string
+	ProjectID   string
+	PolicyID    string
+	PrincipalID string
+}
+
+type AccessRequest struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	PolicyID             string
+	PolicyVersion        int64
+	RequesterPrincipalID string
+	Capabilities         string
+	DurationSeconds      int64
+	Reason               string
+	Bypassed             int64
+	State                string
+	InvalidatedCause     string
+	ResolvedBy           string
+	CreatedAt            string
+	ReviewExpiresAt      string
+	GrantedAt            sql.NullString
+	ExpiresAt            sql.NullString
+	ResolvedAt           sql.NullString
+}
+
+type AccessVote struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	RequestID     string
+	PrincipalID   string
+	Decision      string
+	CreatedAt     string
+}
+
 type Account struct {
 	ID                 string
 	PrincipalID        string

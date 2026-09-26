@@ -458,6 +458,10 @@ type Repos interface {
 	// inside the publish transaction, and every read runs beside its own
 	// lifecycle event, so a read-only twin would have no caller.
 	Approvals() ApprovalRepo
+	// Access is the approval-mediated temporary access engine (#152): policies,
+	// requests and votes. The time-bound grant rows it writes live on the
+	// resolution surface, not here. WRITE bundle only, like Approvals.
+	Access() AccessRepo
 	// DeliveryTargets is the delivery-target condition-report surface (#788).
 	DeliveryTargets() DeliveryTargetRepo
 }

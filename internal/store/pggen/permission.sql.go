@@ -35,6 +35,25 @@ func (q *Queries) CountGrantsForOrg(ctx context.Context, orgID pgtype.Text) (int
 	return count, err
 }
 
+const deleteAccessGrantsForRequest = `-- name: DeleteAccessGrantsForRequest :execrows
+DELETE FROM access_grants WHERE request_id = $1 AND principal_id = $2
+`
+
+type DeleteAccessGrantsForRequestParams struct {
+	RequestID   string
+	PrincipalID string
+}
+
+// Revocation and expiry release a request's rows together.
+// hikyo:authn-resolution
+func (q *Queries) DeleteAccessGrantsForRequest(ctx context.Context, arg DeleteAccessGrantsForRequestParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAccessGrantsForRequest, arg.RequestID, arg.PrincipalID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteGrantOrigin = `-- name: DeleteGrantOrigin :execrows
 DELETE FROM grant_origins
 WHERE grant_id = $1 AND kind = $2 AND subject = $3
@@ -100,6 +119,42 @@ func (q *Queries) GetPrincipalClass(ctx context.Context, id string) (GetPrincipa
 	var i GetPrincipalClassRow
 	err := row.Scan(&i.Kind, &i.Class)
 	return i, err
+}
+
+const insertAccessGrant = `-- name: InsertAccessGrant :exec
+INSERT INTO access_grants (id, principal_id, capability, org_id, project_id, env_id, request_id, created_at, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+`
+
+type InsertAccessGrantParams struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       string
+	ProjectID   string
+	EnvID       string
+	RequestID   string
+	CreatedAt   pgtype.Timestamptz
+	ExpiresAt   pgtype.Timestamptz
+}
+
+// Approval-mediated temporary access (#152). The time-bound grant rows are on
+// the resolution surface for the same reason `grants` is: authorize() reads
+// them. The writers take the principal-row lock like every grant writer.
+// hikyo:authn-resolution
+func (q *Queries) InsertAccessGrant(ctx context.Context, arg InsertAccessGrantParams) error {
+	_, err := q.db.Exec(ctx, insertAccessGrant,
+		arg.ID,
+		arg.PrincipalID,
+		arg.Capability,
+		arg.OrgID,
+		arg.ProjectID,
+		arg.EnvID,
+		arg.RequestID,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
 }
 
 const insertGrantOrigin = `-- name: InsertGrantOrigin :exec
@@ -351,6 +406,60 @@ func (q *Queries) ListGrantsWithOriginsForProject(ctx context.Context, arg ListG
 			&i.CreatedAt,
 			&i.Kind,
 			&i.Subject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLiveAccessGrantsForPrincipal = `-- name: ListLiveAccessGrantsForPrincipal :many
+SELECT id, capability, org_id, project_id, env_id, request_id, created_at, expires_at
+FROM access_grants
+WHERE principal_id = $1 AND expires_at > $2
+ORDER BY expires_at, id
+`
+
+type ListLiveAccessGrantsForPrincipalParams struct {
+	PrincipalID string
+	ExpiresAt   pgtype.Timestamptz
+}
+
+type ListLiveAccessGrantsForPrincipalRow struct {
+	ID         string
+	Capability string
+	OrgID      string
+	ProjectID  string
+	EnvID      string
+	RequestID  string
+	CreatedAt  pgtype.Timestamptz
+	ExpiresAt  pgtype.Timestamptz
+}
+
+// A principal's live temporary grants, for the membership surface.
+// hikyo:authn-resolution
+func (q *Queries) ListLiveAccessGrantsForPrincipal(ctx context.Context, arg ListLiveAccessGrantsForPrincipalParams) ([]ListLiveAccessGrantsForPrincipalRow, error) {
+	rows, err := q.db.Query(ctx, listLiveAccessGrantsForPrincipal, arg.PrincipalID, arg.ExpiresAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListLiveAccessGrantsForPrincipalRow
+	for rows.Next() {
+		var i ListLiveAccessGrantsForPrincipalRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Capability,
+			&i.OrgID,
+			&i.ProjectID,
+			&i.EnvID,
+			&i.RequestID,
+			&i.CreatedAt,
+			&i.ExpiresAt,
 		); err != nil {
 			return nil, err
 		}
