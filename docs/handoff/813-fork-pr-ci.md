@@ -132,7 +132,9 @@ checks out or runs a file from the fetched commits, the alert becomes real.
   references no secrets, and a maintainer has already approved the PR by
   queueing it. A fork workflow with `on: merge_group` would run there too, but
   the fork gate refuses any PR that touches `.github/`, so such a PR cannot
-  reach the queue.
+  reach the queue on a fresh PR-level pass. The exception is the retarget case
+  above: a stale pass from another base can admit it, so give a retargeted
+  fork PR a fresh push before queueing.
 - **Same-name check spoofing (pre-existing).** A fork PR can add an
   `on: pull_request` workflow with a job named `ci-required`. GitHub would
   publish a green check under the required name, and branch protection matches
