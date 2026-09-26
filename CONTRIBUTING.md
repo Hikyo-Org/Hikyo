@@ -20,13 +20,13 @@ License Agreement (CLA), so contributors retain their copyright.
 
 ## Pull requests from forks
 
-Hikyo uses [vouch](https://github.com/mitchellh/vouch). A pull request from a
-fork is closed automatically unless its author is listed in
-[`.github/VOUCHED.td`](https://github.com/Hikyo-Org/Hikyo/blob/main/.github/VOUCHED.td).
-To be vouched, open an issue that describes the change you want to make. Once a maintainer agrees, they add you
-to the list, and you can open or reopen the pull request.
-
-CI validates a vouched author's pull request without secrets. A fork pull
+Hikyo uses [vouch](https://github.com/mitchellh/vouch). CI validates a fork's
+pull request only after its author is listed in
+[`.github/VOUCHED.td`](https://github.com/Hikyo-Org/Hikyo/blob/main/.github/VOUCHED.td);
+until then, `ci-required` reports the author as not vouched and the pull
+request stays open. A maintainer vouches for you, usually after you have opened
+an issue about the change, and a maintainer approves each workflow run from a
+fork. CI runs fork code without secrets. A fork pull
 request that changes anything under `.github/` cannot pass CI; a maintainer
 lands such changes from a branch in this repository.
 

@@ -14,7 +14,6 @@ runtime token, which can write the base branch's Actions cache.
 | --- | --- | --- |
 | `.github/workflows/ci-fork.yml` (`fork-ci`) | `pull_request`, fork PRs only. Read-only token, no secrets, PR-scoped cache | `vouch` job, then the full `ci.yml` validation graph. It is not a merge gate. |
 | `ci-control.yml` `ci-required` | `pull_request_target`, base YAML. Never checks out PR code | Same-repo PR: unchanged (`validation` result). Fork PR: vouched author, then `scripts/ci/check-fork-validation.sh`. |
-| `.github/workflows/vouch-check-pr.yml` | `pull_request_target` on open/reopen, fork PRs only, no checkout, `pull-requests: write` | Closes the PR with vouch's standard comment unless the author is vouched or a collaborator. This follows Ghostty's model. |
 | `.github/VOUCHED.td` | Read by [vouch](https://github.com/mitchellh/vouch) `check-user` from the default branch through the API | Which fork authors get CI. Collaborators with write access and bots pass automatically. |
 
 `check-fork-validation.sh` accepts a fork PR only when all of these hold:
@@ -77,8 +76,9 @@ the single base-SHA checkout.
   status. Anything that needs secrets (signed previews) runs in a
   `workflow_run` trusted half that never executes PR code and checks vouch
   itself.
-- **Hikyo** adopts Ghostty's auto-close. It keeps the merge decision in
-  base-controlled YAML (`trusted-ci`) instead of the fork's merge-ref YAML.
+- **Hikyo** keeps unvouched PRs open, like t3code, but withholds CI from them.
+  Every fork run needs maintainer approval, and the merge decision stays in
+  base-controlled YAML (`trusted-ci`) rather than the fork's merge-ref YAML.
   Vouching is a one-line PR; `!vouch` comment management would need a GitHub
   App (to push to a protected `main`), and we don't run one.
 
@@ -87,24 +87,30 @@ the single base-SHA checkout.
 - **Vouch a contributor:** merge a change that adds `github:<login>` to
   `.github/VOUCHED.td`. A PR cannot vouch for itself, because both checks read
   the default branch. Then re-run the fork PR's `fork-ci` and `trusted-ci`.
-- **First-time contributors:** the repository still requires maintainer
-  approval for their first workflow run (`first_time_contributors`). If the
-  approval comes more than 90 minutes after the push, `ci-required` fails.
-  Re-run `trusted-ci` once `fork-ci` finishes.
+- **Approving fork runs:** every fork push needs a maintainer to approve its
+  `fork-ci` run (`all_external_contributors`). Check the diff for `.github/`
+  changes first. If the approval comes more than 90 minutes after the push,
+  `ci-required` fails; re-run `trusted-ci` once `fork-ci` finishes.
 - **A fork PR that touches `.github/`** fails closed by design. Land it from a
   branch in this repository.
 
 ## Known limits
 
 - **Same-name check spoofing (pre-existing).** A fork PR can add an
-  `on: pull_request` workflow with a job named `ci-required`. GitHub runs it
-  and publishes a green check under the required name, and branch protection
-  matches checks by name only. `vouch-check-pr` closes the gap for unvouched
-  authors: their PR is closed on open, the check gates nothing on a closed PR,
-  and reopening closes it again. A vouched author could still do it; vouch
-  treats them as trusted, and the maintainer's merge review sees the
-  `.github/` change. First-time contributors' runs also still need approval.
-  Pinning the requirement to the workflow file needs an org-level ruleset.
+  `on: pull_request` workflow with a job named `ci-required`. GitHub would
+  publish a green check under the required name, and branch protection matches
+  checks by name only. Closed by a repository setting rather than YAML: fork
+  workflow approval is `all_external_contributors` (set 2026-09-26). No fork
+  workflow runs until a maintainer approves it after seeing the diff, so a
+  `.github/` change is visible before anything runs. Unvouched PRs are *not*
+  auto-closed (a deliberate choice for a small repository that wants drive-by
+  contributions); they simply get no CI. Pinning the requirement to the
+  workflow file would need an org-level ruleset.
+- **Org Actions allowlist.** `mitchellh/vouch@*` and `hustcer/setup-nu@*` must
+  be allowed at org level (Settings → Actions → General). Without them,
+  `trusted-ci` hits `startup_failure` on every PR, because the allowlist is
+  enforced at parse time, before any `if:`. `setup-nu` installs the latest
+  nushell at run time (vouch's upstream choice).
 
 - The trusted gate is only exercised after merge, because `pull_request_target`
   runs `main`'s YAML. The first real fork PR (#812) is the end-to-end test.
