@@ -106,6 +106,32 @@ if grep -F 'allow-fail' "$controller" "$fork_workflow" >/dev/null; then
 fi
 "$script_dir/check-fork-validation_test.sh"
 
+# Fork runs get no secrets and no OIDC identity (#813): nothing in the fork path
+# may reference a secret, inherit secrets, or request an ID token. GitHub already
+# withholds secrets from fork pull_request runs; this keeps the YAML from asking.
+if grep -Eq 'secrets[.:]|id-token' "$fork_workflow" ||
+	grep -Eq 'secrets[.:]|id-token: write' "$workflow"; then
+	printf 'trusted CI scripts fixture failed: the fork validation path references secrets or an ID token\n' >&2
+	exit 1
+fi
+if grep -Eq '(issues|pull-requests): write' "$fork_workflow"; then
+	printf 'trusted CI scripts fixture failed: fork validation received issue/PR writes\n' >&2
+	exit 1
+fi
+
+# dco-report holds PR write, so it must never run PR code: it checks out the
+# base SHA only and runs base scripts over PR commits fetched as data.
+dco_reporter="$script_dir/../../.github/workflows/dco-report.yml"
+# shellcheck disable=SC2016
+require_line "$dco_reporter" 'ref: ${{ github.event.pull_request.base.sha }}'
+require_line "$dco_reporter" 'run: ./scripts/ci/report-dco.sh'
+if [ "$(grep -c 'ref:' "$dco_reporter")" -ne 1 ] ||
+	grep -Eq 'allow-unsafe-pr-checkout|secrets[.:]' "$dco_reporter"; then
+	printf 'trusted CI scripts fixture failed: dco-report may check out PR code or reach secrets\n' >&2
+	exit 1
+fi
+"$script_dir/report-dco_test.sh"
+
 # Superseded PR runs must release workflow concurrency immediately. Aggregate
 # gates still run after ordinary failures, but cancellation must skip them.
 workflow_gate=$(sed -n '/^  ci-required:/,$p' "$workflow")

@@ -1,0 +1,46 @@
+# Posts the steps to fix a missing DCO sign-off on the pull request. The DCO
+# gate itself stays in ci.yml's preflight; ci.yml runs PR code and so holds no
+# PR write. This workflow holds that write and therefore never executes PR
+# code: it checks out the base branch, fetches the PR's commits as git data,
+# and runs the base branch's scripts over them. Works for fork pull requests
+# too, which is where a missing sign-off is most likely.
+name: dco-report
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dco-report-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the PR commits as data
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: git fetch --no-tags origin "+refs/pull/$PR_NUMBER/head:refs/remotes/pull/head"
+      - name: Report missing sign-offs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # The authenticated opener, not commit metadata: see ci.yml's DCO step.
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: ./scripts/ci/report-dco.sh

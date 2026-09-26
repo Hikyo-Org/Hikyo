@@ -37,6 +37,36 @@ Invariants pinned in `check-trusted-ci-scripts_test.sh`:
 
 `check-fork-validation_test.sh` drives the gate against a stub `gh`.
 
+## No secrets on fork runs
+
+GitHub withholds repository secrets from `pull_request` runs of fork PRs, and
+the token is read-only. The YAML keeps it that way. `check-trusted-ci-scripts_test.sh`
+fails in any of these cases:
+
+- `ci-fork.yml` references `secrets.`, uses `secrets:` (including
+  `secrets: inherit`), or mentions `id-token`;
+- `ci.yml` references a secret or requests `id-token: write`;
+- `ci-fork.yml` holds an issue or PR write permission.
+
+Cache writes from a fork run are scoped to the PR ref, so they cannot seed
+`main`. The only third-party code that sees a token on the fork path is the
+vouch action, pinned by SHA, and that token is the read-only `GITHUB_TOKEN`.
+
+## DCO failure comment
+
+`dco-report.yml` (`pull_request_target`, `pull-requests: write`) explains a
+missing sign-off on the PR. It checks out the base SHA and fetches the PR's
+commits as git data only. Then it runs the base branch's `report-dco.sh`, which
+calls `check-dco.sh` with the same Dependabot exemption as `ci.yml`. While
+commits lack a sign-off, the script posts one marker comment and updates it on
+later pushes. It deletes the comment once every commit is signed off.
+
+The comment lists commits by SHA only. Subjects and author strings are
+attacker-controlled and never reach the comment body. The gate stays in
+`ci.yml`'s preflight; this workflow is not required. `report-dco_test.sh`
+covers post, update, delete, and the no-subject rule. The fixture test pins
+the single base-SHA checkout.
+
 ## Operating it
 
 - **Vouch a contributor:** merge a change that adds `github:<login>` to
@@ -50,6 +80,16 @@ Invariants pinned in `check-trusted-ci-scripts_test.sh`:
   branch in this repository.
 
 ## Known limits
+
+- **Pre-existing, not introduced here: same-name check spoofing.** Any fork PR
+  can add a workflow under `on: pull_request` with a job named `ci-required`,
+  which publishes a green check run of that name on its head. The trusted gate
+  fails such a PR (it touches `.github/`), but branch protection matches
+  required checks by name, and both runs come from the GitHub Actions app. So
+  the spoofed run may satisfy the rule. The same was already possible before
+  this change. The mitigations are repository settings: fork-workflow approval
+  for all outside contributors, or an org ruleset that requires `trusted-ci` by
+  workflow file. The maintainer decides.
 
 - The trusted gate is only exercised after merge, because `pull_request_target`
   runs `main`'s YAML. The first real fork PR (#812) is the end-to-end test.
