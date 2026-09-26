@@ -198,7 +198,8 @@ hikyo compose doctor [--project-directory DIR] [-o table|json] [--token-file PAT
 `run` fetches, merges, checks the composite `ARG_MAX`, and replaces itself with
 the command. Fetched values win; a differing inherited value is refused unless
 its key is named in `--allow-override`. Command-not-found exits 127 and a found
-but non-executable command exits 126.
+but non-executable command exits 126. For local runs from scripts and coding
+agents, see [local development and coding agents](/docs/local-development/).
 
 `values export` writes a whole environment. `--format` selects the payload:
 `table` (default), `json`, or `dotenv`. The dotenv encoding matches the Compose
