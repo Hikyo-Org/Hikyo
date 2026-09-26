@@ -71,7 +71,7 @@ results and errors keep their existing formats.
 | Command family | Purpose |
 | --- | --- |
 | `server`, `migrate` | Serve Hikyo and manage schema state. |
-| `upgrade` | `sudo hikyo upgrade` performs the verified in-place upgrade on a systemd host; `upgrade operator rotate` rotates the deployment authority. |
+| `upgrade` | `sudo hikyo upgrade` performs the verified in-place upgrade on a Linux systemd host; on macOS and Windows, `hikyo upgrade` installs the newest verified CLI release; `upgrade operator rotate` rotates the deployment authority. |
 | `admin` | Bootstrap, break-glass account authority, privacy actions, and configuration recovery on the server host. |
 | `backup`, `restore` | Export, reconstruct, inspect, drill, and reconcile an instance. |
 | `escrow` | Prove the separately held root escrow matches this instance. |

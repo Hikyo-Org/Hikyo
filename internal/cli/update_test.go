@@ -27,6 +27,14 @@ func (fn binaryUpdaterFunc) Apply(ctx context.Context, status updatecheck.Status
 	return fn(ctx, status)
 }
 
+func (binaryUpdaterFunc) CheckReplaceable() error { return nil }
+
+type unreplaceableUpdater struct{ binaryUpdaterFunc }
+
+func (unreplaceableUpdater) CheckReplaceable() error {
+	return errors.New("/usr/bin/hikyo is owned by uid 501; run the update without sudo")
+}
+
 type updateTTY struct {
 	in  io.Reader
 	out bytes.Buffer
@@ -274,7 +282,7 @@ func TestNotifyUpdateUsesFreshSnapshotWithoutNetwork(t *testing.T) {
 		return []updatecheck.Release{{Version: "1.0.1", URL: "https://github.com/Hikyo-Org/hikyo/releases/tag/v1.0.1"}}, nil
 	})
 	ios, _, stderr := updateIO(t, source)
-	if err := refreshReleaseSnapshot(t.Context(), ios); err != nil {
+	if err := refreshReleaseSnapshot(t.Context(), ios, passiveCheckTimeout); err != nil {
 		t.Fatal(err)
 	}
 	NotifyUpdate(t.Context(), ios)
@@ -312,7 +320,7 @@ func TestNotifyUpdateRefreshesAfterClockRollback(t *testing.T) {
 		return []updatecheck.Release{{Version: "1.0.1"}}, nil
 	})
 	ios, _, _ := updateIO(t, source)
-	if err := refreshReleaseSnapshot(t.Context(), ios); err != nil {
+	if err := refreshReleaseSnapshot(t.Context(), ios, passiveCheckTimeout); err != nil {
 		t.Fatal(err)
 	}
 	ios.Now = func() time.Time { return time.Date(2026, 8, 24, 7, 0, 0, 0, time.UTC) }
@@ -336,5 +344,80 @@ func TestNotifyUpdateThrottlesReleaseSourceOutages(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("stderr = %q, want best-effort outage silence", stderr.String())
+	}
+}
+
+func TestUpgradeInstallsTheSelectedReleaseWithoutPrompting(t *testing.T) {
+	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
+		return []updatecheck.Release{{Version: "1.0.1"}}, nil
+	})
+	ios, _, stderr := updateIO(t, source)
+	var applied updatecheck.Status
+	ios.BinaryUpdater = binaryUpdaterFunc(func(_ context.Context, status updatecheck.Status) error {
+		applied = status
+		return nil
+	})
+
+	if code := Report(ios.Stderr, RunUpgrade(t.Context(), ios, nil)); code != ExitOK {
+		t.Fatalf("upgrade exit = %d: %s", code, stderr.String())
+	}
+	if applied.LatestVersion != "1.0.1" {
+		t.Fatalf("applied status = %+v, want 1.0.1", applied)
+	}
+	if !strings.Contains(stderr.String(), "Hikyo 1.0.1 is verified and updated in place") {
+		t.Fatalf("stderr = %q, want successful update", stderr.String())
+	}
+}
+
+func TestUpgradeReportsCurrentVersionWithoutReplacing(t *testing.T) {
+	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
+		return []updatecheck.Release{{Version: "1.0.0"}}, nil
+	})
+	ios, stdout, stderr := updateIO(t, source)
+	ios.BinaryUpdater = binaryUpdaterFunc(func(context.Context, updatecheck.Status) error {
+		t.Fatal("current version reached binary replacement")
+		return nil
+	})
+
+	if code := Report(ios.Stderr, RunUpgrade(t.Context(), ios, nil)); code != ExitOK {
+		t.Fatalf("upgrade exit = %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Hikyo is up to date") {
+		t.Fatalf("stdout = %q, want current version", stdout.String())
+	}
+}
+
+func TestUpgradeRefusesAnUnreplaceableExecutableBeforeWritingState(t *testing.T) {
+	source := updateSourceFunc(func(context.Context) ([]updatecheck.Release, error) {
+		t.Fatal("unreplaceable executable reached the release source")
+		return nil, nil
+	})
+	ios, _, stderr := updateIO(t, source)
+	ios.BinaryUpdater = unreplaceableUpdater{}
+
+	if code := Report(ios.Stderr, RunUpgrade(t.Context(), ios, nil)); code != ExitUsage {
+		t.Fatalf("upgrade exit = %d, want %d: %s", code, ExitUsage, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "without sudo") {
+		t.Fatalf("stderr = %q, want ownership refusal", stderr.String())
+	}
+	if entries, _ := os.ReadDir(ios.Env.Getenv("HIKYO_STATE_DIR")); len(entries) != 0 {
+		t.Fatalf("refused upgrade wrote state: %v", entries)
+	}
+}
+
+func TestUpgradeRefusesSourceBuilds(t *testing.T) {
+	ios, _, stderr := updateIO(t, nil)
+	ios.DefaultUpdateChannel = updatecheck.ChannelOff
+	ios.BinaryUpdater = binaryUpdaterFunc(func(context.Context, updatecheck.Status) error {
+		t.Fatal("source build reached binary replacement")
+		return nil
+	})
+
+	if code := Report(ios.Stderr, RunUpgrade(t.Context(), ios, nil)); code != ExitUsage {
+		t.Fatalf("upgrade exit = %d, want %d: %s", code, ExitUsage, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "source builds keep update checks off") {
+		t.Fatalf("stderr = %q, want source-build refusal", stderr.String())
 	}
 }

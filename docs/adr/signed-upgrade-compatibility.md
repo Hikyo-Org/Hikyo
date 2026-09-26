@@ -9,6 +9,17 @@
 > approval does not claim that container automation has shipped or that its
 > broader implementation has passed the existing safety gates.
 
+> **Client nightly self-update amendment (2026-09-26, owner requested):** On
+> platforms without a supported server host (macOS and Windows), `hikyo upgrade`,
+> `hikyo update check` and the pre-command update prompt install a verified
+> nightly over the running CLI executable. Verification is unchanged: complete
+> signed inventory, current policy, rollback floor and the authenticated native
+> archive. Linux keeps staging only, because its CLI binary may be a systemd
+> server's executable that only `sudo hikyo upgrade` may replace after backup and
+> scratch-restore proof. A replaced client binary still meets the production
+> boot gate before serving. A privileged process refuses to replace a
+> user-owned executable. See [the handoff](../handoff/client-nightly-upgrade.md).
+
 > **Platform-download amendment (2026-09-11, owner requested):** Automatic
 > upgrades fetch only the native OS/architecture binary archive and required
 > metadata. The complete signed manifest remains unchanged; v2 runtime bundles
