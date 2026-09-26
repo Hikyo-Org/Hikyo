@@ -14,6 +14,7 @@ runtime token, which can write the base branch's Actions cache.
 | --- | --- | --- |
 | `.github/workflows/ci-fork.yml` (`fork-ci`) | `pull_request`, fork PRs only. Read-only token, no secrets, PR-scoped cache | `vouch` job, then the full `ci.yml` validation graph. It is not a merge gate. |
 | `ci-control.yml` `ci-required` | `pull_request_target`, base YAML. Never checks out PR code | Same-repo PR: unchanged (`validation` result). Fork PR: vouched author, then `scripts/ci/check-fork-validation.sh`. |
+| `.github/workflows/vouch-check-pr.yml` | `pull_request_target` on open/reopen, fork PRs only, no checkout, `pull-requests: write` | Closes the PR with vouch's standard comment unless the author is vouched or a collaborator. This follows Ghostty's model. |
 | `.github/VOUCHED.td` | Read by [vouch](https://github.com/mitchellh/vouch) `check-user` from the default branch through the API | Which fork authors get CI. Collaborators with write access and bots pass automatically. |
 
 `check-fork-validation.sh` accepts a fork PR only when all of these hold:
@@ -67,6 +68,20 @@ attacker-controlled and never reach the comment body. The gate stays in
 covers post, update, delete, and the no-subject rule. The fixture test pins
 the single base-SHA checkout.
 
+## Comparison
+
+- **Ghostty** runs CI on plain `pull_request` (forks get no secrets). Its vouch
+  `check-pr` auto-closes unvouched PRs, and maintainers vouch with `!vouch`
+  comments through a GitHub App.
+- **t3code** runs CI on plain `pull_request` and only labels PRs by vouch
+  status. Anything that needs secrets (signed previews) runs in a
+  `workflow_run` trusted half that never executes PR code and checks vouch
+  itself.
+- **Hikyo** adopts Ghostty's auto-close. It keeps the merge decision in
+  base-controlled YAML (`trusted-ci`) instead of the fork's merge-ref YAML.
+  Vouching is a one-line PR; `!vouch` comment management would need a GitHub
+  App (to push to a protected `main`), and we don't run one.
+
 ## Operating it
 
 - **Vouch a contributor:** merge a change that adds `github:<login>` to
@@ -81,15 +96,15 @@ the single base-SHA checkout.
 
 ## Known limits
 
-- **Pre-existing, not introduced here: same-name check spoofing.** Any fork PR
-  can add a workflow under `on: pull_request` with a job named `ci-required`,
-  which publishes a green check run of that name on its head. The trusted gate
-  fails such a PR (it touches `.github/`), but branch protection matches
-  required checks by name, and both runs come from the GitHub Actions app. So
-  the spoofed run may satisfy the rule. The same was already possible before
-  this change. The mitigations are repository settings: fork-workflow approval
-  for all outside contributors, or an org ruleset that requires `trusted-ci` by
-  workflow file. The maintainer decides.
+- **Same-name check spoofing (pre-existing).** A fork PR can add an
+  `on: pull_request` workflow with a job named `ci-required`. GitHub runs it
+  and publishes a green check under the required name, and branch protection
+  matches checks by name only. `vouch-check-pr` closes the gap for unvouched
+  authors: their PR is closed on open, the check gates nothing on a closed PR,
+  and reopening closes it again. A vouched author could still do it; vouch
+  treats them as trusted, and the maintainer's merge review sees the
+  `.github/` change. First-time contributors' runs also still need approval.
+  Pinning the requirement to the workflow file needs an org-level ruleset.
 
 - The trusted gate is only exercised after merge, because `pull_request_target`
   runs `main`'s YAML. The first real fork PR (#812) is the end-to-end test.

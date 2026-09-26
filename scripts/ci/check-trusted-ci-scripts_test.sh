@@ -119,6 +119,19 @@ if grep -Eq '(issues|pull-requests): write' "$fork_workflow"; then
 	exit 1
 fi
 
+# Unvouched fork PRs are closed on open and reopen, from base YAML with no
+# checkout, so a fork-added workflow's same-name check never gates a mergeable PR.
+vouch_closer="$script_dir/../../.github/workflows/vouch-check-pr.yml"
+require_line "$vouch_closer" 'uses: mitchellh/vouch/action/check-pr@'
+require_line "$vouch_closer" 'auto-close: true'
+require_line "$vouch_closer" 'types: [opened, reopened]'
+require_line "$vouch_closer" "if: github.event.pull_request.head.repo.full_name != github.repository"
+if ! grep -Eq '^  pull_request_target:' "$vouch_closer" ||
+	grep -Eq 'actions/checkout|secrets[.:]|require-vouch' "$vouch_closer"; then
+	printf 'trusted CI scripts fixture failed: vouch-check-pr may run PR code, reach secrets, or admit unvouched authors\n' >&2
+	exit 1
+fi
+
 # dco-report holds PR write, so it must never run PR code: it checks out the
 # base SHA only and runs base scripts over PR commits fetched as data.
 dco_reporter="$script_dir/../../.github/workflows/dco-report.yml"
