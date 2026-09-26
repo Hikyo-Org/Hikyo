@@ -40,7 +40,7 @@ Store the credential outside the repository with owner-only permissions. It is
 a bearer credential: anything running as your user, an agent included, can read
 it. If the environment holds no secrets the process needs, add `--config-only`
 and skip the machine-reveal opt-in and the `reveal` grant. With a
-`hikyo-compose.yaml` present, each successful run also saves the delivered values
+`hikyo-compose.yaml` present, each successful live fetch also saves the delivered values
 to an encrypted local snapshot (see below).
 
 **Run with your human session** is the locked exception for interactive use. It
