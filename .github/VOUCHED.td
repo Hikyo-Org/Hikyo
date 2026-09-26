@@ -10,3 +10,4 @@
 #   -github:username reason for denouncement
 #
 # Keep entries sorted alphabetically.
+github:valentinhl
