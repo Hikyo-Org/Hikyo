@@ -1807,6 +1807,12 @@
   },
   {
     "engine": "postgres",
+    "name": "RecoveryListGrantsBeforeAccess",
+    "annotation": "authn-resolution",
+    "hash": "c78c886fa880e349269b4d2fddb2a7c73b78955eeda922bf501d3373f5bf175d"
+  },
+  {
+    "engine": "postgres",
     "name": "RecoveryListGrantsBeforePrivacy",
     "annotation": "authn-resolution",
     "hash": "19ec19fa1ddf22b1bc683d9e7f725041834b942cf8cd692be0e8579215e968de"
@@ -3958,6 +3964,12 @@
     "name": "RecoverSelfConfigTarget",
     "annotation": "instance-scoped",
     "hash": "b25d36162a5a3a5df61ca425079a8408cfd0c5c84e3fe471ba8beb292a5eaba1"
+  },
+  {
+    "engine": "sqlite",
+    "name": "RecoveryListGrantsBeforeAccess",
+    "annotation": "authn-resolution",
+    "hash": "12f8885d414a5669fceb4dda190cc9b04f88be10f96d956b50c5e9c12cd181e1"
   },
   {
     "engine": "sqlite",

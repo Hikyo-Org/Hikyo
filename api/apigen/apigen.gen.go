@@ -39448,6 +39448,20 @@ func (response ListAccessPolicies401JSONResponse) VisitListAccessPoliciesRespons
 	return err
 }
 
+type ListAccessPolicies403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListAccessPolicies403JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListAccessPolicies404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response ListAccessPolicies404JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
@@ -39558,6 +39572,20 @@ func (response CreateAccessPolicy401JSONResponse) VisitCreateAccessPolicyRespons
 	return err
 }
 
+type CreateAccessPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateAccessPolicy403JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CreateAccessPolicy404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response CreateAccessPolicy404JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
@@ -39658,6 +39686,20 @@ func (response DeleteAccessPolicy401JSONResponse) VisitDeleteAccessPolicyRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteAccessPolicy403JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -39769,6 +39811,20 @@ func (response UpdateAccessPolicy401JSONResponse) VisitUpdateAccessPolicyRespons
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateAccessPolicy403JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
 	_, err := buf.WriteTo(w)
 	return err
 }
