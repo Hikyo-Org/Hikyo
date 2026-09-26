@@ -183,3 +183,27 @@ func TestAdapterCancelMoveRequiresOnlyExplicitMove(t *testing.T) {
 		}
 	}
 }
+
+func TestAdapterCloudflareTargetInput(t *testing.T) {
+	const account = "0123456789abcdef0123456789abcdef"
+	got, err := adapterTargetInput("env_1", "pages-project", account, "site", "preview", "", "", "", "key_1", adapterKeySelection{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DestinationKind != "pages-project" || got.DestinationOwner != account || got.DestinationName != "site" || got.DestinationEnvironment != "preview" {
+		t.Fatalf("input = %+v", got)
+	}
+	if _, err := adapterTargetInput("env_1", "workers-script", account, "api", "", "", "", "", "key_1", adapterKeySelection{}); err != nil {
+		t.Fatalf("workers-script refused: %v", err)
+	}
+	for name, args := range map[string][3]string{
+		"pages staging":    {"pages-project", "site", "staging"},
+		"pages no env":     {"pages-project", "site", ""},
+		"workers with env": {"workers-script", "api", "production"},
+		"workers no name":  {"workers-script", "", ""},
+	} {
+		if _, err := adapterTargetInput("env_1", args[0], account, args[1], args[2], "", "", "", "key_1", adapterKeySelection{}); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}

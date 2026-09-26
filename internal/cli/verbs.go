@@ -372,6 +372,9 @@ revisions:                                         --env selects the environment
 adapters:
   hikyo adapter create --provider forgejo|github-actions --origin <https-origin> --env E --kind repository|organization|environment
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
+  hikyo adapter create --provider cloudflare --env E --kind workers-script --account <id> --script <name>
+  hikyo adapter create --provider cloudflare --env E --kind pages-project --account <id> --pages-project <name>
+      --destination-environment preview|production   (every write is secret_text; one scoped API token)
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]

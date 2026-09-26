@@ -130,9 +130,11 @@ func (e AdapterConflictEntrySurface) Valid() bool {
 
 // Defines values for AdapterDestinationKind.
 const (
-	AdapterDestinationKindEnvironment  AdapterDestinationKind = "environment"
-	AdapterDestinationKindOrganization AdapterDestinationKind = "organization"
-	AdapterDestinationKindRepository   AdapterDestinationKind = "repository"
+	AdapterDestinationKindEnvironment   AdapterDestinationKind = "environment"
+	AdapterDestinationKindOrganization  AdapterDestinationKind = "organization"
+	AdapterDestinationKindPagesProject  AdapterDestinationKind = "pages-project"
+	AdapterDestinationKindRepository    AdapterDestinationKind = "repository"
+	AdapterDestinationKindWorkersScript AdapterDestinationKind = "workers-script"
 )
 
 // Valid indicates whether the value is a known member of the AdapterDestinationKind enum.
@@ -142,7 +144,11 @@ func (e AdapterDestinationKind) Valid() bool {
 		return true
 	case AdapterDestinationKindOrganization:
 		return true
+	case AdapterDestinationKindPagesProject:
+		return true
 	case AdapterDestinationKindRepository:
+		return true
+	case AdapterDestinationKindWorkersScript:
 		return true
 	default:
 		return false
@@ -3367,7 +3373,7 @@ type AdapterConnection struct {
 	Version             string     `json:"version"`
 }
 
-// AdapterDestinationKind defines model for AdapterDestinationKind.
+// AdapterDestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
 type AdapterDestinationKind string
 
 // AdapterFinding defines model for AdapterFinding.
@@ -3469,11 +3475,13 @@ type AdapterMoveJobState string
 
 // AdapterMoveTarget defines model for AdapterMoveTarget.
 type AdapterMoveTarget struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationId          int64                  `json:"destination_id"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+	DestinationId          int64  `json:"destination_id"`
+
+	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId         ID               `json:"environment_id"`
@@ -3522,12 +3530,14 @@ type AdapterTarget struct {
 	Conflicts []AdapterConflictArtifact `json:"conflicts"`
 
 	// ConvergedRevision The last revision a converge completed.
-	ConvergedRevision      *int64                 `json:"converged_revision"`
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationId          int64                  `json:"destination_id"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	ConvergedRevision      *int64 `json:"converged_revision"`
+	DestinationEnvironment string `json:"destination_environment"`
+	DestinationId          int64  `json:"destination_id"`
+
+	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// DriftAttention The destination disagrees with the ownership ledger in a way only an operator can settle (unowned name in the way, destination identity moved, orphaned names). Cleared by the next successful converge.
 	DriftAttention bool `json:"drift_attention"`
@@ -3597,11 +3607,13 @@ type AdapterTargetInput struct {
 	// AllowEnvironmentCreate Explicit consent to create missing GitHub environments using Administration:write.
 	AllowEnvironmentCreate *bool `json:"allow_environment_create,omitempty"`
 
-	// DestinationEnvironment GitHub environment name; empty for repository and organization destinations.
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
+	// DestinationEnvironment GitHub environment name, or the Pages environment (preview or production) of a pages-project target; empty for other destinations.
+	DestinationEnvironment string `json:"destination_environment"`
 
-	// DestinationName Repository name; empty for organization destinations.
+	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	DestinationKind AdapterDestinationKind `json:"destination_kind"`
+
+	// DestinationName Repository name, Workers script name or Pages project name; empty for organization destinations.
 	DestinationName  string `json:"destination_name"`
 	DestinationOwner string `json:"destination_owner"`
 
@@ -7302,10 +7314,12 @@ type ResumeAdapterOriginMoveRequest struct {
 
 // ResumeAdapterTargetMoveRequest defines model for ResumeAdapterTargetMoveRequest.
 type ResumeAdapterTargetMoveRequest struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+
+	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId         ID      `json:"environment_id"`
@@ -8471,10 +8485,12 @@ type UpdateAdapterOriginRequest struct {
 
 // UpdateAdapterTargetRequest defines model for UpdateAdapterTargetRequest.
 type UpdateAdapterTargetRequest struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+
+	// DestinationKind repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId      ID    `json:"environment_id"`

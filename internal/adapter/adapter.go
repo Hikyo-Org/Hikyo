@@ -38,6 +38,12 @@ const (
 	Repository   DestinationKind = "repository"
 	Organization DestinationKind = "organization"
 	Environment  DestinationKind = "environment"
+	// WorkersScript is one Cloudflare Workers script: Owner is the account id,
+	// Name the script name.
+	WorkersScript DestinationKind = "workers-script"
+	// PagesProject is one Cloudflare Pages project environment: Owner is the
+	// account id, Name the project, Environment preview or production.
+	PagesProject DestinationKind = "pages-project"
 )
 
 type LedgerState string
@@ -300,6 +306,44 @@ func ValidateGitHubActionsManifest(prefix string, entries []ManifestEntry, value
 	return nil
 }
 
+// CloudflareValueLimit is the documented per-variable size limit shared by
+// Workers secrets and Pages environment variables.
+const CloudflareValueLimit = 5 * 1024
+
+var cloudflareName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// ValidateCloudflareManifest applies the Workers binding-name rule shared by
+// Workers secrets and Pages variables. Every entry, including config, is
+// delivered as secret_text, so classification never selects a plaintext type.
+func ValidateCloudflareManifest(prefix string, entries []ManifestEntry, values bool) error {
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		name := prefix + entry.CanonicalName
+		switch {
+		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
+			return fmt.Errorf("cloudflare: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
+		case strings.EqualFold(name, prefix+SentinelName):
+			return fmt.Errorf("cloudflare: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
+		case len(name) > 64:
+			return fmt.Errorf("cloudflare: %s: effective name exceeds the 64-byte binding-name limit", entry.CanonicalName)
+		case !cloudflareName.MatchString(name):
+			return fmt.Errorf("cloudflare: %s: effective name %q is not a Cloudflare binding identifier", entry.CanonicalName, name)
+		case values && len(entry.Value) > CloudflareValueLimit:
+			return fmt.Errorf("cloudflare: %s: value exceeds Cloudflare's %d-byte variable limit", entry.CanonicalName, CloudflareValueLimit)
+		case values && !utf8.ValidString(entry.Value):
+			return fmt.Errorf("cloudflare: %s: non-UTF-8 values cannot be represented byte-exactly by Cloudflare's JSON API", entry.CanonicalName)
+		}
+		// The ledger normalizes names to upper case, so names that differ only
+		// by case would share one ownership row.
+		normalized := strings.ToUpper(name)
+		if _, ok := seen[normalized]; ok {
+			return fmt.Errorf("cloudflare: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
+		}
+		seen[normalized] = struct{}{}
+	}
+	return nil
+}
+
 func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, values bool) error {
 	kind, err := ParseProvider(provider)
 	if err != nil {
@@ -310,6 +354,8 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 		return ValidateGitHubActionsManifest(prefix, entries, values)
 	case ForgejoProvider:
 		return ValidateManifest(prefix, entries)
+	case CloudflareProvider:
+		return ValidateCloudflareManifest(prefix, entries, values)
 	default:
 		return fmt.Errorf("adapter: unknown provider %q", provider)
 	}
@@ -320,6 +366,9 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (string, error) {
 	if err := ValidateProviderManifest(provider, prefix, entries, false); err != nil {
 		return "", err
+	}
+	if provider == string(CloudflareProvider) {
+		return renderCloudflareBindings(prefix, entries), nil
 	}
 	return renderWorkflow(prefix, entries), nil
 }
@@ -342,6 +391,19 @@ func RecipientSetNeedsCeremony(oldVisibility string, oldIDs []int64, newVisibili
 		return false
 	}
 	return !(oldVisibility == "all" && (newVisibility == "private" || newVisibility == "selected"))
+}
+
+// renderCloudflareBindings shows where each key lands in the Worker or Pages
+// Function environment. Every binding is secret_text regardless of class.
+func renderCloudflareBindings(prefix string, entries []ManifestEntry) string {
+	rows := slices.Clone(entries)
+	slices.SortFunc(rows, func(a, b ManifestEntry) int { return strings.Compare(a.CanonicalName, b.CanonicalName) })
+	var out strings.Builder
+	out.WriteString("# Cloudflare secret_text bindings, read as env.<binding>\n")
+	for _, entry := range rows {
+		_, _ = fmt.Fprintf(&out, "%s: env.%s%s\n", entry.CanonicalName, prefix, entry.CanonicalName)
+	}
+	return out.String()
 }
 
 func renderWorkflow(prefix string, entries []ManifestEntry) string {

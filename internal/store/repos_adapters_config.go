@@ -285,6 +285,13 @@ func validateTargetMutation(m AdapterTargetMutation) error {
 		if m.DestinationName == "" || m.DestinationEnvironment == "" || m.RepositoryID <= 0 || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
 			return fmt.Errorf("%w: environment target requires repository and environment identities", domain.ErrInvalid)
 		}
+	case string(adapter.WorkersScript), string(adapter.PagesProject):
+		if err := validateCloudflareTarget(m); err != nil {
+			return err
+		}
+		if m.RepositoryID != 0 {
+			return fmt.Errorf("%w: Cloudflare targets do not take repository routing fields", domain.ErrInvalid)
+		}
 	default:
 		return fmt.Errorf("%w: unsupported adapter destination kind", domain.ErrInvalid)
 	}
@@ -301,6 +308,26 @@ func validateTargetMutation(m AdapterTargetMutation) error {
 			return fmt.Errorf("%w: adapter target key ids must be non-empty and unique", domain.ErrInvalid)
 		}
 		seen[id] = true
+	}
+	return nil
+}
+
+// validateCloudflareTarget checks the routing fields shared by committed and
+// pending Cloudflare targets. Owner is the account id; Pages targets name one
+// environment so preview and production are separate destinations.
+func validateCloudflareTarget(m AdapterTargetMutation) error {
+	if m.DestinationName == "" || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
+		return fmt.Errorf("%w: Cloudflare target requires account and script or project name only", domain.ErrInvalid)
+	}
+	switch m.DestinationKind {
+	case string(adapter.WorkersScript):
+		if m.DestinationEnvironment != "" {
+			return fmt.Errorf("%w: Workers script target does not take an environment", domain.ErrInvalid)
+		}
+	case string(adapter.PagesProject):
+		if m.DestinationEnvironment != "preview" && m.DestinationEnvironment != "production" {
+			return fmt.Errorf("%w: Pages project target environment must be preview or production", domain.ErrInvalid)
+		}
 	}
 	return nil
 }
@@ -328,6 +355,10 @@ func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m Ada
 	}
 	if err := providerRows.Err(); err != nil {
 		return nil, err
+	}
+	cloudflareKind := m.DestinationKind == string(adapter.WorkersScript) || m.DestinationKind == string(adapter.PagesProject)
+	if cloudflareKind != (provider == string(adapter.CloudflareProvider)) {
+		return nil, fmt.Errorf("%w: destination kind %q is not supported by provider %q", domain.ErrInvalid, m.DestinationKind, provider)
 	}
 	args := []any{chain.Org, chain.Project}
 	for _, id := range m.KeyIDs {
@@ -459,7 +490,10 @@ func (r adapterQueries) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 	if err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
-	if m.ID == "" || (m.Provider != "forgejo" && m.Provider != "github-actions") || m.Origin == "" || len(m.CredentialCiphertext) == 0 || m.AuthorityPrincipalID == "" || m.Target.AdapterID != m.ID {
+	if _, err := adapter.ParseProvider(m.Provider); err != nil {
+		return AdapterRecord{}, AdapterTarget{}, fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+	}
+	if m.ID == "" || m.Origin == "" || len(m.CredentialCiphertext) == 0 || m.AuthorityPrincipalID == "" || m.Target.AdapterID != m.ID {
 		return AdapterRecord{}, AdapterTarget{}, fmt.Errorf("%w: incomplete atomic adapter bootstrap", domain.ErrInvalid)
 	}
 	if err := validateTargetMutation(m.Target); err != nil {

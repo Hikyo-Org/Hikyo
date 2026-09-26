@@ -1,6 +1,6 @@
 ---
 title: Deployment adapters
-description: Push selected published values to Forgejo or GitHub Actions without reading provider values back.
+description: Push selected published values to Forgejo, GitHub Actions, or Cloudflare Workers and Pages without reading provider values back.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/deployment-adapters.mdx
 ---
 
@@ -11,10 +11,11 @@ fetch.
 For a CI job that creates and tears down its own environments, use the
 [pull-request preview guide](/docs/preview-environments/).
 
-Both compiled-in adapters are one-way and value-blind. They write selected
-values from one Hikyo environment to a repository, organization, or GitHub
-repository-environment Actions
-namespace. Neither adapter links a variable GET or list endpoint. Secret planning reads
+The compiled-in adapters are one-way and value-blind. The Forgejo and GitHub
+Actions adapters write selected values from one Hikyo environment to a
+repository, organization, or GitHub repository-environment Actions
+namespace. The Cloudflare adapter writes them as encrypted Workers secrets or
+Pages encrypted variables (see [Cloudflare Workers and Pages](#cloudflare-workers-and-pages)). Neither adapter links a variable GET or list endpoint. Secret planning reads
 names only; variable planning uses Hikyo's ownership ledger. Hikyo therefore
 cannot detect provider-side value drift. Run a converge to restore the last
 published Hikyo state.
@@ -248,6 +249,72 @@ correlated to the job that opened it; the ownership row stays presumed
 written and the retry converges it. On a multi-node installation every worker
 competes for jobs under the outbox lease; a worker that loses its lease can no
 longer push, mark success, retry, or scrub.
+
+## Cloudflare Workers and Pages
+
+The `cloudflare` provider synchronizes into two explicit destination kinds that
+share one credential and one ownership model:
+
+| Kind | `--owner` / `--account` | `--repo` / `--script` / `--pages-project` | `--destination-environment` |
+|---|---|---|---|
+| `workers-script` | 32-character account id | Workers script name | empty |
+| `pages-project` | 32-character account id | Pages project name | `preview` or `production` |
+
+```sh
+hikyo adapter create --provider cloudflare --env prod --kind workers-script \
+  --account 0123456789abcdef0123456789abcdef --script api --keys key_1,key_2 --stdin
+hikyo adapter target add --adapter <adapter> --env preview --kind pages-project \
+  --account 0123456789abcdef0123456789abcdef --pages-project site \
+  --destination-environment preview --keys key_1
+```
+
+The origin is always `https://api.cloudflare.com`; the CLI fills it in.
+Preview and production of one Pages project are separate targets with separate
+sentinels and ownership ledgers, so a preview sync can never touch production.
+
+**Every write is `secret_text`.** Workers secrets are written with
+`type: secret_text`; Pages variables are written into
+`deployment_configs.<environment>.env_vars` with `type: secret_text`. Keys
+classified `config` are delivered as secrets too. The client has no operation
+that writes `plain_text`, so a destination that cannot keep a value secret is
+refused rather than downgraded. The management sentinel `MANAGED_BY_HIKYO` is
+a secret written first and removed last.
+
+**Credential.** Use a scoped API token sent as `Authorization: Bearer`. Grant
+`Workers Scripts: Edit` for Workers targets and `Cloudflare Pages: Edit` for
+Pages targets, on exactly one account. Before activation Hikyo verifies the
+token is active and unexpired and that it reaches exactly the configured
+account. Global API Keys, email/key pairs, and tokens that reach more than one
+account are refused. The verified expiry is recorded as the credential expiry,
+and every sync re-verifies the token before its first write.
+
+**What Hikyo reads.** Workers: the script listing (for the script's immutable
+tag) and secret names. Pages: the project object, decoded into the project id
+and the names and types of the selected environment's variables only. Pages
+returns `plain_text` values in that response; they are never decoded, logged,
+or compared, and the response buffer is cleared. Secret values are never
+returned by Cloudflare and never requested.
+
+**Ownership and conflicts.** Both Cloudflare writes are upserts, so Hikyo
+re-reads the destination names immediately before each first write of a name
+and refuses any name that already exists and is not in the ownership ledger,
+including Pages `plain_text` variables. Adopt an existing name through the
+usual plan-and-adopt flow. A script or project that is renamed, deleted, or
+recreated under the same name changes its immutable id; the target then fails
+with a destination-identity refusal and needs reconfiguration.
+
+**Side effects.** Every Workers secret write or delete deploys a new version of
+the script. Pages variable changes apply from the next deployment of that
+environment; existing deployments keep their values. Target status carries
+both as warnings. Writes are one name per request so each effect has its own
+INTENT and OUTCOME; Pages `PATCH` merges per key and a delete sends the name as
+`null`.
+
+**Failures.** HTTP 429 honours `Retry-After` (five minutes without one, the
+length of Cloudflare's request window). A 2xx response whose envelope does not
+report `success: true` is recorded as an unknown outcome and replayed as an
+update. Hikyo cannot detect a value edited in the Cloudflare dashboard; the
+next converge overwrites owned names with the published Hikyo value.
 
 ## Private origins and GHES
 
