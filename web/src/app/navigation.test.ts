@@ -29,6 +29,7 @@ describe('the route policy registry', () => {
       'matrix',
       'machine-access',
       'change-approvals',
+      'temporary-access',
       'adapters',
       'project-audit',
       'project-settings',

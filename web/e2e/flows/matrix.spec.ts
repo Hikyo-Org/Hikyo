@@ -1,6 +1,9 @@
 import type { ApprovalPolicyInput } from '@hikyo/client';
 import { expect, type Locator, type Page } from '@playwright/test';
 import {
+  zAccessPolicy,
+  zAccessQueue,
+  zAccessRequest,
   zApprovalPolicy,
   zApprovalPolicyList,
   zApprovalRequestList,
@@ -1694,6 +1697,219 @@ test.describe('change approvals', () => {
           const newPolicy = page.getByRole('button', { name: 'New policy' });
           await expectPinnedAssertionSet(page, {
             flow: 'change-approvals',
+            surface: surface.id,
+            theme: scheme,
+            text: [heading],
+            radii: [[newPolicy, 'control']],
+            fonts: [[heading, 'ui']],
+            colours: [[heading, 'color', '--tx']],
+            hairlines: [],
+            density: [],
+          });
+        } finally {
+          await page.emulateMedia({ colorScheme: null });
+        }
+      });
+    }
+  }
+});
+
+/**
+ * Temporary access (#152). Rides this spec for the same reason change
+ * approvals does. A freshly invited, read-only requester asks for `edit` in the
+ * browser, the administrator approves in the browser, the requester really
+ * stages a value, the administrator revokes (the requester's sessions die with
+ * it), and a two-second grant proves the absolute expiry is enforced by the
+ * server without any sweep.
+ */
+test.describe('temporary access', () => {
+  test.describe.configure({ mode: 'serial' });
+  test.use({ storageState: STORAGE_STATE });
+
+  const TA_PATH = `/orgs/${seed.org}/projects/${seed.project}/temporary-access`;
+  const projectBase = `/api/v1/orgs/${seed.org}/projects/${seed.project}`;
+  const envBase = `${projectBase}/environments/${seed.dev}`;
+
+  const stageStatus = async (token: string, value: string): Promise<number> => {
+    const response = await fetch(`${BASE_URL}${envBase}/values/${seed.config}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ value }),
+    });
+    return response.status;
+  };
+
+  test('request, approve, use, expire and revoke temporary access', async ({
+    browser,
+    passkeyPage: adminPage,
+  }, testInfo) => {
+    testInfo.setTimeout(120_000);
+    const suffix = `${testInfo.project.name}-${Date.now()}`.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    const username = `access-${suffix}`;
+    const password = `correct horse battery staple ${suffix}`;
+    const adminToken = await fixtureBearer('temporary access administrator');
+    const invitation = await browserApi(
+      adminPage,
+      'POST',
+      `/api/v1/orgs/${seed.org}/invitations`,
+      zInvitationResult,
+      { username, display_name: `Access requester ${suffix}` },
+    );
+    const established = await fetch(`${BASE_URL}/api/v1/auth/credential/establish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authority: invitation.authority, password }),
+    });
+    expect(established.status).toBe(204);
+    const grantQuery = `principal=${encodeURIComponent(invitation.principal_id)}&capability=read`;
+    await browserApi(adminPage, 'POST', `${projectBase}/grants`, zGrantResult, {
+      principal: invitation.principal_id,
+      capability: 'read',
+    });
+    // Policy administration is manage-members, an MFA-mandatory capability,
+    // so it runs in the passkey-authenticated administrator session.
+    const policy = await browserApi(adminPage, 'POST', `${projectBase}/access-policies`, zAccessPolicy, {
+      environment_id: seed.dev,
+      capabilities: ['edit', 'reveal'],
+      max_duration_seconds: 3600,
+      min_approvals: 1,
+      allow_self_approval: false,
+      request_ttl_seconds: 3600,
+      enabled: true,
+      approvers: [{ kind: 'principal', subject_id: seed.principal }],
+    });
+    const requesterContext = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+    try {
+      // The instance requires a second factor: enrol TOTP, whose confirmation
+      // reissues the CLI session as a full one.
+      const firstLogin = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, artifact: 'cli' }),
+      });
+      expect(firstLogin.status).toBe(200);
+      const enrolling = zLoginResult.parse(await firstLogin.json()).session_token ?? '';
+      const enrolled = await fixtureApiCall(enrolling, 'POST', '/api/v1/auth/totp/enrol/start', zTotpEnrolStartResult, {
+        password,
+      });
+      const confirmed = await fixtureApiCall(enrolling, 'POST', '/api/v1/auth/totp/enrol/confirm', zLoginResult, {
+        code: totpCode(enrolled.otpauth_uri),
+      });
+      const requesterToken = confirmed.session_token ?? '';
+
+      // Read-only: staging is refused before any approval.
+      expect(await stageStatus(requesterToken, `before-${suffix}`)).toBe(404);
+
+      // Absolute expiry: a short grant works, then is refused once it lapses,
+      // with no sweep and no client involvement.
+      const shortRequest = await fixtureApiCall(requesterToken, 'POST', `${envBase}/access-requests`, zAccessRequest, {
+        capabilities: ['edit'],
+        duration_seconds: 5,
+        reason: `expiry drill ${suffix}`,
+      });
+      const shortGrant = await fixtureApiCall(
+        adminToken,
+        'POST',
+        `${envBase}/access-requests/${shortRequest.id}/vote`,
+        zAccessRequest,
+        { decision: 'approve' },
+      );
+      expect(shortGrant.state).toBe('granted');
+      expect(await stageStatus(requesterToken, `during-short-${suffix}`)).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 6_000));
+      expect(await stageStatus(requesterToken, `after-expiry-${suffix}`)).toBe(404);
+
+      // The browser sign-in answers a login challenge; land in a fresh TOTP
+      // step first, since the enrolment confirmation spent the current one.
+      await new Promise((resolve) => setTimeout(resolve, (30 - (Math.floor(Date.now() / 1000) % 30) + 1) * 1000));
+      const challengeResponse = await fetch(`${BASE_URL}/api/v1/auth/local/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, artifact: 'browser' }),
+      });
+      expect(challengeResponse.status).toBe(202);
+      const challenge = zLoginChallenge.parse(await challengeResponse.json());
+      const browserLogin = await fetch(`${BASE_URL}/api/v1/auth/login/challenge/${challenge.challenge_id}/totp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: totpCode(enrolled.otpauth_uri) }),
+      });
+      expect(browserLogin.status).toBe(200);
+      await requesterContext.addCookies(
+        browserLogin.headers.getSetCookie().map((header) => {
+          const [pair = ''] = header.split(';', 1);
+          const equals = pair.indexOf('=');
+          return {
+            name: pair.slice(0, equals),
+            value: pair.slice(equals + 1),
+            domain: 'localhost',
+            path: '/',
+            secure: true,
+            httpOnly: /;\s*httponly/i.test(header),
+            sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
+          };
+        }),
+      );
+      const requesterPage = await requesterContext.newPage();
+      await requesterPage.goto(TA_PATH);
+      await expect(requesterPage.getByRole('heading', { name: 'Temporary access', level: 1 })).toBeVisible();
+      await requesterPage.locator('#ta-env').selectOption(seed.dev);
+      await requesterPage.getByLabel('edit', { exact: true }).check();
+      await requesterPage.locator('#ta-hours').fill('1');
+      await requesterPage.locator('#ta-reason').fill(`browser acceptance ${suffix}`);
+      await requesterPage.getByRole('button', { name: 'Request access' }).click();
+      const requestRow = requesterPage
+        .locator('.temporary-access__request')
+        .filter({ hasText: `browser acceptance ${suffix}` });
+      await expect(requestRow.locator('.temporary-access__request-state')).toHaveText('open · 0/1 approvals');
+      await expect(requestRow.getByRole('button', { name: 'Withdraw' })).toBeVisible();
+
+      await adminPage.goto(TA_PATH);
+      await adminPage.locator('#ta-env').selectOption(seed.dev);
+      const approveRow = adminPage
+        .locator('.temporary-access__request')
+        .filter({ hasText: `browser acceptance ${suffix}` });
+      await approveRow.getByRole('button', { name: 'Approve' }).click();
+      await expect(approveRow.locator('.temporary-access__request-state')).toHaveText('granted');
+
+      // Use: the session minted before the approval can stage again.
+      expect(await stageStatus(requesterToken, `during-${suffix}`)).toBe(200);
+
+      // Early revocation ends the access at once and rotates the holder's
+      // sessions, so the pre-revocation token is dead.
+      await approveRow.getByRole('button', { name: 'Revoke' }).click();
+      await expect(approveRow.locator('.temporary-access__request-state')).toHaveText('revoked');
+      expect(await stageStatus(requesterToken, `after-revoke-${suffix}`)).toBe(401);
+
+      const queue = await fixtureApiCall(adminToken, 'GET', `${envBase}/access-requests`, zAccessQueue);
+      const mine = queue.items.filter((item) => item.requester === invitation.principal_id);
+      expect(mine.map((item) => item.state).sort()).toEqual(['granted', 'revoked']);
+    } finally {
+      await requesterContext.close();
+      await browserApi(adminPage, 'DELETE', `${projectBase}/access-policies/${policy.id}`, z.null());
+      // A missing grant (404) is already clean; any other cleanup failure is
+      // recorded rather than thrown from finally, where it would mask the body.
+      await browserApi(adminPage, 'DELETE', `${projectBase}/grants?${grantQuery}`, z.null()).catch(
+        (error: unknown) => {
+          if (!(error instanceof BrowserApiError) || error.status !== 404) {
+            testInfo.annotations.push({ type: 'cleanup', description: String(error) });
+          }
+        },
+      );
+    }
+  });
+
+  for (const scheme of SCHEMES) {
+    for (const surface of surfacesForFlow('temporary-access')) {
+      test(`meets the pinned assertion set on ${surface.label} (${scheme})`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        try {
+          await page.goto(TA_PATH);
+          const heading = page.getByRole('heading', { name: 'Temporary access', level: 1 });
+          const newPolicy = page.getByRole('button', { name: 'New access policy' });
+          await expect(newPolicy).toBeVisible();
+          await expectPinnedAssertionSet(page, {
+            flow: 'temporary-access',
             surface: surface.id,
             theme: scheme,
             text: [heading],
