@@ -12311,7 +12311,7 @@ components:
       description: >-
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
-      x-extensible-enum: [forgejo, github-actions]
+      x-extensible-enum: [forgejo, github-actions, vault-kv]
 
     AdapterTargetInput:
       type: object
@@ -12324,11 +12324,15 @@ components:
           description: Explicit consent to create missing GitHub environments using Administration:write.
         environment_id: {$ref: "#/components/schemas/ID"}
         destination_kind: {$ref: "#/components/schemas/AdapterDestinationKind"}
-        destination_owner: {type: string, minLength: 1, maxLength: 255}
+        destination_owner:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Repository or organization owner; the KV v2 mount path for vault-kv (destination_kind repository).
         destination_name:
           type: string
           maxLength: 255
-          description: Repository name; empty for organization destinations.
+          description: Repository name; empty for organization destinations; the KV path prefix for vault-kv.
         destination_environment:
           type: string
           maxLength: 255

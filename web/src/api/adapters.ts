@@ -184,8 +184,11 @@ function useInvalidateAdapters(ref: ProjectRef) {
   };
 }
 
+/** The providers this build can create; responses may name others. */
+export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'vault-kv';
+
 export type CreateAdapterInput = {
-  readonly provider: 'forgejo' | 'github-actions';
+  readonly provider: AdapterProviderKind;
   readonly origin: string;
   /** Write-only. Held in component state only for the request. */
   readonly credential: string;

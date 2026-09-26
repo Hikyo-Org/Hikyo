@@ -367,8 +367,9 @@ revisions:                                         --env selects the environment
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance for instance
 
 adapters:
-  hikyo adapter create --provider forgejo|github-actions --origin <https-origin> --env E --kind repository|organization|environment
+  hikyo adapter create --provider forgejo|github-actions|vault-kv --origin <https-origin> --env E --kind repository|organization|environment
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
+      (vault-kv: --origin https://vault:8200[/<namespace>] --mount <kv-v2-mount> --path <prefix>)
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]

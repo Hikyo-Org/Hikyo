@@ -3601,8 +3601,10 @@ type AdapterTargetInput struct {
 	DestinationEnvironment string                 `json:"destination_environment"`
 	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
 
-	// DestinationName Repository name; empty for organization destinations.
-	DestinationName  string `json:"destination_name"`
+	// DestinationName Repository name; empty for organization destinations; the KV path prefix for vault-kv.
+	DestinationName string `json:"destination_name"`
+
+	// DestinationOwner Repository or organization owner; the KV v2 mount path for vault-kv (destination_kind repository).
 	DestinationOwner string `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.

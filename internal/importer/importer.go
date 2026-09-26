@@ -256,6 +256,10 @@ type Result struct {
 	// Identity is the non-secret live source identity: Kubernetes
 	// cluster/context or Vault/OpenBao origin. File connectors leave it empty.
 	Identity string
+	// Namespace is the Vault/OpenBao namespace a live read used. It is
+	// non-secret, compared against sync destinations for loop safety, and never
+	// persisted in a mapping or manifest.
+	Namespace string
 	// Resolution states which non-secret ambient convention won (environment
 	// variable or helper kind). It is reported to the operator, never persisted
 	// in a mapping or manifest.

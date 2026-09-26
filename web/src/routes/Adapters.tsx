@@ -37,6 +37,7 @@ import {
   type AdapterConnection,
   type AdapterMove,
   type AdapterPlan,
+  type AdapterProviderKind,
   type AdapterTarget,
   type AdapterTargetInput,
   type ProjectEnvironment,
@@ -318,7 +319,7 @@ function AdapterPanel({
   return (
     <section className="panel adapters__adapter" aria-label={`Adapter ${adapter.origin}`}>
       <div className="adapters__adapter-head">
-        <h2>{adapter.provider === 'forgejo' ? 'Forgejo' : adapter.provider === 'github-actions' ? 'GitHub Actions' : adapter.provider}</h2>
+        <h2>{providerLabel(adapter.provider)}</h2>
         <span className="adapters__origin mono">{adapter.origin}</span>
         <Badge>
           {adapter.credential_present ? 'credential set' : 'credential absent'}
@@ -353,6 +354,7 @@ function AdapterPanel({
       {adding ? (
         <TargetForm
           title="Add target"
+          provider={adapter.provider}
           environments={environments}
           keys={keys}
           busy={add.isPending}
@@ -860,7 +862,7 @@ function CreateAdapterPanel({
   readonly onClose: () => void;
 }) {
   const create = useCreateAdapter(refData);
-  const [provider, setProvider] = useState<'forgejo' | 'github-actions'>('forgejo');
+  const [provider, setProvider] = useState<AdapterProviderKind>('forgejo');
   const [origin, setOrigin] = useState('');
   const [credential, setCredential] = useSensitiveState('');
   return (
@@ -875,7 +877,9 @@ function CreateAdapterPanel({
             value={provider}
             onChange={(event) =>
               {
-              const next = event.target.value === 'github-actions' ? 'github-actions' : 'forgejo';
+              const value = event.target.value;
+              const next: AdapterProviderKind =
+                value === 'github-actions' || value === 'vault-kv' ? value : 'forgejo';
               setProvider(next);
               setOrigin(next === 'github-actions' ? 'https://api.github.com' : '');
             }
@@ -883,29 +887,49 @@ function CreateAdapterPanel({
           >
             <option value="forgejo">Forgejo</option>
             <option value="github-actions">GitHub Actions</option>
+            <option value="vault-kv">Vault / OpenBao KV v2</option>
           </select>
         </label>
         <label className="field">
-          <span className="field__label">{provider === 'github-actions' ? 'GitHub API base URL' : 'Origin'}</span>
+          <span className="field__label">
+            {provider === 'github-actions' ? 'GitHub API base URL' : provider === 'vault-kv' ? 'Server address' : 'Origin'}
+          </span>
           <input
             value={origin}
             onChange={(event) => setOrigin(event.target.value)}
-            placeholder={provider === 'github-actions' ? 'https://HOST/api/v3' : 'https://git.example.com'}
+            placeholder={
+              provider === 'github-actions'
+                ? 'https://HOST/api/v3'
+                : provider === 'vault-kv'
+                  ? 'https://vault.example.com:8200'
+                  : 'https://git.example.com'
+            }
             autoComplete="off"
           />
         </label>
         {provider === 'github-actions' ? <p className="field__hint">GitHub Enterprise Server: use https://HOST/api/v3. GHES support is best-effort; CI verifies github.com only.</p> : null}
+        {provider === 'vault-kv' ? (
+          <p className="field__hint">
+            Append /NAMESPACE for a Vault Enterprise or OpenBao namespace. Hikyo writes one secret per key with check-and-set
+            and never reads a value back.
+          </p>
+        ) : null}
         <Input
           label="Credential"
           type="password"
           value={credential}
           onChange={(event) => setCredential(event.target.value)}
           autoComplete="new-password"
-          hint="Write-only. It is sealed on save and never shown again."
+          hint={
+            provider === 'vault-kv'
+              ? 'Write-only. A token, or JSON {"method":"approle","role_id":…,"secret_id":…} with optional ca_pem and spki_sha256. Sealed on save and never shown again.'
+              : 'Write-only. It is sealed on save and never shown again.'
+          }
         />
       </div>
       <TargetForm
         title="First target"
+        provider={provider}
         environments={environments}
         keys={keys}
         busy={create.isPending}
@@ -955,6 +979,20 @@ const zRepositoryIdList = z
       .max(500, 'At most 500 repository ids.'),
   );
 
+/** A provider's display name; an unknown provider shows its wire value. */
+export function providerLabel(provider: string): string {
+  switch (provider) {
+    case 'forgejo':
+      return 'Forgejo';
+    case 'github-actions':
+      return 'GitHub Actions';
+    case 'vault-kv':
+      return 'Vault / OpenBao KV';
+    default:
+      return provider;
+  }
+}
+
 /** The prefix the server will store: the wire grammar is upper-case only. */
 export function normalisePrefix(raw: string): string {
   return raw.toUpperCase();
@@ -962,6 +1000,7 @@ export function normalisePrefix(raw: string): string {
 
 export function TargetForm({
   title,
+  provider,
   environments,
   keys,
   busy,
@@ -971,6 +1010,8 @@ export function TargetForm({
   onSubmit,
 }: {
   readonly title: string;
+  /** The adapter's provider; vault-kv addresses a KV mount and path prefix. */
+  readonly provider?: string;
   readonly environments: readonly EnvironmentOption[];
   readonly keys: readonly ProjectKey[];
   readonly busy: boolean;
@@ -984,6 +1025,10 @@ export function TargetForm({
   const [kind, setKind] = useState<AdapterTargetInput['destination_kind']>(
     initial?.destination_kind ?? 'repository',
   );
+  const keyValue = provider === 'vault-kv';
+  // A KV target rides the repository destination: owner is the mount, name is
+  // the path prefix. There is no organization or environment routing.
+  const effectiveKind = keyValue ? 'repository' : kind;
   const [owner, setOwner] = useState(initial?.destination_owner ?? '');
   const [name, setName] = useState(initial?.destination_name ?? '');
   const [allowEnvironmentCreate, setAllowEnvironmentCreate] = useState(false);
@@ -1016,7 +1061,7 @@ export function TargetForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const selectsRepositories = kind === 'organization' && visibility === 'selected';
+    const selectsRepositories = effectiveKind === 'organization' && visibility === 'selected';
     const parsedIds = selectsRepositories ? zRepositoryIdList.safeParse(repositoryIds) : null;
     if (parsedIds !== null && !parsedIds.success) {
       setRepositoryIdsError(parsedIds.error.issues[0]?.message ?? 'Repository ids are not valid.');
@@ -1035,12 +1080,12 @@ export function TargetForm({
           };
     void onSubmit({
       environment_id: effectiveEnvironmentId,
-      destination_kind: kind,
+      destination_kind: effectiveKind,
       destination_owner: owner,
-      destination_name: kind === 'organization' ? '' : name,
-      destination_environment: kind === 'environment' ? destinationEnvironment : '',
-      allow_environment_create: kind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
-      visibility: kind === 'organization' ? visibility : '',
+      destination_name: effectiveKind === 'organization' ? '' : name,
+      destination_environment: effectiveKind === 'environment' ? destinationEnvironment : '',
+      allow_environment_create: effectiveKind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
+      visibility: effectiveKind === 'organization' ? visibility : '',
       selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
       name_prefix: normalisePrefix(prefix),
       key_ids: [...keyIds],
@@ -1079,6 +1124,7 @@ export function TargetForm({
             ))}
           </select>
         </label>
+        {keyValue ? null : (
         <label className="field">
           <span className="field__label">Destination kind</span>
           <select
@@ -1094,13 +1140,14 @@ export function TargetForm({
             <option value="environment">GitHub environment</option>
           </select>
         </label>
+        )}
         <label className="field">
-          <span className="field__label">Owner</span>
+          <span className="field__label">{keyValue ? 'KV v2 mount' : 'Owner'}</span>
           <input value={owner} disabled={lockRouting === true} onChange={(event) => setOwner(event.target.value)} />
         </label>
-        {kind !== 'organization' ? (
+        {effectiveKind !== 'organization' ? (
           <label className="field">
-            <span className="field__label">Repository</span>
+            <span className="field__label">{keyValue ? 'Path prefix' : 'Repository'}</span>
             <input value={name} disabled={lockRouting === true} onChange={(event) => setName(event.target.value)} />
           </label>
         ) : (
@@ -1121,7 +1168,7 @@ export function TargetForm({
             </select>
           </label>
         )}
-        {kind === 'organization' && visibility === 'selected' ? (
+        {effectiveKind === 'organization' && visibility === 'selected' ? (
           <Input
             label="Repository ids"
             mono
@@ -1141,7 +1188,7 @@ export function TargetForm({
             error={repositoryIdsError ?? undefined}
           />
         ) : null}
-        {kind === 'environment' ? (
+        {effectiveKind === 'environment' ? (
           <label className="field">
             <span className="field__label">GitHub environment</span>
             <input
@@ -1151,7 +1198,7 @@ export function TargetForm({
             />
           </label>
         ) : null}
-        {kind === 'environment' && lockRouting !== true ? (
+        {effectiveKind === 'environment' && lockRouting !== true ? (
           <div className="field">
             <Checkbox label="Create the GitHub environment if missing" aria-describedby={environmentCreateHintId} checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} />
             <p className="field__hint" id={environmentCreateHintId}>Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</p>

@@ -153,6 +153,23 @@ func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibili
 	return out, nil
 }
 
+// kvAddressing maps --mount/--path onto the repository destination a
+// Vault/OpenBao KV target rides: owner is the mount, name is the path prefix.
+// Mixing spellings would make one of them lie, so it is refused.
+func kvAddressing(kind, owner, repo *string, mount, kvPath, destinationEnvironment, visibility, selectedRepositories string) error {
+	if mount == "" && kvPath == "" {
+		return nil
+	}
+	if *owner != "" || *repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || (*kind != "" && *kind != "repository") {
+		return failf(ExitUsage, "--mount/--path address a Vault/OpenBao KV target and refuse --owner, --repo, and GitHub routing flags")
+	}
+	if mount == "" || kvPath == "" {
+		return failf(ExitUsage, "a Vault/OpenBao KV target requires both --mount and --path")
+	}
+	*kind, *owner, *repo = "repository", mount, kvPath
+	return nil
+}
+
 func splitAdapterRepositoryIDs(raw string) ([]int64, error) {
 	if strings.TrimSpace(raw) == "" {
 		return []int64{}, nil
@@ -229,18 +246,18 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	case "plan", "sync", "test":
 		return runAdapterAction(ctx, ios, sub, rest)
 	}
-	var format, provider, origin, target, moveID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string
+	var format, provider, origin, target, moveID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, mount, kvPath string
 	var keepRemote, cancelMove, allowEnvironmentCreate bool
 	var source adapterCredentialSource
 	var selection adapterKeySelection
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin or GitHub API base URL (GHES: https://HOST/api/v3)")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), or Vault/OpenBao address with optional /namespace")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo or github-actions")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, or vault-kv")
 		}
 		if sub == "update" {
 			fs.StringVar(&target, "target", "", "target id to mutate")
@@ -251,6 +268,8 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
 			fs.StringVar(&owner, "owner", "", "provider owner or organization")
 			fs.StringVar(&repo, "repo", "", "provider repository")
+			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
+			fs.StringVar(&kvPath, "path", "", "Vault/OpenBao KV path prefix under the mount (vault-kv)")
 			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name")
 			fs.StringVar(&visibility, "visibility", "", "GitHub organization visibility: all, private, or selected")
 			fs.StringVar(&selectedRepositories, "selected-repository-ids", "", "comma-separated GitHub numeric repository ids")
@@ -285,6 +304,12 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	}
 	if sub == "create" && origin == "" {
 		return failf(ExitUsage, "adapter create requires --origin")
+	}
+	if err := kvAddressing(&kind, &owner, &repo, mount, kvPath, destinationEnvironment, visibility, selectedRepositories); err != nil {
+		return err
+	}
+	if sub == "create" && provider == "vault-kv" && (kind != "repository" || destinationEnvironment != "" || visibility != "") {
+		return failf(ExitUsage, "vault-kv targets take --mount and --path")
 	}
 	if sub == "update" {
 		targetFields := kind != "" || owner != "" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || prefix != "" || keys != "" || !selection.empty() || flags.Env != ""
@@ -348,8 +373,8 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
-		if provider != "forgejo" && provider != "github-actions" {
-			return failf(ExitUsage, "--provider must be forgejo or github-actions")
+		if provider != "forgejo" && provider != "github-actions" && provider != "vault-kv" {
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, or vault-kv")
 		}
 		envID, err := resolved.Require(DimEnv)
 		if err != nil {
@@ -572,7 +597,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	var adapterID, format, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, outFormat string
+	var adapterID, format, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, outFormat, mount, kvPath string
 	var keep, allowEnvironmentCreate bool
 	var selection adapterKeySelection
 	st, flags, err := parseCommon("adapter target "+sub, ios, rest, func(fs *flag.FlagSet) {
@@ -586,6 +611,8 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
 			fs.StringVar(&owner, "owner", "", "provider owner or organization")
 			fs.StringVar(&repo, "repo", "", "provider repository")
+			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
+			fs.StringVar(&kvPath, "path", "", "Vault/OpenBao KV path prefix under the mount (vault-kv)")
 			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name")
 			fs.StringVar(&visibility, "visibility", "", "GitHub organization visibility: all, private, or selected")
 			fs.StringVar(&selectedRepositories, "selected-repository-ids", "", "comma-separated GitHub numeric repository ids")
@@ -613,6 +640,9 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 	}
 	if (sub == "add" || sub == "list") && adapterID == "" {
 		return failf(ExitUsage, "adapter target %s requires --adapter", sub)
+	}
+	if err := kvAddressing(&kind, &owner, &repo, mount, kvPath, destinationEnvironment, visibility, selectedRepositories); err != nil {
+		return err
 	}
 	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
