@@ -152,6 +152,10 @@ operator:
   triggerRollouts: true
   # Opt in to non-Opaque Secret types and conditional delete on withdrawal.
   nativeSecretTypes: false
+  # Report each HikyoSecret's conditions (never values, key names or messages)
+  # to its Hikyo server when the server advertises the capability. Grants get
+  # on the kube-system Namespace, whose UID is the cluster id.
+  statusReporting: true
   # Namespace -> ServiceAccount names allowed for TokenRequest creation.
   designatedServiceAccounts: {}
   resources:

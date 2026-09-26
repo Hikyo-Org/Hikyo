@@ -684,6 +684,21 @@ export type PrincipalCapabilities = {
      * True when the caller holds instance-config authority — the grant the retention-health and update-status reads require. The instance administration chrome and those background polls gate on it.
      */
     instance_operator: boolean;
+    delivery_report_grant: UnheldGrantReach;
+};
+
+/**
+ * Where the caller may grant `report-delivery-status`. No human holds that atom, so every grant of it is an unheld grant, which only `manage-members` at instance or organisation scope may make. The machine-access grant dialog offers the atom only inside this reach.
+ */
+export type UnheldGrantReach = {
+    /**
+     * The caller holds `manage-members` at instance scope, which reaches every organisation.
+     */
+    instance: boolean;
+    /**
+     * The organisations where the caller holds `manage-members` at organisation scope, sorted.
+     */
+    orgs: Array<string>;
 };
 
 export type UpdateStatus = {

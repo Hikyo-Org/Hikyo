@@ -13142,7 +13142,7 @@ components:
         request it will only be refused. These are disclosure-safe reflections
         of the caller's own grants — never authorization itself, which is still
         evaluated per request at the server chokepoint.
-      required: [instance_operator]
+      required: [instance_operator, delivery_report_grant]
       properties:
         instance_operator:
           type: boolean
@@ -13150,6 +13150,26 @@ components:
             True when the caller holds instance-config authority — the grant the
             retention-health and update-status reads require. The instance
             administration chrome and those background polls gate on it.
+        delivery_report_grant:
+          $ref: "#/components/schemas/UnheldGrantReach"
+
+    UnheldGrantReach:
+      type: object
+      additionalProperties: false
+      description: >-
+        Where the caller may grant `report-delivery-status`. No human holds
+        that atom, so every grant of it is an unheld grant, which only
+        `manage-members` at instance or organisation scope may make. The
+        machine-access grant dialog offers the atom only inside this reach.
+      required: [instance, orgs]
+      properties:
+        instance:
+          type: boolean
+          description: The caller holds `manage-members` at instance scope, which reaches every organisation.
+        orgs:
+          type: array
+          description: The organisations where the caller holds `manage-members` at organisation scope, sorted.
+          items: {type: string}
 
     UpdateStatus:
       type: object

@@ -67,7 +67,7 @@ func Run(ctx context.Context, log *slog.Logger) error {
 		return fmt.Errorf("operator: build clientset for token minting: %w", err)
 	}
 
-	if err := (&HikyoSecretReconciler{
+	reconciler := &HikyoSecretReconciler{
 		Client:          mgr.GetClient(),
 		Reader:          mgr.GetAPIReader(), // uncached: Secret/SA reads, post-write verify, stamp root
 		Scheme:          mgr.GetScheme(),
@@ -76,13 +76,22 @@ func Run(ctx context.Context, log *slog.Logger) error {
 		Log:             log,
 		NewClientForURL: nil, // nil ⇒ default HTTPS client; tests inject a stub
 		TokenMinter:     clientsetMinter{cs: cs},
-	}).SetupWithManager(mgr); err != nil {
+	}
+	if cfg.StatusReporting {
+		// The uncached reader serves before the manager starts.
+		rep, err := newStatusReporter(ctx, mgr.GetAPIReader(), Version)
+		if err != nil {
+			return fmt.Errorf("operator: status reporting: %w", err)
+		}
+		reconciler.reporter = rep
+	}
+	if err := reconciler.SetupWithManager(mgr); err != nil {
 		return err
 	}
 
 	log.Info("hikyo operator starting",
 		"namespaces", cfg.Namespaces, "triggerRollouts", cfg.TriggerRollouts, "nativeSecretTypes", cfg.NativeSecretTypes,
-		"ownNamespace", cfg.OwnNamespace, "version", Version)
+		"statusReporting", reconciler.reporter != nil, "ownNamespace", cfg.OwnNamespace, "version", Version)
 	if err := mgr.Start(ctx); err != nil {
 		return fmt.Errorf("operator: manager exited: %w", err)
 	}

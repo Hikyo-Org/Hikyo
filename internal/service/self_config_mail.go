@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Hikyo-Org/hikyo/internal/admission"
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
@@ -158,7 +159,9 @@ func (s *SelfConfig) TestMail(ctx context.Context, actor Actor, req SelfConfigMa
 		return result, err
 	}
 	if count > 5 {
-		return result, ErrSelfConfigMailLimited
+		// A fixed hourly window: the next one starts empty.
+		window := now.Truncate(time.Hour)
+		return result, &admission.RateLimitedError{Cause: ErrSelfConfigMailLimited, Wait: window.Add(time.Hour).Sub(now)}
 	}
 	ctx, cancel := context.WithDeadline(ctx, started.Add(mail.SendTimeout))
 	defer cancel()

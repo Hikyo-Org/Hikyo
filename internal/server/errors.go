@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
@@ -64,6 +65,10 @@ type WireError struct {
 	code         apigen.ErrorCode
 	message      string
 	detailPolicy detailPolicy
+	// retryAfterSeconds is the Retry-After a too_many_requests refusal
+	// carries. The table holds the fixed default; wireErrorFor replaces it
+	// with the refusing window's own wait when the cause reports one.
+	retryAfterSeconds int
 }
 
 // wirePolicies is the one total public-code policy. A contract test compares
@@ -79,7 +84,7 @@ var wirePolicies = map[apigen.ErrorCode]WireError{
 	apigen.ErrorCodeLimitExceeded:      {status: http.StatusConflict, code: apigen.ErrorCodeLimitExceeded, message: limitExceededMessage, detailPolicy: redactDetail},
 	apigen.ErrorCodeUnprocessable:      {status: http.StatusUnprocessableEntity, code: apigen.ErrorCodeUnprocessable, message: "a value is outside the vocabulary this server accepts", detailPolicy: allowSafeDetail},
 	apigen.ErrorCodePayloadTooLarge:    {status: http.StatusRequestEntityTooLarge, code: apigen.ErrorCodePayloadTooLarge, message: "the request body exceeds this operation's bound", detailPolicy: redactDetail},
-	apigen.ErrorCodeTooManyRequests:    {status: http.StatusTooManyRequests, code: apigen.ErrorCodeTooManyRequests, message: "too many requests", detailPolicy: redactDetail},
+	apigen.ErrorCodeTooManyRequests:    {status: http.StatusTooManyRequests, code: apigen.ErrorCodeTooManyRequests, message: "too many requests", detailPolicy: redactDetail, retryAfterSeconds: admission.RetryAfterSeconds(admission.RetryAfter)},
 	apigen.ErrorCodeInternal:           {status: http.StatusInternalServerError, code: apigen.ErrorCodeInternal, message: "internal error", detailPolicy: redactDetail},
 }
 
@@ -164,7 +169,7 @@ func writeError(w http.ResponseWriter, policy WireError, detail string) {
 		w.Header().Set("Retry-After", "2")
 	}
 	if policy.code == apigen.ErrorCodeTooManyRequests {
-		w.Header().Set("Retry-After", strconv.Itoa(int(admission.RetryAfter.Seconds())))
+		w.Header().Set("Retry-After", strconv.Itoa(policy.retryAfterSeconds))
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(policy.status)
@@ -260,7 +265,8 @@ var wireErrorRules = []struct {
 //     two are indistinguishable by design.
 //   - ErrUnauthorized is the instance-scope refusal: there is no tenant object
 //     whose nonexistence could be mimicked, so the contract is grant refusal.
-//   - ErrOverloaded is the same 429 on every pre-auth path.
+//   - ErrOverloaded is the same 429 body on every pre-auth path. Only its
+//     Retry-After varies, and only with the caller's own window (retryAfterFor).
 //   - Anything else is a fault: 500, with the cause logged and never returned.
 //   - ErrConflict and ErrLimitExceeded are decided AFTER authorization
 //     succeeded, so they disclose nothing a caller could not already read.
@@ -278,10 +284,31 @@ var wireErrorRules = []struct {
 func wireErrorFor(err error) WireError {
 	for _, rule := range wireErrorRules {
 		if errors.Is(err, rule.match) {
-			return wirePolicyForCode(rule.code)
+			policy := wirePolicyForCode(rule.code)
+			if policy.code == apigen.ErrorCodeTooManyRequests {
+				policy.retryAfterSeconds = retryAfterFor(err)
+			}
+			return policy
 		}
 	}
 	return wirePolicyForCode(apigen.ErrorCodeInternal)
+}
+
+// retryAfterFor is the Retry-After, in whole seconds, that a 429 caused by err
+// advertises (#806). A windowed limiter reports when its window reopens for
+// this caller, and that wait is the header: the per-IP and discovery windows,
+// the expensive-path rate budgets, and the mail-test window. Every other
+// refusal (a full admission queue, a concurrency cap, a saturated tracking
+// set, the per-account backoff, the in-flight request cap) has no window that
+// says when capacity returns, or must not disclose it, and advertises the
+// fixed admission.RetryAfter. The body stays byte-identical either way; the
+// header only ever reflects the caller's own history in the refusing window.
+func retryAfterFor(err error) int {
+	var windowed interface{ RetryAfter() time.Duration }
+	if errors.As(err, &windowed) {
+		return admission.RetryAfterSeconds(windowed.RetryAfter())
+	}
+	return admission.RetryAfterSeconds(admission.RetryAfter)
 }
 
 // workspaceHandoffLookupWireErrorFor is the sole contextual override in the

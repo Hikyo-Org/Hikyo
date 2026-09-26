@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,82 @@ type Client struct {
 	// It contains no authorization state; grants are still checked server-side.
 	meta       *apigen.Meta
 	metaOrigin string
+	// sleep waits out a Retry-After between throttled reads. Nil is the real
+	// clock; tests substitute one that records the wait instead of sleeping.
+	sleep func(ctx context.Context, d time.Duration) error
+}
+
+// The bounded retry of a throttled idempotent read (#806).
+const (
+	// maxThrottledRetries is how many times one read is re-sent after the
+	// server throttled it.
+	maxThrottledRetries = 2
+	// maxThrottledWait is the ceiling on the total time spent honouring
+	// Retry-After across those retries. A wait that would cross it is not
+	// slept at all: the throttled error returns at once, so a caller's own
+	// backoff decides instead of a CLI that hangs.
+	maxThrottledWait = 60 * time.Second
+)
+
+// RateLimitedError is a throttled response. RetryAfter is the server's
+// Retry-After, zero when the response carried no usable value.
+type RateLimitedError struct {
+	Message    string
+	RetryAfter time.Duration
+}
+
+func (e *RateLimitedError) Error() string {
+	if e.RetryAfter <= 0 {
+		return e.Message
+	}
+	return fmt.Sprintf("%s; Retry-After: %d", e.Message, int(e.RetryAfter/time.Second))
+}
+
+// rateLimited builds the throttled exit from a 429's headers. Only the
+// delta-seconds form of Retry-After is read, because it is the only form the
+// server emits; anything else is reported as absent rather than guessed at.
+func rateLimited(message string, header http.Header) error {
+	e := &RateLimitedError{Message: message}
+	if n, err := strconv.Atoi(strings.TrimSpace(header.Get("Retry-After"))); err == nil && n >= 0 {
+		e.RetryAfter = time.Duration(n) * time.Second
+	}
+	return &Error{Code: ExitRateLimited, Err: e}
+}
+
+// retryThrottled runs an idempotent read and, while the server throttles it
+// with a usable Retry-After, waits that long and re-sends, at most
+// maxThrottledRetries times and never past maxThrottledWait in total. Each
+// wait is announced on stderr. It must wrap reads only: a re-sent write could
+// apply twice.
+func (c *Client) retryThrottled(ctx context.Context, stderr io.Writer, read func() error) error {
+	var waited time.Duration
+	for attempt := 0; ; attempt++ {
+		err := read()
+		var limited *RateLimitedError
+		if !errors.As(err, &limited) || limited.RetryAfter <= 0 ||
+			attempt == maxThrottledRetries || waited+limited.RetryAfter > maxThrottledWait {
+			return err
+		}
+		fmt.Fprintf(stderr, "hikyo: throttled by the server; retrying in %d s (Retry-After)\n", int(limited.RetryAfter/time.Second))
+		if sleepErr := c.wait(ctx, limited.RetryAfter); sleepErr != nil {
+			return sleepErr
+		}
+		waited += limited.RetryAfter
+	}
+}
+
+func (c *Client) wait(ctx context.Context, d time.Duration) error {
+	if c.sleep != nil {
+		return c.sleep(ctx, d)
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // NewClient builds a client bound to a trust entry.
@@ -197,7 +274,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 		return failf(ExitUnavailable, "reading the response: %v", err)
 	}
 	if resp.StatusCode >= 400 {
-		return errorFromResponse(resp.StatusCode, payload)
+		return errorFromResponse(resp.StatusCode, resp.Header, payload)
 	}
 	c.lastStatus = resp.StatusCode
 	if out == nil || len(payload) == 0 {
@@ -222,9 +299,14 @@ func (c *Client) Do(ctx context.Context, method, path string, body, out any) err
 // grows a new status without a code the client knows is a skew problem the
 // minimum-revision registry is for, and it lands as ExitInternal rather than
 // being silently reinterpreted.
-func errorFromResponse(status int, payload []byte) error {
+func errorFromResponse(status int, header http.Header, payload []byte) error {
 	var body apigen.Error
 	if err := json.Unmarshal(payload, &body); err != nil {
+		if status == http.StatusTooManyRequests {
+			// A proxy's plain-text 429 is still throttling, and its
+			// Retry-After is still the caller's best guidance.
+			return rateLimited(fmt.Sprintf("server returned %d", status), header)
+		}
 		return failf(exitForStatus(status), "server returned %d", status)
 	}
 	code := body.Error.Code
@@ -240,6 +322,15 @@ func errorFromResponse(status int, payload []byte) error {
 			"resubmit with --acknowledge <token>[,<token>] to override, or remove the credential.",
 			len(*body.Error.Findings), formatFindings(*body.Error.Findings))
 	}
+	// HTTP 429 is throttling whatever code a JSON body carries (a proxy's own
+	// error document, say), so it keeps exit 7 and its Retry-After. A body
+	// without the API's error fields still names what happened.
+	if status == http.StatusTooManyRequests {
+		if message == "" {
+			message = fmt.Sprintf("server returned %d", status)
+		}
+		return rateLimited(message, header)
+	}
 	switch code {
 	case apigen.ErrorCodeUnauthenticated:
 		return failf(ExitAuth, "%s", message)
@@ -254,8 +345,6 @@ func errorFromResponse(status int, payload []byte) error {
 		return failf(ExitRefused, "%s", message)
 	case apigen.ErrorCodeNotFound:
 		return failf(ExitNotFound, "%s", message)
-	case apigen.ErrorCodeTooManyRequests:
-		return failf(ExitUnavailable, "%s", message)
 	case apigen.ErrorCodeInternal:
 		return failf(ExitInternal, "%s", message)
 	default:
@@ -273,7 +362,9 @@ func exitForStatus(status int) int {
 		status == http.StatusConflict, status == http.StatusUnprocessableEntity,
 		status == http.StatusRequestEntityTooLarge:
 		return ExitRefused
-	case status >= 500, status == http.StatusTooManyRequests:
+	case status == http.StatusTooManyRequests:
+		return ExitRateLimited
+	case status >= 500:
 		return ExitUnavailable
 	default:
 		return ExitInternal

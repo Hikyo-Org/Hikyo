@@ -287,6 +287,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if envelope.Method == "server/discover" || envelope.Method == "tools/list" {
 		if h.admission != nil && !h.admission.AllowDiscovery(sourceIP) {
+			// Every MCP refusal advertises 60 s, an upper bound on each windowed
+			// limiter behind it: the one-minute discovery window, the 1 s token
+			// refill, and the 35 s lease TTL. It can overshoot but never names an
+			// instant the same window still refuses absent new traffic (#806).
+			// The per-node in-flight cap has no window; 60 s is a hint there.
 			w.Header().Set("Retry-After", "60")
 			http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 			return

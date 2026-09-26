@@ -1,6 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import {
+  zDeliveryTargetList,
   zDynamicLeaseList,
+  zMeta,
   zDynamicProviderList,
   zEnvironmentList,
   zGrantList,
@@ -13,6 +15,7 @@ import type { z } from 'zod';
 
 import type { MockRoute } from '../../.storybook/withApp.tsx';
 import { ORG, PRJ, PROD, STAGING } from '../testkit/ids.ts';
+import { target } from '../testkit/deliveryTargets.ts';
 import { dynamicProvider } from '../testkit/machineAccess.ts';
 import { MachineAccessPage } from './MachineAccess.tsx';
 
@@ -178,12 +181,24 @@ const lease = (
 const prodLeases = { items: [lease(0, PROD, 'active'), lease(1, PROD, 'unknown')] } satisfies z.input<typeof zDynamicLeaseList>;
 const stagingLeases = { items: [lease(2, STAGING, 'revoked')] } satisfies z.input<typeof zDynamicLeaseList>;
 
+const prodTargets = {
+  principals: [{ principal_id: GATEWAY.replace('msa_', 'prn_'), last_contact_at: '2026-09-25T11:58:00Z' }],
+  // The testkit target reports as api-gateway's principal.
+  targets: [target(0, 'reported')],
+} satisfies z.input<typeof zDeliveryTargetList>;
+
+// The server advertises the report vocabulary, or the tab reads no list.
+const META_URL = '/api/v1/meta';
+const metaBody = (protocol_capabilities: string[]) =>
+  ({ server_version: '1.4.0', api_revision: 5, protocol_capabilities }) satisfies z.input<typeof zMeta>;
+
 const optIn = (enabled: boolean) => ({ enabled }) satisfies z.input<typeof zMachineRevealSettings>;
 
 const ACCOUNTS_URL = `${BASE}/service-accounts`;
 const REVEAL_URL = `${BASE}/machine-reveal`;
 const credentialsUrl = (sa: string) => `${ACCOUNTS_URL}/${sa}/credentials`;
 const leasesUrl = (env: string) => `${BASE}/environments/${env}/leases`;
+const targetsUrl = (env: string) => `${BASE}/environments/${env}/delivery-targets`;
 
 // Everything the populated page reads, opt-in on. Stories replace rows by
 // prepending: a string row matches the exact path, and the first match wins.
@@ -198,6 +213,10 @@ const populatedResponses: readonly MockRoute[] = [
   { url: credentialsUrl(BUILDER), body: noCredentials },
   { url: leasesUrl(PROD), body: prodLeases },
   { url: leasesUrl(STAGING), body: stagingLeases },
+  // Production carries one fresh report; staging is unreadable, so its 404 is
+  // the uniform nonexistent answer and it contributes no rows.
+  { url: targetsUrl(PROD), body: prodTargets },
+  { url: META_URL, body: metaBody(['local-password', 'delivery-target-report/1']) },
 ];
 
 const app = (responses: readonly MockRoute[]) => ({
@@ -257,6 +276,34 @@ export const ProvidersTab: Story = {
   },
 };
 
+// The Kubernetes tab: the production report grouped by cluster and namespace;
+// staging is unreadable, so it is absent rather than empty.
+export const KubernetesTab: Story = {
+  play: async ({ canvas }) => {
+    await userEvent.click(await canvas.findByRole('tab', { name: 'Kubernetes targets (1)' }));
+    await expect(await canvas.findByText('api-secrets-0')).toBeVisible();
+    await expect(canvas.getByText(/^reported by the controller, /)).toBeVisible();
+    await expect(canvas.queryByText('staging')).not.toBeInTheDocument();
+  },
+};
+
+// A server without delivery-target reporting: the tab says so, reads no list
+// (production's report is on offer and never shown), and counts unknown.
+export const KubernetesTabUnsupported: Story = {
+  parameters: {
+    app: app([{ url: META_URL, body: metaBody(['local-password']) }, ...populatedResponses]),
+  },
+  play: async ({ canvas }) => {
+    // "(unknown)" also matches the loading page: wait for the settled one.
+    await canvas.findByRole('tab', { name: 'Service accounts (3)' });
+    await userEvent.click(canvas.getByRole('tab', { name: 'Kubernetes targets (unknown)' }));
+    await expect(
+      await canvas.findByText(/this server does not support delivery-target reporting:/i),
+    ).toBeVisible();
+    await expect(canvas.queryByText('api-secrets-0')).not.toBeInTheDocument();
+  },
+};
+
 // The Leases tab: an active, an unknown (awaiting reconcile) and a revoked lease.
 export const LeasesTab: Story = {
   play: async ({ canvas }) => {
@@ -300,6 +347,7 @@ export const Loading: Story = {
       expect(canvas.getByText(/reading the project.s machine-reveal opt-in/i)).toBeVisible(),
     );
     await expect(canvas.getByRole('tab', { name: 'Service accounts (unknown)' })).toBeVisible();
+    await expect(canvas.getByRole('tab', { name: 'Kubernetes targets (unknown)' })).toBeVisible();
   },
 };
 

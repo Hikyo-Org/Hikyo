@@ -68,7 +68,7 @@ function identity(
       kind: 'human',
       display_name: `Person ${principalSuffix}`,
     },
-    capabilities: { instance_operator: false },
+    capabilities: { instance_operator: false, delivery_report_grant: { instance: false, orgs: [] } },
   };
 }
 
@@ -80,7 +80,7 @@ function loginIdentity(sessionSuffix: string, principalSuffix: string): WhoAmI {
 }
 
 function operatorWhoAmI(sessionSuffix: string, principalSuffix: string): WhoAmI {
-  return { ...identity(sessionSuffix, principalSuffix), capabilities: { instance_operator: true } };
+  return { ...identity(sessionSuffix, principalSuffix), capabilities: { instance_operator: true, delivery_report_grant: { instance: false, orgs: [] } } };
 }
 
 function json(body: object, status = 200): Response {
@@ -122,6 +122,9 @@ function Probe({
       </output>
       <output data-testid="operator">
         {auth.identity === null ? '' : String(auth.identity.capabilities.instance_operator)}
+      </output>
+      <output data-testid="report-reach">
+        {auth.identity === null ? '' : auth.identity.capabilities.delivery_report_grant.orgs.join(',')}
       </output>
       <output data-testid="failure">{auth.failure === null ? '' : 'failed'}</output>
       <output data-testid="degraded">{auth.degraded === null ? '' : 'degraded'}</output>
@@ -548,6 +551,35 @@ describe('AuthProvider', () => {
     expect(text(container, 'state')).toContain(`authenticated:${id('ses', '00')}`);
     expect(text(container, 'marker')).toBe('owned');
     expect(workspaceBearer(workspace.origin)).toBe(workspace);
+  });
+
+  it('settles a changed report-delivery-status grant reach on refocus', async () => {
+    const before = identity('00', '10');
+    const after: WhoAmI = {
+      ...before,
+      capabilities: { ...before.capabilities, delivery_report_grant: { instance: false, orgs: ['org_a'] } },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
+        .mockResolvedValueOnce(json(before))
+        .mockResolvedValueOnce(json(after)),
+    );
+
+    const { container } = await renderAuth(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+    await settle();
+    expect(text(container, 'report-reach')).toBe('');
+
+    // Same session, same assurance: only the grant reach moved, and the
+    // machine-access grant dialog gates on it.
+    await act(async () => globalThis.dispatchEvent(new Event('focus')));
+    await settle();
+    expect(text(container, 'report-reach')).toBe('org_a');
   });
 
   it('defaults capabilities on a login result and hydrates them from whoami', async () => {

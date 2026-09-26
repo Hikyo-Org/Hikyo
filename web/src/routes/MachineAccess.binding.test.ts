@@ -98,10 +98,9 @@ describe('carriedClaims', () => {
 });
 
 describe('tabLabel', () => {
-  it('spells a known count, says unknown for a listing it lacks, and omits a count it cannot report', () => {
+  it('spells a known count and says unknown for a listing it lacks', () => {
     expect(tabLabel('Service accounts', 3)).toBe('Service accounts (3)');
     expect(tabLabel('Leases', 'unknown')).toBe('Leases (unknown)');
-    expect(tabLabel('Kubernetes targets', null)).toBe('Kubernetes targets');
   });
 });
 

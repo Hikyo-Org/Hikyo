@@ -128,6 +128,19 @@ an operator-code rule, not an RBAC boundary; the namespace binding is the only
 real boundary. Set `operator.triggerRollouts: false` if you will not grant
 workload patch access. Secret delivery still works, but you own restarts.
 
+`operator.statusReporting` (default `true`) reports each `HikyoSecret`'s
+conditions to its Hikyo server after every status write, and at least once per
+`max(resyncInterval, 5m)`, capped at 24 hours. A report carries only the
+target's identity, generation, lifecycle and each condition's type, status and
+reason: never values, key names, mappings, cursors or condition messages. It
+uses the `HikyoSecret`'s own credential, which needs the
+`report-delivery-status` grant on the environment; without it the server
+refuses and the operator pauses reporting for that `HikyoSecret` for an hour.
+The operator reports only to a server that advertises the capability, and it
+reads the `kube-system` Namespace UID as the cluster id, so the chart grants
+`get` on that one Namespace. Set `operator.statusReporting: false` to send
+nothing and drop that grant.
+
 ## Create a HikyoInstance
 
 Only cluster admins should create instances. The complete `spec` is immutable.

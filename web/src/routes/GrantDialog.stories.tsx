@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { zKeyList } from '@hikyo/zod';
-import { expect, fn, waitFor } from 'storybook/test';
+import { zKeyList, zMeta } from '@hikyo/zod';
+import { expect, fn, userEvent, waitFor } from 'storybook/test';
 import type { z } from 'zod';
 
 import type { MachineEnvScope } from '../api/identities.ts';
@@ -14,6 +14,14 @@ import { topLayerDocs } from '../../.storybook/topLayerDocs.ts';
 // and classifications, never a value), which the harness answers; the grant
 // itself has no story route, so the plays stop short of submitting.
 const KEYS_URL = `/api/v1/orgs/${ORG}/projects/${PRJ}/keys`;
+// Reporting is offered only on a server whose /meta advertises it.
+const META_URL = '/api/v1/meta';
+const metaRoute = (protocol_capabilities: string[]) => ({
+  url: META_URL,
+  body: { server_version: '1.4.0', api_revision: 5, protocol_capabilities } satisfies z.input<
+    typeof zMeta
+  >,
+});
 
 const key = (
   n: number,
@@ -49,6 +57,7 @@ const env = (n: number, name: string, read: boolean, reveal: boolean): MachineEn
   name,
   read,
   reveal,
+  report: false,
   origins: read ? [{ kind: 'direct', subject: 'dana@example.com' }] : [],
 });
 // Production read and revealed, staging read only, development unreached.
@@ -67,6 +76,8 @@ const meta = {
     account,
     scope,
     machineReveal: false,
+    // whoami's grant hint: off unless the story is about an org member manager.
+    mayGrantReporting: false,
     liveCredentials: 2,
     onClose: fn(),
     onGranted: fn(),
@@ -107,7 +118,8 @@ export const RevealGrant: Story = {
 export const NothingToWiden: Story = {
   args: { scope: scope.slice(0, 2) },
   play: async ({ canvas }) => {
-    await expect(canvas.getByText(/there is nothing to widen; reveal needs/i)).toBeVisible();
+    // The org membership read settles first: it 404s, so reporting is not offered.
+    await expect(await canvas.findByText(/there is nothing to widen; reveal needs/i)).toBeVisible();
     await expect(canvas.getByRole('button', { name: 'Close' })).toBeVisible();
   },
 };
@@ -130,5 +142,90 @@ export const CatalogueLoading: Story = {
       expect(canvas.getByText(/reading what this grant would make reachable/i)).toBeVisible(),
     );
     await expect(canvas.getByRole('button', { name: 'Grant read' })).toBeDisabled();
+  },
+};
+
+// A workload account and an org member manager: report-delivery-status is one
+// checkbox beside read, and ticking it names both grants on the button.
+export const ReportingGrantable: Story = {
+  args: { mayGrantReporting: true },
+  parameters: {
+    app: {
+      responses: [
+        { url: KEYS_URL, body: catalogue },
+        metaRoute(['delivery-target-report/1']),
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await userEvent.click(
+      await canvas.findByRole('checkbox', { name: /also grant report-delivery-status/i }),
+    );
+    await expect(
+      canvas.getByRole('button', { name: 'Grant read and report-delivery-status' }),
+    ).toBeVisible();
+  },
+};
+
+// A project-scope member manager cannot grant the atom (whoami's hint does not
+// cover this org), so on a reporting server the checkbox is not offered.
+export const ReportingNotGrantable: Story = {
+  parameters: {
+    app: {
+      responses: [{ url: KEYS_URL, body: catalogue }, metaRoute(['delivery-target-report/1'])],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText('LOG_LEVEL · config')).toBeVisible();
+    await expect(
+      canvas.queryByRole('checkbox', { name: /also grant report-delivery-status/i }),
+    ).not.toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Grant read' })).toBeEnabled();
+  },
+};
+
+// Every environment already read, and an org member manager: the report atom
+// is still grantable on its own, and it makes no key reachable.
+export const ReportAfterTheFact: Story = {
+  args: { scope: scope.slice(0, 2), mayGrantReporting: true },
+  parameters: {
+    app: {
+      responses: [
+        { url: KEYS_URL, body: catalogue },
+        metaRoute(['delivery-target-report/1']),
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByLabelText('Capability')).toHaveValue('report-delivery-status');
+    await expect(canvas.getByText(/this grant makes nothing\s+reachable/i)).toBeVisible();
+    // The report atom's authority is org or instance manage-members, not the
+    // environment-scope formula read and reveal carry.
+    await expect(
+      canvas.getByText(/^manage-members at organisation or instance scope/),
+    ).toBeVisible();
+    await expect(
+      canvas.getByRole('button', { name: 'Grant report-delivery-status' }),
+    ).toBeEnabled();
+  },
+};
+
+// Every environment read, an org member manager, and a server whose /meta does
+// not advertise delivery-target-report: the atom is not offered, so once /meta
+// settles there is nothing to widen.
+export const ReportingUnsupported: Story = {
+  args: { scope: scope.slice(0, 2), mayGrantReporting: true },
+  parameters: {
+    app: {
+      responses: [
+        { url: KEYS_URL, body: catalogue },
+        metaRoute(['local-password']),
+      ],
+    },
+  },
+  play: async ({ canvas }) => {
+    await expect(await canvas.findByText(/there is nothing to widen; reveal needs/i)).toBeVisible();
+    await expect(canvas.queryByLabelText('Capability')).not.toBeInTheDocument();
+    await expect(canvas.getByRole('button', { name: 'Close' })).toBeVisible();
   },
 };

@@ -104,19 +104,25 @@ func TestSharedIPBudgetIsInstanceWideAcrossNodes(t *testing.T) {
 		if i%2 == 1 {
 			l = nodeB
 		}
-		if l.allowIP("1.2.3.4") {
+		if l.allowIP("1.2.3.4") == 0 {
 			allowed++
 		}
 	}
 	if allowed != PerIPPerMinute {
 		t.Fatalf("allowed %d of the first %d, want all", allowed, PerIPPerMinute)
 	}
-	if nodeB.allowIP("1.2.3.4") {
+	if nodeB.allowIP("1.2.3.4") == 0 {
 		t.Fatal("node B admitted an attempt past the shared per-IP budget (node hopping bypassed the limit)")
+	}
+	// The refusal names the start of the next fixed window, 30 s away.
+	if _, err := nodeB.Enter(context.Background(), "1.2.3.4"); err == nil {
+		t.Fatal("Enter admitted past the shared per-IP budget")
+	} else if limited, ok := errors.AsType[*RateLimitedError](err); !ok || limited.Wait != 30*time.Second {
+		t.Fatalf("shared per-IP refusal = %v, want a 30s wait to the next window", err)
 	}
 	// A different window resets the budget.
 	now = now.Add(time.Minute)
-	if !nodeA.allowIP("1.2.3.4") {
+	if nodeA.allowIP("1.2.3.4") != 0 {
 		t.Fatal("new window did not reset the shared per-IP budget")
 	}
 }
@@ -160,7 +166,7 @@ func TestSharedCounterErrorsFailClosed(t *testing.T) {
 	l.UseShared(store, slog.New(slog.NewTextHandler(&logs, nil)))
 	store.setErr(errors.New("datastore unreachable with CANARY-HEADER-VALUE"))
 
-	if l.allowIP("1.2.3.4") {
+	if l.allowIP("1.2.3.4") == 0 {
 		t.Fatal("allowIP admitted while the shared counter was unreachable (must fail closed)")
 	}
 	if l.AllowDiscovery("1.2.3.4") {

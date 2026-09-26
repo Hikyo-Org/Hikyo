@@ -66,3 +66,5 @@ next 2 s reconcile tick. The TOTP step wait usually hid that window.
 Not changed, open for a decision: the CLI does not honour `Retry-After` on 503.
 The contract allows a retry but does not require one, and a blanket retry would
 hide the condition from `doctor`.
+
+Follow-up: #789 and #790 landed on `feat/789-790-805-delivery-target-reporting`; see `docs/handoff/789-790-806-reporting-and-retry-after.md`.

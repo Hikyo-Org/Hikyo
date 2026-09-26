@@ -250,8 +250,10 @@ func (a *API) GetMeta(ctx context.Context, _ apigen.GetMetaRequestObject) (apige
 	// before every authentication, so charging it against the verification
 	// budget would make the client's own capability check the thing that
 	// throttles the client.
-	if a.Admission != nil && !a.Admission.AllowDiscovery(audit.FromContext(ctx).SourceIP) {
-		return apigen.GetMeta429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+	if a.Admission != nil {
+		if err := a.Admission.AdmitDiscovery(audit.FromContext(ctx).SourceIP); err != nil {
+			return apigen.GetMeta429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
+		}
 	}
 	// The closed allowlist, and nothing else. `login` needs the protocol
 	// capabilities before any session exists; everything past protocol
@@ -335,7 +337,8 @@ func (a *API) Whoami(ctx context.Context, _ apigen.WhoamiRequestObject) (apigen.
 			DisplayName: optional(id.DisplayName),
 		},
 		Capabilities: apigen.PrincipalCapabilities{
-			InstanceOperator: id.InstanceOperator,
+			InstanceOperator:    id.InstanceOperator,
+			DeliveryReportGrant: unheldGrantReachOf(id.DeliveryReportGrant),
 		},
 	}
 	// Surface the enrolment gate so the SPA renders it (#760); absent otherwise.
@@ -920,10 +923,10 @@ func (a *API) fault(ctx context.Context, what string, err error) {
 	a.Log.ErrorContext(ctx, "request failed", "op", what, "err", err)
 }
 
-func tooMany() apigen.TooManyRequestsJSONResponse {
+func tooMany(err error) apigen.TooManyRequestsJSONResponse {
 	return apigen.TooManyRequestsJSONResponse{
 		Body:    errorBody(apigen.ErrorCodeTooManyRequests, ""),
-		Headers: apigen.TooManyRequestsResponseHeaders{RetryAfter: retryAfterSeconds},
+		Headers: apigen.TooManyRequestsResponseHeaders{RetryAfter: retryAfterFor(err)},
 	}
 }
 
@@ -952,4 +955,13 @@ func optional(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// unheldGrantReachOf renders the whoami grant hint; orgs is never null.
+func unheldGrantReachOf(r service.UnheldGrantReach) apigen.UnheldGrantReach {
+	orgs := make([]string, 0, len(r.Orgs))
+	for _, org := range r.Orgs {
+		orgs = append(orgs, string(org))
+	}
+	return apigen.UnheldGrantReach{Instance: r.Instance, Orgs: orgs}
 }

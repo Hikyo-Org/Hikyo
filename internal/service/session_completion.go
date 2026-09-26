@@ -29,6 +29,18 @@ type SessionCompletion interface {
 type sessionCompletionAttempt struct {
 	result  LoginResult
 	refused sessionRefusal
+	// retryAfter is the refusing budget window's wait when refused is
+	// sessionRefusedOverloaded, so the committed 429 advertises it (#806).
+	retryAfter time.Duration
+}
+
+// refusal is the committed refusal as the error returned to the caller. A
+// budget overflow keeps the wait its window reported.
+func (a sessionCompletionAttempt) refusal() error {
+	if a.refused == sessionRefusedOverloaded && a.retryAfter > 0 {
+		return &admission.RateLimitedError{Cause: admission.ErrOverloaded, Wait: a.retryAfter}
+	}
+	return a.refused.err()
 }
 
 type sessionRefusal uint8

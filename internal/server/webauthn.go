@@ -98,7 +98,7 @@ func (a *API) PasskeyLoginStart(ctx context.Context, _ apigen.PasskeyLoginStartR
 		case apigen.ErrorCodeUnauthenticated:
 			return apigen.PasskeyLoginStart401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
 		case apigen.ErrorCodeTooManyRequests:
-			return apigen.PasskeyLoginStart429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+			return apigen.PasskeyLoginStart429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		default:
 			a.fault(ctx, "passkey login start", err)
 			return apigen.PasskeyLoginStart500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil
@@ -126,7 +126,7 @@ func (a *API) PasskeyLoginFinish(ctx context.Context, req apigen.PasskeyLoginFin
 		case apigen.ErrorCodeUnauthenticated:
 			return apigen.PasskeyLoginFinish401JSONResponse{UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, ""))}, nil
 		case apigen.ErrorCodeTooManyRequests:
-			return apigen.PasskeyLoginFinish429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+			return apigen.PasskeyLoginFinish429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		default:
 			a.fault(ctx, "passkey login finish", err)
 			return apigen.PasskeyLoginFinish500JSONResponse{InternalJSONResponse: apigen.InternalJSONResponse(errorBody(apigen.ErrorCodeInternal, ""))}, nil

@@ -65,6 +65,10 @@ type HikyoSecretReconciler struct {
 	// name; it changes nothing about a production single-manager deployment.
 	SkipControllerNameValidation bool
 
+	// reporter sends delivery-target condition reports; nil disables
+	// reporting (operator.statusReporting=false or an unversioned build).
+	reporter *statusReporter
+
 	// now is injected in tests for deterministic expiry conditions.
 	now func() time.Time
 }
@@ -88,7 +92,11 @@ func (r *HikyoSecretReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	var cr hikyov1.HikyoSecret
 	if err := r.Get(ctx, req.NamespacedName, &cr); err != nil {
 		// NotFound: the CR is gone and its managed Secret was GC'd (Owner) or
-		// finalizer-handled (Orphan). Nothing to do.
+		// finalizer-handled (Orphan). Only the best-effort status tombstone
+		// remains; it never fails the reconcile.
+		if apierrors.IsNotFound(err) {
+			r.tombstone(ctx, req.NamespacedName)
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
@@ -148,6 +156,10 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 	if done {
 		return res, err
 	}
+	// From here every status write is followed by a status report under this
+	// credential (D9). Earlier refusals hold no credential and report nothing.
+	report := &reportInput{inst: &inst, cred: cred}
+	ctx = withReportInput(ctx, report)
 
 	// Target-claim conflict (deterministic: earliest creationTimestamp, then
 	// lowest UID, wins) — an AUTHORITATIVE uncached list decides the claimant
@@ -272,6 +284,7 @@ func (r *HikyoSecretReconciler) reconcileActive(ctx context.Context, cr *hikyov1
 
 	now := metav1.NewTime(r.clock())
 	cr.Status.LastFetch = &now
+	report.fetchOK = outcome == opclient.OutcomeOK
 
 	switch outcome {
 	case opclient.OutcomeFetchFailed:

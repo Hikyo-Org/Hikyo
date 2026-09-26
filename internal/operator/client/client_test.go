@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/api/apigen"
 )
 
 func TestFetchReleasesPerReconcileConnections(t *testing.T) {
@@ -273,5 +275,52 @@ func TestFetchRefusesWithoutBearer(t *testing.T) {
 	}
 	if _, _, err := c.Fetch(context.Background(), FetchRequest{Org: "o", Project: "p", Environment: "e"}); err == nil {
 		t.Fatal("expected refusal to fetch without a credential")
+	}
+}
+
+func TestCapabilitiesRequireTheMember(t *testing.T) {
+	body := `{"server_version":"1.0.0","api_revision":5,"protocol_capabilities":["delivery-target-report/1"]}`
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/meta" || r.Header.Get("Authorization") != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	c, err := NewClient(srv.URL, caPEM(t, srv), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps, err := c.Capabilities(t.Context())
+	if err != nil || len(caps) != 1 || caps[0] != "delivery-target-report/1" {
+		t.Fatalf("capabilities = %v, %v", caps, err)
+	}
+	body = `{"server_version":"1.0.0","api_revision":5}`
+	if _, err := c.Capabilities(t.Context()); err == nil {
+		t.Fatal("a meta response without protocol_capabilities must not read as an empty set")
+	}
+}
+
+func TestReportPostsUnderTheBearer(t *testing.T) {
+	var gotAuth, gotPath, gotType string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth, gotPath, gotType = r.Header.Get("Authorization"), r.URL.Path, r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	c, err := NewClient(srv.URL, caPEM(t, srv), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, err := c.Report(t.Context(), "o", "p", "e", "tok", apigen.DeliveryTargetReportRequest{})
+	if err != nil || status != http.StatusNotFound {
+		t.Fatalf("report = %d, %v", status, err)
+	}
+	if gotAuth != "Bearer tok" || gotPath != "/api/v1/orgs/o/projects/p/environments/e/delivery-targets" || gotType != "application/json" {
+		t.Fatalf("request = %q %q %q", gotAuth, gotPath, gotType)
+	}
+	if _, err := c.Tombstone(t.Context(), "o", "p", "e", "", apigen.DeliveryTargetTombstoneRequest{}); err == nil {
+		t.Fatal("a tombstone without a credential must be refused")
 	}
 }

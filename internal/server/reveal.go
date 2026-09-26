@@ -135,7 +135,7 @@ func (a *API) ReauthTotp(ctx context.Context, req apigen.ReauthTotpRequestObject
 				UnauthenticatedJSONResponse: apigen.UnauthenticatedJSONResponse(errorBody(apigen.ErrorCodeUnauthenticated, "")),
 			}, nil
 		case apigen.ErrorCodeTooManyRequests:
-			return apigen.ReauthTotp429JSONResponse{TooManyRequestsJSONResponse: tooMany()}, nil
+			return apigen.ReauthTotp429JSONResponse{TooManyRequestsJSONResponse: tooMany(err)}, nil
 		default:
 			a.fault(ctx, "totp reauth", err)
 			return apigen.ReauthTotp500JSONResponse{

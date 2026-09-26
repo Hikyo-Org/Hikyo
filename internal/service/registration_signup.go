@@ -191,6 +191,12 @@ func (g *oidcSignup) run(ctx context.Context, r store.Repos, az *authz.TxAuthori
 	refund, err := g.auth.signupBudget.chargeSignup()
 	if err != nil {
 		if errors.Is(err, admission.ErrOverloaded) {
+			// Reset first: a retried transaction reuses attempt, and a
+			// refusal without a window must not inherit an earlier one's wait.
+			attempt.retryAfter = 0
+			if limited, ok := errors.AsType[*admission.RateLimitedError](err); ok {
+				attempt.retryAfter = limited.Wait
+			}
 			return refuse(signupCauseBudget, policy.ID)
 		}
 		return authz.Account{}, err

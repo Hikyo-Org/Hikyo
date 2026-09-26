@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	"github.com/Hikyo-Org/hikyo/internal/deliverytarget"
 	hikyov1 "github.com/Hikyo-Org/hikyo/internal/operator/api/v1alpha1"
 )
 
@@ -54,76 +55,40 @@ func (r *HikyoSecretReconciler) acquireCredential(
 func (r *HikyoSecretReconciler) acquireBootstrap(
 	ctx context.Context, cr *hikyov1.HikyoSecret,
 ) (credential, ctrl.Result, bool, error) {
-	var sec corev1.Secret
-	name := cr.Spec.Auth.SecretRef.Name
-	// Uncached: the operator holds no list/watch on Secrets, and the credential
-	// object's identity must be read fresh (its UID+resourceVersion binds the
-	// cursor).
-	if err := r.Reader.Get(ctx, types.NamespacedName{Namespace: cr.Namespace, Name: name}, &sec); err != nil {
-		if apierrors.IsNotFound(err) {
-			return r.designationRefusal(ctx, cr, hikyov1.ReasonSecretNotDesignated,
-				fmt.Sprintf("bootstrap Secret %q not found", name))
-		}
+	cred, refusal, err := r.bootstrapCredential(ctx, cr.Namespace, cr.Spec.Auth.SecretRef.Name, cr.Spec.InstanceRef.Name)
+	if err != nil {
 		if res, derr, handled := r.accessError(ctx, cr, err, "bootstrap Secret"); handled {
 			return credential{}, res, true, derr
 		}
 		return credential{}, ctrl.Result{}, true, err
 	}
-	if !designated(sec.Labels, cr.Spec.InstanceRef.Name) {
-		reason := hikyov1.ReasonSecretNotDesignated
-		if mismatchedInstance(sec.Labels, cr.Spec.InstanceRef.Name) {
-			reason = hikyov1.ReasonInstanceMismatch
-		}
-		return r.designationRefusal(ctx, cr, reason,
-			fmt.Sprintf("bootstrap Secret %q lacks the required designation labels (%s=true, %s=%s)",
-				name, hikyov1.LabelDelivery, hikyov1.LabelInstance, cr.Spec.InstanceRef.Name))
-	}
-	token, err := bootstrapToken(&sec)
-	if err != nil {
-		return r.designationRefusal(ctx, cr, hikyov1.ReasonSecretNotDesignated, err.Error())
+	if refusal != nil {
+		return r.designationRefusal(ctx, cr, refusal.reason, refusal.msg)
 	}
 	r.clearDesignation(cr)
-	return credential{token: token, uid: string(sec.UID), resourceVersion: sec.ResourceVersion}, ctrl.Result{}, false, nil
+	return cred, ctrl.Result{}, false, nil
 }
 
 func (r *HikyoSecretReconciler) acquireFederation(
 	ctx context.Context, cr *hikyov1.HikyoSecret, inst *hikyov1.HikyoInstance,
 ) (credential, ctrl.Result, bool, error) {
-	var sa corev1.ServiceAccount
-	name := cr.Spec.Auth.ServiceAccountRef.Name
-	// Uncached: RBAC grants only `get` on ServiceAccounts (no list/watch), so a
-	// cached read could never start its informer.
-	if err := r.Reader.Get(ctx, types.NamespacedName{Namespace: cr.Namespace, Name: name}, &sa); err != nil {
-		if apierrors.IsNotFound(err) {
-			return r.designationRefusal(ctx, cr, hikyov1.ReasonServiceAccountNotDesignated,
-				fmt.Sprintf("ServiceAccount %q not found", name))
-		}
+	sa, refusal, err := r.federationSubject(ctx, cr.Namespace, cr.Spec.Auth.ServiceAccountRef.Name, inst)
+	if err != nil {
 		if res, derr, handled := r.accessError(ctx, cr, err, "ServiceAccount"); handled {
 			return credential{}, res, true, derr
 		}
 		return credential{}, ctrl.Result{}, true, err
 	}
-	if !designated(sa.Labels, cr.Spec.InstanceRef.Name) {
-		reason := hikyov1.ReasonServiceAccountNotDesignated
-		if mismatchedInstance(sa.Labels, cr.Spec.InstanceRef.Name) {
-			reason = hikyov1.ReasonInstanceMismatch
-		}
-		return r.designationRefusal(ctx, cr, reason,
-			fmt.Sprintf("ServiceAccount %q lacks the required designation labels (%s=true, %s=%s)",
-				name, hikyov1.LabelDelivery, hikyov1.LabelInstance, cr.Spec.InstanceRef.Name))
-	}
-	if inst.Spec.Audience == "" {
-		// Federation needs the mandatory, non-default per-instance audience.
-		return r.designationRefusal(ctx, cr, hikyov1.ReasonAudienceMissing,
-			fmt.Sprintf("HikyoInstance %q declares no audience; the ServiceAccount federation path requires one", inst.Name))
+	if refusal != nil {
+		return r.designationRefusal(ctx, cr, refusal.reason, refusal.msg)
 	}
 	// Designation is valid before minting. Clear a refusal from an earlier
 	// reconcile so a transient TokenRequest failure summarizes as Retained.
 	r.clearDesignation(cr)
 	if r.TokenMinter == nil {
-		return credential{}, ctrl.Result{}, true, fmt.Errorf("operator: no token minter configured for the federation path")
+		return credential{}, ctrl.Result{}, true, errNoTokenMinter
 	}
-	token, err := r.TokenMinter.Mint(ctx, cr.Namespace, name, inst.Spec.Audience)
+	token, err := r.TokenMinter.Mint(ctx, cr.Namespace, sa.Name, inst.Spec.Audience)
 	if err != nil {
 		// A failed TokenRequest is ADR case 2 — retain, backoff.
 		r.event(cr, corev1.EventTypeWarning, hikyov1.ReasonFetchFailed, "TokenRequest failed: %v", err)
@@ -133,6 +98,74 @@ func (r *HikyoSecretReconciler) acquireFederation(
 	}
 	return credential{token: token, uid: string(sa.UID), resourceVersion: sa.ResourceVersion}, ctrl.Result{}, false, nil
 }
+
+// designationFailure is a refused credential reference: the Designation reason
+// and message the active path writes as its condition.
+type designationFailure struct{ reason, msg string }
+
+// bootstrapCredential reads a bootstrap Secret and runs its designation checks
+// (§ 0.2) without writing status, so the active path and the deletion
+// tombstone share one authority test. A non-nil error is an API failure.
+func (r *HikyoSecretReconciler) bootstrapCredential(
+	ctx context.Context, namespace, name, instanceName string,
+) (credential, *designationFailure, error) {
+	var sec corev1.Secret
+	// Uncached: the operator holds no list/watch on Secrets, and the credential
+	// object's identity must be read fresh (its UID+resourceVersion binds the
+	// cursor).
+	if err := r.Reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &sec); err != nil {
+		if apierrors.IsNotFound(err) {
+			return credential{}, &designationFailure{hikyov1.ReasonSecretNotDesignated, fmt.Sprintf("bootstrap Secret %q not found", name)}, nil
+		}
+		return credential{}, nil, err
+	}
+	if !designated(sec.Labels, instanceName) {
+		reason := hikyov1.ReasonSecretNotDesignated
+		if mismatchedInstance(sec.Labels, instanceName) {
+			reason = hikyov1.ReasonInstanceMismatch
+		}
+		return credential{}, &designationFailure{reason, fmt.Sprintf("bootstrap Secret %q lacks the required designation labels (%s=true, %s=%s)",
+			name, hikyov1.LabelDelivery, hikyov1.LabelInstance, instanceName)}, nil
+	}
+	token, err := bootstrapToken(&sec)
+	if err != nil {
+		return credential{}, &designationFailure{hikyov1.ReasonSecretNotDesignated, err.Error()}, nil
+	}
+	return credential{token: token, uid: string(sec.UID), resourceVersion: sec.ResourceVersion}, nil, nil
+}
+
+// federationSubject reads a ServiceAccount and runs its designation and
+// audience checks without writing status. A non-nil error is an API failure.
+func (r *HikyoSecretReconciler) federationSubject(
+	ctx context.Context, namespace, name string, inst *hikyov1.HikyoInstance,
+) (*corev1.ServiceAccount, *designationFailure, error) {
+	var sa corev1.ServiceAccount
+	// Uncached: RBAC grants only `get` on ServiceAccounts (no list/watch), so a
+	// cached read could never start its informer.
+	if err := r.Reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &sa); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, &designationFailure{hikyov1.ReasonServiceAccountNotDesignated, fmt.Sprintf("ServiceAccount %q not found", name)}, nil
+		}
+		return nil, nil, err
+	}
+	if !designated(sa.Labels, inst.Name) {
+		reason := hikyov1.ReasonServiceAccountNotDesignated
+		if mismatchedInstance(sa.Labels, inst.Name) {
+			reason = hikyov1.ReasonInstanceMismatch
+		}
+		return nil, &designationFailure{reason, fmt.Sprintf("ServiceAccount %q lacks the required designation labels (%s=true, %s=%s)",
+			name, hikyov1.LabelDelivery, hikyov1.LabelInstance, inst.Name)}, nil
+	}
+	if inst.Spec.Audience == "" {
+		// Federation needs the mandatory, non-default per-instance audience.
+		return nil, &designationFailure{hikyov1.ReasonAudienceMissing,
+			fmt.Sprintf("HikyoInstance %q declares no audience; the ServiceAccount federation path requires one", inst.Name)}, nil
+	}
+	return &sa, nil, nil
+}
+
+// errNoTokenMinter is a wiring fault: the federation path cannot mint.
+var errNoTokenMinter = errors.New("operator: no token minter configured for the federation path")
 
 func (r *HikyoSecretReconciler) designationRefusal(
 	ctx context.Context, cr *hikyov1.HikyoSecret, reason, msg string,
@@ -309,12 +342,17 @@ func (r *HikyoSecretReconciler) event(cr *hikyov1.HikyoSecret, etype, reason, fo
 // done finalizes the Ready and Lifecycle summaries, sets observedGeneration, and writes the
 // status subresource LAST. A status-write failure is JOINED with the reconcile
 // error rather than discarded — losing the condition/cursor write is itself a
-// fault that must surface (finding: fail-loud handling).
+// fault that must surface (finding: fail-loud handling). Only a written status
+// is reported, after the write and outside the Secret, workload and cursor
+// sequence; the report never changes the reconcile error.
 func (r *HikyoSecretReconciler) done(ctx context.Context, cr *hikyov1.HikyoSecret, res ctrl.Result, err error) (ctrl.Result, error) {
 	r.setStatusSummaries(cr)
 	cr.Status.ObservedGeneration = cr.Generation
 	if uerr := r.Status().Update(ctx, cr); uerr != nil {
-		err = errors.Join(err, uerr)
+		return res, errors.Join(err, uerr)
+	}
+	if in := reportInputFrom(ctx); in != nil && r.reporter != nil {
+		res = r.reportStatus(ctx, cr, in, res)
 	}
 	return res, err
 }
@@ -385,13 +423,18 @@ func validateResyncInterval(cr *hikyov1.HikyoSecret) error {
 // resyncResult is the success-path requeue at spec.resyncInterval (default 5m).
 // The value was already validated by validateResyncInterval at the top of the
 // reconcile, so a parse failure here is unreachable; the 5m fallback covers only
-// the empty (defaulted) case.
+// the empty (defaulted) case. With status reporting enabled the requeue is
+// min(spec.resyncInterval, 24 h) (k8s-condition-reporting ADR D9), whatever
+// the server advertises, so a long resyncInterval never reads stale.
 func (r *HikyoSecretReconciler) resyncResult(cr *hikyov1.HikyoSecret) ctrl.Result {
 	d := 5 * time.Minute
 	if cr.Spec.ResyncInterval != "" {
 		if parsed, err := time.ParseDuration(cr.Spec.ResyncInterval); err == nil && parsed > 0 {
 			d = parsed
 		}
+	}
+	if r.reporter != nil {
+		d = min(d, deliverytarget.MaxReportInterval)
 	}
 	return ctrl.Result{RequeueAfter: d}
 }

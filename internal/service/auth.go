@@ -237,6 +237,11 @@ type Identity struct {
 	// update status) require. It is a reflection of the caller's own grant, not
 	// an authorization — every one of those reads is still judged per request.
 	InstanceOperator bool
+	// DeliveryReportGrant is a disclosure-safe UI hint: where the caller may
+	// grant `report-delivery-status`. No human holds that atom, so every grant
+	// of it is an unheld grant, and this is exactly the grant-unheld rule's
+	// reach (mayGrantUnheld). A hint, not an authorization.
+	DeliveryReportGrant UnheldGrantReach
 	// DisplayName is the human account's chosen name, the same value login
 	// returns, so a reloaded SPA can name its holder instead of showing a
 	// principal id. Empty for principals that have no account row (a machine
@@ -535,7 +540,7 @@ func (s *Auth) attemptLogin(ctx context.Context, username, password string, arti
 	if err != nil {
 		return LoginResult{}, err
 	}
-	if refused := committed.refused.err(); refused != nil {
+	if refused := committed.refusal(); refused != nil {
 		return LoginResult{}, refused
 	}
 	return committed.result, nil
@@ -987,12 +992,25 @@ func (s *Auth) Identity(ctx context.Context, presented string) (Identity, error)
 		// flag would mis-gate the other, and the honest fix is a second
 		// capability, not a wider reading of this one.
 		//
-		// It is a HINT: if it cannot be computed we return it false rather than
-		// fail identity resolution, because a chrome affordance must never be the
-		// reason whoami — the request the whole SPA depends on — refuses.
-		if operator, capErr := az.HoldsInstanceCapability(ctx, id, authz.OpRetentionHealthRead); capErr == nil {
-			out.InstanceOperator = operator
+		// A failed read fails whoami rather than rendering the hint false: a
+		// false hint is indistinguishable from a real "not an operator", and on
+		// PostgreSQL a failed statement aborts this transaction anyway, so
+		// swallowing it here would only move the failure to commit.
+		operator, err := az.HoldsInstanceCapability(ctx, id, authz.OpRetentionHealthRead)
+		if err != nil {
+			return err
 		}
+		out.InstanceOperator = operator
+		// The caller's own grant rows, read without an operation or an audit
+		// record, the same footing as the check above: the grant dialog gates
+		// its report-delivery-status offer on this rather than probing the org
+		// membership listing, which is an audited read and, for a project-scope
+		// administrator, an audited denial. Same failure rule as above.
+		rows, err := az.GrantRowsForPrincipal(ctx, id.Principal)
+		if err != nil {
+			return err
+		}
+		out.DeliveryReportGrant = unheldGrantReach(rows)
 		return nil
 	})
 	return out, err

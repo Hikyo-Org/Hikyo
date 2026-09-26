@@ -67,6 +67,14 @@ After a restore, every restored authenticator is intentionally inert. Use
 For MCP-specific `404`, `401`, protocol-mirror, invalid-token, and revoked-token
 checks, use the [MCP troubleshooting table](/docs/mcp/#troubleshooting).
 
+## Too many requests
+
+Exit code `7` with `too many requests; Retry-After: N` means the server
+throttled the caller. Wait `N` seconds before retrying. Repeated throttling of
+CI jobs usually means they share one egress address and its per-IP allowance;
+follow the shared-egress advice under
+[Rate limits](/docs/cli-reference/#rate-limits).
+
 ## A secret cannot be revealed
 
 Confirm the key is classified as secret, the target environment is correct,

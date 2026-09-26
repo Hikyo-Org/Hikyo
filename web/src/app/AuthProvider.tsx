@@ -155,6 +155,10 @@ function identityVersion(identity: WhoAmI | null): string | null {
     // treat a mid-session grant/revoke as no-op and leave the operator chrome
     // (all gated on this) stale until a blocking revalidate.
     String(identity.capabilities.instance_operator),
+    // The report-delivery-status grant reach gates the machine-access grant
+    // dialog, so a grant or revoke of org/instance manage-members must settle.
+    String(identity.capabilities.delivery_report_grant.instance),
+    identity.capabilities.delivery_report_grant.orgs.toSorted().join(','),
     // The enrolment gate lifting (or landing) re-routes the whole app (#785).
     String(identity.enrolment_required === true),
     ...identity.session.assurance.factors,
@@ -530,7 +534,10 @@ export function AuthProvider({ children, monitorRuntime = false }: { children: R
       const hydrated: WhoAmI = {
         session: identity.session,
         principal: identity.principal,
-        capabilities: identity.capabilities ?? { instance_operator: false },
+        capabilities: identity.capabilities ?? {
+          instance_operator: false,
+          delivery_report_grant: { instance: false, orgs: [] },
+        },
       };
       const hydrateCapabilities = identity.capabilities === undefined;
       transitionRevisionRef.current += 1;

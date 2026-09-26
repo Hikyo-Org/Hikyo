@@ -36,6 +36,11 @@ type Config struct {
 	// authority with the same switch.
 	NativeSecretTypes bool
 
+	// StatusReporting reports each HikyoSecret's conditions to its Hikyo
+	// server (k8s-condition-reporting ADR D9, default true). The server must
+	// also advertise the capability; its absence sends nothing.
+	StatusReporting bool
+
 	// OwnNamespace is the operator's own namespace, where the stamp-root Secret
 	// lives. From HIKYO_OPERATOR_NAMESPACE, falling back to POD_NAMESPACE
 	// (downward API). Missing is a hard error — the operator cannot derive or
@@ -86,6 +91,12 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 		return Config{}, fmt.Errorf("HIKYO_OPERATOR_NATIVE_SECRET_TYPES: %w", err)
 	}
 	cfg.NativeSecretTypes = native
+
+	reporting, err := parseBoolDefault(getenv("HIKYO_OPERATOR_STATUS_REPORTING"), true)
+	if err != nil {
+		return Config{}, fmt.Errorf("HIKYO_OPERATOR_STATUS_REPORTING: %w", err)
+	}
+	cfg.StatusReporting = reporting
 
 	// Own namespace: explicit override wins, else the downward-API POD_NAMESPACE.
 	own := strings.TrimSpace(getenv("HIKYO_OPERATOR_NAMESPACE"))

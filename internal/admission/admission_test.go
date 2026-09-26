@@ -152,6 +152,97 @@ func TestPerIPSlidingWindow(t *testing.T) {
 	rel()
 }
 
+// TestPerIPRefusalCarriesTheWaitThatReopensTheWindow is #806's acceptance: the
+// per-IP refusal names how long until this source's own window admits it again,
+// and waiting exactly that long (rounded up to whole seconds, as the header
+// carries it) is enough absent new traffic, while any shorter wait is not.
+func TestPerIPRefusalCarriesTheWaitThatReopensTheWindow(t *testing.T) {
+	start := time.Unix(1_800_000_000, 0)
+	now := start
+	l, err := New(Config{BudgetMiB: DefaultBudgetMiB, ArgonMemoryKiB: 64 * 1024, Now: fixedClock(&now)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const source = "203.0.113.7"
+	// Spread the allowance over the window so the oldest hit is not "now".
+	step := 3300 * time.Millisecond
+	for i := range PerIPPerMinute {
+		now = start.Add(time.Duration(i) * step)
+		rel, err := l.Enter(context.Background(), source)
+		if err != nil {
+			t.Fatalf("attempt %d refused inside the allowance: %v", i, err)
+		}
+		rel()
+	}
+	now = now.Add(step)
+	_, err = l.Enter(context.Background(), source)
+	var limited *RateLimitedError
+	if !errors.As(err, &limited) || !errors.Is(err, ErrOverloaded) {
+		t.Fatalf("per-IP refusal = %v, want a RateLimitedError that is ErrOverloaded", err)
+	}
+	// The oldest counted hit (at start) leaves the window a minute after it.
+	if want := start.Add(time.Minute).Sub(now); limited.Wait != want {
+		t.Fatalf("advertised wait %s, want %s (oldest hit plus one minute)", limited.Wait, want)
+	}
+	advertised := time.Duration(RetryAfterSeconds(limited.Wait)) * time.Second
+	if advertised < limited.Wait {
+		t.Fatalf("header value %s is shorter than the wait %s", advertised, limited.Wait)
+	}
+
+	refusedAt := now
+	// One nanosecond short of the wait is still refused: the value is tight.
+	now = refusedAt.Add(limited.Wait - time.Nanosecond)
+	if _, err := l.Enter(context.Background(), source); !errors.Is(err, ErrOverloaded) {
+		t.Fatalf("admitted before the advertised wait elapsed: %v", err)
+	}
+	// Waiting the advertised whole seconds is enough.
+	now = refusedAt.Add(advertised)
+	rel, err := l.Enter(context.Background(), source)
+	if err != nil {
+		t.Fatalf("refused again after waiting the advertised %s: %v", advertised, err)
+	}
+	rel()
+}
+
+func TestRetryAfterSecondsRoundsUpAndNeverAdvertisesZero(t *testing.T) {
+	for wait, want := range map[time.Duration]int{
+		0:                        1,
+		time.Nanosecond:          1,
+		time.Second:              1,
+		1001 * time.Millisecond:  2,
+		59200 * time.Millisecond: 60,
+		time.Minute:              60,
+	} {
+		if got := RetryAfterSeconds(wait); got != want {
+			t.Errorf("RetryAfterSeconds(%s) = %d, want %d", wait, got, want)
+		}
+	}
+}
+
+func TestDiscoveryRefusalCarriesItsOwnWindow(t *testing.T) {
+	start := time.Unix(1_800_000_000, 0)
+	now := start
+	l, err := New(Config{BudgetMiB: DefaultBudgetMiB, ArgonMemoryKiB: 64 * 1024, Now: fixedClock(&now)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range MetaPerIPPerMinute {
+		if err := l.AdmitDiscovery("203.0.113.7"); err != nil {
+			t.Fatalf("discovery refused inside the allowance: %v", err)
+		}
+	}
+	now = start.Add(20 * time.Second)
+	err = l.AdmitDiscovery("203.0.113.7")
+	var limited *RateLimitedError
+	if !errors.As(err, &limited) || limited.Wait != 40*time.Second {
+		t.Fatalf("discovery refusal = %v, want a 40s wait", err)
+	}
+	now = now.Add(limited.Wait)
+	if err := l.AdmitDiscovery("203.0.113.7"); err != nil {
+		t.Fatalf("discovery refused after its advertised wait: %v", err)
+	}
+}
+
 func TestDiscoveryAllowanceUsesItsLockedFloor(t *testing.T) {
 	l, err := New(Config{
 		BudgetMiB:      DefaultBudgetMiB,
