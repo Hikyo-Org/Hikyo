@@ -119,6 +119,8 @@ func (stubMeasuredSources) ApprovalSnapshot() (server.ApprovalStats, error) {
 
 func (stubMeasuredSources) DynamicSnapshot() (int64, int64, error) { return 0, 0, nil }
 
+func (stubMeasuredSources) PKISnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
+
 // scrapeOperationalMetrics returns the /metrics body of a fresh operational
 // handler. NewMetrics pre-registers every label combination eagerly, so the
 // scrape emits the complete series set (at zero) without driving any traffic.
@@ -127,6 +129,7 @@ func scrapeOperationalMetrics(t *testing.T) string {
 	metrics := server.NewMetrics(stubAdmissionSnapshot{})
 	metrics.SetApprovalSource(stubMeasuredSources{})
 	metrics.SetDynamicSource(stubMeasuredSources{})
+	metrics.SetPKISource(stubMeasuredSources{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

@@ -251,13 +251,13 @@ import {
   reauthTotp,
   reclassifyKey,
   reconcileOfflineRecords,
-  reconcilePkiIssuer,
   redeemCliReauth,
   redeemWorkspaceHandoff,
   reencryptInstance,
   reencryptProject,
   refreshSamlProviderMetadata,
   regenerateRecoveryCodes,
+  releasePkiIssuerHold,
   releaseRevisionPin,
   removeAdapterTarget,
   removePasskey,
@@ -565,13 +565,13 @@ import type {
   ReauthTotpData,
   ReclassifyKeyData,
   ReconcileOfflineRecordsData,
-  ReconcilePkiIssuerData,
   RedeemCliReauthData,
   RedeemWorkspaceHandoffData,
   ReencryptInstanceData,
   ReencryptProjectData,
   RefreshSamlProviderMetadataData,
   RegenerateRecoveryCodesData,
+  ReleasePkiIssuerHoldData,
   ReleaseRevisionPinData,
   RemoveAdapterTargetData,
   RemovePasskeyData,
@@ -861,13 +861,13 @@ import {
   zReauthTotpResponse,
   zReclassifyKeyResponse,
   zReconcileOfflineRecordsResponse,
-  zReconcilePkiIssuerResponse,
   zRedeemCliReauthResponse,
   zRedeemWorkspaceHandoffResponse,
   zReencryptInstanceResponse,
   zReencryptProjectResponse,
   zRefreshSamlProviderMetadataResponse,
   zRegenerateRecoveryCodesResponse,
+  zReleasePkiIssuerHoldResponse,
   zReleaseRevisionPinResponse,
   zRemoveAdapterTargetResponse,
   zRemovePasskeyResponse,
@@ -1139,13 +1139,13 @@ export const reauthPasskeyStartOp: BodyOperation<ReauthPasskeyStartData, typeof 
 export const reauthTotpOp: BodyOperation<ReauthTotpData, typeof zReauthTotpResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reauthTotp, [200], zReauthTotpResponse);
 export const reclassifyKeyOp: BodyOperation<ReclassifyKeyData, typeof zReclassifyKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reclassifyKey, [200], zReclassifyKeyResponse);
 export const reconcileOfflineRecordsOp: BodyOperation<ReconcileOfflineRecordsData, typeof zReconcileOfflineRecordsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reconcileOfflineRecords, [200], zReconcileOfflineRecordsResponse);
-export const reconcilePkiIssuerOp: BodyOperation<ReconcilePkiIssuerData, typeof zReconcilePkiIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reconcilePkiIssuer, [200], zReconcilePkiIssuerResponse);
 export const redeemCliReauthOp: BodyOperation<RedeemCliReauthData, typeof zRedeemCliReauthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(redeemCliReauth, [200], zRedeemCliReauthResponse);
 export const redeemWorkspaceHandoffOp: BodyOperation<RedeemWorkspaceHandoffData, typeof zRedeemWorkspaceHandoffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(redeemWorkspaceHandoff, [201], zRedeemWorkspaceHandoffResponse);
 export const reencryptInstanceOp: BodyOperation<ReencryptInstanceData, typeof zReencryptInstanceResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reencryptInstance, [200], zReencryptInstanceResponse);
 export const reencryptProjectOp: BodyOperation<ReencryptProjectData, typeof zReencryptProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(reencryptProject, [200], zReencryptProjectResponse);
 export const refreshSamlProviderMetadataOp: BodyOperation<RefreshSamlProviderMetadataData, typeof zRefreshSamlProviderMetadataResponse> = /* @__PURE__ */ new GeneratedBodyOperation(refreshSamlProviderMetadata, [200], zRefreshSamlProviderMetadataResponse);
 export const regenerateRecoveryCodesOp: BodyOperation<RegenerateRecoveryCodesData, typeof zRegenerateRecoveryCodesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(regenerateRecoveryCodes, [200], zRegenerateRecoveryCodesResponse);
+export const releasePkiIssuerHoldOp: BodyOperation<ReleasePkiIssuerHoldData, typeof zReleasePkiIssuerHoldResponse> = /* @__PURE__ */ new GeneratedBodyOperation(releasePkiIssuerHold, [200], zReleasePkiIssuerHoldResponse);
 export const releaseRevisionPinOp: BodyOperation<ReleaseRevisionPinData, typeof zReleaseRevisionPinResponse> = /* @__PURE__ */ new GeneratedBodyOperation(releaseRevisionPin, [200], zReleaseRevisionPinResponse);
 export const removeAdapterTargetOp: BodyOperation<RemoveAdapterTargetData, typeof zRemoveAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(removeAdapterTarget, [200], zRemoveAdapterTargetResponse);
 export const removePasskeyOp: BodyOperation<RemovePasskeyData, typeof zRemovePasskeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(removePasskey, [200], zRemovePasskeyResponse);

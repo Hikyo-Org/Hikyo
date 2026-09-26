@@ -649,8 +649,8 @@ UPDATE adapters SET credential_ciphertext = NULL, credential_set_at = NULL;
 UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_at = NULL;
 
 -- A restore can resurrect certificates revoked after the backup was taken, so
--- every restored CA issuer is held (no minting) until an operator reconciles
--- it with `hikyo pki issuer reconcile` (#154, pki ADR D8). CRLs still publish.
+-- every restored CA issuer is held (no minting) until an operator releases
+-- the hold with `hikyo pki issuer release-hold` (#154, pki ADR D8). CRLs still publish.
 -- hikyo:authn-resolution
 -- name: HoldRestoredPKIIssuers :exec
 UPDATE pki_issuers SET restore_hold = 1;

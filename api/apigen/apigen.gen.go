@@ -11376,9 +11376,9 @@ type ServerInterface interface {
 	// InstallPkiIssuerCertificate Activate a pending version with its offline-signed certificate.
 	// (POST /api/v1/instance/pki/issuers/{issuer}/install)
 	InstallPkiIssuerCertificate(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName)
-	// ReconcilePkiIssuer Lift the post-restore hold on an issuer.
-	// (POST /api/v1/instance/pki/issuers/{issuer}/reconcile)
-	ReconcilePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName)
+	// ReleasePkiIssuerHold Lift the post-restore hold on an issuer.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/release-hold)
+	ReleasePkiIssuerHold(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName)
 	// RotatePkiIssuer Create the next key version of an issuer (overlap rotation).
 	// (POST /api/v1/instance/pki/issuers/{issuer}/rotate)
 	RotatePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName)
@@ -12546,9 +12546,9 @@ func (_ Unimplemented) InstallPkiIssuerCertificate(w http.ResponseWriter, r *htt
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ReconcilePkiIssuer Lift the post-restore hold on an issuer.
-// (POST /api/v1/instance/pki/issuers/{issuer}/reconcile)
-func (_ Unimplemented) ReconcilePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+// ReleasePkiIssuerHold Lift the post-restore hold on an issuer.
+// (POST /api/v1/instance/pki/issuers/{issuer}/release-hold)
+func (_ Unimplemented) ReleasePkiIssuerHold(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -15397,8 +15397,8 @@ func (siw *ServerInterfaceWrapper) InstallPkiIssuerCertificate(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
-// ReconcilePkiIssuer operation middleware
-func (siw *ServerInterfaceWrapper) ReconcilePkiIssuer(w http.ResponseWriter, r *http.Request) {
+// ReleasePkiIssuerHold operation middleware
+func (siw *ServerInterfaceWrapper) ReleasePkiIssuerHold(w http.ResponseWriter, r *http.Request) {
 
 	var err error
 	_ = err
@@ -15413,7 +15413,7 @@ func (siw *ServerInterfaceWrapper) ReconcilePkiIssuer(w http.ResponseWriter, r *
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ReconcilePkiIssuer(w, r, issuer)
+		siw.Handler.ReleasePkiIssuerHold(w, r, issuer)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -26530,7 +26530,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/install", wrapper.InstallPkiIssuerCertificate)
 	})
 	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/reconcile", wrapper.ReconcilePkiIssuer)
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/release-hold", wrapper.ReleasePkiIssuerHold)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire", wrapper.RetirePkiIssuer)
@@ -34616,17 +34616,17 @@ func (response InstallPkiIssuerCertificate503JSONResponse) VisitInstallPkiIssuer
 	return err
 }
 
-type ReconcilePkiIssuerRequestObject struct {
+type ReleasePkiIssuerHoldRequestObject struct {
 	Issuer PkiIssuerName `json:"issuer"`
 }
 
-type ReconcilePkiIssuerResponseObject interface {
-	VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error
+type ReleasePkiIssuerHoldResponseObject interface {
+	VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error
 }
 
-type ReconcilePkiIssuer200JSONResponse PkiIssuerList
+type ReleasePkiIssuerHold200JSONResponse PkiIssuerList
 
-func (response ReconcilePkiIssuer200JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold200JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -34638,9 +34638,9 @@ func (response ReconcilePkiIssuer200JSONResponse) VisitReconcilePkiIssuerRespons
 	return err
 }
 
-type ReconcilePkiIssuer400JSONResponse struct{ BadRequestJSONResponse }
+type ReleasePkiIssuerHold400JSONResponse struct{ BadRequestJSONResponse }
 
-func (response ReconcilePkiIssuer400JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold400JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -34652,9 +34652,9 @@ func (response ReconcilePkiIssuer400JSONResponse) VisitReconcilePkiIssuerRespons
 	return err
 }
 
-type ReconcilePkiIssuer401JSONResponse struct{ UnauthenticatedJSONResponse }
+type ReleasePkiIssuerHold401JSONResponse struct{ UnauthenticatedJSONResponse }
 
-func (response ReconcilePkiIssuer401JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold401JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -34666,9 +34666,9 @@ func (response ReconcilePkiIssuer401JSONResponse) VisitReconcilePkiIssuerRespons
 	return err
 }
 
-type ReconcilePkiIssuer403JSONResponse struct{ ForbiddenJSONResponse }
+type ReleasePkiIssuerHold403JSONResponse struct{ ForbiddenJSONResponse }
 
-func (response ReconcilePkiIssuer403JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold403JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -34680,9 +34680,9 @@ func (response ReconcilePkiIssuer403JSONResponse) VisitReconcilePkiIssuerRespons
 	return err
 }
 
-type ReconcilePkiIssuer404JSONResponse struct{ NotFoundJSONResponse }
+type ReleasePkiIssuerHold404JSONResponse struct{ NotFoundJSONResponse }
 
-func (response ReconcilePkiIssuer404JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold404JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -34694,9 +34694,9 @@ func (response ReconcilePkiIssuer404JSONResponse) VisitReconcilePkiIssuerRespons
 	return err
 }
 
-type ReconcilePkiIssuer409JSONResponse struct{ ConflictJSONResponse }
+type ReleasePkiIssuerHold409JSONResponse struct{ ConflictJSONResponse }
 
-func (response ReconcilePkiIssuer409JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold409JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -34708,9 +34708,9 @@ func (response ReconcilePkiIssuer409JSONResponse) VisitReconcilePkiIssuerRespons
 	return err
 }
 
-type ReconcilePkiIssuer429JSONResponse struct{ TooManyRequestsJSONResponse }
+type ReleasePkiIssuerHold429JSONResponse struct{ TooManyRequestsJSONResponse }
 
-func (response ReconcilePkiIssuer429JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold429JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -34723,9 +34723,9 @@ func (response ReconcilePkiIssuer429JSONResponse) VisitReconcilePkiIssuerRespons
 	return err
 }
 
-type ReconcilePkiIssuer500JSONResponse struct{ InternalJSONResponse }
+type ReleasePkiIssuerHold500JSONResponse struct{ InternalJSONResponse }
 
-func (response ReconcilePkiIssuer500JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold500JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -34737,9 +34737,9 @@ func (response ReconcilePkiIssuer500JSONResponse) VisitReconcilePkiIssuerRespons
 	return err
 }
 
-type ReconcilePkiIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+type ReleasePkiIssuerHold503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
-func (response ReconcilePkiIssuer503JSONResponse) VisitReconcilePkiIssuerResponse(w http.ResponseWriter) error {
+func (response ReleasePkiIssuerHold503JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -48665,20 +48665,6 @@ func (response RevokeCertificate401JSONResponse) VisitRevokeCertificateResponse(
 	return err
 }
 
-type RevokeCertificate403JSONResponse struct{ ForbiddenJSONResponse }
-
-func (response RevokeCertificate403JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type RevokeCertificate404JSONResponse struct{ NotFoundJSONResponse }
 
 func (response RevokeCertificate404JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
@@ -62245,9 +62231,9 @@ type StrictServerInterface interface {
 	// InstallPkiIssuerCertificate Activate a pending version with its offline-signed certificate.
 	// (POST /api/v1/instance/pki/issuers/{issuer}/install)
 	InstallPkiIssuerCertificate(ctx context.Context, request InstallPkiIssuerCertificateRequestObject) (InstallPkiIssuerCertificateResponseObject, error)
-	// ReconcilePkiIssuer Lift the post-restore hold on an issuer.
-	// (POST /api/v1/instance/pki/issuers/{issuer}/reconcile)
-	ReconcilePkiIssuer(ctx context.Context, request ReconcilePkiIssuerRequestObject) (ReconcilePkiIssuerResponseObject, error)
+	// ReleasePkiIssuerHold Lift the post-restore hold on an issuer.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/release-hold)
+	ReleasePkiIssuerHold(ctx context.Context, request ReleasePkiIssuerHoldRequestObject) (ReleasePkiIssuerHoldResponseObject, error)
 	// RotatePkiIssuer Create the next key version of an issuer (overlap rotation).
 	// (POST /api/v1/instance/pki/issuers/{issuer}/rotate)
 	RotatePkiIssuer(ctx context.Context, request RotatePkiIssuerRequestObject) (RotatePkiIssuerResponseObject, error)
@@ -65093,25 +65079,25 @@ func (sh *strictHandler) InstallPkiIssuerCertificate(w http.ResponseWriter, r *h
 	}
 }
 
-// ReconcilePkiIssuer operation middleware
-func (sh *strictHandler) ReconcilePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
-	var request ReconcilePkiIssuerRequestObject
+// ReleasePkiIssuerHold operation middleware
+func (sh *strictHandler) ReleasePkiIssuerHold(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	var request ReleasePkiIssuerHoldRequestObject
 
 	request.Issuer = issuer
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.ReconcilePkiIssuer(ctx, request.(ReconcilePkiIssuerRequestObject))
+		return sh.ssi.ReleasePkiIssuerHold(ctx, request.(ReleasePkiIssuerHoldRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ReconcilePkiIssuer")
+		handler = middleware(handler, "ReleasePkiIssuerHold")
 	}
 
 	response, err := handler(r.Context(), w, r, request)
 
 	if err != nil {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(ReconcilePkiIssuerResponseObject); ok {
-		if err := validResponse.VisitReconcilePkiIssuerResponse(w); err != nil {
+	} else if validResponse, ok := response.(ReleasePkiIssuerHoldResponseObject); ok {
+		if err := validResponse.VisitReleasePkiIssuerHoldResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

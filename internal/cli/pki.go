@@ -144,7 +144,7 @@ func runPKI(ctx context.Context, ios IO, args []string) error {
 
 func runPKIIssuer(ctx context.Context, ios IO, args []string) error {
 	sub, rest, err := subverb("pki issuer", args, "list", "show", "create-root", "create-intermediate", "import",
-		"rotate", "install", "retire", "revoke", "reconcile", "crl")
+		"rotate", "install", "retire", "revoke", "release-hold", "crl")
 	if err != nil {
 		return err
 	}
@@ -257,13 +257,13 @@ func runPKIIssuer(ctx context.Context, ios IO, args []string) error {
 		return issuerPath + "/versions/" + strconv.FormatInt(version, 10), nil
 	}
 	switch sub {
-	case "list", "show", "reconcile":
+	case "list", "show", "release-hold":
 		var out apigen.PkiIssuerList
 		method, path := http.MethodGet, pkiBase()+"/issuers"
 		if sub == "show" {
 			path = issuerPath
-		} else if sub == "reconcile" {
-			method, path = http.MethodPost, issuerPath+"/reconcile"
+		} else if sub == "release-hold" {
+			method, path = http.MethodPost, issuerPath+"/release-hold"
 		}
 		if err := client.Do(ctx, method, path, nil, &out); err != nil {
 			return err

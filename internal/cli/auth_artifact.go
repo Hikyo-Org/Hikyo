@@ -115,7 +115,7 @@ var authRuleRows = []authRuleRow{
 		"lease settle",
 		"pki issuer list", "pki issuer show", "pki issuer create-root", "pki issuer create-intermediate",
 		"pki issuer import", "pki issuer rotate", "pki issuer install", "pki issuer retire", "pki issuer revoke",
-		"pki issuer reconcile", "pki issuer crl",
+		"pki issuer release-hold", "pki issuer crl",
 		"pki profile list", "pki profile show", "pki profile create", "pki profile update", "pki profile delete",
 		"pki profile bind", "pki profile unbind",
 	)},

@@ -224,7 +224,7 @@ func doctorAdapterFinding(health apigen.RetentionHealth) doctorFinding {
 // doctorPKIFinding surfaces private-PKI state that needs an operator (#154):
 // certificates whose issuance outcome is unknown (the CRL already lists them
 // as revoked, and they should be re-issued) and issuers held after a restore
-// (no issuance until `hikyo pki issuer reconcile`). A server that did not
+// (no issuance until `hikyo pki issuer release-hold`). A server that did not
 // measure them reports unknown, never ok.
 func doctorPKIFinding(health apigen.RetentionHealth) doctorFinding {
 	finding := doctorFinding{Provider: "-", Code: "pki", Severity: "ok", EffectiveAt: "-"}

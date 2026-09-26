@@ -218,16 +218,16 @@ func (a *API) InstallPkiIssuerCertificate(ctx context.Context, req apigen.Instal
 	return apigen.InstallPkiIssuerCertificate200JSONResponse(pkiIssuerResponse(view)), nil
 }
 
-func (a *API) ReconcilePkiIssuer(ctx context.Context, req apigen.ReconcilePkiIssuerRequestObject) (apigen.ReconcilePkiIssuerResponseObject, error) {
+func (a *API) ReleasePkiIssuerHold(ctx context.Context, req apigen.ReleasePkiIssuerHoldRequestObject) (apigen.ReleasePkiIssuerHoldResponseObject, error) {
 	svc, err := a.pkiService()
 	if err != nil {
 		return nil, err
 	}
-	views, err := svc.ReconcileIssuer(ctx, service.Bearer(bearer(ctx)), req.Issuer)
+	views, err := svc.ReleaseIssuerHold(ctx, service.Bearer(bearer(ctx)), req.Issuer)
 	if err != nil {
 		return nil, err
 	}
-	return apigen.ReconcilePkiIssuer200JSONResponse(pkiIssuerList(views)), nil
+	return apigen.ReleasePkiIssuerHold200JSONResponse(pkiIssuerList(views)), nil
 }
 
 func (a *API) RetirePkiIssuer(ctx context.Context, req apigen.RetirePkiIssuerRequestObject) (apigen.RetirePkiIssuerResponseObject, error) {

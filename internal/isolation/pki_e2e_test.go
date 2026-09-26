@@ -432,8 +432,8 @@ func TestPKILifecycle(t *testing.T) {
 		if _, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "web", CSRPEM: csrPEM, DNSNames: []string{"held.svc.example.com"}}); !errors.Is(err, service.ErrPKIIssuerHeld) {
 			t.Fatalf("issuance from a held issuer: %v", err)
 		}
-		if _, err := svc.ReconcileIssuer(ctx, op, "issuing"); err != nil {
-			t.Fatalf("reconcile: %v", err)
+		if _, err := svc.ReleaseIssuerHold(ctx, op, "issuing"); err != nil {
+			t.Fatalf("release hold: %v", err)
 		}
 		afterHold, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "web", CSRPEM: csrPEM, DNSNames: []string{"held.svc.example.com"}})
 		if err != nil {

@@ -206,10 +206,15 @@ profile to a scope is its own audited operation.
 - Backup exports the tables as stored: public inventory and sealed CA keys.
 - `CompleteRestore` sets `restore_hold` on every issuer, which suspends minting,
   because a restore can resurrect certificates that were revoked after the
-  backup was taken. The hold clears only through `pki issuer reconcile <name>`
+  backup was taken. The hold clears only through `pki issuer release-hold <name>`
   (`instance-config`, audited), after the operator has re-applied known
   revocations. This is the credential reconciliation boundary applied to CAs.
   Restored principals stay inert until reconciled, as they already are.
+  Releasing the hold is a network operation, unlike `restore reconcile`, which
+  stays local-host authority: only an operator whose own principal was already
+  reconciled (the local-host act) can call it, so the boundary holds
+  transitively. It is deliberately not named "reconcile", a word reserved for
+  that local-host restore surface.
 - Every lifecycle transition is a CAS on the row's state. The worker
   (`app.pkiWorker`, every node) uses only row-level CAS writes, so it needs no
   singleton scheduler lease: the dynamic-worker argument, verbatim.

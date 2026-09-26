@@ -3221,7 +3221,7 @@ var registry = map[EventType]TypeSpec{
 		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
 		Trails:   map[Trail]bool{TrailInstance: true},
 		Schema: Schema{
-			"action":                {Kind: KindString, Required: true, Enum: []string{"create", "install", "rotate", "retire", "revoke", "reconcile"}},
+			"action":                {Kind: KindString, Required: true, Enum: []string{"create", "install", "rotate", "retire", "revoke", "release-hold"}},
 			"name":                  {Kind: KindString, Required: true},
 			"version":               {Kind: KindInt, Required: true},
 			"kind":                  {Kind: KindString, Required: true, Enum: []string{"root", "intermediate"}},

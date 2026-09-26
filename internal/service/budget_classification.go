@@ -174,7 +174,7 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// private PKI issuers and profiles (#154): instance-config, human
 		// session, the SAML SP key custody shape
 		authz.OpPKIIssuerInspect, authz.OpPKIIssuerCreate, authz.OpPKIIssuerInstall, authz.OpPKIIssuerRotate,
-		authz.OpPKIIssuerRetire, authz.OpPKIIssuerRevoke, authz.OpPKIIssuerReconcile, authz.OpPKIIssuerPublishCRL,
+		authz.OpPKIIssuerRetire, authz.OpPKIIssuerRevoke, authz.OpPKIIssuerReleaseHold, authz.OpPKIIssuerPublishCRL,
 		authz.OpPKIProfileInspect, authz.OpPKIProfileCreate, authz.OpPKIProfileUpdate, authz.OpPKIProfileDelete,
 		authz.OpPKIProfileBind, authz.OpPKIProfileUnbind,
 		// SCIM (provisioning bindings, credentials, mappings, and the provisioning verbs)

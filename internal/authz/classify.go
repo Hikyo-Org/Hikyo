@@ -799,7 +799,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /api/v1/instance/pki/issuers/{issuer}":                                                               {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInspect}},
 	"http:POST /api/v1/instance/pki/issuers/{issuer}/rotate":                                                       {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRotate}},
 	"http:POST /api/v1/instance/pki/issuers/{issuer}/install":                                                      {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInstall}},
-	"http:POST /api/v1/instance/pki/issuers/{issuer}/reconcile":                                                    {Class: ClassInstance, Ops: []Operation{OpPKIIssuerReconcile}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/release-hold":                                                 {Class: ClassInstance, Ops: []Operation{OpPKIIssuerReleaseHold}},
 	"http:POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire":                                    {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRetire}},
 	"http:POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke":                                    {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRevoke}},
 	"http:GET /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl":                                        {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInspect}},

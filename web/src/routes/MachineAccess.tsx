@@ -66,6 +66,8 @@ import {
   type ProjectRef,
   type ServiceAccount,
 } from '../api/identities.ts';
+import { useCertificates } from '../api/pki.ts';
+import { CertificatesTab, certificateCount } from './CertificatesTab.tsx';
 import { DeliveryTargetsPanel } from './DeliveryTargets.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
 import { ApiError } from '../api/client.ts';
@@ -142,7 +144,7 @@ import {
 
  */
 
-type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases';
+type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases' | 'certificates';
 
 /** The route's one-at-a-time dialog selector (not the `ui/Dialog` atom). */
 type DialogState =
@@ -185,6 +187,7 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'kubernetes', label: 'Kubernetes targets' },
   { id: 'providers', label: 'Providers' },
   { id: 'leases', label: 'Leases' },
+  { id: 'certificates', label: 'Certificates' },
 ];
 
 /**
@@ -233,6 +236,7 @@ export function MachineAccessPage() {
     [environmentsQuery.data],
   );
   const leases = useLeases(project, environments);
+  const certificates = useCertificates(project, environments);
   const deliveryTargets = useDeliveryTargets(project, environments);
   // Until the environments are read the fan-out is empty, which would read as
   // "no reports": the reports are known only once the server says it accepts
@@ -391,6 +395,7 @@ export function MachineAccessPage() {
       : 'unknown',
     providers: providersQuery.isSuccess ? providers.length : 'unknown',
     leases: leases.isPending || leases.isError ? 'unknown' : leases.rows.length,
+    certificates: certificateCount(certificates),
   };
   const unknownLeases = leases.rows.filter((row) => row.lease.state === 'unknown').length;
   const countedTabs: readonly TabItem<Tab>[] = TABS.map((entry) => ({
@@ -750,6 +755,10 @@ export function MachineAccessPage() {
               </p>
             ) : null}
           </>
+        ) : null}
+
+        {tab === 'certificates' ? (
+          <CertificatesTab project={project} environments={environments} view={certificates} />
         ) : null}
 
         {tab === 'leases' ? (

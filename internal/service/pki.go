@@ -53,7 +53,7 @@ var (
 	ErrPKIIssuerState    = fmt.Errorf("%w: the PKI issuer version is not in the required lifecycle state", domain.ErrConflict)
 	ErrPKIIssuerRace     = fmt.Errorf("%w: the PKI issuer changed underneath this write", domain.ErrConflict)
 	ErrPKIIssuerLive     = fmt.Errorf("%w: the PKI issuer version still has live certificates; wait for them to expire or revoke them", domain.ErrConflict)
-	ErrPKIIssuerHeld     = fmt.Errorf("%w: the PKI issuer is held after a restore; reconcile it before issuing", domain.ErrConflict)
+	ErrPKIIssuerHeld     = fmt.Errorf("%w: the PKI issuer is held after a restore; release its hold (`hikyo pki issuer release-hold`) before issuing", domain.ErrConflict)
 	ErrPKINoActiveIssuer = fmt.Errorf("%w: none of the profile's issuers has an active version", domain.ErrConflict)
 	ErrPKIProfileExists  = fmt.Errorf("%w: a certificate profile with this name already exists", domain.ErrConflict)
 	ErrPKIProfileRace    = fmt.Errorf("%w: the certificate profile changed underneath this write", domain.ErrConflict)
@@ -870,13 +870,13 @@ func (s *PKI) RevokeIssuer(ctx context.Context, actor Actor, name string, versio
 	return out, err
 }
 
-// ReconcileIssuer lifts the restore hold on every version of a named issuer,
+// ReleaseIssuerHold lifts the restore hold on every version of a named issuer,
 // after the operator has re-applied revocations made since the backup.
-func (s *PKI) ReconcileIssuer(ctx context.Context, actor Actor, name string) ([]PKIIssuerView, error) {
+func (s *PKI) ReleaseIssuerHold(ctx context.Context, actor Actor, name string) ([]PKIIssuerView, error) {
 	var out []PKIIssuerView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
 		out = nil
-		caller, proof, err := authorize(ctx, az, actor, authz.OpPKIIssuerReconcile, domain.Scope{}, s.now())
+		caller, proof, err := authorize(ctx, az, actor, authz.OpPKIIssuerReleaseHold, domain.Scope{}, s.now())
 		if err != nil {
 			return err
 		}
@@ -899,7 +899,7 @@ func (s *PKI) ReconcileIssuer(ctx context.Context, actor Actor, name string) ([]
 				if err != nil {
 					return err
 				}
-				if err := recordPKIIssuerEvent(ctx, r, proof, caller.Principal, updated, "reconcile", updated.State, "", 0); err != nil {
+				if err := recordPKIIssuerEvent(ctx, r, proof, caller.Principal, updated, "release-hold", updated.State, "", 0); err != nil {
 					return err
 				}
 				issuer = updated

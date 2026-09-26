@@ -613,24 +613,24 @@ const (
 	// `issue-certificate` atom, machine-holdable under the profile's
 	// machine_issuance opt-in, which the service applies per caller class (the
 	// lease.mint shape). Inspect is the audit-free certificate read.
-	OpPKIIssuerInspect    Operation = "pki-issuer.inspect"
-	OpPKIIssuerCreate     Operation = "pki-issuer.create"
-	OpPKIIssuerInstall    Operation = "pki-issuer.install"
-	OpPKIIssuerRotate     Operation = "pki-issuer.rotate"
-	OpPKIIssuerRetire     Operation = "pki-issuer.retire"
-	OpPKIIssuerRevoke     Operation = "pki-issuer.revoke"
-	OpPKIIssuerReconcile  Operation = "pki-issuer.reconcile"
-	OpPKIIssuerPublishCRL Operation = "pki-issuer.publish-crl"
-	OpPKIProfileInspect   Operation = "pki-profile.inspect"
-	OpPKIProfileCreate    Operation = "pki-profile.create"
-	OpPKIProfileUpdate    Operation = "pki-profile.update"
-	OpPKIProfileDelete    Operation = "pki-profile.delete"
-	OpPKIProfileBind      Operation = "pki-profile.bind"
-	OpPKIProfileUnbind    Operation = "pki-profile.unbind"
-	OpCertificateIssue    Operation = "certificate.issue"
-	OpCertificateRenew    Operation = "certificate.renew"
-	OpCertificateRevoke   Operation = "certificate.revoke"
-	OpCertificateInspect  Operation = "certificate.inspect"
+	OpPKIIssuerInspect     Operation = "pki-issuer.inspect"
+	OpPKIIssuerCreate      Operation = "pki-issuer.create"
+	OpPKIIssuerInstall     Operation = "pki-issuer.install"
+	OpPKIIssuerRotate      Operation = "pki-issuer.rotate"
+	OpPKIIssuerRetire      Operation = "pki-issuer.retire"
+	OpPKIIssuerRevoke      Operation = "pki-issuer.revoke"
+	OpPKIIssuerReleaseHold Operation = "pki-issuer.release-hold"
+	OpPKIIssuerPublishCRL  Operation = "pki-issuer.publish-crl"
+	OpPKIProfileInspect    Operation = "pki-profile.inspect"
+	OpPKIProfileCreate     Operation = "pki-profile.create"
+	OpPKIProfileUpdate     Operation = "pki-profile.update"
+	OpPKIProfileDelete     Operation = "pki-profile.delete"
+	OpPKIProfileBind       Operation = "pki-profile.bind"
+	OpPKIProfileUnbind     Operation = "pki-profile.unbind"
+	OpCertificateIssue     Operation = "certificate.issue"
+	OpCertificateRenew     Operation = "certificate.renew"
+	OpCertificateRevoke    Operation = "certificate.revoke"
+	OpCertificateInspect   Operation = "certificate.inspect"
 
 	// NOT REGISTERED, deliberately: the active-session listing and its revoke
 	// (#71 criterion 5). Both are SELF-SCOPED — they address the caller's own
@@ -4440,7 +4440,7 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKICertificatesRevokeLive: true, StorePKIIssuersDestroyKey: true, StoreAuditInstanceInsert: true},
 		events:   []audit.EventType{audit.EventPKIIssuer},
 	},
-	OpPKIIssuerReconcile: {
+	OpPKIIssuerReleaseHold: {
 		class: ClassInstance, formula: pkiOperatorFormula,
 		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersHold: true, StoreAuditInstanceInsert: true},
 		events:   []audit.EventType{audit.EventPKIIssuer},

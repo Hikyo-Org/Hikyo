@@ -1262,8 +1262,8 @@ UPDATE pki_issuers SET restore_hold = 1
 `
 
 // A restore can resurrect certificates revoked after the backup was taken, so
-// every restored CA issuer is held (no minting) until an operator reconciles
-// it with `hikyo pki issuer reconcile` (#154, pki ADR D8). CRLs still publish.
+// every restored CA issuer is held (no minting) until an operator releases
+// the hold with `hikyo pki issuer release-hold` (#154, pki ADR D8). CRLs still publish.
 // hikyo:authn-resolution
 func (q *Queries) HoldRestoredPKIIssuers(ctx context.Context) error {
 	_, err := q.db.Exec(ctx, holdRestoredPKIIssuers)

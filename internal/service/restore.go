@@ -151,7 +151,7 @@ func CompleteRestore(now time.Time, m store.Manifest) tx.RestoreFn {
 		if err := az.InvalidateRestoredDynamicProviderCredentials(ctx); err != nil {
 			return err
 		}
-		// #154: restored CA issuers mint nothing until `pki issuer reconcile`.
+		// #154: restored CA issuers mint nothing until `pki issuer release-hold`.
 		if err := az.HoldRestoredPKIIssuers(ctx); err != nil {
 			return err
 		}

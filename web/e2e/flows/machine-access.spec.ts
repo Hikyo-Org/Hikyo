@@ -89,14 +89,15 @@ test.describe('machine access', () => {
     await expect(page.getByRole('heading', { name: 'Machine access', level: 1 })).toBeVisible();
   });
 
-  test('the inventory has five tabs, and every one of them says what it holds', async () => {
+  test('the inventory has six tabs, and every one of them says what it holds', async () => {
     const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(5);
+    await expect(tabs).toHaveCount(6);
     await expect(tabs.nth(0)).toHaveText(/Service accounts \(3\)/);
     await expect(tabs.nth(1)).toHaveText(/Federation \(1\)/);
     await expect(tabs.nth(2)).toHaveText(/Kubernetes targets \(0\)/);
     await expect(tabs.nth(3)).toHaveText(/Providers \(0\)/);
     await expect(tabs.nth(4)).toHaveText(/Leases \(0\)/);
+    await expect(tabs.nth(5)).toHaveText(/Certificates \(0\)/);
 
     // The policy strip: the per-project opt-in is stated, not offered as a
     // control whose only outcome would be a refusal.

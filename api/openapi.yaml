@@ -11732,15 +11732,15 @@ paths:
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
 
-  /api/v1/instance/pki/issuers/{issuer}/reconcile:
+  /api/v1/instance/pki/issuers/{issuer}/release-hold:
     parameters:
       - $ref: "#/components/parameters/PkiIssuerName"
     post:
-      operationId: reconcilePkiIssuer
+      operationId: releasePkiIssuerHold
       tags: [pki]
       summary: "Lift the post-restore hold on an issuer."
       x-hikyo-class: instance
-      x-hikyo-operation: pki-issuer.reconcile
+      x-hikyo-operation: pki-issuer.release-hold
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
       x-hikyo-min-revision: 6
@@ -12150,7 +12150,6 @@ paths:
         "200": {description: The revoked certificate., content: {application/json: {schema: {$ref: "#/components/schemas/Certificate"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
-        "403": {$ref: "#/components/responses/Forbidden"}
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}

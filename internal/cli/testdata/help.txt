@@ -228,7 +228,7 @@ private PKI:
       [--key-file PATH | --key-stdin] [--cert-file PATH] [--chain-file PATH]
   hikyo pki issuer retire <issuer> --version N
   hikyo pki issuer revoke <issuer> --version N
-  hikyo pki issuer reconcile <issuer>
+  hikyo pki issuer release-hold <issuer>
   hikyo pki issuer crl <issuer> --version N [--publish]
   hikyo pki profile list [-o table|json]
   hikyo pki profile show <profile> [-o table|json]

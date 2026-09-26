@@ -7397,14 +7397,14 @@ export const zInstallPkiIssuerCertificatePath = z.object({
  */
 export const zInstallPkiIssuerCertificateResponse = zPkiIssuer;
 
-export const zReconcilePkiIssuerPath = z.object({
+export const zReleasePkiIssuerHoldPath = z.object({
     issuer: zPkiName
 });
 
 /**
  * Issuer versions.
  */
-export const zReconcilePkiIssuerResponse = zPkiIssuerList;
+export const zReleasePkiIssuerHoldResponse = zPkiIssuerList;
 
 export const zRetirePkiIssuerPath = z.object({
     issuer: zPkiName,

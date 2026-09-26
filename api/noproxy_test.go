@@ -269,7 +269,7 @@ var pinnedContractSurface = map[string]bool{
 	"GET /api/v1/instance/pki/issuers/{issuer}":                                                               true,
 	"POST /api/v1/instance/pki/issuers/{issuer}/rotate":                                                       true,
 	"POST /api/v1/instance/pki/issuers/{issuer}/install":                                                      true,
-	"POST /api/v1/instance/pki/issuers/{issuer}/reconcile":                                                    true,
+	"POST /api/v1/instance/pki/issuers/{issuer}/release-hold":                                                    true,
 	"POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire":                                    true,
 	"POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke":                                    true,
 	"GET /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl":                                        true,

@@ -1123,7 +1123,7 @@
     ]
   },
   {
-    "operation": "pki-issuer.reconcile",
+    "operation": "pki-issuer.release-hold",
     "class": "instance",
     "level": "instance",
     "formula": [

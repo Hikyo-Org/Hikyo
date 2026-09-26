@@ -34,6 +34,7 @@
     "environment-parameters",
     "deployment-adapters",
     "dynamic-secrets",
+    "private-pki",
     "mcp",
     "local-development",
     "compose",
