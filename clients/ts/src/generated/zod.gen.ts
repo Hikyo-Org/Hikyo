@@ -42,10 +42,15 @@ export const zId = z.string().min(3).max(64).regex(/^[a-z]{2,8}_[0-9a-fA-F-]{36}
  */
 export const zTimestamp = z.iso.datetime();
 
+/**
+ * repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
+ */
 export const zAdapterDestinationKind = z.enum([
     'repository',
     'organization',
-    'environment'
+    'environment',
+    'json-object',
+    'per-key'
 ]);
 
 export const zAdapterVisibility = z.enum([

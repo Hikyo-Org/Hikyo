@@ -342,12 +342,10 @@ func (a *API) ShowAdapterTarget(ctx context.Context, req apigen.ShowAdapterTarge
 		return apigen.ShowAdapterTarget200TextResponse(view.Workflow), nil
 	}
 	out := apigen.AdapterTargetDetail{Target: adapterTargetResponse(view.Target, view.Conflicts...), Conflicts: adapterConflictResponses(view.Conflicts), Mapping: []apigen.AdapterMappingEntry{}}
+	destination := adapter.Destination{Kind: adapter.DestinationKind(view.Target.DestinationKind), Name: view.Target.DestinationName}
 	for _, entry := range view.Mapping {
-		surface := "secret"
-		if entry.Classification == adapter.ConfigClassification {
-			surface = "variable"
-		}
-		out.Mapping = append(out.Mapping, apigen.AdapterMappingEntry{KeyId: apigen.ID(entry.KeyID), CanonicalName: entry.CanonicalName, Surface: apigen.AdapterMappingEntrySurface(surface), EffectiveName: view.Target.NamePrefix + entry.CanonicalName})
+		surface, effective := adapter.MappedName(view.Target.Provider, destination, view.Target.NamePrefix, entry)
+		out.Mapping = append(out.Mapping, apigen.AdapterMappingEntry{KeyId: apigen.ID(entry.KeyID), CanonicalName: entry.CanonicalName, Surface: apigen.AdapterMappingEntrySurface(surface), EffectiveName: effective})
 	}
 	return apigen.ShowAdapterTarget200JSONResponse(out), nil
 }

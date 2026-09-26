@@ -109,6 +109,13 @@ type Config struct {
 	// private address is usable only for the origin whose entry contains it.
 	AdapterEgressPolicy map[string][]netip.Prefix
 
+	// AdapterAWSWorkloadIdentity is the node operator's opt-in, from
+	// HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow, for AWS Secrets Manager
+	// adapters that borrow this node's own AWS identity (ambient, assume-role,
+	// web-identity). Off by default: without it only static keys are accepted,
+	// so a project administrator cannot act with the server's IAM role.
+	AdapterAWSWorkloadIdentity bool
+
 	// OIDCEgressPolicy grants private-network access only to exact federation endpoint origins.
 	OIDCEgressPolicy map[string][]netip.Prefix
 
@@ -295,6 +302,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_BACKUP_RETAIN_DAYS":             true,
 	"HIKYO_BACKUP_RTO_TARGET":              true,
 	"HIKYO_ADAPTER_EGRESS_POLICY_FILE":     true,
+	"HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY":  true,
 	"HIKYO_OIDC_EGRESS_POLICY_FILE":        true,
 	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE":     true,
 	"HIKYO_REAUTH_WINDOW_SECONDS":          true,
@@ -563,6 +571,10 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 			return nil, nil, err
 		}
 		cfg.AdapterEgressPolicy = policy
+		cfg.AdapterAWSWorkloadIdentity, err = parseAWSWorkloadIdentity(getenv("HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY"))
+		if err != nil {
+			return nil, nil, err
+		}
 		oidcPolicy, err := loadOIDCEgressPolicy(getenv("HIKYO_OIDC_EGRESS_POLICY_FILE"))
 		if err != nil {
 			return nil, nil, err
@@ -865,6 +877,19 @@ func parseOIDCEgressPolicy(raw []byte) (map[string][]netip.Prefix, error) {
 		}
 	}
 	return policy, nil
+}
+
+// parseAWSWorkloadIdentity accepts only the explicit words; anything else is a
+// startup refusal rather than a silent default.
+func parseAWSWorkloadIdentity(raw string) (bool, error) {
+	switch strings.TrimSpace(raw) {
+	case "", "deny":
+		return false, nil
+	case "allow":
+		return true, nil
+	default:
+		return false, fmt.Errorf("HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY: %q must be allow or deny", raw)
+	}
 }
 
 func loadAdapterEgressPolicy(path string) (map[string][]netip.Prefix, error) {

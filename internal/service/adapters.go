@@ -1677,7 +1677,7 @@ func (s *Adapters) InspectTarget(ctx context.Context, actor Actor, scope domain.
 		if err != nil {
 			return err
 		}
-		out.Workflow, err = adapter.WorkflowForProvider(out.Target.Provider, out.Target.NamePrefix, out.Mapping)
+		out.Workflow, err = adapter.ConsumptionForTarget(out.Target.Provider, adapterTarget(out.Target).Destination, out.Target.NamePrefix, out.Mapping)
 		if err != nil {
 			return err
 		}

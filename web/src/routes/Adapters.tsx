@@ -55,6 +55,7 @@ import { Checkbox } from '../ui/Checkbox.tsx';
 import { ChoiceGroup } from '../ui/ChoiceGroup.tsx';
 import { Dialog } from '../ui/Dialog.tsx';
 import { Input } from '../ui/Input.tsx';
+import { AwsAccessFields, awsAccessComplete, awsAccessDescriptor, emptyAwsAccess, type AwsAccess } from './AwsAccessFields.tsx';
 import { useFeedback } from './useFeedback.ts';
 import { gateSystemScope } from './SystemScope.tsx';
 
@@ -103,7 +104,31 @@ function revision(value: bigint | null | undefined): string {
   return value === null || value === undefined ? 'Not available' : `rev ${String(value)}`;
 }
 
+type ProviderName = 'forgejo' | 'github-actions' | 'aws-secrets-manager';
+
+const providerLabels: Record<ProviderName, string> = {
+  forgejo: 'Forgejo',
+  'github-actions': 'GitHub Actions',
+  'aws-secrets-manager': 'AWS Secrets Manager',
+};
+
+function providerLabel(provider: string): string {
+  return provider in providerLabels ? providerLabels[provider as ProviderName] : provider;
+}
+
+function isAwsKind(kind: string): boolean {
+  return kind === 'json-object' || kind === 'per-key';
+}
+
 function destinationText(target: AdapterTarget): string {
+  if (isAwsKind(target.destination_kind)) {
+    // Account, then the JSON secret or the per-key path; the KMS key is shown
+    // because changing it is a destination move.
+    const where = target.destination_kind === 'json-object'
+      ? `${target.destination_owner} ${target.destination_name} (JSON)`
+      : `${target.destination_owner} ${target.destination_name}*`;
+    return target.destination_environment === '' ? where : `${where} [KMS ${target.destination_environment}]`;
+  }
   const base =
     target.destination_name === ''
       ? target.destination_owner
@@ -173,7 +198,7 @@ function AdaptersPage() {
     <div className="page page--chrome page--adapters">
       <h1>Deployment adapters</h1>
       <p className="page__lede">
-        Push selected published values to CI providers. Hikyo stays the source: every target
+        Push selected published values to CI providers and AWS Secrets Manager. Hikyo stays the source: every target
         receives the same pinned revision through its own durable job, and one target failing or
         pausing never blocks another.
       </p>
@@ -194,7 +219,7 @@ function AdaptersPage() {
           ) : null}
           {adapters.isSuccess && adapters.data.items.length === 0 ? (
             <p className="adapters__empty" role="status">
-              No adapters yet. Add one to fan a published environment out to a CI provider.
+              No adapters yet. Add one to fan a published environment out to a CI provider or cloud secret manager.
             </p>
           ) : null}
           {adapters.data?.items.map((adapter) => (
@@ -318,7 +343,7 @@ function AdapterPanel({
   return (
     <section className="panel adapters__adapter" aria-label={`Adapter ${adapter.origin}`}>
       <div className="adapters__adapter-head">
-        <h2>{adapter.provider === 'forgejo' ? 'Forgejo' : adapter.provider === 'github-actions' ? 'GitHub Actions' : adapter.provider}</h2>
+        <h2>{providerLabel(adapter.provider)}</h2>
         <span className="adapters__origin mono">{adapter.origin}</span>
         <Badge>
           {adapter.credential_present ? 'credential set' : 'credential absent'}
@@ -353,6 +378,7 @@ function AdapterPanel({
       {adding ? (
         <TargetForm
           title="Add target"
+          provider={adapter.provider}
           environments={environments}
           keys={keys}
           busy={add.isPending}
@@ -372,6 +398,7 @@ function AdapterPanel({
         <OriginMoveForm
           title="Change origin"
           submitLabel="Start move"
+          provider={adapter.provider}
           busy={moveOrigin.isPending}
           keepRemoteChoice
           onCancel={() => setEditing(null)}
@@ -394,6 +421,7 @@ function AdapterPanel({
         />
       ) : editing === 'credential' ? (
         <CredentialForm
+          provider={adapter.provider}
           busy={setCredential.isPending}
           onCancel={() => setEditing(null)}
           onSubmit={async (credential) => {
@@ -488,6 +516,7 @@ function AdapterPanel({
 function OriginMoveForm({
   title,
   submitLabel,
+  provider,
   initialOrigin = '',
   keepRemoteChoice = false,
   busy,
@@ -496,19 +525,24 @@ function OriginMoveForm({
 }: {
   readonly title: string;
   readonly submitLabel: string;
+  readonly provider?: string;
   readonly initialOrigin?: string;
   readonly keepRemoteChoice?: boolean;
   readonly busy: boolean;
   readonly onCancel: () => void;
   readonly onSubmit: (input: { origin: string; credential: string; keepRemote: boolean }) => Promise<void>;
 }) {
+  const aws = provider === 'aws-secrets-manager';
   const [origin, setOrigin] = useState(initialOrigin);
   const [credential, setCredential] = useSensitiveState('');
+  const [access, setAccess] = useSensitiveState<AwsAccess>(emptyAwsAccess);
   const [keepRemote, setKeepRemote] = useState(false);
+  const ready = aws ? awsAccessComplete(access) : credential !== '';
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    void onSubmit({ origin: origin.trim(), credential, keepRemote });
+    void onSubmit({ origin: origin.trim(), credential: aws ? awsAccessDescriptor(access) : credential, keepRemote });
     setCredential('');
+    setAccess(emptyAwsAccess);
   };
   return (
     <form className="adapters__form" onSubmit={submit} aria-label={title}>
@@ -521,16 +555,20 @@ function OriginMoveForm({
         <span className="field__label">New origin</span>
         <input value={origin} onChange={(event) => setOrigin(event.target.value)} required inputMode="url" />
       </label>
-      <label className="field">
-        <span className="field__label">New credential</span>
-        <input
-          type="password"
-          value={credential}
-          onChange={(event) => setCredential(event.target.value)}
-          autoComplete="off"
-          required
-        />
-      </label>
+      {aws ? (
+        <AwsAccessFields value={access} onChange={setAccess} />
+      ) : (
+        <label className="field">
+          <span className="field__label">New credential</span>
+          <input
+            type="password"
+            value={credential}
+            onChange={(event) => setCredential(event.target.value)}
+            autoComplete="off"
+            required
+          />
+        </label>
+      )}
       {keepRemoteChoice ? (
         <Checkbox
           label="Keep remote names at the old origin (release custody instead of scrubbing)"
@@ -539,7 +577,7 @@ function OriginMoveForm({
         />
       ) : null}
       <div className="panel__actions">
-        <Button type="submit" variant="primary" disabled={busy || origin.trim() === '' || credential === ''}>
+        <Button type="submit" variant="primary" disabled={busy || origin.trim() === '' || !ready}>
           {busy ? 'Working…' : submitLabel}
         </Button>
         <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
@@ -552,36 +590,46 @@ function OriginMoveForm({
 
 /** CredentialForm replaces the write-only provider credential in place. */
 export function CredentialForm({
+  provider,
   busy,
   onCancel,
   onSubmit,
 }: {
+  readonly provider?: string;
   readonly busy: boolean;
   readonly onCancel: () => void;
   readonly onSubmit: (credential: string) => Promise<void>;
 }) {
+  const aws = provider === 'aws-secrets-manager';
   const [credential, setCredential] = useSensitiveState('');
+  const [access, setAccess] = useSensitiveState<AwsAccess>(emptyAwsAccess);
+  const ready = aws ? awsAccessComplete(access) : credential !== '';
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    void onSubmit(credential);
+    void onSubmit(aws ? awsAccessDescriptor(access) : credential);
     setCredential('');
+    setAccess(emptyAwsAccess);
   };
   return (
     <form className="adapters__form" onSubmit={submit} aria-label="Replace credential">
       <h3>Replace credential</h3>
       <p className="field__hint">Write-only: entered once, sealed, never read back. No job is queued.</p>
-      <label className="field">
-        <span className="field__label">Credential</span>
-        <input
-          type="password"
-          value={credential}
-          onChange={(event) => setCredential(event.target.value)}
-          autoComplete="off"
-          required
-        />
-      </label>
+      {aws ? (
+        <AwsAccessFields value={access} onChange={setAccess} />
+      ) : (
+        <label className="field">
+          <span className="field__label">Credential</span>
+          <input
+            type="password"
+            value={credential}
+            onChange={(event) => setCredential(event.target.value)}
+            autoComplete="off"
+            required
+          />
+        </label>
+      )}
       <div className="panel__actions">
-        <Button type="submit" variant="primary" disabled={busy || credential === ''}>
+        <Button type="submit" variant="primary" disabled={busy || !ready}>
           {busy ? 'Replacing…' : 'Replace'}
         </Button>
         <Button type="button" variant="quiet" onClick={onCancel} disabled={busy}>
@@ -860,9 +908,11 @@ function CreateAdapterPanel({
   readonly onClose: () => void;
 }) {
   const create = useCreateAdapter(refData);
-  const [provider, setProvider] = useState<'forgejo' | 'github-actions'>('forgejo');
+  const [provider, setProvider] = useState<ProviderName>('forgejo');
   const [origin, setOrigin] = useState('');
   const [credential, setCredential] = useSensitiveState('');
+  const [access, setAccess] = useSensitiveState<AwsAccess>(emptyAwsAccess);
+  const aws = provider === 'aws-secrets-manager';
   return (
     <section className="panel adapters__adapter" aria-label="New adapter">
       <div className="adapters__adapter-head">
@@ -875,37 +925,47 @@ function CreateAdapterPanel({
             value={provider}
             onChange={(event) =>
               {
-              const next = event.target.value === 'github-actions' ? 'github-actions' : 'forgejo';
+              const value = event.target.value;
+              const next: ProviderName = value === 'github-actions' || value === 'aws-secrets-manager' ? value : 'forgejo';
               setProvider(next);
               setOrigin(next === 'github-actions' ? 'https://api.github.com' : '');
+              setCredential('');
+              setAccess(emptyAwsAccess);
             }
             }
           >
             <option value="forgejo">Forgejo</option>
             <option value="github-actions">GitHub Actions</option>
+            <option value="aws-secrets-manager">AWS Secrets Manager</option>
           </select>
         </label>
         <label className="field">
-          <span className="field__label">{provider === 'github-actions' ? 'GitHub API base URL' : 'Origin'}</span>
+          <span className="field__label">{provider === 'github-actions' ? 'GitHub API base URL' : aws ? 'Secrets Manager endpoint' : 'Origin'}</span>
           <input
             value={origin}
             onChange={(event) => setOrigin(event.target.value)}
-            placeholder={provider === 'github-actions' ? 'https://HOST/api/v3' : 'https://git.example.com'}
+            placeholder={provider === 'github-actions' ? 'https://HOST/api/v3' : aws ? 'https://secretsmanager.eu-west-1.amazonaws.com' : 'https://git.example.com'}
             autoComplete="off"
           />
         </label>
         {provider === 'github-actions' ? <p className="field__hint">GitHub Enterprise Server: use https://HOST/api/v3. GHES support is best-effort; CI verifies github.com only.</p> : null}
-        <Input
-          label="Credential"
-          type="password"
-          value={credential}
-          onChange={(event) => setCredential(event.target.value)}
-          autoComplete="new-password"
-          hint="Write-only. It is sealed on save and never shown again."
-        />
+        {aws ? <p className="field__hint">One-way and value-blind: Hikyo writes secrets and never reads one back. The region comes from the endpoint.</p> : null}
+        {aws ? null : (
+          <Input
+            label="Credential"
+            type="password"
+            value={credential}
+            onChange={(event) => setCredential(event.target.value)}
+            autoComplete="new-password"
+            hint="Write-only. It is sealed on save and never shown again."
+          />
+        )}
       </div>
+      {aws ? <AwsAccessFields value={access} onChange={setAccess} /> : null}
       <TargetForm
         title="First target"
+        key={provider}
+        provider={provider}
         environments={environments}
         keys={keys}
         busy={create.isPending}
@@ -913,14 +973,16 @@ function CreateAdapterPanel({
         onSubmit={async (input) => {
           try {
             await ceremonyFor('adapter.configure', [input.environment_id]);
-            await create.mutateAsync({ provider, origin, credential, target: input });
+            await create.mutateAsync({ provider, origin, credential: aws ? awsAccessDescriptor(access) : credential, target: input });
             setCredential('');
+            setAccess(emptyAwsAccess);
             feedback.ok('Adapter created. Its first converge is queued.');
             onClose();
           } catch (error) {
             feedback.report(error);
           } finally {
             setCredential('');
+            setAccess(emptyAwsAccess);
           }
         }}
       />
@@ -962,6 +1024,7 @@ export function normalisePrefix(raw: string): string {
 
 export function TargetForm({
   title,
+  provider,
   environments,
   keys,
   busy,
@@ -971,6 +1034,8 @@ export function TargetForm({
   onSubmit,
 }: {
   readonly title: string;
+  /** Selects the destination kinds; an existing target's kind implies it. */
+  readonly provider?: string;
   readonly environments: readonly EnvironmentOption[];
   readonly keys: readonly ProjectKey[];
   readonly busy: boolean;
@@ -981,8 +1046,9 @@ export function TargetForm({
   readonly onSubmit: (input: AdapterTargetInput) => Promise<void>;
 }) {
   const [environmentId, setEnvironmentId] = useState(initial?.environment_id ?? environments[0]?.id ?? '');
+  const aws = provider === 'aws-secrets-manager' || (initial !== undefined && isAwsKind(initial.destination_kind));
   const [kind, setKind] = useState<AdapterTargetInput['destination_kind']>(
-    initial?.destination_kind ?? 'repository',
+    initial?.destination_kind ?? (aws ? 'json-object' : 'repository'),
   );
   const [owner, setOwner] = useState(initial?.destination_owner ?? '');
   const [name, setName] = useState(initial?.destination_name ?? '');
@@ -1038,7 +1104,7 @@ export function TargetForm({
       destination_kind: kind,
       destination_owner: owner,
       destination_name: kind === 'organization' ? '' : name,
-      destination_environment: kind === 'environment' ? destinationEnvironment : '',
+      destination_environment: kind === 'environment' || isAwsKind(kind) ? destinationEnvironment : '',
       allow_environment_create: kind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
       visibility: kind === 'organization' ? visibility : '',
       selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
@@ -1086,19 +1152,65 @@ export function TargetForm({
             disabled={lockRouting === true}
             onChange={(event) => {
               const value = event.target.value;
+              if (aws) {
+                setKind(value === 'per-key' ? 'per-key' : 'json-object');
+                return;
+              }
               setKind(value === 'organization' || value === 'environment' ? value : 'repository');
             }}
           >
-            <option value="repository">Repository</option>
-            <option value="organization">GitHub organization</option>
-            <option value="environment">GitHub environment</option>
+            {aws ? (
+              <>
+                <option value="json-object">One secret holding a JSON object</option>
+                <option value="per-key">One secret per key</option>
+              </>
+            ) : (
+              <>
+                <option value="repository">Repository</option>
+                <option value="organization">GitHub organization</option>
+                <option value="environment">GitHub environment</option>
+              </>
+            )}
           </select>
         </label>
         <label className="field">
-          <span className="field__label">Owner</span>
-          <input value={owner} disabled={lockRouting === true} onChange={(event) => setOwner(event.target.value)} />
+          <span className="field__label">{aws ? 'AWS account id' : 'Owner'}</span>
+          <input
+            value={owner}
+            disabled={lockRouting === true}
+            inputMode={aws ? 'numeric' : undefined}
+            placeholder={aws ? '123456789012' : undefined}
+            onChange={(event) => setOwner(event.target.value)}
+          />
         </label>
-        {kind !== 'organization' ? (
+        {aws ? (
+          <>
+            <label className="field">
+              <span className="field__label">{kind === 'json-object' ? 'Secret name' : 'Path prefix'}</span>
+              <input
+                value={name}
+                disabled={lockRouting === true}
+                placeholder={kind === 'json-object' ? 'prod/app/config' : 'prod/app/'}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="field__label">KMS key (optional)</span>
+              <input
+                value={destinationEnvironment}
+                disabled={lockRouting === true}
+                placeholder="alias/hikyo"
+                onChange={(event) => setDestinationEnvironment(event.target.value)}
+              />
+            </label>
+            <p className="field__hint">
+              {kind === 'json-object'
+                ? 'Every selected key becomes one member of the JSON object; values are never transformed.'
+                : 'Each key becomes its own secret named path prefix + name prefix + key. Leave the path empty for none; otherwise end it with /.'}
+              {' '}The KMS key applies when Hikyo creates a secret.
+            </p>
+          </>
+        ) : kind !== 'organization' ? (
           <label className="field">
             <span className="field__label">Repository</span>
             <input value={name} disabled={lockRouting === true} onChange={(event) => setName(event.target.value)} />

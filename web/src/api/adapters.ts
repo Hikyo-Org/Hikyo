@@ -185,7 +185,7 @@ function useInvalidateAdapters(ref: ProjectRef) {
 }
 
 export type CreateAdapterInput = {
-  readonly provider: 'forgejo' | 'github-actions';
+  readonly provider: 'forgejo' | 'github-actions' | 'aws-secrets-manager';
   readonly origin: string;
   /** Write-only. Held in component state only for the request. */
   readonly credential: string;

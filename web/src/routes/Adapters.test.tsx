@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { AdapterTargetInput } from '../api/adapters.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { Adapters, TargetForm } from './Adapters.tsx';
+import { awsAccessComplete, awsAccessDescriptor, emptyAwsAccess } from './AwsAccessFields.tsx';
 
 function selectValue(select: HTMLSelectElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
@@ -18,6 +19,7 @@ afterEach(() => vi.unstubAllGlobals());
 it.each([
   ['forgejo', 'Forgejo'],
   ['github-actions', 'GitHub Actions'],
+  ['aws-secrets-manager', 'AWS Secrets Manager'],
   ['future-provider', 'future-provider'],
 ])('renders the %s provider through the response decoder', async (provider, label) => {
   vi.stubGlobal('fetch', vi.fn((...args: Parameters<typeof fetch>) => {
@@ -178,4 +180,59 @@ it('requires an explicit environment auto-create checkbox before sending consent
     await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
     expect(submitted[1]?.allow_environment_create).toBe(true);
   } finally { await unmount(); }
+});
+
+it('TargetForm offers only the AWS destination kinds and routes the secret name and KMS key', async () => {
+  const submitted: AdapterTargetInput[] = [];
+  const { container, unmount } = await renderForm(
+    <TargetForm
+      title="First target"
+      provider="aws-secrets-manager"
+      environments={[{ id: 'env_1', name: 'prod' }]}
+      keys={[]}
+      busy={false}
+      onCancel={() => undefined}
+      onSubmit={(input) => {
+        submitted.push(input);
+        return Promise.resolve();
+      }}
+    />,
+  );
+  try {
+    const field = (label: string) =>
+      [...container.querySelectorAll('label')].find((l) => l.textContent?.startsWith(label))?.querySelector('select, input') ?? null;
+    const kind = field('Destination kind');
+    if (!(kind instanceof HTMLSelectElement)) throw new Error('kind select missing');
+    expect([...kind.options].map((o) => o.value)).toEqual(['json-object', 'per-key']);
+    const account = field('AWS account id');
+    const secret = field('Secret name');
+    const kms = field('KMS key');
+    if (!(account instanceof HTMLInputElement) || !(secret instanceof HTMLInputElement) || !(kms instanceof HTMLInputElement)) {
+      throw new Error('AWS routing inputs missing');
+    }
+    await act(async () => typeInto(account, '123456789012'));
+    await act(async () => typeInto(secret, 'prod/app'));
+    await act(async () => typeInto(kms, 'alias/hikyo'));
+    const form = container.querySelector('form');
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[0]).toMatchObject({
+      destination_kind: 'json-object', destination_owner: '123456789012', destination_name: 'prod/app',
+      destination_environment: 'alias/hikyo', visibility: '', selected_repository_ids: [],
+    });
+    await act(async () => selectValue(kind, 'per-key'));
+    expect(field('Path prefix')).not.toBeNull();
+  } finally {
+    await unmount();
+  }
+});
+
+it('assembles the AWS access descriptor with only the fields the mode takes', () => {
+  expect(awsAccessComplete(emptyAwsAccess)).toBe(false);
+  const role = { ...emptyAwsAccess, roleArn: 'arn:aws:iam::123456789012:role/hikyo', externalId: 'tenant', sessionSeconds: '1800', accessKeyId: 'stale', secretAccessKey: 'stale' };
+  expect(awsAccessComplete(role)).toBe(true);
+  expect(JSON.parse(awsAccessDescriptor(role))).toEqual({ mode: 'assume-role', role_arn: 'arn:aws:iam::123456789012:role/hikyo', external_id: 'tenant', session_seconds: 1800 });
+  expect(JSON.parse(awsAccessDescriptor({ ...role, mode: 'web-identity' }))).toEqual({ mode: 'web-identity', role_arn: 'arn:aws:iam::123456789012:role/hikyo', session_seconds: 1800 });
+  expect(JSON.parse(awsAccessDescriptor({ ...emptyAwsAccess, mode: 'ambient', region: 'eu-west-1' }))).toEqual({ mode: 'ambient', region: 'eu-west-1' });
+  const key = { ...emptyAwsAccess, mode: 'static' as const, accessKeyId: 'AKIAHIKYOTEST0000001', secretAccessKey: 'sealed-on-save' };
+  expect(JSON.parse(awsAccessDescriptor(key))).toEqual({ mode: 'static', access_key_id: 'AKIAHIKYOTEST0000001', secret_access_key: 'sealed-on-save' });
 });

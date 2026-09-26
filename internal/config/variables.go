@@ -76,6 +76,7 @@ func VariableInventory() []VariableDescriptor {
 }
 
 var variableInventory = []VariableDescriptor{
+	{Key: "HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_ADAPTER_EGRESS_POLICY_FILE", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableFileContent, FileContentKey: "HIKYO_ADAPTER_EGRESS_POLICY_JSON"},
 	{Key: "HIKYO_ADMISSION_BUDGET_MIB", Audience: VariableServer, Scope: VariableNode, Activation: VariableAppReload, Secret: false, Import: VariableValue},
 	{Key: "HIKYO_ARGON2_MEMORY_KIB", Audience: VariableServer, Scope: VariableOwner, Activation: VariableAppReload, Secret: false, Import: VariableValue},

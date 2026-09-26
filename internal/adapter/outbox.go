@@ -206,6 +206,7 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 		}
 		revision = loaded.Revision
 		loaded.Request.Teardown = job.Kind == Scrub
+		loaded.Request.JobID = job.ID
 		loaded.Request.Completed = append([]Change(nil), completed...)
 		result, err = loaded.Module.Sync(ctx, loaded.Request, journal)
 		if loaded.Release != nil {

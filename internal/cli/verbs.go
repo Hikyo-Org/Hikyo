@@ -376,6 +376,11 @@ adapters:
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--stdin | --value-file PATH] [--create-environment]
+  hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.<region>.amazonaws.com
+      --env E --kind json-object|per-key --owner <account-id> [--secret <name-or-path/>] [--kms-key <key>]
+      --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn <arn>] [--aws-external-id <id>]
+      [--aws-session-seconds 900-3600] [--aws-access-key-id <id>] [--aws-region <region>]
+      [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
   hikyo adapter list [-o table|json]
   hikyo adapter show <adapter> [-o table|json]
   hikyo adapter update <adapter> --origin <https-origin>
@@ -410,6 +415,14 @@ adapters:
 
   adapter credentials are read with terminal echo disabled, from stdin, or
   from --value-file. There is no credential-value argv flag.
+
+  aws-secrets-manager is one-way and never reads a value back: json-object
+  writes one secret holding a JSON object, per-key one secret per key.
+  --aws-auth assembles the access descriptor; only static reads a secret (the
+  secret access key, like any credential). ambient, assume-role and
+  web-identity use this server's AWS identity and need the node operator's
+  HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow. --aws-* flags also apply to
+  adapter update --origin and adapter credential set.
 
 dynamic secrets:
   hikyo dynamic-provider create --provider postgres --origin <postgres://user@host:port/db>

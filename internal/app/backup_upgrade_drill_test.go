@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 59, while the
+// The runtime-created fixture includes migrations 45 through 60, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+15 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 59 only")
+	if len(current.Entries) != len(legacy.Entries)+16 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 60 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -307,9 +307,12 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration or delivery-target evidence", query, err)
 		}
 	}
-	// Reverse 00059 (delivery-target condition reporting) first: newest
-	// migration first, before 00057's reversal rebuilds tables its rows
-	// reference.
+	// Reverse 00060 (AWS Secrets Manager adapter) first, newest migration
+	// first. The empty-adapters evidence check above keeps every adapter table
+	// empty, so rebuilding them discards nothing.
+	reverseAWSAdapter(t, db)
+	// Reverse 00059 (delivery-target condition reporting) next, before
+	// 00057's reversal rebuilds tables its rows reference.
 	for _, query := range []string{
 		"DROP INDEX audit_tenant_events_env_actor_type_seq",
 		"DROP TABLE delivery_target_quota_notices",
@@ -420,10 +423,101 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60)",
 	} {
 		drillExec(t, db, query)
 	}
+}
+
+// reverseAWSAdapter undoes 00060 on a pristine fixture. On PostgreSQL only
+// the widened CHECK sets narrow back. On SQLite the four rebuilt adapter
+// tables are recreated from their immutable legacy declarations, by the same
+// names, and the legacy ALTER statements that shaped them are replayed
+// verbatim, so the stored schema text matches the legacy genesis byte for
+// byte; the adapters table itself returns to legacy text in the 00054
+// reversal that follows.
+func reverseAWSAdapter(t *testing.T, db *store.DB) {
+	t.Helper()
+	if db.Engine() != store.EngineSQLite {
+		for _, query := range []string{
+			"ALTER TABLE adapters DROP CONSTRAINT adapters_provider_check",
+			"ALTER TABLE adapters ADD CONSTRAINT adapters_provider_check CHECK (provider IN ('forgejo', 'github-actions'))",
+			"ALTER TABLE adapter_targets DROP CONSTRAINT adapter_targets_destination_kind_check",
+			"ALTER TABLE adapter_targets ADD CONSTRAINT adapter_targets_destination_kind_check CHECK (destination_kind IN ('repository', 'organization', 'environment'))",
+			"ALTER TABLE adapter_route_move_targets DROP CONSTRAINT adapter_route_move_targets_destination_kind_check",
+			"ALTER TABLE adapter_route_move_targets ADD CONSTRAINT adapter_route_move_targets_destination_kind_check CHECK (destination_kind IN ('repository', 'organization', 'environment'))",
+			"ALTER TABLE adapter_route_move_claims DROP CONSTRAINT adapter_route_move_claims_destination_kind_check",
+			"ALTER TABLE adapter_route_move_claims ADD CONSTRAINT adapter_route_move_claims_destination_kind_check CHECK (destination_kind IN ('repository', 'organization', 'environment'))",
+			"ALTER TABLE adapter_ledger DROP CONSTRAINT adapter_ledger_destination_kind_check",
+			"ALTER TABLE adapter_ledger ADD CONSTRAINT adapter_ledger_destination_kind_check CHECK (destination_kind IN ('repository', 'organization', 'environment'))",
+		} {
+			drillExec(t, db, query)
+		}
+		return
+	}
+	read := func(name string) string {
+		t.Helper()
+		raw, err := store.MigrationsFS.ReadFile("migrations/sqlite/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(raw)
+	}
+	declaration := func(migration, table string) string {
+		t.Helper()
+		_, body, ok := strings.Cut(migration, "CREATE TABLE "+table+" (")
+		if !ok {
+			t.Fatalf("missing legacy %s declaration", table)
+		}
+		body, _, ok = strings.Cut(body, ");")
+		if !ok {
+			t.Fatalf("unterminated legacy %s declaration", table)
+		}
+		return "CREATE TABLE " + table + " (" + body + ")"
+	}
+	statements := func(migration, prefix string) []string {
+		// Comment lines are dropped first: their prose may carry a semicolon.
+		var code []string
+		for _, line := range strings.Split(migration, "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(line), "--") {
+				code = append(code, line)
+			}
+		}
+		var out []string
+		for _, statement := range strings.Split(strings.Join(code, "\n"), ";") {
+			if statement = strings.TrimSpace(statement); strings.HasPrefix(statement, prefix) {
+				out = append(out, statement)
+			}
+		}
+		return out
+	}
+	outbox, githubActions, multiTarget := read("00024_adapter_outbox.sql"), read("00025_github_actions_adapter.sql"), read("00040_multi_target_sync.sql")
+	for _, table := range []string{"adapter_route_move_claims", "adapter_route_move_targets", "adapter_ledger", "adapter_targets"} {
+		drillExec(t, db, "DROP TABLE "+table)
+	}
+	drillExec(t, db, declaration(githubActions, "adapter_targets"))
+	targetAlters := statements(multiTarget, "ALTER TABLE adapter_targets ADD COLUMN")
+	if len(targetAlters) != 5 {
+		t.Fatalf("legacy adapter_targets alters = %d, want the five 00040 columns", len(targetAlters))
+	}
+	for _, statement := range targetAlters {
+		drillExec(t, db, statement)
+	}
+	drillExec(t, db, declaration(outbox, "adapter_ledger"))
+	ledgerAlters := statements(githubActions, "ALTER TABLE adapter_ledger ADD COLUMN")
+	if len(ledgerAlters) != 3 {
+		t.Fatalf("legacy adapter_ledger alters = %d, want the three 00025 columns", len(ledgerAlters))
+	}
+	for _, statement := range ledgerAlters {
+		drillExec(t, db, statement)
+	}
+	index := statements(githubActions, "CREATE UNIQUE INDEX adapter_ledger_active_provider_name")
+	if len(index) != 1 {
+		t.Fatal("missing legacy adapter_ledger provider-name index")
+	}
+	drillExec(t, db, index[0])
+	drillExec(t, db, declaration(githubActions, "adapter_route_move_targets"))
+	drillExec(t, db, declaration(githubActions, "adapter_route_move_claims"))
 }
 
 // reverseSocialSigninSQLite undoes 00057 on a pristine fixture (the evidence

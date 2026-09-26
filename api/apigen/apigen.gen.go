@@ -131,7 +131,9 @@ func (e AdapterConflictEntrySurface) Valid() bool {
 // Defines values for AdapterDestinationKind.
 const (
 	AdapterDestinationKindEnvironment  AdapterDestinationKind = "environment"
+	AdapterDestinationKindJsonObject   AdapterDestinationKind = "json-object"
 	AdapterDestinationKindOrganization AdapterDestinationKind = "organization"
+	AdapterDestinationKindPerKey       AdapterDestinationKind = "per-key"
 	AdapterDestinationKindRepository   AdapterDestinationKind = "repository"
 )
 
@@ -140,7 +142,11 @@ func (e AdapterDestinationKind) Valid() bool {
 	switch e {
 	case AdapterDestinationKindEnvironment:
 		return true
+	case AdapterDestinationKindJsonObject:
+		return true
 	case AdapterDestinationKindOrganization:
+		return true
+	case AdapterDestinationKindPerKey:
 		return true
 	case AdapterDestinationKindRepository:
 		return true
@@ -3367,7 +3373,7 @@ type AdapterConnection struct {
 	Version             string     `json:"version"`
 }
 
-// AdapterDestinationKind defines model for AdapterDestinationKind.
+// AdapterDestinationKind repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
 type AdapterDestinationKind string
 
 // AdapterFinding defines model for AdapterFinding.
@@ -3469,11 +3475,13 @@ type AdapterMoveJobState string
 
 // AdapterMoveTarget defines model for AdapterMoveTarget.
 type AdapterMoveTarget struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationId          int64                  `json:"destination_id"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+	DestinationId          int64  `json:"destination_id"`
+
+	// DestinationKind repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId         ID               `json:"environment_id"`
@@ -3522,12 +3530,14 @@ type AdapterTarget struct {
 	Conflicts []AdapterConflictArtifact `json:"conflicts"`
 
 	// ConvergedRevision The last revision a converge completed.
-	ConvergedRevision      *int64                 `json:"converged_revision"`
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationId          int64                  `json:"destination_id"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	ConvergedRevision      *int64 `json:"converged_revision"`
+	DestinationEnvironment string `json:"destination_environment"`
+	DestinationId          int64  `json:"destination_id"`
+
+	// DestinationKind repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// DriftAttention The destination disagrees with the ownership ledger in a way only an operator can settle (unowned name in the way, destination identity moved, orphaned names). Cleared by the next successful converge.
 	DriftAttention bool `json:"drift_attention"`
@@ -3597,12 +3607,16 @@ type AdapterTargetInput struct {
 	// AllowEnvironmentCreate Explicit consent to create missing GitHub environments using Administration:write.
 	AllowEnvironmentCreate *bool `json:"allow_environment_create,omitempty"`
 
-	// DestinationEnvironment GitHub environment name; empty for repository and organization destinations.
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
+	// DestinationEnvironment GitHub environment name; empty for repository and organization destinations. For AWS Secrets Manager, the optional customer KMS key (id, ARN, or alias) applied when Hikyo creates a secret; changing it is a destination move.
+	DestinationEnvironment string `json:"destination_environment"`
 
-	// DestinationName Repository name; empty for organization destinations.
-	DestinationName  string `json:"destination_name"`
+	// DestinationKind repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
+	DestinationKind AdapterDestinationKind `json:"destination_kind"`
+
+	// DestinationName Repository name; empty for organization destinations. For AWS json-object, the secret name; for AWS per-key, an optional path prefix ending in `/`.
+	DestinationName string `json:"destination_name"`
+
+	// DestinationOwner Provider owner or organization; the 12-digit AWS account id for AWS Secrets Manager.
 	DestinationOwner string `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
@@ -4331,7 +4345,7 @@ type CopyValuesResult struct {
 
 // CreateAdapterRequest defines model for CreateAdapterRequest.
 type CreateAdapterRequest struct {
-	// Credential Write-only provider credential. Never returned.
+	// Credential Write-only provider credential. Never returned. For aws-secrets-manager it is a JSON access descriptor: `{"mode":"ambient"}`, `{"mode":"assume-role","role_arn":...,"external_id":...,"session_seconds":900}`, `{"mode":"web-identity","role_arn":...}`, or `{"mode":"static","access_key_id":...,"secret_access_key":...}`, plus `region` (and optional `sts_origin`) for a non-AWS origin. Modes that use the server's own AWS identity require the node operator's HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow.
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
@@ -7302,10 +7316,12 @@ type ResumeAdapterOriginMoveRequest struct {
 
 // ResumeAdapterTargetMoveRequest defines model for ResumeAdapterTargetMoveRequest.
 type ResumeAdapterTargetMoveRequest struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+
+	// DestinationKind repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId         ID      `json:"environment_id"`
@@ -8471,10 +8487,12 @@ type UpdateAdapterOriginRequest struct {
 
 // UpdateAdapterTargetRequest defines model for UpdateAdapterTargetRequest.
 type UpdateAdapterTargetRequest struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+
+	// DestinationKind repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId      ID    `json:"environment_id"`

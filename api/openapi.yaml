@@ -12300,7 +12300,12 @@ components:
 
     AdapterDestinationKind:
       type: string
-      enum: [repository, organization, environment]
+      description: >-
+        repository, organization, and environment are CI destinations (Forgejo,
+        GitHub Actions). json-object and per-key are AWS Secrets Manager
+        destinations: json-object writes one secret holding a JSON object,
+        per-key writes one secret per key.
+      enum: [repository, organization, environment, json-object, per-key]
 
     AdapterVisibility:
       type: string
@@ -12311,7 +12316,7 @@ components:
       description: >-
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
-      x-extensible-enum: [forgejo, github-actions]
+      x-extensible-enum: [forgejo, github-actions, aws-secrets-manager]
 
     AdapterTargetInput:
       type: object
@@ -12324,15 +12329,26 @@ components:
           description: Explicit consent to create missing GitHub environments using Administration:write.
         environment_id: {$ref: "#/components/schemas/ID"}
         destination_kind: {$ref: "#/components/schemas/AdapterDestinationKind"}
-        destination_owner: {type: string, minLength: 1, maxLength: 255}
+        destination_owner:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Provider owner or organization; the 12-digit AWS account id for AWS Secrets Manager.
         destination_name:
           type: string
           maxLength: 255
-          description: Repository name; empty for organization destinations.
+          description: >-
+            Repository name; empty for organization destinations. For AWS
+            json-object, the secret name; for AWS per-key, an optional path
+            prefix ending in `/`.
         destination_environment:
           type: string
           maxLength: 255
-          description: GitHub environment name; empty for repository and organization destinations.
+          description: >-
+            GitHub environment name; empty for repository and organization
+            destinations. For AWS Secrets Manager, the optional customer KMS
+            key (id, ARN, or alias) applied when Hikyo creates a secret;
+            changing it is a destination move.
         visibility:
           type: string
           enum: ["", all, private, selected]
@@ -12395,7 +12411,16 @@ components:
           type: string
           minLength: 1
           maxLength: 4096
-          description: Write-only provider credential. Never returned.
+          description: >-
+            Write-only provider credential. Never returned. For
+            aws-secrets-manager it is a JSON access descriptor:
+            `{"mode":"ambient"}`,
+            `{"mode":"assume-role","role_arn":...,"external_id":...,"session_seconds":900}`,
+            `{"mode":"web-identity","role_arn":...}`, or
+            `{"mode":"static","access_key_id":...,"secret_access_key":...}`,
+            plus `region` (and optional `sts_origin`) for a non-AWS origin.
+            Modes that use the server's own AWS identity require the node
+            operator's HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow.
         target: {$ref: "#/components/schemas/AdapterTargetInput"}
 
     UpdateAdapterOriginRequest:

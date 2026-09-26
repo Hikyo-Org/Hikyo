@@ -46,7 +46,10 @@ export type Id = string;
  */
 export type Timestamp = string;
 
-export type AdapterDestinationKind = 'repository' | 'organization' | 'environment';
+/**
+ * repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
+ */
+export type AdapterDestinationKind = 'repository' | 'organization' | 'environment' | 'json-object' | 'per-key';
 
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
@@ -62,13 +65,16 @@ export type AdapterTargetInput = {
     allow_environment_create?: boolean;
     environment_id: Id;
     destination_kind: AdapterDestinationKind;
+    /**
+     * Provider owner or organization; the 12-digit AWS account id for AWS Secrets Manager.
+     */
     destination_owner: string;
     /**
-     * Repository name; empty for organization destinations.
+     * Repository name; empty for organization destinations. For AWS json-object, the secret name; for AWS per-key, an optional path prefix ending in `/`.
      */
     destination_name: string;
     /**
-     * GitHub environment name; empty for repository and organization destinations.
+     * GitHub environment name; empty for repository and organization destinations. For AWS Secrets Manager, the optional customer KMS key (id, ARN, or alias) applied when Hikyo creates a secret; changing it is a destination move.
      */
     destination_environment: string;
     /**
@@ -106,7 +112,7 @@ export type CreateAdapterRequest = {
     provider: AdapterProvider;
     origin: string;
     /**
-     * Write-only provider credential. Never returned.
+     * Write-only provider credential. Never returned. For aws-secrets-manager it is a JSON access descriptor: `{"mode":"ambient"}`, `{"mode":"assume-role","role_arn":...,"external_id":...,"session_seconds":900}`, `{"mode":"web-identity","role_arn":...}`, or `{"mode":"static","access_key_id":...,"secret_access_key":...}`, plus `region` (and optional `sts_origin`) for a non-AWS origin. Modes that use the server's own AWS identity require the node operator's HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow.
      */
     credential: string;
     target: AdapterTargetInput;

@@ -25,6 +25,7 @@ const MaxManagedNodeValueBytes = 65536
 
 var managedNodeKeys = []string{
 	"HIKYO_LISTEN", "HIKYO_OPERATIONAL_LISTEN", "HIKYO_PG_POOL_MAX", "HIKYO_ADMISSION_BUDGET_MIB", "HIKYO_BACKUP_DIR", "HIKYO_TRUSTED_PROXY_CIDRS",
+	"HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY",
 	ManagedNewRootSourceKey, "HIKYO_TLS_CERT_PEM", "HIKYO_TLS_KEY_PEM", "HIKYO_ADAPTER_EGRESS_POLICY_JSON", "HIKYO_OIDC_EGRESS_POLICY_JSON", "HIKYO_DYNAMIC_EGRESS_POLICY_JSON",
 	"HIKYO_DEV_ADMISSION_PER_IP_PER_MINUTE", "HIKYO_DEV_SERVICE_BUDGETS_DISABLED", "HIKYO_DEV_ADAPTER_FAKE_PROVIDER",
 }
@@ -42,7 +43,7 @@ var managedNodeFiles = []struct{ source, target string }{
 func ManagedNodeKeys() []string { return slices.Clone(managedNodeKeys) }
 
 func managedNodeInputKeys() []string {
-	keys := append(slices.Clone(managedNodeKeys[:6]), managedDevelopmentKeys...)
+	keys := append(slices.Clone(managedNodeKeys[:7]), managedDevelopmentKeys...)
 	for _, source := range managedNodeFiles {
 		keys = append(keys, source.source)
 	}
@@ -73,6 +74,9 @@ func (c *Config) SeedNodeValues() (map[string]string, error) {
 	if c.BackupDir != "" {
 		values["HIKYO_BACKUP_DIR"] = c.BackupDir
 	}
+	if c.AdapterAWSWorkloadIdentity {
+		values["HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY"] = "allow"
+	}
 	if c.Dev {
 		values["HIKYO_DEV_SERVICE_BUDGETS_DISABLED"] = strconv.FormatBool(c.DevServiceBudgetsDisabled)
 		values["HIKYO_DEV_ADAPTER_FAKE_PROVIDER"] = strconv.FormatBool(c.DevAdapterFakeProvider)
@@ -82,7 +86,7 @@ func (c *Config) SeedNodeValues() (map[string]string, error) {
 	} else if c.DevAdmissionPerIPPerMinute != 0 || c.DevServiceBudgetsDisabled || c.DevAdapterFakeProvider {
 		return nil, errors.New("production configuration contains development-only controls")
 	}
-	for _, key := range append(slices.Clone(managedNodeKeys[:6]), managedDevelopmentKeys...) {
+	for _, key := range append(slices.Clone(managedNodeKeys[:7]), managedDevelopmentKeys...) {
 		if value, present := c.ManagedNodeInputs[key]; present {
 			values[key] = value
 		}
@@ -229,6 +233,9 @@ func parseManagedNodeValues(base *Config, values map[string]string) (*Config, er
 		node.Store.PostgresPoolMax = int32(pool)
 	}
 	node.BackupDir = values["HIKYO_BACKUP_DIR"]
+	if node.AdapterAWSWorkloadIdentity, err = parseAWSWorkloadIdentity(values["HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY"]); err != nil {
+		return nil, err
+	}
 	if strings.ContainsRune(node.BackupDir, 0) {
 		return nil, errors.New("HIKYO_BACKUP_DIR: invalid destination")
 	}
