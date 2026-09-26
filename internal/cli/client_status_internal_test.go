@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -38,5 +39,14 @@ func TestJSON429WithForeignCodeIsRateLimited(t *testing.T) {
 	var limited *RateLimitedError
 	if !errors.As(err, &ce) || ce.Code != ExitRateLimited || !errors.As(err, &limited) || limited.RetryAfter != 9*time.Second {
 		t.Fatalf("err=%v, want exit %d with Retry-After 9s", err, ExitRateLimited)
+	}
+}
+
+// A proxy's JSON 429 without the API's error fields still says what happened.
+func TestJSON429WithoutErrorFieldsNamesTheStatus(t *testing.T) {
+	err := errorFromResponse(http.StatusTooManyRequests, http.Header{}, []byte(`{"message":"slow down"}`))
+	var ce *Error
+	if !errors.As(err, &ce) || ce.Code != ExitRateLimited || !strings.Contains(err.Error(), "server returned 429") {
+		t.Fatalf("err=%v, want exit %d naming the status", err, ExitRateLimited)
 	}
 }

@@ -2432,7 +2432,8 @@ export function GrantDialog({
   // The same latch as render state: a landing grant refreshes the scope before
   // the submission settles, and a grant that took the last grantable option
   // must not swap GrantBody (and its navigation guard) for a bare Close while
-  // the request is still in flight.
+  // the request is still in flight, nor unmount a failure it then reports: an
+  // uncertain widening must stay on screen until the operator dismisses it.
   const [submitting, setSubmitting] = useState(false);
   const showBody = grantable || submitting;
 
@@ -2510,7 +2511,7 @@ function GrantBody({
   liveCredentials: number;
   /** GrantDialog's Escape gate, held while the mutation is in flight. */
   inFlightRef: MutableRefObject<boolean>;
-  /** GrantDialog keeps this body mounted while a submission is in flight. */
+  /** GrantDialog keeps this body mounted from submit until it succeeds; a failure stays mounted. */
   onSubmitting: (submitting: boolean) => void;
   onClose: () => void;
   onGranted: (environment: string, results: readonly GrantResult[]) => void;
@@ -2619,6 +2620,7 @@ function GrantBody({
         }),
       );
       onGranted(chosen?.name ?? effectiveEnvironment, results);
+      onSubmitting(false);
     } catch (error) {
       if (issued) {
         refreshGrants();
@@ -2628,7 +2630,6 @@ function GrantBody({
       }
     } finally {
       inFlightRef.current = false;
-      onSubmitting(false);
       setBusy(false);
     }
   };

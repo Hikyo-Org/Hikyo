@@ -323,8 +323,12 @@ func errorFromResponse(status int, header http.Header, payload []byte) error {
 			len(*body.Error.Findings), formatFindings(*body.Error.Findings))
 	}
 	// HTTP 429 is throttling whatever code a JSON body carries (a proxy's own
-	// error document, say), so it keeps exit 7 and its Retry-After.
+	// error document, say), so it keeps exit 7 and its Retry-After. A body
+	// without the API's error fields still names what happened.
 	if status == http.StatusTooManyRequests {
+		if message == "" {
+			message = fmt.Sprintf("server returned %d", status)
+		}
 		return rateLimited(message, header)
 	}
 	switch code {

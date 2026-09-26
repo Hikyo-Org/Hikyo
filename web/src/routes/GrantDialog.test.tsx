@@ -65,7 +65,12 @@ describe('GrantDialog while a grant is in flight', () => {
   // listing refetch lands before the submission settles, and the dialog must
   // keep GrantBody (its Granting state and navigation guard) mounted rather
   // than swap in the bare Close branch mid-request.
-  it('keeps the body mounted when the refreshed scope leaves nothing to widen', async () => {
+  // A failed grant must stay on screen too: an uncertain widening that
+  // unmounted into "nothing to widen" would hide the one result that needs
+  // review.
+  it.each(['granted', 'refused'] as const)(
+    'keeps the body mounted when the refreshed scope leaves nothing to widen (%s)',
+    async (outcome) => {
     const env: MachineEnvScope = {
       id: 'env_123e4567-e89b-12d3-a456-426614174010',
       name: 'production',
@@ -140,13 +145,22 @@ describe('GrantDialog while a grant is in flight', () => {
     expect(buttonNamed('Close')).toBeUndefined();
     expect(buttonNamed('Granting…')).toBeDefined();
 
-    resolveGrant(
-      jsonResponse(
-        { grant_id: 'grt_123e4567-e89b-12d3-a456-426614174030', capability: 'report-delivery-status', outcome: 'created' },
-      ),
-    );
-    await settleTask();
-    expect(onGranted).toHaveBeenCalledTimes(1);
+    if (outcome === 'granted') {
+      resolveGrant(
+        jsonResponse(
+          { grant_id: 'grt_123e4567-e89b-12d3-a456-426614174030', capability: 'report-delivery-status', outcome: 'created' },
+        ),
+      );
+      await settleTask();
+      expect(onGranted).toHaveBeenCalledTimes(1);
+    } else {
+      resolveGrant(jsonResponse({ error: { code: 'internal', message: 'boom' } }, 500));
+      await settleTask();
+      expect(onGranted).not.toHaveBeenCalled();
+      expect(container.querySelector('dialog[open] [role="alert"]')).not.toBeNull();
+      expect(container.textContent).not.toContain('There is nothing to widen');
+    }
     await unmount();
-  });
+    },
+  );
 });
