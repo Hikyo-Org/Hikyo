@@ -119,15 +119,16 @@ its first target. Credential input is a no-echo terminal, `--stdin`, or
 
 ```text
 hikyo adapter create --provider forgejo|github-actions --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.REGION.amazonaws.com --env ENV --kind json-object|per-key --owner ACCOUNT_ID [--secret NAME|PATH/] [--kms-key KEY] --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn ARN] [--aws-external-id ID] [--aws-session-seconds N] [--aws-access-key-id ID] [--aws-region REGION] [--prefix PREFIX] --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --origin URL [--keep-remote] [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --target TARGET --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--keep-remote]
 hikyo adapter update ADAPTER --move MOVE --origin URL [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --move MOVE --target TARGET --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID
 hikyo adapter update ADAPTER --move MOVE --cancel-move
-hikyo adapter credential set --adapter ADAPTER [--stdin|--value-file FILE]
+hikyo adapter credential set --adapter ADAPTER [--stdin|--value-file FILE] [--aws-auth MODE ...]
 hikyo adapter credential set --adapter ADAPTER --move MOVE [--stdin|--value-file FILE]
 hikyo adapter credential revoke --adapter ADAPTER
-hikyo adapter target add --adapter ADAPTER --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --keys ID,ID
+hikyo adapter target add --adapter ADAPTER --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] [--secret NAME|PATH/] [--kms-key KEY] --keys ID,ID
 hikyo adapter target list --adapter ADAPTER
 hikyo adapter target show|remove TARGET
 hikyo adapter plan|sync|test --target TARGET

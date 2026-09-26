@@ -1282,6 +1282,17 @@ jobs:
             echo "isolation: shard $ISOLATION_SHARD has no tests" >&2
             exit 1
           fi
+          # The shard that owns the AWS Secrets Manager emulator leg starts the
+          # pinned moto harness; the test then refuses to skip (#158).
+          case "|$tests|" in
+            *'|TestAWSSecretsManagerEmulatorLifecycle|'*)
+              export HIKYO_TEST_AWS_EMULATOR_REQUIRED=1
+              aws_env=$(./scripts/ci/start-aws-emulator.sh "$RUNNER_TEMP/aws-emulator")
+              for assignment in $aws_env; do
+                export "${assignment?}"
+              done
+              ;;
+          esac
           # Explicit package timeout inside the 20-minute job budget. The default
           # 10 minutes gave a 5-minute shard only 2x headroom and a loaded runner
           # hit it mid-test without any hang (#694). Race shards already run 20m.
