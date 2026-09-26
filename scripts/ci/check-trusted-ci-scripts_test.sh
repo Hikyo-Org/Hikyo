@@ -107,6 +107,16 @@ if [ "$(grep -c "github.event.pull_request.head.repo.full_name != github.reposit
 	exit 1
 fi
 require_line "$workflow" "if: \${{ !cancelled() && github.event_name != 'push' && github.event_name != 'merge_group' }}"
+# A queue candidate must not supply its own planning/checking scripts: merge
+# groups load them from merge_group.base_sha, like PRs, with the full plan.
+# shellcheck disable=SC2016
+if [ "$(grep -c 'BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}' "$workflow")" -ne 4 ] ||
+	grep -F '= merge_group ]; then' "$workflow" | grep -v 'if \[ "\$EVENT_NAME" = merge_group \]; then' >/dev/null; then
+	printf 'trusted CI scripts fixture failed: merge groups may run candidate-supplied CI scripts\n' >&2
+	exit 1
+fi
+# shellcheck disable=SC2016
+require_line "$workflow" 'plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)'
 controller_gate_steps=$(sed -n '/^  ci-required:/,$p' "$controller")
 printf '%s\n' "$controller_gate_steps" |
 	grep -F 'run: ./scripts/ci/check-fork-validation.sh' >/dev/null || {
