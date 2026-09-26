@@ -43,7 +43,19 @@ fixture() {
 
 gate() {
 	PATH="$work/bin:$PATH" FIXTURES=$work GH_REPO=o/r PR_NUMBER=7 HEAD_SHA=${1:-$head} \
-		FORK_GATE_TIMEOUT_SECONDS=0 FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>&1
+		FORK_GATE_TIMEOUT_SECONDS=0 FORK_GATE_POLL_SECONDS=0 "$script" >/dev/null 2>"$work/stderr"
+}
+
+# expect_pending <description>: rejected only by the deadline, never as a result.
+expect_pending() {
+	if gate; then
+		printf 'fork gate fixture failed: accepted %s\n' "$1" >&2
+		exit 1
+	fi
+	grep -F 'no completed fork-ci run' "$work/stderr" >/dev/null || {
+		printf 'fork gate fixture failed: treated %s as a result: %s\n' "$1" "$(cat "$work/stderr")" >&2
+		exit 1
+	}
 }
 
 expect_accept() {
@@ -72,9 +84,11 @@ expect_reject 'a skipped fork-ci gate'
 fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","display_title":"fork-ci #8"}]}' success
 expect_reject 'a passing run that belongs to another PR on the same commit'
 fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"in_progress","display_title":"fork-ci #7"}]}' success
-expect_reject 'an unfinished fork-ci run past the deadline'
+expect_pending 'an unfinished fork-ci run'
+fixture 1 "$docs" '{"workflow_runs":[{"id":42,"status":"completed","conclusion":"action_required","display_title":"fork-ci #7"}]}' success
+expect_pending 'a fork-ci run awaiting maintainer approval'
 fixture 1 "$docs" '{"workflow_runs":[]}' success
-expect_reject 'no fork-ci run at all'
+expect_pending 'no fork-ci run at all'
 
 fixture 2 '[{"filename":"docs/a.md"},{"filename":".github/workflows/ci-fork.yml"}]' "$done_run" success
 expect_reject 'a fork PR that edits a workflow'

@@ -24,12 +24,25 @@ git -C "$repo" commit -q -am '@everyone <img src=x> unsigned'
 unsigned=$(git -C "$repo" rev-parse HEAD)
 
 mkdir "$work/bin"
+# Serves a comments list mixing the marker comment with look-alikes, and
+# applies --jq with jq as gh does, so the real selector runs.
 cat >"$work/bin/gh" <<'STUB'
 #!/bin/sh
 set -eu
 printf '%s\n' "$*" >>"$CALLS"
+filter=
+prev=
+for arg in "$@"; do
+	[ "$prev" = --jq ] && filter=$arg
+	prev=$arg
+done
 case $* in
-*"/issues/7/comments?per_page=100"*) printf '%s\n' "${EXISTING:-}" ;;
+*"/issues/7/comments?per_page=100"*)
+	jq -r --arg id "${EXISTING:-}" "[{\"id\":1,\"user\":{\"login\":\"github-actions[bot]\"},\"body\":\"unrelated\"},
+		{\"id\":2,\"user\":{\"login\":\"mallory\"},\"body\":\"<!-- hikyo-dco-report -->forged\"}]
+		+ (if \$id == \"\" then [] else [{\"id\":(\$id|tonumber),\"user\":{\"login\":\"github-actions[bot]\"},\"body\":\"<!-- hikyo-dco-report -->\\nold\"}] end)
+		| $filter" -n
+	;;
 esac
 STUB
 chmod +x "$work/bin/gh"
@@ -60,5 +73,6 @@ grep -F -- '-X DELETE repos/o/r/issues/comments/99' "$work/calls" >/dev/null || 
 
 run "$signed" || fail 'signed range without a comment reported failure'
 grep -F -- '-X ' "$work/calls" >/dev/null && fail 'signed range wrote a comment'
+grep -E -- 'comments/(1|2)( |$)' "$work/calls" >/dev/null && fail 'touched a comment that is not the bot marker comment'
 
 printf 'DCO report fixture: unsigned commits get one SHA-only comment, updated in place and removed once signed\n'
