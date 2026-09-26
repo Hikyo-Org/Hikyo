@@ -18,6 +18,15 @@ CI checks the pull request's commit history; a sign-off added only to a squash
 message does not satisfy the gate. Hikyo uses the DCO, never a Contributor
 License Agreement (CLA), so contributors retain their copyright.
 
+## CI for pull requests from forks
+
+CI runs on a fork's pull request only after a maintainer vouches for its author
+in [`.github/VOUCHED.td`](./.github/VOUCHED.td)
+([vouch](https://github.com/mitchellh/vouch)). Until then, `ci-required` reports
+the author as not vouched. A fork pull request that changes anything under
+`.github/` cannot pass CI; a maintainer lands such changes from a branch in this
+repository.
+
 ## Security-sensitive contributions
 
 Contributions touching cryptography, authentication, deployment adapters, or

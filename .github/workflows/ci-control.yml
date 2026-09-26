@@ -3,6 +3,11 @@
 # issue/PR write anywhere: validation stays read-only. Fuzz findings are
 # classified and posted out-of-band by fuzz-report.yml (workflow_run), so no
 # write request here can startup-fail the run or reach untrusted PR code (#189).
+#
+# Fork pull requests are validated by ci-fork.yml under pull_request, because
+# actions/checkout refuses fork code here (#813). ci-required still decides
+# their merge from this base-controlled file: the author must be vouched
+# (.github/VOUCHED.td on the default branch), then check-fork-validation.sh.
 name: trusted-ci
 
 on:
@@ -18,6 +23,7 @@ concurrency:
 
 jobs:
   validation:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     uses: ./.github/workflows/ci.yml
     permissions:
       actions: read
@@ -31,8 +37,41 @@ jobs:
     if: always() && !cancelled()
     needs: validation
     runs-on: ubuntu-latest
+    # Covers waiting for a fork's full validation run (the script's own limit is
+    # 90 minutes).
+    timeout-minutes: 100
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
     steps:
       - name: Require trusted validation
+        if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           VALIDATION_RESULT: ${{ needs.validation.result }}
         run: test "$VALIDATION_RESULT" = success
+      # Reads VOUCHED.td from the default branch through the API, so a PR cannot
+      # vouch for itself. Collaborators with write access pass automatically.
+      - name: Require a vouched fork author
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        uses: mitchellh/vouch/action/check-user@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
+        with:
+          user: ${{ github.event.pull_request.user.login }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      # Base branch only: checkout refuses the fork head here, and this job must
+      # never run PR code.
+      - name: Check out the base branch
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - name: Require fork validation
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/ci/check-fork-validation.sh
