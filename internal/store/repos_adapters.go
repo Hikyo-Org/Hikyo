@@ -35,6 +35,7 @@ func scanAdapterTarget(row interface{ Scan(...any) error }) (AdapterTarget, erro
 	var errorClass sql.NullString
 	var driftAttention any
 	var attemptCount int64
+	var protected, hidden, expand int
 	err := row.Scan(
 		&target.ID, &target.AdapterID, &target.EnvironmentID, &target.Provider, &target.Origin,
 		&target.DestinationKind, &target.DestinationOwner, &target.DestinationName, &target.DestinationEnvironment,
@@ -43,6 +44,7 @@ func scanAdapterTarget(row interface{ Scan(...any) error }) (AdapterTarget, erro
 		&target.SyncStatus, &target.ConvergedRevision, &failureRaw, &warningRaw, &target.AuthorityPrincipalID,
 		&pausedAt, &target.LastAttemptedRevision, &lastAttemptedAt, &errorClass, &driftAttention,
 		&target.ActiveJobState, &nextAttemptAt, &attemptCount,
+		&target.DestinationScope, &protected, &hidden, &expand,
 	)
 	if err != nil {
 		if isNoRows(err) {
@@ -57,6 +59,7 @@ func scanAdapterTarget(row interface{ Scan(...any) error }) (AdapterTarget, erro
 		return AdapterTarget{}, err
 	}
 	target.LastErrorClass = adapter.ErrorClass(errorClass.String)
+	target.VariableProtected, target.VariableHidden, target.VariableExpand = protected == 1, hidden == 1, expand == 1
 	switch value := driftAttention.(type) {
 	case bool:
 		target.DriftAttention = value
@@ -254,13 +257,16 @@ func (r adapterQueries) PlanMaterial(ctx context.Context, p authz.Proof, targetI
 		return AdapterPlanMaterial{}, err
 	}
 	credentialQuery := r.db.SQL(
-		`SELECT credential_ciphertext FROM adapters WHERE id=? AND org_id=? AND project_id=?`,
+		`SELECT credential_ciphertext,spki_pin,ca_bundle_pem,CASE WHEN allow_personal_token THEN 1 ELSE 0 END FROM adapters WHERE id=? AND org_id=? AND project_id=?`,
 	)
 	var credential []byte
-	if err := r.db.QueryRow(ctx, credentialQuery, target.AdapterID, chain.Org, chain.Project).Scan(&credential); err != nil {
+	var transport AdapterTransport
+	var allowPersonal int
+	if err := r.db.QueryRow(ctx, credentialQuery, target.AdapterID, chain.Org, chain.Project).Scan(&credential, &transport.SPKIPin, &transport.CABundlePEM, &allowPersonal); err != nil {
 		return AdapterPlanMaterial{}, err
 	}
-	out := AdapterPlanMaterial{Target: target, CredentialCiphertext: credential}
+	transport.AllowPersonalToken = allowPersonal == 1
+	out := AdapterPlanMaterial{Target: target, Transport: transport, CredentialCiphertext: credential}
 	manifestQuery := r.db.SQLPerEngine(
 		`SELECT e.key_id,e.key_name,e.classification FROM snapshot_entries e JOIN adapter_target_keys k ON k.key_id=e.key_id AND k.target_id=? AND k.org_id=e.org_id AND k.project_id=e.project_id AND k.environment_id=e.environment_id WHERE e.snapshot_id=(SELECT id FROM snapshots WHERE org_id=? AND project_id=? AND environment_id=? AND payload_present=1 ORDER BY revision DESC LIMIT 1) AND e.org_id=? AND e.project_id=? AND e.environment_id=? ORDER BY e.key_name`,
 		`SELECT e.key_id,e.key_name,e.classification FROM snapshot_entries e JOIN adapter_target_keys k ON k.key_id=e.key_id AND k.target_id=$1 AND k.org_id=e.org_id AND k.project_id=e.project_id AND k.environment_id=e.environment_id WHERE e.snapshot_id=(SELECT id FROM snapshots WHERE org_id=$2 AND project_id=$3 AND environment_id=$4 AND payload_present=true ORDER BY revision DESC LIMIT 1) AND e.org_id=$5 AND e.project_id=$6 AND e.environment_id=$7 ORDER BY e.key_name`)

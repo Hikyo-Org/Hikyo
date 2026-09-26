@@ -11,9 +11,10 @@ type Provider string
 const (
 	ForgejoProvider       Provider = "forgejo"
 	GitHubActionsProvider Provider = "github-actions"
+	GitLabProvider        Provider = "gitlab"
 )
 
-var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider}
+var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, GitLabProvider}
 
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {

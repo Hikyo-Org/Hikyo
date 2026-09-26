@@ -1,0 +1,58 @@
+# GitLab CI/CD variable adapter end-to-end lifecycle (#159) against a real,
+# disposable GitLab CE. GitLab takes minutes to boot and needs several GB of
+# memory, so this runs on a schedule and on demand rather than as a PR gate;
+# dispatch it for any change under internal/adapter/gitlab.
+name: gitlab-e2e
+
+on:
+  schedule:
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitlab-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:18@sha256:06cad38a5d9f5d24b4d83d86def30795d5e4b757fedbf5281172b576dedcd941
+        env:
+          POSTGRES_USER: hikyo
+          POSTGRES_PASSWORD: hikyo
+          POSTGRES_DB: hikyo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hikyo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Restore shared Go module cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-v2-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum', 'scripts/ci/go-tool-modules.txt') }}
+          restore-keys: go-mod-v2-${{ runner.os }}-
+      - name: Start disposable GitLab CE
+        run: ./scripts/ci/start-gitlab.sh
+      - name: GitLab adapter lifecycle (both datastore engines)
+        env:
+          HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
+        run: go test -count=1 -timeout 20m -run 'TestGitLabRealLifecycle' -v ./internal/isolation/
+      - name: GitLab logs on failure
+        if: ${{ failure() && env.HIKYO_TEST_GITLAB_CONTAINER != '' }}
+        run: docker logs --tail 300 "$HIKYO_TEST_GITLAB_CONTAINER"
+      - name: Remove GitLab
+        if: ${{ always() && env.HIKYO_TEST_GITLAB_CONTAINER != '' }}
+        run: docker rm -f "$HIKYO_TEST_GITLAB_CONTAINER"

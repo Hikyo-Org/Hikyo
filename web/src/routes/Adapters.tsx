@@ -108,7 +108,25 @@ function destinationText(target: AdapterTarget): string {
     target.destination_name === ''
       ? target.destination_owner
       : `${target.destination_owner}/${target.destination_name}`;
+  if (target.destination_scope !== undefined && target.destination_scope !== '') {
+    return `${base} [scope ${target.destination_scope}]`;
+  }
   return target.destination_environment === '' ? base : `${base} (${target.destination_environment})`;
+}
+
+type AdapterProviderName = 'forgejo' | 'github-actions' | 'gitlab';
+
+function providerLabel(provider: string): string {
+  switch (provider) {
+    case 'forgejo':
+      return 'Forgejo';
+    case 'github-actions':
+      return 'GitHub Actions';
+    case 'gitlab':
+      return 'GitLab';
+    default:
+      return provider;
+  }
 }
 
 function environmentSet(adapter: Adapter, extra?: string): string[] {
@@ -318,7 +336,7 @@ function AdapterPanel({
   return (
     <section className="panel adapters__adapter" aria-label={`Adapter ${adapter.origin}`}>
       <div className="adapters__adapter-head">
-        <h2>{adapter.provider === 'forgejo' ? 'Forgejo' : adapter.provider === 'github-actions' ? 'GitHub Actions' : adapter.provider}</h2>
+        <h2>{providerLabel(adapter.provider)}</h2>
         <span className="adapters__origin mono">{adapter.origin}</span>
         <Badge>
           {adapter.credential_present ? 'credential set' : 'credential absent'}
@@ -353,6 +371,7 @@ function AdapterPanel({
       {adding ? (
         <TargetForm
           title="Add target"
+          provider={adapter.provider}
           environments={environments}
           keys={keys}
           busy={add.isPending}
@@ -860,9 +879,13 @@ function CreateAdapterPanel({
   readonly onClose: () => void;
 }) {
   const create = useCreateAdapter(refData);
-  const [provider, setProvider] = useState<'forgejo' | 'github-actions'>('forgejo');
+  const [provider, setProvider] = useState<AdapterProviderName>('forgejo');
   const [origin, setOrigin] = useState('');
   const [credential, setCredential] = useSensitiveState('');
+  const [spkiPin, setSpkiPin] = useState('');
+  const [caBundle, setCaBundle] = useState('');
+  const [allowPersonalToken, setAllowPersonalToken] = useState(false);
+  const personalTokenHintId = useId();
   return (
     <section className="panel adapters__adapter" aria-label="New adapter">
       <div className="adapters__adapter-head">
@@ -875,26 +898,74 @@ function CreateAdapterPanel({
             value={provider}
             onChange={(event) =>
               {
-              const next = event.target.value === 'github-actions' ? 'github-actions' : 'forgejo';
+              const value = event.target.value;
+              const next: AdapterProviderName = value === 'github-actions' || value === 'gitlab' ? value : 'forgejo';
               setProvider(next);
-              setOrigin(next === 'github-actions' ? 'https://api.github.com' : '');
+              setOrigin(next === 'github-actions' ? 'https://api.github.com' : next === 'gitlab' ? 'https://gitlab.com' : '');
             }
             }
           >
             <option value="forgejo">Forgejo</option>
             <option value="github-actions">GitHub Actions</option>
+            <option value="gitlab">GitLab</option>
           </select>
         </label>
         <label className="field">
-          <span className="field__label">{provider === 'github-actions' ? 'GitHub API base URL' : 'Origin'}</span>
+          <span className="field__label">
+            {provider === 'github-actions' ? 'GitHub API base URL' : provider === 'gitlab' ? 'GitLab base URL' : 'Origin'}
+          </span>
           <input
             value={origin}
             onChange={(event) => setOrigin(event.target.value)}
-            placeholder={provider === 'github-actions' ? 'https://HOST/api/v3' : 'https://git.example.com'}
+            placeholder={
+              provider === 'github-actions'
+                ? 'https://HOST/api/v3'
+                : provider === 'gitlab'
+                  ? 'https://gitlab.example.com'
+                  : 'https://git.example.com'
+            }
             autoComplete="off"
           />
         </label>
         {provider === 'github-actions' ? <p className="field__hint">GitHub Enterprise Server: use https://HOST/api/v3. GHES support is best-effort; CI verifies github.com only.</p> : null}
+        {provider === 'gitlab' ? (
+          <>
+            <p className="field__hint">
+              Use a project or group access token with the api scope and the Maintainer role (Owner for group
+              variables). Hikyo never reads GitLab variables back: their values are only ever written.
+            </p>
+            <Input
+              label="SPKI pin (optional)"
+              mono
+              value={spkiPin}
+              onChange={(event) => setSpkiPin(event.target.value)}
+              placeholder="base64(sha256(SubjectPublicKeyInfo))"
+              hint="Checked after normal certificate verification. Fixed for the adapter's lifetime."
+            />
+            <label className="field">
+              <span className="field__label">CA bundle (optional)</span>
+              <textarea
+                className="mono"
+                value={caBundle}
+                rows={4}
+                onChange={(event) => setCaBundle(event.target.value)}
+                placeholder="-----BEGIN CERTIFICATE-----"
+              />
+            </label>
+            <div className="field">
+              <Checkbox
+                label="Accept a personal access token"
+                aria-describedby={personalTokenHintId}
+                checked={allowPersonalToken}
+                onChange={(event) => setAllowPersonalToken(event.target.checked)}
+              />
+              <p className="field__hint" id={personalTokenHintId}>
+                Refused by default: a personal token can act as its owner everywhere they have access. Prefer a
+                project or group access token.
+              </p>
+            </div>
+          </>
+        ) : null}
         <Input
           label="Credential"
           type="password"
@@ -906,6 +977,7 @@ function CreateAdapterPanel({
       </div>
       <TargetForm
         title="First target"
+        provider={provider}
         environments={environments}
         keys={keys}
         busy={create.isPending}
@@ -913,7 +985,13 @@ function CreateAdapterPanel({
         onSubmit={async (input) => {
           try {
             await ceremonyFor('adapter.configure', [input.environment_id]);
-            await create.mutateAsync({ provider, origin, credential, target: input });
+            await create.mutateAsync({
+              provider,
+              origin,
+              credential,
+              target: input,
+              ...(provider === 'gitlab' ? { gitlab: { spkiPin, caBundle, allowPersonalToken } } : {}),
+            });
             setCredential('');
             feedback.ok('Adapter created. Its first converge is queued.');
             onClose();
@@ -962,6 +1040,7 @@ export function normalisePrefix(raw: string): string {
 
 export function TargetForm({
   title,
+  provider,
   environments,
   keys,
   busy,
@@ -971,6 +1050,8 @@ export function TargetForm({
   onSubmit,
 }: {
   readonly title: string;
+  /** The adapter's provider; GitLab swaps GitHub routing for scope and flags. */
+  readonly provider?: string;
   readonly environments: readonly EnvironmentOption[];
   readonly keys: readonly ProjectKey[];
   readonly busy: boolean;
@@ -1003,6 +1084,11 @@ export function TargetForm({
   const [include, setInclude] = useState('');
   const [exclude, setExclude] = useState('');
   const [classification, setClassification] = useState<'' | 'secret' | 'config'>('');
+  const gitlab = provider === 'gitlab';
+  const [scope, setScope] = useState(initial?.destination_scope ?? '*');
+  const [variableProtected, setVariableProtected] = useState(initial?.variable_protected ?? false);
+  const [variableHidden, setVariableHidden] = useState(initial?.variable_hidden ?? false);
+  const [variableExpand, setVariableExpand] = useState(initial?.variable_expand ?? false);
 
   // Default to the first environment until the operator picks one, derived
   // during render so no state write is needed when environments load late.
@@ -1016,7 +1102,7 @@ export function TargetForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const selectsRepositories = kind === 'organization' && visibility === 'selected';
+    const selectsRepositories = !gitlab && kind === 'organization' && visibility === 'selected';
     const parsedIds = selectsRepositories ? zRepositoryIdList.safeParse(repositoryIds) : null;
     if (parsedIds !== null && !parsedIds.success) {
       setRepositoryIdsError(parsedIds.error.issues[0]?.message ?? 'Repository ids are not valid.');
@@ -1040,11 +1126,19 @@ export function TargetForm({
       destination_name: kind === 'organization' ? '' : name,
       destination_environment: kind === 'environment' ? destinationEnvironment : '',
       allow_environment_create: kind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
-      visibility: kind === 'organization' ? visibility : '',
+      visibility: kind === 'organization' && !gitlab ? visibility : '',
       selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
       name_prefix: normalisePrefix(prefix),
       key_ids: [...keyIds],
       ...(selection === undefined ? {} : { key_selection: selection }),
+      ...(gitlab
+        ? {
+            destination_scope: scope.trim() === '' ? '*' : scope.trim(),
+            variable_protected: variableProtected,
+            variable_hidden: variableHidden,
+            variable_expand: variableExpand,
+          }
+        : {}),
     });
   };
 
@@ -1089,21 +1183,30 @@ export function TargetForm({
               setKind(value === 'organization' || value === 'environment' ? value : 'repository');
             }}
           >
-            <option value="repository">Repository</option>
-            <option value="organization">GitHub organization</option>
-            <option value="environment">GitHub environment</option>
+            {gitlab ? (
+              <>
+                <option value="repository">GitLab project</option>
+                <option value="organization">GitLab group</option>
+              </>
+            ) : (
+              <>
+                <option value="repository">Repository</option>
+                <option value="organization">GitHub organization</option>
+                <option value="environment">GitHub environment</option>
+              </>
+            )}
           </select>
         </label>
         <label className="field">
-          <span className="field__label">Owner</span>
+          <span className="field__label">{gitlab ? (kind === 'organization' ? 'Group path' : 'Namespace') : 'Owner'}</span>
           <input value={owner} disabled={lockRouting === true} onChange={(event) => setOwner(event.target.value)} />
         </label>
         {kind !== 'organization' ? (
           <label className="field">
-            <span className="field__label">Repository</span>
+            <span className="field__label">{gitlab ? 'Project' : 'Repository'}</span>
             <input value={name} disabled={lockRouting === true} onChange={(event) => setName(event.target.value)} />
           </label>
-        ) : (
+        ) : gitlab ? null : (
           <label className="field">
             <span className="field__label">Visibility</span>
             <select
@@ -1121,7 +1224,27 @@ export function TargetForm({
             </select>
           </label>
         )}
-        {kind === 'organization' && visibility === 'selected' ? (
+        {gitlab ? (
+          <Input
+            label="Environment scope"
+            mono
+            value={scope}
+            disabled={lockRouting === true}
+            onChange={(event) => setScope(event.target.value)}
+            hint="GitLab environment_scope; * for every environment. Fixed once the target exists."
+          />
+        ) : null}
+        {gitlab ? (
+          <div className="field">
+            <Checkbox label="Protected (protected branches and tags only)" checked={variableProtected} onChange={(event) => setVariableProtected(event.target.checked)} />
+            <Checkbox label="Hidden secrets (GitLab 17.4+, applied on creation)" checked={variableHidden} onChange={(event) => setVariableHidden(event.target.checked)} />
+            <Checkbox label="Expand $VARIABLE references in values" checked={variableExpand} onChange={(event) => setVariableExpand(event.target.checked)} />
+            <p className="field__hint">
+              Secret keys are always masked; a value GitLab cannot mask is refused by name, never delivered unmasked.
+            </p>
+          </div>
+        ) : null}
+        {!gitlab && kind === 'organization' && visibility === 'selected' ? (
           <Input
             label="Repository ids"
             mono
@@ -1425,6 +1548,7 @@ function TargetDetail({
           {editing ? (
             <TargetForm
               title="Edit keys and prefix"
+              provider={adapter.provider}
               environments={[{ id: target.environment_id, name: environmentName(target.environment_id) }]}
               keys={keys}
               initial={target}

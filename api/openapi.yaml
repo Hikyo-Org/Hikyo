@@ -12311,7 +12311,7 @@ components:
       description: >-
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
-      x-extensible-enum: [forgejo, github-actions]
+      x-extensible-enum: [forgejo, github-actions, gitlab]
 
     AdapterTargetInput:
       type: object
@@ -12333,6 +12333,25 @@ components:
           type: string
           maxLength: 255
           description: GitHub environment name; empty for repository and organization destinations.
+        destination_scope:
+          type: string
+          maxLength: 255
+          description: >-
+            GitLab environment_scope (default `*`). Empty for other providers.
+            Immutable once a target exists; remove and re-add the target to
+            change it.
+        variable_protected:
+          type: boolean
+          default: false
+          description: GitLab only. Deliver managed variables as protected (protected branches and tags only).
+        variable_hidden:
+          type: boolean
+          default: false
+          description: GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+        variable_expand:
+          type: boolean
+          default: false
+          description: GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
         visibility:
           type: string
           enum: ["", all, private, selected]
@@ -12397,6 +12416,24 @@ components:
           maxLength: 4096
           description: Write-only provider credential. Never returned.
         target: {$ref: "#/components/schemas/AdapterTargetInput"}
+        spki_pin:
+          type: string
+          maxLength: 64
+          description: >-
+            GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server
+            certificate chain must present, checked after normal chain
+            verification. Immutable; recreate the adapter to change it.
+        ca_bundle:
+          type: string
+          maxLength: 65536
+          description: GitLab only. PEM trust anchors added to the system roots for a self-hosted instance.
+        allow_personal_token:
+          type: boolean
+          default: false
+          description: >-
+            GitLab only. Protected opt-in to accept a personal access token,
+            which can act as its human owner everywhere they have access. By
+            default only project and group access tokens are accepted.
 
     UpdateAdapterOriginRequest:
       type: object
@@ -12438,6 +12475,25 @@ components:
           uniqueItems: true
           items: {$ref: "#/components/schemas/ID"}
         key_selection: {$ref: "#/components/schemas/AdapterKeySelection"}
+        destination_scope:
+          type: string
+          maxLength: 255
+          description: >-
+            GitLab environment_scope (default `*`). Empty for other providers.
+            Immutable once a target exists; remove and re-add the target to
+            change it.
+        variable_protected:
+          type: boolean
+          default: false
+          description: GitLab only. Deliver managed variables as protected (protected branches and tags only).
+        variable_hidden:
+          type: boolean
+          default: false
+          description: GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+        variable_expand:
+          type: boolean
+          default: false
+          description: GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
         expected_generation: {type: integer, format: int64, minimum: 1}
         keep_remote: {type: boolean, default: false}
 
@@ -12494,6 +12550,10 @@ components:
         destination_owner: {type: string}
         destination_name: {type: string}
         destination_environment: {type: string}
+        destination_scope: {type: string, description: GitLab environment_scope; empty for other providers.}
+        variable_protected: {type: boolean}
+        variable_hidden: {type: boolean}
+        variable_expand: {type: boolean}
         destination_id: {type: integer, format: int64, minimum: 1}
         repository_id: {type: integer, format: int64, minimum: 0}
         visibility: {type: string, enum: ["", all, private, selected]}
@@ -12587,6 +12647,9 @@ components:
         authority_principal_id: {$ref: "#/components/schemas/ID"}
         state: {type: string, enum: [active, moving, tombstoned]}
         created_at: {$ref: "#/components/schemas/Timestamp"}
+        spki_pin: {type: string, description: GitLab egress SPKI pin; empty when unpinned.}
+        ca_bundle_present: {type: boolean, description: Whether a GitLab CA bundle is configured.}
+        allow_personal_token: {type: boolean}
         targets: {type: array, items: {$ref: "#/components/schemas/AdapterTarget"}}
 
     AdapterList:

@@ -130,7 +130,7 @@ func TestAdapterLoaderRejectsUnknownProviderBeforeCredentialOpen(t *testing.T) {
 	factoryCalled := false
 	loader := &adapterLoader{
 		loadExecution: func(context.Context, adapter.Job) (store.AdapterExecution, error) {
-			return store.AdapterExecution{Provider: "gitlab", CredentialCiphertext: []byte("sealed")}, nil
+			return store.AdapterExecution{Provider: "bitbucket", CredentialCiphertext: []byte("sealed")}, nil
 		},
 		openField: func(crypto.ProjectFieldAAD, []byte) ([]byte, error) {
 			openCalled = true

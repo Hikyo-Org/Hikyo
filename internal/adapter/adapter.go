@@ -51,7 +51,36 @@ const (
 
 type Config struct {
 	Origin string
+	// Provider transport options. Only GitLab accepts them today; every other
+	// provider refuses a non-empty value so a pin is never silently ignored.
+	// SPKIPin is base64(sha256(SubjectPublicKeyInfo)) and is checked after
+	// normal chain verification. CABundlePEM adds trust anchors for a
+	// self-hosted instance. AllowPersonalToken is the documented protected
+	// opt-in for a broader personal access token.
+	SPKIPin            string
+	CABundlePEM        string
+	AllowPersonalToken bool
 }
+
+// HasProviderOptions reports whether any provider-specific transport option
+// is set.
+func (c Config) HasProviderOptions() bool {
+	return c.SPKIPin != "" || c.CABundlePEM != "" || c.AllowPersonalToken
+}
+
+// VariableOptions are per-target delivery flags. Only GitLab accepts them.
+// Secret-classified keys are always masked; masking cannot be switched off.
+type VariableOptions struct {
+	// Protected exposes managed variables only to protected branches and tags.
+	Protected bool
+	// Hidden creates secret-classified variables as masked and hidden.
+	Hidden bool
+	// Expand lets the provider expand $VARIABLE references inside values.
+	// The default (false) delivers values byte-exactly as raw variables.
+	Expand bool
+}
+
+func (o VariableOptions) IsZero() bool { return o == VariableOptions{} }
 
 type Destination struct {
 	Kind                  DestinationKind
@@ -62,6 +91,9 @@ type Destination struct {
 	RepositoryID          int64
 	Visibility            string
 	SelectedRepositoryIDs []int64
+	// Scope is the GitLab environment_scope ("*" for every environment).
+	// It is empty for every other provider.
+	Scope string
 }
 
 type Target struct {
@@ -70,6 +102,7 @@ type Target struct {
 	Destination Destination
 	NamePrefix  string
 	Generation  int64
+	Options     VariableOptions
 }
 
 type Access struct {
@@ -300,6 +333,51 @@ func ValidateGitHubActionsManifest(prefix string, entries []ManifestEntry, value
 	return nil
 }
 
+// gitLabKey is GitLab's CI/CD variable key syntax.
+var gitLabKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// gitLabMaskable is the one pinned copy of GitLab's documented masked-value
+// rule: a single line of at least 8 characters from this alphabet.
+var gitLabMaskable = regexp.MustCompile(`^[A-Za-z0-9_@:.~+/=-]{8,}$`)
+
+// GitLabMaskable reports whether GitLab can mask value. It never returns or
+// formats the value.
+func GitLabMaskable(value string) bool { return gitLabMaskable.MatchString(value) }
+
+// ValidateGitLabManifest applies GitLab's key and masking contract before any
+// job is enqueued. Secret-classified values must be maskable: masking is never
+// silently disabled. Refusals name the key and never the value.
+func ValidateGitLabManifest(prefix string, entries []ManifestEntry, values bool) error {
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		name := prefix + entry.CanonicalName
+		switch {
+		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
+			return fmt.Errorf("gitlab: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
+		case name == prefix+SentinelName:
+			return fmt.Errorf("gitlab: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
+		case len(name) > 255:
+			return fmt.Errorf("gitlab: %s: effective name exceeds GitLab's 255-character key limit", entry.CanonicalName)
+		case !gitLabKey.MatchString(name):
+			return fmt.Errorf("gitlab: %s: effective name %q is not GitLab variable key syntax", entry.CanonicalName, name)
+		case strings.HasPrefix(strings.ToUpper(name), "CI_"), strings.HasPrefix(strings.ToUpper(name), "GITLAB_"), strings.EqualFold(name, "CI"):
+			return fmt.Errorf("gitlab: %s: effective name %q shadows a GitLab predefined variable", entry.CanonicalName, name)
+		case values && entry.Classification == SecretClassification && !GitLabMaskable(entry.Value):
+			return fmt.Errorf("gitlab: %s: secret value cannot be masked by GitLab (needs a single line of at least 8 characters from A-Z a-z 0-9 _ @ : . ~ + / = -); reclassify or exclude the key", entry.CanonicalName)
+		case values && strings.ContainsRune(entry.Value, '\x00'):
+			return fmt.Errorf("gitlab: %s: NUL-containing values are not job-byte-exact", entry.CanonicalName)
+		case values && !utf8.ValidString(entry.Value):
+			return fmt.Errorf("gitlab: %s: non-UTF-8 values cannot be represented byte-exactly by GitLab's JSON API", entry.CanonicalName)
+		}
+		normalized := strings.ToUpper(name)
+		if _, ok := seen[normalized]; ok {
+			return fmt.Errorf("gitlab: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
+		}
+		seen[normalized] = struct{}{}
+	}
+	return nil
+}
+
 func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, values bool) error {
 	kind, err := ParseProvider(provider)
 	if err != nil {
@@ -308,6 +386,8 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 	switch kind {
 	case GitHubActionsProvider:
 		return ValidateGitHubActionsManifest(prefix, entries, values)
+	case GitLabProvider:
+		return ValidateGitLabManifest(prefix, entries, values)
 	case ForgejoProvider:
 		return ValidateManifest(prefix, entries)
 	default:
@@ -320,6 +400,9 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (string, error) {
 	if err := ValidateProviderManifest(provider, prefix, entries, false); err != nil {
 		return "", err
+	}
+	if provider == string(GitLabProvider) {
+		return renderGitLabJob(prefix, entries), nil
 	}
 	return renderWorkflow(prefix, entries), nil
 }
@@ -342,6 +425,27 @@ func RecipientSetNeedsCeremony(oldVisibility string, oldIDs []int64, newVisibili
 		return false
 	}
 	return !(oldVisibility == "all" && (newVisibility == "private" || newVisibility == "selected"))
+}
+
+// renderGitLabJob maps prefixed CI/CD variables back to canonical names in a
+// .gitlab-ci.yml job. GitLab injects variables directly, so without a prefix
+// no mapping is required.
+func renderGitLabJob(prefix string, entries []ManifestEntry) string {
+	rows := slices.Clone(entries)
+	slices.SortFunc(rows, func(a, b ManifestEntry) int { return strings.Compare(a.CanonicalName, b.CanonicalName) })
+	var out strings.Builder
+	if prefix == "" {
+		out.WriteString("# GitLab injects these CI/CD variables into every matching job:\n")
+		for _, entry := range rows {
+			_, _ = fmt.Fprintf(&out, "#   %s\n", entry.CanonicalName)
+		}
+		return out.String()
+	}
+	out.WriteString("variables:\n")
+	for _, entry := range rows {
+		_, _ = fmt.Fprintf(&out, "  %s: $%s%s\n", entry.CanonicalName, prefix, entry.CanonicalName)
+	}
+	return out.String()
 }
 
 func renderWorkflow(prefix string, entries []ManifestEntry) string {

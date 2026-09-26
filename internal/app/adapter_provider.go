@@ -8,6 +8,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/forgejo"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/githubactions"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/gitlab"
 )
 
 type providerConstructor func(adapter.Config, string, []netip.Prefix) (adapter.Module, func(), error)
@@ -33,6 +34,13 @@ func deploymentProviderRegistry() map[adapter.Provider]providerConstructor {
 			}
 			return &githubactions.Module{API: client}, client.Forget, nil
 		},
+		adapter.GitLabProvider: func(config adapter.Config, credential string, allowed []netip.Prefix) (adapter.Module, func(), error) {
+			client, err := gitlab.NewClient(gitlab.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second, SPKIPin: config.SPKIPin, CABundlePEM: config.CABundlePEM})
+			if err != nil {
+				return nil, nil, err
+			}
+			return &gitlab.Module{API: client}, client.Forget, nil
+		},
 	}
 }
 
@@ -47,6 +55,11 @@ func (f *adapterModuleFactory) Build(provider adapter.Provider, config adapter.C
 	constructor := f.providers[provider]
 	if constructor == nil {
 		return nil, errors.New("app: unsupported deployment adapter provider")
+	}
+	if provider != adapter.GitLabProvider && config.HasProviderOptions() {
+		// A pin or trust bundle that a provider would silently ignore is a
+		// configuration error, never a no-op.
+		return nil, errors.New("app: transport pinning, CA bundles, and personal-token opt-in are GitLab-only")
 	}
 	allowed := append([]netip.Prefix(nil), f.egressPolicy[config.Origin]...)
 	module, release, err := constructor(config, credential, allowed)

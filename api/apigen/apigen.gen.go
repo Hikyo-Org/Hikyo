@@ -3291,8 +3291,13 @@ type ActiveSessionArtifact string
 
 // Adapter defines model for Adapter.
 type Adapter struct {
+	AllowPersonalToken *bool `json:"allow_personal_token,omitempty"`
+
 	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
 	AuthorityPrincipalId ID `json:"authority_principal_id"`
+
+	// CaBundlePresent Whether a GitLab CA bundle is configured.
+	CaBundlePresent *bool `json:"ca_bundle_present,omitempty"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
 	CreatedAt           Timestamp  `json:"created_at"`
@@ -3306,8 +3311,11 @@ type Adapter struct {
 
 	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
 	Provider AdapterProvider `json:"provider"`
-	State    AdapterState    `json:"state"`
-	Targets  []AdapterTarget `json:"targets"`
+
+	// SpkiPin GitLab egress SPKI pin; empty when unpinned.
+	SpkiPin *string         `json:"spki_pin,omitempty"`
+	State   AdapterState    `json:"state"`
+	Targets []AdapterTarget `json:"targets"`
 }
 
 // AdapterState defines model for Adapter.State.
@@ -3529,6 +3537,9 @@ type AdapterTarget struct {
 	DestinationName        string                 `json:"destination_name"`
 	DestinationOwner       string                 `json:"destination_owner"`
 
+	// DestinationScope GitLab environment_scope; empty for other providers.
+	DestinationScope *string `json:"destination_scope,omitempty"`
+
 	// DriftAttention The destination disagrees with the ownership ledger in a way only an operator can settle (unowned name in the way, destination identity moved, orphaned names). Cleared by the next successful converge.
 	DriftAttention bool `json:"drift_attention"`
 
@@ -3564,9 +3575,12 @@ type AdapterTarget struct {
 	// `degraded` a failed attempt on a target that converged before, so
 	// the destination still holds `converged_revision`; `paused` wins
 	// over every other state while `paused_at` is set.
-	SyncStatus AdapterTargetSyncStatus `json:"sync_status"`
-	Visibility AdapterTargetVisibility `json:"visibility"`
-	Warnings   []string                `json:"warnings"`
+	SyncStatus        AdapterTargetSyncStatus `json:"sync_status"`
+	VariableExpand    *bool                   `json:"variable_expand,omitempty"`
+	VariableHidden    *bool                   `json:"variable_hidden,omitempty"`
+	VariableProtected *bool                   `json:"variable_protected,omitempty"`
+	Visibility        AdapterTargetVisibility `json:"visibility"`
+	Warnings          []string                `json:"warnings"`
 }
 
 // AdapterTargetLastErrorClass Bounded cause of the last failed attempt; empty after a success. Never a provider response body.
@@ -3605,6 +3619,9 @@ type AdapterTargetInput struct {
 	DestinationName  string `json:"destination_name"`
 	DestinationOwner string `json:"destination_owner"`
 
+	// DestinationScope GitLab environment_scope (default `*`). Empty for other providers. Immutable once a target exists; remove and re-add the target to change it.
+	DestinationScope *string `json:"destination_scope,omitempty"`
+
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId ID `json:"environment_id"`
 
@@ -3622,6 +3639,15 @@ type AdapterTargetInput struct {
 	KeySelection          *AdapterKeySelection `json:"key_selection,omitempty"`
 	NamePrefix            string               `json:"name_prefix"`
 	SelectedRepositoryIds []int64              `json:"selected_repository_ids"`
+
+	// VariableExpand GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
+	VariableExpand *bool `json:"variable_expand,omitempty"`
+
+	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+	VariableHidden *bool `json:"variable_hidden,omitempty"`
+
+	// VariableProtected GitLab only. Deliver managed variables as protected (protected branches and tags only).
+	VariableProtected *bool `json:"variable_protected,omitempty"`
 
 	// Visibility GitHub organization recipient visibility; empty for other destinations.
 	Visibility AdapterTargetInputVisibility `json:"visibility"`
@@ -4331,13 +4357,22 @@ type CopyValuesResult struct {
 
 // CreateAdapterRequest defines model for CreateAdapterRequest.
 type CreateAdapterRequest struct {
+	// AllowPersonalToken GitLab only. Protected opt-in to accept a personal access token, which can act as its human owner everywhere they have access. By default only project and group access tokens are accepted.
+	AllowPersonalToken *bool `json:"allow_personal_token,omitempty"`
+
+	// CaBundle GitLab only. PEM trust anchors added to the system roots for a self-hosted instance.
+	CaBundle *string `json:"ca_bundle,omitempty"`
+
 	// Credential Write-only provider credential. Never returned.
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
 	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
-	Provider AdapterProvider    `json:"provider"`
-	Target   AdapterTargetInput `json:"target"`
+	Provider AdapterProvider `json:"provider"`
+
+	// SpkiPin GitLab only. base64(sha256(SubjectPublicKeyInfo)) the server certificate chain must present, checked after normal chain verification. Immutable; recreate the adapter to change it.
+	SpkiPin *string            `json:"spki_pin,omitempty"`
+	Target  AdapterTargetInput `json:"target"`
 }
 
 // CreateBindingRequest A binding names exactly one service account, matched byte-for-byte on
@@ -8476,6 +8511,9 @@ type UpdateAdapterTargetRequest struct {
 	DestinationName        string                 `json:"destination_name"`
 	DestinationOwner       string                 `json:"destination_owner"`
 
+	// DestinationScope GitLab environment_scope (default `*`). Empty for other providers. Immutable once a target exists; remove and re-add the target to change it.
+	DestinationScope *string `json:"destination_scope,omitempty"`
+
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId      ID    `json:"environment_id"`
 	ExpectedGeneration int64 `json:"expected_generation"`
@@ -8490,10 +8528,19 @@ type UpdateAdapterTargetRequest struct {
 	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
 	// only keys of that classification. `exclude` applies to what the
 	// patterns and classification selected, never to explicit ids or names.
-	KeySelection          *AdapterKeySelection                 `json:"key_selection,omitempty"`
-	NamePrefix            string                               `json:"name_prefix"`
-	SelectedRepositoryIds []int64                              `json:"selected_repository_ids"`
-	Visibility            UpdateAdapterTargetRequestVisibility `json:"visibility"`
+	KeySelection          *AdapterKeySelection `json:"key_selection,omitempty"`
+	NamePrefix            string               `json:"name_prefix"`
+	SelectedRepositoryIds []int64              `json:"selected_repository_ids"`
+
+	// VariableExpand GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
+	VariableExpand *bool `json:"variable_expand,omitempty"`
+
+	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+	VariableHidden *bool `json:"variable_hidden,omitempty"`
+
+	// VariableProtected GitLab only. Deliver managed variables as protected (protected branches and tags only).
+	VariableProtected *bool                                `json:"variable_protected,omitempty"`
+	Visibility        UpdateAdapterTargetRequestVisibility `json:"visibility"`
 }
 
 // UpdateAdapterTargetRequestVisibility defines model for UpdateAdapterTargetRequest.Visibility.

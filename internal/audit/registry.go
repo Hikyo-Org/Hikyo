@@ -3103,6 +3103,9 @@ var registry = map[EventType]TypeSpec{
 	EventAdapterConfigure: adapterLifecycleEvent(Schema{
 		"mutation":           {Kind: KindString, Required: true},
 		"previous_authority": {Kind: KindString}, "authority": {Kind: KindString, Required: true},
+		// GitLab adapter creation (#159): the public SPKI pin and the
+		// protected personal-token opt-in are recorded when set.
+		"spki_pin": {Kind: KindString}, "personal_credential_accepted": {Kind: KindBool},
 	}),
 	EventAdapterCredentialReplace: adapterLifecycleEvent(Schema{
 		"credential_present": {Kind: KindBool, Required: true},
