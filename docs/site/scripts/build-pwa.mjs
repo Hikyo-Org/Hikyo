@@ -18,7 +18,7 @@ export async function buildPwa(distUrl, graph) {
     inlineWorkboxRuntime: true,
     // The complete docs search index exceeds Workbox's 2 MiB default. Keep
     // offline search available, with an explicit ceiling and fatal warnings.
-    maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+    maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
     skipWaiting: true,
     sourcemap: false,
     swDest: fileURLToPath(new URL('sw.js', distUrl)),

@@ -1,0 +1,49 @@
+# Fork pull-request validation (#813). actions/checkout refuses fork code under
+# pull_request_target, correctly: there the runtime token can write the base
+# branch's cache. A fork's validation therefore runs here, under pull_request,
+# with a read-only token, no secrets, and PR-scoped cache writes.
+#
+# This run's result is not a merge gate by itself: the YAML comes from the PR's
+# merge ref. trusted-ci's ci-required (base-controlled) accepts it only when the
+# PR leaves .github/ untouched and this workflow's aggregate gate passed on the
+# exact head (scripts/ci/check-fork-validation.sh). Never add a job named
+# ci-required here: a skipped job would satisfy the required check.
+#
+# Only vouched authors get a validation run (.github/VOUCHED.td, read from the
+# default branch through the API, so a PR cannot vouch for itself). trusted-ci
+# repeats the check; this copy only saves runners for unvouched authors.
+name: fork-ci
+# check-fork-validation.sh binds a run to its PR by this title. The YAML is
+# base-identical whenever that gate accepts, so a fork cannot forge it.
+run-name: "fork-ci #${{ github.event.pull_request.number }}"
+
+on:
+  pull_request:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: fork-ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  vouch:
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a vouched author
+        uses: mitchellh/vouch/action/check-user@d66fa29a64600490892131ad87597c30c91fcac4 # v1.5.0
+        with:
+          user: ${{ github.event.pull_request.user.login }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  validation:
+    needs: vouch
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      actions: read
+      contents: read

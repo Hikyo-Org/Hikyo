@@ -69,6 +69,76 @@ if ! grep -F 'pull_request_target:' "$controller" >/dev/null ||
 	exit 1
 fi
 
+# Fork PRs (#813): validation runs untrusted under pull_request in ci-fork.yml,
+# never under pull_request_target, and the base-controlled gate decides.
+fork_workflow="$script_dir/../../.github/workflows/ci-fork.yml"
+if ! grep -Eq '^  pull_request:' "$fork_workflow" ||
+	grep -Eq '^[[:space:]]+pull_request_target:' "$fork_workflow" ||
+	grep -F 'allow-unsafe-pr-checkout' "$workflow" "$controller" "$fork_workflow" >/dev/null; then
+	printf 'trusted CI scripts fixture failed: fork validation left pull_request or checks out fork code in a trusted context\n' >&2
+	exit 1
+fi
+# A skipped job named ci-required would satisfy the required check.
+if grep -Eq '^  ci-required:' "$fork_workflow"; then
+	printf 'trusted CI scripts fixture failed: fork workflow defines the required ci-required context\n' >&2
+	exit 1
+fi
+require_line "$fork_workflow" "if: github.event.pull_request.head.repo.full_name != github.repository"
+# The fork gate binds runs to their PR by this exact title (quoted: a bare " #"
+# would start a YAML comment).
+# shellcheck disable=SC2016
+require_line "$fork_workflow" 'run-name: "fork-ci #${{ github.event.pull_request.number }}"'
+# shellcheck disable=SC2016
+require_line "$script_dir/check-fork-validation.sh" 'select(.display_title == \"fork-ci #$PR_NUMBER\")'
+
+require_line "$controller" "if: github.event.pull_request.head.repo.full_name == github.repository"
+controller_gate_steps=$(sed -n '/^  ci-required:/,$p' "$controller")
+printf '%s\n' "$controller_gate_steps" |
+	grep -F 'run: ./scripts/ci/check-fork-validation.sh' >/dev/null || {
+	printf 'trusted CI scripts fixture failed: ci-required does not gate fork validation\n' >&2
+	exit 1
+}
+# Only vouched fork authors pass: the trusted gate decides, and the fork run
+# does not start validation without it. check-user fails unless allow-fail.
+vouch_action='uses: mitchellh/vouch/action/check-user@'
+printf '%s\n' "$controller_gate_steps" | grep -F "$vouch_action" >/dev/null || {
+	printf 'trusted CI scripts fixture failed: ci-required does not require a vouched fork author\n' >&2
+	exit 1
+}
+require_line "$fork_workflow" "$vouch_action"
+require_line "$fork_workflow" 'needs: vouch'
+if grep -F 'allow-fail' "$controller" "$fork_workflow" >/dev/null; then
+	printf 'trusted CI scripts fixture failed: vouch check may pass an unvouched author\n' >&2
+	exit 1
+fi
+"$script_dir/check-fork-validation_test.sh"
+
+# Fork runs get no secrets and no OIDC identity (#813): nothing in the fork path
+# may reference a secret, inherit secrets, or request an ID token. GitHub already
+# withholds secrets from fork pull_request runs; this keeps the YAML from asking.
+if grep -Eq 'secrets[.:[]|id-token' "$fork_workflow" ||
+	grep -Eq 'secrets[.:[]|id-token: write' "$workflow"; then
+	printf 'trusted CI scripts fixture failed: the fork validation path references secrets or an ID token\n' >&2
+	exit 1
+fi
+if grep -Eq '(issues|pull-requests): write' "$fork_workflow"; then
+	printf 'trusted CI scripts fixture failed: fork validation received issue/PR writes\n' >&2
+	exit 1
+fi
+
+# dco-report holds PR write, so it must never run PR code: it checks out the
+# base SHA only and runs base scripts over PR commits fetched as data.
+dco_reporter="$script_dir/../../.github/workflows/dco-report.yml"
+# shellcheck disable=SC2016
+require_line "$dco_reporter" 'ref: ${{ github.event.pull_request.base.sha }}'
+require_line "$dco_reporter" 'run: ./scripts/ci/report-dco.sh'
+if [ "$(grep -c 'ref:' "$dco_reporter")" -ne 1 ] ||
+	grep -Eq 'allow-unsafe-pr-checkout|secrets[.:[]' "$dco_reporter"; then
+	printf 'trusted CI scripts fixture failed: dco-report may check out PR code or reach secrets\n' >&2
+	exit 1
+fi
+"$script_dir/report-dco_test.sh"
+
 # Superseded PR runs must release workflow concurrency immediately. Aggregate
 # gates still run after ordinary failures, but cancellation must skip them.
 workflow_gate=$(sed -n '/^  ci-required:/,$p' "$workflow")
