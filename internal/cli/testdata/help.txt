@@ -185,6 +185,14 @@ adapters:
   hikyo adapter target remove <target> [--keep-remote]
   hikyo adapter adopt --target <target> [--artifact <id>] <NAME>...
   hikyo adapter plan|sync|test --target <target>     sync is the idempotent resync
+  hikyo file-target list [-o table|json]
+  hikyo file-target create --env E --name <name> --sa <service-account> [--keys <id,...>]
+      [--names <name,...>] [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
+                                                 bind a workload account to a pull-class file target
+  hikyo file-target show <target> [-o table|json]
+  hikyo file-target update <target> --expected-generation N [--keys ...] [--names ...]
+      [--include ...] [--exclude ...] [--classification ...]
+  hikyo file-target delete <target>                refused while the account has a live credential
 
   key selection (--names, --include, --exclude, --classification) resolves to
   explicit key ids when the target is saved; keys created later are not added.
@@ -224,6 +232,16 @@ compose:                                           machine credential only
   hikyo compose render [--project-directory DIR] [--config-only] [--token-file PATH]
   hikyo compose sync [--project-directory DIR] [--token-file PATH]
   hikyo compose doctor [--project-directory DIR] [-o table|json] [--token-file PATH]
+
+file sync:                                         machine credential only
+  hikyo file-sync render --config FILE [--token-file PATH]
+                                                 pull the bound target, publish one generation
+  hikyo file-sync doctor --config FILE [-o table|json]
+                                                 local checks only, no network
+
+  the config file is client-local and names the destination directory; the
+  server never learns it. render is one-shot or poll-until-current (refresh.mode),
+  never a resident watcher: run it from a timer for continuous refresh.
 
   run and compose accept a machine credential (--token-file or HIKYO_TOKEN); only
   run may instead use the stored human session, under --use-human-session and its

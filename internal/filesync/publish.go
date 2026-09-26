@@ -232,6 +232,53 @@ func (d *Destination) Verify(plan Plan) (bool, error) {
 	return d.generationMatches(st.Generation, plan)
 }
 
+// Intact re-derives the current generation's keyed stamp from the bytes on
+// disk and the policy, and reports whether it equals the stamp the generation
+// was committed under, the generation holds exactly names, every name links
+// to it, and every file carries the policy's mode and ownership. A wiped
+// tmpfs, a hand-edited file or a changed policy all read as not intact, which
+// is what stops a stored cursor from claiming "current" over them.
+func (d *Destination) Intact(keys *crypto.LocalKeys, target string, policy Policy, names []string) (State, bool, error) {
+	st, err := d.Current()
+	if err != nil || st.Generation == "" || st.Target != target {
+		return st, false, err
+	}
+	want := slices.Clone(names)
+	slices.Sort(want)
+	if !slices.Equal(st.Files, want) {
+		return st, false, nil
+	}
+	files := make([]Rendered, 0, len(want))
+	defer func() {
+		for _, f := range files {
+			crypto.Zero(f.Content)
+		}
+	}()
+	for _, name := range want {
+		if ok, err := d.linkIsOurs(name); err != nil || !ok {
+			return st, false, err
+		}
+		p := path.Join(genDir, st.Generation, name)
+		fi, err := d.root.Lstat(p)
+		if err != nil {
+			return st, false, err
+		}
+		if fi.Mode().Perm() != policy.Mode.Perm() || !ownedAs(fi, policy.UID, policy.GID) {
+			return st, false, nil
+		}
+		content, err := d.root.ReadFile(p)
+		if err != nil {
+			return st, false, err
+		}
+		files = append(files, Rendered{Name: name, Content: content})
+	}
+	return st, GenerationStamp(keys, target, policy, files) == st.Stamp, nil
+}
+
+// OnTmpfs reports whether dir is on tmpfs; off Linux it cannot tell and
+// returns ErrUnsupported.
+func OnTmpfs(dir string) (bool, error) { return isTmpfs(dir) }
+
 // Publish commits plan as one generation. On any error before the commit the
 // previously current generation is untouched; after the commit the new one is
 // current even if link creation, pruning or collection then fails.

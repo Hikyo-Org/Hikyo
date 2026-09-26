@@ -37,7 +37,8 @@ const (
 	// SourceConfig is the hikyo-compose.yaml project file, which the compose
 	// verbs fold into resolution AFTER the standard chain: it fills a dimension
 	// the chain left unresolved and a disagreement with a resolved one is a hard
-	// error naming both.
+	// error naming both. The file-sync verb folds its own config the same way,
+	// under the Source named by that file.
 	SourceConfig Source = "hikyo-compose.yaml"
 )
 

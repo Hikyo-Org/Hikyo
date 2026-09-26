@@ -113,6 +113,7 @@ var authRuleRows = []authRuleRow{
 		"dynamic-provider create", "dynamic-provider list", "dynamic-provider show", "dynamic-provider delete",
 		"dynamic-provider credential set", "dynamic-provider credential revoke",
 		"lease settle",
+		"file-target create", "file-target list", "file-target show", "file-target update", "file-target delete",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations(
 		"env list", "env show", "env create", "env delete",
@@ -125,6 +126,7 @@ var authRuleRows = []authRuleRow{
 	)},
 	{Kinds: machineOnly, Operations: authOperations(
 		"compose render", "compose sync", "compose doctor",
+		"file-sync render", "file-sync doctor",
 	)},
 }
 

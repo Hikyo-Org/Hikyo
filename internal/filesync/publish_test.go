@@ -574,3 +574,36 @@ func assertOnlyGenerations(t *testing.T, dir string, want ...string) {
 		t.Fatalf("generation entries = %v, want %v", got, want)
 	}
 }
+
+func TestIntactDetectsTamperingAndPolicyChange(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	files := []Rendered{file("a", "1"), file("b", "2")}
+	f.mustPublish(files...)
+	d, err := OpenDestination(f.dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, ok, err := d.Intact(f.keys, testTarget, f.pol, []string{"b", "a"}); err != nil || !ok {
+		t.Fatalf("fresh publication not intact: %v", err)
+	}
+	if _, ok, _ := d.Intact(f.keys, testTarget, f.pol, []string{"a"}); ok {
+		t.Fatal("a different name set read as intact")
+	}
+	other := f.pol
+	other.Mode = 0o640
+	if _, ok, _ := d.Intact(f.keys, testTarget, other, []string{"a", "b"}); ok {
+		t.Fatal("a changed policy read as intact")
+	}
+	real, err := filepath.EvalSymlinks(filepath.Join(f.dir, "a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(real, []byte("tampered"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := d.Intact(f.keys, testTarget, f.pol, []string{"a", "b"}); ok {
+		t.Fatal("tampered content read as intact")
+	}
+}
