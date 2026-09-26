@@ -105,17 +105,23 @@ checks out or runs a file from the fetched commits, the alert becomes real.
 
 ## Known limits
 
-- **Retargeted PRs.** `trusted-ci` does not run on `edited`. Adding that
-  trigger would let a title edit produce a *skipped* `ci-required`, and a
-  skipped check counts as passing. A base change, including GitHub's
-  auto-retarget of a stacked PR, therefore leaves the old result in place. The
-  `main` ruleset's strict status checks cover this: a PR must be up to date
-  with `main` before merge, and updating it re-runs validation against the new
-  base. `release/repository/main-ci-gate.json` already declared
-  `strict_required_status_checks_policy: true`, but the live ruleset had
-  drifted to `false`; it was restored on 2026-09-26. The spec also gained the
-  live `required_signatures` rule it was missing. (Codex gpt-6-astra review.)
-
+- **Retargeted PRs → merge queue.** `trusted-ci` does not run on `edited`. It
+  must not: a title edit would publish a *skipped* `ci-required`, and a skipped
+  check counts as passing. So a base change used to leave the old result in
+  place. Strict status checks closed that only partly (a head that already
+  contains `main`'s tip needed no update). `main` now requires the **merge
+  queue**. `trusted-ci` also runs on `merge_group` and validates the exact
+  merge result against the real base with the full suite (treated like `push`:
+  full plan, local scripts, no DCO step). A retarget or a stale head therefore
+  cannot land on an old pass. Strict checks are off because the queue
+  supersedes them. The spec gained the `merge_queue` rule and the live
+  `required_signatures` rule it lacked. (Codex gpt-6-astra review, rounds 1–2.)
+- **Fork code in the queue.** A queued fork PR's merge commit runs in the base
+  repository context, like the `push` run it becomes seconds later. `ci.yml`
+  references no secrets, and a maintainer has already approved the PR by
+  queueing it. A fork workflow with `on: merge_group` would run there too, but
+  the fork gate refuses any PR that touches `.github/`, so such a PR cannot
+  reach the queue.
 - **Same-name check spoofing (pre-existing).** A fork PR can add an
   `on: pull_request` workflow with a job named `ci-required`. GitHub would
   publish a green check under the required name, and branch protection matches

@@ -1,5 +1,6 @@
 # CI for the walking skeleton (#42): trusted base-branch orchestration runs
-# every validation domain affected by PR paths; main runs the complete suite.
+# every validation domain affected by PR paths; main and the merge queue
+# (merge_group, the exact merge result about to land) run the complete suite.
 # Validation checks out exact PR heads with read-only permissions and no cache
 # writes. Actions and toolchains remain pinned.
 name: ci
@@ -40,7 +41,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -o pipefail
-          if [ "$EVENT_NAME" = push ]; then
+          if [ "$EVENT_NAME" = push ] || [ "$EVENT_NAME" = merge_group ]; then
             plan=$(./scripts/ci/classify-changed-paths.sh --all)
           elif git cat-file -e "$BASE_SHA:scripts/ci/classify-changed-paths.sh" 2>/dev/null &&
             git cat-file -e "$BASE_SHA:scripts/ci/ci-job-registry.json" 2>/dev/null; then
@@ -514,7 +515,7 @@ jobs:
           path: ~/.cache/go-build
           key: ${{ steps.generated-go-cache.outputs.cache-primary-key }}
       - name: Require DCO sign-off on every PR commit
-        if: ${{ !cancelled() && github.event_name != 'push' }}
+        if: ${{ !cancelled() && github.event_name != 'push' && github.event_name != 'merge_group' }}
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -1164,7 +1165,7 @@ jobs:
         run: |
           set -o pipefail
           trusted_planner="$RUNNER_TEMP/analysis-shards.go"
-          if [ "$EVENT_NAME" = push ]; then
+          if [ "$EVENT_NAME" = push ] || [ "$EVENT_NAME" = merge_group ]; then
             cp ./scripts/ci/analysis-shards-go/main.go "$trusted_planner"
           else
             git show "$BASE_SHA:scripts/ci/analysis-shards-go/main.go" >"$trusted_planner"
@@ -1357,7 +1358,7 @@ jobs:
           # replace the scheduler to omit assigned coverage. App database-drop
           # cleanup runs after peer packages finish their durable migrations.
           scheduler="$RUNNER_TEMP/test-race-packages.sh"
-          if [ "$EVENT_NAME" = push ]; then
+          if [ "$EVENT_NAME" = push ] || [ "$EVENT_NAME" = merge_group ]; then
             cp ./scripts/ci/test-race-packages.sh "$scheduler"
           else
             git show "$BASE_SHA:scripts/ci/test-race-packages.sh" >"$scheduler"
@@ -1654,7 +1655,7 @@ jobs:
         run: |
           trusted_checker="$RUNNER_TEMP/check-required-jobs.sh"
           trusted_registry="$RUNNER_TEMP/ci-job-registry.json"
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
+          if [ "$GITHUB_EVENT_NAME" = push ] || [ "$GITHUB_EVENT_NAME" = merge_group ]; then
             cp ./scripts/ci/check-required-jobs.sh "$trusted_checker"
             cp ./scripts/ci/ci-job-registry.json "$trusted_registry"
           else

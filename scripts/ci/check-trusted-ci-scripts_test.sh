@@ -91,7 +91,22 @@ require_line "$fork_workflow" 'run-name: "fork-ci #${{ github.event.pull_request
 # shellcheck disable=SC2016
 require_line "$script_dir/check-fork-validation.sh" 'select(.display_title == \"fork-ci #$PR_NUMBER\")'
 
-require_line "$controller" "if: github.event.pull_request.head.repo.full_name == github.repository"
+require_line "$controller" "if: github.event_name == 'merge_group' || github.event.pull_request.head.repo.full_name == github.repository"
+# The merge queue (#813) validates the exact merge result with the full suite.
+# The fork path must never run for a merge group (it has no pull_request), and
+# groups must not share, and so cancel, one concurrency slot.
+if ! grep -Eq '^  merge_group:' "$controller"; then
+	printf 'trusted CI scripts fixture failed: trusted-ci does not run for the merge queue\n' >&2
+	exit 1
+fi
+# shellcheck disable=SC2016
+require_line "$controller" 'group: trusted-ci-${{ github.event.pull_request.number || github.run_id }}'
+if [ "$(grep -c "github.event.pull_request.head.repo.full_name != github.repository" "$controller")" -ne \
+	"$(grep -c "github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository" "$controller")" ]; then
+	printf 'trusted CI scripts fixture failed: a fork step can run for a merge group\n' >&2
+	exit 1
+fi
+require_line "$workflow" "if: \${{ !cancelled() && github.event_name != 'push' && github.event_name != 'merge_group' }}"
 controller_gate_steps=$(sed -n '/^  ci-required:/,$p' "$controller")
 printf '%s\n' "$controller_gate_steps" |
 	grep -F 'run: ./scripts/ci/check-fork-validation.sh' >/dev/null || {
