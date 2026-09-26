@@ -3,6 +3,8 @@
     { "id": "audit-read", "deepest": "environment" },
     { "id": "backup-export", "deepest": "instance" },
     { "id": "credential-reset", "deepest": "org" },
+    { "id": "crypto-manage", "deepest": "project" },
+    { "id": "crypto-use", "deepest": "environment" },
     { "id": "definitions-edit", "deepest": "project" },
     { "id": "edit", "deepest": "environment" },
     { "id": "instance-config", "deepest": "instance" },

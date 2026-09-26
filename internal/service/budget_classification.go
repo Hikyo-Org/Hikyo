@@ -75,6 +75,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDeliveryFetch)
 	add(budgetClassNamed, "delivery-target report: separate bucket, 60/min·principal + 300/min·org, charged after authorization (k8s-condition-reporting ADR D8)",
 		authz.OpDeliveryTargetReport, authz.OpDeliveryTargetTombstone)
+	add(budgetClassNamed, "transit §179 (transit ADR D9): Transit.use (600/min·principal + 6000/min·org), installation-wide under HA",
+		authz.OpTransitUse)
 	add(budgetClassNamed, "schema-revision §151: chargeOnce before BumpSchemaRevision (60/h·project)",
 		authz.OpKeyCreate, authz.OpKeyRename, authz.OpKeyUpdateDeclaration, authz.OpKeyUpdateMetadata,
 		authz.OpKeySetGroup, authz.OpKeyDelete, authz.OpKeyReclassify,
@@ -213,6 +215,11 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpSSHCAInspect, authz.OpSSHCARetireKey, authz.OpSSHCADelete,
 		authz.OpSSHProfileConfigure, authz.OpSSHProfileInspect, authz.OpSSHProfileDelete,
 		authz.OpSSHCertInspect, authz.OpSSHCertRevoke,
+		// transit key management (#156): one key row and its version, state
+		// or caller rows per call; the data plane is the named `transit`
+		// category above
+		authz.OpTransitKeyCreate, authz.OpTransitKeyInspect, authz.OpTransitKeyConfigure,
+		authz.OpTransitKeyRotate, authz.OpTransitKeyLifecycle, authz.OpTransitKeyTrim,
 	)
 
 	return m

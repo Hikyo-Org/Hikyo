@@ -506,6 +506,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// profile configure/delete, issuance and revocation all traverse the
 		// real service and store.
 		runSSHLifecycle(t, db, false)
+		// Transit (#156): key creation, configuration, operator and scheduled
+		// rotation, trim, a denied and a successful data-plane operation, the
+		// deletion schedule and the purge all traverse the real service.
+		runTransitLifecycle(t, db)
 		// The multi-instance surface (#71): both tiers, against a real pinned
 		// TLS peer, so every remote.* type has a real emitter behind it too.
 		// Before the backup lifecycle, because that one advances the restore

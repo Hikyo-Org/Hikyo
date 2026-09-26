@@ -115,6 +115,9 @@ var authRuleRows = []authRuleRow{
 		"lease settle",
 		"ssh-ca create", "ssh-ca rotate", "ssh-ca retire-key", "ssh-ca delete",
 		"ssh-profile create", "ssh-profile update", "ssh-profile delete",
+		"transit key create", "transit key configure", "transit key rotate", "transit key trim",
+		"transit key disable", "transit key enable", "transit key retire", "transit key compromise",
+		"transit key schedule-deletion", "transit key cancel-deletion",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations(
 		"env list", "env show", "env create", "env delete",
@@ -127,6 +130,9 @@ var authRuleRows = []authRuleRow{
 		"ssh-ca list", "ssh-ca show", "ssh-ca trusted-keys", "ssh-ca krl",
 		"ssh-profile list", "ssh-profile show",
 		"ssh-cert issue", "ssh-cert list", "ssh-cert show", "ssh-cert revoke",
+		"transit key list", "transit key show",
+		"transit encrypt", "transit decrypt", "transit rewrap", "transit datakey",
+		"transit sign", "transit verify", "transit hmac", "transit hmac-verify",
 	)},
 	{Kinds: machineOnly, Operations: authOperations(
 		"compose render", "compose sync", "compose doctor",

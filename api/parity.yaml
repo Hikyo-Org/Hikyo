@@ -449,3 +449,20 @@ operations:
 
   diffRevisions: {webui: history}
   revealRevisionDiff: {webui: history}
+
+  # transit (#156): CLI/API first; the WebUI is tracked by #820.
+  listTransitKeys:        {issue: 820}
+  createTransitKey:       {issue: 820}
+  showTransitKey:         {issue: 820}
+  configureTransitKey:    {issue: 820}
+  rotateTransitKey:       {issue: 820}
+  changeTransitKeyState:  {issue: 820}
+  trimTransitKey:         {issue: 820}
+  transitEncrypt:         {issue: 820}
+  transitDecrypt:         {issue: 820}
+  transitRewrap:          {issue: 820}
+  transitDataKey:         {issue: 820}
+  transitSign:            {issue: 820}
+  transitVerify:          {issue: 820}
+  transitHMAC:            {issue: 820}
+  transitVerifyHMAC:      {issue: 820}

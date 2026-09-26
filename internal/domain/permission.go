@@ -234,9 +234,13 @@ var machineAllowlists = map[PrincipalClass]map[Capability]bool{
 	// `report-delivery-status` is the condition-reporting ADR's declared
 	// amendment: the one machine write a workload may hold, and it writes no
 	// value, definition or grant.
-	ClassWorkload: {CapRead: true, CapReportDeliveryStatus: true},
+	// `crypto-use` is the transit ADR's declared amendment (#156): transit
+	// exists for workloads, it discloses no stored Hikyo secret, and per-key
+	// caller entries may narrow it further.
+	ClassWorkload: {CapRead: true, CapReportDeliveryStatus: true, CapCryptoUse: true},
 	ClassAutomation: {
 		CapRead: true, CapEdit: true, CapPublish: true, CapDefinitionsEdit: true,
+		CapCryptoUse: true,
 	},
 	// The scim-provisioning amendment's single row: system-created with the
 	// binding, and refused through the grant API — so the allowlist admits

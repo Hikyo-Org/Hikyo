@@ -554,3 +554,46 @@ func mustSpec(t EventType) TypeSpec {
 	}
 	return spec
 }
+
+// TestTransitSchemasCannotCarryMaterial pins transit ADR invariant 6: every
+// transit.* schema is closed, declares no field that could carry plaintext,
+// ciphertext, context, signature, MAC, digest, data key or key material, and
+// validate() refuses a payload that tries to smuggle one in.
+func TestTransitSchemasCannotCarryMaterial(t *testing.T) {
+	transit := []EventType{
+		EventTransitKeyCreated, EventTransitKeyConfigured, EventTransitKeyRotated,
+		EventTransitKeyStateChanged, EventTransitKeyTrimmed, EventTransitKeyDestroyed,
+		EventTransitOperation,
+	}
+	forbidden := []string{
+		"plaintext", "ciphertext", "context", "associated_data", "input", "output",
+		"signature", "mac", "hmac", "digest", "hash", "data_key", "datakey",
+		"key_material", "material", "public_key", "message", "value",
+	}
+	for _, et := range transit {
+		spec, ok := Spec(et)
+		if !ok {
+			t.Errorf("%s is not registered", et)
+			continue
+		}
+		for _, f := range forbidden {
+			if _, ok := spec.Schema[f]; ok {
+				t.Errorf("%s schema declares forbidden field %q", et, f)
+			}
+			if err := spec.Schema.validate(et, Payload{f: "c2VjcmV0"}); err == nil {
+				t.Errorf("%s accepted a payload carrying %q", et, f)
+			}
+		}
+	}
+	op := mustSpec(EventTransitOperation)
+	if err := op.Schema.validate(EventTransitOperation, Payload{
+		"operation": "encrypt", "key_version": int64(2), "input_bytes": int64(5), "output_bytes": int64(80),
+	}); err != nil {
+		t.Fatalf("a well-formed transit.operation payload was refused: %v", err)
+	}
+	if err := op.Schema.validate(EventTransitOperation, Payload{
+		"operation": "export", "input_bytes": int64(0), "output_bytes": int64(0),
+	}); err == nil {
+		t.Fatal("an operation outside the closed set was accepted")
+	}
+}
