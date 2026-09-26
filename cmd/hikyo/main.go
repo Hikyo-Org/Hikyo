@@ -280,8 +280,10 @@ func updateIO(terminalSession *disclose.TerminalSession, terminalError error, ch
 	}
 }
 
+// shouldCheckForUpdate excludes `scan`, which runs in pre-commit hooks and
+// CI and must stay offline and prompt-free.
 func shouldCheckForUpdate(command string) bool {
-	return command != "update" && slices.Contains(cli.Verbs, command)
+	return command != "update" && command != "scan" && slices.Contains(cli.Verbs, command)
 }
 
 func runServer(ctx context.Context, args []string) int {

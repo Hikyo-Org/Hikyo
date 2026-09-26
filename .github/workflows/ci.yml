@@ -935,8 +935,33 @@ jobs:
 
   # Fast package/build checks stay together; the historically dominant
   # internal/isolation package runs on three independent PostgreSQL runners.
-  test_core:
+  # Cross-platform proof for local repository scanning (#153): the scanner
+  # engine's path, CRLF, symlink, budget and git-fixture tests on the two
+  # non-Linux client platforms (Linux runs them in test_core). Indirect:
+  # test_core needs it, so a failure here skips test_core and ci-required
+  # reports the mismatch.
+  scan-xplat:
     needs: changes
+    if: ${{ fromJSON(needs.changes.outputs.plan).test }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod # exact toolchain pinned by go.mod's toolchain directive
+          cache: false
+      - name: Scanner tests
+        run: go test -count=1 ./internal/scanning/... ./internal/repscan
+
+  test_core:
+    needs: [changes, scan-xplat]
     if: ${{ fromJSON(needs.changes.outputs.plan).test }}
     runs-on: ubuntu-latest
     services:

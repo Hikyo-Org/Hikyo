@@ -111,7 +111,7 @@ func TestOnlyClientCommandsMayCheckForUpdatesBeforeDispatch(t *testing.T) {
 			t.Errorf("shouldCheckForUpdate(%q) = false, want true", command)
 		}
 	}
-	for _, command := range []string{"server", "operator", "updater", "migrate", "admin", "backup", "restore", "unknown", "update", "version", "--version", "about", "welcome"} {
+	for _, command := range []string{"server", "operator", "updater", "migrate", "admin", "backup", "restore", "unknown", "update", "scan", "version", "--version", "about", "welcome"} {
 		if shouldCheckForUpdate(command) {
 			t.Errorf("shouldCheckForUpdate(%q) = true, want no optional executable mutation before the command gate", command)
 		}

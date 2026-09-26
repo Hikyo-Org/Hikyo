@@ -34,6 +34,7 @@
     "cli:reencrypt": "client transport for the instance and project reencrypt routes; the server audits the walk it performs (crypto.reencrypt_completed)",
     "cli:rotate-token-key": "client transport for POST /api/v1/instance/rotate-token-key; the server audits the rotation it performs (crypto.token_key_rotated)",
     "cli:sa": "client transport for the project-scoped service-account and credential routes, whose operations carry the audit mapping (identity.service_account_created / identity.service_account_deleted / identity.credential_minted / identity.credential_revoked / identity.credentials_listed)",
+    "cli:scan": "entirely client-local secret scanning of local files and the local Git repository (#153): it constructs no client, reaches no Hikyo server operation, and emits findings only to the invoking terminal or pipe, never any matched text",
     "cli:scim": "client transport for the /scim-bindings routes, whose operations carry the audit mapping (scim.binding_* / scim.mapping_* / scim.credential_* / scim.directory_read)",
     "cli:update": "client-local read and write of public Hikyo release metadata and the chosen local channel; it reaches no Hikyo server operation and holds no secret or tenant material",
     "cli:values": "client transport for the tenant-scoped value routes, whose operations carry the audit mapping",
