@@ -67,6 +67,12 @@ attacker-controlled and never reach the comment body. The gate stays in
 covers post, update, delete, and the no-subject rule. The fixture test pins
 the single base-SHA checkout.
 
+CodeQL's `actions/untrusted-checkout` rule flags the head-SHA fetch as
+critical (alert 53). I dismissed it as a false positive: the step fetches
+objects only, never checks out the PR tree, and persists no credentials, and
+every executed script comes from the base checkout. If this workflow ever
+checks out or runs a file from the fetched commits, the alert becomes real.
+
 ## Comparison
 
 - **Ghostty** runs CI on plain `pull_request` (forks get no secrets). Its vouch
