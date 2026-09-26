@@ -35,6 +35,7 @@
     "deployment-adapters",
     "dynamic-secrets",
     "mcp",
+    "local-development",
     "compose",
     "kubernetes-operator",
     "configuration-rollouts",

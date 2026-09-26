@@ -1,0 +1,132 @@
+---
+title: Local development and coding agents
+description: Deliver development values to a dev server, tests, and non-interactive coding agents, and compose Hikyo with application-side loaders.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/local-development.mdx
+---
+
+A developer's workstation is a delivery target like any other, with one
+difference: most commands are now launched by something other than the
+developer. Coding agents, test runners, and watch-mode restarts run without a
+terminal. Pick the delivery path with that in mind.
+
+## Choose a delivery path
+
+| Path | Command | Works without a TTY | Plaintext on disk | Audit |
+| --- | --- | --- | --- | --- |
+| Export a file | `hikyo values export --reveal --format dotenv --output-file .env` | yes, after the export | yes, until you delete it | one human disclosure per export |
+| Run with a developer credential | `hikyo run --token-file <path> -- <command>` | yes | no values; the credential file only | one machine fetch per launch |
+| Run with your human session | `hikyo run --use-human-session -- <command>` | no | none | one confirmed disclosure per launch |
+
+**Export a file** is the simplest path and the one every tool understands.
+Refresh it when values change; it is a projection of the environment, never a
+second source. Keep it out of version control.
+
+**Run with a developer credential** keeps plaintext values out of files. Create
+a service account for the developer, grant it `read` on the `development`
+environment only, and mint a credential with the shortest lifetime your routine
+tolerates:
+
+```bash
+hikyo sa create --name dev-alice --kind workload
+hikyo access grant add --principal <mch_...> --capability read --env <development-env-id>
+# Secrets only: the project's machine-reveal opt-in plus a reveal grant.
+hikyo project-settings machine-reveal set --enabled true
+hikyo access grant add --principal <mch_...> --capability reveal --env <development-env-id>
+hikyo sa credential mint --sa <sa_...> --lifetime 24h --output-file ~/.config/hikyo/dev-token
+hikyo run --token-file ~/.config/hikyo/dev-token -- pnpm dev
+```
+
+Store the credential outside the repository with owner-only permissions. It is
+a bearer credential: anything running as your user, an agent included, can read
+it. If the environment holds no secrets the process needs, add `--config-only`
+and skip the machine-reveal opt-in and the `reveal` grant. With a
+`hikyo-compose.yaml` present, a live fetch that passes the loader-control,
+merge, and `ARG_MAX` checks also saves the delivered values to an encrypted
+local snapshot just before the command starts (see below).
+
+**Run with your human session** is the locked exception for interactive use. It
+needs a controlling terminal, an enumerated y/N confirmation on every launch,
+and a live disclosure window. A coding agent or a scripted test run cannot
+satisfy it, by design: a process that is not you must not act with your full
+authority. A short-lived developer credential delegated from your session is
+tracked in [#807](https://github.com/Hikyo-Org/Hikyo/issues/807).
+
+## What each path protects
+
+State the threat model honestly. No delivery mechanism keeps plaintext from a
+process that you, or an agent acting for you, can launch: the child can print
+its environment, and anyone running as your user can read `/proc/<pid>/environ`.
+
+- `hikyo run` writes no values and prints none. It replaces itself with the
+  child (`exec`), so it cannot filter what the child prints.
+- An offline snapshot changes availability, never disclosure: it is sealed with
+  a local key that the same user can read, and it is served only when the
+  server is unavailable and the project file opts in
+  ([Docker Compose delivery](/docs/compose/#plaintext-and-offline-operation)).
+- The controls that matter are what the `development` environment is allowed to
+  contain and how long the credential lives. Keep production secrets out of
+  `development`; give it development-only databases and test-mode API keys.
+
+For coding agents specifically: an agent that can start your dev server holds
+every value that server holds. Injection without printing keeps secrets out of
+files, logs, and the agent's view of command output; it does not create secrecy
+from the agent.
+
+## Compose with an application-side loader
+
+Hikyo stores, authorizes, audits, and delivers values. It does not validate them
+against your application's schema, generate types, or redact your process
+output. Application-side loaders such as [varlock](https://varlock.dev) do
+exactly that and read the process environment, so the two compose without a
+plugin:
+
+```bash
+hikyo run --token-file ~/.config/hikyo/dev-token -- varlock run -- pnpm dev
+```
+
+Hikyo fetches and injects the `development` values; varlock validates them
+against `.env.schema`, fails fast on a missing or malformed key, and masks
+values marked `@sensitive` in piped or redirected output. Redacting console
+output on a terminal needs varlock's runtime integration in the application.
+
+Precedence across the two layers:
+
+- Values already in the process environment take precedence over `.env` files
+  in varlock, so a stale local `.env` is shadowed by the delivered values for
+  every key Hikyo delivers, without a warning. Delete it once you switch.
+- `--allow-override` concerns only keys your shell exported before `hikyo run`
+  started. An inherited key with a different value is refused unless you name
+  it; `.env` files are not inherited environment and never trigger it.
+- varlock masking covers only keys marked `@sensitive` and cannot reliably mask
+  very short values. Mark every key Hikyo classifies as `secret` as
+  `@sensitive` so the two classifications agree.
+
+`hikyo run` refuses loader-control keys such as `NODE_OPTIONS`, `PATH`,
+`LD_*`, `GIT_*`, and `NODE_EXTRA_CA_CERTS` unless a `hikyo-compose.yaml` names
+them in `run.acknowledge_loader_control`. Keep them out of the `development`
+environment unless the process genuinely needs them.
+
+## Continuous integration
+
+CI does not need a stored credential. Bind the CI job to a service account with
+[OIDC federation](/docs/machine-identities/#oidc-federation). The job then
+requests an ID token for the binding's audience from its platform and presents
+it through `--token-file` or `HIKYO_TOKEN`, with the same
+`hikyo run -- <command>` or one export per job.
+
+## How Hikyo relates to similar tools
+
+- **varlock** is complementary: it owns the application contract (schema, types,
+  validation, redaction, client-bundle leak guards) and has no store, audit, or
+  delivery. Use both, as above.
+- **dotenvx** makes an encrypted `.env` file in Git the store, with one private
+  key per environment file. That trades Hikyo's per-key presence rules, reveal
+  audit, and revocation for having no server. Choose one model per environment,
+  not both.
+- **1Password, Infisical, and Doppler** `run` wrappers deliver the same way
+  `hikyo run` does. Unlike Infisical and Doppler, Hikyo refuses a changed
+  inherited value instead of overriding it with a warning, and serves its
+  snapshot only while the server is unavailable. Unlike `op run`, it does not
+  mask the child's output; pair it with a loader that does.
+
+Next: [deliver to Docker Compose](/docs/compose/).
