@@ -34,10 +34,10 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// instance scope), each linked to its own operation.
 	// #788 adds the delivery-target report, tombstone and list routes; the two
 	// machine writes carry the federated pre-authentication refusal events.
-	// #164 adds five file-target administration routes and the bound client's
+	// #164 adds five file-target administration routes, the two CLI verbs and the bound client's
 	// report route.
-	if got := len(facts.Wire()); got != 352 {
-		t.Fatalf("wire entries = %d, want 352", got)
+	if got := len(facts.Wire()); got != 354 {
+		t.Fatalf("wire entries = %d, want 354", got)
 	}
 	if got := len(facts.WireRoutes()); got != 249 {
 		t.Fatalf("operation-linked entries = %d, want 249", got)

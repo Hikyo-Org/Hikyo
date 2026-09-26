@@ -948,6 +948,12 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// class is the verb's, and every sub-verb reaches only those two routes.
 	"cli:run":     {Class: ClassTenant},
 	"cli:compose": {Class: ClassTenant},
+	// Generic file destinations (#164). `file-target` reaches only the
+	// project-scoped file-target routes; `file-sync` reaches the tenant-scoped
+	// delivery route, its offline-records reconciliation and the
+	// environment-scoped report route, and nothing wider.
+	"cli:file-target": {Class: ClassTenant},
+	"cli:file-sync":   {Class: ClassTenant},
 	// `definitions` (#70) reaches only the tenant-scoped export/check/plan/apply
 	// routes; server operations own every authorization and audit decision.
 	"cli:definitions": {Class: ClassTenant},
