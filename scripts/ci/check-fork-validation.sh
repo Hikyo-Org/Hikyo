@@ -42,9 +42,12 @@ fi
 deadline=$(($(date +%s) + timeout_seconds))
 while :; do
 	run=$(gh api "repos/$GH_REPO/actions/workflows/ci-fork.yml/runs?event=pull_request&head_sha=$HEAD_SHA&per_page=100" \
-		--jq "[.workflow_runs[] | select(.display_title == \"fork-ci #$PR_NUMBER\")][0] // empty | \"\\(.id) \\(.status)\"")
-	if [ -n "$run" ] && [ "${run#* }" = completed ]; then
-		run_id=${run% *}
+		--jq "[.workflow_runs[] | select(.display_title == \"fork-ci #$PR_NUMBER\")][0] // empty | \"\\(.id) \\(.status) \\(.conclusion)\"")
+	run_id=${run%% *}
+	state=${run#* }
+	# A run awaiting maintainer approval reports completed/action_required
+	# with no jobs yet; it is still pending, not a result.
+	if [ -n "$run" ] && [ "${state% *}" = completed ] && [ "${state#* }" != action_required ]; then
 		conclusion=$(gh api --paginate "repos/$GH_REPO/actions/runs/$run_id/jobs?filter=latest&per_page=100" \
 			--jq ".jobs[] | select(.name == \"$gate_job\") | .conclusion")
 		[ "$conclusion" = success ] ||
@@ -53,7 +56,7 @@ while :; do
 		exit 0
 	fi
 	[ "$(date +%s)" -lt "$deadline" ] ||
-		fail "no completed fork-ci run for $HEAD_SHA within ${timeout_seconds}s (a first-time contributor's run needs maintainer approval); re-run this job once it finishes"
+		fail "no completed fork-ci run for $HEAD_SHA within ${timeout_seconds}s (every fork run needs maintainer approval); re-run this job once it finishes"
 	printf 'fork validation gate: waiting for fork-ci on %s (%s)\n' "$HEAD_SHA" "${run:-no run yet}"
 	sleep "$poll_seconds"
 done

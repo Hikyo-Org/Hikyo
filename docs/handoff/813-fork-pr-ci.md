@@ -95,8 +95,11 @@ checks out or runs a file from the fetched commits, the alert becomes real.
   the default branch. Then re-run the fork PR's `fork-ci` and `trusted-ci`.
 - **Approving fork runs:** every fork push needs a maintainer to approve its
   `fork-ci` run (`all_external_contributors`). Check the diff for `.github/`
-  changes first. If the approval comes more than 90 minutes after the push,
-  `ci-required` fails; re-run `trusted-ci` once `fork-ci` finishes.
+  changes first. The gate treats a run awaiting approval
+  (`completed/action_required`, no jobs) as pending. It waits 90 minutes in
+  total, and validation takes about 20, so approve within about 70 minutes.
+  Otherwise `ci-required` fails, and you re-run `trusted-ci` once `fork-ci`
+  finishes.
 - **A fork PR that touches `.github/`** fails closed by design. Land it from a
   branch in this repository.
 
@@ -121,6 +124,16 @@ checks out or runs a file from the fetched commits, the alert becomes real.
 
 - The trusted gate is only exercised after merge, because `pull_request_target`
   runs `main`'s YAML. The first real fork PR (#812) is the end-to-end test.
+- **vouch caveats.** `check-user` passes any login ending in `[bot]` and any
+  account with write access without reading `VOUCHED.td`. It runs
+  `hustcer/setup-nu` with nushell `version: "*"`, so a breaking or compromised
+  nushell release affects the gate job. That job holds only a read-only token,
+  but a nushell break turns every fork PR's `ci-required` red until vouch is
+  updated. If this bites, replace it with a short shell check over the same
+  file format.
+- While a fork run is pending or validating (up to 100 minutes), the trusted
+  `ci-required` job keeps one runner busy per fork PR. Concurrency cancels
+  superseded pushes.
 - `fuzz-report.yml` listens to `trusted-ci` and `ci` runs. It does not report
   fuzz findings from `fork-ci` runs; the failure still shows in the PR checks.
 - Changing only `VOUCHED.td` is an unclassified path, so the classifier falls
