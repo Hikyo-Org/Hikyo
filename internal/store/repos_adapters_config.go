@@ -459,7 +459,7 @@ func (r adapterQueries) Create(ctx context.Context, p authz.Proof, m AdapterCrea
 	if err != nil {
 		return AdapterRecord{}, AdapterTarget{}, err
 	}
-	if m.ID == "" || (m.Provider != "forgejo" && m.Provider != "github-actions") || m.Origin == "" || len(m.CredentialCiphertext) == 0 || m.AuthorityPrincipalID == "" || m.Target.AdapterID != m.ID {
+	if _, providerErr := adapter.ParseProvider(m.Provider); m.ID == "" || providerErr != nil || m.Origin == "" || len(m.CredentialCiphertext) == 0 || m.AuthorityPrincipalID == "" || m.Target.AdapterID != m.ID {
 		return AdapterRecord{}, AdapterTarget{}, fmt.Errorf("%w: incomplete atomic adapter bootstrap", domain.ErrInvalid)
 	}
 	if err := validateTargetMutation(m.Target); err != nil {
