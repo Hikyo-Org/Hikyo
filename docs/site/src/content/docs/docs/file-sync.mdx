@@ -1,0 +1,142 @@
+---
+title: File sync
+description: Pull one Hikyo target onto a host and render it into files, atomically, without the server ever learning the path.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/file-sync.mdx
+---
+
+Use file sync when a workload reads its configuration from files and neither
+[`hikyo run`](/docs/compose/), Compose, nor the
+[Kubernetes operator](/docs/kubernetes-operator/) fits: a systemd service, a
+legacy daemon that reads `/etc/app/secrets.json`, or anything else that only
+understands files.
+
+File sync keeps the direction of trust the other way round from a
+[deployment adapter](/docs/deployment-adapters/). The Hikyo server never
+connects to the host and never learns where files land. A client on the host
+authenticates with one workload credential, pulls one revision, and renders it
+into a directory named only in its own local config.
+
+## How it fits together
+
+- **A file target** on the server binds one environment, one key selection and
+  one workload service account. It stores no path, format or owner.
+- **The bound account is target-scoped.** Once bound, its delivery is narrowed
+  to the selection and it must name the target on every fetch. Keys outside
+  the selection are never decrypted for it.
+- **The client** (`hikyo file-sync render`) reads `hikyo-file-sync.yaml`,
+  fetches the target, renders every configured file, and publishes them as one
+  generation. It reports what it applied back to the server, value-free.
+
+## Set up the server side
+
+Create a workload service account, grant it `read` on the environment (and
+`reveal` under the project's machine-reveal opt-in if secrets must render),
+plus `report-delivery-status` so it can report what it applied. Then bind it:
+
+```sh
+hikyo sa create --name web-host-files --kind workload
+hikyo access grant add --principal <mch_...> --capability read --env prod
+hikyo access grant add --principal <mch_...> --capability report-delivery-status --env prod
+hikyo file-target create --env prod --name web-host --sa <sa_...> \
+  --names DATABASE_URL,API_TOKEN
+hikyo sa credential mint --sa <sa_...> --output-file /etc/hikyo/web-host.token
+```
+
+Creating, updating and deleting a file target needs both `manage-adapters` and
+`manage-identities` on the project, because it reshapes what an identity is
+delivered. `hikyo file-target delete` is refused while the bound account still
+holds a live credential: removing the binding would otherwise widen that
+account's delivery back to the whole environment. Revoke its credentials
+first, or delete the service account, which removes the target with it.
+
+## Configure the host
+
+```yaml
+# /etc/hikyo/hikyo-file-sync.yaml: client-local, holds no credential
+version: 1
+instance: https://hikyo.example.internal
+org: org_...
+project: prj_...
+environment: env_...
+target: ftg_...
+refresh:
+  mode: oneshot            # or poll: fetch until current, then exit
+snapshot:
+  offline_serve: false     # opt in to render from the encrypted snapshot during an outage
+destination:
+  directory: /run/web-host # must exist; never created
+  mode: "0640"             # at most owner read-write plus group read
+  owner: web
+  group: web
+  require_tmpfs: true
+  on_removed: refuse       # refuse | retain | prune a file you drop from this list
+files:
+  - name: app.env
+    format: dotenv
+    keys: [DATABASE_URL, API_TOKEN]
+  - name: settings.json
+    format: json
+    keys: [DATABASE_URL]
+  - name: api-token
+    format: raw
+    keys: [API_TOKEN]
+```
+
+```sh
+hikyo file-sync render --config /etc/hikyo/hikyo-file-sync.yaml \
+  --token-file /etc/hikyo/web-host.token
+hikyo file-sync doctor --config /etc/hikyo/hikyo-file-sync.yaml
+```
+
+There is no resident watcher. For continuous refresh, run `render` from a
+systemd timer, cron or a Kubernetes CronJob. A timer tick that finds nothing
+new costs one conditional fetch and writes nothing.
+
+## Formats
+
+| Format | Shape | Refused by key name |
+| --- | --- | --- |
+| `dotenv` | `KEY=value` lines in file order, quoted with escapes where the bare form would not read back byte-exact | a NUL byte; an unacknowledged loader-control key such as `PATH` |
+| `json` | one flat object of strings, keys sorted, no HTML escaping | invalid UTF-8, a NUL byte |
+| `yaml` | one flat mapping, every key and value double-quoted, so `on`, `1e3` and `null` stay strings | invalid UTF-8, a NUL byte |
+| `raw` | exactly one key's value, byte for byte, no newline added | nothing |
+
+A key that the target did not deliver, or a secret delivered presence-only, is
+also refused by name. Any refusal writes nothing: the last generation stands.
+
+## What lands on disk
+
+```text
+/run/web-host/app.env         -> .hikyo-gen/current/app.env
+/run/web-host/.hikyo-gen/current -> v1-<stamp>-<suffix>
+/run/web-host/.hikyo-gen/v1-<stamp>-<suffix>/app.env
+```
+
+Each generation is written into its own directory with the configured owner
+and mode applied before any byte is written, fsynced, and marked complete.
+Publishing is one rename of the `current` link. A reader opening
+`/run/web-host/app.env` always sees a complete file of either the old or the
+new generation, even across a crash or a full disk. A reader that needs a
+consistent set of several files should resolve `.hikyo-gen/current` once and
+read under it.
+
+The client refuses to replace anything it did not create: a regular file or a
+foreign symlink at a configured name, a symlinked destination directory, a
+directory already bound to another target, or a second client holding the
+directory's lock.
+
+## Outages and offline serve
+
+Every successful render also saves an encrypted snapshot in the client's state
+directory. With `snapshot.offline_serve: true`, a render during an outage
+serves that snapshot for at most `snapshot.max_age` (seven days, lowerable),
+writes a disclosure record for every served value before any file changes, and
+uploads those records on the next successful contact. Without it, an outage
+leaves the last generation in place and exits 6.
+
+## Limits
+
+- Linux and macOS destinations. Windows is not supported.
+- `require_tmpfs` can only be verified on Linux; on macOS it refuses.
+- The server shows the client's last report (`applied`, `current`, `offline`,
+  `refused` or `failed`) as an assertion, not as verified host state.

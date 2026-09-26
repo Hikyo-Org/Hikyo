@@ -212,6 +212,18 @@ stamp block. `compose sync` renders conditionally and runs
 2.30.0 floor and config/stamp/generation/server agreement; findings go to
 stdout and an error exits 4. See [Docker Compose delivery](/docs/compose/).
 
+`file-target` binds a workload service account to one environment and key
+selection (human session, `manage-adapters` and `manage-identities`).
+`file-sync` is the client on the destination host (machine credential only):
+it renders the bound target into the directory its local config names and
+publishes the files as one generation. See [File sync](/docs/file-sync/).
+
+```text
+hikyo file-target list|show|create|update|delete ...
+hikyo file-sync render --config FILE [--token-file PATH]
+hikyo file-sync doctor --config FILE [-o table|json]
+```
+
 ## Exit codes
 
 | Code | Meaning | Typical response |

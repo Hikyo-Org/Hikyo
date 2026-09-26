@@ -178,6 +178,19 @@ func runFileSyncCLI(t *testing.T, engine store.Engine) {
 	config["files"] = config["files"].([]map[string]any)[:3]
 	writeYAML(t, cfgPath, config)
 
+	// Poll mode renders the change, waits one interval, and exits once the
+	// cursor reads current.
+	config["refresh"] = map[string]any{"mode": "poll", "interval": "5s", "timeout": "1m"}
+	writeYAML(t, cfgPath, config)
+	publishComposeValues(t, rig.db, map[string]string{"DATABASE_URL": "postgres://polled"})
+	code, _, stderr = rig.run(t, time.Time{}, render...)
+	if code != cli.ExitOK || !strings.Contains(stderr, "rendered revision") || !strings.Contains(stderr, "up to date") {
+		t.Fatalf("poll render exit=%d; stderr=%s", code, stderr)
+	}
+	assertFile(t, filepath.Join(dest, "app.env"), "DATABASE_URL=postgres://polled\nDATABASE_PASSWORD=\"rotated $ \\\"quoted\\\"\"\n", 0o640)
+	delete(config, "refresh")
+	writeYAML(t, cfgPath, config)
+
 	// Outage: the encrypted snapshot serves within its age, never past it.
 	rig.stop()
 	code, _, stderr = rig.run(t, time.Time{}, render...)
