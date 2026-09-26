@@ -119,6 +119,7 @@ its first target. Credential input is a no-echo terminal, `--stdin`, or
 
 ```text
 hikyo adapter create --provider forgejo|github-actions --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider vault-kv --origin URL[/NAMESPACE] --env ENV --mount MOUNT --path PREFIX --keys ID,ID [--prefix PREFIX] [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --origin URL [--keep-remote] [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --target TARGET --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--keep-remote]
 hikyo adapter update ADAPTER --move MOVE --origin URL [--stdin|--value-file FILE]
@@ -128,6 +129,7 @@ hikyo adapter credential set --adapter ADAPTER [--stdin|--value-file FILE]
 hikyo adapter credential set --adapter ADAPTER --move MOVE [--stdin|--value-file FILE]
 hikyo adapter credential revoke --adapter ADAPTER
 hikyo adapter target add --adapter ADAPTER --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --keys ID,ID
+hikyo adapter target add --adapter ADAPTER --env ENV --mount MOUNT --path PREFIX --keys ID,ID
 hikyo adapter target list --adapter ADAPTER
 hikyo adapter target show|remove TARGET
 hikyo adapter plan|sync|test --target TARGET
