@@ -105,6 +105,17 @@ checks out or runs a file from the fetched commits, the alert becomes real.
 
 ## Known limits
 
+- **Retargeted PRs.** `trusted-ci` does not run on `edited`. Adding that
+  trigger would let a title edit produce a *skipped* `ci-required`, and a
+  skipped check counts as passing. A base change, including GitHub's
+  auto-retarget of a stacked PR, therefore leaves the old result in place. The
+  `main` ruleset's strict status checks cover this: a PR must be up to date
+  with `main` before merge, and updating it re-runs validation against the new
+  base. `release/repository/main-ci-gate.json` already declared
+  `strict_required_status_checks_policy: true`, but the live ruleset had
+  drifted to `false`; it was restored on 2026-09-26. The spec also gained the
+  live `required_signatures` rule it was missing. (Codex gpt-6-astra review.)
+
 - **Same-name check spoofing (pre-existing).** A fork PR can add an
   `on: pull_request` workflow with a job named `ci-required`. GitHub would
   publish a green check under the required name, and branch protection matches
