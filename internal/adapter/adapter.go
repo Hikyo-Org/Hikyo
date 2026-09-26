@@ -310,6 +310,8 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 		return ValidateGitHubActionsManifest(prefix, entries, values)
 	case ForgejoProvider:
 		return ValidateManifest(prefix, entries)
+	case VaultKVProvider:
+		return ValidateVaultKVManifest(prefix, entries, values)
 	default:
 		return fmt.Errorf("adapter: unknown provider %q", provider)
 	}
@@ -322,6 +324,60 @@ func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (stri
 		return "", err
 	}
 	return renderWorkflow(prefix, entries), nil
+}
+
+// VaultKVValueLimit keeps one KV v2 write inside the default 1 MiB integrated
+// storage entry after JSON escaping and version metadata.
+const VaultKVValueLimit = 512 << 10
+
+var vaultKVName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+// ValidateVaultKVManifest applies the Vault/OpenBao KV v2 path contract. Every
+// effective name becomes exactly one path segment under the target's path
+// prefix, holding a single "value" field. Secret and config classifications
+// share that one tree, so names must be unique across both surfaces.
+func ValidateVaultKVManifest(prefix string, entries []ManifestEntry, values bool) error {
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		name := prefix + entry.CanonicalName
+		switch {
+		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
+			return fmt.Errorf("vault-kv: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
+		case strings.EqualFold(name, prefix+SentinelName):
+			return fmt.Errorf("vault-kv: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
+		case len(name) > 255:
+			return fmt.Errorf("vault-kv: %s: effective name exceeds the 255-byte path segment limit", entry.CanonicalName)
+		case !vaultKVName.MatchString(name) || name == "." || name == "..":
+			return fmt.Errorf("vault-kv: %s: effective name %q is not a single safe KV path segment", entry.CanonicalName, name)
+		case values && !utf8.ValidString(entry.Value):
+			return fmt.Errorf("vault-kv: %s: non-UTF-8 values cannot be represented byte-exactly by the KV v2 JSON API", entry.CanonicalName)
+		case values && len(entry.Value) > VaultKVValueLimit:
+			return fmt.Errorf("vault-kv: %s: value exceeds the %d-byte KV v2 delivery limit", entry.CanonicalName, VaultKVValueLimit)
+		}
+		normalized := strings.ToUpper(name)
+		if _, ok := seen[normalized]; ok {
+			return fmt.Errorf("vault-kv: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
+		}
+		seen[normalized] = struct{}{}
+	}
+	return nil
+}
+
+// VaultKVMapping renders names only: the KV v2 path each canonical name is
+// delivered to, for Vault Agent, External Secrets, or application wiring.
+func VaultKVMapping(mount, pathPrefix, prefix string, entries []ManifestEntry) (string, error) {
+	if err := ValidateVaultKVManifest(prefix, entries, false); err != nil {
+		return "", err
+	}
+	rows := slices.Clone(entries)
+	slices.SortFunc(rows, func(a, b ManifestEntry) int { return strings.Compare(a.CanonicalName, b.CanonicalName) })
+	var out strings.Builder
+	out.WriteString("# Vault/OpenBao KV v2: one secret per key, field \"value\".\n")
+	out.WriteString("env:\n")
+	for _, entry := range rows {
+		_, _ = fmt.Fprintf(&out, "  %s: %s/%s/%s%s#value\n", entry.CanonicalName, mount, pathPrefix, prefix, entry.CanonicalName)
+	}
+	return out.String(), nil
 }
 
 // RecipientSetNeedsCeremony classifies the exact locked narrowing cases.

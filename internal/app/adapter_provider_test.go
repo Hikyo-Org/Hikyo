@@ -10,6 +10,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/forgejo"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/githubactions"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/vaultkv"
 )
 
 func TestAdapterModuleFactoryRegistryIsTotal(t *testing.T) {
@@ -42,6 +43,33 @@ func TestAdapterModuleFactoryDispatchesCompiledInProviders(t *testing.T) {
 	defer githubLease.Release()
 	if _, ok := githubLease.Module.(*githubactions.Module); !ok {
 		t.Fatalf("github module = %T", githubLease.Module)
+	}
+
+	vaultLease, err := factory.Build(adapter.VaultKVProvider, adapter.Config{Origin: "https://vault.example:8200/team-a"}, "hvs.static")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer vaultLease.Release()
+	if _, ok := vaultLease.Module.(*vaultkv.Module); !ok {
+		t.Fatalf("vault-kv module = %T", vaultLease.Module)
+	}
+}
+
+func TestAdapterEgressOriginDropsVaultNamespaceOnly(t *testing.T) {
+	cases := []struct {
+		provider adapter.Provider
+		origin   string
+		want     string
+	}{
+		{adapter.VaultKVProvider, "https://vault.example:8200/team-a/child", "https://vault.example:8200"},
+		{adapter.VaultKVProvider, "https://vault.example:8200", "https://vault.example:8200"},
+		{adapter.GitHubActionsProvider, "https://ghes.example/api/v3", "https://ghes.example/api/v3"},
+		{adapter.ForgejoProvider, "https://forgejo.example", "https://forgejo.example"},
+	}
+	for _, tc := range cases {
+		if got := egressOrigin(tc.provider, tc.origin); got != tc.want {
+			t.Errorf("egressOrigin(%s, %s) = %s, want %s", tc.provider, tc.origin, got, tc.want)
+		}
 	}
 }
 
