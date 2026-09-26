@@ -236,11 +236,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin or GitHub API base URL (GHES: https://HOST/api/v3)")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), or an instance-admin sealed-webhook origin")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo or github-actions")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, or sealed-webhook")
 		}
 		if sub == "update" {
 			fs.StringVar(&target, "target", "", "target id to mutate")
@@ -249,7 +249,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		if sub == "create" || sub == "update" {
 			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
-			fs.StringVar(&owner, "owner", "", "provider owner or organization")
+			fs.StringVar(&owner, "owner", "", "provider owner or organization (sealed-webhook: receiver namespace)")
 			fs.StringVar(&repo, "repo", "", "provider repository")
 			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name")
 			fs.StringVar(&visibility, "visibility", "", "GitHub organization visibility: all, private, or selected")
@@ -348,8 +348,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
-		if provider != "forgejo" && provider != "github-actions" {
-			return failf(ExitUsage, "--provider must be forgejo or github-actions")
+		if provider != "forgejo" && provider != "github-actions" && provider != "sealed-webhook" {
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, or sealed-webhook")
+		}
+		if provider == "sealed-webhook" && (kind != "organization" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "") {
+			return failf(ExitUsage, "--provider sealed-webhook takes --kind organization and --owner <receiver namespace> only")
 		}
 		envID, err := resolved.Require(DimEnv)
 		if err != nil {
@@ -584,7 +587,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if sub == "add" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
 			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
-			fs.StringVar(&owner, "owner", "", "provider owner or organization")
+			fs.StringVar(&owner, "owner", "", "provider owner or organization (sealed-webhook: receiver namespace)")
 			fs.StringVar(&repo, "repo", "", "provider repository")
 			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name")
 			fs.StringVar(&visibility, "visibility", "", "GitHub organization visibility: all, private, or selected")

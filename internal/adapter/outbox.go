@@ -238,7 +238,7 @@ func (w *Worker) RunOnce(ctx context.Context) (bool, error) {
 	if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSuperseded) {
 		return true, w.Store.Fail(ctx, job, revision, w.now(), err)
 	}
-	if errors.Is(err, ErrProviderAuth) {
+	if errors.Is(err, ErrProviderAuth) || errors.Is(err, ErrAckForged) {
 		return true, w.Store.Fail(ctx, job, revision, w.now(), err)
 	}
 	due := retryDue(w.now(), job.Attempt, w.Jitter, err)
