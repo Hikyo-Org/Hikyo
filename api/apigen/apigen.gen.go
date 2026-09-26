@@ -20,6 +20,111 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AccessCapability.
+const (
+	AccessCapabilityEdit          AccessCapability = "edit"
+	AccessCapabilityPin           AccessCapability = "pin"
+	AccessCapabilityPublish       AccessCapability = "publish"
+	AccessCapabilityRead          AccessCapability = "read"
+	AccessCapabilityReveal        AccessCapability = "reveal"
+	AccessCapabilityRevealHistory AccessCapability = "reveal-history"
+)
+
+// Valid indicates whether the value is a known member of the AccessCapability enum.
+func (e AccessCapability) Valid() bool {
+	switch e {
+	case AccessCapabilityEdit:
+		return true
+	case AccessCapabilityPin:
+		return true
+	case AccessCapabilityPublish:
+		return true
+	case AccessCapabilityRead:
+		return true
+	case AccessCapabilityReveal:
+		return true
+	case AccessCapabilityRevealHistory:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccessRequestInvalidatedCause.
+const (
+	AccessRequestInvalidatedCauseApproverRemoved AccessRequestInvalidatedCause = "approver_removed"
+	AccessRequestInvalidatedCauseEmpty           AccessRequestInvalidatedCause = ""
+	AccessRequestInvalidatedCausePolicyChanged   AccessRequestInvalidatedCause = "policy_changed"
+	AccessRequestInvalidatedCausePolicyDisabled  AccessRequestInvalidatedCause = "policy_disabled"
+)
+
+// Valid indicates whether the value is a known member of the AccessRequestInvalidatedCause enum.
+func (e AccessRequestInvalidatedCause) Valid() bool {
+	switch e {
+	case AccessRequestInvalidatedCauseApproverRemoved:
+		return true
+	case AccessRequestInvalidatedCauseEmpty:
+		return true
+	case AccessRequestInvalidatedCausePolicyChanged:
+		return true
+	case AccessRequestInvalidatedCausePolicyDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccessRequestState.
+const (
+	AccessRequestStateCancelled   AccessRequestState = "cancelled"
+	AccessRequestStateExpired     AccessRequestState = "expired"
+	AccessRequestStateGranted     AccessRequestState = "granted"
+	AccessRequestStateInvalidated AccessRequestState = "invalidated"
+	AccessRequestStateOpen        AccessRequestState = "open"
+	AccessRequestStateRejected    AccessRequestState = "rejected"
+	AccessRequestStateRevoked     AccessRequestState = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the AccessRequestState enum.
+func (e AccessRequestState) Valid() bool {
+	switch e {
+	case AccessRequestStateCancelled:
+		return true
+	case AccessRequestStateExpired:
+		return true
+	case AccessRequestStateGranted:
+		return true
+	case AccessRequestStateInvalidated:
+		return true
+	case AccessRequestStateOpen:
+		return true
+	case AccessRequestStateRejected:
+		return true
+	case AccessRequestStateRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccessVoteRequestDecision.
+const (
+	AccessVoteRequestDecisionApprove AccessVoteRequestDecision = "approve"
+	AccessVoteRequestDecisionReject  AccessVoteRequestDecision = "reject"
+)
+
+// Valid indicates whether the value is a known member of the AccessVoteRequestDecision enum.
+func (e AccessVoteRequestDecision) Valid() bool {
+	switch e {
+	case AccessVoteRequestDecisionApprove:
+		return true
+	case AccessVoteRequestDecisionReject:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ActiveSessionArtifact.
 const (
 	ActiveSessionArtifactBrowser   ActiveSessionArtifact = "browser"
@@ -1822,6 +1927,7 @@ func (e ProjectRetentionPolicyMode) Valid() bool {
 
 // Defines values for ReauthPurpose.
 const (
+	ReauthPurposeAccess     ReauthPurpose = "access"
 	ReauthPurposeAdapter    ReauthPurpose = "adapter"
 	ReauthPurposeApprove    ReauthPurpose = "approve"
 	ReauthPurposeBypass     ReauthPurpose = "bypass"
@@ -1836,6 +1942,8 @@ const (
 // Valid indicates whether the value is a known member of the ReauthPurpose enum.
 func (e ReauthPurpose) Valid() bool {
 	switch e {
+	case ReauthPurposeAccess:
+		return true
 	case ReauthPurposeAdapter:
 		return true
 	case ReauthPurposeApprove:
@@ -2557,6 +2665,7 @@ func (e TotpAdapterReauthRequestOperation) Valid() bool {
 
 // Defines values for TotpAdapterReauthRequestPurpose.
 const (
+	TotpAdapterReauthRequestPurposeAccess     TotpAdapterReauthRequestPurpose = "access"
 	TotpAdapterReauthRequestPurposeAdapter    TotpAdapterReauthRequestPurpose = "adapter"
 	TotpAdapterReauthRequestPurposeApprove    TotpAdapterReauthRequestPurpose = "approve"
 	TotpAdapterReauthRequestPurposeBypass     TotpAdapterReauthRequestPurpose = "bypass"
@@ -2571,6 +2680,8 @@ const (
 // Valid indicates whether the value is a known member of the TotpAdapterReauthRequestPurpose enum.
 func (e TotpAdapterReauthRequestPurpose) Valid() bool {
 	switch e {
+	case TotpAdapterReauthRequestPurposeAccess:
+		return true
 	case TotpAdapterReauthRequestPurposeAdapter:
 		return true
 	case TotpAdapterReauthRequestPurposeApprove:
@@ -3229,6 +3340,158 @@ func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
 		return false
 	}
 }
+
+// AccessCapability The closed set of capabilities temporary access may confer.
+type AccessCapability string
+
+// AccessOffer What may be requested in this environment. The approver roster is deliberately absent.
+type AccessOffer struct {
+	// CallerMayBypass Whether the caller is a named emergency-access principal of this policy.
+	CallerMayBypass    bool               `json:"caller_may_bypass"`
+	Capabilities       []AccessCapability `json:"capabilities"`
+	Enabled            bool               `json:"enabled"`
+	MaxDurationSeconds int32              `json:"max_duration_seconds"`
+	MinApprovals       int32              `json:"min_approvals"`
+
+	// PolicyId A prefixed UUIDv7, e.g. `org_0198…`.
+	PolicyId      ID    `json:"policy_id"`
+	PolicyVersion int64 `json:"policy_version"`
+}
+
+// AccessPolicy defines model for AccessPolicy.
+type AccessPolicy struct {
+	AllowSelfApproval bool               `json:"allow_self_approval"`
+	Approvers         []ApprovalApprover `json:"approvers"`
+	Bypassers         []ID               `json:"bypassers"`
+	Capabilities      []AccessCapability `json:"capabilities"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt     Timestamp `json:"created_at"`
+	Enabled       bool      `json:"enabled"`
+	EnvironmentId string    `json:"environment_id"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id                 ID    `json:"id"`
+	MaxDurationSeconds int32 `json:"max_duration_seconds"`
+	MinApprovals       int32 `json:"min_approvals"`
+
+	// PrincipalNames Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
+	PrincipalNames    *map[string]string `json:"principal_names,omitempty"`
+	RequestTtlSeconds int32              `json:"request_ttl_seconds"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp `json:"updated_at"`
+	Version   int64     `json:"version"`
+}
+
+// AccessPolicyInput defines model for AccessPolicyInput.
+type AccessPolicyInput struct {
+	AllowSelfApproval *bool              `json:"allow_self_approval,omitempty"`
+	Approvers         []ApprovalApprover `json:"approvers"`
+
+	// Bypassers Principals who may take emergency access without the quorum.
+	Bypassers    *[]ID              `json:"bypassers,omitempty"`
+	Capabilities []AccessCapability `json:"capabilities"`
+	Enabled      bool               `json:"enabled"`
+
+	// EnvironmentId The environment this policy covers; empty means every environment in the project.
+	EnvironmentId *string `json:"environment_id,omitempty"`
+
+	// MaxDurationSeconds The longest duration a request (or emergency access) may run.
+	MaxDurationSeconds int32 `json:"max_duration_seconds"`
+	MinApprovals       int32 `json:"min_approvals"`
+
+	// RequestTtlSeconds How long a request may wait for a decision before it expires.
+	RequestTtlSeconds int32 `json:"request_ttl_seconds"`
+}
+
+// AccessPolicyList defines model for AccessPolicyList.
+type AccessPolicyList struct {
+	Items []AccessPolicy `json:"items"`
+}
+
+// AccessQueue defines model for AccessQueue.
+type AccessQueue struct {
+	Items []AccessRequest `json:"items"`
+
+	// Offer What may be requested in this environment. The approver roster is deliberately absent.
+	Offer *AccessOffer `json:"offer,omitempty"`
+}
+
+// AccessRequest defines model for AccessRequest.
+type AccessRequest struct {
+	// Approvals Approvals from currently-eligible approvers, for an open request.
+	Approvals int32 `json:"approvals"`
+
+	// Bypassed Whether this is emergency access taken without the quorum.
+	Bypassed     bool               `json:"bypassed"`
+	Capabilities []AccessCapability `json:"capabilities"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt       Timestamp `json:"created_at"`
+	DurationSeconds int32     `json:"duration_seconds"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID `json:"environment_id"`
+
+	// ExpiresAt The absolute instant granted access stops.
+	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
+
+	// GrantedAt RFC 3339 UTC, microsecond precision.
+	GrantedAt *Timestamp `json:"granted_at,omitempty"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id               ID                            `json:"id"`
+	InvalidatedCause AccessRequestInvalidatedCause `json:"invalidated_cause"`
+	MinApprovals     int32                         `json:"min_approvals"`
+
+	// PolicyId A prefixed UUIDv7, e.g. `org_0198…`.
+	PolicyId      ID     `json:"policy_id"`
+	PolicyVersion int64  `json:"policy_version"`
+	Reason        string `json:"reason"`
+
+	// Requester A prefixed UUIDv7, e.g. `org_0198…`.
+	Requester ID `json:"requester"`
+
+	// RequesterName Current display name of the referenced principal, when available.
+	RequesterName *string `json:"requester_name,omitempty"`
+
+	// ResolvedAt RFC 3339 UTC, microsecond precision.
+	ResolvedAt *Timestamp `json:"resolved_at,omitempty"`
+
+	// ResolvedBy Who resolved the request, when a person did.
+	ResolvedBy *ID `json:"resolved_by,omitempty"`
+
+	// ReviewExpiresAt RFC 3339 UTC, microsecond precision.
+	ReviewExpiresAt Timestamp          `json:"review_expires_at"`
+	State           AccessRequestState `json:"state"`
+	Votes           []ApprovalVote     `json:"votes"`
+}
+
+// AccessRequestInvalidatedCause defines model for AccessRequest.InvalidatedCause.
+type AccessRequestInvalidatedCause string
+
+// AccessRequestState defines model for AccessRequest.State.
+type AccessRequestState string
+
+// AccessRequestInput defines model for AccessRequestInput.
+type AccessRequestInput struct {
+	Capabilities []AccessCapability `json:"capabilities"`
+
+	// DurationSeconds Required for a request; optional for emergency access, which defaults to one hour capped by the policy maximum.
+	DurationSeconds *int32 `json:"duration_seconds,omitempty"`
+
+	// Reason Why the access is needed. Recorded in the audit trail.
+	Reason string `json:"reason"`
+}
+
+// AccessVoteRequest defines model for AccessVoteRequest.
+type AccessVoteRequest struct {
+	Decision AccessVoteRequestDecision `json:"decision"`
+}
+
+// AccessVoteRequestDecision defines model for AccessVoteRequest.Decision.
+type AccessVoteRequestDecision string
 
 // AccountProfile defines model for AccountProfile.
 type AccountProfile struct {
@@ -9985,6 +10248,12 @@ type CreateProjectJSONRequestBody = CreateProjectRequest
 // RenameProjectJSONRequestBody defines body for RenameProject for application/json ContentType.
 type RenameProjectJSONRequestBody = RenameRequest
 
+// CreateAccessPolicyJSONRequestBody defines body for CreateAccessPolicy for application/json ContentType.
+type CreateAccessPolicyJSONRequestBody = AccessPolicyInput
+
+// UpdateAccessPolicyJSONRequestBody defines body for UpdateAccessPolicy for application/json ContentType.
+type UpdateAccessPolicyJSONRequestBody = AccessPolicyInput
+
 // ResumeAdapterMoveJSONRequestBody defines body for ResumeAdapterMove for application/json ContentType.
 type ResumeAdapterMoveJSONRequestBody = ResumeAdapterMoveRequest
 
@@ -10041,6 +10310,15 @@ type ReorderEnvironmentsJSONRequestBody = EnvironmentOrderRequest
 
 // RenameEnvironmentJSONRequestBody defines body for RenameEnvironment for application/json ContentType.
 type RenameEnvironmentJSONRequestBody = RenameRequest
+
+// CreateAccessRequestJSONRequestBody defines body for CreateAccessRequest for application/json ContentType.
+type CreateAccessRequestJSONRequestBody = AccessRequestInput
+
+// EmergencyAccessJSONRequestBody defines body for EmergencyAccess for application/json ContentType.
+type EmergencyAccessJSONRequestBody = AccessRequestInput
+
+// VoteAccessRequestJSONRequestBody defines body for VoteAccessRequest for application/json ContentType.
+type VoteAccessRequestJSONRequestBody = AccessVoteRequest
 
 // VoteApprovalRequestJSONRequestBody defines body for VoteApprovalRequest for application/json ContentType.
 type VoteApprovalRequestJSONRequestBody = ApprovalVoteRequest
@@ -10858,6 +11136,18 @@ type ServerInterface interface {
 	// RenameProject Rename a project.
 	// (PATCH /api/v1/orgs/{org}/projects/{project})
 	RenameProject(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// ListAccessPolicies The project's temporary-access policies.
+	// (GET /api/v1/orgs/{org}/projects/{project}/access-policies)
+	ListAccessPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// CreateAccessPolicy Create a temporary-access policy.
+	// (POST /api/v1/orgs/{org}/projects/{project}/access-policies)
+	CreateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// DeleteAccessPolicy Delete a temporary-access policy.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+	DeleteAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID)
+	// UpdateAccessPolicy Update a temporary-access policy.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+	UpdateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID)
 	// CancelAdapterMove Cancel an attention-required move and reconverge the old route.
 	// (DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move})
 	CancelAdapterMove(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, move ID)
@@ -10999,6 +11289,24 @@ type ServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ListAccessRequests The environment's temporary-access requests.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+	ListAccessRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CreateAccessRequest Request temporary access.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+	CreateAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// EmergencyAccess Take emergency temporary access.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency)
+	EmergencyAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CancelAccessRequest Withdraw an open temporary-access request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel)
+	CancelAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID)
+	// RevokeAccessRequest End granted temporary access early.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke)
+	RevokeAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID)
+	// VoteAccessRequest Approve or reject a temporary-access request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote)
+	VoteAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID)
 	// ListApprovalRequests The environment's change-approval requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
 	ListApprovalRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -12106,6 +12414,30 @@ func (_ Unimplemented) RenameProject(w http.ResponseWriter, r *http.Request, org
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListAccessPolicies The project's temporary-access policies.
+// (GET /api/v1/orgs/{org}/projects/{project}/access-policies)
+func (_ Unimplemented) ListAccessPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateAccessPolicy Create a temporary-access policy.
+// (POST /api/v1/orgs/{org}/projects/{project}/access-policies)
+func (_ Unimplemented) CreateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteAccessPolicy Delete a temporary-access policy.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+func (_ Unimplemented) DeleteAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateAccessPolicy Update a temporary-access policy.
+// (PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+func (_ Unimplemented) UpdateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // CancelAdapterMove Cancel an attention-required move and reconverge the old route.
 // (DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move})
 func (_ Unimplemented) CancelAdapterMove(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, move ID) {
@@ -12385,6 +12717,42 @@ func (_ Unimplemented) GetEnvironment(w http.ResponseWriter, r *http.Request, or
 // RenameEnvironment Rename an environment.
 // (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 func (_ Unimplemented) RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListAccessRequests The environment's temporary-access requests.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+func (_ Unimplemented) ListAccessRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateAccessRequest Request temporary access.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+func (_ Unimplemented) CreateAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// EmergencyAccess Take emergency temporary access.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency)
+func (_ Unimplemented) EmergencyAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CancelAccessRequest Withdraw an open temporary-access request.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel)
+func (_ Unimplemented) CancelAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeAccessRequest End granted temporary access early.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke)
+func (_ Unimplemented) RevokeAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// VoteAccessRequest Approve or reject a temporary-access request.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote)
+func (_ Unimplemented) VoteAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -15893,6 +16261,164 @@ func (siw *ServerInterfaceWrapper) RenameProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListAccessPolicies operation middleware
+func (siw *ServerInterfaceWrapper) ListAccessPolicies(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccessPolicies(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccessPolicy operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccessPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccessPolicy(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccessPolicy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccessPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "policy" -------------
+	var policy ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policy", chi.URLParam(r, "policy"), &policy, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policy", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccessPolicy(w, r, org, project, policy)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAccessPolicy operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAccessPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "policy" -------------
+	var policy ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policy", chi.URLParam(r, "policy"), &policy, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policy", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAccessPolicy(w, r, org, project, policy)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CancelAdapterMove operation middleware
 func (siw *ServerInterfaceWrapper) CancelAdapterMove(w http.ResponseWriter, r *http.Request) {
 
@@ -18200,6 +18726,297 @@ func (siw *ServerInterfaceWrapper) RenameEnvironment(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameEnvironment(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccessRequests operation middleware
+func (siw *ServerInterfaceWrapper) ListAccessRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccessRequests(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccessRequest operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccessRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccessRequest(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EmergencyAccess operation middleware
+func (siw *ServerInterfaceWrapper) EmergencyAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EmergencyAccess(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelAccessRequest operation middleware
+func (siw *ServerInterfaceWrapper) CancelAccessRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accessRequest" -------------
+	var accessRequest ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accessRequest", chi.URLParam(r, "accessRequest"), &accessRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accessRequest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelAccessRequest(w, r, org, project, environment, accessRequest)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeAccessRequest operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAccessRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accessRequest" -------------
+	var accessRequest ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accessRequest", chi.URLParam(r, "accessRequest"), &accessRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accessRequest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeAccessRequest(w, r, org, project, environment, accessRequest)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VoteAccessRequest operation middleware
+func (siw *ServerInterfaceWrapper) VoteAccessRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accessRequest" -------------
+	var accessRequest ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accessRequest", chi.URLParam(r, "accessRequest"), &accessRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accessRequest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VoteAccessRequest(w, r, org, project, environment, accessRequest)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -24672,6 +25489,36 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony", wrapper.GetApprovalCeremony)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies", wrapper.ListAccessPolicies)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies", wrapper.CreateAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}", wrapper.DeleteAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}", wrapper.UpdateAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.ListAccessRequests)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.CreateAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency", wrapper.EmergencyAccess)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote", wrapper.VoteAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel", wrapper.CancelAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke", wrapper.RevokeAccessRequest)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff", wrapper.DiffRevisions)
@@ -38564,6 +39411,440 @@ func (response RenameProject503JSONResponse) VisitRenameProjectResponse(w http.R
 	return err
 }
 
+type ListAccessPoliciesRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ListAccessPoliciesResponseObject interface {
+	VisitListAccessPoliciesResponse(w http.ResponseWriter) error
+}
+
+type ListAccessPolicies200JSONResponse AccessPolicyList
+
+func (response ListAccessPolicies200JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListAccessPolicies401JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAccessPolicies404JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListAccessPolicies429JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListAccessPolicies500JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListAccessPolicies503JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Body    *CreateAccessPolicyJSONRequestBody
+}
+
+type CreateAccessPolicyResponseObject interface {
+	VisitCreateAccessPolicyResponse(w http.ResponseWriter) error
+}
+
+type CreateAccessPolicy200JSONResponse AccessPolicy
+
+func (response CreateAccessPolicy200JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAccessPolicy400JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateAccessPolicy401JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateAccessPolicy404JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateAccessPolicy409JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreateAccessPolicy429JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateAccessPolicy500JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateAccessPolicy503JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Policy  ID        `json:"policy"`
+}
+
+type DeleteAccessPolicyResponseObject interface {
+	VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error
+}
+
+type DeleteAccessPolicy204Response struct {
+}
+
+func (response DeleteAccessPolicy204Response) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAccessPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteAccessPolicy401JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteAccessPolicy404JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteAccessPolicy429JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteAccessPolicy500JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteAccessPolicy503JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Policy  ID        `json:"policy"`
+	Body    *UpdateAccessPolicyJSONRequestBody
+}
+
+type UpdateAccessPolicyResponseObject interface {
+	VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error
+}
+
+type UpdateAccessPolicy200JSONResponse AccessPolicy
+
+func (response UpdateAccessPolicy200JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateAccessPolicy400JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateAccessPolicy401JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateAccessPolicy404JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateAccessPolicy409JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response UpdateAccessPolicy429JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response UpdateAccessPolicy500JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateAccessPolicy503JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CancelAdapterMoveRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -43485,6 +44766,770 @@ func (response RenameEnvironment500JSONResponse) VisitRenameEnvironmentResponse(
 type RenameEnvironment503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response RenameEnvironment503JSONResponse) VisitRenameEnvironmentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequestsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListAccessRequestsResponseObject interface {
+	VisitListAccessRequestsResponse(w http.ResponseWriter) error
+}
+
+type ListAccessRequests200JSONResponse AccessQueue
+
+func (response ListAccessRequests200JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListAccessRequests401JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAccessRequests404JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListAccessRequests429JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListAccessRequests500JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListAccessRequests503JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequestRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *CreateAccessRequestJSONRequestBody
+}
+
+type CreateAccessRequestResponseObject interface {
+	VisitCreateAccessRequestResponse(w http.ResponseWriter) error
+}
+
+type CreateAccessRequest200JSONResponse AccessRequest
+
+func (response CreateAccessRequest200JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAccessRequest400JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateAccessRequest401JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateAccessRequest403JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateAccessRequest404JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateAccessRequest409JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreateAccessRequest429JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateAccessRequest500JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateAccessRequest503JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccessRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *EmergencyAccessJSONRequestBody
+}
+
+type EmergencyAccessResponseObject interface {
+	VisitEmergencyAccessResponse(w http.ResponseWriter) error
+}
+
+type EmergencyAccess200JSONResponse AccessRequest
+
+func (response EmergencyAccess200JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response EmergencyAccess400JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response EmergencyAccess401JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response EmergencyAccess403JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response EmergencyAccess404JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess409JSONResponse struct{ ConflictJSONResponse }
+
+func (response EmergencyAccess409JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response EmergencyAccess429JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess500JSONResponse struct{ InternalJSONResponse }
+
+func (response EmergencyAccess500JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response EmergencyAccess503JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequestRequestObject struct {
+	Org           OrgID         `json:"org"`
+	Project       ProjectID     `json:"project"`
+	Environment   EnvironmentID `json:"environment"`
+	AccessRequest ID            `json:"accessRequest"`
+}
+
+type CancelAccessRequestResponseObject interface {
+	VisitCancelAccessRequestResponse(w http.ResponseWriter) error
+}
+
+type CancelAccessRequest200JSONResponse AccessRequest
+
+func (response CancelAccessRequest200JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CancelAccessRequest401JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CancelAccessRequest403JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CancelAccessRequest404JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CancelAccessRequest409JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CancelAccessRequest429JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response CancelAccessRequest500JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CancelAccessRequest503JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequestRequestObject struct {
+	Org           OrgID         `json:"org"`
+	Project       ProjectID     `json:"project"`
+	Environment   EnvironmentID `json:"environment"`
+	AccessRequest ID            `json:"accessRequest"`
+}
+
+type RevokeAccessRequestResponseObject interface {
+	VisitRevokeAccessRequestResponse(w http.ResponseWriter) error
+}
+
+type RevokeAccessRequest200JSONResponse AccessRequest
+
+func (response RevokeAccessRequest200JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeAccessRequest401JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeAccessRequest403JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeAccessRequest404JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokeAccessRequest409JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeAccessRequest429JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeAccessRequest500JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeAccessRequest503JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequestRequestObject struct {
+	Org           OrgID         `json:"org"`
+	Project       ProjectID     `json:"project"`
+	Environment   EnvironmentID `json:"environment"`
+	AccessRequest ID            `json:"accessRequest"`
+	Body          *VoteAccessRequestJSONRequestBody
+}
+
+type VoteAccessRequestResponseObject interface {
+	VisitVoteAccessRequestResponse(w http.ResponseWriter) error
+}
+
+type VoteAccessRequest200JSONResponse AccessRequest
+
+func (response VoteAccessRequest200JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response VoteAccessRequest400JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response VoteAccessRequest401JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response VoteAccessRequest403JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response VoteAccessRequest404JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response VoteAccessRequest409JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response VoteAccessRequest429JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response VoteAccessRequest500JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response VoteAccessRequest503JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -57754,6 +59799,18 @@ type StrictServerInterface interface {
 	// RenameProject Rename a project.
 	// (PATCH /api/v1/orgs/{org}/projects/{project})
 	RenameProject(ctx context.Context, request RenameProjectRequestObject) (RenameProjectResponseObject, error)
+	// ListAccessPolicies The project's temporary-access policies.
+	// (GET /api/v1/orgs/{org}/projects/{project}/access-policies)
+	ListAccessPolicies(ctx context.Context, request ListAccessPoliciesRequestObject) (ListAccessPoliciesResponseObject, error)
+	// CreateAccessPolicy Create a temporary-access policy.
+	// (POST /api/v1/orgs/{org}/projects/{project}/access-policies)
+	CreateAccessPolicy(ctx context.Context, request CreateAccessPolicyRequestObject) (CreateAccessPolicyResponseObject, error)
+	// DeleteAccessPolicy Delete a temporary-access policy.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+	DeleteAccessPolicy(ctx context.Context, request DeleteAccessPolicyRequestObject) (DeleteAccessPolicyResponseObject, error)
+	// UpdateAccessPolicy Update a temporary-access policy.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+	UpdateAccessPolicy(ctx context.Context, request UpdateAccessPolicyRequestObject) (UpdateAccessPolicyResponseObject, error)
 	// CancelAdapterMove Cancel an attention-required move and reconverge the old route.
 	// (DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move})
 	CancelAdapterMove(ctx context.Context, request CancelAdapterMoveRequestObject) (CancelAdapterMoveResponseObject, error)
@@ -57895,6 +59952,24 @@ type StrictServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(ctx context.Context, request RenameEnvironmentRequestObject) (RenameEnvironmentResponseObject, error)
+	// ListAccessRequests The environment's temporary-access requests.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+	ListAccessRequests(ctx context.Context, request ListAccessRequestsRequestObject) (ListAccessRequestsResponseObject, error)
+	// CreateAccessRequest Request temporary access.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+	CreateAccessRequest(ctx context.Context, request CreateAccessRequestRequestObject) (CreateAccessRequestResponseObject, error)
+	// EmergencyAccess Take emergency temporary access.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency)
+	EmergencyAccess(ctx context.Context, request EmergencyAccessRequestObject) (EmergencyAccessResponseObject, error)
+	// CancelAccessRequest Withdraw an open temporary-access request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel)
+	CancelAccessRequest(ctx context.Context, request CancelAccessRequestRequestObject) (CancelAccessRequestResponseObject, error)
+	// RevokeAccessRequest End granted temporary access early.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke)
+	RevokeAccessRequest(ctx context.Context, request RevokeAccessRequestRequestObject) (RevokeAccessRequestResponseObject, error)
+	// VoteAccessRequest Approve or reject a temporary-access request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote)
+	VoteAccessRequest(ctx context.Context, request VoteAccessRequestRequestObject) (VoteAccessRequestResponseObject, error)
 	// ListApprovalRequests The environment's change-approval requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
 	ListApprovalRequests(ctx context.Context, request ListApprovalRequestsRequestObject) (ListApprovalRequestsResponseObject, error)
@@ -61764,6 +63839,130 @@ func (sh *strictHandler) RenameProject(w http.ResponseWriter, r *http.Request, o
 	}
 }
 
+// ListAccessPolicies operation middleware
+func (sh *strictHandler) ListAccessPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ListAccessPoliciesRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccessPolicies(ctx, request.(ListAccessPoliciesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccessPolicies")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccessPoliciesResponseObject); ok {
+		if err := validResponse.VisitListAccessPoliciesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccessPolicy operation middleware
+func (sh *strictHandler) CreateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request CreateAccessPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	var body CreateAccessPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccessPolicy(ctx, request.(CreateAccessPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccessPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccessPolicyResponseObject); ok {
+		if err := validResponse.VisitCreateAccessPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAccessPolicy operation middleware
+func (sh *strictHandler) DeleteAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	var request DeleteAccessPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Policy = policy
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAccessPolicy(ctx, request.(DeleteAccessPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAccessPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAccessPolicyResponseObject); ok {
+		if err := validResponse.VisitDeleteAccessPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAccessPolicy operation middleware
+func (sh *strictHandler) UpdateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	var request UpdateAccessPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Policy = policy
+
+	var body UpdateAccessPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAccessPolicy(ctx, request.(UpdateAccessPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAccessPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAccessPolicyResponseObject); ok {
+		if err := validResponse.VisitUpdateAccessPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CancelAdapterMove operation middleware
 func (sh *strictHandler) CancelAdapterMove(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, move ID) {
 	var request CancelAdapterMoveRequestObject
@@ -63197,6 +65396,198 @@ func (sh *strictHandler) RenameEnvironment(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RenameEnvironmentResponseObject); ok {
 		if err := validResponse.VisitRenameEnvironmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAccessRequests operation middleware
+func (sh *strictHandler) ListAccessRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListAccessRequestsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccessRequests(ctx, request.(ListAccessRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccessRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccessRequestsResponseObject); ok {
+		if err := validResponse.VisitListAccessRequestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccessRequest operation middleware
+func (sh *strictHandler) CreateAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request CreateAccessRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body CreateAccessRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccessRequest(ctx, request.(CreateAccessRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccessRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccessRequestResponseObject); ok {
+		if err := validResponse.VisitCreateAccessRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EmergencyAccess operation middleware
+func (sh *strictHandler) EmergencyAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request EmergencyAccessRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body EmergencyAccessJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EmergencyAccess(ctx, request.(EmergencyAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EmergencyAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EmergencyAccessResponseObject); ok {
+		if err := validResponse.VisitEmergencyAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelAccessRequest operation middleware
+func (sh *strictHandler) CancelAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	var request CancelAccessRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.AccessRequest = accessRequest
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelAccessRequest(ctx, request.(CancelAccessRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelAccessRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelAccessRequestResponseObject); ok {
+		if err := validResponse.VisitCancelAccessRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeAccessRequest operation middleware
+func (sh *strictHandler) RevokeAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	var request RevokeAccessRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.AccessRequest = accessRequest
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeAccessRequest(ctx, request.(RevokeAccessRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeAccessRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeAccessRequestResponseObject); ok {
+		if err := validResponse.VisitRevokeAccessRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// VoteAccessRequest operation middleware
+func (sh *strictHandler) VoteAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	var request VoteAccessRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.AccessRequest = accessRequest
+
+	var body VoteAccessRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VoteAccessRequest(ctx, request.(VoteAccessRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VoteAccessRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VoteAccessRequestResponseObject); ok {
+		if err := validResponse.VisitVoteAccessRequestResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

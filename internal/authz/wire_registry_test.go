@@ -34,14 +34,16 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// instance scope), each linked to its own operation.
 	// #788 adds the delivery-target report, tombstone and list routes; the two
 	// machine writes carry the federated pre-authentication refusal events.
-	if got := len(facts.Wire()); got != 346 {
-		t.Fatalf("wire entries = %d, want 346", got)
+	// #152 adds ten temporary-access routes, each linked to its own operation,
+	// nine of them carrying their access.* events directly.
+	if got := len(facts.Wire()); got != 356 {
+		t.Fatalf("wire entries = %d, want 356", got)
 	}
-	if got := len(facts.WireRoutes()); got != 243 {
-		t.Fatalf("operation-linked entries = %d, want 243", got)
+	if got := len(facts.WireRoutes()); got != 253 {
+		t.Fatalf("operation-linked entries = %d, want 253", got)
 	}
-	if got := len(facts.WireEvents()); got != 74 {
-		t.Fatalf("direct-event entries = %d, want 74", got)
+	if got := len(facts.WireEvents()); got != 83 {
+		t.Fatalf("direct-event entries = %d, want 83", got)
 	}
 }
 

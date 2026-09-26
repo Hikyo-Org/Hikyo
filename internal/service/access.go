@@ -774,7 +774,9 @@ func (s *Access) EmergencyAccess(ctx context.Context, actor Actor, scope domain.
 		}
 		// Called directly, not through requireCeremony: the unit is the
 		// environment alone, and an empty key set must not waive the ceremony.
-		if err := consumeAccessCeremony(ctx, s.Auth, az, caller, intent, string(scope.Env)); err != nil {
+		// The window refusals surface as the ceremony's own 403s, exactly as the
+		// change-approval bypass does, so clients drive the same reauthentication.
+		if err := s.Auth.ConsumeReauthWindow(ctx, az, caller.SessionID, intent, s.Auth.now()); err != nil {
 			return err
 		}
 		id, err := newID("xreq")
@@ -1157,26 +1159,6 @@ func mayRevokeAccess(ctx context.Context, r store.Repos, az *authz.TxAuthorizer,
 		return false, err
 	}
 	return approverEligible(ctx, r, az, p, approvers, caller.Principal)
-}
-
-// consumeAccessCeremony spends the caller's reauthentication window for an
-// emergency-access decision. One refusal for every window cause, as
-// everywhere else, carrying the environment so clients can drive the ceremony.
-func consumeAccessCeremony(ctx context.Context, auth *Auth, az *authz.TxAuthorizer, caller authz.Identity,
-	intent ReauthIntent, env string) error {
-	err := auth.ConsumeReauthWindow(ctx, az, caller.SessionID, intent, auth.now())
-	switch {
-	case err == nil:
-		return nil
-	case errors.Is(err, ErrNoReauthWindow), errors.Is(err, ErrReauthWindowExpired),
-		errors.Is(err, ErrReauthUnitMismatch), errors.Is(err, ErrReauthWindowSpent):
-		return &detailErr{
-			detail: fmt.Sprintf("reauthenticate over this environment to take emergency access, then retry (%s)", env),
-			err:    fmt.Errorf("%w (%s)", ErrReauthRequired, env),
-		}
-	default:
-		return err
-	}
 }
 
 // --- views ---

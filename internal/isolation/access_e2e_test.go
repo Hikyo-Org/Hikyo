@@ -450,7 +450,7 @@ func runAccessLifecycle(t *testing.T, db *store.DB) {
 	if _, err := h.access.EmergencyAccess(ctx, h.session(custodian, true), h.scope, emergency); !errors.Is(err, service.ErrAccessNotBypasser) {
 		t.Fatalf("emergency by a non-bypasser = %v, want refused", err)
 	}
-	if _, err := h.access.EmergencyAccess(ctx, h.session(reader, false), h.scope, emergency); !errors.Is(err, service.ErrReauthRequired) {
+	if _, err := h.access.EmergencyAccess(ctx, h.session(reader, false), h.scope, emergency); !errors.Is(err, service.ErrNoReauthWindow) {
 		t.Fatalf("emergency without reauthentication = %v, want reauth required", err)
 	}
 	if _, err := h.access.EmergencyAccess(ctx, h.session(reader, true), h.scope, service.AccessRequestInput{Capabilities: []string{"edit"}}); !errors.Is(err, domain.ErrInvalid) {

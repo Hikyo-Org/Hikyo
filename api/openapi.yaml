@@ -102,6 +102,12 @@ tags:
       deleted `masked` state appears nowhere in this contract. Plaintext of a
       `secret` key flows only through the reveal-gated shapes, each of which
       emits one audit event per disclosed key.
+  - name: access
+    description: |
+      Approval-mediated temporary access (#152). A human who already has an
+      identity requests exact capabilities in one environment for a bounded
+      duration; approval writes time-bound grants with an absolute expiry that
+      the authorization chokepoint enforces on every operation.
   - name: approvals
     description: |
       Secret-change approvals (#151). Policy-bound, multi-person review-and-merge
@@ -9777,6 +9783,429 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /api/v1/orgs/{org}/projects/{project}/access-policies:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+    get:
+      operationId: listAccessPolicies
+      tags: [access]
+      summary: The project's temporary-access policies.
+      description: |
+        Approval-mediated temporary access (#152). What may be requested in each
+        environment of this project: requestable capabilities, the longest
+        duration, the approver set and quorum, self-approval, the review window
+        and the emergency-access principals. Reading the set is an
+        administrative act and is itself audited.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.policy-read
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The project's access policies.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessPolicyList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: createAccessPolicy
+      tags: [access]
+      summary: Create a temporary-access policy.
+      description: |
+        Bind an access policy to the project or one of its environments
+        (`environment_id` empty means every environment). Only environment-deep,
+        non-administrative capabilities are requestable (read, reveal,
+        reveal-history, edit, publish, pin).
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.policy-write
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessPolicyInput"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The created policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - name: policy
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/ID"}
+    put:
+      operationId: updateAccessPolicy
+      tags: [access]
+      summary: Update a temporary-access policy.
+      description: |
+        Replace the policy's fields and member sets. The version increments, so
+        every open request filed under the previous version fails closed at its
+        next decision. Granted access keeps its absolute expiry; a policy change
+        never extends it. Disabling is `enabled: false`.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.policy-write
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessPolicyInput"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The updated policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessPolicy"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    delete:
+      operationId: deleteAccessPolicy
+      tags: [access]
+      summary: Delete a temporary-access policy.
+      description: |
+        Remove the policy and its member sets. Open requests under it fail closed
+        at their next decision; granted access keeps its absolute expiry.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.policy-write
+      x-hikyo-formula: [manage-members@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204":
+          description: The policy was deleted.
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listAccessRequests
+      tags: [access]
+      summary: The environment's temporary-access requests.
+      description: |
+        What may be requested here (the covering policy's offer, without its
+        approver roster) and the environment's requests with their state, votes
+        and quorum progress. Gated by `read` on the environment; carries no
+        value material.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.request-read
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The offer and the request queue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessQueue"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: createAccessRequest
+      tags: [access]
+      summary: Request temporary access.
+      description: |
+        Ask for exact capabilities in this environment for a bounded duration,
+        with a reason. The request is immutable: its capabilities, duration,
+        reason and the policy version it was filed under never change during
+        review. Humans in an interactive session only.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.request-create
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequestInput"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The filed request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    post:
+      operationId: emergencyAccess
+      tags: [access]
+      summary: Take emergency temporary access.
+      description: |
+        A named emergency-access principal of the covering policy takes the
+        policy's capabilities without the quorum. Requires a current
+        reauthentication ceremony over the environment (purpose `access`) and a
+        reason; time-bound (default one hour, never beyond the policy maximum);
+        emits a dedicated high-signal audit event and never changes the policy.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.bypass
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessRequestInput"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The granted emergency request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - name: accessRequest
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/ID"}
+    post:
+      operationId: voteAccessRequest
+      tags: [access]
+      summary: Approve or reject a temporary-access request.
+      description: |
+        An eligible approver casts one decision. The approver must be able to
+        grant every requested capability themselves. A repeated identical
+        decision is idempotent; a conflicting one is refused. A reject resolves
+        the request; the approve that reaches the quorum writes the time-bound
+        grants with an absolute expiry.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.vote
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessVoteRequest"
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The request after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - name: accessRequest
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/ID"}
+    post:
+      operationId: cancelAccessRequest
+      tags: [access]
+      summary: Withdraw an open temporary-access request.
+      description: |
+        The requester withdraws their own open request. Idempotent.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.cancel
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The request after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - name: accessRequest
+        in: path
+        required: true
+        schema: {$ref: "#/components/schemas/ID"}
+    post:
+      operationId: revokeAccessRequest
+      tags: [access]
+      summary: End granted temporary access early.
+      description: |
+        Releases the grants immediately and rotates the holder's sessions. The
+        holder may relinquish their own access; an eligible approver of the
+        policy or a project member manager may revoke anyone's. Idempotent.
+      x-hikyo-class: tenant
+      x-hikyo-operation: access.revoke
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 1
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200":
+          description: The request after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessRequest"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -14297,6 +14726,191 @@ components:
         decision:
           type: string
           enum: [approve, reject]
+    AccessPolicyInput:
+      type: object
+      required: [capabilities, max_duration_seconds, min_approvals, request_ttl_seconds, enabled, approvers]
+      additionalProperties: false
+      properties:
+        environment_id:
+          type: string
+          maxLength: 64
+          description: The environment this policy covers; empty means every environment in the project.
+        capabilities:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/AccessCapability"}
+        max_duration_seconds:
+          type: integer
+          format: int32
+          minimum: 1
+          description: The longest duration a request (or emergency access) may run.
+        min_approvals:
+          type: integer
+          format: int32
+          minimum: 1
+        allow_self_approval:
+          type: boolean
+        request_ttl_seconds:
+          type: integer
+          format: int32
+          minimum: 1
+          description: How long a request may wait for a decision before it expires.
+        enabled:
+          type: boolean
+        approvers:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: "#/components/schemas/ApprovalApprover"}
+        bypassers:
+          type: array
+          maxItems: 100
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/ID"}
+          description: Principals who may take emergency access without the quorum.
+    AccessCapability:
+      type: string
+      enum: [read, reveal, reveal-history, edit, publish, pin]
+      description: The closed set of capabilities temporary access may confer.
+    AccessPolicy:
+      type: object
+      required: [id, environment_id, capabilities, max_duration_seconds, min_approvals, allow_self_approval, request_ttl_seconds, enabled, version, approvers, bypassers, created_at, updated_at]
+      additionalProperties: false
+      properties:
+        principal_names:
+          type: object
+          additionalProperties:
+            type: string
+          description: Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id:
+          type: string
+          maxLength: 64
+        capabilities:
+          type: array
+          items: {$ref: "#/components/schemas/AccessCapability"}
+        max_duration_seconds: {type: integer, format: int32}
+        min_approvals: {type: integer, format: int32}
+        allow_self_approval: {type: boolean}
+        request_ttl_seconds: {type: integer, format: int32}
+        enabled: {type: boolean}
+        version: {type: integer, format: int64}
+        approvers:
+          type: array
+          items: {$ref: "#/components/schemas/ApprovalApprover"}
+        bypassers:
+          type: array
+          items: {$ref: "#/components/schemas/ID"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {$ref: "#/components/schemas/Timestamp"}
+    AccessPolicyList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/AccessPolicy"}
+    AccessOffer:
+      type: object
+      required: [policy_id, policy_version, capabilities, max_duration_seconds, min_approvals, enabled, caller_may_bypass]
+      additionalProperties: false
+      description: What may be requested in this environment. The approver roster is deliberately absent.
+      properties:
+        policy_id: {$ref: "#/components/schemas/ID"}
+        policy_version: {type: integer, format: int64}
+        capabilities:
+          type: array
+          items: {$ref: "#/components/schemas/AccessCapability"}
+        max_duration_seconds: {type: integer, format: int32}
+        min_approvals: {type: integer, format: int32}
+        enabled: {type: boolean}
+        caller_may_bypass:
+          type: boolean
+          description: Whether the caller is a named emergency-access principal of this policy.
+    AccessRequestInput:
+      type: object
+      required: [capabilities, reason]
+      additionalProperties: false
+      properties:
+        capabilities:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {$ref: "#/components/schemas/AccessCapability"}
+        duration_seconds:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Required for a request; optional for emergency access, which defaults to one hour capped by the policy maximum.
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: Why the access is needed. Recorded in the audit trail.
+    AccessVoteRequest:
+      type: object
+      required: [decision]
+      additionalProperties: false
+      properties:
+        decision:
+          type: string
+          enum: [approve, reject]
+    AccessRequest:
+      type: object
+      required: [id, environment_id, policy_id, policy_version, requester, capabilities, duration_seconds, reason, bypassed, state, invalidated_cause, min_approvals, approvals, votes, created_at, review_expires_at]
+      additionalProperties: false
+      properties:
+        requester_name:
+          type: string
+          description: Current display name of the referenced principal, when available.
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        policy_id: {$ref: "#/components/schemas/ID"}
+        policy_version: {type: integer, format: int64}
+        requester: {$ref: "#/components/schemas/ID"}
+        capabilities:
+          type: array
+          items: {$ref: "#/components/schemas/AccessCapability"}
+        duration_seconds: {type: integer, format: int32}
+        reason: {type: string}
+        bypassed:
+          type: boolean
+          description: Whether this is emergency access taken without the quorum.
+        state:
+          type: string
+          enum: [open, granted, rejected, cancelled, expired, invalidated, revoked]
+        invalidated_cause:
+          type: string
+          enum: ["", policy_changed, policy_disabled, approver_removed]
+        resolved_by:
+          $ref: "#/components/schemas/ID"
+          description: Who resolved the request, when a person did.
+        min_approvals: {type: integer, format: int32}
+        approvals:
+          type: integer
+          format: int32
+          description: Approvals from currently-eligible approvers, for an open request.
+        votes:
+          type: array
+          items: {$ref: "#/components/schemas/ApprovalVote"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        review_expires_at: {$ref: "#/components/schemas/Timestamp"}
+        granted_at: {$ref: "#/components/schemas/Timestamp"}
+        expires_at:
+          $ref: "#/components/schemas/Timestamp"
+          description: The absolute instant granted access stops.
+        resolved_at: {$ref: "#/components/schemas/Timestamp"}
+    AccessQueue:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        offer: {$ref: "#/components/schemas/AccessOffer"}
+        items:
+          type: array
+          items: {$ref: "#/components/schemas/AccessRequest"}
     PublishResult:
       type: object
       required: [published, closed_in, environments]
@@ -17954,6 +18568,7 @@ components:
         - approve
         - reject
         - bypass
+        - access
 
     WebauthnCredentialProofRequest:
       type: object

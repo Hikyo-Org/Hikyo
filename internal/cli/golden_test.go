@@ -244,6 +244,17 @@ func TestExitCodeMatrix(t *testing.T) {
 		{"approval request approve without a request", []string{"approval", "request", "approve", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"approval request bypass without a reason", []string{"approval", "request", "bypass", "req_x", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"stray positional on approval policy list", []string{"approval", "policy", "list", "stray", "--instance", "unknown-ref"}, cli.ExitUsage},
+		// Temporary access (#152): syntax before authentication, as above.
+		{"access policy without a subverb", []string{"access", "policy"}, cli.ExitUsage},
+		{"unknown access policy subverb", []string{"access", "policy", "warp"}, cli.ExitUsage},
+		{"access request without a subverb", []string{"access", "request"}, cli.ExitUsage},
+		{"unknown access request subverb", []string{"access", "request", "warp"}, cli.ExitUsage},
+		{"access policy create without a capability", []string{"access", "policy", "create", "--approver", "principal:usr_x", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"access policy delete without a policy", []string{"access", "policy", "delete", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"access request create without a reason", []string{"access", "request", "create", "--capability", "reveal", "--duration", "1h", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"access request create without a duration", []string{"access", "request", "create", "--capability", "reveal", "--reason", "r", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"access request approve without a request", []string{"access", "request", "approve", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"access request emergency without a capability", []string{"access", "request", "emergency", "--reason", "r", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"stray positional on key group list", []string{"key", "group", "list", "stray", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"key list with no session", []string{"key", "list", "--instance", "unknown-ref", "--org", "org_x", "--project", "prj_x"}, cli.ExitRefused},
 		// The import path (#68). Its usage boundary is pinned like every other

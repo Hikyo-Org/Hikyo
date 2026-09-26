@@ -738,6 +738,19 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests":                            {Class: ClassTenant, Ops: []Operation{OpApprovalRequestRead}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony": {Class: ClassTenant, Ops: []Operation{OpApprovalVote}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote":    {Class: ClassTenant, Ops: []Operation{OpApprovalVote}, Events: []audit.EventType{audit.EventApprovalVoted, audit.EventApprovalInvalidated}},
+	// Temporary access (#152). Policy administration is manage-members at the
+	// project; the request queue and every decision are read@env with the
+	// finer eligibility checked after the grant (a reachable 403).
+	"http:GET /api/v1/orgs/{org}/projects/{project}/access-policies":                                                    {Class: ClassTenant, Ops: []Operation{OpAccessPolicyRead}, Events: []audit.EventType{audit.EventAccessPolicyRead}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/access-policies":                                                   {Class: ClassTenant, Ops: []Operation{OpAccessPolicyWrite}, Events: []audit.EventType{audit.EventAccessPolicyChanged}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}":                                           {Class: ClassTenant, Ops: []Operation{OpAccessPolicyWrite}, Events: []audit.EventType{audit.EventAccessPolicyChanged}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}":                                        {Class: ClassTenant, Ops: []Operation{OpAccessPolicyWrite}, Events: []audit.EventType{audit.EventAccessPolicyChanged}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests":                         {Class: ClassTenant, Ops: []Operation{OpAccessRequestRead}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests":                        {Class: ClassTenant, Ops: []Operation{OpAccessRequestCreate}, Events: []audit.EventType{audit.EventAccessRequested}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency":              {Class: ClassTenant, Ops: []Operation{OpAccessBypass}, Events: []audit.EventType{audit.EventAccessBypassed}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote":   {Class: ClassTenant, Ops: []Operation{OpAccessVote}, Events: []audit.EventType{audit.EventAccessVoted, audit.EventAccessGranted, audit.EventAccessInvalidated}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel": {Class: ClassTenant, Ops: []Operation{OpAccessCancel}, Events: []audit.EventType{audit.EventAccessCancelled}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke": {Class: ClassTenant, Ops: []Operation{OpAccessRevoke}, Events: []audit.EventType{audit.EventAccessRevoked}},
 	// The root token key belongs to the instance, so there is no tenant object
 	// whose nonexistence a refusal could mimic. The same holds for every DEK: a
 	// DEK belongs to the instance's crypto hierarchy, not a tenant.
