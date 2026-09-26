@@ -42,6 +42,7 @@ type applicationGeneration struct {
 	scheduler                         *Scheduler
 	adapterWorker                     *adapter.Worker
 	dynamicWorker                     *dynamicWorker
+	sshSweeper                        *sshSweeper
 	updateReconciler                  *service.Updates
 }
 
@@ -188,6 +189,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: dynamicRuntime,
 		ProviderFactory: newDynamicFactory(cfg.DynamicEgressPolicy), LeaseDeadline: dynamicProviderDeadline,
 	}
+	sshService := &service.SSH{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: store.NewSSHRuntime(db)}
 
 	updatesService := &service.Updates{DB: db, Source: updateSource, Version: Version, Channel: updatecheck.Channel(cfg.UpdateChannel), Log: log, SelfConfig: selfConfig}
 	// One RED collector shared by the API middleware (writer) and the
@@ -199,6 +201,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	// storage high-water gauge's shared-door read).
 	metrics.SetApprovalSource(approvalMetricsSource{svc: approvalsSvc, log: log})
 	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
+	metrics.SetSSHSource(sshGaugeSource{svc: sshService, log: log})
 	// The hierarchy, value, and revision services are named here so the read-only
 	// MCP tools (#629) map onto the SAME instances the REST surface uses: one
 	// keyring, one budget, one authorization path.
@@ -288,6 +291,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		SAMLProviders: samlProviders,
 		Adapters:      adapterService,
 		Dynamic:       dynamicService,
+		SSH:           sshService,
 		Audits:        &service.Audits{DB: db, Budget: budget},
 		Approvals:     approvalsSvc,
 		// ONE SCIM service behind both surfaces: the administration verbs and
@@ -424,6 +428,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		}}},
 		adapterWorker:    adapterWorker,
 		dynamicWorker:    &dynamicWorker{svc: dynamicService, id: "dynamic-worker-" + uuid.Must(uuid.NewV7()).String(), log: log, selfConfig: selfConfig},
+		sshSweeper:       &sshSweeper{svc: sshService, log: log, selfConfig: selfConfig},
 		updateReconciler: updatesService,
 	}
 	if cfg.BackupScheduled() {

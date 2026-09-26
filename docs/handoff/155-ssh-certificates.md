@@ -29,7 +29,7 @@ described the #147 promotion's own scope and is left as history.
    the operational best practice (a staging CA cannot sign for production).
    Tables `ssh_cas`, `ssh_ca_keys`, `ssh_profiles`, `ssh_profile_requesters`,
    `ssh_certificates` are all `class=environment chain=org_id,project_id`
-   (migration 00060, both engines).
+   (migration 00061, both engines).
 
 2. **CA custody.** A CA is a named container; its signing material lives in
    `ssh_ca_keys` rows (`active -> retiring -> retired`, at most one `active`
@@ -133,15 +133,24 @@ described the #147 promotion's own scope and is left as history.
 9. **Restore.** A restore rolls the certificate table back to the backup's
    instant; a certificate issued and revoked after the backup has no row and
    so cannot appear in the KRL. The runbook step is: after restore, rotate
-   every SSH CA with `--overlap 0`. Stated on the docs page and in
-   `hikyo doctor`'s restore guidance; not automated, because forcing a trust
-   change on every host is the operator's decision.
+   every SSH CA with `--overlap 0`. Stated on the docs page; not automated,
+   because forcing a trust change on every host is the operator's decision.
 
-10. **Surfaces.** API revision 6. CLI `hikyo ssh-ca`, `hikyo ssh-profile`,
-    `hikyo ssh-cert`. SPA: an "SSH" tab on the machine-access page (CAs,
-    profiles, certificates, issue with display-once key and the mint
-    ceremony). Metrics (label-free): `hikyo_ssh_certificates_active`,
+10. **Surfaces.** API revision 6; operation ids use the `Scim`-style casing
+    (`listSshCas`, `issueSshCertificate`, ...) because the parity gate's
+    word splitter and the TS generator disagree on runs of capitals like
+    `SSHCAs`. CLI `hikyo ssh-ca`, `hikyo ssh-profile`, `hikyo ssh-cert`
+    (a generated key goes through the print triad; `ssh-ca krl` writes a
+    fresh file only). SPA: an "SSH certificates" tab on the machine-access
+    page (`routes/SSHCertificates.tsx`): per-environment CAs (create/import,
+    rotate, retire, trust bundle, KRL download, delete), profiles
+    (create/edit/delete with optional revocation) and certificates (issue
+    behind the passkey mint ceremony with the shared display-once lifecycle,
+    revoke). Metrics (label-free): `hikyo_ssh_certificates_active`,
     `hikyo_ssh_krl_entries`, guarded by `hikyo_ssh_gauges_known`.
+11. **Environment delete** refuses (409) while the environment holds a live
+    SSH CA; once every CA is deleted, the environment delete purges the SSH
+    rows (`ssh.PurgeEnvironment`, on both delete paths).
 
 ## Tests
 
@@ -158,3 +167,33 @@ described the #147 promotion's own scope and is left as history.
   with the real `ssh` client, is refused after it lands in the KRL, is refused
   once expired, and a certificate from the retiring key authenticates during
   overlap. Skips when `sshd` is absent unless `HIKYO_SSHE2E_REQUIRED=1`.
+
+## Progress and evidence
+
+- [x] ADR banners (`mvp-boundary.md` §4.1 SSH row redrawn, `system-architecture.md`
+      § Jobs note) and this doc
+- [x] `internal/sshca` + OpenSSH interop test (real `sshd` and `ssh`, KRL checked
+      with `ssh-keygen -Q`)
+- [x] Migration 00061 (both engines); `internal/buildcompat/development.json`
+      regenerated with PostgreSQL 18.4 (the base declaration was first
+      reproduced byte for byte, then the only diff is the 00061 entry and the
+      two schema digests); legacy upgrade-drill fixture reverses 00061
+- [x] Store repo + runtime, authz ops/store ops/wire routes, audit events,
+      reencrypt coverage, budget classification, fence annotations
+- [x] Service, server handlers, app wiring (sweeper on every node, gauges)
+- [x] OpenAPI + apigen + TS client, parity, no-proxy and artifact pins
+- [x] CLI verbs, auth-kind rules, help golden, CLI reference row
+- [x] SPA tab, sensitivity inventory, Playwright flow (desktop and mobile)
+- [x] Isolation lifecycle on SQLite and PostgreSQL; audit-emitter closure;
+      formula pin and audited exemptions updated
+- [x] Docs site page `ssh-certificates.mdx`
+
+## CI notes
+
+- `internal/sshca/openssh_e2e_test.go` runs when `sshd`, `ssh` and
+  `ssh-keygen` are installed and skips otherwise. To make it mandatory in CI,
+  install `openssh-server` in the core test job and export
+  `HIKYO_SSHE2E_REQUIRED=1` (a workflow change needs a token with the
+  `workflow` scope, so it is not part of this branch).
+- `TestSAMLMetadata*` in `internal/service` fail in sandboxes that force an
+  HTTP proxy; they fail identically on `main` there and are unrelated.

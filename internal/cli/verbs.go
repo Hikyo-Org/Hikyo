@@ -195,6 +195,9 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"adapter":             runAdapter,
 	"dynamic-provider":    runDynamicProvider,
 	"lease":               runLease,
+	"ssh-ca":              runSSHCA,
+	"ssh-profile":         runSSHProfile,
+	"ssh-cert":            runSSHCert,
 	"run":                 runRun,
 	"compose":             runCompose,
 	"update":              runUpdate,
@@ -430,6 +433,34 @@ dynamic secrets:
   the minted credential is shown exactly once, through the print triad (a
   controlling terminal, --output-file, or --dangerously-print); the admin
   provider credential is read like an adapter credential, never on argv.
+
+ssh certificates:
+  hikyo ssh-ca create <name> --env E [--algorithm ed25519|ecdsa-p256|rsa-3072]
+      [--stdin | --key-file PATH]
+  hikyo ssh-ca list|show <ca> --env E [-o table|json]
+  hikyo ssh-ca delete <ca> --env E
+  hikyo ssh-ca rotate <ca> --env E [--overlap DURATION] [--algorithm A]
+      [--stdin | --key-file PATH]
+  hikyo ssh-ca retire-key <ca> --key <key> --env E
+  hikyo ssh-ca trusted-keys <ca> --env E
+  hikyo ssh-ca krl <ca> --env E --output-file PATH
+  hikyo ssh-profile create <name> --env E --ca <ca> --principal P...
+      --key-algorithm A... --default-ttl D --max-ttl D [--requester ID...]
+      [--source-address CIDR...] [--extension X... | --no-extensions]
+      [--force-command CMD] [--disabled]
+  hikyo ssh-profile update <profile> --env E [any create flag]
+  hikyo ssh-profile list|show <profile> --env E [-o table|json]
+  hikyo ssh-profile delete <profile> --env E [--revoke-issued]
+  hikyo ssh-cert issue --profile <profile> --env E [--principal P...] [--ttl D]
+      [--public-key-file PATH | --output-file PATH | --dangerously-print]
+      [--cert-file PATH] [--source-address CIDR...] [--extension X...]
+  hikyo ssh-cert list|show <cert> --env E [-o table|json]
+  hikyo ssh-cert revoke <cert> --env E
+
+  a CA private key is read from stdin or a file, never argv, and never
+  returned; a generated user key is shown exactly once through the print
+  triad. Hosts trust "ssh-ca trusted-keys" (TrustedUserCAKeys) and refuse
+  "ssh-ca krl" (RevokedKeys); refresh both on a timer.
 
 delivery:                                          machine credential only
   hikyo run [--config-only] [--allow-override KEY,KEY] [--project-directory DIR]

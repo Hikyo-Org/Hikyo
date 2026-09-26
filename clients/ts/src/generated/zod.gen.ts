@@ -267,6 +267,157 @@ export const zMintLeaseResult = z.object({
     expires_at: z.iso.datetime().nullish()
 });
 
+/**
+ * The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+ */
+export const zSshKeyAlgorithm = z.enum([
+    'ed25519',
+    'ecdsa-p256',
+    'rsa-3072'
+]);
+
+export const zSshExtension = z.enum([
+    'permit-X11-forwarding',
+    'permit-agent-forwarding',
+    'permit-port-forwarding',
+    'permit-pty',
+    'permit-user-rc'
+]);
+
+export const zSshName = z.string().min(1).max(64).regex(/^[a-z0-9._-]+$/);
+
+export const zSshcaKey = z.object({
+    id: zId,
+    algorithm: zSshKeyAlgorithm,
+    public_key: z.string(),
+    fingerprint: z.string(),
+    origin: z.enum(['generated', 'imported']),
+    state: z.enum([
+        'active',
+        'retiring',
+        'retired'
+    ]),
+    trusted: z.boolean(),
+    created_at: zTimestamp,
+    retiring_at: z.iso.datetime().nullish(),
+    retire_after: z.iso.datetime().nullish(),
+    retired_at: z.iso.datetime().nullish()
+});
+
+export const zSshca = z.object({
+    id: zId,
+    name: zSshName,
+    authority_principal_id: zId,
+    created_at: zTimestamp,
+    keys: z.array(zSshcaKey)
+});
+
+export const zSshcaList = z.object({
+    items: z.array(zSshca)
+});
+
+export const zCreateSshcaRequest = z.object({
+    name: zSshName,
+    algorithm: zSshKeyAlgorithm.optional()
+});
+
+export const zRotateSshcaRequest = z.object({
+    algorithm: zSshKeyAlgorithm.optional(),
+    overlap_seconds: z.coerce.bigint().gte(BigInt(0)).lte(BigInt(2592000)).nullish()
+});
+
+export const zSshProfileRequest = z.object({
+    ca_id: zId,
+    name: zSshName,
+    principals: z.array(z.string().min(1).max(256)).min(1).max(32),
+    force_command: z.string().max(1024).optional(),
+    source_addresses: z.array(z.string().max(64)).max(32).optional(),
+    extensions: z.array(zSshExtension).max(5).optional(),
+    key_algorithms: z.array(zSshKeyAlgorithm).min(1).max(3),
+    default_ttl_seconds: z.coerce.bigint().gte(BigInt(60)).lte(BigInt(2592000)),
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(60)).lte(BigInt(2592000)),
+    enabled: z.boolean().optional().default(true),
+    requesters: z.array(zId).max(256).optional()
+});
+
+export const zSshProfile = z.object({
+    id: zId,
+    ca_id: zId,
+    name: zSshName,
+    principals: z.array(z.string()),
+    force_command: z.string(),
+    source_addresses: z.array(z.string()),
+    extensions: z.array(zSshExtension),
+    key_algorithms: z.array(zSshKeyAlgorithm),
+    default_ttl_seconds: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    max_ttl_seconds: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    enabled: z.boolean(),
+    requesters: z.array(zId),
+    created_at: zTimestamp,
+    updated_at: zTimestamp
+});
+
+export const zSshProfileList = z.object({
+    items: z.array(zSshProfile)
+});
+
+export const zSshProfileDeletion = z.object({
+    profile_id: zId,
+    revoked_certificate_count: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zSshCertificate = z.object({
+    id: zId,
+    ca_id: zId,
+    ca_key_id: zId,
+    profile_id: zId,
+    serial: z.string().regex(/^[1-9][0-9]{0,18}$/),
+    key_id: z.string(),
+    principals: z.array(z.string()),
+    public_key_fingerprint: z.string(),
+    key_algorithm: zSshKeyAlgorithm,
+    key_origin: z.enum(['generated', 'supplied']),
+    valid_after: zTimestamp,
+    valid_before: zTimestamp,
+    requester_principal_id: zId,
+    requester_class: z.string(),
+    status: z.enum([
+        'active',
+        'expired',
+        'revoked',
+        'untrusted'
+    ]),
+    in_krl: z.boolean(),
+    revoked_at: z.iso.datetime().nullish(),
+    revocation_reason: z.enum([
+        'explicit',
+        'authority-withdrawn',
+        'profile-deleted'
+    ]).nullish(),
+    created_at: zTimestamp
+});
+
+export const zSshCertificateList = z.object({
+    items: z.array(zSshCertificate)
+});
+
+export const zIssueSshCertificateRequest = z.object({
+    profile_id: zId,
+    public_key: z.string().max(8192).optional(),
+    key_algorithm: zSshKeyAlgorithm.optional(),
+    principals: z.array(z.string().min(1).max(256)).max(32).optional(),
+    source_addresses: z.array(z.string().max(64)).max(32).optional(),
+    extensions: z.array(zSshExtension).max(5).optional(),
+    ttl_seconds: z.coerce.bigint().gte(BigInt(60)).lte(BigInt(2592000)).optional()
+});
+
+export const zSshCertificateIssue = z.object({
+    certificate: zSshCertificate,
+    certificate_text: z.string(),
+    public_key: z.string(),
+    private_key: z.string().nullish()
+});
+
 export const zAdapterConflictEntry = z.object({
     surface: z.enum(['secret', 'variable']),
     effective_name: z.string()
@@ -3603,6 +3754,18 @@ export const zScimMappingResult = z.object({
     origins_released: z.int()
 });
 
+export const zCreateSshcaRequestWritable = z.object({
+    name: zSshName,
+    algorithm: zSshKeyAlgorithm.optional(),
+    private_key: z.string().min(1).max(16384).optional()
+});
+
+export const zRotateSshcaRequestWritable = z.object({
+    algorithm: zSshKeyAlgorithm.optional(),
+    private_key: z.string().min(1).max(16384).optional(),
+    overlap_seconds: z.coerce.bigint().gte(BigInt(0)).lte(BigInt(2592000)).nullish()
+});
+
 /**
  * Login-challenge identifier returned by `localLogin` (202).
  */
@@ -3630,6 +3793,14 @@ export const zAdapterTargetId = zId;
 export const zDynamicProviderId = zId;
 
 export const zLeaseId = zId;
+
+export const zSshcaid = zId;
+
+export const zSshcaKeyId = zId;
+
+export const zSshProfileId = zId;
+
+export const zSshCertificateId = zId;
 
 /**
  * Folder identifier.
@@ -7085,3 +7256,216 @@ export const zSettleLeasePath = z.object({
  * Lease after settlement.
  */
 export const zSettleLeaseResponse = zDynamicLease;
+
+export const zListSshCasPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * CA list.
+ */
+export const zListSshCasResponse = zSshcaList;
+
+export const zCreateSshCaBody = zCreateSshcaRequestWritable;
+
+export const zCreateSshCaPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * CA created.
+ */
+export const zCreateSshCaResponse = zSshca;
+
+export const zDeleteSshCaPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshCA: zId
+});
+
+/**
+ * CA deleted.
+ */
+export const zDeleteSshCaResponse = z.void();
+
+export const zShowSshCaPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshCA: zId
+});
+
+/**
+ * CA.
+ */
+export const zShowSshCaResponse = zSshca;
+
+export const zRotateSshCaBody = zRotateSshcaRequestWritable;
+
+export const zRotateSshCaPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshCA: zId
+});
+
+/**
+ * CA after rotation.
+ */
+export const zRotateSshCaResponse = zSshca;
+
+export const zRetireSshCaKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshCA: zId,
+    sshCAKey: zId
+});
+
+/**
+ * CA after retirement.
+ */
+export const zRetireSshCaKeyResponse = zSshca;
+
+export const zGetSshTrustedKeysPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshCA: zId
+});
+
+/**
+ * TrustedUserCAKeys file content.
+ */
+export const zGetSshTrustedKeysResponse = z.string();
+
+export const zGetSshKrlPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshCA: zId
+});
+
+/**
+ * KRL bytes.
+ */
+export const zGetSshKrlResponse = z.string();
+
+export const zListSshProfilesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Profile list.
+ */
+export const zListSshProfilesResponse = zSshProfileList;
+
+export const zCreateSshProfileBody = zSshProfileRequest;
+
+export const zCreateSshProfilePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Profile created.
+ */
+export const zCreateSshProfileResponse = zSshProfile;
+
+export const zDeleteSshProfilePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshProfile: zId
+});
+
+export const zDeleteSshProfileQuery = z.object({
+    revoke_issued: z.boolean().optional().default(false)
+});
+
+/**
+ * Profile deleted.
+ */
+export const zDeleteSshProfileResponse = zSshProfileDeletion;
+
+export const zShowSshProfilePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshProfile: zId
+});
+
+/**
+ * Profile.
+ */
+export const zShowSshProfileResponse = zSshProfile;
+
+export const zUpdateSshProfileBody = zSshProfileRequest;
+
+export const zUpdateSshProfilePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshProfile: zId
+});
+
+/**
+ * Profile after update.
+ */
+export const zUpdateSshProfileResponse = zSshProfile;
+
+export const zListSshCertificatesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Certificate list, newest first, at most 500.
+ */
+export const zListSshCertificatesResponse = zSshCertificateList;
+
+export const zIssueSshCertificateBody = zIssueSshCertificateRequest;
+
+export const zIssueSshCertificatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The certificate and, for a generated key, its display-once private key.
+ */
+export const zIssueSshCertificateResponse = zSshCertificateIssue;
+
+export const zShowSshCertificatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshCertificate: zId
+});
+
+/**
+ * Certificate.
+ */
+export const zShowSshCertificateResponse = zSshCertificate;
+
+export const zRevokeSshCertificatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    sshCertificate: zId
+});
+
+/**
+ * Certificate after revocation.
+ */
+export const zRevokeSshCertificateResponse = zSshCertificate;

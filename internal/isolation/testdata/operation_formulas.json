@@ -1698,6 +1698,95 @@
     ]
   },
   {
+    "operation": "ssh-ca.configure",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "ssh-ca.delete",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "ssh-ca.inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "ssh-ca.retire-key",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "ssh-ca.rotate",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "ssh-cert.inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "ssh-cert.issue",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "ssh-cert.revoke",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "ssh-profile.configure",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "ssh-profile.delete",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "ssh-profile.inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
     "operation": "update.job-read",
     "class": "instance",
     "level": "instance",
