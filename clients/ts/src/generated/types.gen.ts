@@ -80,7 +80,7 @@ export type AdapterTargetInput = {
      */
     variable_protected?: boolean;
     /**
-     * GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+     * GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
      */
     variable_hidden?: boolean;
     /**
@@ -173,7 +173,7 @@ export type UpdateAdapterTargetRequest = {
      */
     variable_protected?: boolean;
     /**
-     * GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+     * GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
      */
     variable_hidden?: boolean;
     /**

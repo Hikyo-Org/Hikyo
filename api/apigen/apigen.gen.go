@@ -3643,7 +3643,7 @@ type AdapterTargetInput struct {
 	// VariableExpand GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
 	VariableExpand *bool `json:"variable_expand,omitempty"`
 
-	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
 	VariableHidden *bool `json:"variable_hidden,omitempty"`
 
 	// VariableProtected GitLab only. Deliver managed variables as protected (protected branches and tags only).
@@ -8535,7 +8535,7 @@ type UpdateAdapterTargetRequest struct {
 	// VariableExpand GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
 	VariableExpand *bool `json:"variable_expand,omitempty"`
 
-	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
 	VariableHidden *bool `json:"variable_hidden,omitempty"`
 
 	// VariableProtected GitLab only. Deliver managed variables as protected (protected branches and tags only).

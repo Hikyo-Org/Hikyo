@@ -12347,7 +12347,7 @@ components:
         variable_hidden:
           type: boolean
           default: false
-          description: GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+          description: GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
         variable_expand:
           type: boolean
           default: false
@@ -12489,7 +12489,7 @@ components:
         variable_hidden:
           type: boolean
           default: false
-          description: GitLab only (>= 17.4). Create secret-classified variables masked and hidden.
+          description: GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
         variable_expand:
           type: boolean
           default: false
