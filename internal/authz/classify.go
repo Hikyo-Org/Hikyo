@@ -812,6 +812,23 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}":         {Class: ClassTenant, Ops: []Operation{OpSSHCertInspect}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke": {Class: ClassTenant, Ops: []Operation{OpSSHCertRevoke}},
 
+	// Transit (#156).
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys":                            {Class: ClassTenant, Ops: []Operation{OpTransitKeyInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys":                           {Class: ClassTenant, Ops: []Operation{OpTransitKeyCreate}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}":              {Class: ClassTenant, Ops: []Operation{OpTransitKeyInspect}},
+	"http:PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}":            {Class: ClassTenant, Ops: []Operation{OpTransitKeyConfigure}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate":      {Class: ClassTenant, Ops: []Operation{OpTransitKeyRotate}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle":   {Class: ClassTenant, Ops: []Operation{OpTransitKeyLifecycle}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim":        {Class: ClassTenant, Ops: []Operation{OpTransitKeyTrim}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt":     {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt":     {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap":      {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey":     {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign":        {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify":      {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac":        {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify": {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+
 	"http:GET /api/v1/orgs/{org}/projects/{project}/key-groups":            {Class: ClassTenant, Ops: []Operation{OpKeyGroupList}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/key-groups":           {Class: ClassTenant, Ops: []Operation{OpKeyGroupCreate}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/key-groups/{group}":    {Class: ClassTenant, Ops: []Operation{OpKeyGroupGet}},
@@ -956,6 +973,7 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"cli:ssh-ca":      {Class: ClassTenant},
 	"cli:ssh-profile": {Class: ClassTenant},
 	"cli:ssh-cert":    {Class: ClassTenant},
+	"cli:transit":     {Class: ClassTenant},
 
 	// The Compose delivery verbs (#63). `run` and `compose` both reach the
 	// tenant-scoped delivery routes (GET .../delivery and its offline-records
