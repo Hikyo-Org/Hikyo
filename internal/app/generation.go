@@ -283,6 +283,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		},
 		SAMLProviders: samlProviders,
 		Adapters:      adapterService,
+		FileTargets:   &service.FileTargets{DB: db},
 		Dynamic:       dynamicService,
 		Audits:        &service.Audits{DB: db, Budget: budget},
 		Approvals:     approvalsSvc,

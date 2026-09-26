@@ -100,6 +100,80 @@ export const zAdapterTargetInput = z.object({
     key_selection: zAdapterKeySelection.optional()
 });
 
+export const zFileTargetKey = z.object({
+    key_id: zId,
+    name: z.string(),
+    classification: z.enum(['secret', 'config'])
+});
+
+/**
+ * What the client reached: `applied` published a new generation;
+ * `current` found nothing to change; `offline` rendered from its
+ * encrypted offline snapshot while the server was unreachable; `refused`
+ * kept the last generation because a key could not be represented or a
+ * local policy refused; `failed` kept the last generation after a
+ * filesystem failure.
+ *
+ */
+export const zFileTargetState = z.enum([
+    'applied',
+    'current',
+    'offline',
+    'refused',
+    'failed'
+]);
+
+/**
+ * The client's last accepted report. An assertion, not verified host state.
+ */
+export const zFileTargetReport = z.object({
+    state: zFileTargetState,
+    revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    stamp: z.string().max(35),
+    reported_at: z.iso.datetime(),
+    received_at: z.iso.datetime()
+});
+
+export const zFileTarget = z.object({
+    id: zId,
+    environment_id: zId,
+    name: z.string(),
+    service_account_id: zId,
+    principal_id: zId,
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime(),
+    keys: z.array(zFileTargetKey),
+    report: zFileTargetReport.nullable()
+});
+
+export const zFileTargetList = z.object({
+    items: z.array(zFileTarget)
+});
+
+export const zCreateFileTargetRequest = z.object({
+    environment_id: zId,
+    name: z.string().min(1).max(63).regex(/^[a-z][a-z0-9-]{0,62}$/),
+    service_account_id: zId,
+    key_ids: z.array(zId).max(512).optional(),
+    key_selection: zAdapterKeySelection.optional()
+});
+
+export const zUpdateFileTargetRequest = z.object({
+    expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    key_ids: z.array(zId).max(512).optional(),
+    key_selection: zAdapterKeySelection.optional()
+});
+
+export const zFileTargetReportRequest = z.object({
+    state: zFileTargetState,
+    revision: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    stamp: z.string().regex(/^v1-[0-9a-f]{32}$/).optional(),
+    reported_at: z.iso.datetime()
+});
+
 export const zCreateAdapterRequest = z.object({
     provider: zAdapterProvider,
     origin: z.url().max(2048),
@@ -2391,6 +2465,7 @@ export const zDeliveredKey = z.object({
  *
  */
 export const zDeliveryResponse = z.object({
+    file_target_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
     credential_id: zId,
     current: z.boolean(),
     cursor: z.string().max(128),
@@ -3625,6 +3700,8 @@ export const zEnvironmentId = zId;
 
 export const zAdapterId = zId;
 
+export const zFileTargetId = zId;
+
 export const zAdapterTargetId = zId;
 
 export const zDynamicProviderId = zId;
@@ -3744,6 +3821,16 @@ export const zDeliveryProjection = z.enum(['full', 'config-only']).default('full
  *
  */
 export const zDefinitionsAcknowledgements = z.array(z.string()).max(100);
+
+/**
+ * The file target (#164) the presenting workload is bound to. A bound
+ * account is delivered that target's key selection only and must name
+ * it (400 otherwise); naming a target the caller is not bound to, or one
+ * in another environment, is the uniform 404. Unbound callers omit it.
+ * Added in API revision 6.
+ *
+ */
+export const zDeliveryFileTarget = zId;
 
 /**
  * The loader-control keys the consumer explicitly acknowledges, so the
@@ -5608,6 +5695,7 @@ export const zFetchDeliveryQuery = z.object({
     cursor: z.string().max(128).optional(),
     projection: z.enum(['full', 'config-only']).optional().default('full'),
     acknowledged_keys: z.array(zKeyName).max(64).optional(),
+    target: zId.optional(),
     parameters: z.string().max(16384).optional()
 });
 
@@ -6939,6 +7027,77 @@ export const zAdoptAdapterTargetNamesPath = z.object({
  * Adoption committed and converge queued.
  */
 export const zAdoptAdapterTargetNamesResponse = zAdapterJob;
+
+export const zListFileTargetsPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * File targets.
+ */
+export const zListFileTargetsResponse = zFileTargetList;
+
+export const zCreateFileTargetBody = zCreateFileTargetRequest;
+
+export const zCreateFileTargetPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The file target.
+ */
+export const zCreateFileTargetResponse = zFileTarget;
+
+export const zDeleteFileTargetPath = z.object({
+    org: zId,
+    project: zId,
+    fileTarget: zId
+});
+
+/**
+ * Removed.
+ */
+export const zDeleteFileTargetResponse = z.void();
+
+export const zGetFileTargetPath = z.object({
+    org: zId,
+    project: zId,
+    fileTarget: zId
+});
+
+/**
+ * The file target.
+ */
+export const zGetFileTargetResponse = zFileTarget;
+
+export const zUpdateFileTargetBody = zUpdateFileTargetRequest;
+
+export const zUpdateFileTargetPath = z.object({
+    org: zId,
+    project: zId,
+    fileTarget: zId
+});
+
+/**
+ * The file target.
+ */
+export const zUpdateFileTargetResponse = zFileTarget;
+
+export const zReportFileTargetBody = zFileTargetReportRequest;
+
+export const zReportFileTargetPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    fileTarget: zId
+});
+
+/**
+ * Accepted.
+ */
+export const zReportFileTargetResponse = z.void();
 
 export const zListDynamicProvidersPath = z.object({
     org: zId,

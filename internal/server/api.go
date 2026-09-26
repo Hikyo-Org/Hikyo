@@ -174,6 +174,8 @@ type API struct {
 	Providers       ProviderService
 	SAMLProviders   SAMLProviderService
 	Adapters        *service.Adapters
+	// FileTargets is the generic file-destination administration (#164).
+	FileTargets *service.FileTargets
 	// Dynamic is the dynamic-secret provider + lease surface (#147). Concrete
 	// like Adapters: it resolves the session and mints/settles leases itself.
 	Dynamic *service.Dynamic

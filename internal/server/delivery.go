@@ -38,6 +38,7 @@ type DeliveryService interface {
 	TombstoneTarget(ctx context.Context, presented string, scope domain.Scope, key service.DeliveryTargetKey) error
 	RefuseOversizeReport(ctx context.Context, presented string, scope domain.Scope) error
 	ListTargets(ctx context.Context, actor service.Actor, scope domain.Scope) (service.DeliveryTargetList, error)
+	ReportFileTarget(ctx context.Context, presented string, scope domain.Scope, targetID string, report service.FileTargetReport) error
 }
 
 func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequestObject) (apigen.FetchDeliveryResponseObject, error) {
@@ -56,6 +57,9 @@ func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequest
 	}
 	if req.Params.AcknowledgedKeys != nil {
 		opts.AcknowledgedKeys = []string(*req.Params.AcknowledgedKeys)
+	}
+	if req.Params.Target != nil {
+		opts.Target = string(*req.Params.Target)
 	}
 	scope := domain.Scope{
 		Org: domain.OrgID(req.Org), Project: domain.ProjectID(req.Project),
@@ -101,6 +105,10 @@ func (a *API) FetchDelivery(ctx context.Context, req apigen.FetchDeliveryRequest
 	if res.PinnedRevision > 0 {
 		revision := res.PinnedRevision
 		out.PinnedRevision = &revision
+	}
+	if res.FileTargetGeneration > 0 {
+		generation := res.FileTargetGeneration
+		out.FileTargetGeneration = &generation
 	}
 	return out, nil
 }

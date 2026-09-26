@@ -91,8 +91,10 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 		// status write, never reachable with workload read alone.
 		"reportDeliveryTarget":    "value-free status report, report-delivery-status required",
 		"tombstoneDeliveryTarget": "value-free status tombstone, report-delivery-status required",
-		"publishPendingChanges":   "not reachable with workload read",
-		"getRevision":             "non-value-bearing revision metadata",
+		// Generic file destinations (#164): the bound client's value-free report.
+		"reportFileTarget":      "value-free file-target report, report-delivery-status required",
+		"publishPendingChanges": "not reachable with workload read",
+		"getRevision":           "non-value-bearing revision metadata",
 		// Dynamic secrets (#147): a workload mints and manages its OWN leased
 		// credential. Mint discloses a freshly created credential once (never a
 		// stored Hikyo value); the rest carry lease metadata, no stored value.

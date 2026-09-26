@@ -460,6 +460,8 @@ type Repos interface {
 	Approvals() ApprovalRepo
 	// DeliveryTargets is the delivery-target condition-report surface (#788).
 	DeliveryTargets() DeliveryTargetRepo
+	// FileTargets is the generic file-destination surface (#164).
+	FileTargets() FileTargetRepo
 }
 
 // ScanningDismissalRepo is the proof-bound dismissal-row surface (#74,
@@ -509,6 +511,7 @@ type ReadRepos interface {
 	Dynamic() DynamicReader
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader
+	FileTargets() FileTargetReader
 }
 
 // DefinitionsPlan is a stored plan row (#70). Bundle holds the canonical bundle

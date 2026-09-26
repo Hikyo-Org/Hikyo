@@ -102,6 +102,83 @@ export type AdapterKeySelection = {
     classification?: '' | 'secret' | 'config';
 };
 
+export type FileTargetKey = {
+    key_id: Id;
+    name: string;
+    classification: 'secret' | 'config';
+};
+
+/**
+ * What the client reached: `applied` published a new generation;
+ * `current` found nothing to change; `offline` rendered from its
+ * encrypted offline snapshot while the server was unreachable; `refused`
+ * kept the last generation because a key could not be represented or a
+ * local policy refused; `failed` kept the last generation after a
+ * filesystem failure.
+ *
+ */
+export type FileTargetState = 'applied' | 'current' | 'offline' | 'refused' | 'failed';
+
+/**
+ * The client's last accepted report. An assertion, not verified host state.
+ */
+export type FileTargetReport = {
+    state: FileTargetState;
+    revision: number;
+    generation: number;
+    /**
+     * The keyed generation stamp (`v1-<32 hex>`), or empty.
+     */
+    stamp: string;
+    reported_at: string;
+    received_at: string;
+};
+
+export type FileTarget = {
+    id: Id;
+    environment_id: Id;
+    name: string;
+    service_account_id: Id;
+    principal_id: Id;
+    generation: number;
+    created_at: string;
+    updated_at: string;
+    /**
+     * The resolved selection. Membership is by immutable id; names are echoed for the operator.
+     */
+    keys: Array<FileTargetKey>;
+    /**
+     * The last report, or null when the client has never reported.
+     */
+    report: FileTargetReport | null;
+};
+
+export type FileTargetList = {
+    items: Array<FileTarget>;
+};
+
+export type CreateFileTargetRequest = {
+    environment_id: Id;
+    name: string;
+    service_account_id: Id;
+    key_ids?: Array<Id>;
+    key_selection?: AdapterKeySelection;
+};
+
+export type UpdateFileTargetRequest = {
+    expected_generation: number;
+    key_ids?: Array<Id>;
+    key_selection?: AdapterKeySelection;
+};
+
+export type FileTargetReportRequest = {
+    state: FileTargetState;
+    revision: number;
+    generation: number;
+    stamp?: string;
+    reported_at: string;
+};
+
 export type CreateAdapterRequest = {
     provider: AdapterProvider;
     origin: string;
@@ -2675,6 +2752,14 @@ export type DeliveredKey = {
  */
 export type DeliveryResponse = {
     /**
+     * Present when the fetch named a file target (#164): the target's
+     * configuration generation this delivery was narrowed under, on both
+     * dispositions, so the bound client can report exactly what it
+     * rendered. Added in API revision 6.
+     *
+     */
+    file_target_generation?: number;
+    /**
      * The authenticated caller's credential identifier, returned on both
      * dispositions so clients can bind snapshots and offline records to
      * the server-asserted identity rather than infer it locally.
@@ -4903,6 +4988,8 @@ export type EnvironmentId = Id;
 
 export type AdapterId = Id;
 
+export type FileTargetId = Id;
+
 export type AdapterTargetId = Id;
 
 export type DynamicProviderId = Id;
@@ -5022,6 +5109,16 @@ export type DeliveryProjection = 'full' | 'config-only';
  *
  */
 export type DefinitionsAcknowledgements = Array<string>;
+
+/**
+ * The file target (#164) the presenting workload is bound to. A bound
+ * account is delivered that target's key selection only and must name
+ * it (400 otherwise); naming a target the caller is not bound to, or one
+ * in another environment, is the uniform 404. Unbound callers omit it.
+ * Added in API revision 6.
+ *
+ */
+export type DeliveryFileTarget = Id;
 
 /**
  * The loader-control keys the consumer explicitly acknowledges, so the
@@ -16770,6 +16867,15 @@ export type FetchDeliveryData = {
          */
         acknowledged_keys?: Array<KeyName>;
         /**
+         * The file target (#164) the presenting workload is bound to. A bound
+         * account is delivered that target's key selection only and must name
+         * it (400 otherwise); naming a target the caller is not bound to, or one
+         * in another environment, is the uniform 404. Unbound callers omit it.
+         * Added in API revision 6.
+         *
+         */
+        target?: Id;
+        /**
          * JSON object of public parameter names and string values. All declared parameters are required. Never supply secrets.
          */
         parameters?: string;
@@ -16778,6 +16884,13 @@ export type FetchDeliveryData = {
 };
 
 export type FetchDeliveryErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
     /**
      * No usable authentication artifact was presented. Uniform: absent,
      * malformed, unknown, expired, revoked and epoch-superseded artifacts
@@ -24992,6 +25105,374 @@ export type AdoptAdapterTargetNamesResponses = {
 };
 
 export type AdoptAdapterTargetNamesResponse = AdoptAdapterTargetNamesResponses[keyof AdoptAdapterTargetNamesResponses];
+
+export type ListFileTargetsData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/file-targets';
+};
+
+export type ListFileTargetsErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListFileTargetsError = ListFileTargetsErrors[keyof ListFileTargetsErrors];
+
+export type ListFileTargetsResponses = {
+    /**
+     * File targets.
+     */
+    200: FileTargetList;
+};
+
+export type ListFileTargetsResponse = ListFileTargetsResponses[keyof ListFileTargetsResponses];
+
+export type CreateFileTargetData = {
+    body: CreateFileTargetRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/file-targets';
+};
+
+export type CreateFileTargetErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateFileTargetError = CreateFileTargetErrors[keyof CreateFileTargetErrors];
+
+export type CreateFileTargetResponses = {
+    /**
+     * The file target.
+     */
+    201: FileTarget;
+};
+
+export type CreateFileTargetResponse = CreateFileTargetResponses[keyof CreateFileTargetResponses];
+
+export type DeleteFileTargetData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        fileTarget: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}';
+};
+
+export type DeleteFileTargetErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteFileTargetError = DeleteFileTargetErrors[keyof DeleteFileTargetErrors];
+
+export type DeleteFileTargetResponses = {
+    /**
+     * Removed.
+     */
+    204: void;
+};
+
+export type DeleteFileTargetResponse = DeleteFileTargetResponses[keyof DeleteFileTargetResponses];
+
+export type GetFileTargetData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        fileTarget: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}';
+};
+
+export type GetFileTargetErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetFileTargetError = GetFileTargetErrors[keyof GetFileTargetErrors];
+
+export type GetFileTargetResponses = {
+    /**
+     * The file target.
+     */
+    200: FileTarget;
+};
+
+export type GetFileTargetResponse = GetFileTargetResponses[keyof GetFileTargetResponses];
+
+export type UpdateFileTargetData = {
+    body: UpdateFileTargetRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        fileTarget: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}';
+};
+
+export type UpdateFileTargetErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type UpdateFileTargetError = UpdateFileTargetErrors[keyof UpdateFileTargetErrors];
+
+export type UpdateFileTargetResponses = {
+    /**
+     * The file target.
+     */
+    200: FileTarget;
+};
+
+export type UpdateFileTargetResponse = UpdateFileTargetResponses[keyof UpdateFileTargetResponses];
+
+export type ReportFileTargetData = {
+    body: FileTargetReportRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        fileTarget: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report';
+};
+
+export type ReportFileTargetErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ReportFileTargetError = ReportFileTargetErrors[keyof ReportFileTargetErrors];
+
+export type ReportFileTargetResponses = {
+    /**
+     * Accepted.
+     */
+    204: void;
+};
+
+export type ReportFileTargetResponse = ReportFileTargetResponses[keyof ReportFileTargetResponses];
 
 export type ListDynamicProvidersData = {
     body?: never;

@@ -478,6 +478,17 @@ const (
 	OpDeliveryTargetReport    Operation = "delivery-target.report"
 	OpDeliveryTargetTombstone Operation = "delivery-target.tombstone"
 	OpDeliveryTargetList      Operation = "delivery-target.list"
+	// Generic file destinations (#164). Create, update and delete bind a
+	// workload service account's delivery to one environment and key
+	// selection, so they need both the adapter and the identity authority of
+	// the project. Inspect is adapter metadata. Report is the bound workload's
+	// value-free write, under the integration-neutral `report-delivery-status`
+	// atom the condition-reporting ADR introduced for exactly this shape.
+	OpFileTargetCreate  Operation = "file-target.create"
+	OpFileTargetUpdate  Operation = "file-target.update"
+	OpFileTargetDelete  Operation = "file-target.delete"
+	OpFileTargetInspect Operation = "file-target.inspect"
+	OpFileTargetReport  Operation = "file-target.report"
 	// SCIM provisioning (#73, scim-provisioning ADR). Two families, two
 	// formulas, one depth.
 	//
@@ -889,6 +900,15 @@ const (
 	StoreDeliveryTargetsSelectExpired StoreOp = "deliverytargets.SelectExpired"
 	StoreDeliveryTargetsPurge         StoreOp = "deliverytargets.Purge"
 
+	StoreFileTargetsList         StoreOp = "filetargets.List"
+	StoreFileTargetsGet          StoreOp = "filetargets.Get"
+	StoreFileTargetsKeys         StoreOp = "filetargets.Keys"
+	StoreFileTargetsForPrincipal StoreOp = "filetargets.ForPrincipal"
+	StoreFileTargetsCreate       StoreOp = "filetargets.Create"
+	StoreFileTargetsReplaceKeys  StoreOp = "filetargets.ReplaceKeys"
+	StoreFileTargetsDelete       StoreOp = "filetargets.Delete"
+	StoreFileTargetsRecordReport StoreOp = "filetargets.RecordReport"
+
 	StoreRetentionAuditPolicy    StoreOp = "retention.AuditPolicy"
 	StoreRetentionSetAuditPolicy StoreOp = "retention.SetAuditPolicy"
 	StoreRetentionPruneAudit     StoreOp = "retention.PruneAudit"
@@ -1221,6 +1241,10 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreDeliveryTargetsQuotaNotices:          true,
 	StoreDeliveryTargetsLastFetch:             true,
 	StoreDeliveryTargetsCountPrincipal:        true,
+	StoreFileTargetsList:                      true,
+	StoreFileTargetsGet:                       true,
+	StoreFileTargetsKeys:                      true,
+	StoreFileTargetsForPrincipal:              true,
 	// Secret-change approvals (#151): the read-only doors, licensed on the
 	// audited-none request-read operation and the scheduler expiry read.
 	StoreApprovalPolicyGet:           true,
@@ -3710,6 +3734,9 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{
 			StoreSnapshotsLatest: true, StoreSnapshotsEntries: true, StoreSnapshotsParameterContract: true,
 			StoreSnapshotsAtRevision: true, StorePinsGetForWorkload: true,
+			// A workload bound to a file target (#164) is delivered that
+			// target's key selection only.
+			StoreFileTargetsForPrincipal: true, StoreFileTargetsKeys: true,
 			StoreCatalogueList:         true,
 			StoreCataloguePresenceList: true,
 			StoreCatalogueRevisionGet:  true,
@@ -4270,6 +4297,57 @@ var operationTable = map[Operation]opSpec{
 			audit.EventAdapterPushIntent, audit.EventAdapterPushOutcome, audit.EventAdapterKeyDelivered,
 			audit.EventAdapterAbort, audit.EventAdapterScrub, audit.EventAdapterSuperseded,
 		},
+	},
+
+	// --- Generic file destinations (#164) ------------------------------------
+	//
+	// A file target narrows a workload service account's delivery, so its
+	// configuration needs the identity authority as well as the adapter one.
+	// There is no provider effect and no ceremony: nothing leaves Hikyo but
+	// through the bound account's own authorized fetch.
+	OpFileTargetCreate: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula: Formula{
+			{Cap: domain.CapManageAdapters, At: domain.LevelProject},
+			{Cap: domain.CapManageIdentities, At: domain.LevelProject},
+		},
+		storeOps: map[StoreOp]bool{StoreFileTargetsCreate: true, StoreFileTargetsGet: true, StoreFileTargetsKeys: true, StoreCatalogueList: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventFileTargetConfigured},
+	},
+	OpFileTargetUpdate: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula: Formula{
+			{Cap: domain.CapManageAdapters, At: domain.LevelProject},
+			{Cap: domain.CapManageIdentities, At: domain.LevelProject},
+		},
+		storeOps: map[StoreOp]bool{StoreFileTargetsGet: true, StoreFileTargetsKeys: true, StoreFileTargetsReplaceKeys: true, StoreCatalogueList: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventFileTargetConfigured},
+	},
+	OpFileTargetDelete: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula: Formula{
+			{Cap: domain.CapManageAdapters, At: domain.LevelProject},
+			{Cap: domain.CapManageIdentities, At: domain.LevelProject},
+		},
+		storeOps: map[StoreOp]bool{StoreFileTargetsGet: true, StoreFileTargetsKeys: true, StoreFileTargetsDelete: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventFileTargetConfigured},
+	},
+	// Metadata only (no values, no paths), audited like adapter.inspect.
+	OpFileTargetInspect: {
+		class: ClassTenant, level: domain.LevelProject,
+		formula:  Formula{{Cap: domain.CapManageAdapters, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreFileTargetsList: true, StoreFileTargetsGet: true, StoreFileTargetsKeys: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventFileTargetInspected},
+	},
+	// The bound workload's report. The store write is conditioned on the
+	// bound principal and the target's environment; a repeat report emits no
+	// event (condition-reporting ADR D8), a changed one does.
+	OpFileTargetReport: {
+		class:    ClassTenant,
+		level:    domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapReportDeliveryStatus, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreFileTargetsGet: true, StoreFileTargetsRecordReport: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventFileTargetApplied},
 	},
 
 	// --- Dynamic secrets (#147) ----------------------------------------------

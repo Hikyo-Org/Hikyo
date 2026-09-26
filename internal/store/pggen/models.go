@@ -563,6 +563,34 @@ type FederationIssuer struct {
 	CaBundlePem      string
 }
 
+type FileTarget struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	Name                 string
+	ServiceAccountID     string
+	PrincipalID          string
+	Generation           int64
+	AuthorityPrincipalID string
+	CreatedAt            pgtype.Timestamptz
+	UpdatedAt            pgtype.Timestamptz
+	ReportState          pgtype.Text
+	ReportRevision       pgtype.Int8
+	ReportStamp          pgtype.Text
+	ReportGeneration     pgtype.Int8
+	ReportedAt           pgtype.Timestamptz
+	ReceivedAt           pgtype.Timestamptz
+}
+
+type FileTargetKey struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	TargetID      string
+	KeyID         string
+}
+
 type Folder struct {
 	ID        string
 	OrgID     string

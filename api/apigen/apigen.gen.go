@@ -1337,6 +1337,51 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for FileTargetKeyClassification.
+const (
+	FileTargetKeyClassificationConfig FileTargetKeyClassification = "config"
+	FileTargetKeyClassificationSecret FileTargetKeyClassification = "secret"
+)
+
+// Valid indicates whether the value is a known member of the FileTargetKeyClassification enum.
+func (e FileTargetKeyClassification) Valid() bool {
+	switch e {
+	case FileTargetKeyClassificationConfig:
+		return true
+	case FileTargetKeyClassificationSecret:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FileTargetState.
+const (
+	FileTargetStateApplied FileTargetState = "applied"
+	FileTargetStateCurrent FileTargetState = "current"
+	FileTargetStateFailed  FileTargetState = "failed"
+	FileTargetStateOffline FileTargetState = "offline"
+	FileTargetStateRefused FileTargetState = "refused"
+)
+
+// Valid indicates whether the value is a known member of the FileTargetState enum.
+func (e FileTargetState) Valid() bool {
+	switch e {
+	case FileTargetStateApplied:
+		return true
+	case FileTargetStateCurrent:
+		return true
+	case FileTargetStateFailed:
+		return true
+	case FileTargetStateOffline:
+		return true
+	case FileTargetStateRefused:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ImpactChangeOperation.
 const (
 	ImpactChangeOperationSet   ImpactChangeOperation = "set"
@@ -4453,6 +4498,27 @@ type CreateFederationIssuerRequest struct {
 	StaticJwks *string `json:"static_jwks,omitempty"`
 }
 
+// CreateFileTargetRequest defines model for CreateFileTargetRequest.
+type CreateFileTargetRequest struct {
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID    `json:"environment_id"`
+	KeyIds        *[]ID `json:"key_ids,omitempty"`
+
+	// KeySelection Configuration-time selection conveniences (#157). They are resolved
+	// against the project catalogue when the target is saved, the resolved
+	// key ids are stored as the explicit subset, and the patterns are NOT
+	// kept: a key created later that would have matched is never added.
+	// `names` are exact key names; `include` and `exclude` are bounded glob
+	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
+	// only keys of that classification. `exclude` applies to what the
+	// patterns and classification selected, never to explicit ids or names.
+	KeySelection *AdapterKeySelection `json:"key_selection,omitempty"`
+	Name         string               `json:"name"`
+
+	// ServiceAccountId A prefixed UUIDv7, e.g. `org_0198…`.
+	ServiceAccountId ID `json:"service_account_id"`
+}
+
 // CreateFolderRequest defines model for CreateFolderRequest.
 type CreateFolderRequest struct {
 	// Acknowledgements Secret-scanning acknowledgement tokens (#74). On a value write, a
@@ -4939,6 +5005,12 @@ type DeliveryResponse struct {
 	// authorization or projection movement therefore invalidates it and
 	// produces a full authorized delivery rather than a "current" answer.
 	Cursor string `json:"cursor"`
+
+	// FileTargetGeneration Present when the fetch named a file target (#164): the target's
+	// configuration generation this delivery was narrowed under, on both
+	// dispositions, so the bound client can report exactly what it
+	// rendered. Added in API revision 6.
+	FileTargetGeneration *int64 `json:"file_target_generation,omitempty"`
 
 	// IssuedAt RFC 3339 UTC, microsecond precision.
 	IssuedAt Timestamp `json:"issued_at"`
@@ -5515,6 +5587,92 @@ type FederationIssuerList struct {
 
 // FetchParameters defines model for FetchParameters.
 type FetchParameters map[string]string
+
+// FileTarget defines model for FileTarget.
+type FileTarget struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID    `json:"environment_id"`
+	Generation    int64 `json:"generation"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// Keys The resolved selection. Membership is by immutable id; names are echoed for the operator.
+	Keys []FileTargetKey `json:"keys"`
+	Name string          `json:"name"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+
+	// Report The last report, or null when the client has never reported.
+	Report *FileTargetReport `json:"report"`
+
+	// ServiceAccountId A prefixed UUIDv7, e.g. `org_0198…`.
+	ServiceAccountId ID        `json:"service_account_id"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// FileTargetKey defines model for FileTargetKey.
+type FileTargetKey struct {
+	Classification FileTargetKeyClassification `json:"classification"`
+
+	// KeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	KeyId ID     `json:"key_id"`
+	Name  string `json:"name"`
+}
+
+// FileTargetKeyClassification defines model for FileTargetKey.Classification.
+type FileTargetKeyClassification string
+
+// FileTargetList defines model for FileTargetList.
+type FileTargetList struct {
+	Items []FileTarget `json:"items"`
+}
+
+// FileTargetReport The client's last accepted report. An assertion, not verified host state.
+type FileTargetReport struct {
+	Generation int64     `json:"generation"`
+	ReceivedAt time.Time `json:"received_at"`
+	ReportedAt time.Time `json:"reported_at"`
+	Revision   int64     `json:"revision"`
+
+	// Stamp The keyed generation stamp (`v1-<32 hex>`), or empty.
+	Stamp string `json:"stamp"`
+
+	// State What the client reached: `applied` published a new generation;
+	// `current` found nothing to change; `offline` rendered from its
+	// encrypted offline snapshot while the server was unreachable; `refused`
+	// kept the last generation because a key could not be represented or a
+	// local policy refused; `failed` kept the last generation after a
+	// filesystem failure.
+	State FileTargetState `json:"state"`
+}
+
+// FileTargetReportRequest defines model for FileTargetReportRequest.
+type FileTargetReportRequest struct {
+	Generation int64     `json:"generation"`
+	ReportedAt time.Time `json:"reported_at"`
+	Revision   int64     `json:"revision"`
+	Stamp      *string   `json:"stamp,omitempty"`
+
+	// State What the client reached: `applied` published a new generation;
+	// `current` found nothing to change; `offline` rendered from its
+	// encrypted offline snapshot while the server was unreachable; `refused`
+	// kept the last generation because a key could not be represented or a
+	// local policy refused; `failed` kept the last generation after a
+	// filesystem failure.
+	State FileTargetState `json:"state"`
+}
+
+// FileTargetState What the client reached: `applied` published a new generation;
+// `current` found nothing to change; `offline` rendered from its
+// encrypted offline snapshot while the server was unreachable; `refused`
+// kept the last generation because a key could not be represented or a
+// local policy refused; `failed` kept the last generation after a
+// filesystem failure.
+type FileTargetState string
 
 // Folder defines model for Folder.
 type Folder struct {
@@ -8521,6 +8679,22 @@ type UpdateFederationIssuerRequest struct {
 	StaticJwks       *string  `json:"static_jwks,omitempty"`
 }
 
+// UpdateFileTargetRequest defines model for UpdateFileTargetRequest.
+type UpdateFileTargetRequest struct {
+	ExpectedGeneration int64 `json:"expected_generation"`
+	KeyIds             *[]ID `json:"key_ids,omitempty"`
+
+	// KeySelection Configuration-time selection conveniences (#157). They are resolved
+	// against the project catalogue when the target is saved, the resolved
+	// key ids are stored as the explicit subset, and the patterns are NOT
+	// kept: a key created later that would have matched is never added.
+	// `names` are exact key names; `include` and `exclude` are bounded glob
+	// patterns (`*`, `?`, `[...]`) over key names; `classification` keeps
+	// only keys of that classification. `exclude` applies to what the
+	// patterns and classification selected, never to explicit ids or names.
+	KeySelection *AdapterKeySelection `json:"key_selection,omitempty"`
+}
+
 // UpdateKeyDeclarationRequest defines model for UpdateKeyDeclarationRequest.
 type UpdateKeyDeclarationRequest struct {
 	// Acknowledgements Secret-scanning acknowledgement tokens (#74). On a value write, a
@@ -9053,6 +9227,9 @@ type DeliveryAcknowledgedKeys = []KeyName
 // DeliveryCursor defines model for DeliveryCursor.
 type DeliveryCursor = string
 
+// DeliveryFileTarget A prefixed UUIDv7, e.g. `org_0198…`.
+type DeliveryFileTarget = ID
+
 // DeliveryProjection defines model for DeliveryProjection.
 type DeliveryProjection string
 
@@ -9064,6 +9241,9 @@ type EnvironmentID = ID
 
 // FederationIssuerID A prefixed UUIDv7, e.g. `org_0198…`.
 type FederationIssuerID = ID
+
+// FileTargetID A prefixed UUIDv7, e.g. `org_0198…`.
+type FileTargetID = ID
 
 // FolderID A prefixed UUIDv7, e.g. `org_0198…`.
 type FolderID = ID
@@ -9659,6 +9839,13 @@ type FetchDeliveryParams struct {
 	// grammar, at most 64.
 	AcknowledgedKeys *DeliveryAcknowledgedKeys `form:"acknowledged_keys,omitempty" json:"acknowledged_keys,omitempty"`
 
+	// Target The file target (#164) the presenting workload is bound to. A bound
+	// account is delivered that target's key selection only and must name
+	// it (400 otherwise); naming a target the caller is not bound to, or one
+	// in another environment, is the uniform 404. Unbound callers omit it.
+	// Added in API revision 6.
+	Target *DeliveryFileTarget `form:"target,omitempty" json:"target,omitempty"`
+
 	// Parameters JSON object of public parameter names and string values. All declared parameters are required. Never supply secrets.
 	Parameters *string `form:"parameters,omitempty" json:"parameters,omitempty"`
 }
@@ -10054,6 +10241,9 @@ type TombstoneDeliveryTargetJSONRequestBody = DeliveryTargetTombstoneRequest
 // ReconcileOfflineRecordsJSONRequestBody defines body for ReconcileOfflineRecords for application/json ContentType.
 type ReconcileOfflineRecordsJSONRequestBody = ReconcileOfflineRecordsRequest
 
+// ReportFileTargetJSONRequestBody defines body for ReportFileTarget for application/json ContentType.
+type ReportFileTargetJSONRequestBody = FileTargetReportRequest
+
 // CreateEnvGrantJSONRequestBody defines body for CreateEnvGrant for application/json ContentType.
 type CreateEnvGrantJSONRequestBody = CreateGrantRequest
 
@@ -10098,6 +10288,12 @@ type ListValueOccurrencesJSONRequestBody = ValueOccurrencesRequest
 
 // SetValueJSONRequestBody defines body for SetValue for application/json ContentType.
 type SetValueJSONRequestBody = SetValueRequest
+
+// CreateFileTargetJSONRequestBody defines body for CreateFileTarget for application/json ContentType.
+type CreateFileTargetJSONRequestBody = CreateFileTargetRequest
+
+// UpdateFileTargetJSONRequestBody defines body for UpdateFileTarget for application/json ContentType.
+type UpdateFileTargetJSONRequestBody = UpdateFileTargetRequest
 
 // CreateFolderJSONRequestBody defines body for CreateFolder for application/json ContentType.
 type CreateFolderJSONRequestBody = CreateFolderRequest
@@ -11029,6 +11225,9 @@ type ServerInterface interface {
 	// ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 	ReconcileOfflineRecords(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ReportFileTarget Report what the bound file-sync client applied.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report)
+	ReportFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, fileTarget FileTargetID)
 	// RevokeEnvGrant Revoke one capability on one environment.
 	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants)
 	RevokeEnvGrant(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params RevokeEnvGrantParams)
@@ -11134,6 +11333,21 @@ type ServerInterface interface {
 	// WatchProjectEvents The advisory live-update stream (SSE).
 	// (GET /api/v1/orgs/{org}/projects/{project}/events)
 	WatchProjectEvents(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// ListFileTargets List the project's file targets.
+	// (GET /api/v1/orgs/{org}/projects/{project}/file-targets)
+	ListFileTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// CreateFileTarget Bind a workload service account to an environment and key selection.
+	// (POST /api/v1/orgs/{org}/projects/{project}/file-targets)
+	CreateFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// DeleteFileTarget Remove a file target.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+	DeleteFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID)
+	// GetFileTarget Show one file target, its selection and its last report.
+	// (GET /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+	GetFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID)
+	// UpdateFileTarget Replace a file target's key selection.
+	// (PATCH /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+	UpdateFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID)
 	// ListFolders List the project's folders.
 	// (GET /api/v1/orgs/{org}/projects/{project}/folders)
 	ListFolders(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
@@ -12448,6 +12662,12 @@ func (_ Unimplemented) ReconcileOfflineRecords(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ReportFileTarget Report what the bound file-sync client applied.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report)
+func (_ Unimplemented) ReportFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, fileTarget FileTargetID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // RevokeEnvGrant Revoke one capability on one environment.
 // (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants)
 func (_ Unimplemented) RevokeEnvGrant(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params RevokeEnvGrantParams) {
@@ -12655,6 +12875,36 @@ func (_ Unimplemented) RevealValue(w http.ResponseWriter, r *http.Request, org O
 // WatchProjectEvents The advisory live-update stream (SSE).
 // (GET /api/v1/orgs/{org}/projects/{project}/events)
 func (_ Unimplemented) WatchProjectEvents(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListFileTargets List the project's file targets.
+// (GET /api/v1/orgs/{org}/projects/{project}/file-targets)
+func (_ Unimplemented) ListFileTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateFileTarget Bind a workload service account to an environment and key selection.
+// (POST /api/v1/orgs/{org}/projects/{project}/file-targets)
+func (_ Unimplemented) CreateFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteFileTarget Remove a file target.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+func (_ Unimplemented) DeleteFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetFileTarget Show one file target, its selection and its last report.
+// (GET /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+func (_ Unimplemented) GetFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateFileTarget Replace a file target's key selection.
+// (PATCH /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+func (_ Unimplemented) UpdateFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -18827,6 +19077,19 @@ func (siw *ServerInterfaceWrapper) FetchDelivery(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// ------------- Optional query parameter "target" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "target", r.URL.Query(), &params.Target, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "target"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "target", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "parameters" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "parameters", r.URL.Query(), &params.Parameters, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -19018,6 +19281,59 @@ func (siw *ServerInterfaceWrapper) ReconcileOfflineRecords(w http.ResponseWriter
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ReconcileOfflineRecords(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReportFileTarget operation middleware
+func (siw *ServerInterfaceWrapper) ReportFileTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fileTarget" -------------
+	var fileTarget FileTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fileTarget", chi.URLParam(r, "fileTarget"), &fileTarget, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fileTarget", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReportFileTarget(w, r, org, project, environment, fileTarget)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -20706,6 +21022,208 @@ func (siw *ServerInterfaceWrapper) WatchProjectEvents(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.WatchProjectEvents(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFileTargets operation middleware
+func (siw *ServerInterfaceWrapper) ListFileTargets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFileTargets(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateFileTarget operation middleware
+func (siw *ServerInterfaceWrapper) CreateFileTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateFileTarget(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteFileTarget operation middleware
+func (siw *ServerInterfaceWrapper) DeleteFileTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fileTarget" -------------
+	var fileTarget FileTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fileTarget", chi.URLParam(r, "fileTarget"), &fileTarget, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fileTarget", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteFileTarget(w, r, org, project, fileTarget)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFileTarget operation middleware
+func (siw *ServerInterfaceWrapper) GetFileTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fileTarget" -------------
+	var fileTarget FileTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fileTarget", chi.URLParam(r, "fileTarget"), &fileTarget, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fileTarget", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFileTarget(w, r, org, project, fileTarget)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateFileTarget operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFileTarget(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fileTarget" -------------
+	var fileTarget FileTargetID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fileTarget", chi.URLParam(r, "fileTarget"), &fileTarget, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fileTarget", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFileTarget(w, r, org, project, fileTarget)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -24810,6 +25328,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/adapter-targets/{target}/adoptions", wrapper.AdoptAdapterTargetNames)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets", wrapper.ListFileTargets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets", wrapper.CreateFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.DeleteFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.GetFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget}", wrapper.UpdateFileTarget)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report", wrapper.ReportFileTarget)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/dynamic-providers", wrapper.ListDynamicProviders)
@@ -44120,6 +44656,20 @@ func (response FetchDelivery200JSONResponse) VisitFetchDeliveryResponse(w http.R
 	return err
 }
 
+type FetchDelivery400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response FetchDelivery400JSONResponse) VisitFetchDeliveryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type FetchDelivery401JSONResponse struct{ UnauthenticatedJSONResponse }
 
 func (response FetchDelivery401JSONResponse) VisitFetchDeliveryResponse(w http.ResponseWriter) error {
@@ -44669,6 +45219,112 @@ func (response ReconcileOfflineRecords500JSONResponse) VisitReconcileOfflineReco
 type ReconcileOfflineRecords503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ReconcileOfflineRecords503JSONResponse) VisitReconcileOfflineRecordsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportFileTargetRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	FileTarget  FileTargetID  `json:"fileTarget"`
+	Body        *ReportFileTargetJSONRequestBody
+}
+
+type ReportFileTargetResponseObject interface {
+	VisitReportFileTargetResponse(w http.ResponseWriter) error
+}
+
+type ReportFileTarget204Response struct {
+}
+
+func (response ReportFileTarget204Response) VisitReportFileTargetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type ReportFileTarget400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReportFileTarget400JSONResponse) VisitReportFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportFileTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ReportFileTarget401JSONResponse) VisitReportFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportFileTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReportFileTarget404JSONResponse) VisitReportFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportFileTarget429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ReportFileTarget429JSONResponse) VisitReportFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportFileTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response ReportFileTarget500JSONResponse) VisitReportFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReportFileTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReportFileTarget503JSONResponse) VisitReportFileTargetResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -48557,6 +49213,475 @@ func (response WatchProjectEvents500JSONResponse) VisitWatchProjectEventsRespons
 type WatchProjectEvents503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response WatchProjectEvents503JSONResponse) VisitWatchProjectEventsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFileTargetsRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ListFileTargetsResponseObject interface {
+	VisitListFileTargetsResponse(w http.ResponseWriter) error
+}
+
+type ListFileTargets200JSONResponse FileTargetList
+
+func (response ListFileTargets200JSONResponse) VisitListFileTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFileTargets401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListFileTargets401JSONResponse) VisitListFileTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFileTargets404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListFileTargets404JSONResponse) VisitListFileTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFileTargets500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListFileTargets500JSONResponse) VisitListFileTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListFileTargets503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListFileTargets503JSONResponse) VisitListFileTargetsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFileTargetRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Body    *CreateFileTargetJSONRequestBody
+}
+
+type CreateFileTargetResponseObject interface {
+	VisitCreateFileTargetResponse(w http.ResponseWriter) error
+}
+
+type CreateFileTarget201JSONResponse FileTarget
+
+func (response CreateFileTarget201JSONResponse) VisitCreateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFileTarget400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateFileTarget400JSONResponse) VisitCreateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFileTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateFileTarget401JSONResponse) VisitCreateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFileTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateFileTarget404JSONResponse) VisitCreateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFileTarget409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateFileTarget409JSONResponse) VisitCreateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFileTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateFileTarget500JSONResponse) VisitCreateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateFileTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateFileTarget503JSONResponse) VisitCreateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFileTargetRequestObject struct {
+	Org        OrgID        `json:"org"`
+	Project    ProjectID    `json:"project"`
+	FileTarget FileTargetID `json:"fileTarget"`
+}
+
+type DeleteFileTargetResponseObject interface {
+	VisitDeleteFileTargetResponse(w http.ResponseWriter) error
+}
+
+type DeleteFileTarget204Response struct {
+}
+
+func (response DeleteFileTarget204Response) VisitDeleteFileTargetResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteFileTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteFileTarget401JSONResponse) VisitDeleteFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFileTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteFileTarget404JSONResponse) VisitDeleteFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFileTarget409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteFileTarget409JSONResponse) VisitDeleteFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFileTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteFileTarget500JSONResponse) VisitDeleteFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteFileTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteFileTarget503JSONResponse) VisitDeleteFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFileTargetRequestObject struct {
+	Org        OrgID        `json:"org"`
+	Project    ProjectID    `json:"project"`
+	FileTarget FileTargetID `json:"fileTarget"`
+}
+
+type GetFileTargetResponseObject interface {
+	VisitGetFileTargetResponse(w http.ResponseWriter) error
+}
+
+type GetFileTarget200JSONResponse FileTarget
+
+func (response GetFileTarget200JSONResponse) VisitGetFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFileTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetFileTarget401JSONResponse) VisitGetFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFileTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetFileTarget404JSONResponse) VisitGetFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFileTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetFileTarget500JSONResponse) VisitGetFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetFileTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetFileTarget503JSONResponse) VisitGetFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFileTargetRequestObject struct {
+	Org        OrgID        `json:"org"`
+	Project    ProjectID    `json:"project"`
+	FileTarget FileTargetID `json:"fileTarget"`
+	Body       *UpdateFileTargetJSONRequestBody
+}
+
+type UpdateFileTargetResponseObject interface {
+	VisitUpdateFileTargetResponse(w http.ResponseWriter) error
+}
+
+type UpdateFileTarget200JSONResponse FileTarget
+
+func (response UpdateFileTarget200JSONResponse) VisitUpdateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFileTarget400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateFileTarget400JSONResponse) VisitUpdateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFileTarget401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateFileTarget401JSONResponse) VisitUpdateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFileTarget404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateFileTarget404JSONResponse) VisitUpdateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFileTarget409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateFileTarget409JSONResponse) VisitUpdateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFileTarget500JSONResponse struct{ InternalJSONResponse }
+
+func (response UpdateFileTarget500JSONResponse) VisitUpdateFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateFileTarget503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateFileTarget503JSONResponse) VisitUpdateFileTargetResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -57925,6 +59050,9 @@ type StrictServerInterface interface {
 	// ReconcileOfflineRecords Reconcile client-durable offline disclosure records.
 	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery/offline-records)
 	ReconcileOfflineRecords(ctx context.Context, request ReconcileOfflineRecordsRequestObject) (ReconcileOfflineRecordsResponseObject, error)
+	// ReportFileTarget Report what the bound file-sync client applied.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/file-targets/{fileTarget}/report)
+	ReportFileTarget(ctx context.Context, request ReportFileTargetRequestObject) (ReportFileTargetResponseObject, error)
 	// RevokeEnvGrant Revoke one capability on one environment.
 	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/grants)
 	RevokeEnvGrant(ctx context.Context, request RevokeEnvGrantRequestObject) (RevokeEnvGrantResponseObject, error)
@@ -58030,6 +59158,21 @@ type StrictServerInterface interface {
 	// WatchProjectEvents The advisory live-update stream (SSE).
 	// (GET /api/v1/orgs/{org}/projects/{project}/events)
 	WatchProjectEvents(ctx context.Context, request WatchProjectEventsRequestObject) (WatchProjectEventsResponseObject, error)
+	// ListFileTargets List the project's file targets.
+	// (GET /api/v1/orgs/{org}/projects/{project}/file-targets)
+	ListFileTargets(ctx context.Context, request ListFileTargetsRequestObject) (ListFileTargetsResponseObject, error)
+	// CreateFileTarget Bind a workload service account to an environment and key selection.
+	// (POST /api/v1/orgs/{org}/projects/{project}/file-targets)
+	CreateFileTarget(ctx context.Context, request CreateFileTargetRequestObject) (CreateFileTargetResponseObject, error)
+	// DeleteFileTarget Remove a file target.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+	DeleteFileTarget(ctx context.Context, request DeleteFileTargetRequestObject) (DeleteFileTargetResponseObject, error)
+	// GetFileTarget Show one file target, its selection and its last report.
+	// (GET /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+	GetFileTarget(ctx context.Context, request GetFileTargetRequestObject) (GetFileTargetResponseObject, error)
+	// UpdateFileTarget Replace a file target's key selection.
+	// (PATCH /api/v1/orgs/{org}/projects/{project}/file-targets/{fileTarget})
+	UpdateFileTarget(ctx context.Context, request UpdateFileTargetRequestObject) (UpdateFileTargetResponseObject, error)
 	// ListFolders List the project's folders.
 	// (GET /api/v1/orgs/{org}/projects/{project}/folders)
 	ListFolders(ctx context.Context, request ListFoldersRequestObject) (ListFoldersResponseObject, error)
@@ -63517,6 +64660,42 @@ func (sh *strictHandler) ReconcileOfflineRecords(w http.ResponseWriter, r *http.
 	}
 }
 
+// ReportFileTarget operation middleware
+func (sh *strictHandler) ReportFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, fileTarget FileTargetID) {
+	var request ReportFileTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.FileTarget = fileTarget
+
+	var body ReportFileTargetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReportFileTarget(ctx, request.(ReportFileTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReportFileTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReportFileTargetResponseObject); ok {
+		if err := validResponse.VisitReportFileTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RevokeEnvGrant operation middleware
 func (sh *strictHandler) RevokeEnvGrant(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params RevokeEnvGrantParams) {
 	var request RevokeEnvGrantRequestObject
@@ -64613,6 +65792,158 @@ func (sh *strictHandler) WatchProjectEvents(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(WatchProjectEventsResponseObject); ok {
 		if err := validResponse.VisitWatchProjectEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListFileTargets operation middleware
+func (sh *strictHandler) ListFileTargets(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ListFileTargetsRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListFileTargets(ctx, request.(ListFileTargetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListFileTargets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListFileTargetsResponseObject); ok {
+		if err := validResponse.VisitListFileTargetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateFileTarget operation middleware
+func (sh *strictHandler) CreateFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request CreateFileTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	var body CreateFileTargetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateFileTarget(ctx, request.(CreateFileTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateFileTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateFileTargetResponseObject); ok {
+		if err := validResponse.VisitCreateFileTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteFileTarget operation middleware
+func (sh *strictHandler) DeleteFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID) {
+	var request DeleteFileTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.FileTarget = fileTarget
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteFileTarget(ctx, request.(DeleteFileTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteFileTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteFileTargetResponseObject); ok {
+		if err := validResponse.VisitDeleteFileTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetFileTarget operation middleware
+func (sh *strictHandler) GetFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID) {
+	var request GetFileTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.FileTarget = fileTarget
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetFileTarget(ctx, request.(GetFileTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetFileTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetFileTargetResponseObject); ok {
+		if err := validResponse.VisitGetFileTargetResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateFileTarget operation middleware
+func (sh *strictHandler) UpdateFileTarget(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, fileTarget FileTargetID) {
+	var request UpdateFileTargetRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.FileTarget = fileTarget
+
+	var body UpdateFileTargetJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateFileTarget(ctx, request.(UpdateFileTargetRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateFileTarget")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateFileTargetResponseObject); ok {
+		if err := validResponse.VisitUpdateFileTargetResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

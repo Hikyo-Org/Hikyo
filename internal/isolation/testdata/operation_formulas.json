@@ -526,6 +526,49 @@
     ]
   },
   {
+    "operation": "file-target.create",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-adapters@project",
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "file-target.delete",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-adapters@project",
+      "manage-identities@project"
+    ]
+  },
+  {
+    "operation": "file-target.inspect",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-adapters@project"
+    ]
+  },
+  {
+    "operation": "file-target.report",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "report-delivery-status@environment"
+    ]
+  },
+  {
+    "operation": "file-target.update",
+    "class": "tenant",
+    "level": "project",
+    "formula": [
+      "manage-adapters@project",
+      "manage-identities@project"
+    ]
+  },
+  {
     "operation": "folder.create",
     "class": "tenant",
     "level": "project",
