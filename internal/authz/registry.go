@@ -1327,10 +1327,10 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreProjectsGet:         true,
 	StoreProjectsList:        true,
 	StoreProjectsListAll:     true,
-	// Private PKI (#154) reads. IssuerKey and IssuerForSigning return sealed
-	// key ciphertext for the in-process signer, which is still a read.
-	StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersKey: true,
-	StorePKIIssuersPublic: true, StorePKIIssuersActivePublic: true, StorePKIIssuersSigning: true,
+	// Private PKI (#154) public reads. Sealed CA key reads remain excluded:
+	// in-process signing still requires an audited operation.
+	StorePKIIssuersList: true, StorePKIIssuersGet: true,
+	StorePKIIssuersPublic: true, StorePKIIssuersActivePublic: true,
 	StorePKIProfilesList: true, StorePKIProfilesGet: true, StorePKIProfilesBound: true,
 	StorePKIProfilesBoundList: true, StorePKIBindingsList: true, StorePKICertificatesGet: true,
 	StorePKICertificatesList: true, StorePKICertificatesCountLive: true, StorePKICertificatesRevokedEntries: true,

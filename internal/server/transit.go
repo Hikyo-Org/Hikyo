@@ -127,6 +127,9 @@ func transitCallers(in *[]apigen.TransitCaller) *[]service.TransitCallerEntry {
 // ListTransitKeys returns the environment's key metadata. Service and response
 // conversion errors propagate to the HTTP error handler.
 func (a *API) ListTransitKeys(ctx context.Context, req apigen.ListTransitKeysRequestObject) (apigen.ListTransitKeysResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	views, err := a.Transit.ListKeys(ctx, service.Bearer(bearer(ctx)), transitScope(req.Org, req.Project, req.Environment))
 	if err != nil {
 		return nil, err
@@ -145,6 +148,9 @@ func (a *API) ListTransitKeys(ctx context.Context, req apigen.ListTransitKeysReq
 // CreateTransitKey creates a key and returns its metadata with status 201.
 // Service and response conversion errors propagate to the HTTP error handler.
 func (a *API) CreateTransitKey(ctx context.Context, req apigen.CreateTransitKeyRequestObject) (apigen.CreateTransitKeyResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	body := req.Body
 	in := service.CreateTransitKeyRequest{Name: body.Name, Algorithm: string(body.Algorithm)}
 	if body.Custody != nil {
@@ -178,6 +184,9 @@ func (a *API) CreateTransitKey(ctx context.Context, req apigen.CreateTransitKeyR
 // ShowTransitKey returns metadata for the named key. Service and response
 // conversion errors propagate to the HTTP error handler.
 func (a *API) ShowTransitKey(ctx context.Context, req apigen.ShowTransitKeyRequestObject) (apigen.ShowTransitKeyResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	view, err := a.Transit.GetKey(ctx, service.Bearer(bearer(ctx)), transitScope(req.Org, req.Project, req.Environment), req.TransitKey)
 	if err != nil {
 		return nil, err
@@ -192,6 +201,9 @@ func (a *API) ShowTransitKey(ctx context.Context, req apigen.ShowTransitKeyReque
 // ConfigureTransitKey applies supplied policy fields and returns updated metadata.
 // Version validation, service, and response conversion errors propagate.
 func (a *API) ConfigureTransitKey(ctx context.Context, req apigen.ConfigureTransitKeyRequestObject) (apigen.ConfigureTransitKeyResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	body := req.Body
 	in := service.ConfigureTransitKeyRequest{RotationPeriodSeconds: body.RotationPeriodSeconds, Callers: transitCallers(body.Callers)}
 	if body.MinEncryptVersion != nil {
@@ -222,6 +234,9 @@ func (a *API) ConfigureTransitKey(ctx context.Context, req apigen.ConfigureTrans
 // RotateTransitKey appends a key version and returns updated metadata.
 // Service and response conversion errors propagate to the HTTP error handler.
 func (a *API) RotateTransitKey(ctx context.Context, req apigen.RotateTransitKeyRequestObject) (apigen.RotateTransitKeyResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	view, err := a.Transit.RotateKey(ctx, service.Bearer(bearer(ctx)), transitScope(req.Org, req.Project, req.Environment), req.TransitKey)
 	if err != nil {
 		return nil, err
@@ -237,6 +252,9 @@ func (a *API) RotateTransitKey(ctx context.Context, req apigen.RotateTransitKeyR
 // delay in seconds. Delay validation, service, and response conversion errors
 // propagate to the HTTP error handler.
 func (a *API) ChangeTransitKeyState(ctx context.Context, req apigen.ChangeTransitKeyStateRequestObject) (apigen.ChangeTransitKeyStateResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	var delay time.Duration
 	if req.Body.DelaySeconds != nil {
 		if *req.Body.DelaySeconds < 0 || *req.Body.DelaySeconds > int64(service.MaxTransitDeletionDelay/time.Second) {
@@ -258,6 +276,9 @@ func (a *API) ChangeTransitKeyState(ctx context.Context, req apigen.ChangeTransi
 // TrimTransitKey removes eligible old versions and returns the key metadata
 // and deletion count. Service and response conversion errors propagate.
 func (a *API) TrimTransitKey(ctx context.Context, req apigen.TrimTransitKeyRequestObject) (apigen.TrimTransitKeyResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	view, deleted, err := a.Transit.TrimKey(ctx, service.Bearer(bearer(ctx)), transitScope(req.Org, req.Project, req.Environment), req.TransitKey)
 	if err != nil {
 		return nil, err
@@ -275,6 +296,9 @@ func (a *API) TrimTransitKey(ctx context.Context, req apigen.TrimTransitKeyReque
 // versioned ciphertext. The decoded plaintext is zeroed on return; decoding,
 // version validation, and service errors propagate.
 func (a *API) TransitEncrypt(ctx context.Context, req apigen.TransitEncryptRequestObject) (apigen.TransitEncryptResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	plaintext, err := decodeB64("plaintext", &req.Body.Plaintext)
 	if err != nil {
 		return nil, err
@@ -299,6 +323,9 @@ func (a *API) TransitEncrypt(ctx context.Context, req apigen.TransitEncryptReque
 // the decoded plaintext buffer after encoding. Context decoding and service
 // errors propagate.
 func (a *API) TransitDecrypt(ctx context.Context, req apigen.TransitDecryptRequestObject) (apigen.TransitDecryptResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	aad, err := decodeB64("context", req.Body.Context)
 	if err != nil {
 		return nil, err
@@ -315,6 +342,9 @@ func (a *API) TransitDecrypt(ctx context.Context, req apigen.TransitDecryptReque
 // TransitRewrap returns ciphertext under the latest permitted key version
 // without returning plaintext. Context decoding and service errors propagate.
 func (a *API) TransitRewrap(ctx context.Context, req apigen.TransitRewrapRequestObject) (apigen.TransitRewrapResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	aad, err := decodeB64("context", req.Body.Context)
 	if err != nil {
 		return nil, err
@@ -330,6 +360,9 @@ func (a *API) TransitRewrap(ctx context.Context, req apigen.TransitRewrapRequest
 // plaintext. The plaintext buffer is zeroed after encoding. Context decoding and
 // service errors propagate.
 func (a *API) TransitDataKey(ctx context.Context, req apigen.TransitDataKeyRequestObject) (apigen.TransitDataKeyResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	aad, err := decodeB64("context", req.Body.Context)
 	if err != nil {
 		return nil, err
@@ -355,6 +388,9 @@ func (a *API) TransitDataKey(ctx context.Context, req apigen.TransitDataKeyReque
 // TransitSign decodes a standard-base64 message and returns a versioned
 // signature. Decoding, version validation, and service errors propagate.
 func (a *API) TransitSign(ctx context.Context, req apigen.TransitSignRequestObject) (apigen.TransitSignResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	message, err := decodeB64("message", &req.Body.Message)
 	if err != nil {
 		return nil, err
@@ -374,6 +410,9 @@ func (a *API) TransitSign(ctx context.Context, req apigen.TransitSignRequestObje
 // A mismatch returns Valid=false with status 200; decoding and service errors
 // propagate to the HTTP error handler.
 func (a *API) TransitVerify(ctx context.Context, req apigen.TransitVerifyRequestObject) (apigen.TransitVerifyResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	message, err := decodeB64("message", &req.Body.Message)
 	if err != nil {
 		return nil, err
@@ -388,6 +427,9 @@ func (a *API) TransitVerify(ctx context.Context, req apigen.TransitVerifyRequest
 // TransitHMAC decodes a standard-base64 message and returns a versioned MAC.
 // Decoding, version validation, and service errors propagate.
 func (a *API) TransitHMAC(ctx context.Context, req apigen.TransitHMACRequestObject) (apigen.TransitHMACResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	message, err := decodeB64("message", &req.Body.Message)
 	if err != nil {
 		return nil, err
@@ -407,6 +449,9 @@ func (a *API) TransitHMAC(ctx context.Context, req apigen.TransitHMACRequestObje
 // A mismatch returns Valid=false with status 200; decoding and service errors
 // propagate to the HTTP error handler.
 func (a *API) TransitVerifyHMAC(ctx context.Context, req apigen.TransitVerifyHMACRequestObject) (apigen.TransitVerifyHMACResponseObject, error) {
+	if a.Transit == nil {
+		return nil, domain.ErrNotFound
+	}
 	message, err := decodeB64("message", &req.Body.Message)
 	if err != nil {
 		return nil, err

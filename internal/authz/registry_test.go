@@ -267,3 +267,15 @@ func TestConstructorAcceptsRealTable(t *testing.T) {
 		t.Fatalf("package registry holds %d ops, table has %d", len(registry.ops), len(operationTable))
 	}
 }
+
+func TestConstructorRejectsUnauditedPKIKeyReads(t *testing.T) {
+	for _, op := range []StoreOp{StorePKIIssuersKey, StorePKIIssuersSigning} {
+		t.Run(string(op), func(t *testing.T) {
+			s := baseSpec()
+			s.storeOps = map[StoreOp]bool{op: true}
+			s.events = nil
+			s.auditedNone = true
+			rejects(t, "unaudited CA key material", s)
+		})
+	}
+}

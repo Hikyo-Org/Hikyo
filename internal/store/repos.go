@@ -15,6 +15,7 @@ import (
 	sqlitelib "modernc.org/sqlite/lib"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
 )
@@ -799,6 +800,17 @@ func (r sqliteEnvs) Delete(ctx context.Context, p authz.Proof) error {
 	if err != nil {
 		return err
 	}
+	// Shared by direct deletion and definitions apply. Retain every issuance
+	// row; even a revoked certificate may still require CRL publication.
+	count, err := r.q.CountEnvironmentPKICertificates(ctx, sqlitegen.CountEnvironmentPKICertificatesParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: string(chain.Env),
+	})
+	if err != nil {
+		return err
+	}
+	if count != 0 {
+		return domain.ErrPKICertificateRetention
+	}
 	return affected(r.q.DeleteEnvironment(ctx, sqlitegen.DeleteEnvironmentParams{
 		OrgID:     string(chain.Org),
 		ProjectID: string(chain.Project),
@@ -1452,6 +1464,17 @@ func (r pgEnvs) Delete(ctx context.Context, p authz.Proof) error {
 	chain, err := authz.Verify(p, authz.StoreEnvironmentsDelete, r.tok)
 	if err != nil {
 		return err
+	}
+	// Shared by direct deletion and definitions apply. Retain every issuance
+	// row; even a revoked certificate may still require CRL publication.
+	count, err := r.q.CountEnvironmentPKICertificates(ctx, pggen.CountEnvironmentPKICertificatesParams{
+		ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), ChainEnvID: string(chain.Env),
+	})
+	if err != nil {
+		return err
+	}
+	if count != 0 {
+		return domain.ErrPKICertificateRetention
 	}
 	return affected(r.q.DeleteEnvironment(ctx, pggen.DeleteEnvironmentParams{
 		ChainOrgID:     string(chain.Org),
