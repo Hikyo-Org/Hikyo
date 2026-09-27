@@ -421,13 +421,17 @@ func TestAppRoleRenewalBudgetAndFailureAreAuthFailures(t *testing.T) {
 	server := httptest.NewTLSServer(stub)
 	defer server.Close()
 	client := pinnedClient(t, server, "", `{"method":"approle","role_id":"r","secret_id":"s"}`)
+	now := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	client.now = func() time.Time { return now }
 	if _, err := client.ReadMetadata(t.Context(), "secret", "p"); err != nil {
 		t.Fatal(err)
 	}
-	// The 10s lease is inside the renewal margin: the next request renews.
+	// Advance into the short lease renewal window.
+	now = now.Add(6 * time.Second)
 	if _, err := client.ReadMetadata(t.Context(), "secret", "p"); err != nil {
 		t.Fatalf("first renewal = %v", err)
 	}
+	now = now.Add(6 * time.Second)
 	if _, err := client.ReadMetadata(t.Context(), "secret", "p"); !errors.Is(err, adapter.ErrProviderAuth) {
 		t.Fatalf("refused renewal = %v, want provider auth", err)
 	}
@@ -481,6 +485,75 @@ func TestDeleteVersionSendsOnlyInspectedVersion(t *testing.T) {
 	defer server.Close()
 	client := pinnedClient(t, server, "", "hvs.fixture")
 	if err := client.DeleteVersion(t.Context(), "secret", "apps/pay/TOKEN", 7); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestShortLeaseRemainsUsableAfterRenewalBudget(t *testing.T) {
+	renewals := 0
+	stub := &vaultStub{t: t, handle: func(w http.ResponseWriter, r recordedRequest) {
+		switch r.Path {
+		case "/v1/auth/approle/login":
+			_, _ = io.WriteString(w, `{"auth":{"client_token":"hvs.minted","lease_duration":30,"renewable":true}}`)
+		case "/v1/auth/token/renew-self":
+			renewals++
+			_, _ = io.WriteString(w, `{"auth":{"lease_duration":30}}`)
+		default:
+			_, _ = io.WriteString(w, `{"data":{"current_version":0,"versions":{}}}`)
+		}
+	}}
+	server := httptest.NewTLSServer(stub)
+	defer server.Close()
+	client := pinnedClient(t, server, "", `{"method":"approle","role_id":"r","secret_id":"s"}`)
+	now := time.Date(2026, 9, 27, 0, 0, 0, 0, time.UTC)
+	client.now = func() time.Time { return now }
+	for i := 0; i < 6; i++ {
+		if _, err := client.ReadMetadata(t.Context(), "secret", "p"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if renewals != 0 {
+		t.Fatalf("short lease renewed immediately %d times", renewals)
+	}
+	for i := 0; i < 2; i++ {
+		now = now.Add(16 * time.Second)
+		if _, err := client.ReadMetadata(t.Context(), "secret", "p"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now = now.Add(16 * time.Second)
+	if _, err := client.ReadMetadata(t.Context(), "secret", "p"); err != nil {
+		t.Fatalf("still-valid token refused after renewal budget: %v", err)
+	}
+	if renewals != maxRenewals {
+		t.Fatalf("renewals = %d", renewals)
+	}
+	now = now.Add(10 * time.Second)
+	if _, err := client.ReadMetadata(t.Context(), "secret", "p"); !errors.Is(err, adapter.ErrProviderAuth) {
+		t.Fatalf("token cannot outlive request but got %v", err)
+	}
+}
+
+func TestOperationParametersCannotChangeLinkedEndpoint(t *testing.T) {
+	stub := &vaultStub{t: t, handle: func(w http.ResponseWriter, r recordedRequest) {
+		if r.Method != http.MethodGet || r.Path != "/v1/secret/metadata/p" {
+			t.Errorf("wrong operation: %s %s", r.Method, r.Path)
+		}
+		_, _ = io.WriteString(w, `{"data":{"current_version":0,"versions":{}}}`)
+	}}
+	server := httptest.NewTLSServer(stub)
+	defer server.Close()
+	client := pinnedClient(t, server, "", "hvs.fixture")
+	if err := client.do(t.Context(), "read-metadata", map[string]string{"mount": "secret", "path": "p", "section": "data"}, nil, nil); err == nil {
+		t.Fatal("unregistered path parameter accepted")
+	}
+	if err := client.do(t.Context(), "read-metadata", map[string]string{"mount": "secret"}, nil, nil); err == nil {
+		t.Fatal("missing path parameter accepted")
+	}
+	if len(stub.requests) != 0 {
+		t.Fatal("invalid endpoint parameters sent a request")
+	}
+	if _, err := client.ReadMetadata(t.Context(), "secret", "p"); err != nil {
 		t.Fatal(err)
 	}
 }

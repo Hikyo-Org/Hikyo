@@ -155,10 +155,16 @@ func validateCredential(token string) error {
 	return nil
 }
 
+// NewClient prepares a client without making API requests, defaulting an empty
+// origin to DefaultOrigin. Invalid origins, token shapes, egress policies, or
+// deadlines return errors; the deadline must be positive and shorter than
+// adapter.LeaseTime. Call Forget when the attempt ends.
 func NewClient(cfg ClientConfig) (*Client, error) {
 	return newClient(cfg, net.DefaultResolver, &net.Dialer{Timeout: cfg.Deadline})
 }
 
+// newClient constructs a client using the supplied DNS resolver and dialer
+// for egress enforcement, returning the same configuration errors as NewClient.
 func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.Dialer) (*Client, error) {
 	origin, err := canonicalOrigin(cfg.Origin)
 	if err != nil {
@@ -188,6 +194,9 @@ func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.D
 	}, nil
 }
 
+// canonicalOrigin returns DefaultOrigin for an empty or accepted Cloudflare
+// API origin, rejecting other hosts, schemes, credentials, queries, or paths
+// other than an optional root slash.
 func canonicalOrigin(raw string) (string, error) {
 	if raw == "" {
 		return DefaultOrigin, nil
@@ -216,6 +225,9 @@ func (e *rateLimitError) Error() string      { return adapter.ErrRateLimited.Err
 func (e *rateLimitError) Unwrap() error      { return adapter.ErrRateLimited }
 func (e *rateLimitError) RetryAt() time.Time { return e.at }
 
+// retryDeadline reads Retry-After as nonnegative seconds capped at
+// adapter.RetryCap, or as an HTTP date. An absent or invalid header falls back
+// to five minutes from now; HTTP dates are returned without clamping.
 func retryDeadline(header http.Header, now time.Time) time.Time {
 	if raw := header.Get("Retry-After"); raw != "" {
 		if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 0 {
@@ -296,6 +308,8 @@ func (c *Client) do(ctx context.Context, op operation, path string, body any) (e
 	return out, nil
 }
 
+// accountPath returns the account API path, rejecting owners that are not
+// 32 lowercase hexadecimal characters.
 func accountPath(d adapter.Destination) (string, error) {
 	if !accountID.MatchString(d.Owner) {
 		return "", errors.New("cloudflare: destination requires a 32-character hexadecimal account id")
@@ -303,6 +317,8 @@ func accountPath(d adapter.Destination) (string, error) {
 	return "/accounts/" + d.Owner, nil
 }
 
+// scriptPath returns the Workers script API path, rejecting invalid account
+// IDs, script names, non-Workers kinds, or a nonempty environment.
 func scriptPath(d adapter.Destination) (string, error) {
 	if d.Kind != adapter.WorkersScript {
 		return "", errors.New("cloudflare: destination is not a Workers script")
@@ -317,6 +333,9 @@ func scriptPath(d adapter.Destination) (string, error) {
 	return base + "/workers/scripts/" + url.PathEscape(d.Name), nil
 }
 
+// projectPath returns the Pages project API path, rejecting invalid account
+// IDs, project names, non-Pages kinds, or environments other than preview and
+// production.
 func projectPath(d adapter.Destination) (string, error) {
 	if d.Kind != adapter.PagesProject {
 		return "", errors.New("cloudflare: destination is not a Pages project")
@@ -334,6 +353,11 @@ func projectPath(d adapter.Destination) (string, error) {
 	return base + "/pages/projects/" + url.PathEscape(d.Name), nil
 }
 
+// VerifyToken returns token status and expiry, caching a reported expiry.
+// An account-endpoint 4xx refusal falls back to user-token verification; rate
+// limits do not trigger fallback. Invalid account IDs, malformed responses or
+// expiry timestamps, and remaining request errors propagate. Status and expiry
+// are returned without checking whether the token is active or unexpired.
 func (c *Client) VerifyToken(ctx context.Context, account string) (TokenStatus, error) {
 	if !accountID.MatchString(account) {
 		return TokenStatus{}, errors.New("cloudflare: token verification requires a 32-character hexadecimal account id")
@@ -368,6 +392,10 @@ func (c *Client) VerifyToken(ctx context.Context, account string) (TokenStatus, 
 	return status, nil
 }
 
+// ListAccountIDs returns visible account IDs from at most 20 pages of 50
+// accounts, stopping early when pagination is absent, exhausted, or empty.
+// The page cap returns the IDs collected so far without an error; request or
+// decoding failures return an error and no IDs.
 func (c *Client) ListAccountIDs(ctx context.Context) ([]string, error) {
 	var ids []string
 	for page := 1; page <= 20; page++ {
@@ -391,6 +419,9 @@ func (c *Client) ListAccountIDs(ctx context.Context) ([]string, error) {
 	return ids, nil
 }
 
+// ResolveScript returns the named Worker's immutable tag from the account
+// listing. A missing script returns a 404 ResponseError; an empty tag, invalid
+// destination, malformed response, or failed request also returns an error.
 func (c *Client) ResolveScript(ctx context.Context, d adapter.Destination) (string, error) {
 	if _, err := scriptPath(d); err != nil {
 		return "", err
@@ -499,6 +530,9 @@ func (c *Client) PutSecret(ctx context.Context, d adapter.Destination, name, val
 	return err
 }
 
+// DeleteSecret deletes one Workers secret, causing a new script deployment.
+// Destination validation and request errors propagate, including a 404 when
+// the provider reports the secret missing.
 func (c *Client) DeleteSecret(ctx context.Context, d adapter.Destination, name string) error {
 	path, err := scriptPath(d)
 	if err != nil {
@@ -541,6 +575,8 @@ func Fingerprint(d adapter.Destination, immutableID string) int64 {
 	return id
 }
 
+// IsStatus reports whether err contains a ResponseError with the given HTTP
+// status, including through wrapped or joined errors.
 func IsStatus(err error, status int) bool {
 	var response *ResponseError
 	return errors.As(err, &response) && response.Status == status

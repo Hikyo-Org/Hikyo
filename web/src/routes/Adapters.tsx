@@ -1494,7 +1494,7 @@ function TargetDetail({
           {editing ? (
             <TargetForm
               title="Edit keys and prefix"
-              provider={target.destination_kind === 'workers-script' || target.destination_kind === 'pages-project' ? 'cloudflare' : undefined}
+              provider={adapter.provider}
               environments={[{ id: target.environment_id, name: environmentName(target.environment_id) }]}
               keys={keys}
               initial={target}
