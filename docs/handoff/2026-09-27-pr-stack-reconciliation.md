@@ -19,9 +19,15 @@ its CI verdict with local test results.
 - Vault create-finalization failures retain indeterminate ownership for safe
   replay. Replay refuses intervening external versions. Pruning deletes only
   the inspected version. AppRole renewal preserves usable short leases.
+  Canonical origins normalize hostname case and numeric ports. Loop detection
+  unifies namespace/mount aliases and applies to both flags and the live wizard.
   Requests derive paths from the operation registry and retain constant
   request origins, public-egress checks and redirect refusal.
-- PKI validates CA signatures and leaf key usage. CRL publication records a
+- PKI validates CA signatures, CRL-required subject key identifiers and leaf key
+  usage. Renewal respects non-minute TTL limits. Parent deletion explicitly
+  refuses while certificate history exists, including cross-project issuance;
+  credentials can be revoked without deleting retained revocation evidence.
+  CRL publication records a
   captured revocation sequence so concurrent revocations remain due regardless
   of timestamp ordering. Renewal refreshes metadata even after a lost response.
   Retirement retains revocation coverage until leaves and child CA certificates
