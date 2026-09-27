@@ -2,6 +2,7 @@ package repscan
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,8 +20,12 @@ type fixtureRepo struct {
 
 func newFixtureRepo(t *testing.T) *fixtureRepo {
 	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
+	exe, err := exec.LookPath("git")
+	if err != nil {
 		t.Skip("git is not installed")
+	}
+	if err := (git{exe: exe}).requireVersion(t.Context()); err != nil {
+		t.Skip(err)
 	}
 	empty := filepath.Join(t.TempDir(), "gitconfig")
 	if err := os.WriteFile(empty, nil, 0o644); err != nil {
@@ -306,5 +311,46 @@ func TestMissingPromisorObjectDoesNotFetch(t *testing.T) {
 	refusal(t, repo.options(ModeHistory), KindRefused, "missing object")
 	if _, err := os.Stat(filepath.Join(repo.dir, "transport-ran")); !os.IsNotExist(err) {
 		t.Fatalf("transport executed: %v", err)
+	}
+}
+
+func TestSupportedGitVersion(t *testing.T) {
+	for _, version := range []string{"git version 2.45.0", "git version 2.54.0 (Apple Git-157)", "git version 3.0.0", "git version 2.49.0.windows.1"} {
+		if err := supportedGitVersion(version); err != nil {
+			t.Errorf("%s: %v", version, err)
+		}
+	}
+	for _, version := range []string{"git version 2.44.9", "git version 1.99.0", "invalid"} {
+		var e *Error
+		if err := supportedGitVersion(version); !errors.As(err, &e) || e.Kind != KindUnavailable {
+			t.Errorf("%s: %v", version, err)
+		}
+	}
+}
+
+func TestRangeMergeOnlyScansNewCombinedContent(t *testing.T) {
+	repo := newFixtureRepo(t)
+	repo.write("shared.txt", "base\n")
+	repo.commit("base")
+	repo.git("checkout", "-q", "-b", "feature")
+	repo.write("shared.txt", "feature\n")
+	repo.commit("feature")
+	repo.git("checkout", "-q", "main")
+	repo.write("shared.txt", "main\n")
+	repo.write("base-secret.txt", githubPAT+"\n")
+	base := repo.commit("main")
+	cmd := exec.Command("git", "merge", "--no-ff", "feature", "-m", "merge")
+	cmd.Dir = repo.dir
+	if err := cmd.Run(); err == nil {
+		t.Fatal("expected shared.txt merge conflict")
+	}
+	repo.write("shared.txt", awsKey+"\n")
+	merge := repo.commit("resolve")
+	opts := repo.options(ModeRange)
+	opts.Range = base + "..HEAD"
+	got := scan(t, opts)
+	want := []loc{{rule: "aws-access-token", path: "shared.txt", line: 1, commit: merge}}
+	if !slices.Equal(locs(got), want) {
+		t.Fatalf("range merge findings = %v, want %v", locs(got), want)
 	}
 }

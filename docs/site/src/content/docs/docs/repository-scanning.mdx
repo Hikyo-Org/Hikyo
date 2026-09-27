@@ -22,6 +22,10 @@ and nothing it reads or finds leaves the machine.
 | `hikyo scan --history` | Every blob that any reachable commit introduced. |
 | `hikyo scan --range A..B` | The blobs that the commits of an explicit range introduced. |
 
+Range scans attribute merge-only changes to the merge commit and exclude content
+inherited unchanged from either parent. CI should scan the pull request head so
+synthetic merge commits do not change finding fingerprints.
+
 The Git modes read blob contents through `git` and never check anything out.
 They need Git 2.45 or newer on `PATH`; older versions refuse the scan.
 Lazy fetching and remote transports are disabled, and working-tree comparisons
@@ -77,7 +81,7 @@ upgrade changes what the rule matches.
 | `1` | Unsuppressed findings. This is a verdict, not an error, and prints no `hikyo:` diagnostic. |
 | `2` | Invalid usage or configuration. |
 | `4` | The scan was refused or failed: a budget was exceeded, the repository is malformed, or a root could not be read. |
-| `6` | `git` is not installed (Git modes only). |
+| `6` | Git is absent or older than 2.45 (Git modes only). |
 
 A scan that could not finish never exits `0`. These codes are stable, so CI
 can branch on them.
@@ -160,6 +164,7 @@ forge reads it. Fetch full history so the range resolves.
 - uses: actions/checkout@<pinned-sha>
   with:
     fetch-depth: 0
+    ref: ${{ github.event.pull_request.head.sha }}
 - name: Scan the pull request's commits
   run: |
     hikyo scan --range "origin/${{ github.base_ref }}..HEAD" -o sarif > hikyo-scan.sarif
@@ -175,6 +180,7 @@ forge reads it. Fetch full history so the range resolves.
 - uses: actions/checkout@<pinned-sha>
   with:
     fetch-depth: 0
+    ref: ${{ github.event.pull_request.head.sha }}
 - run: hikyo scan --range "origin/${{ forgejo.base_ref }}..HEAD"
 ```
 

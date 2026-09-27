@@ -52,6 +52,30 @@ func lookGit(name string) (string, error) {
 	return exe, nil
 }
 
+// requireVersion runs before repository access because older Git cannot
+// enforce --no-lazy-fetch. Version discovery itself never reads repository data.
+func (g git) requireVersion(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, g.exe, "version")
+	cmd.Dir = g.dir
+	stdout := &cappedBuffer{max: 256}
+	cmd.Stdout = stdout
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return timeoutRefusal(ctx.Err())
+		}
+		return &Error{Kind: KindUnavailable, Err: fmt.Errorf("git version: %w", err)}
+	}
+	return supportedGitVersion(strings.TrimSpace(stdout.buf.String()))
+}
+
+func supportedGitVersion(version string) error {
+	var major, minor int
+	if _, err := fmt.Sscanf(version, "git version %d.%d", &major, &minor); err != nil || major < 2 || major == 2 && minor < 45 {
+		return &Error{Kind: KindUnavailable, Err: fmt.Errorf("git 2.45 or newer is required (found %q)", version)}
+	}
+	return nil
+}
+
 func (g git) command(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, g.exe, append(append(slices.Clone(gitSafetyArgs), g.config...), args...)...)
 	cmd.Dir = g.dir
@@ -168,6 +192,8 @@ const (
 // parseRaw parses `--raw -z` output, optionally interleaved with commit ids
 // (diff-tree --stdin). Each entry is ":srcmode dstmode srcsha dstsha status"
 // followed by one path field (renames are disabled, so there is never two).
+// Combined merge records have one colon, source mode and source id per parent;
+// only the result mode/id pair is admitted.
 func parseRaw(r io.Reader, emit func(blobEntry) error) error {
 	br := bufio.NewReaderSize(r, 64<<10)
 	commit := ""
@@ -194,15 +220,16 @@ func parseRaw(r io.Reader, emit func(blobEntry) error) error {
 			commit = field
 			continue
 		}
-		meta := strings.Fields(field[1:])
-		if len(meta) != 5 {
+		parents := len(field) - len(strings.TrimLeft(field, ":"))
+		meta := strings.Fields(field[parents:])
+		if len(meta) != 2*parents+3 {
 			return refusedf("scan refused: unexpected git output")
 		}
 		p, err := br.ReadString(0)
 		if err != nil {
 			return refusedf("scan refused: truncated git output")
 		}
-		if err := emit(blobEntry{commit: commit, mode: meta[1], blob: meta[3], path: strings.TrimSuffix(p, "\x00")}); err != nil {
+		if err := emit(blobEntry{commit: commit, mode: meta[parents], blob: meta[2*parents+1], path: strings.TrimSuffix(p, "\x00")}); err != nil {
 			return err
 		}
 	}

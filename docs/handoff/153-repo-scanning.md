@@ -130,3 +130,11 @@ SARIF colon escaping, truncated listings and localization across many match line
 Validation: relevant scanner, ruleset, CLI, authorization and executable package tests;
 scanner/ruleset race tests; relevant package vet. Cross-provider review and final remote
 CI/merge verification remain owned by the coordinating task.
+
+
+Follow-up review fixes: Git version discovery now runs before repository access
+and reports exit 6 with the Git 2.45 minimum; Git fixtures skip unsupported
+versions. Range scans use combined merge diffs and parse their result mode/blob
+fields, excluding outside-range inherited content while retaining merge-resolution
+secrets. History retains per-parent traversal. Regression covers a conflicting
+merge with both an inherited secret and a new resolution secret.

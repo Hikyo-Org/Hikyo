@@ -187,6 +187,9 @@ func Run(ctx context.Context, rules *scanning.Ruleset, opts Options) (*Report, e
 			return nil, err
 		}
 		g = git{exe: exe, dir: opts.Workdir}
+		if err := g.requireVersion(ctx); err != nil {
+			return nil, err
+		}
 		top, err := g.toplevel(ctx)
 		if err != nil {
 			return nil, err
@@ -701,7 +704,8 @@ func safeGitPath(p string) bool {
 }
 
 // scanCommits scans the blobs each selected commit introduced (merges against
-// each parent), each distinct path/blob pair once, attributed to the first
+// each parent for history, only combined changes for ranges), each distinct
+// path/blob pair once, attributed to the first
 // commit in topological order that introduced it.
 func (r *run) scanCommits(ctx context.Context, g git, selection ...string) error {
 	commits, err := g.revList(ctx, r.opts.Limits.MaxCommits, selection...)
@@ -712,6 +716,10 @@ func (r *run) scanCommits(ctx context.Context, g git, selection ...string) error
 	if len(commits) == 0 {
 		return nil
 	}
+	mergeFormat := "-m"
+	if r.opts.Mode == ModeRange {
+		mergeFormat = "-c"
+	}
 	var entries []blobEntry
 	err = g.stream(ctx, "diff-tree", commits, func(out io.Reader) error {
 		return parseRaw(out, func(e blobEntry) error {
@@ -720,7 +728,7 @@ func (r *run) scanCommits(ctx context.Context, g git, selection ...string) error
 			}
 			return r.collect(&entries, e)
 		})
-	}, "diff-tree", "--stdin", "-r", "-z", "--root", "-m", "--no-renames", "--no-abbrev", "--diff-filter=AMT")
+	}, "diff-tree", "--stdin", "-r", "-z", "--root", mergeFormat, "--no-renames", "--no-abbrev", "--diff-filter=AMT")
 	if err != nil {
 		return err
 	}
