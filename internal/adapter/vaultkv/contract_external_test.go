@@ -72,7 +72,10 @@ func (h *kvHarness) do(method, path string, body any) (int, map[string]any) {
 	h.t.Helper()
 	var input io.Reader
 	if body != nil {
-		raw, _ := json.Marshal(body)
+		raw, err := json.Marshal(body)
+		if err != nil {
+			h.t.Fatalf("marshal harness request: %v", err)
+		}
 		input = bytes.NewReader(raw)
 	}
 	req, err := http.NewRequestWithContext(context.Background(), method, h.addr+path, input)
@@ -151,7 +154,10 @@ path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }
 	h.must(http.MethodPost, "/v1/auth/"+authMount+"/role/hikyo", map[string]any{"token_policies": []string{policyName}, "token_ttl": "10m", "token_max_ttl": "30m"})
 	roleID := h.must(http.MethodGet, "/v1/auth/"+authMount+"/role/hikyo/role-id", nil)["data"].(map[string]any)["role_id"].(string)
 	secretID := h.must(http.MethodPost, "/v1/auth/"+authMount+"/role/hikyo/secret-id", map[string]any{})["data"].(map[string]any)["secret_id"].(string)
-	credential, _ := json.Marshal(map[string]string{"method": "approle", "role_id": roleID, "secret_id": secretID, "mount": authMount, "ca_pem": h.caPEM})
+	credential, err := json.Marshal(map[string]string{"method": "approle", "role_id": roleID, "secret_id": secretID, "mount": authMount, "ca_pem": h.caPEM})
+	if err != nil {
+		h.t.Fatalf("marshal harness credential: %v", err)
+	}
 	return string(credential)
 }
 

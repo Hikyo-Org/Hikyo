@@ -21,7 +21,8 @@ type PKIRuntime struct {
 func NewPKIRuntime(db *DB) *PKIRuntime { return &PKIRuntime{db: db} }
 
 // PKICRLCandidate is an issuer version whose CRL is due: never published, past
-// half its validity, or older than a revocation it does not list yet.
+// half its validity, or behind a committed revocation. RevocationSeq is
+// captured before the entry snapshot and persisted unchanged on publication.
 type PKICRLCandidate struct {
 	IssuerID            string
 	Name                string
@@ -30,6 +31,7 @@ type PKICRLCandidate struct {
 	EncryptedPrivateKey []byte
 	DEKVersion          uint32
 	CRLNumber           int64
+	RevocationSeq       int64
 }
 
 type pkiTransitionPayload struct {
@@ -85,6 +87,9 @@ func (r *PKIRuntime) SweepStaleIssuing(ctx context.Context, now time.Time, limit
 			}
 			if changed != 1 {
 				continue
+			}
+			if _, err := tx.Exec(ctx, tx.SQL(`UPDATE pki_issuers SET revocation_seq=revocation_seq+1 WHERE id=(SELECT issuer_id FROM pki_certificates WHERE id=?)`), row.id); err != nil {
+				return err
 			}
 			kind := "issue"
 			if row.renewedFrom != "" {
@@ -150,10 +155,11 @@ func insertPKITenantAudit(ctx context.Context, tx adapterDBTX, row pkiSweptRow, 
 }
 
 // DueCRLs lists issuer versions whose CRL must be (re)published. Retired and
-// revoked versions have no key and are never candidates.
+// revoked versions have no key and are never candidates. Sequence comparison
+// is independent of clock skew and keeps revocations racing publication due.
 func (r *PKIRuntime) DueCRLs(ctx context.Context, now time.Time) ([]PKICRLCandidate, error) {
 	return dbReadResult(ctx, r.db, func(db adapterDB) ([]PKICRLCandidate, error) {
-		query := db.SQL(`SELECT i.id,i.name,i.version,i.certificate_der,i.encrypted_private_key,i.dek_version,i.crl_number FROM pki_issuers i WHERE i.state IN ('active','retiring') AND i.encrypted_private_key IS NOT NULL AND i.dek_version IS NOT NULL AND i.certificate_der IS NOT NULL AND (i.crl_der IS NULL OR i.crl_next_update<=? OR EXISTS (SELECT 1 FROM pki_certificates c WHERE c.issuer_id=i.id AND c.state IN ('revoked','unknown') AND c.updated_at>=i.crl_this_update)) ORDER BY i.id`)
+		query := db.SQL(`SELECT i.id,i.name,i.version,i.certificate_der,i.encrypted_private_key,i.dek_version,i.crl_number,i.revocation_seq FROM pki_issuers i WHERE i.state IN ('active','retiring') AND i.encrypted_private_key IS NOT NULL AND i.dek_version IS NOT NULL AND i.certificate_der IS NOT NULL AND (i.crl_der IS NULL OR i.crl_next_update<=? OR i.revocation_seq>i.crl_revocation_seq) ORDER BY i.id`)
 		halfLife := now.Add(12 * time.Hour)
 		rows, err := db.Query(ctx, query, db.Stamp(halfLife))
 		if err != nil {
@@ -164,7 +170,7 @@ func (r *PKIRuntime) DueCRLs(ctx context.Context, now time.Time) ([]PKICRLCandid
 		for rows.Next() {
 			var c PKICRLCandidate
 			var dek int64
-			if err := rows.Scan(&c.IssuerID, &c.Name, &c.Version, &c.CertificateDER, &c.EncryptedPrivateKey, &dek, &c.CRLNumber); err != nil {
+			if err := rows.Scan(&c.IssuerID, &c.Name, &c.Version, &c.CertificateDER, &c.EncryptedPrivateKey, &dek, &c.CRLNumber, &c.RevocationSeq); err != nil {
 				return nil, err
 			}
 			c.DEKVersion = uint32(dek)
@@ -187,7 +193,7 @@ func (r *PKIRuntime) RevokedEntries(ctx context.Context, issuerID string, now ti
 func (r *PKIRuntime) PublishCRL(ctx context.Context, candidate PKICRLCandidate, der []byte, number int64, entries int, thisUpdate, nextUpdate time.Time) (bool, error) {
 	published := false
 	err := dbTransaction(ctx, r.db, func(tx adapterDBTX) error {
-		ok, err := publishCRL(ctx, tx, candidate.IssuerID, der, candidate.CRLNumber, number, thisUpdate, nextUpdate)
+		ok, err := publishCRL(ctx, tx, candidate.IssuerID, der, candidate.CRLNumber, number, candidate.RevocationSeq, thisUpdate, nextUpdate)
 		if err != nil || !ok {
 			return err
 		}
