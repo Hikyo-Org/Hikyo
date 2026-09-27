@@ -213,8 +213,8 @@ func renderYAML(keys []string, values map[string]string) ([]byte, []Refusal) {
 }
 
 // writeYAMLQuoted writes a YAML double-quoted scalar. Everything a reader
-// could fold, normalize or treat as a line break is escaped: C0 controls, DEL,
-// NEL, the Unicode line and paragraph separators and the byte-order mark.
+// could reject, fold, normalize or treat as a line break is escaped: C0/C1
+// controls, DEL, Unicode line separators, the byte-order mark and U+FFFE/U+FFFF.
 func writeYAMLQuoted(buf *bytes.Buffer, s string) {
 	buf.WriteByte('"')
 	for _, r := range s {
@@ -229,10 +229,10 @@ func writeYAMLQuoted(buf *bytes.Buffer, s string) {
 			buf.WriteString(`\r`)
 		case '\t':
 			buf.WriteString(`\t`)
-		case 0x85, 0x2028, 0x2029, 0xFEFF:
+		case 0x85, 0x2028, 0x2029, 0xFEFF, 0xFFFE, 0xFFFF:
 			fmt.Fprintf(buf, `\u%04X`, r)
 		default:
-			if r < 0x20 || r == 0x7f {
+			if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
 				fmt.Fprintf(buf, `\x%02X`, r)
 				continue
 			}

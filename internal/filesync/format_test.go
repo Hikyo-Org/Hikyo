@@ -23,6 +23,7 @@ var hostile = map[string]string{
 	"H_HASH":   "# not a comment",
 	"I_DOLLAR": "$HOME ${X} \\n",
 	"J_UNI":    "caf\u00e9 \u2028 \u0085 \ufeff \x01 \x7f",
+	"K_YAML":   "\u0080 \u0090 \u009f \ufffe \uffff",
 	"NO":       "yes",
 }
 

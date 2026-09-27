@@ -53,7 +53,7 @@ and the `hikyo file-sync` client. The browser surface is tracked in #819.
   `offline_serve` renders from the snapshot inside `max_age`, records one
   disclosure per served value first, and never claims "current".
 - **Docs**: site page `file-sync.mdx`; proposed amendment banners on
-  deployment-adapter, mvp-boundary (item 5) and permission-model.
+  deployment-adapter, mvp-boundary (declared amendment 9) and permission-model.
 
 ## Deviations from the handoff comment, stated
 
