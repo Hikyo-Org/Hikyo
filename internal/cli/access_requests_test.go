@@ -87,6 +87,7 @@ func TestAccessSyntaxRejectedBeforeAuthentication(t *testing.T) {
 		{"policy quorum overflow", []string{"policy", "create", "--capability", "read", "--approver", "principal:usr_one", "--min-approvals", "2147483648"}, "--min-approvals"},
 		{"policy ttl zero", []string{"policy", "create", "--capability", "read", "--approver", "principal:usr_one", "--ttl", "0"}, "--ttl"},
 		{"policy ttl overflow", []string{"policy", "create", "--capability", "read", "--approver", "principal:usr_one", "--ttl", "2147483648"}, "--ttl"},
+		{"update no changes", []string{"policy", "update", "xpol_one"}, "policy flag"},
 		{"update missing id", []string{"policy", "update"}, "<policy>"},
 		{"delete extra ids", []string{"policy", "delete", "one", "two"}, "<policy>"},
 		{"request missing reason", []string{"request", "create", "--capability", "read", "--duration", "1h"}, "--reason"},

@@ -107,6 +107,15 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 	}
 	set := make(map[string]bool)
 	policyFlags.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	if sub == "update" {
+		changed := false
+		for _, name := range []string{"covers", "capability", "approver", "max-duration", "min-approvals", "ttl", "allow-self-approval", "disabled", "bypasser", "clear-bypassers"} {
+			changed = changed || set[name]
+		}
+		if !changed {
+			return failf(ExitUsage, "access policy update requires at least one policy flag")
+		}
+	}
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
