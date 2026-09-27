@@ -371,7 +371,7 @@ it.each([true, false])('resuming an AWS origin move requires its loaded provider
       id: id('arm'), adapter_id: id('adp'), kind: 'origin', state: 'attention_required', keep_remote: false,
       pending_origin: 'https://secretsmanager.eu-west-2.amazonaws.com', created_at: '2026-09-01T00:00:00Z',
       targets: [{ target_id: id('adt'), environment_id: id('env'), destination_kind: 'json-object',
-        destination_owner: '123456789012', destination_name: 'app', destination_environment: '',
+        destination_owner: '123456789012', destination_name: 'app', destination_environment: '', destination_scope: '',
         destination_id: 0, repository_id: 0, visibility: '', selected_repository_ids: [], name_prefix: '',
         orphaned_names: [], jobs: [] }],
     }));
