@@ -63,7 +63,8 @@ hikyo pki issuer create-intermediate issuing --common-name "Example Issuing CA" 
 
 On the offline machine, sign the CSR as a CA certificate that may sign only
 leaves (`basicConstraints=critical,CA:TRUE,pathlen:0` and
-`keyUsage=critical,keyCertSign,cRLSign,digitalSignature`), for example with
+`keyUsage=critical,keyCertSign,cRLSign,digitalSignature` and
+`subjectKeyIdentifier=hash`), for example with
 OpenSSL:
 
 ```sh
@@ -151,6 +152,17 @@ hikyo cert issue --token-file /run/secrets/hikyo-token --env prod --profile web 
 - `hikyo cert revoke <id> --reason key-compromise` is immediate and
   idempotent. The next CRL lists the serial.
 
+## Retained issuance history
+
+Hikyo retains certificate issuance history, including expired certificates and
+failed issuance attempts. Deleting an environment or service account with this
+history returns an explicit conflict; certificate expiry does not make the
+history eligible for automatic deletion.
+
+To deprovision access, revoke the affected certificates and service-account
+credentials. These revocations preserve the issuance history and do not remove
+the deletion guard. There is no automatic purge of this history.
+
 ## Rotation and retirement
 
 ```sh
@@ -206,7 +218,7 @@ fetches it.
 | `hikyo_pki_certificates_live` | issued, unexpired leaves |
 | `hikyo_pki_certificates_unknown` | leaves with an uncertain outcome (alert on > 0) |
 | `hikyo_pki_issuers_on_hold` | issuer versions held after a restore (alert on > 0) |
-| `hikyo_pki_gauges_known` | 1 when the three above were measured; they are omitted when 0 |
+| `hikyo_pki_gauges_known` | 1 when the three above were measured; they are omitted when the snapshot is not measured, not when their values are zero |
 
 Every lifecycle step is audited: `pki.issuer`, `pki.profile`,
 `pki.certificate_transition_intent` and `_outcome`,

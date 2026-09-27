@@ -515,8 +515,9 @@ transit (managed keys; key material never leaves custody):
   hikyo transit key rotate|trim <name> --env E
   hikyo transit key disable|enable|retire|compromise|cancel-deletion <name> --env E
   hikyo transit key schedule-deletion <name> --env E [--delay 168h]
-  hikyo transit encrypt|sign|hmac <key> --env E (--stdin | --input-file PATH)
+  hikyo transit encrypt <key> --env E (--stdin | --input-file PATH)
       [--aad-file PATH] [--key-version N]
+  hikyo transit sign|hmac <key> --env E (--stdin | --input-file PATH) [--key-version N]
   hikyo transit decrypt <key> --env E (--stdin | --input-file PATH) [--aad-file PATH]
       [--output-file PATH | --dangerously-print]
   hikyo transit rewrap <key> --env E (--stdin | --input-file PATH) [--aad-file PATH]

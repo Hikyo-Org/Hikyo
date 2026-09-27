@@ -231,7 +231,7 @@ func ParseOrigin(raw string) (Origin, error) {
 	if err != nil {
 		return Origin{}, errors.New("vault-kv: origin is not a URL")
 	}
-	if u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.RawPath != "" {
+	if u.Scheme != "https" || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" || u.RawPath != "" {
 		return Origin{}, errors.New("vault-kv: origin must be https://host[:port] optionally followed by /<namespace>")
 	}
 	namespace := strings.Trim(u.Path, "/")
@@ -250,7 +250,24 @@ func ParseOrigin(raw string) (Origin, error) {
 	} else if u.Path != "" && u.Path != "/" {
 		return Origin{}, errors.New("vault-kv: origin path must name a namespace")
 	}
-	return Origin{Base: "https://" + u.Host, Namespace: namespace}, nil
+	host := strings.ToLower(u.Hostname())
+	port := u.Port()
+	if strings.HasSuffix(u.Host, ":") {
+		return Origin{}, errors.New("vault-kv: origin port must be between 1 and 65535")
+	}
+	if port != "" {
+		number, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || number == 0 {
+			return Origin{}, errors.New("vault-kv: origin port must be between 1 and 65535")
+		}
+		port = strconv.FormatUint(number, 10)
+	}
+	if port != "" && port != "443" {
+		host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	return Origin{Base: "https://" + host, Namespace: namespace}, nil
 }
 
 // CanonicalOrigin is the persisted spelling of an origin.

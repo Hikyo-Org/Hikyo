@@ -585,3 +585,66 @@ func TestManifestRefusals(t *testing.T) {
 		})
 	}
 }
+
+type adoptionTagFailureAPI struct {
+	*fakeAPI
+	landed  bool
+	failure error
+}
+
+func (f *adoptionTagFailureAPI) TagSecret(ctx context.Context, name string, tags map[string]string) error {
+	if f.failure != nil {
+		err := f.failure
+		f.failure = nil
+		if f.landed {
+			if tagErr := f.fakeAPI.TagSecret(ctx, name, tags); tagErr != nil {
+				return tagErr
+			}
+		}
+		return err
+	}
+	return f.fakeAPI.TagSecret(ctx, name, tags)
+}
+func TestAdoptionRetainsAuthorityAcrossUnclearTagOutcome(t *testing.T) {
+	for _, landed := range []bool{false, true} {
+		for _, failure := range []error{context.DeadlineExceeded, &ResponseError{Status: 503}} {
+			api, journal := newFakeAPI(), newFakeJournal()
+			api.secrets["prod/app"] = &fakeSecret{tags: map[string]string{}, stages: map[string][]string{"v1": {awsCurrent}}, values: map[string]string{"v1": "legacy"}}
+			journal.states["prod/app"] = adapter.Owned
+			wrapped := &adoptionTagFailureAPI{fakeAPI: api, landed: landed, failure: failure}
+			module := &Module{API: wrapped}
+			req := adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "job_adopt"}
+			if _, err := module.Sync(t.Context(), req, journal); err == nil {
+				t.Fatal("tag failure succeeded")
+			}
+			if journal.states["prod/app"] != adapter.Owned || api.current("prod/app") != "legacy" {
+				t.Fatalf("landed=%v: adoption authority or value changed", landed)
+			}
+			req.Ledger = journal.ledger()
+			if _, err := module.Sync(t.Context(), req, journal); err != nil {
+				t.Fatalf("landed=%v: retry: %v", landed, err)
+			}
+			if journal.states["prod/app"] != adapter.Owned || api.current("prod/app") == "legacy" {
+				t.Fatalf("landed=%v: retry did not write", landed)
+			}
+		}
+	}
+}
+
+func TestOwnedTagRetryDoesNotOverridePriorValueEvidence(t *testing.T) {
+	for _, versionTag := range []bool{false, true} {
+		api, journal := newFakeAPI(), newFakeJournal()
+		secret := &fakeSecret{tags: map[string]string{adapter.SentinelName: testTarget}, stages: map[string][]string{"external": {awsCurrent}}, values: map[string]string{"external": "external-value"}}
+		if versionTag {
+			secret.tags[VersionTag] = "prior"
+		} else {
+			secret.stages["prior"] = []string{CurrentStage}
+		}
+		api.secrets["prod/app"] = secret
+		journal.states["prod/app"] = adapter.Owned
+		_, err := (&Module{API: api}).Sync(t.Context(), adapter.SyncRequest{Target: jsonTarget(), Manifest: manifest(), Ledger: journal.ledger(), JobID: "job_retry"}, journal)
+		if !errors.Is(err, adapter.ErrConflict) || len(api.writes()) != 0 || api.current("prod/app") != "external-value" {
+			t.Fatalf("versionTag=%v: external edit not protected: %v", versionTag, err)
+		}
+	}
+}

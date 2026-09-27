@@ -112,6 +112,29 @@ func (q *Queries) CountLiveMachineCredentialsInProject(ctx context.Context, arg 
 	return items, nil
 }
 
+const countServiceAccountPKICertificates = `-- name: CountServiceAccountPKICertificates :one
+SELECT COUNT(*) FROM pki_certificates AS c
+WHERE c.principal_id = $1
+  AND EXISTS (SELECT 1 FROM service_accounts AS sa
+    WHERE sa.org_id = $2 AND sa.project_id = $3
+      AND sa.principal_id = $1)
+`
+
+type CountServiceAccountPKICertificatesParams struct {
+	PrincipalID string
+	OrgID       string
+	ProjectID   string
+}
+
+// Issuance history retains the principal even after the certificate expires.
+// hikyo:authn-resolution
+func (q *Queries) CountServiceAccountPKICertificates(ctx context.Context, arg CountServiceAccountPKICertificatesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countServiceAccountPKICertificates, arg.PrincipalID, arg.OrgID, arg.ProjectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteGrantOriginsForPrincipal = `-- name: DeleteGrantOriginsForPrincipal :execrows
 DELETE FROM grant_origins
 WHERE grant_id IN (SELECT id FROM grants WHERE principal_id = $1)

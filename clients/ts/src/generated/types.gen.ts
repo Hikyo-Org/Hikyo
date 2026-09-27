@@ -28734,7 +28734,7 @@ export type CreatePkiIssuerResponses = {
     /**
      * The created version.
      */
-    200: PkiIssuer;
+    201: PkiIssuer;
 };
 
 export type CreatePkiIssuerResponse = CreatePkiIssuerResponses[keyof CreatePkiIssuerResponses];
@@ -29516,7 +29516,7 @@ export type CreatePkiProfileResponses = {
     /**
      * The profile.
      */
-    200: PkiProfile;
+    201: PkiProfile;
 };
 
 export type CreatePkiProfileResponse = CreatePkiProfileResponses[keyof CreatePkiProfileResponses];
