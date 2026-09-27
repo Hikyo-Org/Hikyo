@@ -384,7 +384,9 @@ adapters:
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--stdin | --value-file PATH] [--create-environment]
   hikyo adapter create --provider gitlab --origin <https-origin> --env E --kind project|group
-      --owner <numeric-id> [--scope <environment-scope>] [--protected] [--hidden] [--expand-variables]
+      --owner <namespace-or-group-path> [--repo <project>] [--scope <environment-scope>]
+      (project targets require --repo; group targets refuse it)
+      [--protected] [--hidden] [--expand-variables]
       [--spki-pin <base64-sha256>] [--ca-bundle-file PATH] [--allow-personal-token]
       [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
   hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.<region>.amazonaws.com
