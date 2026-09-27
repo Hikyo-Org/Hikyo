@@ -443,6 +443,22 @@ func TestLostCASWithdrawalFailureIsReported(t *testing.T) {
 	if !errors.Is(err, adapter.ErrConflict) || !errors.Is(err, withdraw) {
 		t.Fatalf("Sync() = %v, want conflict carrying the failed withdrawal", err)
 	}
+	// The stale pending marker names the racer's version, so a kept claim
+	// would replay it as "our write landed" and overwrite the racer. The
+	// claim is released instead; without it the marker cannot authorize a
+	// write over a live value.
+	if _, held := journal.states["secret:DATABASE_URL"]; held || !slices.Contains(journal.conflicts, "secret:DATABASE_URL") {
+		t.Fatalf("claim held=%v conflicts=%v after failed withdrawal", held, journal.conflicts)
+	}
+	delete(kv.failOn, "patch-metadata:apps/pay/DATABASE_URL")
+	for range 2 {
+		if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); !errors.Is(err, adapter.ErrConflict) {
+			t.Fatalf("replay after failed withdrawal = %v, want conflict", err)
+		}
+		if got, _ := kv.value("apps/pay/DATABASE_URL"); got != "racer" {
+			t.Fatalf("replay overwrote the racing write with %q", got)
+		}
+	}
 }
 
 func TestCreateRaceLeavesConcurrentMetadataUntouched(t *testing.T) {

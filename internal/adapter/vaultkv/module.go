@@ -478,7 +478,11 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		casMoved := IsCASMismatch(writeErr)
 		if casMoved || definitive(writeErr) {
 			completion.Outcome = adapter.OutcomeFailure
-			if state == adapter.Reserved {
+			// A stranded pending marker names the racer's version, so a
+			// kept claim would replay it as "our write landed" and overwrite
+			// the racer. Releasing the claim leaves the marker unable to
+			// authorize any write over a live value.
+			if state == adapter.Reserved || errors.Is(writeErr, errPendingStranded) {
 				completion.State, completion.ReleaseLedger = "", true
 			} else {
 				completion.State = state
@@ -535,6 +539,10 @@ func versionString(version int64) *string {
 // write landed, current == pending-1 means it did not, anything else is
 // external movement. A create that landed before its marker leaves an
 // unmarked path that the durable dispatched claim still covers.
+// errPendingStranded marks a lost check-and-set whose pending-marker
+// withdrawal failed, leaving a marker that names the racing write's version.
+var errPendingStranded = errors.New("vault-kv: withdrawing the pending marker after a lost check-and-set")
+
 func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.DesiredRow, live pathState) error {
 	mount, path := target.Destination.Owner, secretPath(target, row.EffectiveName)
 	cas := live.version
@@ -558,9 +566,9 @@ func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.D
 			// The external write that beat this one holds version cas+1, so a
 			// pending marker of cas+1 would replay as "our write landed" and
 			// take the path over. Withdraw it; a failed withdrawal is reported
-			// because the hazard would outlive this attempt.
+			// as errPendingStranded so syncRow releases the claim.
 			if cleanupErr := m.API.PatchCustomMetadata(ctx, mount, path, map[string]*string{PendingKey: nil}); cleanupErr != nil {
-				return errors.Join(err, fmt.Errorf("vault-kv: withdrawing the pending marker after a lost check-and-set: %w", cleanupErr))
+				return errors.Join(err, fmt.Errorf("%w: %w", errPendingStranded, cleanupErr))
 			}
 		}
 		return err
