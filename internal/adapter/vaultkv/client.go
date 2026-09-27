@@ -252,6 +252,16 @@ func ParseOrigin(raw string) (Origin, error) {
 	}
 	host := strings.ToLower(u.Hostname())
 	port := u.Port()
+	if strings.HasSuffix(u.Host, ":") {
+		return Origin{}, errors.New("vault-kv: origin port must be between 1 and 65535")
+	}
+	if port != "" {
+		number, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || number == 0 {
+			return Origin{}, errors.New("vault-kv: origin port must be between 1 and 65535")
+		}
+		port = strconv.FormatUint(number, 10)
+	}
 	if port != "" && port != "443" {
 		host = net.JoinHostPort(host, port)
 	} else if strings.Contains(host, ":") {

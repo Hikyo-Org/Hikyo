@@ -80,6 +80,10 @@ func TestClientSourceBuildsRequestsOnlyThroughTheRegistry(t *testing.T) {
 
 func TestParseOrigin(t *testing.T) {
 	for raw, want := range map[string]Origin{
+		"https://Vault.Example:0443/Team-A":   {Base: "https://vault.example", Namespace: "Team-A"},
+		"https://vault.example:08200":         {Base: "https://vault.example:8200"},
+		"https://[2001:db8::1]:0443":          {Base: "https://[2001:db8::1]"},
+		"https://[2001:db8::1]:08200":         {Base: "https://[2001:db8::1]:8200"},
 		"https://Vault.Example:443/Team-A":    {Base: "https://vault.example", Namespace: "Team-A"},
 		"https://Vault.Example/Team-A":        {Base: "https://vault.example", Namespace: "Team-A"},
 		"https://[2001:DB8::1]:443":           {Base: "https://[2001:db8::1]"},
@@ -94,7 +98,7 @@ func TestParseOrigin(t *testing.T) {
 			t.Errorf("ParseOrigin(%q) = %+v, %v; want %+v", raw, got, err, want)
 		}
 	}
-	for _, raw := range []string{"https://:443", "http://vault.example", "https://user@vault.example", "https://vault.example?x=1", "https://vault.example/team-a/", "https://vault.example/ns/../x", "https://vault.example/root", "https://vault.example/a%2Fb", "vault.example"} {
+	for _, raw := range []string{"https://vault.example:", "https://vault.example:0", "https://vault.example:000", "https://vault.example:65536", "https://vault.example:999999999999999999999", "https://vault.example:bad", "https://:443", "http://vault.example", "https://user@vault.example", "https://vault.example?x=1", "https://vault.example/team-a/", "https://vault.example/ns/../x", "https://vault.example/root", "https://vault.example/a%2Fb", "vault.example"} {
 		if _, err := ParseOrigin(raw); err == nil {
 			t.Errorf("ParseOrigin(%q) accepted", raw)
 		}

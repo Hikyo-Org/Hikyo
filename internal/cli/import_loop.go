@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -74,7 +75,7 @@ func vaultNamespaceMount(namespace, mount string) string {
 }
 
 func validLoopOrigin(origin *url.URL) bool {
-	return origin != nil && (origin.Scheme == "http" || origin.Scheme == "https") && origin.Hostname() != "" && origin.User == nil && origin.RawQuery == "" && origin.Fragment == ""
+	return origin != nil && (origin.Scheme == "http" || origin.Scheme == "https") && origin.Hostname() != "" && origin.User == nil && origin.RawQuery == "" && origin.Fragment == "" && effectivePort(origin) != ""
 }
 
 // pathsOverlap reports equal paths or ancestry at a slash boundary. Inputs
@@ -87,14 +88,22 @@ func pathsOverlap(a, b string) bool {
 // port made explicit, so https://vault.example and https://vault.example:443
 // name the same server.
 func sameEndpoint(a, b *url.URL) bool {
-	return strings.EqualFold(a.Hostname(), b.Hostname()) && effectivePort(a) == effectivePort(b)
+	port := effectivePort(a)
+	return port != "" && strings.EqualFold(a.Hostname(), b.Hostname()) && port == effectivePort(b)
 }
 
 // effectivePort returns an explicit URL port, or the default for HTTP or HTTPS.
-// Other schemes without an explicit port return an empty string.
+// Invalid explicit ports and other schemes without a port return an empty string.
 func effectivePort(u *url.URL) string {
+	if strings.HasSuffix(u.Host, ":") {
+		return ""
+	}
 	if port := u.Port(); port != "" {
-		return port
+		number, err := strconv.ParseUint(port, 10, 16)
+		if err != nil || number == 0 {
+			return ""
+		}
+		return strconv.FormatUint(number, 10)
 	}
 	switch strings.ToLower(u.Scheme) {
 	case "https":

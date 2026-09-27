@@ -97,7 +97,7 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 		Id: "adp_kv", Provider: "vault-kv", Origin: "https://vault.example/team-a", State: apigen.AdapterStateActive,
 		Targets: []apigen.AdapterTarget{{Id: "tgt_kv", State: apigen.AdapterTargetStateActive, DestinationOwner: "secret", DestinationName: "apps/pay"}},
 	}}}
-	for identity, loop := range map[string]bool{"https://vault.example:443": true, "https://Vault.Example": true, "https://vault.example:8443": false} {
+	for identity, loop := range map[string]bool{"https://vault.example:0443": true, "https://vault.example:443": true, "https://Vault.Example": true, "https://vault.example:8443": false} {
 		result := importer.Result{Identity: identity, Namespace: "team-a", Scope: importer.Scope{Mount: "secret", PathPrefix: "apps/pay"}}
 		if _, got, err := vaultImportLoop(result, defaultPort); got != loop || err != nil {
 			t.Errorf("%s: loop = %v, want %v", identity, got, loop)
@@ -111,14 +111,14 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 
 func TestVaultImportLoopRefusesUnverifiableOrigins(t *testing.T) {
 	valid := importer.Result{Identity: "https://vault.example", Scope: importer.Scope{Mount: "secret", PathPrefix: "apps"}}
-	for _, identity := range []string{"", "vault.example", "https://", "https://vault.example/%zz", "ftp://vault.example", "https://user:pass@vault.example"} {
+	for _, identity := range []string{"https://vault.example:", "https://vault.example:0", "https://vault.example:65536", "https://vault.example:999999999999999999999", "https://vault.example:bad", "", "vault.example", "https://", "https://vault.example/%zz", "ftp://vault.example", "https://user:pass@vault.example"} {
 		source := valid
 		source.Identity = identity
 		if _, _, err := vaultImportLoop(source, apigen.AdapterList{}); err == nil {
 			t.Errorf("accepted source identity %q", identity)
 		}
 	}
-	for _, origin := range []string{"", "vault.example", "https://", "https://vault.example/%zz"} {
+	for _, origin := range []string{"https://vault.example:", "https://vault.example:0", "https://vault.example:65536", "https://vault.example:999999999999999999999", "https://vault.example:bad", "", "vault.example", "https://", "https://vault.example/%zz"} {
 		adapters := apigen.AdapterList{Items: []apigen.Adapter{{Provider: "vault-kv", Origin: origin, State: apigen.AdapterStateActive}}}
 		if _, _, err := vaultImportLoop(valid, adapters); err == nil {
 			t.Errorf("accepted active adapter origin %q", origin)
