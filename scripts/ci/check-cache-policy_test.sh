@@ -82,10 +82,36 @@ for file in "$@"; do
 			fi
 			;;
 	esac
-	if grep -E '^[[:space:]]+runs-on:' "$file" |
+	runner_source=$file
+	if [ "$(basename "$file")" = ci.yml ]; then
+		# The local secret scanner (#153) is the one non-Linux lane: a closed
+		# matrix of exactly the two other GitHub-hosted client platforms, with no
+		# shared caches. Every other ci.yml job stays on ubuntu-latest.
+		scan_xplat=$(workflow_job_block "$file" scan-xplat)
+		[ -n "$scan_xplat" ] || fail 'ci.yml has no scan-xplat job'
+		printf '%s\n' "$scan_xplat" | grep -Fx '    runs-on: ${{ matrix.os }}' >/dev/null ||
+			fail 'scan-xplat must run on its closed OS matrix'
+		[ "$(printf '%s\n' "$scan_xplat" | grep -c 'runs-on:')" = 1 ] ||
+			fail 'scan-xplat must declare exactly one runner'
+		printf '%s\n' "$scan_xplat" | grep -Fx '        os: [macos-latest, windows-latest]' >/dev/null ||
+			fail 'scan-xplat OS matrix must be exactly macos-latest and windows-latest'
+		if printf '%s\n' "$scan_xplat" | grep -E 'actions/cache(@|/)' >/dev/null; then
+			fail 'scan-xplat must not use shared caches'
+		fi
+		runner_source=$(mktemp)
+		awk '
+			$0 == "  scan-xplat:" { skip = 1; next }
+			skip && $0 ~ /^  [A-Za-z0-9_-]+:/ { skip = 0 }
+			!skip { print }
+		' "$file" >"$runner_source"
+	fi
+	if grep -E '^[[:space:]]+runs-on:' "$runner_source" |
 		sed 's/^[[:space:]]*runs-on:[[:space:]]*//' |
 		grep -Fxv "$expected_runner" >/dev/null; then
 		fail "runner other than $expected_runner in $(basename "$file")"
+	fi
+	if [ "$runner_source" != "$file" ]; then
+		rm -f "$runner_source"
 	fi
 done
 

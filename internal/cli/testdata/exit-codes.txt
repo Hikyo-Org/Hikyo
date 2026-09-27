@@ -109,6 +109,15 @@ hikyo definitions apply -> 2 usage
 hikyo definitions export stray -> 2 usage
 hikyo definitions scaffold -> 2 usage
 hikyo definitions scaffold --from x.env stray -> 2 usage
+hikyo scan -> 0 ok
+hikyo scan --staged --history -> 2 usage
+hikyo scan --staged . -> 2 usage
+hikyo scan -o yaml -> 2 usage
+hikyo scan nope -> 2 usage
+hikyo scan --range --all -> 2 usage
+hikyo scan --exclude-rule no-such-rule -> 2 usage
+hikyo scan --config nope.toml -> 2 usage
+hikyo scan --timeout 0s -> 2 usage
 hikyo values import --from-dotenv a.env --file v.json --instance unknown-ref -> 2 usage
 hikyo run --use-human-session --instance unknown-ref -- true -> 4 refused
 hikyo --help -> 0 ok
