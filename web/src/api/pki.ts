@@ -395,7 +395,8 @@ export async function issueGeneratedCertificate(
 }
 
 /** Renews with the existing public key and invalidates the environment's
- * certificate listing on success. */
+ * certificate listing on either outcome because a lost response may hide a
+ * committed successor. */
 export function useRenewCertificate(p: ProjectRef) {
   const refresh = useRefreshCertificates(p);
   const transport = useTransport();
@@ -405,7 +406,7 @@ export function useRenewCertificate(p: ProjectRef) {
         path: { org: p.org, project: p.project, environment: input.environment, certificate: input.certificate },
         ...transport,
       }),
-    onSuccess: (_result, input) => refresh(input.environment),
+    onSettled: (_result, _error, input) => refresh(input.environment),
   });
 }
 
