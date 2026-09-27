@@ -174,7 +174,8 @@ type AccessGrant = authn.AccessGrant
 
 // SetClock fixes the instant time-bound grants are evaluated against for the
 // rest of this transaction. The service layer's authorize prelude sets it from
-// the service clock, so expiry is judged by one clock per operation.
+// the service clock, so expiry is judged by one clock per operation. Zero
+// restores wall-clock evaluation at each lookup.
 func (a *TxAuthorizer) SetClock(now time.Time) { a.r.SetClock(now) }
 
 // CreateAccessGrant writes one environment-scoped temporary grant row.

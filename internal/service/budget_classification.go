@@ -51,6 +51,8 @@ func BudgetClassOf(op authz.Operation) (reason string, known bool) {
 	return c.reason, ok
 }
 
+// buildBudgetClassification assigns budget categories and reasons to operations.
+// It panics if an operation is assigned more than once.
 func buildBudgetClassification() map[authz.Operation]budgetClassification {
 	m := map[authz.Operation]budgetClassification{}
 	add := func(class budgetClass, reason string, ops ...authz.Operation) {

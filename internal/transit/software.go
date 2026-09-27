@@ -46,8 +46,11 @@ type Software struct {
 
 var _ Custody = (*Software)(nil)
 
+// Kind identifies software custody.
 func (s *Software) Kind() CustodyKind { return CustodySoftware }
 
+// Available returns ErrUnavailable if the receiver or keyring is nil.
+// It does not probe keyring or datastore health.
 func (s *Software) Available(context.Context) error {
 	if s == nil || s.Keyring == nil {
 		return ErrUnavailable
@@ -55,6 +58,8 @@ func (s *Software) Available(context.Context) error {
 	return nil
 }
 
+// sealer returns the target project's sealer, propagating availability and
+// keyring errors.
 func (s *Software) sealer(ctx context.Context, t Target) (*crypto.ProjectSealer, error) {
 	if err := s.Available(ctx); err != nil {
 		return nil, err
@@ -110,18 +115,26 @@ func (s *Software) with(ctx context.Context, t Target, v Version, fn func(*crypt
 	return Operate(material, t, fn)
 }
 
+// Encrypt seals plaintext with this version and binds aad as caller context.
+// Missing material, keyring, unsealing, and TransitKey.Encrypt errors propagate.
 func (s *Software) Encrypt(ctx context.Context, t Target, v Version, plaintext, aad []byte) ([]byte, error) {
 	return s.with(ctx, t, v, func(k *crypto.TransitKey) ([]byte, error) { return k.Encrypt(plaintext, aad) })
 }
 
+// Decrypt opens a transit record with matching caller context in aad.
+// Missing material, keyring, unsealing, and TransitKey.Decrypt errors propagate.
 func (s *Software) Decrypt(ctx context.Context, t Target, v Version, record, aad []byte) ([]byte, error) {
 	return s.with(ctx, t, v, func(k *crypto.TransitKey) ([]byte, error) { return k.Decrypt(record, aad) })
 }
 
+// Sign returns a raw Ed25519 signature for message under this version.
+// Missing material, keyring, unsealing, and TransitKey.Sign errors propagate.
 func (s *Software) Sign(ctx context.Context, t Target, v Version, message []byte) ([]byte, error) {
 	return s.with(ctx, t, v, func(k *crypto.TransitKey) ([]byte, error) { return k.Sign(message) })
 }
 
+// MAC returns a raw HMAC-SHA256 for message under this version.
+// Missing material, keyring, unsealing, and TransitKey.MAC errors propagate.
 func (s *Software) MAC(ctx context.Context, t Target, v Version, message []byte) ([]byte, error) {
 	return s.with(ctx, t, v, func(k *crypto.TransitKey) ([]byte, error) { return k.MAC(message) })
 }

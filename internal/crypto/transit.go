@@ -89,6 +89,8 @@ type TransitAAD struct {
 }
 
 func (a TransitAAD) kind() Kind { return KindTransit }
+
+// fields returns the tenant, key, and context fields in their authenticated order.
 func (a TransitAAD) fields() [][]byte {
 	return [][]byte{
 		[]byte(a.OrgID), []byte(a.ProjectID), []byte(a.EnvID),
@@ -105,6 +107,8 @@ type TransitBinding struct {
 	Version                        uint32
 }
 
+// validate rejects unknown algorithms, empty scope or key identifiers, and
+// version zero.
 func (b TransitBinding) validate() error {
 	if _, err := ParseTransitAlgorithm(string(b.Algorithm)); err != nil {
 		return err
@@ -115,16 +119,18 @@ func (b TransitBinding) validate() error {
 	return nil
 }
 
+// aad binds caller context to the tenant and key identified by b.
 func (b TransitBinding) aad(context []byte) TransitAAD {
 	return TransitAAD{OrgID: b.OrgID, ProjectID: b.ProjectID, EnvID: b.EnvID, KeyID: b.KeyID, Context: context}
 }
 
 // NewTransitMaterial draws one key version's material. A failed or short read
-// is fatal, exactly as for every other key in the hierarchy.
+// returns a wrapped randomness error and no material.
 func NewTransitMaterial() ([]byte, error) {
 	return readRandom(rand.Reader, TransitMaterialSize)
 }
 
+// readRandom reads exactly n bytes or returns a wrapped read error and no material.
 func readRandom(rnd io.Reader, n int) ([]byte, error) {
 	b := make([]byte, n)
 	if _, err := io.ReadFull(rnd, b); err != nil {
@@ -158,7 +164,8 @@ type TransitKey struct {
 }
 
 // OpenTransitKey derives the operation key for one version from its material.
-// The material is not retained; the caller zeroes it.
+// The material is not retained; the caller zeroes it. Invalid bindings, material
+// of the wrong size, and key derivation failures return errors.
 func OpenTransitKey(material []byte, b TransitBinding) (*TransitKey, error) {
 	if err := b.validate(); err != nil {
 		return nil, err
@@ -196,6 +203,7 @@ func (k *TransitKey) Destroy() {
 	Zero(k.priv)
 }
 
+// require rejects a nil key or a key with a different algorithm.
 func (k *TransitKey) require(a TransitAlgorithm) error {
 	if k == nil || k.b.Algorithm != a {
 		return fmt.Errorf("crypto: transit operation requires a %s key", a)
@@ -203,8 +211,9 @@ func (k *TransitKey) require(a TransitAlgorithm) error {
 	return nil
 }
 
-// PublicKey returns the Ed25519 public key. It is public metadata: storing and
-// returning it discloses nothing about the private half.
+// PublicKey returns a copy of the Ed25519 public key. It is public metadata:
+// storing and returning it discloses nothing about the private half. A nil key
+// or a non-Ed25519 key returns an error.
 func (k *TransitKey) PublicKey() ([]byte, error) {
 	if err := k.require(TransitEd25519); err != nil {
 		return nil, err
@@ -212,7 +221,10 @@ func (k *TransitKey) PublicKey() ([]byte, error) {
 	return append([]byte(nil), k.priv.Public().(ed25519.PublicKey)...), nil
 }
 
-// Encrypt seals plaintext as a transit envelope record under this version.
+// Encrypt seals plaintext as a transit envelope record under this version,
+// binding context as associated data. A nil or non-XChaCha20-Poly1305 key is an
+// error. Plaintext over MaxTransitPlaintextBytes or context over
+// MaxTransitContextBytes returns ErrTransitFormat; sealing errors propagate.
 func (k *TransitKey) Encrypt(plaintext, context []byte) ([]byte, error) {
 	if err := k.require(TransitXChaCha20Poly1305); err != nil {
 		return nil, err
@@ -224,7 +236,9 @@ func (k *TransitKey) Encrypt(plaintext, context []byte) ([]byte, error) {
 }
 
 // Decrypt opens a transit envelope record. The header must name this key and
-// this version, and the AAD must match this binding and context.
+// this version, and the AAD must match this binding and context. A nil or
+// non-XChaCha20-Poly1305 key returns an algorithm error. Oversized context or
+// plaintext and all record parsing or authentication failures return ErrDecrypt.
 func (k *TransitKey) Decrypt(record, context []byte) ([]byte, error) {
 	if err := k.require(TransitXChaCha20Poly1305); err != nil {
 		return nil, err
@@ -244,7 +258,8 @@ func (k *TransitKey) Decrypt(record, context []byte) ([]byte, error) {
 }
 
 // Sign is pure Ed25519 over the message bytes, so any RFC 8032 verifier holding
-// the public key can check it without Hikyo.
+// the public key can check it without Hikyo. A nil or non-Ed25519 key returns
+// an error; messages over MaxTransitPlaintextBytes return ErrTransitFormat.
 func (k *TransitKey) Sign(message []byte) ([]byte, error) {
 	if err := k.require(TransitEd25519); err != nil {
 		return nil, err
@@ -255,7 +270,9 @@ func (k *TransitKey) Sign(message []byte) ([]byte, error) {
 	return ed25519.Sign(k.priv, message), nil
 }
 
-// MAC is HMAC-SHA256 under the derived key over the message bytes.
+// MAC is HMAC-SHA256 under the derived key over the message bytes. A nil or
+// non-HMAC key returns an error; messages over MaxTransitPlaintextBytes return
+// ErrTransitFormat.
 func (k *TransitKey) MAC(message []byte) ([]byte, error) {
 	if err := k.require(TransitHMACSHA256); err != nil {
 		return nil, err
@@ -293,7 +310,8 @@ func FormatTransitValue(version uint32, payload []byte) string {
 // ParseTransitValue splits a caller-facing transit value into its version and
 // decoded payload. The version is a canonical positive decimal (no sign, no
 // leading zero, fits uint32) and the payload strict unpadded base64url. The
-// whole string is bounded before decoding.
+// whole string is limited to MaxTransitWireBytes before decoding. Empty
+// payloads and all malformed or oversized values return ErrTransitFormat.
 func ParseTransitValue(s string) (uint32, []byte, error) {
 	if len(s) > MaxTransitWireBytes || !strings.HasPrefix(s, transitWirePrefix) {
 		return 0, nil, ErrTransitFormat
@@ -332,10 +350,10 @@ func ParseTransitValue(s string) (uint32, []byte, error) {
 	return uint32(v), payload, nil
 }
 
-// ParseTransitCiphertext parses a caller-facing ciphertext and checks that the
-// envelope inside it is a well-formed transit record whose authenticated header
-// names the same version as the textual prefix and the given key id. It opens
-// nothing: the caller still needs the version's key to decrypt.
+// ParseTransitCiphertext returns the version and decoded record after checking
+// the transit header, algorithm, key ID, and agreement with the textual version.
+// Parse failures and mismatches return ErrTransitFormat. It does not validate
+// nonce length or authenticate the record; the caller must still decrypt it.
 func ParseTransitCiphertext(s, keyID string) (uint32, []byte, error) {
 	version, record, err := ParseTransitValue(s)
 	if err != nil {

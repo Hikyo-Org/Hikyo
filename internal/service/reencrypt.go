@@ -135,10 +135,11 @@ func (s *Reencrypt) SweepRetiring(ctx context.Context) ([]RetiringScope, error) 
 	return out, nil
 }
 
-// ReencryptProject walks a project's value ciphertext onto the active DEK
-// version. (Adapters, pending drafts and snapshot payloads join this walk with
-// their store methods; the DEK-version retire lands once every project table is
-// covered, since a version is retired only when zero ciphertexts reference it.)
+// ReencryptProject moves a project's retained ciphertext, including software
+// transit key material, onto the active DEK version and returns the moved row
+// count. Superseded DEK versions are retired only after all covered tables are
+// on the active version. Keyring, authorization, budget, and store errors
+// propagate; earlier committed chunks remain moved if a later step fails.
 func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, projectID string) (ReencryptResult, error) {
 	if s.Keyring == nil {
 		return ReencryptResult{}, errors.New("service: reencrypt requires a keyring")

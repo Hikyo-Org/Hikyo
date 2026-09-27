@@ -76,6 +76,7 @@ const accessPoliciesKey = (ref: MatrixRef) => ['access-policies', ref.org, ref.p
 export const accessQueueKey = (ref: MatrixRef, environment: string) =>
   ['access-requests', ref.org, ref.project, environment] as const;
 
+/** Loads project policies without retries; disabled until both scope IDs are present. */
 export function useAccessPolicies(ref: MatrixRef): UseQueryResult<{ items: AccessPolicy[] }> {
   const transport = useTransport();
   return useQuery({
@@ -86,6 +87,7 @@ export function useAccessPolicies(ref: MatrixRef): UseQueryResult<{ items: Acces
   });
 }
 
+/** Loads the selected environment's queue; disabled until all scope IDs are present. */
 export function useAccessQueue(ref: MatrixRef, environment: string): UseQueryResult<AccessQueue> {
   const transport = useTransport();
   return useQuery({
@@ -95,6 +97,7 @@ export function useAccessQueue(ref: MatrixRef, environment: string): UseQueryRes
   });
 }
 
+/** Copies the editor draft into wire fields, preserving seconds and optional group bindings. */
 function policyBody(draft: AccessPolicyDraft) {
   return {
     environment_id: draft.environmentId,
@@ -117,6 +120,7 @@ function requestBody(draft: AccessRequestDraft) {
   return { capabilities: [...draft.capabilities], reason: draft.reason, duration_seconds: draft.durationSeconds };
 }
 
+/** Omits an undefined duration so the server can apply the policy-capped default. */
 function emergencyBody(draft: EmergencyAccessDraft) {
   return {
     capabilities: [...draft.capabilities],
@@ -125,6 +129,11 @@ function emergencyBody(draft: EmergencyAccessDraft) {
   };
 }
 
+/**
+ * Creates a policy when id is null, otherwise replaces it. Success invalidates
+ * project policy and request queues; request or response-validation failures
+ * are exposed through the mutation.
+ */
 export function useSaveAccessPolicy(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
@@ -147,6 +156,10 @@ export function useSaveAccessPolicy(ref: MatrixRef) {
   });
 }
 
+/**
+ * Deletes a policy and invalidates project policy and request queues on success.
+ * Request failures are exposed through the mutation.
+ */
 export function useDeleteAccessPolicy(ref: MatrixRef) {
   const queries = useQueryClient();
   const transport = useTransport();
@@ -160,7 +173,12 @@ export function useDeleteAccessPolicy(ref: MatrixRef) {
   });
 }
 
-/** useAccessAction files, decides, withdraws, revokes or takes access in one environment. */
+/**
+ * useAccessAction files, decides, withdraws, revokes or takes access in one environment.
+ * Success returns the request and invalidates that environment's queue.
+ * Request and response-validation failures are exposed through the mutation;
+ * callers must arrange any required emergency-access reauthentication.
+ */
 export function useAccessAction(ref: MatrixRef, environment: string) {
   const queries = useQueryClient();
   const transport = useTransport();

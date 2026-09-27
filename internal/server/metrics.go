@@ -599,6 +599,8 @@ func (c *accessCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.known
 }
 
+// Collect emits the access gauges and marks them known when the source succeeds.
+// A missing source or snapshot error omits both counts and emits known = 0.
 func (c *accessCollector) Collect(ch chan<- prometheus.Metric) {
 	var values [2]float64
 	measured := false
@@ -643,7 +645,8 @@ func (c *dynamicCollector) Describe(ch chan<- *prometheus.Desc) {
 
 // collectMeasured renders a set of gauges plus their known flag. A failed or
 // absent measurement emits only known=0: an omitted series is "unknown" to an
-// alert, a zero is "healthy", and the two must never be confused.
+// alert, a zero is "healthy", and the two must never be confused. When measured
+// is true, values must contain an entry for each descriptor or this panics.
 func collectMeasured(ch chan<- prometheus.Metric, descs []*prometheus.Desc, known *prometheus.Desc, values []float64, measured bool) {
 	if measured {
 		for i, desc := range descs {
@@ -657,6 +660,8 @@ func collectMeasured(ch chan<- prometheus.Metric, descs []*prometheus.Desc, know
 	ch <- prometheus.MustNewConstMetric(known, prometheus.GaugeValue, knownValue)
 }
 
+// Collect emits approval counts and known=1, or only known=0 when the source
+// is absent or its snapshot fails.
 func (c *approvalCollector) Collect(ch chan<- prometheus.Metric) {
 	var values [2]float64
 	measured := false
@@ -668,6 +673,8 @@ func (c *approvalCollector) Collect(ch chan<- prometheus.Metric) {
 	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
 }
 
+// Collect emits dynamic lease counts and known=1, or only known=0 when the
+// source is absent or its snapshot fails.
 func (c *dynamicCollector) Collect(ch chan<- prometheus.Metric) {
 	var values [2]float64
 	measured := false
@@ -738,6 +745,8 @@ func (c *pkiCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.known
 }
 
+// Collect emits SSH certificate counts and known=1, or only known=0 when the
+// source is absent or its snapshot fails.
 func (c *sshCollector) Collect(ch chan<- prometheus.Metric) {
 	var values [2]float64
 	measured := false
@@ -749,6 +758,8 @@ func (c *sshCollector) Collect(ch chan<- prometheus.Metric) {
 	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
 }
 
+// Collect emits transit key counts and known=1, or only known=0 when the
+// source is absent or its snapshot fails.
 func (c *transitCollector) Collect(ch chan<- prometheus.Metric) {
 	measured := false
 	var values [3]float64
@@ -828,6 +839,8 @@ type transitCollector struct {
 	known  *prometheus.Desc
 }
 
+// newTransitCollector defines the transit key gauges without tenant labels.
+// The collector reports unknown until a source supplies a successful snapshot.
 func newTransitCollector() *transitCollector {
 	return &transitCollector{descs: [3]*prometheus.Desc{
 		prometheus.NewDesc(MetricTransitKeysLive, "Number of transit keys that are not destroyed.", nil, nil),
@@ -836,6 +849,7 @@ func newTransitCollector() *transitCollector {
 	}, known: prometheus.NewDesc(MetricTransitGaugesKnown, "Whether the transit gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
 }
 
+// Describe sends the transit gauge descriptors and their known-status descriptor.
 func (c *transitCollector) Describe(ch chan<- *prometheus.Desc) {
 	for _, desc := range c.descs {
 		ch <- desc

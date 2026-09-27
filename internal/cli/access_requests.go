@@ -22,7 +22,11 @@ import (
 // capabilityList is a repeatable --capability flag.
 type capabilityList []apigen.AccessCapability
 
+// String returns an empty default display for the repeatable capability flag.
 func (c *capabilityList) String() string { return "" }
+
+// Set appends trimmed, comma-separated values without validating capability
+// names. An empty value returns an error; preceding values remain appended.
 func (c *capabilityList) Set(v string) error {
 	for _, part := range strings.Split(v, ",") {
 		part = strings.TrimSpace(part)
@@ -34,6 +38,10 @@ func (c *capabilityList) Set(v string) error {
 	return nil
 }
 
+// runAccessPolicy validates and executes project policy commands, rendering
+// list and write results in the requested format. Updates send a full policy,
+// including flag defaults. Usage, authentication, HTTP, and rendering errors
+// are returned to the CLI.
 func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 	sub, rest, err := subverb("access policy", args, "list", "create", "update", "delete")
 	if err != nil {
@@ -138,6 +146,8 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 	return failf(ExitInternal, "hikyo access policy: unhandled subverb %q", sub)
 }
 
+// accessPolicyTable renders project-wide coverage as "(all)" and durations
+// in Go duration notation, retaining the policy list for JSON output.
 func accessPolicyTable(policies []apigen.AccessPolicy) Table {
 	rows := make([][]string, 0, len(policies))
 	for _, p := range policies {
@@ -159,6 +169,10 @@ func accessPolicyTable(policies []apigen.AccessPolicy) Table {
 	}
 }
 
+// runAccessRequest executes temporary-access commands in one environment.
+// Emergency access retries through reauthentication when required; a zero
+// duration leaves the default to the server. Usage, authentication, HTTP,
+// ceremony, and rendering errors are returned to the CLI.
 func runAccessRequest(ctx context.Context, ios IO, args []string) error {
 	sub, rest, err := subverb("access request", args, "list", "create", "approve", "reject", "cancel", "revoke", "emergency")
 	if err != nil {
@@ -259,13 +273,15 @@ func runAccessRequest(ctx context.Context, ios IO, args []string) error {
 	return Render(ios.Stdout, f, accessRequestTable([]apigen.AccessRequest{out}, nil))
 }
 
-// Both bodies take a duration the syntax check bounded to [0, MaxInt32] seconds.
+// accessRequestBody converts a validated duration to whole seconds, discarding
+// any fractional second. The caller must ensure it fits in an int32.
 func accessRequestBody(caps capabilityList, reason string, duration time.Duration) apigen.AccessRequestInput {
 	return apigen.AccessRequestInput{Capabilities: []apigen.AccessCapability(caps), Reason: reason, DurationSeconds: int32(duration / time.Second)}
 }
 
 // emergencyAccessBody leaves the duration absent when unset so the server
-// applies its one-hour default.
+// applies its one-hour default capped by the policy. Positive durations are
+// truncated to whole seconds; the caller must ensure they fit in an int32.
 func emergencyAccessBody(caps capabilityList, reason string, duration time.Duration) apigen.EmergencyAccessInput {
 	body := apigen.EmergencyAccessInput{Capabilities: []apigen.AccessCapability(caps), Reason: reason}
 	if duration > 0 {
@@ -275,6 +291,8 @@ func emergencyAccessBody(caps capabilityList, reason string, duration time.Durat
 	return body
 }
 
+// accessRequestTable renders request state and UTC expiry. JSON output uses
+// the supplied queue, including its offer, or wraps requests in a queue when nil.
 func accessRequestTable(requests []apigen.AccessRequest, queue *apigen.AccessQueue) Table {
 	rows := make([][]string, 0, len(requests))
 	for _, r := range requests {

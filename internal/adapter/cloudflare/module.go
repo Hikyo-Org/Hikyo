@@ -32,6 +32,8 @@ func (m *Module) now() time.Time {
 	return time.Now().UTC()
 }
 
+// ValidateConfig accepts an empty origin or a supported Cloudflare API origin
+// and returns an error for other origins.
 func (m *Module) ValidateConfig(cfg adapter.Config) error {
 	_, err := canonicalOrigin(cfg.Origin)
 	return err
@@ -100,6 +102,9 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 	return adapter.Connection{Version: "cloudflare", DestinationID: id, CredentialExpiresAt: token.ExpiresAt}, nil
 }
 
+// checkToken returns verified token metadata or adapter.ErrProviderAuth for
+// an inactive token or an expiry at or before now. Verification errors remain
+// wrapped for callers.
 func (m *Module) checkToken(ctx context.Context, account string) (TokenStatus, error) {
 	token, err := m.API.VerifyToken(ctx, account)
 	if err != nil {
@@ -114,6 +119,8 @@ func (m *Module) checkToken(ctx context.Context, account string) (TokenStatus, e
 	return token, nil
 }
 
+// capabilityError adds destination context and, for authorization failures,
+// permission guidance while preserving the underlying error.
 func capabilityError(d adapter.Destination, err error) error {
 	if errors.Is(err, adapter.ErrDestinationID) {
 		return fmt.Errorf("cloudflare: destination identity changed; re-configure the target: %w", err)
@@ -171,6 +178,9 @@ func (m *Module) resolve(ctx context.Context, d adapter.Destination) (int64, map
 	}
 }
 
+// verify returns destination binding names after checking the saved identity.
+// An identity mismatch returns adapter.ErrDestinationID; resolution errors
+// retain their cause with destination context.
 func (m *Module) verify(ctx context.Context, target adapter.Target) (map[string]bool, error) {
 	id, names, err := m.resolve(ctx, target.Destination)
 	if err != nil {
@@ -197,6 +207,9 @@ func desiredRows(prefix string, manifest []adapter.ManifestEntry, sentinel bool)
 	return rows
 }
 
+// Plan returns proposed secret changes and deployment warnings without reading
+// values or mutating the destination. Unowned names appear as conflicts;
+// validation, gate, destination, and ledger errors abort planning.
 func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Plan, error) {
 	if m.API == nil {
 		return adapter.Plan{}, errors.New("cloudflare: API is not configured")
@@ -225,6 +238,9 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	return adapter.Plan{Changes: adapter.PlanChanges(desired, ledger, names), Warnings: sideEffectWarnings(req.Target.Destination, len(desired))}, nil
 }
 
+// sideEffectWarnings describes deployment effects for the destination, using
+// writes as the advertised Workers write count. Zero writes or an unknown
+// kind yields no warnings.
 func sideEffectWarnings(d adapter.Destination, writes int) []string {
 	if writes == 0 {
 		return nil
@@ -238,6 +254,12 @@ func sideEffectWarnings(d adapter.Destination, writes int) []string {
 	return nil
 }
 
+// Sync writes desired entries as encrypted secrets and prunes obsolete claims
+// through the durable journal, skipping completed rows. Teardown omits the
+// sentinel from desired rows. It returns partial progress on failure;
+// unowned-name collisions return adapter.ErrConflict, and ambiguous mutations
+// return adapter.ErrIndeterminate. Validation, token, destination, journal,
+// and definite provider failures also propagate.
 func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adapter.Journal) (adapter.SyncResult, error) {
 	if m.API == nil || journal == nil {
 		return adapter.SyncResult{}, errors.New("cloudflare: API and durable journal are required")
@@ -331,6 +353,9 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 	return m.prune(ctx, req, journal, rows, ledger, result)
 }
 
+// prepare gates a mutation before and after journal preparation. A failed
+// second gate records a failed completion; any completion error takes
+// precedence over that gate error.
 func (m *Module) prepare(ctx context.Context, journal adapter.Journal, effect adapter.Effect, state adapter.LedgerState) error {
 	if err := journal.Gate(ctx, effect); err != nil {
 		return err
@@ -347,6 +372,8 @@ func (m *Module) prepare(ctx context.Context, journal adapter.Journal, effect ad
 	return nil
 }
 
+// write upserts one encrypted secret in the selected Pages environment or
+// Workers script, returning the provider error.
 func (m *Module) write(ctx context.Context, d adapter.Destination, row adapter.DesiredRow) error {
 	if d.Kind == adapter.PagesProject {
 		value := row.Value
@@ -355,6 +382,8 @@ func (m *Module) write(ctx context.Context, d adapter.Destination, row adapter.D
 	return m.API.PutSecret(ctx, d, row.EffectiveName, row.Value)
 }
 
+// remove deletes one secret from the selected Pages environment or Workers
+// script, returning the provider error, including not-found responses.
 func (m *Module) remove(ctx context.Context, d adapter.Destination, name string) error {
 	if d.Kind == adapter.PagesProject {
 		return m.API.PatchPagesSecret(ctx, d, name, nil)
@@ -410,6 +439,8 @@ func (m *Module) prune(ctx context.Context, req adapter.SyncRequest, journal ada
 	return result, nil
 }
 
+// definite4xx reports whether err contains a provider ResponseError in the
+// 400..499 range.
 func definite4xx(err error) bool {
 	var response *ResponseError
 	return errors.As(err, &response) && response.Status >= 400 && response.Status < 500
@@ -428,6 +459,8 @@ func failureCompletion(prior adapter.LedgerState, err error) (adapter.Outcome, a
 	return adapter.OutcomeUnknown, adapter.Dispatched
 }
 
+// providerStatus returns 200 for success, 429 for adapter.ErrRateLimited,
+// the status of a ResponseError, or zero when no status is available.
 func providerStatus(err error) int {
 	if err == nil {
 		return http.StatusOK

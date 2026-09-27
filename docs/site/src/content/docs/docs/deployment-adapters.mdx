@@ -21,8 +21,10 @@ The Forgejo, GitHub Actions, and Cloudflare adapters are one-way and value-blind
 Actions adapters write selected values from one Hikyo environment to a
 repository, organization, or GitHub repository-environment Actions
 namespace. The Cloudflare adapter writes them as encrypted Workers secrets or
-Pages encrypted variables (see [Cloudflare Workers and Pages](#cloudflare-workers-and-pages)). The [Vault/OpenBao KV v2 adapter](#vaultopenbao-kv-v2) follows the same rules for a secret-manager destination. None of them links a variable GET or list endpoint. Secret planning reads
-names only; variable planning uses Hikyo's ownership ledger. Hikyo therefore
+Pages encrypted variables (see [Cloudflare Workers and Pages](#cloudflare-workers-and-pages)). The [Vault/OpenBao KV v2 adapter](#vaultopenbao-kv-v2) follows the same rules for a secret-manager destination. Forgejo and GitHub Actions link no variable GET or list endpoint: secret planning reads
+names only, and variable planning uses Hikyo's ownership ledger. Cloudflare reads
+Pages and Workers settings but decodes only names and types, discarding plaintext
+fields. Vault reads metadata only. Hikyo therefore
 cannot detect provider-side value drift. Run a converge to restore the last
 published Hikyo state. The
 [sealed webhook](#sealed-webhook-receivers) adapter pushes to a generic HTTPS receiver

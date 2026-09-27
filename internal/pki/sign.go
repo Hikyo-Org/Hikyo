@@ -163,9 +163,9 @@ func VerifyCA(certDER []byte, public crypto.PublicKey, chain []*x509.Certificate
 	}
 	roots := x509.NewCertPool()
 	intermediates := x509.NewCertPool()
-	if bytes.Equal(cert.RawIssuer, cert.RawSubject) {
-		// Verify treats trust anchors as trusted without checking their own
-		// signature. A self-signed import must also prove that signature.
+	if bytes.Equal(cert.RawIssuer, cert.RawSubject) && (len(chain) == 0 || bytes.Equal(cert.Raw, chain[len(chain)-1].Raw)) {
+		// Verify skips trust-anchor signatures. Check a self-signed import,
+		// but let Verify validate a self-issued rollover against its parent.
 		if err := cert.CheckSignatureFrom(cert); err != nil {
 			return nil, fmt.Errorf("%w: self-signature does not verify: %v", ErrInvalidCA, err)
 		}

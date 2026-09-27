@@ -155,6 +155,12 @@ export type CeremonyRequest = {
   window: RevealWindow;
 };
 
+/**
+ * Runs reauthentication for the requested purpose and calls onAuthorised after
+ * success; ceremony failures are displayed in the dialog. For emergency access,
+ * callers supply an empty key list. It must run on the owning instance, so a
+ * workspace context shows guidance instead of a handoff.
+ */
 export function Ceremony({
   request,
   onAuthorised,
