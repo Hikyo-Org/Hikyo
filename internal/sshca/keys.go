@@ -26,6 +26,10 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// PublicKey is the OpenSSH public key type. Callers name it through this
+// package so golang.org/x/crypto/ssh stays confined here (boundary test).
+type PublicKey = ssh.PublicKey
+
 // Algorithm is the closed key algorithm enum shared by CA keys and user keys.
 // Anything else is refused by every parser and switch (fail-closed).
 type Algorithm string

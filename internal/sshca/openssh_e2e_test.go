@@ -109,7 +109,13 @@ UsePAM no
 StrictModes no
 LogLevel VERBOSE
 `, h.port, filepath.Join(dir, "host_key"), filepath.Join(dir, "sshd.pid"), h.trusted, h.krl)
-	writeFile(t, filepath.Join(dir, "sshd_config"), config)
+	// OpenSSH 9.8+ penalises a source after a failed authentication and drops
+	// its next connections; the refusal checks here fail on purpose, so exempt
+	// loopback where the option exists (older sshd rejects it as unknown).
+	writeFile(t, filepath.Join(dir, "sshd_config"), config+"PerSourcePenalties no\n")
+	if err := exec.Command(sshd, "-t", "-f", filepath.Join(dir, "sshd_config")).Run(); err != nil {
+		writeFile(t, filepath.Join(dir, "sshd_config"), config)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	var logs bytes.Buffer
 	cmd := exec.CommandContext(ctx, sshd, "-D", "-e", "-f", filepath.Join(dir, "sshd_config"))

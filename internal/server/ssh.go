@@ -347,7 +347,7 @@ func (a *API) IssueSshCertificate(ctx context.Context, req apigen.IssueSshCertif
 		issue.SourceAddresses = *body.SourceAddresses
 	}
 	if body.Extensions != nil {
-		issue.ExtensionsSet = true
+		issue.Extensions = make([]string, 0, len(*body.Extensions)) // non-nil: explicit, possibly empty
 		for _, e := range *body.Extensions {
 			issue.Extensions = append(issue.Extensions, string(e))
 		}

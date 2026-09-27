@@ -181,8 +181,9 @@ func runSSHLifecycle(t *testing.T, db *store.DB, full bool) {
 	for name, req := range map[string]service.IssueSSHCertificateRequest{
 		"foreign principal": {ProfileID: profile.ID, Principals: []string{"root"}},
 		"ttl over max":      {ProfileID: profile.ID, Principals: []string{"deploy"}, TTLSeconds: 9 * 3600},
+		"ttl wraps":         {ProfileID: profile.ID, Principals: []string{"deploy"}, TTLSeconds: 3600 + 1<<55}, // *time.Second wraps to 1h
 		"wider source":      {ProfileID: profile.ID, Principals: []string{"deploy"}, SourceAddresses: []string{"0.0.0.0/0"}},
-		"extension":         {ProfileID: profile.ID, Principals: []string{"deploy"}, Extensions: []string{"permit-agent-forwarding"}, ExtensionsSet: true},
+		"extension":         {ProfileID: profile.ID, Principals: []string{"deploy"}, Extensions: []string{"permit-agent-forwarding"}},
 		"algorithm":         {ProfileID: profile.ID, Principals: []string{"deploy"}, KeyAlgorithm: "rsa-3072"},
 	} {
 		if _, err := nodeA.svc.Issue(ctx, workload, env, req); !errors.Is(err, domain.ErrInvalid) {
@@ -365,6 +366,29 @@ func runSSHLifecycle(t *testing.T, db *store.DB, full bool) {
 	}
 	if got := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type='ssh.certificate_revoked' AND actor_class='system' AND object_id='"+live.Certificate.ID+"'"); got != 1 {
 		t.Fatalf("sweeper audit rows = %d", got)
+	}
+
+	// Deleting a profile without revoke_issued leaves its live certificates
+	// valid: the sweeper must not read the tombstone as a withdrawal.
+	kept, err := nodeA.svc.CreateProfile(ctx, admin, env, service.SSHProfileRequest{
+		CAID: ca.ID, Name: "kept", Principals: []string{"ops"}, KeyAlgorithms: []string{"ed25519"},
+		DefaultTTLSeconds: 3600, MaxTTLSeconds: 3600, Enabled: true, Requesters: []string{string(alice)},
+	})
+	if err != nil {
+		t.Fatalf("create kept profile: %v", err)
+	}
+	keptCert, err := nodeA.svc.Issue(ctx, human, env, service.IssueSSHCertificateRequest{ProfileID: kept.ID, Principals: []string{"ops"}})
+	if err != nil {
+		t.Fatalf("issue through kept profile: %v", err)
+	}
+	if n, err := nodeA.svc.DeleteProfile(ctx, admin, env, kept.ID, false); err != nil || n != 0 {
+		t.Fatalf("delete without revoke: revoked %d (%v)", n, err)
+	}
+	if n, err := nodeB.svc.RunSweep(ctx); err != nil || n != 0 {
+		t.Fatalf("sweep after delete without revoke revoked %d (%v)", n, err)
+	}
+	if v, _ := nodeA.svc.GetCertificate(ctx, admin, env, keptCert.Certificate.ID); v.Status != "active" {
+		t.Fatalf("certificate of a profile deleted without revoke = %q", v.Status)
 	}
 
 	// Restart: a fresh node with a reloaded keyring still signs.

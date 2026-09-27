@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/ssh"
-
 	"github.com/Hikyo-Org/hikyo/internal/audit"
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	hcrypto "github.com/Hikyo-Org/hikyo/internal/crypto"
@@ -404,7 +402,7 @@ func (s *SSH) KRL(ctx context.Context, actor Actor, scope domain.Scope, caID str
 	for _, entry := range serials {
 		section, ok := sections[entry.CAKeyPublicKey]
 		if !ok {
-			pub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(entry.CAKeyPublicKey))
+			pub, _, err := sshca.ParsePublicKey(entry.CAKeyPublicKey)
 			if err != nil {
 				return nil, fmt.Errorf("service: stored ssh CA public key is malformed: %w", err)
 			}
@@ -433,12 +431,23 @@ type RotateSSHCARequest struct {
 	OverlapSeconds *int64
 }
 
+// sshSeconds converts a caller-supplied second count, bounded to [0, limit]
+// before the multiplication so an oversized count cannot wrap into range.
+func sshSeconds(field string, seconds int64, limit time.Duration) (time.Duration, error) {
+	if seconds < 0 || seconds > int64(limit/time.Second) {
+		return 0, fmt.Errorf("%w: %s must be between 0 and %d seconds", domain.ErrInvalid, field, int64(limit/time.Second))
+	}
+	return time.Duration(seconds) * time.Second, nil
+}
+
 func (s *SSH) RotateCA(ctx context.Context, actor Actor, scope domain.Scope, caID string, req RotateSSHCARequest) (SSHCAView, error) {
 	if err := requireEnvScope(scope, "ssh CA rotate requires environment scope and CA id", caID); err != nil {
 		return SSHCAView{}, err
 	}
-	if req.OverlapSeconds != nil && (*req.OverlapSeconds < 0 || time.Duration(*req.OverlapSeconds)*time.Second > sshMaxOverlap) {
-		return SSHCAView{}, fmt.Errorf("%w: overlap must be between 0 and %d seconds", domain.ErrInvalid, int64(sshMaxOverlap/time.Second))
+	if req.OverlapSeconds != nil {
+		if _, err := sshSeconds("overlap", *req.OverlapSeconds, sshMaxOverlap); err != nil {
+			return SSHCAView{}, err
+		}
 	}
 	release, err := chargeDefaultAtEntry(ctx, s.DB, s.Budget, actor, authz.OpSSHCARotate, authz.OpSSHCARotate, scope, s.now)
 	if err != nil {
@@ -609,9 +618,17 @@ func normalizeProfile(req SSHProfileRequest) (store.SSHProfileWrite, error) {
 	if err != nil {
 		return store.SSHProfileWrite{}, sshInvalid(err)
 	}
+	defaultTTL, err := sshSeconds("default_ttl_seconds", req.DefaultTTLSeconds, sshca.MaxTTL)
+	if err != nil {
+		return store.SSHProfileWrite{}, err
+	}
+	maxTTL, err := sshSeconds("max_ttl_seconds", req.MaxTTLSeconds, sshca.MaxTTL)
+	if err != nil {
+		return store.SSHProfileWrite{}, err
+	}
 	policy := sshca.Profile{
 		Principals: req.Principals, ForceCommand: req.ForceCommand, SourceAddresses: prefixes,
-		DefaultTTL: time.Duration(req.DefaultTTLSeconds) * time.Second, MaxTTL: time.Duration(req.MaxTTLSeconds) * time.Second,
+		DefaultTTL: defaultTTL, MaxTTL: maxTTL,
 	}
 	for _, e := range req.Extensions {
 		ext, err := sshca.ParseExtension(e)
@@ -870,7 +887,6 @@ type IssueSSHCertificateRequest struct {
 	Principals      []string
 	SourceAddresses []string
 	Extensions      []string
-	ExtensionsSet   bool
 	TTLSeconds      int64
 }
 
@@ -878,16 +894,17 @@ func (s *SSH) Issue(ctx context.Context, actor Actor, scope domain.Scope, req Is
 	if err := requireEnvScope(scope, "ssh certificate issue requires environment scope and profile id", req.ProfileID); err != nil {
 		return SSHIssueResult{}, err
 	}
-	if req.TTLSeconds < 0 {
-		return SSHIssueResult{}, fmt.Errorf("%w: ttl_seconds must be positive", domain.ErrInvalid)
+	ttl, err := sshSeconds("ttl_seconds", req.TTLSeconds, sshca.MaxTTL)
+	if err != nil {
+		return SSHIssueResult{}, err
 	}
 	prefixes, err := sshca.ParseSourceAddresses(req.SourceAddresses)
 	if err != nil {
 		return SSHIssueResult{}, sshInvalid(err)
 	}
 	request := sshca.Request{
-		Principals: req.Principals, SourceAddresses: prefixes, ExtensionsSet: req.ExtensionsSet,
-		TTL: time.Duration(req.TTLSeconds) * time.Second,
+		Principals: req.Principals, SourceAddresses: prefixes, ExtensionsSet: req.Extensions != nil,
+		TTL: ttl,
 	}
 	for _, e := range req.Extensions {
 		ext, err := sshca.ParseExtension(e)
@@ -905,7 +922,7 @@ func (s *SSH) Issue(ctx context.Context, actor Actor, scope domain.Scope, req Is
 	// The user key is fixed before the transaction: parsed, or generated (the
 	// RSA case is slow and must not hold a write transaction open).
 	var (
-		userPub     ssh.PublicKey
+		userPub     sshca.PublicKey
 		userAlg     sshca.Algorithm
 		userPrivate crypto.Signer
 		keyOrigin   = "supplied"
@@ -1170,36 +1187,45 @@ func (s *SSH) RunSweep(ctx context.Context) (int, error) {
 	}
 	revoked := 0
 	cursor := ""
+	// A row that fails is skipped, never revoked, and reported at the end: one
+	// persistently failing certificate must not shield every later one.
+	var rowErrs []error
 	for {
 		now := s.now()
 		page, err := s.Runtime.ListLiveCertificates(ctx, now, cursor, sshSweepPage)
 		if err != nil {
-			return revoked, err
+			return revoked, errors.Join(append(rowErrs, err)...)
 		}
 		for _, c := range page {
 			cursor = c.ID
-			withdrawn := !c.RequesterListed
-			if !withdrawn {
-				withdrawn, err = s.authorityWithdrawn(ctx, c)
-				if err != nil {
-					return revoked, err
-				}
-			}
-			if !withdrawn {
-				continue
-			}
-			changed, err := s.Runtime.RevokeForAuthority(ctx, c, store.CanonTime(s.now()))
+			changed, err := s.sweepOne(ctx, c)
 			if err != nil {
-				return revoked, err
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return revoked, errors.Join(append(rowErrs, ctxErr)...)
+				}
+				rowErrs = append(rowErrs, fmt.Errorf("ssh sweep %s: %w", c.ID, err))
+				continue
 			}
 			if changed {
 				revoked++
 			}
 		}
 		if len(page) < sshSweepPage {
-			return revoked, nil
+			return revoked, errors.Join(rowErrs...)
 		}
 	}
+}
+
+// sweepOne revokes c if its requester's authority is definitively withdrawn.
+func (s *SSH) sweepOne(ctx context.Context, c store.SSHSweepCandidate) (bool, error) {
+	withdrawn := !c.RequesterListed
+	if !withdrawn {
+		var err error
+		if withdrawn, err = s.authorityWithdrawn(ctx, c); err != nil || !withdrawn {
+			return false, err
+		}
+	}
+	return s.Runtime.RevokeForAuthority(ctx, c, store.CanonTime(s.now()))
 }
 
 func (s *SSH) authorityWithdrawn(ctx context.Context, c store.SSHSweepCandidate) (bool, error) {

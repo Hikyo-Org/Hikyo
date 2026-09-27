@@ -700,9 +700,10 @@ func (r sshQueries) DeleteProfile(ctx context.Context, p authz.Proof, profileID 
 	if rows != 1 {
 		return ErrNotFound
 	}
-	del := r.db.SQL(`DELETE FROM ssh_profile_requesters WHERE profile_id=? AND org_id=? AND project_id=? AND environment_id=?`)
-	_, err = r.db.Exec(ctx, del, profileID, chain.Org, chain.Project, string(chain.Env))
-	return err
+	// Requester rows stay: the sweeper reads them as the requester's standing,
+	// and a delete without revoke_issued leaves live certificates valid until
+	// they expire. PurgeEnvironment removes the rows with the environment.
+	return nil
 }
 
 func (r sshQueries) IsRequester(ctx context.Context, p authz.Proof, profileID, principalID string) (bool, error) {

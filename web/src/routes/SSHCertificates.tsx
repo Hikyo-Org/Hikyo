@@ -26,6 +26,7 @@ import {
   type SSHProfile,
   type SSHProfileInput,
 } from '../api/ssh.ts';
+import { useTransport, useWorkspaceContext } from '../api/transport.tsx';
 import { runPasskeyCeremony } from '../api/values.ts';
 import { writeClipboard } from '../app/clipboard.ts';
 import { useNavigationGuard } from '../app/useNavigationGuard.ts';
@@ -126,6 +127,7 @@ export function SSHCertificatesPanel({
   const certificates = useSSHCertificates(env);
   const retire = useRetireSSHCAKey(env);
   const revoke = useRevokeSSHCertificate(env);
+  const workspace = useWorkspaceContext();
   const [dialog, setDialog] = useState<Dialogs | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -236,9 +238,13 @@ export function SSHCertificatesPanel({
                 <Button type="button" onClick={() => setDialog({ kind: 'trust', ca })}>
                   Trust bundle
                 </Button>{' '}
-                <a className="btn" href={sshKRLPath(env, ca.id)} download={`${ca.name}.krl`}>
-                  Download KRL
-                </a>{' '}
+                {workspace === null ? (
+                  <>
+                    <a className="btn" href={sshKRLPath(env, ca.id)} download={`${ca.name}.krl`}>
+                      Download KRL
+                    </a>{' '}
+                  </>
+                ) : null}
                 <Button type="button" disabled={!canAct} onClick={() => setDialog({ kind: 'rotate', ca })}>
                   Rotate
                 </Button>{' '}
@@ -435,6 +441,7 @@ function CADialog({
   onDone: (message: string) => void;
 }) {
   const refresh = useRefreshSSH(env);
+  const transport = useTransport();
   const [name, setName] = useState('');
   const [algorithm, setAlgorithm] = useState<KeyAlgorithm>('ed25519');
   const [privateKey, setPrivateKey] = useState('');
@@ -448,7 +455,7 @@ function CADialog({
     setError(null);
     try {
       if (rotating === undefined) {
-        await createSSHCA(env, { name, ...(importing ? { privateKey } : { algorithm }) });
+        await createSSHCA(env, { name, ...(importing ? { privateKey } : { algorithm }) }, transport);
         onDone(`Created CA ${name}. Distribute its trust bundle to hosts before issuing certificates.`);
       } else {
         const overlapSeconds = overlap.trim() === '' ? null : Number(overlap);
@@ -456,7 +463,7 @@ function CADialog({
           setError('Enter the overlap as a whole number of seconds, or leave it empty for the default.');
           return;
         }
-        await rotateSSHCA(env, { ca: rotating.id, overlapSeconds, ...(importing ? { privateKey } : { algorithm }) });
+        await rotateSSHCA(env, { ca: rotating.id, overlapSeconds, ...(importing ? { privateKey } : { algorithm }) }, transport);
         onDone('Rotated. New certificates are signed by the new key; the old key stays trusted, never signing, until its overlap ends.');
       }
     } catch (err) {
@@ -539,9 +546,10 @@ function TrustDialog({ env, ca, onClose }: { env: EnvironmentRef; ca: SSHCA; onC
   const [bundle, setBundle] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const transport = useTransport();
   useEffect(() => {
     let live = true;
-    sshTrustedKeys(env, ca.id).then(
+    sshTrustedKeys(env, ca.id, transport).then(
       (text) => {
         if (live) setBundle(text);
       },
@@ -698,6 +706,8 @@ function ProfileDialog({
       return;
     }
     setError(null);
+    const kept = input.requesters;
+    const removedRequester = (profile?.requesters ?? []).some((id) => !kept.includes(id));
     save.mutate(
       { id: profile?.id ?? null, profile: input },
       {
@@ -705,7 +715,9 @@ function ProfileDialog({
           onDone(
             profile === null
               ? `Created profile ${name}.`
-              : 'Saved. A requester you removed had its live certificates through this profile revoked.',
+              : removedRequester
+                ? 'Saved. Live certificates issued through this profile to the removed requesters were revoked.'
+                : 'Saved.',
           ),
         onError: (err) => setError(sshRefusalText('save-profile', err)),
       },
@@ -893,6 +905,7 @@ function IssueDialog({
   onClose: () => void;
 }) {
   const refresh = useRefreshSSH(env);
+  const transport = useTransport();
   const confirmation = useRef<HTMLInputElement>(null);
   const [profileId, setProfileId] = useState(profiles[0]?.id ?? '');
   const [publicKey, setPublicKey] = useState('');
@@ -954,7 +967,7 @@ function IssueDialog({
         keyAlgorithm: algorithm,
         principals: lines(principals),
         ttlSeconds,
-      });
+      }, transport);
       move({ type: 'succeeded', requestId: active.id, result });
       // A supplied-key certificate carries no secret: nothing to confirm.
       if (result.private_key === undefined || result.private_key === null) {

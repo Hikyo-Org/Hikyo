@@ -18,7 +18,7 @@ import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tan
 import type { z } from 'zod';
 
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
-import { useTransport } from './transport.tsx';
+import { useTransport, type TransportOptions } from './transport.tsx';
 
 /**
  * SSH user certificates (#155). Everything is environment-scoped: a CA, its
@@ -94,13 +94,14 @@ export function useRefreshSSH(e: EnvironmentRef): () => void {
 }
 
 /** sshTrustedKeys reads the CA's TrustedUserCAKeys content (public keys only). */
-export function sshTrustedKeys(e: EnvironmentRef, ca: string): Promise<string> {
-  return parsed(getSshTrustedKeysOp, { path: { ...e, sshCA: ca } });
+export function sshTrustedKeys(e: EnvironmentRef, ca: string, transport: TransportOptions): Promise<string> {
+  return parsed(getSshTrustedKeysOp, { path: { ...e, sshCA: ca }, ...transport });
 }
 
 /**
  * sshKRLPath is the download link for a CA's binary Key Revocation List. A
- * same-origin link, so the browser saves the bytes exactly as served.
+ * same-origin link, so the browser saves the bytes exactly as served. It is
+ * this instance's own path: inside a workspace the caller offers no link.
  */
 export function sshKRLPath(e: EnvironmentRef, ca: string): string {
   return `/api/v1/orgs/${encodeURIComponent(e.org)}/projects/${encodeURIComponent(e.project)}/environments/${encodeURIComponent(e.environment)}/ssh-cas/${encodeURIComponent(ca)}/krl`;
@@ -114,8 +115,10 @@ export type KeyAlgorithm = 'ed25519' | 'ecdsa-p256' | 'rsa-3072';
 export async function createSSHCA(
   e: EnvironmentRef,
   input: { name: string; algorithm?: KeyAlgorithm; privateKey?: string },
+  transport: TransportOptions,
 ): Promise<void> {
   await parsed(createSshCaOp, {
+    ...transport,
     path: e,
     body: {
       name: input.name,
@@ -129,8 +132,10 @@ export async function createSSHCA(
 export async function rotateSSHCA(
   e: EnvironmentRef,
   input: { ca: string; algorithm?: KeyAlgorithm; privateKey?: string; overlapSeconds: number | null },
+  transport: TransportOptions,
 ): Promise<void> {
   await parsed(rotateSshCaOp, {
+    ...transport,
     path: { ...e, sshCA: input.ca },
     body: {
       ...(input.algorithm === undefined ? {} : { algorithm: input.algorithm }),
@@ -142,17 +147,19 @@ export async function rotateSSHCA(
 
 export function useRetireSSHCAKey(e: EnvironmentRef) {
   const refresh = useRefreshSSH(e);
+  const transport = useTransport();
   return useMutation({
     mutationFn: (input: { ca: string; key: string }) =>
-      parsed(retireSshCaKeyOp, { path: { ...e, sshCA: input.ca, sshCAKey: input.key } }),
+      parsed(retireSshCaKeyOp, { path: { ...e, sshCA: input.ca, sshCAKey: input.key }, ...transport }),
     onSettled: refresh,
   });
 }
 
 export function useDeleteSSHCA(e: EnvironmentRef) {
   const refresh = useRefreshSSH(e);
+  const transport = useTransport();
   return useMutation({
-    mutationFn: (ca: string) => ok(deleteSshCaOp, { path: { ...e, sshCA: ca } }),
+    mutationFn: (ca: string) => ok(deleteSshCaOp, { path: { ...e, sshCA: ca }, ...transport }),
     onSettled: refresh,
   });
 }
@@ -192,13 +199,15 @@ function profileBody(input: SSHProfileInput) {
 /** useSaveSSHProfile creates (no id) or replaces (id) a profile. No secrets. */
 export function useSaveSSHProfile(e: EnvironmentRef) {
   const refresh = useRefreshSSH(e);
+  const transport = useTransport();
   return useMutation({
     mutationFn: (input: { id: string | null; profile: SSHProfileInput }) =>
       input.id === null
-        ? parsed(createSshProfileOp, { path: e, body: profileBody(input.profile) })
+        ? parsed(createSshProfileOp, { path: e, body: profileBody(input.profile), ...transport })
         : parsed(updateSshProfileOp, {
             path: { ...e, sshProfile: input.id },
             body: profileBody(input.profile),
+            ...transport,
           }),
     onSettled: refresh,
   });
@@ -206,11 +215,13 @@ export function useSaveSSHProfile(e: EnvironmentRef) {
 
 export function useDeleteSSHProfile(e: EnvironmentRef) {
   const refresh = useRefreshSSH(e);
+  const transport = useTransport();
   return useMutation({
     mutationFn: (input: { id: string; revokeIssued: boolean }) =>
       parsed(deleteSshProfileOp, {
         path: { ...e, sshProfile: input.id },
         query: { revoke_issued: input.revokeIssued },
+        ...transport,
       }),
     onSettled: refresh,
   });
@@ -243,11 +254,13 @@ export async function issueSSHCertificate(
     readonly principals: readonly string[];
     readonly ttlSeconds: number | null;
   },
+  transport: TransportOptions,
 ): Promise<SSHIssued> {
   const generated = req.publicKey.trim() === '';
   return parsedPick(
     issueSshCertificateOp,
     {
+      ...transport,
       path: e,
       body: {
         profile_id: req.profileId,
@@ -262,9 +275,10 @@ export async function issueSSHCertificate(
 
 export function useRevokeSSHCertificate(e: EnvironmentRef) {
   const refresh = useRefreshSSH(e);
+  const transport = useTransport();
   return useMutation({
     mutationFn: (certificate: string) =>
-      parsed(revokeSshCertificateOp, { path: { ...e, sshCertificate: certificate } }),
+      parsed(revokeSshCertificateOp, { path: { ...e, sshCertificate: certificate }, ...transport }),
     onSettled: refresh,
   });
 }

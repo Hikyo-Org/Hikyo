@@ -110,8 +110,14 @@ described the #147 promotion's own scope and is left as history.
    recorded requester for `ssh-cert.issue` at the environment and re-checks
    the requester row; a definite refusal (principal deleted, grant pulled,
    removed from the profile) revokes durably with a system-actor audit row.
-   Transient datastore errors never revoke. Profile requester edits run the
-   same check inline so removal takes effect in the same transaction.
+   Transient datastore errors never revoke: a certificate whose check fails
+   is skipped and reported, and the pass continues, so one persistently
+   failing row cannot shield every later certificate. Profile requester edits
+   run the same check inline so removal takes effect in the same transaction.
+   A profile tombstone keeps its requester rows, so deleting a profile
+   without `revoke_issued` leaves its live certificates valid (the sweeper
+   still revokes them if the requester loses its grant); environment purge
+   removes the rows.
 
 8. **KRL.** `GET .../ssh-cas/{ca}/krl` returns an OpenSSH KRL
    (PROTOCOL.krl, format version 1) with one `KRL_SECTION_CERTIFICATES` per
@@ -151,15 +157,28 @@ described the #147 promotion's own scope and is left as history.
 11. **Environment delete** refuses (409) while the environment holds a live
     SSH CA; once every CA is deleted, the environment delete purges the SSH
     rows (`ssh.PurgeEnvironment`, on both delete paths).
+12. **Crypto boundary.** `golang.org/x/crypto/ssh` is confined to
+    `internal/sshca` by an OpenSSH protocol import confinement in
+    `internal/boundary` (the isolation suite may import it as an independent
+    certificate verifier, tests only). The crypto chokepoint skips that
+    subtree; every other `x/crypto` package stays confined to
+    `internal/crypto`. Callers name keys through `sshca.PublicKey`.
+13. **Input bounds.** Every caller-supplied second count (profile
+    `default_ttl_seconds`/`max_ttl_seconds`, issue `ttl_seconds`, rotate
+    `overlap_seconds`) is range-checked as an integer before conversion to
+    `time.Duration`, so an oversized value cannot wrap into range. An issue
+    request's `extensions` is explicit when present (non-nil, possibly empty)
+    and takes the profile default when absent.
 
 ## Tests
 
-- `internal/sshca`: signing constraints, KRL encoding KATs, fuzzing of the
-  principal/CIDR validators and the KRL encoder.
+- `internal/sshca`: signing constraints, KRL encoding KAT and bound, fuzzing
+  of the principal/CIDR validators.
 - `internal/isolation/ssh_e2e_test.go`: both engines. Issue (generated and
   supplied key), profile bounds, requester refusal, human ceremony, revoke,
   expiry status, rotation overlap and retire, profile disable, principal and
-  grant revocation via the sweeper, restart (a second service instance on
+  grant revocation via the sweeper, profile delete without revocation
+  surviving a sweep, a TTL that would wrap `time.Duration`, restart (a second service instance on
   the same datastore) and multi-node takeover (a stale instance cannot issue
   after another node rotated or disabled).
 - `internal/sshca/openssh_e2e_test.go`: real `sshd` on a loopback port with
