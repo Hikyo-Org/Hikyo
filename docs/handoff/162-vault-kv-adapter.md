@@ -105,3 +105,32 @@ Every converge adds one KV version per key; operators bound it with
   § 4.1 amendment and the ADR, then flip "proposed" to operative.
 - The web form reuses the generic target editor with KV labels; there is no
   KV-specific status copy beyond the provider name and hints.
+
+
+## PR #823 reconciliation and adversarial inspection
+
+Integrated main and the Cloudflare adapter (#822), preserving sealed-webhook,
+Cloudflare and Vault provider registration, API enums, browser routing and tests.
+Vault's additive provider migration is now 00063 on both engines and retains
+all previous providers. Regenerated the development declaration against an
+isolated PostgreSQL scratch database and adjusted the legacy restore drill to
+reverse migrations 45 through 63.
+
+Adversarial review found a prune race: deleting the latest version could delete
+an external write after the ownership inspection. Prune now soft-deletes only
+the inspected version through POST /delete with an explicit version list.
+Regression coverage inserts an external write immediately before deletion and
+proves that newer version remains live. A client test pins the exact request
+path, method and version. Updated least-privilege policies and external contract
+fixtures grant update on the delete path; data read, destruction and undelete
+remain unavailable to the provider.
+
+Browser credentials still use the sensitive state/mutation owners. The merged
+provider labels and destination forms preserve both Vault mount/path and
+Cloudflare Workers/Pages addressing. Sensitivity pins were refreshed after
+reviewing these merged modules.
+
+Validation: 1172 browser unit tests; browser typecheck/lint; generated client
+20 tests and typecheck; Vault race tests; relevant adapter/CLI/store/service/app
+checks and both-engine upgrade/restore fixtures. The coordinating task owns
+remote CI and final merge. Cross-provider review was skipped by its quota gate.

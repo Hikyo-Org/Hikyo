@@ -46,7 +46,10 @@ export type Id = string;
  */
 export type Timestamp = string;
 
-export type AdapterDestinationKind = 'repository' | 'organization' | 'environment';
+/**
+ * repository, organization and environment are Forgejo and GitHub Actions destinations. workers-script and pages-project are Cloudflare destinations: destination_owner is the account id, destination_name the Workers script or Pages project, and a pages-project target names exactly one Pages environment (preview or production).
+ */
+export type AdapterDestinationKind = 'repository' | 'organization' | 'environment' | 'workers-script' | 'pages-project';
 
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
@@ -67,11 +70,11 @@ export type AdapterTargetInput = {
      */
     destination_owner: string;
     /**
-     * Repository name; empty for organization destinations; the KV path prefix for vault-kv.
+     * Repository name, Workers script name or Pages project name; empty for organization destinations; the KV path prefix for vault-kv.
      */
     destination_name: string;
     /**
-     * GitHub environment name; empty for repository and organization destinations.
+     * GitHub environment name, or the Pages environment (preview or production) of a pages-project target; empty for other destinations.
      */
     destination_environment: string;
     /**

@@ -11,6 +11,7 @@ import {
   healthLabel,
   moveInFlight,
   moveStateText,
+  providerLabel,
   useAdapterMove,
   useAdapters,
   useAddAdapterTarget,
@@ -879,15 +880,16 @@ function CreateAdapterPanel({
               {
               const value = event.target.value;
               const next: AdapterProviderKind =
-                value === 'github-actions' || value === 'vault-kv' ? value : 'forgejo';
+                value === 'github-actions' || value === 'vault-kv' || value === 'cloudflare' ? value : 'forgejo';
               setProvider(next);
-              setOrigin(next === 'github-actions' ? 'https://api.github.com' : '');
+              setOrigin(next === 'github-actions' ? 'https://api.github.com' : next === 'cloudflare' ? 'https://api.cloudflare.com' : '');
             }
             }
           >
             <option value="forgejo">Forgejo</option>
             <option value="github-actions">GitHub Actions</option>
             <option value="vault-kv">Vault / OpenBao KV v2</option>
+            <option value="cloudflare">Cloudflare Workers &amp; Pages</option>
           </select>
         </label>
         <label className="field">
@@ -896,6 +898,7 @@ function CreateAdapterPanel({
           </span>
           <input
             value={origin}
+            readOnly={provider === 'cloudflare'}
             onChange={(event) => setOrigin(event.target.value)}
             placeholder={
               provider === 'github-actions'
@@ -914,6 +917,12 @@ function CreateAdapterPanel({
             and never reads a value back.
           </p>
         ) : null}
+        {provider === 'cloudflare' ? (
+          <p className="field__hint">
+            Use a scoped API token for exactly one account with Workers Scripts: Edit or Cloudflare Pages: Edit.
+            Global API Keys and multi-account tokens are refused. Every value is written as an encrypted secret.
+          </p>
+        ) : null}
         <Input
           label="Credential"
           type="password"
@@ -928,6 +937,7 @@ function CreateAdapterPanel({
         />
       </div>
       <TargetForm
+        key={provider}
         title="First target"
         provider={provider}
         environments={environments}
@@ -979,22 +989,6 @@ const zRepositoryIdList = z
       .max(500, 'At most 500 repository ids.'),
   );
 
-/** A provider's display name; an unknown provider shows its wire value. */
-export function providerLabel(provider: string): string {
-  switch (provider) {
-    case 'forgejo':
-      return 'Forgejo';
-    case 'github-actions':
-      return 'GitHub Actions';
-    case 'sealed-webhook':
-      return 'Sealed webhook';
-    case 'vault-kv':
-      return 'Vault / OpenBao KV';
-    default:
-      return provider;
-  }
-}
-
 /** The prefix the server will store: the wire grammar is upper-case only. */
 export function normalisePrefix(raw: string): string {
   return raw.toUpperCase();
@@ -1012,7 +1006,7 @@ export function TargetForm({
   onSubmit,
 }: {
   readonly title: string;
-  /** The adapter's provider; vault-kv addresses a KV mount and path prefix. */
+  /** Selects destination vocabulary for each provider. */
   readonly provider?: string;
   readonly environments: readonly EnvironmentOption[];
   readonly keys: readonly ProjectKey[];
@@ -1024,8 +1018,9 @@ export function TargetForm({
   readonly onSubmit: (input: AdapterTargetInput) => Promise<void>;
 }) {
   const [environmentId, setEnvironmentId] = useState(initial?.environment_id ?? environments[0]?.id ?? '');
+  const cloudflare = provider === 'cloudflare';
   const [kind, setKind] = useState<AdapterTargetInput['destination_kind']>(
-    initial?.destination_kind ?? 'repository',
+    initial?.destination_kind ?? (cloudflare ? 'workers-script' : 'repository'),
   );
   const keyValue = provider === 'vault-kv';
   // A KV target rides the repository destination: owner is the mount, name is
@@ -1085,7 +1080,8 @@ export function TargetForm({
       destination_kind: effectiveKind,
       destination_owner: owner,
       destination_name: effectiveKind === 'organization' ? '' : name,
-      destination_environment: effectiveKind === 'environment' ? destinationEnvironment : '',
+      destination_environment:
+        effectiveKind === 'environment' ? destinationEnvironment : effectiveKind === 'pages-project' ? destinationEnvironment || 'production' : '',
       allow_environment_create: effectiveKind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
       visibility: effectiveKind === 'organization' ? visibility : '',
       selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
@@ -1129,27 +1125,51 @@ export function TargetForm({
         {keyValue ? null : (
         <label className="field">
           <span className="field__label">Destination kind</span>
-          <select
-            value={kind}
-            disabled={lockRouting === true}
-            onChange={(event) => {
-              const value = event.target.value;
-              setKind(value === 'organization' || value === 'environment' ? value : 'repository');
-            }}
-          >
-            <option value="repository">Repository</option>
-            <option value="organization">GitHub organization</option>
-            <option value="environment">GitHub environment</option>
-          </select>
+          {cloudflare ? (
+            <select
+              value={kind}
+              disabled={lockRouting === true}
+              onChange={(event) => setKind(event.target.value === 'pages-project' ? 'pages-project' : 'workers-script')}
+            >
+              <option value="workers-script">Workers script</option>
+              <option value="pages-project">Pages project</option>
+            </select>
+          ) : (
+            <select
+              value={kind}
+              disabled={lockRouting === true}
+              onChange={(event) => {
+                const value = event.target.value;
+                setKind(value === 'organization' || value === 'environment' ? value : 'repository');
+              }}
+            >
+              <option value="repository">Repository</option>
+              <option value="organization">GitHub organization</option>
+              <option value="environment">GitHub environment</option>
+            </select>
+          )}
         </label>
         )}
         <label className="field">
-          <span className="field__label">{keyValue ? 'KV v2 mount' : 'Owner'}</span>
+          <span className="field__label">{keyValue ? 'KV v2 mount' : cloudflare ? 'Account id' : 'Owner'}</span>
           <input value={owner} disabled={lockRouting === true} onChange={(event) => setOwner(event.target.value)} />
         </label>
+        {kind === 'pages-project' ? (
+          <label className="field">
+            <span className="field__label">Pages environment</span>
+            <select
+              value={destinationEnvironment || 'production'}
+              disabled={lockRouting === true}
+              onChange={(event) => setDestinationEnvironment(event.target.value === 'preview' ? 'preview' : 'production')}
+            >
+              <option value="production">production</option>
+              <option value="preview">preview</option>
+            </select>
+          </label>
+        ) : null}
         {effectiveKind !== 'organization' ? (
           <label className="field">
-            <span className="field__label">{keyValue ? 'Path prefix' : 'Repository'}</span>
+            <span className="field__label">{keyValue ? 'Path prefix' : kind === 'workers-script' ? 'Script' : kind === 'pages-project' ? 'Project' : 'Repository'}</span>
             <input value={name} disabled={lockRouting === true} onChange={(event) => setName(event.target.value)} />
           </label>
         ) : (
@@ -1474,6 +1494,7 @@ function TargetDetail({
           {editing ? (
             <TargetForm
               title="Edit keys and prefix"
+              provider={target.destination_kind === 'workers-script' || target.destination_kind === 'pages-project' ? 'cloudflare' : undefined}
               environments={[{ id: target.environment_id, name: environmentName(target.environment_id) }]}
               keys={keys}
               initial={target}

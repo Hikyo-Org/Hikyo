@@ -19,6 +19,7 @@ it.each([
   ['forgejo', 'Forgejo'],
   ['github-actions', 'GitHub Actions'],
   ['vault-kv', 'Vault / OpenBao KV'],
+  ['cloudflare', 'Cloudflare Workers & Pages'],
   ['future-provider', 'future-provider'],
 ])('renders the %s provider through the response decoder', async (provider, label) => {
   vi.stubGlobal('fetch', vi.fn((...args: Parameters<typeof fetch>) => {
@@ -204,5 +205,31 @@ it('TargetForm addresses a vault-kv target by mount and path prefix on the repos
       visibility: '',
       allow_environment_create: false,
     });
+  } finally {
+    await unmount();
+  }
+});
+
+it('offers Cloudflare destinations and sends one Pages environment', async () => {
+  const submitted: AdapterTargetInput[] = [];
+  const { container, unmount } = await renderForm(<TargetForm title="Add target" provider="cloudflare" environments={[{ id: 'env_1', name: 'prod' }]} keys={[]} busy={false} onCancel={() => undefined} onSubmit={(input) => { submitted.push(input); return Promise.resolve(); }} />);
+  try {
+    const field = (label: string) => [...container.querySelectorAll('label')].find((node) => node.textContent?.startsWith(label));
+    const kind = field('Destination kind')?.querySelector('select');
+    if (!(kind instanceof HTMLSelectElement)) throw new Error('kind missing');
+    expect([...kind.options].map((option) => option.value)).toEqual(['workers-script', 'pages-project']);
+    const form = container.querySelector('form');
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[0]?.destination_kind).toBe('workers-script');
+    expect(submitted[0]?.destination_environment).toBe('');
+    await act(async () => selectValue(kind, 'pages-project'));
+    const environment = field('Pages environment')?.querySelector('select');
+    if (!(environment instanceof HTMLSelectElement)) throw new Error('pages environment missing');
+    await act(async () => selectValue(environment, 'preview'));
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[1]?.destination_kind).toBe('pages-project');
+    expect(submitted[1]?.destination_environment).toBe('preview');
+    expect(submitted[1]?.allow_environment_create).toBe(false);
+    expect(field('Account id')).toBeDefined();
   } finally { await unmount(); }
 });
