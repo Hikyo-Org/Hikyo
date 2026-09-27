@@ -330,8 +330,10 @@ func decide(meta SecretMetadata, found bool, state adapter.LedgerState, targetID
 	ours := current != "" && (slices.Contains(meta.Stages[current], CurrentStage) || meta.Tags[VersionTag] == current)
 	// Once Hikyo has written a secret, or created it, any AWSCURRENT that is
 	// not Hikyo's was written by someone else. An adopted secret Hikyo never
-	// wrote is the one case where a foreign AWSCURRENT is expected.
-	if current != "" && !ours && (written || tagged) {
+	// wrote is the one case where a foreign AWSCURRENT is expected, including
+	// when its ownership tag landed but the response was lost. Owned authority
+	// alone cannot override evidence of an earlier Hikyo value version.
+	if current != "" && !ours && (written || meta.Tags[VersionTag] != "" || (tagged && state != adapter.Owned)) {
 		return writePlan{conflict: "AWSCURRENT version " + current + " was written outside Hikyo; tag the secret " + VersionTag + "=" + current + " to let Hikyo overwrite it"}
 	}
 	if ours && current == token {
@@ -427,7 +429,7 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 	}
 	if plan.tag {
 		if err := m.API.TagSecret(ctx, row.EffectiveName, tags); err != nil {
-			return err
+			return errors.Join(errOwnershipTag, err)
 		}
 	}
 	if plan.put {
@@ -444,11 +446,18 @@ func (m *Module) apply(ctx context.Context, req adapter.SyncRequest, row adapter
 	return nil
 }
 
+// errOwnershipTag means the adopted secret's value has not been written.
+// Whether its ownership tag landed or not, explicit adoption remains valid.
+var errOwnershipTag = errors.New("aws-secrets-manager: recording adopted ownership tag")
+
 // finishFailure settles an attempted write. A refusal AWS answered is a
 // definite failure; anything else may have landed and stays dispatched so the
 // replay reuses the same idempotency token.
 func (m *Module) finishFailure(ctx context.Context, journal adapter.Journal, effect adapter.Effect, state adapter.LedgerState, err error) (rowStatus, error) {
 	completion := adapter.Completion{Outcome: adapter.OutcomeUnknown, State: adapter.Dispatched}
+	if errors.Is(err, errOwnershipTag) {
+		completion.State = state
+	}
 	conflict := errors.Is(err, adapter.ErrConflict)
 	if IsDefinite(err) || conflict {
 		completion = adapter.Completion{Outcome: adapter.OutcomeFailure, State: state, Conflict: conflict}

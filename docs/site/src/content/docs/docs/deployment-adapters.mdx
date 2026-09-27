@@ -437,7 +437,11 @@ is created (before its first value). Every Hikyo write sets the `AWSCURRENT` and
 A VPC endpoint origin (or a local emulator) needs `region` in the descriptor
 (`--aws-region`). Private addresses need an entry in
 `HIKYO_ADAPTER_EGRESS_POLICY_FILE`. HTTPS is always required. The workload
-identity modes always use AWS's regional STS endpoint, because STS receives
+identity modes accept only recognized AWS Secrets Manager regional, FIPS,
+China, or VPC endpoint DNS names, with the endpoint region matching the
+access descriptor. An egress-policy entry does not authorize an arbitrary
+host to receive the node's credentials. Emulators require `static` credentials.
+Workload identity modes always use AWS's regional STS endpoint, because STS receives
 the node's own identity material; only `static` credentials may name a
 different STS endpoint (`sts_origin`, `--aws-sts-origin`), for an emulator.
 ## Vault/OpenBao KV v2

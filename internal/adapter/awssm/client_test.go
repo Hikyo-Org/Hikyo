@@ -255,7 +255,7 @@ func TestWorkloadIdentityAlwaysUsesAWSSTS(t *testing.T) {
 	if _, err := resolveRoute("https://vpce-1.secretsmanager.eu-west-1.vpce.amazonaws.com", role); err == nil {
 		t.Fatal("web identity accepted a tenant-configured STS endpoint")
 	}
-	if r, _ := resolveRoute("https://sm.example", Descriptor{Mode: AuthAmbient, Region: "cn-north-1"}); r.sts != "https://sts.cn-north-1.amazonaws.com.cn" {
+	if r, _ := resolveRoute("https://vpce-1.secretsmanager.cn-north-1.vpce.amazonaws.com.cn", Descriptor{Mode: AuthAmbient, Region: "cn-north-1"}); r.sts != "https://sts.cn-north-1.amazonaws.com.cn" {
 		t.Fatalf("china region sts = %q", r.sts)
 	}
 }
