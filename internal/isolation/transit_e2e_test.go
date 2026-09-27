@@ -540,6 +540,10 @@ func runTransitScheduler(t *testing.T, db *store.DB, svc *service.Transit, ext *
 			t.Fatalf("purged %d before the delay: %v", n, err)
 		}
 		svc.Now = func() time.Time { return start.Add(3*time.Hour + 25*time.Hour) }
+		// Once the delay has elapsed the purge may already be destroying
+		// material, so the cancel window is closed.
+		_, err := svc.ChangeKeyState(ctx, me, transitScope, k.Name, "cancel-deletion", 0)
+		wantConflictCause(t, err, "state")
 		if n, err := svc.PurgeDue(ctx); err != nil || n < 1 {
 			t.Fatalf("purge = %d, %v", n, err)
 		}

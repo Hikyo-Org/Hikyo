@@ -168,7 +168,10 @@ the operator raises `min_decrypt_version` and trims.
 
 `schedule-deletion` takes a delay of at least 24 hours and at most 90 days
 (default 7 days). `cancel-deletion` returns the key to `disabled`, never
-straight to `active`, so reviving a key is two deliberate acts. When the delay
+straight to `active`, so reviving a key is two deliberate acts. It is accepted
+only while the delay is running: once `deletion_after` has passed, the key is
+committed to destruction and no transition revives it, because the purge may
+already have destroyed part of its external material. When the delay
 elapses, the scheduler erases every version's material (software custody) or
 asks the external provider to destroy it, and leaves a `destroyed` tombstone so
 the id is never reused. An external provider that is unavailable at purge time

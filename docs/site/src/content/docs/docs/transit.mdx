@@ -156,9 +156,11 @@ hikyo transit key schedule-deletion payments --env prod --delay 168h
 hikyo transit key cancel-deletion payments --env prod   # back to disabled, never straight to active
 ```
 
-Deletion waits at least 24 hours (7 days by default, 90 at most). When the delay
-has passed, the scheduler erases every version's material and leaves a tombstone,
-so the key's id is never reused; the name becomes free again.
+Deletion waits at least 24 hours (7 days by default, 90 at most). You can cancel
+it only while that delay is running; once it has passed, the key can no longer
+be revived. When the delay has passed, the scheduler erases every version's
+material and leaves a tombstone, so the key's id is never reused; the name
+becomes free again.
 
 **Compromise.** `hikyo transit key compromise` marks every existing version
 compromised. Hikyo then refuses to produce new output under those versions (so

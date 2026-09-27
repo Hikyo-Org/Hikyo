@@ -12143,7 +12143,9 @@ paths:
       description: |
         Every transition fails closed: a disabled or pending-deletion key serves
         nothing, a retired key only decrypts and verifies, and cancelling a
-        deletion returns the key to disabled, never straight to active.
+        deletion returns the key to disabled, never straight to active. A
+        deletion can be cancelled only before its deletion_after; after that the
+        key is committed to destruction and the change is refused (409).
       x-hikyo-class: tenant
       x-hikyo-operation: transit.key-lifecycle
       x-hikyo-formula: [crypto-manage@project]

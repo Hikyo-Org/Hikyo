@@ -471,11 +471,14 @@ func (r transitQueries) ChangeState(ctx context.Context, p authz.Proof, m Transi
 	if m.To == "pending-deletion" {
 		deletionAfter = r.db.Stamp(m.DeletionAfter)
 	}
-	args := []any{m.To, deletionAfter, r.db.Stamp(m.At), m.KeyID, org, project, env}
+	// A pending-deletion key whose delay has elapsed is committed to
+	// destruction: the purge may already have destroyed external material, so
+	// no transition may revive it (it stays pending-deletion until Destroy).
+	args := []any{m.To, deletionAfter, r.db.Stamp(m.At), m.KeyID, org, project, env, r.db.Stamp(m.At)}
 	for _, s := range m.From {
 		args = append(args, s)
 	}
-	rows, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET state=?,deletion_after=?,updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND state IN (`+strings.TrimSuffix(strings.Repeat("?,", len(m.From)), ",")+`)`), args...)
+	rows, err := r.db.Exec(ctx, r.db.SQL(`UPDATE transit_keys SET state=?,deletion_after=?,updated_at=? WHERE id=? AND org_id=? AND project_id=? AND environment_id=? AND (state<>'pending-deletion' OR deletion_after>?) AND state IN (`+strings.TrimSuffix(strings.Repeat("?,", len(m.From)), ",")+`)`), args...)
 	if err != nil {
 		return err
 	}
