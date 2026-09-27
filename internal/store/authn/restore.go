@@ -171,7 +171,7 @@ func (r *Resolver) InvalidateRestoredDynamicProviderCredentials(ctx context.Cont
 // HoldRestoredPKIIssuers suspends minting on every restored CA issuer (#154,
 // pki ADR D8): a restore can resurrect certificates revoked after the backup
 // was taken, so no issuer mints again until an operator reconciles it. An
-// archive older than migration 00060 has no pki_issuers table and nothing to
+// archive older than migration 00061 has no pki_issuers table and nothing to
 // hold; its presence is read from the restored catalog, like the post-legacy
 // credential tables below.
 func (r *Resolver) HoldRestoredPKIIssuers(ctx context.Context) error {
