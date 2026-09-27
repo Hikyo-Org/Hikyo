@@ -3,10 +3,11 @@ package isolation
 import (
 	"context"
 	"errors"
-	"github.com/Hikyo-Org/hikyo/internal/authz"
-	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/authz"
+	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
@@ -121,6 +122,32 @@ func TestPKIParentDeletionRetainsCertificateHistory(t *testing.T) {
 		}
 		if err := ident.DeleteServiceAccount(ctx, human, prjScope(), empty.ID); err != nil {
 			t.Fatalf("unreferenced account deletion: %v", err)
+		}
+	})
+}
+
+// Ordinary runtime storage never treats missing PKI tables as historical
+// recovery authority. A damaged current schema must refuse before revocation.
+func TestPKICurrentDeletionFailsClosedWithoutCertificateStorage(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		ctx := t.Context()
+		execRaw(t, db, `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('g_missing_pki_manage','usr_alice','manage-identities','org_a','prj_a1',NULL,`+ts+`)`)
+		ident := identitySvc(db)
+		human := service.LocalPrincipal(alice)
+		sa, err := ident.CreateServiceAccount(ctx, human, prjScope(), "retain-on-damage", domain.ClassWorkload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		credential, err := ident.MintCredential(ctx, human, prjScope(), sa.ID, service.MintRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		execRaw(t, db, "DROP TABLE pki_certificates")
+		if err := ident.DeleteServiceAccount(ctx, human, prjScope(), sa.ID); err == nil {
+			t.Fatal("current deletion bypassed missing PKI storage")
+		}
+		if got := authenticate(t, db, credential.Value); got.Principal != sa.Principal {
+			t.Fatal("failed current deletion revoked credential")
 		}
 	})
 }
