@@ -349,7 +349,10 @@ func runTransitData(ctx context.Context, ios IO, sub string, args []string) (ret
 	var bits int
 	var reveal, dangerous bool
 	st, flags, err := parseCommon("transit "+sub, ios, args, func(fs *flag.FlagSet) {
-		fs.StringVar(&aadFile, "aad-file", "", "associated data (the API's context) read from this file")
+		switch sub {
+		case "encrypt", "decrypt", "rewrap", "datakey":
+			fs.StringVar(&aadFile, "aad-file", "", "associated data (the API's context) read from this file")
+		}
 		switch sub {
 		case "datakey":
 			fs.IntVar(&bits, "bits", 256, "data key size: 128, 256 or 512")
