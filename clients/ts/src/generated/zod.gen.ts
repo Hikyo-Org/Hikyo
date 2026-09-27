@@ -783,6 +783,7 @@ export const zAdapterMoveTarget = z.object({
     destination_owner: z.string(),
     destination_name: z.string(),
     destination_environment: z.string(),
+    destination_scope: z.string(),
     destination_id: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     repository_id: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     visibility: z.enum([

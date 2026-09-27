@@ -840,11 +840,11 @@ type AdapterMoveJob struct {
 }
 
 type AdapterMoveTarget struct {
-	TargetID, EnvironmentID, DestinationKind, DestinationOwner, DestinationName, DestinationEnvironment, Visibility, NamePrefix string
-	DestinationID, RepositoryID                                                                                                 int64
-	SelectedRepositoryIDs                                                                                                       []int64
-	Orphaned                                                                                                                    []string
-	Jobs                                                                                                                        []AdapterMoveJob
+	TargetID, EnvironmentID, DestinationKind, DestinationOwner, DestinationName, DestinationEnvironment, DestinationScope, Visibility, NamePrefix string
+	DestinationID, RepositoryID                                                                                                                   int64
+	SelectedRepositoryIDs                                                                                                                         []int64
+	Orphaned                                                                                                                                      []string
+	Jobs                                                                                                                                          []AdapterMoveJob
 }
 
 type AdapterMove struct {

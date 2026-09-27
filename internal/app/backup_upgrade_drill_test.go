@@ -347,6 +347,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	}
 	if db.Engine() != store.EngineSQLite {
 		for _, query := range []string{
+			"ALTER TABLE adapter_route_move_claims DROP CONSTRAINT adapter_route_move_claims_provider_destination_name_unique",
+			"ALTER TABLE adapter_route_move_claims DROP COLUMN destination_scope",
+			"ALTER TABLE adapter_route_move_targets DROP COLUMN destination_scope",
+			"ALTER TABLE adapter_route_move_claims ADD CONSTRAINT adapter_route_move_claims_provider_destination_name_unique UNIQUE (provider_origin, destination_kind, destination_owner, destination_name, destination_environment, surface, normalized_name)",
 			"ALTER TABLE adapters DROP CONSTRAINT adapters_provider_options_check",
 			"ALTER TABLE adapters DROP COLUMN spki_pin",
 			"ALTER TABLE adapters DROP COLUMN ca_bundle_pem",

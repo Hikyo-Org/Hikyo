@@ -961,7 +961,7 @@ func (s *Adapters) applyTargetMove(ctx context.Context, r store.Repos, az *authz
 		Target: store.AdapterTargetMutation{
 			ID: request.TargetID, AdapterID: current.AdapterID, EnvironmentID: request.Target.EnvironmentID,
 			DestinationKind: request.Target.DestinationKind, DestinationOwner: request.Target.DestinationOwner,
-			DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment,
+			DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment, DestinationScope: request.Target.DestinationScope,
 			Visibility: request.Target.Visibility, SelectedRepositoryIDs: append([]int64(nil), request.Target.SelectedRepositoryIDs...), NamePrefix: request.Target.NamePrefix,
 			KeyIDs: append([]string(nil), request.Target.KeyIDs...),
 		},
@@ -1179,11 +1179,17 @@ func (s *Adapters) ResumeTargetMove(ctx context.Context, actor Actor, scope doma
 		if err := s.requireAdapterCeremony(ctx, az, caller, scope, adapterEnvironmentSet(environments), authz.OpAdapterConfigure, now); err != nil {
 			return err
 		}
+		if request.Target.DestinationScope == "" {
+			request.Target.DestinationScope = move.Targets[0].DestinationScope
+		}
 		out, err = r.Adapters().ReplaceMoveTarget(ctx, proof, moveID, store.AdapterTargetMutation{
 			ID: request.TargetID, AdapterID: move.AdapterID, EnvironmentID: request.Target.EnvironmentID,
 			DestinationKind: request.Target.DestinationKind, DestinationOwner: request.Target.DestinationOwner,
-			DestinationName: request.Target.DestinationName, NamePrefix: request.Target.NamePrefix,
-			KeyIDs: append([]string(nil), request.Target.KeyIDs...),
+			DestinationName: request.Target.DestinationName, DestinationEnvironment: request.Target.DestinationEnvironment,
+			DestinationScope: request.Target.DestinationScope, RepositoryID: move.Targets[0].RepositoryID,
+			Visibility: request.Target.Visibility, SelectedRepositoryIDs: append([]int64(nil), request.Target.SelectedRepositoryIDs...),
+			NamePrefix: request.Target.NamePrefix,
+			KeyIDs:     append([]string(nil), request.Target.KeyIDs...),
 		}, string(caller.Principal), now)
 		if err != nil {
 			return err

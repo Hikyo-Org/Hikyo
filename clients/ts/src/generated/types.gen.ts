@@ -931,6 +931,10 @@ export type AdapterMoveTarget = {
     destination_owner: string;
     destination_name: string;
     destination_environment: string;
+    /**
+     * GitLab environment_scope; empty for other providers.
+     */
+    destination_scope: string;
     destination_id: number;
     repository_id: number;
     visibility: '' | 'all' | 'private' | 'selected';

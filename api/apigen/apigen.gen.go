@@ -4402,6 +4402,9 @@ type AdapterMoveTarget struct {
 	DestinationName  string                 `json:"destination_name"`
 	DestinationOwner string                 `json:"destination_owner"`
 
+	// DestinationScope GitLab environment_scope; empty for other providers.
+	DestinationScope string `json:"destination_scope"`
+
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId         ID               `json:"environment_id"`
 	Jobs                  []AdapterMoveJob `json:"jobs"`
