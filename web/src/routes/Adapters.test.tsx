@@ -233,6 +233,9 @@ it('assembles the AWS access descriptor with only the fields the mode takes', ()
   expect(awsAccessComplete({ ...role, sessionSeconds: '' })).toBe(true);
   expect(awsAccessComplete({ ...role, sessionSeconds: 'abc' })).toBe(false);
   expect(awsAccessComplete({ ...role, sessionSeconds: '1800.5' })).toBe(false);
+  expect(awsAccessComplete({ ...role, sessionSeconds: '899' })).toBe(false);
+  expect(awsAccessComplete({ ...role, sessionSeconds: '3601' })).toBe(false);
+  expect(awsAccessComplete({ ...role, sessionSeconds: '3600' })).toBe(true);
   expect(JSON.parse(awsAccessDescriptor(role))).toEqual({ mode: 'assume-role', role_arn: 'arn:aws:iam::123456789012:role/hikyo', external_id: 'tenant', session_seconds: 1800 });
   expect(JSON.parse(awsAccessDescriptor({ ...role, mode: 'web-identity' }))).toEqual({ mode: 'web-identity', role_arn: 'arn:aws:iam::123456789012:role/hikyo', session_seconds: 1800 });
   expect(JSON.parse(awsAccessDescriptor({ ...emptyAwsAccess, mode: 'ambient', region: 'eu-west-1' }))).toEqual({ mode: 'ambient', region: 'eu-west-1' });

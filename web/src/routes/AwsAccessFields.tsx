@@ -54,6 +54,14 @@ export function awsAccessDescriptor(access: AwsAccess): string {
   return JSON.stringify(descriptor);
 }
 
+/** Blank means the server default; anything else must be an integer in 900-3600 (a non-integer would serialize as null). */
+function sessionSecondsValid(raw: string): boolean {
+  if (raw === '') return true;
+  if (!/^\d+$/.test(raw)) return false;
+  const seconds = Number(raw);
+  return seconds >= 900 && seconds <= 3600;
+}
+
 /** The minimum a mode needs before the form may submit; the server validates the rest. */
 export function awsAccessComplete(access: AwsAccess): boolean {
   switch (access.mode) {
@@ -61,8 +69,7 @@ export function awsAccessComplete(access: AwsAccess): boolean {
       return true;
     case 'assume-role':
     case 'web-identity':
-      // A non-integer duration would serialize as null and be sent silently.
-      return access.roleArn.trim() !== '' && /^\d*$/.test(access.sessionSeconds.trim());
+      return access.roleArn.trim() !== '' && sessionSecondsValid(access.sessionSeconds.trim());
     case 'static':
       return access.accessKeyId.trim() !== '' && access.secretAccessKey !== '';
   }

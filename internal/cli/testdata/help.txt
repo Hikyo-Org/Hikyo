@@ -166,7 +166,10 @@ adapters:
       [--aws-sts-origin <https-origin>] [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
   hikyo adapter list [-o table|json]
   hikyo adapter show <adapter> [-o table|json]
-  hikyo adapter update <adapter> --origin <https-origin>
+  hikyo adapter update <adapter> --origin <https-origin> [--stdin | --value-file PATH]
+      [--aws-auth ambient|assume-role|web-identity|static] [--aws-role-arn <arn>]
+      [--aws-external-id <id>] [--aws-session-seconds 900-3600] [--aws-access-key-id <id>]
+      [--aws-region <region>] [--aws-sts-origin <https-origin>]
   hikyo adapter update <adapter> --move <move-id> | --cancel-move
                                                    resume or cancel an attention-required origin move
   hikyo adapter update <adapter> --target <target> --env E --kind <kind>
