@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import type { AdapterTargetInput } from '../api/adapters.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
-import { Adapters, TargetForm } from './Adapters.tsx';
+import { Adapters, TargetForm, targetMappingText } from './Adapters.tsx';
 
 function selectValue(select: HTMLSelectElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
@@ -232,4 +232,18 @@ it('offers Cloudflare destinations and sends one Pages environment', async () =>
     expect(submitted[1]?.allow_environment_create).toBe(false);
     expect(field('Account id')).toBeDefined();
   } finally { await unmount(); }
+});
+
+it.each([
+  ['forgejo', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
+  ['github-actions', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
+  ['cloudflare', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['vault-kv', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['sealed-webhook', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['future-provider', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+])('renders %s destination mapping without another provider syntax', (provider, expected) => {
+  expect(targetMappingText(provider, [
+    { key_id: 'key_token', canonical_name: 'TOKEN', surface: 'secret', effective_name: 'P_TOKEN' },
+    { key_id: 'key_mode', canonical_name: 'MODE', surface: 'variable', effective_name: 'P_MODE' },
+  ])).toBe(expected);
 });
