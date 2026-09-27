@@ -550,6 +550,204 @@ export type SshCertificateIssue = {
     private_key?: string | null;
 };
 
+export type TransitKeyName = string;
+
+export type TransitAlgorithm = 'xchacha20-poly1305' | 'ed25519' | 'hmac-sha256';
+
+export type TransitCustody = 'software' | 'external';
+
+export type TransitOperation = 'encrypt' | 'decrypt' | 'rewrap' | 'datakey' | 'datakey-plaintext' | 'sign' | 'verify' | 'hmac' | 'hmac-verify';
+
+export type TransitKeyState = 'active' | 'retired' | 'disabled' | 'pending-deletion';
+
+export type TransitCaller = {
+    principal_id: string;
+    operations: Array<TransitOperation>;
+};
+
+export type TransitKeyVersion = {
+    version: number;
+    /**
+     * Where the version's material lives. The material itself is never returned.
+     */
+    material: 'sealed' | 'external' | 'erased';
+    /**
+     * The Ed25519 public key (standard base64) for signing keys; public metadata.
+     */
+    public_key?: string | null;
+    created_at: Timestamp;
+};
+
+export type TransitKey = {
+    id: Id;
+    environment_id: Id;
+    name: TransitKeyName;
+    algorithm: TransitAlgorithm;
+    custody: TransitCustody;
+    allowed_operations: Array<TransitOperation>;
+    /**
+     * Always false; key material never leaves custody.
+     */
+    exportable: boolean;
+    state: TransitKeyState;
+    latest_version: number;
+    min_encrypt_version: number;
+    min_decrypt_version: number;
+    /**
+     * Versions at or below this are compromised; zero means none.
+     */
+    compromised_through_version: number;
+    rotation_period_seconds: number;
+    rotation_due: boolean;
+    deletion_after?: string | null;
+    created_by: string;
+    created_at: Timestamp;
+    updated_at: Timestamp;
+    versions: Array<TransitKeyVersion>;
+    callers: Array<TransitCaller>;
+};
+
+export type TransitKeyList = {
+    items: Array<TransitKey>;
+};
+
+export type CreateTransitKeyRequest = {
+    name: TransitKeyName;
+    algorithm: TransitAlgorithm;
+    custody?: TransitCustody;
+    allowed_operations?: Array<TransitOperation>;
+    rotation_period_seconds?: number;
+    /**
+     * Must be false or absent; exportable keys are refused.
+     */
+    exportable?: boolean;
+    callers?: Array<TransitCaller>;
+};
+
+export type ConfigureTransitKeyRequest = {
+    min_encrypt_version?: number;
+    min_decrypt_version?: number;
+    rotation_period_seconds?: number;
+    callers?: Array<TransitCaller>;
+};
+
+export type TransitLifecycleRequest = {
+    action: 'disable' | 'enable' | 'retire' | 'compromise' | 'schedule-deletion' | 'cancel-deletion';
+    /**
+     * schedule-deletion only; between one and ninety days, seven by default.
+     */
+    delay_seconds?: number;
+};
+
+export type TransitTrimResult = {
+    key: TransitKey;
+    versions_deleted: number;
+};
+
+export type TransitEncryptRequest = {
+    /**
+     * Standard base64.
+     */
+    plaintext: string;
+    /**
+     * Standard base64.
+     */
+    context?: string;
+    key_version?: number;
+};
+
+export type TransitDecryptRequest = {
+    /**
+     * A transit ciphertext, `hikyo:v<version>:<base64url>`.
+     */
+    ciphertext: string;
+    /**
+     * Standard base64.
+     */
+    context?: string;
+};
+
+export type TransitCiphertextResult = {
+    ciphertext: string;
+    key_version: number;
+};
+
+export type TransitDecryptResult = {
+    /**
+     * Standard base64. Display-once; never stored or logged.
+     */
+    plaintext: string;
+    key_version: number;
+};
+
+export type TransitDataKeyRequest = {
+    bits?: 128 | 256 | 512;
+    /**
+     * Standard base64.
+     */
+    context?: string;
+    /**
+     * Also return the data key in plaintext; requires datakey-plaintext.
+     */
+    plaintext?: boolean;
+};
+
+export type TransitDataKeyResult = {
+    ciphertext: string;
+    key_version: number;
+    /**
+     * Standard base64 data key when requested. Display-once.
+     */
+    plaintext?: string | null;
+};
+
+export type TransitSignRequest = {
+    /**
+     * Standard base64.
+     */
+    message: string;
+    key_version?: number;
+};
+
+export type TransitSignatureResult = {
+    signature: string;
+    key_version: number;
+};
+
+export type TransitVerifyRequest = {
+    /**
+     * Standard base64.
+     */
+    message: string;
+    signature: string;
+};
+
+export type TransitVerifyResult = {
+    valid: boolean;
+    key_version: number;
+};
+
+export type TransitHmacRequest = {
+    /**
+     * Standard base64.
+     */
+    message: string;
+    key_version?: number;
+};
+
+export type TransitHmacResult = {
+    mac: string;
+    key_version: number;
+};
+
+export type TransitHmacVerifyRequest = {
+    /**
+     * Standard base64.
+     */
+    message: string;
+    mac: string;
+};
+
 export type AdapterConflictEntry = {
     surface: 'secret' | 'variable';
     effective_name: string;
@@ -5106,6 +5304,11 @@ export type AdapterId = Id;
 export type AdapterTargetId = Id;
 
 export type DynamicProviderId = Id;
+
+/**
+ * The transit key's name, unique among the environment's live keys.
+ */
+export type TransitKeyName2 = TransitKeyName;
 
 export type LeaseId = Id;
 
@@ -27024,3 +27227,1272 @@ export type RevokeSshCertificateResponses = {
 };
 
 export type RevokeSshCertificateResponse = RevokeSshCertificateResponses[keyof RevokeSshCertificateResponses];
+
+export type ListTransitKeysData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys';
+};
+
+export type ListTransitKeysErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListTransitKeysError = ListTransitKeysErrors[keyof ListTransitKeysErrors];
+
+export type ListTransitKeysResponses = {
+    /**
+     * Transit keys.
+     */
+    200: TransitKeyList;
+};
+
+export type ListTransitKeysResponse = ListTransitKeysResponses[keyof ListTransitKeysResponses];
+
+export type CreateTransitKeyData = {
+    body: CreateTransitKeyRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys';
+};
+
+export type CreateTransitKeyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateTransitKeyError = CreateTransitKeyErrors[keyof CreateTransitKeyErrors];
+
+export type CreateTransitKeyResponses = {
+    /**
+     * The created key.
+     */
+    201: TransitKey;
+};
+
+export type CreateTransitKeyResponse = CreateTransitKeyResponses[keyof CreateTransitKeyResponses];
+
+export type ShowTransitKeyData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}';
+};
+
+export type ShowTransitKeyErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowTransitKeyError = ShowTransitKeyErrors[keyof ShowTransitKeyErrors];
+
+export type ShowTransitKeyResponses = {
+    /**
+     * Transit key.
+     */
+    200: TransitKey;
+};
+
+export type ShowTransitKeyResponse = ShowTransitKeyResponses[keyof ShowTransitKeyResponses];
+
+export type ConfigureTransitKeyData = {
+    body: ConfigureTransitKeyRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}';
+};
+
+export type ConfigureTransitKeyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ConfigureTransitKeyError = ConfigureTransitKeyErrors[keyof ConfigureTransitKeyErrors];
+
+export type ConfigureTransitKeyResponses = {
+    /**
+     * The reconfigured key.
+     */
+    200: TransitKey;
+};
+
+export type ConfigureTransitKeyResponse = ConfigureTransitKeyResponses[keyof ConfigureTransitKeyResponses];
+
+export type RotateTransitKeyData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate';
+};
+
+export type RotateTransitKeyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RotateTransitKeyError = RotateTransitKeyErrors[keyof RotateTransitKeyErrors];
+
+export type RotateTransitKeyResponses = {
+    /**
+     * The rotated key.
+     */
+    200: TransitKey;
+};
+
+export type RotateTransitKeyResponse = RotateTransitKeyResponses[keyof RotateTransitKeyResponses];
+
+export type ChangeTransitKeyStateData = {
+    body: TransitLifecycleRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle';
+};
+
+export type ChangeTransitKeyStateErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ChangeTransitKeyStateError = ChangeTransitKeyStateErrors[keyof ChangeTransitKeyStateErrors];
+
+export type ChangeTransitKeyStateResponses = {
+    /**
+     * The key after the transition.
+     */
+    200: TransitKey;
+};
+
+export type ChangeTransitKeyStateResponse = ChangeTransitKeyStateResponses[keyof ChangeTransitKeyStateResponses];
+
+export type TrimTransitKeyData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim';
+};
+
+export type TrimTransitKeyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TrimTransitKeyError = TrimTransitKeyErrors[keyof TrimTransitKeyErrors];
+
+export type TrimTransitKeyResponses = {
+    /**
+     * The trimmed key.
+     */
+    200: TransitTrimResult;
+};
+
+export type TrimTransitKeyResponse = TrimTransitKeyResponses[keyof TrimTransitKeyResponses];
+
+export type TransitEncryptData = {
+    body: TransitEncryptRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt';
+};
+
+export type TransitEncryptErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TransitEncryptError = TransitEncryptErrors[keyof TransitEncryptErrors];
+
+export type TransitEncryptResponses = {
+    /**
+     * The ciphertext.
+     */
+    200: TransitCiphertextResult;
+};
+
+export type TransitEncryptResponse = TransitEncryptResponses[keyof TransitEncryptResponses];
+
+export type TransitDecryptData = {
+    body: TransitDecryptRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt';
+};
+
+export type TransitDecryptErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TransitDecryptError = TransitDecryptErrors[keyof TransitDecryptErrors];
+
+export type TransitDecryptResponses = {
+    /**
+     * The plaintext.
+     */
+    200: TransitDecryptResult;
+};
+
+export type TransitDecryptResponse = TransitDecryptResponses[keyof TransitDecryptResponses];
+
+export type TransitRewrapData = {
+    body: TransitDecryptRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap';
+};
+
+export type TransitRewrapErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TransitRewrapError = TransitRewrapErrors[keyof TransitRewrapErrors];
+
+export type TransitRewrapResponses = {
+    /**
+     * The rewrapped ciphertext.
+     */
+    200: TransitCiphertextResult;
+};
+
+export type TransitRewrapResponse = TransitRewrapResponses[keyof TransitRewrapResponses];
+
+export type TransitDataKeyData = {
+    body: TransitDataKeyRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey';
+};
+
+export type TransitDataKeyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TransitDataKeyError = TransitDataKeyErrors[keyof TransitDataKeyErrors];
+
+export type TransitDataKeyResponses = {
+    /**
+     * The data key.
+     */
+    200: TransitDataKeyResult;
+};
+
+export type TransitDataKeyResponse = TransitDataKeyResponses[keyof TransitDataKeyResponses];
+
+export type TransitSignData = {
+    body: TransitSignRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign';
+};
+
+export type TransitSignErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TransitSignError = TransitSignErrors[keyof TransitSignErrors];
+
+export type TransitSignResponses = {
+    /**
+     * The signature.
+     */
+    200: TransitSignatureResult;
+};
+
+export type TransitSignResponse = TransitSignResponses[keyof TransitSignResponses];
+
+export type TransitVerifyData = {
+    body: TransitVerifyRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify';
+};
+
+export type TransitVerifyErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TransitVerifyError = TransitVerifyErrors[keyof TransitVerifyErrors];
+
+export type TransitVerifyResponses = {
+    /**
+     * The verification result.
+     */
+    200: TransitVerifyResult;
+};
+
+export type TransitVerifyResponse = TransitVerifyResponses[keyof TransitVerifyResponses];
+
+export type TransitHmacData = {
+    body: TransitHmacRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac';
+};
+
+export type TransitHmacErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TransitHmacError = TransitHmacErrors[keyof TransitHmacErrors];
+
+export type TransitHmacResponses = {
+    /**
+     * The MAC.
+     */
+    200: TransitHmacResult;
+};
+
+export type TransitHmacResponse = TransitHmacResponses[keyof TransitHmacResponses];
+
+export type TransitVerifyHmacData = {
+    body: TransitHmacVerifyRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        /**
+         * The transit key's name, unique among the environment's live keys.
+         */
+        transit_key: TransitKeyName;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify';
+};
+
+export type TransitVerifyHmacErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * The instance-wide admission budget or a per-source limit is
+     * exhausted. Uniform on every path, with no unbounded work performed.
+     *
+     */
+    429: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type TransitVerifyHmacError = TransitVerifyHmacErrors[keyof TransitVerifyHmacErrors];
+
+export type TransitVerifyHmacResponses = {
+    /**
+     * The verification result.
+     */
+    200: TransitVerifyResult;
+};
+
+export type TransitVerifyHmacResponse = TransitVerifyHmacResponses[keyof TransitVerifyHmacResponses];

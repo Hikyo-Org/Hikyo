@@ -82,15 +82,17 @@ governance tickets is the human's.
   seed kept in `testdata/fuzz`) and `FuzzTransitDecrypt`.
 - `internal/transit`: custody seam, software provider, conformance suite for
   both providers.
-- Migration `00060_transit_keys` (both engines), `store.TransitRepo`
+- Migration `00062_transit_keys` (both engines), `store.TransitRepo`
   (proof-bound, env chain from the proof), `store.TransitRuntime` (gauges),
   `buildcompat/development.json` regenerated against the pinned PostgreSQL 18
   image, upgrade-drill reversal extended.
+  Rebased after #821 (`00060`, sealed webhook) and #824 (`00061`, SSH
+  certificates) landed: transit is `00062` and API revision 7.
 - `authz`: seven operations, 19 store ops, scheduler doors; `audit`: seven
   closed event types with a forbidden-content test; `domain`: the two atoms.
 - `service.Transit`: management, the data-plane core `useKey`, `RotateDue`,
   `PurgeDue`; reencrypt walks `transit_key_versions`.
-- API revision 6: 15 operations under
+- API revision 7: 15 operations under
   `.../environments/{environment}/transit-keys`, handlers, 503 mapping for an
   unavailable custody provider, regenerated Go and TypeScript clients,
   no-proxy pins, parity rows (`issue: 820`).

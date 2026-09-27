@@ -418,6 +418,184 @@ export const zSshCertificateIssue = z.object({
     private_key: z.string().nullish()
 });
 
+export const zTransitKeyName = z.string().min(1).max(63).regex(/^[a-z0-9][a-z0-9._-]{0,62}$/);
+
+export const zTransitAlgorithm = z.enum([
+    'xchacha20-poly1305',
+    'ed25519',
+    'hmac-sha256'
+]);
+
+export const zTransitCustody = z.enum(['software', 'external']);
+
+export const zTransitOperation = z.enum([
+    'encrypt',
+    'decrypt',
+    'rewrap',
+    'datakey',
+    'datakey-plaintext',
+    'sign',
+    'verify',
+    'hmac',
+    'hmac-verify'
+]);
+
+export const zTransitKeyState = z.enum([
+    'active',
+    'retired',
+    'disabled',
+    'pending-deletion'
+]);
+
+export const zTransitCaller = z.object({
+    principal_id: z.string().min(1).max(128),
+    operations: z.array(zTransitOperation).min(1).max(9)
+});
+
+export const zTransitKeyVersion = z.object({
+    version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    material: z.enum([
+        'sealed',
+        'external',
+        'erased'
+    ]),
+    public_key: z.string().nullish(),
+    created_at: zTimestamp
+});
+
+export const zTransitKey = z.object({
+    id: zId,
+    environment_id: zId,
+    name: zTransitKeyName,
+    algorithm: zTransitAlgorithm,
+    custody: zTransitCustody,
+    allowed_operations: z.array(zTransitOperation),
+    exportable: z.boolean(),
+    state: zTransitKeyState,
+    latest_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    min_encrypt_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    min_decrypt_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    compromised_through_version: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    rotation_period_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    rotation_due: z.boolean(),
+    deletion_after: z.iso.datetime().nullish(),
+    created_by: z.string(),
+    created_at: zTimestamp,
+    updated_at: zTimestamp,
+    versions: z.array(zTransitKeyVersion),
+    callers: z.array(zTransitCaller)
+});
+
+export const zTransitKeyList = z.object({
+    items: z.array(zTransitKey)
+});
+
+export const zCreateTransitKeyRequest = z.object({
+    name: zTransitKeyName,
+    algorithm: zTransitAlgorithm,
+    custody: zTransitCustody.optional(),
+    allowed_operations: z.array(zTransitOperation).max(9).optional(),
+    rotation_period_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    exportable: z.boolean().optional(),
+    callers: z.array(zTransitCaller).max(64).optional()
+});
+
+export const zConfigureTransitKeyRequest = z.object({
+    min_encrypt_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    min_decrypt_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    rotation_period_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    callers: z.array(zTransitCaller).max(64).optional()
+});
+
+export const zTransitLifecycleRequest = z.object({
+    action: z.enum([
+        'disable',
+        'enable',
+        'retire',
+        'compromise',
+        'schedule-deletion',
+        'cancel-deletion'
+    ]),
+    delay_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zTransitTrimResult = z.object({
+    key: zTransitKey,
+    versions_deleted: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitEncryptRequest = z.object({
+    plaintext: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    context: z.string().max(1368).regex(/^[A-Za-z0-9+\/]*={0,2}$/).optional(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zTransitDecryptRequest = z.object({
+    ciphertext: z.string().min(1).max(131072),
+    context: z.string().max(1368).regex(/^[A-Za-z0-9+\/]*={0,2}$/).optional()
+});
+
+export const zTransitCiphertextResult = z.object({
+    ciphertext: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitDecryptResult = z.object({
+    plaintext: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitDataKeyRequest = z.object({
+    bits: z.union([
+        z.literal(128),
+        z.literal(256),
+        z.literal(512)
+    ]).optional(),
+    context: z.string().max(1368).regex(/^[A-Za-z0-9+\/]*={0,2}$/).optional(),
+    plaintext: z.boolean().optional()
+});
+
+export const zTransitDataKeyResult = z.object({
+    ciphertext: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    plaintext: z.string().nullish()
+});
+
+export const zTransitSignRequest = z.object({
+    message: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zTransitSignatureResult = z.object({
+    signature: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitVerifyRequest = z.object({
+    message: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    signature: z.string().min(1).max(131072)
+});
+
+export const zTransitVerifyResult = z.object({
+    valid: z.boolean(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitHmacRequest = z.object({
+    message: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zTransitHmacResult = z.object({
+    mac: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitHmacVerifyRequest = z.object({
+    message: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    mac: z.string().min(1).max(131072)
+});
+
 export const zAdapterConflictEntry = z.object({
     surface: z.enum(['secret', 'variable']),
     effective_name: z.string()
@@ -3791,6 +3969,11 @@ export const zAdapterId = zId;
 export const zAdapterTargetId = zId;
 
 export const zDynamicProviderId = zId;
+
+/**
+ * The transit key's name, unique among the environment's live keys.
+ */
+export const zTransitKeyName2 = zTransitKeyName;
 
 export const zLeaseId = zId;
 
@@ -7469,3 +7652,203 @@ export const zRevokeSshCertificatePath = z.object({
  * Certificate after revocation.
  */
 export const zRevokeSshCertificateResponse = zSshCertificate;
+
+export const zListTransitKeysPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Transit keys.
+ */
+export const zListTransitKeysResponse = zTransitKeyList;
+
+export const zCreateTransitKeyBody = zCreateTransitKeyRequest;
+
+export const zCreateTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The created key.
+ */
+export const zCreateTransitKeyResponse = zTransitKey;
+
+export const zShowTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * Transit key.
+ */
+export const zShowTransitKeyResponse = zTransitKey;
+
+export const zConfigureTransitKeyBody = zConfigureTransitKeyRequest;
+
+export const zConfigureTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The reconfigured key.
+ */
+export const zConfigureTransitKeyResponse = zTransitKey;
+
+export const zRotateTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The rotated key.
+ */
+export const zRotateTransitKeyResponse = zTransitKey;
+
+export const zChangeTransitKeyStateBody = zTransitLifecycleRequest;
+
+export const zChangeTransitKeyStatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The key after the transition.
+ */
+export const zChangeTransitKeyStateResponse = zTransitKey;
+
+export const zTrimTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The trimmed key.
+ */
+export const zTrimTransitKeyResponse = zTransitTrimResult;
+
+export const zTransitEncryptBody = zTransitEncryptRequest;
+
+export const zTransitEncryptPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The ciphertext.
+ */
+export const zTransitEncryptResponse = zTransitCiphertextResult;
+
+export const zTransitDecryptBody = zTransitDecryptRequest;
+
+export const zTransitDecryptPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The plaintext.
+ */
+export const zTransitDecryptResponse = zTransitDecryptResult;
+
+export const zTransitRewrapBody = zTransitDecryptRequest;
+
+export const zTransitRewrapPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The rewrapped ciphertext.
+ */
+export const zTransitRewrapResponse = zTransitCiphertextResult;
+
+export const zTransitDataKeyBody = zTransitDataKeyRequest;
+
+export const zTransitDataKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The data key.
+ */
+export const zTransitDataKeyResponse = zTransitDataKeyResult;
+
+export const zTransitSignBody = zTransitSignRequest;
+
+export const zTransitSignPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The signature.
+ */
+export const zTransitSignResponse = zTransitSignatureResult;
+
+export const zTransitVerifyBody = zTransitVerifyRequest;
+
+export const zTransitVerifyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The verification result.
+ */
+export const zTransitVerifyResponse = zTransitVerifyResult;
+
+export const zTransitHmacBody = zTransitHmacRequest;
+
+export const zTransitHmacPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The MAC.
+ */
+export const zTransitHmacResponse = zTransitHmacResult;
+
+export const zTransitVerifyHmacBody = zTransitHmacVerifyRequest;
+
+export const zTransitVerifyHmacPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The verification result.
+ */
+export const zTransitVerifyHmacResponse = zTransitVerifyResult;

@@ -76,10 +76,12 @@ import {
   beginRecovery,
   cancelAdapterMove,
   changeEnvironmentParameter,
+  changeTransitKeyState,
   checkDefinitions,
   clearValue,
   cloneEnvironment,
   compromiseRetireSamlSpKey,
+  configureTransitKey,
   copyValues,
   createAdapter,
   createApprovalPolicy,
@@ -103,6 +105,7 @@ import {
   createServiceAccount,
   createSshCa,
   createSshProfile,
+  createTransitKey,
   declareValues,
   deleteAdapter,
   deleteApprovalPolicy,
@@ -215,6 +218,7 @@ import {
   listSshCas,
   listSshCertificates,
   listSshProfiles,
+  listTransitKeys,
   listValueOccurrences,
   listValues,
   listWorkspaceOrigins,
@@ -300,6 +304,7 @@ import {
   rotateScanningKey,
   rotateSshCa,
   rotateTokenKey,
+  rotateTransitKey,
   samlAcs,
   samlMetadata,
   samlStart,
@@ -341,6 +346,7 @@ import {
   showSshCa,
   showSshCertificate,
   showSshProfile,
+  showTransitKey,
   showWorkspaceHandoff,
   startCliReauth,
   startWorkspaceHandoff,
@@ -351,6 +357,15 @@ import {
   testAdapterTarget,
   testInstanceConfigMail,
   tombstoneDeliveryTarget,
+  transitDataKey,
+  transitDecrypt,
+  transitEncrypt,
+  transitHmac,
+  transitRewrap,
+  transitSign,
+  transitVerify,
+  transitVerifyHmac,
+  trimTransitKey,
   unlinkIdentity,
   updateAdapterOrigin,
   updateAdapterTarget,
@@ -383,10 +398,12 @@ import type {
   BeginRecoveryData,
   CancelAdapterMoveData,
   ChangeEnvironmentParameterData,
+  ChangeTransitKeyStateData,
   CheckDefinitionsData,
   ClearValueData,
   CloneEnvironmentData,
   CompromiseRetireSamlSpKeyData,
+  ConfigureTransitKeyData,
   CopyValuesData,
   CreateAdapterData,
   CreateApprovalPolicyData,
@@ -410,6 +427,7 @@ import type {
   CreateServiceAccountData,
   CreateSshCaData,
   CreateSshProfileData,
+  CreateTransitKeyData,
   DeclareValuesData,
   DeleteAdapterData,
   DeleteApprovalPolicyData,
@@ -522,6 +540,7 @@ import type {
   ListSshCasData,
   ListSshCertificatesData,
   ListSshProfilesData,
+  ListTransitKeysData,
   ListValueOccurrencesData,
   ListValuesData,
   ListWorkspaceOriginsData,
@@ -607,6 +626,7 @@ import type {
   RotateScanningKeyData,
   RotateSshCaData,
   RotateTokenKeyData,
+  RotateTransitKeyData,
   SamlAcsData,
   SamlMetadataData,
   SamlStartData,
@@ -648,6 +668,7 @@ import type {
   ShowSshCaData,
   ShowSshCertificateData,
   ShowSshProfileData,
+  ShowTransitKeyData,
   ShowWorkspaceHandoffData,
   StartCliReauthData,
   StartWorkspaceHandoffData,
@@ -658,6 +679,15 @@ import type {
   TestAdapterTargetData,
   TestInstanceConfigMailData,
   TombstoneDeliveryTargetData,
+  TransitDataKeyData,
+  TransitDecryptData,
+  TransitEncryptData,
+  TransitHmacData,
+  TransitRewrapData,
+  TransitSignData,
+  TransitVerifyData,
+  TransitVerifyHmacData,
+  TrimTransitKeyData,
   UnlinkIdentityData,
   UpdateAdapterOriginData,
   UpdateAdapterTargetData,
@@ -689,10 +719,12 @@ import {
   zAuthMethodsResponse,
   zBeginRecoveryResponse,
   zCancelAdapterMoveResponse,
+  zChangeTransitKeyStateResponse,
   zCheckDefinitionsResponse,
   zClearValueResponse,
   zCloneEnvironmentResponse,
   zCompromiseRetireSamlSpKeyResponse,
+  zConfigureTransitKeyResponse,
   zCopyValuesResponse,
   zCreateAdapterResponse,
   zCreateApprovalPolicyResponse,
@@ -716,6 +748,7 @@ import {
   zCreateServiceAccountResponse,
   zCreateSshCaResponse,
   zCreateSshProfileResponse,
+  zCreateTransitKeyResponse,
   zDeclareValuesResponse,
   zDeleteAdapterResponse,
   zDeleteDynamicProviderResponse,
@@ -812,6 +845,7 @@ import {
   zListSshCasResponse,
   zListSshCertificatesResponse,
   zListSshProfilesResponse,
+  zListTransitKeysResponse,
   zListValueOccurrencesResponse,
   zListValuesResponse,
   zListWorkspaceOriginsResponse,
@@ -883,6 +917,7 @@ import {
   zRotateScanningKeyResponse,
   zRotateSshCaResponse,
   zRotateTokenKeyResponse,
+  zRotateTransitKeyResponse,
   zSamlAcsResponse,
   zSamlMetadataResponse,
   zSamlStartResponse,
@@ -920,6 +955,7 @@ import {
   zShowSshCaResponse,
   zShowSshCertificateResponse,
   zShowSshProfileResponse,
+  zShowTransitKeyResponse,
   zShowWorkspaceHandoffResponse,
   zStartCliReauthResponse,
   zStartWorkspaceHandoffResponse,
@@ -929,6 +965,15 @@ import {
   zSyncAdapterTargetResponse,
   zTestAdapterTargetResponse,
   zTestInstanceConfigMailResponse,
+  zTransitDataKeyResponse,
+  zTransitDecryptResponse,
+  zTransitEncryptResponse,
+  zTransitHmacResponse,
+  zTransitRewrapResponse,
+  zTransitSignResponse,
+  zTransitVerifyHmacResponse,
+  zTransitVerifyResponse,
+  zTrimTransitKeyResponse,
   zUnlinkIdentityResponse,
   zUpdateAdapterOriginResponse,
   zUpdateAdapterTargetResponse,
@@ -960,10 +1005,12 @@ export const approveWorkspaceHandoffOp: BodyOperation<ApproveWorkspaceHandoffDat
 export const authMethodsOp: BodyOperation<AuthMethodsData, typeof zAuthMethodsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(authMethods, [200], zAuthMethodsResponse);
 export const beginRecoveryOp: BodyOperation<BeginRecoveryData, typeof zBeginRecoveryResponse> = /* @__PURE__ */ new GeneratedBodyOperation(beginRecovery, [200], zBeginRecoveryResponse);
 export const cancelAdapterMoveOp: BodyOperation<CancelAdapterMoveData, typeof zCancelAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(cancelAdapterMove, [202], zCancelAdapterMoveResponse);
+export const changeTransitKeyStateOp: BodyOperation<ChangeTransitKeyStateData, typeof zChangeTransitKeyStateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(changeTransitKeyState, [200], zChangeTransitKeyStateResponse);
 export const checkDefinitionsOp: BodyOperation<CheckDefinitionsData, typeof zCheckDefinitionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(checkDefinitions, [200], zCheckDefinitionsResponse);
 export const clearValueOp: BodyOperation<ClearValueData, typeof zClearValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(clearValue, [200], zClearValueResponse);
 export const cloneEnvironmentOp: BodyOperation<CloneEnvironmentData, typeof zCloneEnvironmentResponse> = /* @__PURE__ */ new GeneratedBodyOperation(cloneEnvironment, [201], zCloneEnvironmentResponse);
 export const compromiseRetireSamlSpKeyOp: BodyOperation<CompromiseRetireSamlSpKeyData, typeof zCompromiseRetireSamlSpKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(compromiseRetireSamlSpKey, [200], zCompromiseRetireSamlSpKeyResponse);
+export const configureTransitKeyOp: BodyOperation<ConfigureTransitKeyData, typeof zConfigureTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(configureTransitKey, [200], zConfigureTransitKeyResponse);
 export const copyValuesOp: BodyOperation<CopyValuesData, typeof zCopyValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(copyValues, [200], zCopyValuesResponse);
 export const createAdapterOp: BodyOperation<CreateAdapterData, typeof zCreateAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createAdapter, [201], zCreateAdapterResponse);
 export const createApprovalPolicyOp: BodyOperation<CreateApprovalPolicyData, typeof zCreateApprovalPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createApprovalPolicy, [200], zCreateApprovalPolicyResponse);
@@ -987,6 +1034,7 @@ export const createScimMappingOp: BodyOperation<CreateScimMappingData, typeof zC
 export const createServiceAccountOp: BodyOperation<CreateServiceAccountData, typeof zCreateServiceAccountResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createServiceAccount, [201], zCreateServiceAccountResponse);
 export const createSshCaOp: BodyOperation<CreateSshCaData, typeof zCreateSshCaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createSshCa, [201], zCreateSshCaResponse);
 export const createSshProfileOp: BodyOperation<CreateSshProfileData, typeof zCreateSshProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createSshProfile, [201], zCreateSshProfileResponse);
+export const createTransitKeyOp: BodyOperation<CreateTransitKeyData, typeof zCreateTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createTransitKey, [201], zCreateTransitKeyResponse);
 export const declareValuesOp: BodyOperation<DeclareValuesData, typeof zDeclareValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(declareValues, [200], zDeclareValuesResponse);
 export const deleteAdapterOp: BodyOperation<DeleteAdapterData, typeof zDeleteAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteAdapter, [200], zDeleteAdapterResponse);
 export const deleteDynamicProviderOp: BodyOperation<DeleteDynamicProviderData, typeof zDeleteDynamicProviderResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteDynamicProvider, [200], zDeleteDynamicProviderResponse);
@@ -1083,6 +1131,7 @@ export const listServiceAccountsOp: BodyOperation<ListServiceAccountsData, typeo
 export const listSshCasOp: BodyOperation<ListSshCasData, typeof zListSshCasResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listSshCas, [200], zListSshCasResponse);
 export const listSshCertificatesOp: BodyOperation<ListSshCertificatesData, typeof zListSshCertificatesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listSshCertificates, [200], zListSshCertificatesResponse);
 export const listSshProfilesOp: BodyOperation<ListSshProfilesData, typeof zListSshProfilesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listSshProfiles, [200], zListSshProfilesResponse);
+export const listTransitKeysOp: BodyOperation<ListTransitKeysData, typeof zListTransitKeysResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listTransitKeys, [200], zListTransitKeysResponse);
 export const listValueOccurrencesOp: BodyOperation<ListValueOccurrencesData, typeof zListValueOccurrencesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listValueOccurrences, [200], zListValueOccurrencesResponse);
 export const listValuesOp: BodyOperation<ListValuesData, typeof zListValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listValues, [200], zListValuesResponse);
 export const listWorkspaceOriginsOp: BodyOperation<ListWorkspaceOriginsData, typeof zListWorkspaceOriginsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listWorkspaceOrigins, [200], zListWorkspaceOriginsResponse);
@@ -1154,6 +1203,7 @@ export const rotateSamlSpKeyOp: BodyOperation<RotateSamlSpKeyData, typeof zRotat
 export const rotateScanningKeyOp: BodyOperation<RotateScanningKeyData, typeof zRotateScanningKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateScanningKey, [200], zRotateScanningKeyResponse);
 export const rotateSshCaOp: BodyOperation<RotateSshCaData, typeof zRotateSshCaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateSshCa, [200], zRotateSshCaResponse);
 export const rotateTokenKeyOp: BodyOperation<RotateTokenKeyData, typeof zRotateTokenKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateTokenKey, [200], zRotateTokenKeyResponse);
+export const rotateTransitKeyOp: BodyOperation<RotateTransitKeyData, typeof zRotateTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(rotateTransitKey, [200], zRotateTransitKeyResponse);
 export const samlAcsOp: BodyOperation<SamlAcsData, typeof zSamlAcsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlAcs, [200], zSamlAcsResponse);
 export const samlMetadataOp: BodyOperation<SamlMetadataData, typeof zSamlMetadataResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlMetadata, [200], zSamlMetadataResponse);
 export const samlStartOp: BodyOperation<SamlStartData, typeof zSamlStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(samlStart, [200], zSamlStartResponse);
@@ -1191,6 +1241,7 @@ export const showRemoteOp: BodyOperation<ShowRemoteData, typeof zShowRemoteRespo
 export const showSshCaOp: BodyOperation<ShowSshCaData, typeof zShowSshCaResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showSshCa, [200], zShowSshCaResponse);
 export const showSshCertificateOp: BodyOperation<ShowSshCertificateData, typeof zShowSshCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showSshCertificate, [200], zShowSshCertificateResponse);
 export const showSshProfileOp: BodyOperation<ShowSshProfileData, typeof zShowSshProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showSshProfile, [200], zShowSshProfileResponse);
+export const showTransitKeyOp: BodyOperation<ShowTransitKeyData, typeof zShowTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showTransitKey, [200], zShowTransitKeyResponse);
 export const showWorkspaceHandoffOp: BodyOperation<ShowWorkspaceHandoffData, typeof zShowWorkspaceHandoffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(showWorkspaceHandoff, [200], zShowWorkspaceHandoffResponse);
 export const startCliReauthOp: BodyOperation<StartCliReauthData, typeof zStartCliReauthResponse> = /* @__PURE__ */ new GeneratedBodyOperation(startCliReauth, [201], zStartCliReauthResponse);
 export const startWorkspaceHandoffOp: BodyOperation<StartWorkspaceHandoffData, typeof zStartWorkspaceHandoffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(startWorkspaceHandoff, [201], zStartWorkspaceHandoffResponse);
@@ -1200,6 +1251,15 @@ export const stepUpTotpOp: BodyOperation<StepUpTotpData, typeof zStepUpTotpRespo
 export const syncAdapterTargetOp: BodyOperation<SyncAdapterTargetData, typeof zSyncAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(syncAdapterTarget, [202], zSyncAdapterTargetResponse);
 export const testAdapterTargetOp: BodyOperation<TestAdapterTargetData, typeof zTestAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(testAdapterTarget, [200], zTestAdapterTargetResponse);
 export const testInstanceConfigMailOp: BodyOperation<TestInstanceConfigMailData, typeof zTestInstanceConfigMailResponse> = /* @__PURE__ */ new GeneratedBodyOperation(testInstanceConfigMail, [200], zTestInstanceConfigMailResponse);
+export const transitDataKeyOp: BodyOperation<TransitDataKeyData, typeof zTransitDataKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(transitDataKey, [200], zTransitDataKeyResponse);
+export const transitDecryptOp: BodyOperation<TransitDecryptData, typeof zTransitDecryptResponse> = /* @__PURE__ */ new GeneratedBodyOperation(transitDecrypt, [200], zTransitDecryptResponse);
+export const transitEncryptOp: BodyOperation<TransitEncryptData, typeof zTransitEncryptResponse> = /* @__PURE__ */ new GeneratedBodyOperation(transitEncrypt, [200], zTransitEncryptResponse);
+export const transitHmacOp: BodyOperation<TransitHmacData, typeof zTransitHmacResponse> = /* @__PURE__ */ new GeneratedBodyOperation(transitHmac, [200], zTransitHmacResponse);
+export const transitRewrapOp: BodyOperation<TransitRewrapData, typeof zTransitRewrapResponse> = /* @__PURE__ */ new GeneratedBodyOperation(transitRewrap, [200], zTransitRewrapResponse);
+export const transitSignOp: BodyOperation<TransitSignData, typeof zTransitSignResponse> = /* @__PURE__ */ new GeneratedBodyOperation(transitSign, [200], zTransitSignResponse);
+export const transitVerifyOp: BodyOperation<TransitVerifyData, typeof zTransitVerifyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(transitVerify, [200], zTransitVerifyResponse);
+export const transitVerifyHmacOp: BodyOperation<TransitVerifyHmacData, typeof zTransitVerifyHmacResponse> = /* @__PURE__ */ new GeneratedBodyOperation(transitVerifyHmac, [200], zTransitVerifyHmacResponse);
+export const trimTransitKeyOp: BodyOperation<TrimTransitKeyData, typeof zTrimTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(trimTransitKey, [200], zTrimTransitKeyResponse);
 export const unlinkIdentityOp: BodyOperation<UnlinkIdentityData, typeof zUnlinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(unlinkIdentity, [200], zUnlinkIdentityResponse);
 export const updateAdapterOriginOp: BodyOperation<UpdateAdapterOriginData, typeof zUpdateAdapterOriginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterOrigin, [202], zUpdateAdapterOriginResponse);
 export const updateAdapterTargetOp: BodyOperation<UpdateAdapterTargetData, typeof zUpdateAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterTarget, [200, 202], zUpdateAdapterTargetResponse);

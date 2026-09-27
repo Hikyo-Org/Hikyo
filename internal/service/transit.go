@@ -173,18 +173,14 @@ type TransitOutput struct {
 
 // ---- Validation ----------------------------------------------------------
 
-func requireEnvScope(scope domain.Scope) error {
-	if scope.Org == "" || scope.Project == "" || scope.Env == "" {
-		return fmt.Errorf("%w: transit keys are addressed within one environment", domain.ErrInvalid)
-	}
-	return nil
-}
+// errTransitScope is the refusal for a call outside one environment.
+const errTransitScope = "transit keys are addressed within one environment"
 
 // requireKeyAddress is the entry check of every method that addresses one key:
 // an environment scope and a grammatical name. It runs before the name can
 // reach a query or an audit object.
 func requireKeyAddress(scope domain.Scope, name string) error {
-	if err := requireEnvScope(scope); err != nil {
+	if err := requireEnvScope(scope, errTransitScope); err != nil {
 		return err
 	}
 	return checkTransitName(name)
@@ -324,7 +320,7 @@ func (s *Transit) fenceSealed(ctx context.Context, r store.Repos, p authz.Proof,
 
 // CreateKey creates a named key with its first version (ADR D1-D3).
 func (s *Transit) CreateKey(ctx context.Context, actor Actor, scope domain.Scope, req CreateTransitKeyRequest) (TransitKeyView, error) {
-	if err := requireEnvScope(scope); err != nil {
+	if err := requireEnvScope(scope, errTransitScope); err != nil {
 		return TransitKeyView{}, err
 	}
 	if err := checkTransitName(req.Name); err != nil {
@@ -447,7 +443,7 @@ func (s *Transit) CreateKey(ctx context.Context, actor Actor, scope domain.Scope
 
 // ListKeys lists an environment's keys (metadata only).
 func (s *Transit) ListKeys(ctx context.Context, actor Actor, scope domain.Scope) ([]TransitKeyView, error) {
-	if err := requireEnvScope(scope); err != nil {
+	if err := requireEnvScope(scope, errTransitScope); err != nil {
 		return nil, err
 	}
 	var out []TransitKeyView

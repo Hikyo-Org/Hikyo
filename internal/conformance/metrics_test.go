@@ -126,6 +126,7 @@ func (stubMeasuredSources) ApprovalSnapshot() (server.ApprovalStats, error) {
 func (stubMeasuredSources) DynamicSnapshot() (int64, int64, error) { return 0, 0, nil }
 
 func (stubMeasuredSources) SSHSnapshot() (int64, int64, error) { return 0, 0, nil }
+
 func (stubMeasuredSources) TransitSnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 
 // scrapeOperationalMetrics returns the /metrics body of a fresh operational
