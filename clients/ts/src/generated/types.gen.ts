@@ -371,6 +371,185 @@ export type MintLeaseResult = {
     expires_at?: string | null;
 };
 
+/**
+ * The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+ */
+export type SshKeyAlgorithm = 'ed25519' | 'ecdsa-p256' | 'rsa-3072';
+
+export type SshExtension = 'permit-X11-forwarding' | 'permit-agent-forwarding' | 'permit-port-forwarding' | 'permit-pty' | 'permit-user-rc';
+
+export type SshName = string;
+
+export type SshcaKey = {
+    id: Id;
+    algorithm: SshKeyAlgorithm;
+    /**
+     * The public key in authorized_keys format.
+     */
+    public_key: string;
+    /**
+     * OpenSSH SHA256 fingerprint.
+     */
+    fingerprint: string;
+    origin: 'generated' | 'imported';
+    state: 'active' | 'retiring' | 'retired';
+    /**
+     * Whether hosts following the trust bundle accept this key now.
+     */
+    trusted: boolean;
+    created_at: Timestamp;
+    retiring_at?: string | null;
+    /**
+     * End of the rotation overlap.
+     */
+    retire_after?: string | null;
+    retired_at?: string | null;
+};
+
+export type Sshca = {
+    id: Id;
+    name: SshName;
+    authority_principal_id: Id;
+    created_at: Timestamp;
+    /**
+     * Newest first. At most one key is active.
+     */
+    keys: Array<SshcaKey>;
+};
+
+export type SshcaList = {
+    items: Array<Sshca>;
+};
+
+export type CreateSshcaRequest = {
+    name: SshName;
+    algorithm?: SshKeyAlgorithm;
+};
+
+export type RotateSshcaRequest = {
+    algorithm?: SshKeyAlgorithm;
+    /**
+     * How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
+     */
+    overlap_seconds?: number | null;
+};
+
+export type SshProfileRequest = {
+    ca_id: Id;
+    name: SshName;
+    principals: Array<string>;
+    force_command?: string;
+    /**
+     * CIDRs a certificate is bound to (source-address); a request may only narrow them.
+     */
+    source_addresses?: Array<string>;
+    extensions?: Array<SshExtension>;
+    key_algorithms: Array<SshKeyAlgorithm>;
+    default_ttl_seconds: number;
+    max_ttl_seconds: number;
+    enabled?: boolean;
+    /**
+     * The principals allowed to request certificates through this profile.
+     */
+    requesters?: Array<Id>;
+};
+
+export type SshProfile = {
+    id: Id;
+    ca_id: Id;
+    name: SshName;
+    principals: Array<string>;
+    force_command: string;
+    source_addresses: Array<string>;
+    extensions: Array<SshExtension>;
+    key_algorithms: Array<SshKeyAlgorithm>;
+    default_ttl_seconds: number;
+    max_ttl_seconds: number;
+    enabled: boolean;
+    requesters: Array<Id>;
+    created_at: Timestamp;
+    updated_at: Timestamp;
+};
+
+export type SshProfileList = {
+    items: Array<SshProfile>;
+};
+
+export type SshProfileDeletion = {
+    profile_id: Id;
+    revoked_certificate_count: number;
+};
+
+export type SshCertificate = {
+    id: Id;
+    ca_id: Id;
+    ca_key_id: Id;
+    profile_id: Id;
+    /**
+     * The certificate serial as a decimal string (64-bit).
+     */
+    serial: string;
+    key_id: string;
+    principals: Array<string>;
+    public_key_fingerprint: string;
+    key_algorithm: SshKeyAlgorithm;
+    key_origin: 'generated' | 'supplied';
+    valid_after: Timestamp;
+    valid_before: Timestamp;
+    requester_principal_id: Id;
+    requester_class: string;
+    /**
+     * revoked: cryptographically revoked (in_krl says whether the KRL
+     * still needs to carry it); expired: past valid_before; untrusted:
+     * its signing key was retired or its CA deleted, so hosts that follow
+     * the trust bundle refuse it; active: none of these.
+     *
+     */
+    status: 'active' | 'expired' | 'revoked' | 'untrusted';
+    in_krl: boolean;
+    revoked_at?: string | null;
+    revocation_reason?: 'explicit' | 'authority-withdrawn' | 'profile-deleted' | null;
+    created_at: Timestamp;
+};
+
+export type SshCertificateList = {
+    items: Array<SshCertificate>;
+};
+
+export type IssueSshCertificateRequest = {
+    profile_id: Id;
+    /**
+     * An authorized_keys line to certify. Omit to have a key pair generated.
+     */
+    public_key?: string;
+    key_algorithm?: SshKeyAlgorithm;
+    /**
+     * A subset of the profile's principals; required when it allows several.
+     */
+    principals?: Array<string>;
+    source_addresses?: Array<string>;
+    /**
+     * A subset of the profile's extensions. Omit for the profile's set; an empty list asks for none.
+     */
+    extensions?: Array<SshExtension>;
+    ttl_seconds?: number;
+};
+
+export type SshCertificateIssue = {
+    certificate: SshCertificate;
+    /**
+     * The certificate in authorized_keys format (save as <key>-cert.pub).
+     */
+    certificate_text: string;
+    public_key: string;
+    /**
+     * For a generated key only: the OpenSSH private key, returned EXACTLY
+     * ONCE to exactly one caller and never stored. No other route returns it.
+     *
+     */
+    private_key?: string | null;
+};
+
 export type AdapterConflictEntry = {
     surface: 'secret' | 'variable';
     effective_name: string;
@@ -4881,6 +5060,27 @@ export type ScimCapabilityOrigin = {
     group_id: Id;
 };
 
+export type CreateSshcaRequestWritable = {
+    name: SshName;
+    algorithm?: SshKeyAlgorithm;
+    /**
+     * An unencrypted OpenSSH or PKCS#8 PEM private key to import. Omit to generate.
+     */
+    private_key?: string;
+};
+
+export type RotateSshcaRequestWritable = {
+    algorithm?: SshKeyAlgorithm;
+    /**
+     * An unencrypted private key to import as the new key. Omit to generate.
+     */
+    private_key?: string;
+    /**
+     * How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
+     */
+    overlap_seconds?: number | null;
+};
+
 /**
  * Login-challenge identifier returned by `localLogin` (202).
  */
@@ -4908,6 +5108,14 @@ export type AdapterTargetId = Id;
 export type DynamicProviderId = Id;
 
 export type LeaseId = Id;
+
+export type Sshcaid = Id;
+
+export type SshcaKeyId = Id;
+
+export type SshProfileId = Id;
+
+export type SshCertificateId = Id;
 
 /**
  * Folder identifier.
@@ -25740,3 +25948,1079 @@ export type SettleLeaseResponses = {
 };
 
 export type SettleLeaseResponse = SettleLeaseResponses[keyof SettleLeaseResponses];
+
+export type ListSshCasData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas';
+};
+
+export type ListSshCasErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListSshCasError = ListSshCasErrors[keyof ListSshCasErrors];
+
+export type ListSshCasResponses = {
+    /**
+     * CA list.
+     */
+    200: SshcaList;
+};
+
+export type ListSshCasResponse = ListSshCasResponses[keyof ListSshCasResponses];
+
+export type CreateSshCaData = {
+    body: CreateSshcaRequestWritable;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas';
+};
+
+export type CreateSshCaErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateSshCaError = CreateSshCaErrors[keyof CreateSshCaErrors];
+
+export type CreateSshCaResponses = {
+    /**
+     * CA created.
+     */
+    201: Sshca;
+};
+
+export type CreateSshCaResponse = CreateSshCaResponses[keyof CreateSshCaResponses];
+
+export type DeleteSshCaData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshCA: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}';
+};
+
+export type DeleteSshCaErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteSshCaError = DeleteSshCaErrors[keyof DeleteSshCaErrors];
+
+export type DeleteSshCaResponses = {
+    /**
+     * CA deleted.
+     */
+    204: void;
+};
+
+export type DeleteSshCaResponse = DeleteSshCaResponses[keyof DeleteSshCaResponses];
+
+export type ShowSshCaData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshCA: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}';
+};
+
+export type ShowSshCaErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowSshCaError = ShowSshCaErrors[keyof ShowSshCaErrors];
+
+export type ShowSshCaResponses = {
+    /**
+     * CA.
+     */
+    200: Sshca;
+};
+
+export type ShowSshCaResponse = ShowSshCaResponses[keyof ShowSshCaResponses];
+
+export type RotateSshCaData = {
+    body?: RotateSshcaRequestWritable;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshCA: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate';
+};
+
+export type RotateSshCaErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RotateSshCaError = RotateSshCaErrors[keyof RotateSshCaErrors];
+
+export type RotateSshCaResponses = {
+    /**
+     * CA after rotation.
+     */
+    200: Sshca;
+};
+
+export type RotateSshCaResponse = RotateSshCaResponses[keyof RotateSshCaResponses];
+
+export type RetireSshCaKeyData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshCA: Id;
+        sshCAKey: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire';
+};
+
+export type RetireSshCaKeyErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RetireSshCaKeyError = RetireSshCaKeyErrors[keyof RetireSshCaKeyErrors];
+
+export type RetireSshCaKeyResponses = {
+    /**
+     * CA after retirement.
+     */
+    200: Sshca;
+};
+
+export type RetireSshCaKeyResponse = RetireSshCaKeyResponses[keyof RetireSshCaKeyResponses];
+
+export type GetSshTrustedKeysData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshCA: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys';
+};
+
+export type GetSshTrustedKeysErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetSshTrustedKeysError = GetSshTrustedKeysErrors[keyof GetSshTrustedKeysErrors];
+
+export type GetSshTrustedKeysResponses = {
+    /**
+     * TrustedUserCAKeys file content.
+     */
+    200: string;
+};
+
+export type GetSshTrustedKeysResponse = GetSshTrustedKeysResponses[keyof GetSshTrustedKeysResponses];
+
+export type GetSshKrlData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshCA: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl';
+};
+
+export type GetSshKrlErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type GetSshKrlError = GetSshKrlErrors[keyof GetSshKrlErrors];
+
+export type GetSshKrlResponses = {
+    /**
+     * KRL bytes.
+     */
+    200: Blob | File;
+};
+
+export type GetSshKrlResponse = GetSshKrlResponses[keyof GetSshKrlResponses];
+
+export type ListSshProfilesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles';
+};
+
+export type ListSshProfilesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListSshProfilesError = ListSshProfilesErrors[keyof ListSshProfilesErrors];
+
+export type ListSshProfilesResponses = {
+    /**
+     * Profile list.
+     */
+    200: SshProfileList;
+};
+
+export type ListSshProfilesResponse = ListSshProfilesResponses[keyof ListSshProfilesResponses];
+
+export type CreateSshProfileData = {
+    body: SshProfileRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles';
+};
+
+export type CreateSshProfileErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type CreateSshProfileError = CreateSshProfileErrors[keyof CreateSshProfileErrors];
+
+export type CreateSshProfileResponses = {
+    /**
+     * Profile created.
+     */
+    201: SshProfile;
+};
+
+export type CreateSshProfileResponse = CreateSshProfileResponses[keyof CreateSshProfileResponses];
+
+export type DeleteSshProfileData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshProfile: Id;
+    };
+    query?: {
+        /**
+         * Also revoke every live certificate issued through this profile.
+         */
+        revoke_issued?: boolean;
+    };
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}';
+};
+
+export type DeleteSshProfileErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type DeleteSshProfileError = DeleteSshProfileErrors[keyof DeleteSshProfileErrors];
+
+export type DeleteSshProfileResponses = {
+    /**
+     * Profile deleted.
+     */
+    200: SshProfileDeletion;
+};
+
+export type DeleteSshProfileResponse = DeleteSshProfileResponses[keyof DeleteSshProfileResponses];
+
+export type ShowSshProfileData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshProfile: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}';
+};
+
+export type ShowSshProfileErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowSshProfileError = ShowSshProfileErrors[keyof ShowSshProfileErrors];
+
+export type ShowSshProfileResponses = {
+    /**
+     * Profile.
+     */
+    200: SshProfile;
+};
+
+export type ShowSshProfileResponse = ShowSshProfileResponses[keyof ShowSshProfileResponses];
+
+export type UpdateSshProfileData = {
+    body: SshProfileRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshProfile: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}';
+};
+
+export type UpdateSshProfileErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type UpdateSshProfileError = UpdateSshProfileErrors[keyof UpdateSshProfileErrors];
+
+export type UpdateSshProfileResponses = {
+    /**
+     * Profile after update.
+     */
+    200: SshProfile;
+};
+
+export type UpdateSshProfileResponse = UpdateSshProfileResponses[keyof UpdateSshProfileResponses];
+
+export type ListSshCertificatesData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates';
+};
+
+export type ListSshCertificatesErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ListSshCertificatesError = ListSshCertificatesErrors[keyof ListSshCertificatesErrors];
+
+export type ListSshCertificatesResponses = {
+    /**
+     * Certificate list, newest first, at most 500.
+     */
+    200: SshCertificateList;
+};
+
+export type ListSshCertificatesResponse = ListSshCertificatesResponses[keyof ListSshCertificatesResponses];
+
+export type IssueSshCertificateData = {
+    body: IssueSshCertificateRequest;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates';
+};
+
+export type IssueSshCertificateErrors = {
+    /**
+     * The request does not satisfy this document. Decided before any tenant
+     * resolution, so `detail` leaks nothing about tenancy — it is the only
+     * error response permitted to carry one.
+     *
+     */
+    400: Error;
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * Either the principal does not hold the operation's formula at instance
+     * scope — instance-class operations have no tenant object whose
+     * nonexistence could be mimicked, so the probe contract there is grant
+     * refusal, not tenancy — or the principal DOES hold it and the acting
+     * session's assurance is inadequate for an MFA-mandatory operation.
+     *
+     * The second case is why two tenant-scoped operations (`renameOrg`,
+     * `deleteOrg`) declare this status: their formula atom `instance-config`
+     * is MFA-mandatory, and the refusal fires only AFTER the grant check
+     * succeeded. A caller who reaches it can already reach the object, so
+     * naming the step-up discloses nothing the uniform 404 was protecting —
+     * and hiding it would tell a capability holder the object is missing.
+     * Grant refusal on a tenant-scoped operation is always the 404.
+     *
+     */
+    403: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * The caller is authorized, but the current state refuses: a name already
+     * in use among live siblings, a parent that still has children (deletes
+     * never cascade), or a structural bound reached (`limit_exceeded`, whose
+     * message names the bound). Decided after authorization, so it discloses
+     * nothing a caller could not already read.
+     *
+     */
+    409: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type IssueSshCertificateError = IssueSshCertificateErrors[keyof IssueSshCertificateErrors];
+
+export type IssueSshCertificateResponses = {
+    /**
+     * The certificate and, for a generated key, its display-once private key.
+     */
+    200: SshCertificateIssue;
+};
+
+export type IssueSshCertificateResponse = IssueSshCertificateResponses[keyof IssueSshCertificateResponses];
+
+export type ShowSshCertificateData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshCertificate: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}';
+};
+
+export type ShowSshCertificateErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type ShowSshCertificateError = ShowSshCertificateErrors[keyof ShowSshCertificateErrors];
+
+export type ShowSshCertificateResponses = {
+    /**
+     * Certificate.
+     */
+    200: SshCertificate;
+};
+
+export type ShowSshCertificateResponse = ShowSshCertificateResponses[keyof ShowSshCertificateResponses];
+
+export type RevokeSshCertificateData = {
+    body?: never;
+    path: {
+        /**
+         * Organisation identifier.
+         */
+        org: Id;
+        /**
+         * Project identifier.
+         */
+        project: Id;
+        /**
+         * Environment identifier.
+         */
+        environment: Id;
+        sshCertificate: Id;
+    };
+    query?: never;
+    url: '/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke';
+};
+
+export type RevokeSshCertificateErrors = {
+    /**
+     * No usable authentication artifact was presented. Uniform: absent,
+     * malformed, unknown, expired, revoked and epoch-superseded artifacts
+     * are indistinguishable.
+     *
+     */
+    401: Error;
+    /**
+     * The addressed object does not exist **or** the principal may not reach
+     * it — indistinguishable by design, byte-identical in status and body.
+     *
+     */
+    404: Error;
+    /**
+     * An unexpected server fault. The cause is logged, never returned.
+     */
+    500: Error;
+    /**
+     * The owner is temporarily unable to serve this operation while configuration converges.
+     */
+    503: Error;
+};
+
+export type RevokeSshCertificateError = RevokeSshCertificateErrors[keyof RevokeSshCertificateErrors];
+
+export type RevokeSshCertificateResponses = {
+    /**
+     * Certificate after revocation.
+     */
+    200: SshCertificate;
+};
+
+export type RevokeSshCertificateResponse = RevokeSshCertificateResponses[keyof RevokeSshCertificateResponses];
