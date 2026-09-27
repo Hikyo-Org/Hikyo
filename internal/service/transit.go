@@ -43,6 +43,7 @@ type TransitWindowCounter interface {
 	BumpWindow(ctx context.Context, bucket, subject string, window time.Time) (int64, error)
 }
 
+// now returns the configured clock in UTC, or the current UTC time.
 func (s *Transit) now() time.Time { return nowOr(s.Now) }
 
 // Transit ADR D2 / D9 vocabularies and bounds.
@@ -121,6 +122,8 @@ func (e *transitInvalid) Error() string      { return "service: transit input re
 func (e *transitInvalid) Unwrap() error      { return domain.ErrInvalid }
 func (e *transitInvalid) SafeDetail() string { return e.detail }
 
+// invalidTransit formats a validation error whose detail may be returned to
+// callers; format and args must not contain secret input.
 func invalidTransit(format string, args ...any) error {
 	return &transitInvalid{detail: fmt.Sprintf(format, args...)}
 }
@@ -186,6 +189,9 @@ func requireKeyAddress(scope domain.Scope, name string) error {
 	return checkTransitName(name)
 }
 
+// checkTransitName returns an invalid-input error unless name is 1 to 63
+// lowercase ASCII letters, digits, dots, underscores, or hyphens, starting with
+// a letter or digit.
 func checkTransitName(name string) error {
 	if !transitKeyName.MatchString(name) {
 		return invalidTransit("name must match %s", transitKeyName.String())
@@ -193,6 +199,8 @@ func checkTransitName(name string) error {
 	return nil
 }
 
+// checkTransitOps rejects duplicate operations and operations unsupported by
+// alg. An empty set is accepted; what labels the set in validation errors.
 func checkTransitOps(alg crypto.TransitAlgorithm, ops []string, what string) error {
 	allowed := transitAlgorithmOps[alg]
 	seen := map[string]bool{}
@@ -208,6 +216,8 @@ func checkTransitOps(alg crypto.TransitAlgorithm, ops []string, what string) err
 	return nil
 }
 
+// checkRotationPeriod accepts zero (disabled) or a period from one hour
+// through ten 365-day years, in seconds; other values return an invalid-input error.
 func checkRotationPeriod(seconds int64) error {
 	if seconds == 0 {
 		return nil
@@ -224,6 +234,10 @@ func checkRotationPeriod(seconds int64) error {
 // A caller entry naming anything else could never match a principal.
 var transitPrincipalIDGrammar = regexp.MustCompile(`^[a-z]{2,8}_[0-9a-fA-F-]{36}$`)
 
+// checkTransitCallers validates the entry limit, principal ID grammar and
+// uniqueness, and nonempty operation subsets, then copies entries for storage.
+// It does not check principal existence. An empty list imposes no per-key
+// caller restriction.
 func checkTransitCallers(callers []TransitCallerEntry, allowed []string) ([]store.TransitCaller, error) {
 	if len(callers) > MaxTransitCallersPerKey {
 		return nil, invalidTransit("at most %d caller entries per key", MaxTransitCallersPerKey)
@@ -251,11 +265,15 @@ func checkTransitCallers(callers []TransitCallerEntry, allowed []string) ([]stor
 	return out, nil
 }
 
+// transitRotationDue reports whether an active key with automatic rotation
+// has reached its deadline. A missing latest-version timestamp is not due.
 func transitRotationDue(k store.TransitKeyRecord, latestCreated time.Time, now time.Time) bool {
 	return k.State == TransitStateActive && k.RotationPeriodSeconds > 0 && !latestCreated.IsZero() &&
 		!latestCreated.Add(time.Duration(k.RotationPeriodSeconds)*time.Second).After(now)
 }
 
+// transitTarget binds a key version and storage row to scope for custody
+// operations. An unrecognized stored algorithm returns an error.
 func transitTarget(scope domain.Scope, k store.TransitKeyRecord, version uint32, versionRowID string) (transit.Target, error) {
 	alg, err := crypto.ParseTransitAlgorithm(k.Algorithm)
 	if err != nil {
@@ -270,6 +288,8 @@ func transitTarget(scope domain.Scope, k store.TransitKeyRecord, version uint32,
 	}, nil
 }
 
+// transitVersion exposes stored material references and public metadata to
+// custody; it does not decrypt sealed material.
 func transitVersion(m store.TransitVersionMaterial) transit.Version {
 	return transit.Version{Sealed: m.Sealed, ExternalRef: m.ExternalRef, PublicKey: m.PublicKey}
 }
@@ -287,7 +307,9 @@ func (s *Transit) preflight(ctx context.Context, actor Actor, op authz.Operation
 
 // createVersion makes material for one new version at the key's custody
 // provider. The returned cleanup destroys external material when the
-// transaction that should record it does not commit.
+// transaction that should record it does not commit. Cleanup is best effort
+// and ignores destroy errors. Resolution and provider-unavailable errors become
+// ErrTransitCustodyUnavailable; other creation errors propagate.
 func (s *Transit) createVersion(ctx context.Context, custodyKind string, t transit.Target) (transit.Version, func(), error) {
 	kind, err := transit.ParseCustodyKind(custodyKind)
 	if err != nil {
@@ -314,6 +336,9 @@ func (s *Transit) createVersion(ctx context.Context, custodyKind string, t trans
 	return v, cleanup, nil
 }
 
+// fenceSealed checks that the DEK used to seal material is still active,
+// returning a conflict if it is stale. Versions without sealed material need
+// no DEK fence; other store errors propagate.
 func (s *Transit) fenceSealed(ctx context.Context, r store.Repos, p authz.Proof, scope domain.Scope, v transit.Version) error {
 	if len(v.Sealed) == 0 {
 		return nil
@@ -323,7 +348,12 @@ func (s *Transit) fenceSealed(ctx context.Context, r store.Repos, p authz.Proof,
 
 // ---- Management ----------------------------------------------------------
 
-// CreateKey creates a named key with its first version (ADR D1-D3).
+// CreateKey creates a named key with its first version (ADR D1-D3). Empty
+// custody defaults to software; an empty allowed-operation list enables the
+// algorithm's operations except datakey-plaintext. Invalid configuration,
+// duplicate names, and the environment key limit return errors. Authorization,
+// custody, and transaction failures propagate; uncommitted external material
+// is destroyed on a best-effort basis.
 func (s *Transit) CreateKey(ctx context.Context, actor Actor, scope domain.Scope, req CreateTransitKeyRequest) (TransitKeyView, error) {
 	if err := requireEnvScope(scope, errTransitScope); err != nil {
 		return TransitKeyView{}, err
@@ -446,7 +476,9 @@ func (s *Transit) CreateKey(ctx context.Context, actor Actor, scope domain.Scope
 	return out, err
 }
 
-// ListKeys lists an environment's keys (metadata only).
+// ListKeys lists an environment's non-destroyed keys by name (metadata only),
+// including versions, callers, and rotation status. Scope, authorization, and
+// store errors propagate.
 func (s *Transit) ListKeys(ctx context.Context, actor Actor, scope domain.Scope) ([]TransitKeyView, error) {
 	if err := requireEnvScope(scope, errTransitScope); err != nil {
 		return nil, err
@@ -475,7 +507,9 @@ func (s *Transit) ListKeys(ctx context.Context, actor Actor, scope domain.Scope)
 	return out, err
 }
 
-// GetKey returns one key's metadata, versions and caller entries.
+// GetKey returns one key's metadata, versions and caller entries. Missing or
+// destroyed keys return a not-found error; address, authorization, and store
+// errors propagate.
 func (s *Transit) GetKey(ctx context.Context, actor Actor, scope domain.Scope, name string) (TransitKeyView, error) {
 	if err := requireKeyAddress(scope, name); err != nil {
 		return TransitKeyView{}, err
@@ -497,6 +531,9 @@ func (s *Transit) GetKey(ctx context.Context, actor Actor, scope domain.Scope, n
 	return out, err
 }
 
+// keyView loads versions and caller entries and computes rotation status.
+// Store errors propagate; an unparseable latest-version timestamp leaves
+// RotationDue false.
 func (s *Transit) keyView(ctx context.Context, r store.TransitReader, proof authz.Proof, k store.TransitKeyRecord, now time.Time) (TransitKeyView, error) {
 	versions, err := r.ListVersions(ctx, proof, k.ID)
 	if err != nil {
@@ -553,7 +590,10 @@ func (s *Transit) readForManage(ctx context.Context, actor Actor, op authz.Opera
 	return out, err
 }
 
-// RotateKey appends a new version (ADR D5).
+// RotateKey appends a new version (ADR D5), including for retired or disabled
+// keys. Pending deletion is refused; concurrent rotation and the retained-version
+// limit return conflict and limit errors. Authorization, custody, and store
+// errors propagate. Rotation remains committed if reading the updated view fails.
 func (s *Transit) RotateKey(ctx context.Context, actor Actor, scope domain.Scope, name string) (TransitKeyView, error) {
 	if err := requireKeyAddress(scope, name); err != nil {
 		return TransitKeyView{}, err
@@ -644,7 +684,10 @@ func (s *Transit) appendVersion(ctx context.Context, scope domain.Scope, k store
 }
 
 // ConfigureKey changes a key's version window, rotation period and caller
-// entries (ADR D5, D7).
+// entries (ADR D5, D7). Nil fields are unchanged; a present empty caller list
+// clears restrictions, and a zero rotation period disables automatic rotation.
+// Invalid version bounds or periods are refused. Authorization and store errors
+// propagate; the update remains committed if reading the resulting view fails.
 func (s *Transit) ConfigureKey(ctx context.Context, actor Actor, scope domain.Scope, name string, req ConfigureTransitKeyRequest) (TransitKeyView, error) {
 	if err := requireKeyAddress(scope, name); err != nil {
 		return TransitKeyView{}, err
@@ -737,7 +780,11 @@ var transitTransitions = map[string]struct {
 }
 
 // ChangeKeyState applies one lifecycle action (ADR D6). delay applies to
-// schedule-deletion only; zero means the default.
+// schedule-deletion only; zero means seven days, and the accepted range is
+// 24 hours through 90 days. Canceling deletion leaves the key disabled and is
+// refused once the deadline has elapsed or purging has started. Compromise marks
+// all current versions without changing state. Validation, authorization, and
+// store errors propagate; a later view-read failure does not undo the change.
 func (s *Transit) ChangeKeyState(ctx context.Context, actor Actor, scope domain.Scope, name, action string, delay time.Duration) (TransitKeyView, error) {
 	if err := requireKeyAddress(scope, name); err != nil {
 		return TransitKeyView{}, err
@@ -808,8 +855,11 @@ func (s *Transit) ChangeKeyState(ctx context.Context, actor Actor, scope domain.
 // raised to min_decrypt_version, after which ConfigureKey can no longer lower
 // min_decrypt_version past it. External custody then destroys the material
 // below the floor at the provider; an unavailable provider refuses the trim
-// rather than leaving material orphaned, and a retry re-destroys under the
-// same floor. Finally the version rows below the floor are deleted.
+// rather than leaving material orphaned. Retries can finish external destruction
+// before the version rows below the floor are deleted. It returns
+// the updated view and deleted row count. The floor and any external destruction
+// persist on later failure; deletion stays committed if reading the view fails.
+// Authorization, custody, and store errors propagate.
 func (s *Transit) TrimKey(ctx context.Context, actor Actor, scope domain.Scope, name string) (TransitKeyView, int64, error) {
 	if err := requireKeyAddress(scope, name); err != nil {
 		return TransitKeyView{}, 0, err

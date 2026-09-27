@@ -41,6 +41,10 @@ type useResult struct {
 	outBytes int
 }
 
+// chargeTransit charges the principal and organization rate limits unless
+// charged already records a successful charge, including across transaction retries. Shared counter
+// failures and exhausted limits return overload errors; failed charges may
+// already have incremented shared counters.
 func (s *Transit) chargeTransit(ctx context.Context, charged *bool, principal domain.PrincipalID, org domain.OrgID, now time.Time) error {
 	if *charged {
 		return nil
@@ -69,7 +73,11 @@ func (s *Transit) chargeTransit(ctx context.Context, charged *bool, principal do
 	return s.Budget.chargeOnce(charged, budgetTransit, budgetKeys{Principal: principal, Org: org})
 }
 
-// useKey is the one data-plane core.
+// useKey authorizes and rate-limits an environment key operation, enforces key
+// policy, and runs body in a write transaction. inBytes records input size for
+// auditing. Policy, body, store, and audit errors propagate; captured refusals
+// remain auditable after rollback. A non-nil custody registry is required even
+// for operations that use only public metadata.
 func (s *Transit) useKey(ctx context.Context, actor Actor, scope domain.Scope, name, op string, inBytes int,
 	body func(ctx context.Context, u *transitUse) (useResult, error),
 ) error {
@@ -188,8 +196,9 @@ func (u *transitUse) consumingVersion(v uint32, forgeable bool) error {
 }
 
 // material loads one version and its custody provider. A version whose row is
-// gone (trimmed, or created after a restored backup) or whose material the
-// provider no longer holds is an explicit version refusal.
+// gone or has neither sealed material nor an external reference is a version
+// refusal. Provider resolution or availability failures become
+// ErrTransitCustodyUnavailable; other lookup errors propagate.
 func (u *transitUse) material(ctx context.Context, v uint32) (transit.Custody, transit.Target, transit.Version, error) {
 	fail := func(err error) (transit.Custody, transit.Target, transit.Version, error) {
 		return nil, transit.Target{}, transit.Version{}, err
@@ -219,7 +228,8 @@ func (u *transitUse) material(ctx context.Context, v uint32) (transit.Custody, t
 	return p, t, transitVersion(m), nil
 }
 
-// custodyErr maps a provider error inside an operation body.
+// custodyErr records provider-unavailable and missing-material errors as
+// custody and version refusals. Other errors, including nil, pass through.
 func (u *transitUse) custodyErr(v uint32, err error) error {
 	switch {
 	case errors.Is(err, transit.ErrUnavailable):
@@ -230,10 +240,14 @@ func (u *transitUse) custodyErr(v uint32, err error) error {
 	return err
 }
 
+// badInput captures an invalid-input audit failure and returns a validation
+// error, or the audit event construction error if capture cannot be prepared.
 func (u *transitUse) badInput(v uint32, detail string) error {
 	return u.refusal(audit.OutcomeFailure, "invalid-input", v, invalidTransit("%s", detail))
 }
 
+// checkTransitInput accepts up to bound bytes, including empty input, and
+// returns an invalid-input error above that limit.
 func checkTransitInput(what string, b []byte, bound int) error {
 	if len(b) > bound {
 		return invalidTransit("%s exceeds %d bytes", what, bound)
@@ -242,6 +256,10 @@ func checkTransitInput(what string, b []byte, bound int) error {
 }
 
 // Encrypt seals plaintext under the key (ADR D4). keyVersion 0 means latest.
+// aad is caller context bound to the ciphertext; plaintext and context are
+// limited to MaxTransitPlaintextBytes and MaxTransitContextBytes. Value holds
+// the versioned ciphertext. Input, key-policy, custody, and transaction errors
+// propagate; use the output only when err is nil.
 func (s *Transit) Encrypt(ctx context.Context, actor Actor, scope domain.Scope, name string, plaintext, aad []byte, keyVersion uint32) (TransitOutput, error) {
 	if err := checkTransitInput("plaintext", plaintext, crypto.MaxTransitPlaintextBytes); err != nil {
 		return TransitOutput{}, err
@@ -294,7 +312,10 @@ func (u *transitUse) open(ctx context.Context, ciphertext string, aad []byte) ([
 }
 
 // Decrypt opens a ciphertext (ADR D4). The plaintext is display-once: Hikyo
-// neither stores nor logs it.
+// neither stores nor logs it. aad must match the encryption context. Malformed
+// ciphertext and authentication failures become invalid-input errors; key-policy,
+// custody, and transaction errors propagate. The caller must zero returned
+// Plaintext; on error this method zeroes it and returns an empty result.
 func (s *Transit) Decrypt(ctx context.Context, actor Actor, scope domain.Scope, name, ciphertext string, aad []byte) (TransitOutput, error) {
 	if len(ciphertext) > crypto.MaxTransitWireBytes {
 		return TransitOutput{}, invalidTransit("ciphertext exceeds %d bytes", crypto.MaxTransitWireBytes)
@@ -354,7 +375,10 @@ func (s *Transit) Rewrap(ctx context.Context, actor Actor, scope domain.Scope, n
 
 // DataKey draws a fresh data key and returns it wrapped under the key, plus
 // the plaintext when reveal is set and the key allows datakey-plaintext (ADR
-// D4). The plaintext is display-once.
+// D4). The plaintext is display-once and the caller must zero it. bits may be
+// 128, 256, or 512; zero defaults to 256. aad is caller context bound to the
+// wrapped value. Input, policy, randomness, custody, and transaction errors
+// propagate; any returned plaintext is zeroed on error.
 func (s *Transit) DataKey(ctx context.Context, actor Actor, scope domain.Scope, name string, bits int, aad []byte, reveal bool) (TransitOutput, error) {
 	if bits == 0 {
 		bits = DefaultTransitDataKeyBits
@@ -428,9 +452,12 @@ func (s *Transit) Sign(ctx context.Context, actor Actor, scope domain.Scope, nam
 	return out, err
 }
 
-// Verify checks a signature against the version's stored public key. It needs
-// no custody provider: the public key is public metadata. An invalid signature
-// is a successful operation answering Valid=false.
+// Verify checks a signature against the version's stored public key without
+// contacting a custody provider; useKey still requires a non-nil registry.
+// A well-formed transit value with a mismatched signature returns Valid=false.
+// Malformed values or oversized inputs return invalid-input errors; unavailable
+// or compromised versions are refused. Authorization, budget, and store errors
+// propagate; use the output only when err is nil.
 func (s *Transit) Verify(ctx context.Context, actor Actor, scope domain.Scope, name string, message []byte, signature string) (TransitOutput, error) {
 	if err := checkTransitInput("message", message, crypto.MaxTransitPlaintextBytes); err != nil {
 		return TransitOutput{}, err
@@ -486,7 +513,10 @@ func (s *Transit) HMAC(ctx context.Context, actor Actor, scope domain.Scope, nam
 }
 
 // VerifyHMAC recomputes the MAC and compares in constant time. A mismatch is a
-// successful operation answering Valid=false.
+// successful operation answering Valid=false. Malformed transit values or
+// oversized inputs return invalid-input errors; unavailable or compromised
+// versions are refused. Authorization, budget, custody, and store errors
+// propagate; use the output only when err is nil.
 func (s *Transit) VerifyHMAC(ctx context.Context, actor Actor, scope domain.Scope, name string, message []byte, mac string) (TransitOutput, error) {
 	if err := checkTransitInput("message", message, crypto.MaxTransitPlaintextBytes); err != nil {
 		return TransitOutput{}, err
@@ -521,10 +551,10 @@ func (s *Transit) VerifyHMAC(ctx context.Context, actor Actor, scope domain.Scop
 
 // RotateDue appends a version to every active key whose rotation period has
 // elapsed since its latest version (ADR D5). It runs under scheduler authority
-// and records a rotation event with actor class system. A key whose external
-// custody is unavailable is skipped and retried next run; it keeps serving
-// under its current version, which is the documented fail-closed direction
-// (no version is invented, no custody substituted).
+// and records a rotation event with actor class system. Unavailable custody
+// leaves the current version unchanged for a later sweep to retry. It returns
+// the successful rotation count and joined per-key errors. A page-read failure stops the sweep
+// and joins that error with earlier failures; completed rotations remain committed.
 func (s *Transit) RotateDue(ctx context.Context) (rotated int, err error) {
 	now := s.now()
 	return s.sweepDue(ctx, func(ctx context.Context, r store.Repos, p authz.Proof, after string) ([]store.TransitDueKey, error) {
@@ -586,7 +616,9 @@ func (s *Transit) sweepDue(ctx context.Context, read func(context.Context, store
 // external material is destroyed at its provider first, then every version's
 // material is erased and the key tombstoned in one transaction. An unavailable
 // external provider leaves the key pending-deletion (unusable either way) for
-// the next run.
+// the next run. It returns the successful purge count and joined per-key errors.
+// A page-read failure stops the sweep and joins that error with earlier failures;
+// completed purges remain committed.
 func (s *Transit) PurgeDue(ctx context.Context) (destroyed int, err error) {
 	now := store.CanonTime(s.now())
 	return s.sweepDue(ctx, func(ctx context.Context, r store.Repos, p authz.Proof, after string) ([]store.TransitDueKey, error) {
@@ -598,6 +630,9 @@ func (s *Transit) PurgeDue(ctx context.Context) (destroyed int, err error) {
 	})
 }
 
+// purgeOne fences a due deletion, destroys external material, and tombstones
+// the key while erasing stored material and caller entries. Errors propagate;
+// the committed purge fence and any external destruction survive later failure.
 func (s *Transit) purgeOne(ctx context.Context, scope domain.Scope, k store.TransitKeyRecord, now time.Time) error {
 	var external []store.TransitVersionMaterial
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {

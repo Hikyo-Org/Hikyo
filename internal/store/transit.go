@@ -197,6 +197,8 @@ func encodeTransitOps(ops []string) string {
 	return strings.Join(slices.Compact(out), ",")
 }
 
+// decodeTransitOps splits the stored operation set, returning an empty slice
+// for an empty encoding.
 func decodeTransitOps(s string) []string {
 	if s == "" {
 		return []string{}
@@ -206,6 +208,8 @@ func decodeTransitOps(s string) []string {
 
 const transitKeyColumns = `id,environment_id,name,algorithm,custody,allowed_operations,state,latest_version,min_encrypt_version,min_decrypt_version,min_available_version,compromised_through_version,rotation_period_seconds,deletion_after,created_by,created_at,updated_at`
 
+// scanTransitKey decodes key metadata, scanning trailing columns into extra.
+// A missing row becomes ErrNotFound; other scan errors propagate.
 func scanTransitKey(row interface{ Scan(...any) error }, extra ...any) (TransitKeyRecord, error) {
 	var out TransitKeyRecord
 	var ops string
@@ -239,6 +243,8 @@ func (r transitQueries) envChain(p authz.Proof, op authz.StoreOp) (org, project,
 	return string(chain.Org), string(chain.Project), string(chain.Env), nil
 }
 
+// ListKeys returns non-destroyed keys in the proof's environment, ordered by
+// name. Proof, query, and row decoding errors propagate.
 func (r transitQueries) ListKeys(ctx context.Context, p authz.Proof) ([]TransitKeyRecord, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitKeysList)
 	if err != nil {
@@ -261,6 +267,9 @@ func (r transitQueries) ListKeys(ctx context.Context, p authz.Proof) ([]TransitK
 	return out, rows.Err()
 }
 
+// getKey loads a non-destroyed key by name under op, taking a shared row lock
+// on PostgreSQL when lock is true. Missing keys return ErrNotFound; proof and
+// query errors propagate.
 func (r transitQueries) getKey(ctx context.Context, p authz.Proof, op authz.StoreOp, name string, lock bool) (TransitKeyRecord, error) {
 	org, project, env, err := r.envChain(p, op)
 	if err != nil {
@@ -274,14 +283,22 @@ func (r transitQueries) getKey(ctx context.Context, p authz.Proof, op authz.Stor
 	return scanTransitKey(r.db.QueryRow(ctx, query, org, project, env, name))
 }
 
+// GetKey returns a non-destroyed key in the proof's environment, or ErrNotFound.
+// Proof and query errors propagate.
 func (r transitQueries) GetKey(ctx context.Context, p authz.Proof, name string) (TransitKeyRecord, error) {
 	return r.getKey(ctx, p, authz.StoreTransitKeysGet, name, false)
 }
 
+// GetKeyForUse loads a non-destroyed key for a cryptographic operation, holding
+// a shared row lock on PostgreSQL. Missing keys return ErrNotFound; proof and
+// query errors propagate.
 func (r transitQueries) GetKeyForUse(ctx context.Context, p authz.Proof, name string) (TransitKeyRecord, error) {
 	return r.getKey(ctx, p, authz.StoreTransitKeysGetForUse, name, true)
 }
 
+// CountKeys counts non-destroyed keys in the proof's environment, locking the
+// environment on PostgreSQL to serialize key admission. Proof and query errors
+// propagate.
 func (r transitQueries) CountKeys(ctx context.Context, p authz.Proof) (int, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitKeysCount)
 	if err != nil {
@@ -299,6 +316,9 @@ func (r transitQueries) CountKeys(ctx context.Context, p authz.Proof) (int, erro
 	return n, err
 }
 
+// ListVersions returns version metadata ordered by version within the proof's
+// environment. No matching versions yields an empty result; proof and store
+// errors propagate.
 func (r transitQueries) ListVersions(ctx context.Context, p authz.Proof, keyID string) ([]TransitVersionRecord, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitVersionsList)
 	if err != nil {
@@ -325,6 +345,9 @@ func (r transitQueries) ListVersions(ctx context.Context, p authz.Proof, keyID s
 	return out, rows.Err()
 }
 
+// ListCallers returns per-key restrictions ordered by principal ID within the
+// proof's environment. An empty list imposes no caller restriction. Proof and
+// store errors propagate.
 func (r transitQueries) ListCallers(ctx context.Context, p authz.Proof, keyID string) ([]TransitCaller, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitCallersList)
 	if err != nil {
@@ -349,6 +372,9 @@ func (r transitQueries) ListCallers(ctx context.Context, p authz.Proof, keyID st
 	return out, rows.Err()
 }
 
+// VersionMaterial loads sealed material or an external reference and public
+// metadata for one version in the proof's environment. Missing rows return
+// ErrNotFound; proof and query errors propagate.
 func (r transitQueries) VersionMaterial(ctx context.Context, p authz.Proof, keyID string, version uint32) (TransitVersionMaterial, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitVersionMaterial)
 	if err != nil {
@@ -371,6 +397,8 @@ func (r transitQueries) VersionMaterial(ctx context.Context, p authz.Proof, keyI
 	return out, nil
 }
 
+// insertVersion stores a version in the current transaction, writing absent
+// material, references, and public keys as NULL. Database errors propagate.
 func (r transitQueries) insertVersion(ctx context.Context, org, project, env, keyID string, v TransitVersionCreate) error {
 	var ref any
 	if v.ExternalRef != "" {
@@ -389,6 +417,8 @@ func (r transitQueries) insertVersion(ctx context.Context, org, project, env, ke
 	return err
 }
 
+// replaceCallers replaces all caller entries for the key in the current
+// transaction. An empty list clears them; database errors propagate.
 func (r transitQueries) replaceCallers(ctx context.Context, org, project, env, keyID string, callers []TransitCaller) error {
 	if _, err := r.db.Exec(ctx, r.db.SQL(`DELETE FROM transit_key_callers WHERE org_id=? AND project_id=? AND environment_id=? AND key_id=?`), org, project, env, keyID); err != nil {
 		return err
@@ -402,6 +432,9 @@ func (r transitQueries) replaceCallers(ctx context.Context, org, project, env, k
 	return nil
 }
 
+// CreateKey inserts an active key, version 1, and its caller entries in the
+// proof's environment, returning metadata. Proof and database errors propagate
+// so the enclosing transaction can roll back.
 func (r transitQueries) CreateKey(ctx context.Context, p authz.Proof, m TransitKeyCreate) (TransitKeyRecord, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitKeysCreate)
 	if err != nil {
@@ -436,6 +469,11 @@ func (r transitQueries) missingOrConflict(ctx context.Context, org, project, env
 	return ErrConflict
 }
 
+// AppendVersion adds expectLatest+1 to an active, retired, or disabled key.
+// A stale latest version or disallowed state returns ErrConflict; an absent
+// or destroyed key returns ErrNotFound. Retaining maxVersions rows returns
+// ErrTransitVersionLimit. Proof and database errors propagate; the caller must
+// roll back the transaction on error.
 func (r transitQueries) AppendVersion(ctx context.Context, p authz.Proof, keyID string, expectLatest uint32, maxVersions int, v TransitVersionCreate) error {
 	org, project, env, err := r.envChain(p, authz.StoreTransitVersionsAppend)
 	if err != nil {
@@ -467,6 +505,9 @@ func (r transitQueries) AppendVersion(ctx context.Context, p authz.Proof, keyID 
 	return r.insertVersion(ctx, org, project, env, keyID, v)
 }
 
+// Configure updates policy and optionally replaces caller entries. A missing
+// or destroyed key returns ErrNotFound; pending deletion or a version outside
+// the stored bounds returns ErrConflict. Proof and database errors propagate.
 func (r transitQueries) Configure(ctx context.Context, p authz.Proof, m TransitKeyConfig) error {
 	org, project, env, err := r.envChain(p, authz.StoreTransitKeysConfigure)
 	if err != nil {
@@ -486,6 +527,12 @@ func (r transitQueries) Configure(ctx context.Context, p authz.Proof, m TransitK
 	return nil
 }
 
+// ChangeState applies a transition from one of m.From, setting a deletion
+// deadline only for pending deletion. A pending deletion cannot be canceled
+// after its deadline or purge start. Empty source states and a destroyed target
+// are invalid. A guarded update matching no row returns ErrNotFound for an
+// absent or destroyed key, otherwise ErrConflict. Proof and database errors
+// propagate.
 func (r transitQueries) ChangeState(ctx context.Context, p authz.Proof, m TransitStateChange) error {
 	org, project, env, err := r.envChain(p, authz.StoreTransitKeysChangeState)
 	if err != nil {
@@ -515,6 +562,9 @@ func (r transitQueries) ChangeState(ctx context.Context, p authz.Proof, m Transi
 	return nil
 }
 
+// Compromise marks all versions through the current latest as compromised and
+// returns that version. Missing or destroyed keys return ErrNotFound; proof
+// and database errors propagate.
 func (r transitQueries) Compromise(ctx context.Context, p authz.Proof, keyID string, at time.Time) (uint32, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitKeysCompromise)
 	if err != nil {
@@ -533,6 +583,9 @@ func (r transitQueries) Compromise(ctx context.Context, p authz.Proof, keyID str
 	return uint32(through), err
 }
 
+// FenceTrim persists and returns the current minimum decrypt version as the
+// trim floor. Pending deletion returns ErrConflict; missing or destroyed keys
+// return ErrNotFound. Proof and database errors propagate.
 func (r transitQueries) FenceTrim(ctx context.Context, p authz.Proof, keyID string, at time.Time) (uint32, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitVersionsFenceTrim)
 	if err != nil {
@@ -551,6 +604,10 @@ func (r transitQueries) FenceTrim(ctx context.Context, p authz.Proof, keyID stri
 	return uint32(floor), err
 }
 
+// Trim deletes version rows strictly below through and returns the deleted
+// count. through must be positive and at most the durable trim floor. Invalid
+// bounds or pending deletion return ErrConflict; missing or destroyed keys
+// return ErrNotFound. Proof and database errors propagate.
 func (r transitQueries) Trim(ctx context.Context, p authz.Proof, keyID string, through uint32) (int64, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitVersionsTrim)
 	if err != nil {
@@ -595,6 +652,9 @@ func (r transitQueries) ListVersionsForReencrypt(ctx context.Context, p authz.Pr
 	return out, rows.Err()
 }
 
+// ReencryptVersion replaces sealed material only if it still matches
+// oldCiphertext, returning whether a row changed. Missing or changed rows
+// return false without error; proof and database errors propagate.
 func (r transitQueries) ReencryptVersion(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error) {
 	chain, err := authz.Verify(p, authz.StoreTransitVersionsReencrypt, r.tok)
 	if err != nil {
@@ -610,6 +670,9 @@ func (r transitQueries) ReencryptVersion(ctx context.Context, p authz.Proof, id 
 
 const transitDueColumns = `k.org_id,k.project_id,k.environment_id,k.id,k.environment_id,k.name,k.algorithm,k.custody,k.allowed_operations,k.state,k.latest_version,k.min_encrypt_version,k.min_decrypt_version,k.min_available_version,k.compromised_through_version,k.rotation_period_seconds,k.deletion_after,k.created_by,k.created_at,k.updated_at`
 
+// scanDue reads scheduler candidates and closes rows. withLatest also decodes
+// the latest version's creation time; scan, timestamp, and iteration errors
+// propagate.
 func (r transitQueries) scanDue(rows adapterTargetRows, withLatest bool) ([]TransitDueKey, error) {
 	defer closeAdapterRows(rows)
 	var out []TransitDueKey
@@ -648,10 +711,14 @@ type prefixScanner struct {
 	prefix []any
 }
 
+// Scan reads the stored prefix columns before dest and returns any scan error.
 func (s prefixScanner) Scan(dest ...any) error {
 	return s.rows.Scan(append(slices.Clone(s.prefix), dest...)...)
 }
 
+// SelectDeletionDue returns installation-wide pending deletions due at or
+// before now, ordered by key ID after the exclusive cursor, up to limit rows.
+// Use an empty after for the first page. Proof, query, and scan errors propagate.
 func (r transitQueries) SelectDeletionDue(ctx context.Context, p authz.Proof, now time.Time, after string, limit int) ([]TransitDueKey, error) {
 	if _, err := authz.Verify(p, authz.StoreTransitSelectDeletionDue, r.tok); err != nil {
 		return nil, err
@@ -663,6 +730,10 @@ func (r transitQueries) SelectDeletionDue(ctx context.Context, p authz.Proof, no
 	return r.scanDue(rows, false)
 }
 
+// SelectRotationDue returns active keys with a positive rotation period,
+// ordered by key ID after the exclusive cursor, up to limit rows. Use an empty
+// after for the first page. The caller must check whether the period has elapsed
+// since LatestCreatedAt. Proof, query, and scan errors propagate.
 func (r transitQueries) SelectRotationDue(ctx context.Context, p authz.Proof, after string, limit int) ([]TransitDueKey, error) {
 	if _, err := authz.Verify(p, authz.StoreTransitSelectRotationDue, r.tok); err != nil {
 		return nil, err
@@ -677,6 +748,10 @@ func (r transitQueries) SelectRotationDue(ctx context.Context, p authz.Proof, af
 	return r.scanDue(rows, true)
 }
 
+// DestroyVersions persists the purge fence for a pending deletion due at or
+// before now, then lists its external references in version order. A key that
+// is absent or not due returns ErrConflict; proof and database errors propagate.
+// The enclosing transaction must commit before external destruction begins.
 func (r transitQueries) DestroyVersions(ctx context.Context, p authz.Proof, keyID string, now time.Time) ([]TransitVersionMaterial, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitDestroyVersions)
 	if err != nil {
@@ -710,6 +785,10 @@ func (r transitQueries) DestroyVersions(ctx context.Context, p authz.Proof, keyI
 	return out, rows.Err()
 }
 
+// Destroy tombstones a pending deletion due at or before now, clears all
+// version material and caller entries, and returns the number of version rows
+// updated. Version metadata and public keys remain. A key that is absent or
+// not due returns ErrConflict; proof and database errors propagate.
 func (r transitQueries) Destroy(ctx context.Context, p authz.Proof, keyID string, now time.Time) (int64, error) {
 	org, project, env, err := r.envChain(p, authz.StoreTransitDestroy)
 	if err != nil {
@@ -737,6 +816,7 @@ type TransitRuntime struct {
 	db *DB
 }
 
+// NewTransitRuntime creates a gauge reader over db without reading it.
 func NewTransitRuntime(db *DB) *TransitRuntime { return &TransitRuntime{db: db} }
 
 // TransitGauges are the label-free transit counts.
@@ -744,6 +824,9 @@ type TransitGauges struct {
 	Live, RotationDue, PendingDeletion int64
 }
 
+// Gauges counts non-destroyed, rotation-due, and pending-deletion keys across
+// the installation at now. Database and timestamp errors propagate; counts
+// may be partial on error.
 func (r *TransitRuntime) Gauges(ctx context.Context, now time.Time) (TransitGauges, error) {
 	var g TransitGauges
 	err := dbRead(ctx, r.db, func(db adapterDB) error {

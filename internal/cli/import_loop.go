@@ -60,6 +60,8 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 	return "", false
 }
 
+// pathsOverlap reports equal paths or ancestry at a slash boundary. Inputs
+// must have leading and trailing slashes removed; an empty path covers all paths.
 func pathsOverlap(a, b string) bool {
 	return a == "" || b == "" || a == b || strings.HasPrefix(a, b+"/") || strings.HasPrefix(b, a+"/")
 }
@@ -71,6 +73,8 @@ func sameEndpoint(a, b *url.URL) bool {
 	return strings.EqualFold(a.Hostname(), b.Hostname()) && effectivePort(a) == effectivePort(b)
 }
 
+// effectivePort returns an explicit URL port, or the default for HTTP or HTTPS.
+// Other schemes without an explicit port return an empty string.
 func effectivePort(u *url.URL) string {
 	if port := u.Port(); port != "" {
 		return port
