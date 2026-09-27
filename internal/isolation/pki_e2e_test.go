@@ -345,12 +345,68 @@ func TestPKILifecycle(t *testing.T) {
 		if _, err := svc.RevokeCertificate(ctx, human, env, renewed.ID, "ca-compromise"); !errors.Is(err, domain.ErrInvalid) {
 			t.Fatalf("a caller may not choose ca-compromise: %v", err)
 		}
+		// A worker snapshots entries, then another transaction revokes with an
+		// older clock before publication. The captured sequence must leave
+		// that issuer due even though the CRL timestamp is newer.
+		sweepPKI(t, svc)
+		staleDER, err := svc.IssuerCRL(ctx, op, "issuing", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		candidates, err := svc.Runtime.DueCRLs(ctx, clock.Now().Add(48*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var staleCandidate store.PKICRLCandidate
+		for _, candidate := range candidates {
+			if candidate.IssuerID == issuing.Issuer.ID {
+				staleCandidate = candidate
+			}
+		}
+		if staleCandidate.IssuerID == "" {
+			t.Fatal("missing candidate")
+		}
+		snapshotEntries, err := svc.Runtime.RevokedEntries(ctx, staleCandidate.IssuerID, clock.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
 		revoked, err := svc.RevokeCertificate(ctx, human, env, renewed.ID, "key-compromise")
 		if err != nil || revoked.State != "revoked" || revoked.RevocationReason != "key-compromise" {
 			t.Fatalf("revoke: %v %+v", err, revoked)
 		}
 		if again, err := svc.RevokeCertificate(ctx, human, env, renewed.ID, "superseded"); err != nil || again.RevocationReason != "key-compromise" {
 			t.Fatalf("revoking a revoked certificate must be an idempotent success: %v %+v", err, again)
+		}
+
+		published, err := svc.Runtime.PublishCRL(ctx, staleCandidate, staleDER, staleCandidate.CRLNumber+1, len(snapshotEntries), clock.Now().Add(time.Minute), clock.Now().Add(24*time.Hour))
+		if err != nil || !published {
+			t.Fatalf("publish older snapshot: %v %v", published, err)
+		}
+		pending, err := svc.Runtime.DueCRLs(ctx, clock.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, candidate := range pending {
+			if candidate.IssuerID == issuing.Issuer.ID {
+				found = true
+				if candidate.RevocationSeq != staleCandidate.RevocationSeq+1 {
+					t.Fatalf("revocation sequence=%d", candidate.RevocationSeq)
+				}
+			}
+		}
+		if !found {
+			t.Fatal("concurrent revocation lost behind newer CRL timestamp")
+		}
+		sweepPKI(t, svc)
+		pending, err = svc.Runtime.DueCRLs(ctx, clock.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, candidate := range pending {
+			if candidate.IssuerID == issuing.Issuer.ID {
+				t.Fatal("caught-up CRL still due")
+			}
 		}
 
 		// A crash between reserving a serial and recording the leaf: the row

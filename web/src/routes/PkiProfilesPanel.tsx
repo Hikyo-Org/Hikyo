@@ -305,7 +305,10 @@ function ProfileRow({
           }
           onConfirm={() =>
             remove.mutate(profile.name, {
-              onSuccess: () => onDone(`Deleted ${profile.name}.`),
+              onSuccess: () => {
+                setMode('idle');
+                onDone(`Deleted ${profile.name}.`);
+              },
               onError: (error) => onFailure(error, `delete ${profile.name}`),
             })
           }

@@ -23,7 +23,7 @@ import { Alert } from '../ui/Alert.tsx';
 import { Button } from '../ui/Button.tsx';
 import { Checkbox } from '../ui/Checkbox.tsx';
 import { Ceremony, type CeremonyRequest } from './Ceremony.tsx';
-import { JumpIndex, Panel } from './Sections.tsx';
+import { JumpIndex, Panel, TypedNameConfirm } from './Sections.tsx';
 
 /**
  * Temporary access (#152): approval-mediated, time-bound access to one
@@ -151,6 +151,7 @@ export function TemporaryAccess() {
   const [checkingWindow, setCheckingWindow] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
+  const [deletingPolicy, setDeletingPolicy] = useState<{ id: string; name: string } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<AccessPolicyDraft>(emptyPolicy);
   const [approversText, setApproversText] = useState('');
@@ -439,9 +440,15 @@ export function TemporaryAccess() {
                     <Button
                       type="button"
                       variant="danger"
+                      disabled={deletePolicy.isPending}
                       onClick={() => {
                         setActionError(null);
-                        deletePolicy.mutate(policy.id, { onError: (error) => setActionError(refusal(error)) });
+                        setDeletingPolicy({
+                          id: policy.id,
+                          name: policy.environment_id === ''
+                            ? 'All environments'
+                            : envItems.find((environment) => environment.id === policy.environment_id)?.name ?? policy.environment_id,
+                        });
                       }}
                     >
                       Delete
@@ -453,6 +460,33 @@ export function TemporaryAccess() {
           </table>
         ) : null}
 
+        {deletingPolicy === null ? null : (
+          <div>
+            <TypedNameConfirm
+              key={deletingPolicy.id}
+              label="Confirm the policy scope"
+              expect={deletingPolicy.name}
+              action="Delete policy"
+              busy={deletePolicy.isPending}
+              hint={
+                <>
+                  Delete the access policy for {deletingPolicy.name}. Open requests will no longer be approvable;
+                  already granted access keeps its expiry. Type {deletingPolicy.name} to confirm.
+                </>
+              }
+              onConfirm={() => {
+                setActionError(null);
+                deletePolicy.mutate(deletingPolicy.id, {
+                  onSuccess: () => setDeletingPolicy(null),
+                  onError: (error) => setActionError(refusal(error)),
+                });
+              }}
+            />
+            <Button type="button" disabled={deletePolicy.isPending} onClick={() => setDeletingPolicy(null)}>
+              Cancel deletion
+            </Button>
+          </div>
+        )}
         {formOpen ? (
           <form
             className="temporary-access__form panel"

@@ -993,6 +993,8 @@ type PkiIssuer struct {
 	IssuedCount         int64
 	CrlDer              []byte
 	CrlNumber           int64
+	RevocationSeq       int64
+	CrlRevocationSeq    int64
 	CrlThisUpdate       sql.NullString
 	CrlNextUpdate       sql.NullString
 	RowVersion          int64
