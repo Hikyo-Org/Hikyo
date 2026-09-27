@@ -176,6 +176,7 @@ type fakeJournal struct {
 	refusals  int
 	releases  map[string]int
 	gateErr   error
+	finishErr error
 }
 
 func newFakeJournal() *fakeJournal {
@@ -200,6 +201,9 @@ func (j *fakeJournal) Prepare(_ context.Context, effect adapter.Effect, prior ad
 func (j *fakeJournal) Finish(_ context.Context, effect adapter.Effect, completion adapter.Completion) error {
 	if err := adapter.ValidateCompletion(completion); err != nil {
 		return err
+	}
+	if j.finishErr != nil {
+		return j.finishErr
 	}
 	key := journalKey(effect)
 	j.outcomes = append(j.outcomes, key+"="+string(completion.Outcome))
@@ -458,6 +462,30 @@ func TestLostCASWithdrawalFailureIsReported(t *testing.T) {
 		if got, _ := kv.value("apps/pay/DATABASE_URL"); got != "racer" {
 			t.Fatalf("replay overwrote the racing write with %q", got)
 		}
+	}
+}
+
+// A journal that cannot persist the release keeps the claim. The failure
+// must stay loud (the stranded marker is named) without inheriting the
+// write's provider class, which could schedule an immediate replay.
+func TestLostCASWithdrawalWithFailedFinishStaysLoud(t *testing.T) {
+	kv := newFakeKV()
+	journal := newFakeJournal()
+	target := testTarget(t, kv)
+	if _, err := (&Module{API: kv}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); err != nil {
+		t.Fatal(err)
+	}
+	finish := errors.New("journal down")
+	racer := &racingKV{fakeKV: kv, path: "apps/pay/DATABASE_URL", afterRace: func() {
+		kv.failOn["patch-metadata:apps/pay/DATABASE_URL"] = errors.New("withdraw refused")
+		journal.finishErr = finish
+	}}
+	_, err := (&Module{API: racer}).Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal)
+	if !errors.Is(err, finish) || errors.Is(err, errPendingStranded) || !strings.Contains(err.Error(), errPendingStranded.Error()) {
+		t.Fatalf("Sync() = %v, want the journal failure naming the stranded marker", err)
+	}
+	if journal.states["secret:DATABASE_URL"] != adapter.Owned {
+		t.Fatalf("claim = %q, want the unpersisted release to leave it owned", journal.states["secret:DATABASE_URL"])
 	}
 }
 

@@ -493,7 +493,11 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 			completion.Missing, completion.Finding = true, "owned_missing"
 		}
 		if finishErr := journal.Finish(ctx, effect, completion); finishErr != nil {
-			return finishErr
+			// Surface the write failure (a stranded marker above all) in
+			// the text only: wrapping it would let its provider class, such
+			// as a rate limit, schedule a replay the unpersisted completion
+			// was meant to prevent.
+			return fmt.Errorf("%w (write: %v)", finishErr, writeErr)
 		}
 		if completion.ReleaseLedger {
 			delete(ledger, key)
