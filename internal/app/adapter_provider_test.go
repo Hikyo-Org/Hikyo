@@ -15,7 +15,7 @@ import (
 )
 
 func TestAdapterModuleFactoryRegistryIsTotal(t *testing.T) {
-	registry := deploymentProviderRegistry(adapterProviderPolicy{})
+	registry := deploymentProviderRegistry(nil, adapterProviderPolicy{})
 	if len(registry) != len(adapter.SupportedProviders()) {
 		t.Fatalf("registry entries = %d, supported providers = %d", len(registry), len(adapter.SupportedProviders()))
 	}
@@ -27,7 +27,7 @@ func TestAdapterModuleFactoryRegistryIsTotal(t *testing.T) {
 }
 
 func TestAdapterModuleFactoryDispatchesCompiledInProviders(t *testing.T) {
-	factory := newAdapterModuleFactory(nil, adapterProviderPolicy{})
+	factory := newAdapterModuleFactory(nil, nil, adapterProviderPolicy{})
 	forgejoLease, err := factory.Build(adapter.ForgejoProvider, adapter.Config{Origin: "https://forgejo.example"}, "scoped-token")
 	if err != nil {
 		t.Fatal(err)
@@ -61,18 +61,18 @@ func TestAdapterModuleFactoryDispatchesCompiledInProviders(t *testing.T) {
 func TestAWSWorkloadIdentityFollowsNodePolicy(t *testing.T) {
 	ambient := `{"mode":"ambient"}`
 	origin := adapter.Config{Origin: "https://secretsmanager.eu-west-1.amazonaws.com"}
-	_, err := newAdapterModuleFactory(nil, adapterProviderPolicy{}).Build(adapter.AWSSecretsManagerProvider, origin, ambient)
+	_, err := newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.AWSSecretsManagerProvider, origin, ambient)
 	// A caller-correctable 400 on the API, and terminal (never retried) for
 	// the outbox worker.
 	if !errors.Is(err, awssm.ErrWorkloadIdentityDisabled) || !errors.Is(err, domain.ErrInvalid) || !errors.Is(err, adapter.ErrProviderAuth) {
 		t.Fatalf("ambient without node opt-in = %v", err)
 	}
-	_, err = newAdapterModuleFactory(nil, adapterProviderPolicy{}).Build(adapter.AWSSecretsManagerProvider, origin, `{"mode":"static","access_key_id":"short"}`)
+	_, err = newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.AWSSecretsManagerProvider, origin, `{"mode":"static","access_key_id":"short"}`)
 	var detail interface{ SafeDetail() string }
 	if !errors.Is(err, domain.ErrInvalid) || errors.Is(err, adapter.ErrProviderAuth) || !errors.As(err, &detail) || detail.SafeDetail() == "" {
 		t.Fatalf("bad descriptor = %v", err)
 	}
-	lease, err := newAdapterModuleFactory(nil, adapterProviderPolicy{awsWorkloadIdentity: true}).Build(adapter.AWSSecretsManagerProvider, origin, ambient)
+	lease, err := newAdapterModuleFactory(nil, nil, adapterProviderPolicy{awsWorkloadIdentity: true}).Build(adapter.AWSSecretsManagerProvider, origin, ambient)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,14 +118,14 @@ func TestAdapterModuleLeaseReleasesSuccessOnce(t *testing.T) {
 }
 
 func TestDeploymentModuleRefusesClassicGitHubPAT(t *testing.T) {
-	_, err := newAdapterModuleFactory(nil, adapterProviderPolicy{}).Build(adapter.GitHubActionsProvider, adapter.Config{Origin: "https://api.github.com"}, "ghp_classic")
+	_, err := newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.GitHubActionsProvider, adapter.Config{Origin: "https://api.github.com"}, "ghp_classic")
 	if err == nil || !strings.Contains(err.Error(), "classic") {
 		t.Fatalf("deploymentModule() = %v, want named classic PAT refusal", err)
 	}
 }
 
 func TestDeploymentModuleNeverInfersProviderFromCredential(t *testing.T) {
-	_, err := newAdapterModuleFactory(nil, adapterProviderPolicy{}).Build(adapter.Provider(""), adapter.Config{Origin: "https://api.github.com"}, "github_pat_fine")
+	_, err := newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build(adapter.Provider(""), adapter.Config{Origin: "https://api.github.com"}, "github_pat_fine")
 	if err == nil || !strings.Contains(err.Error(), "unsupported") {
 		t.Fatalf("deploymentModule() = %v, want missing persisted provider refusal", err)
 	}

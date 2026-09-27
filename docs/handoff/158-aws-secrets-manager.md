@@ -93,18 +93,18 @@ kept.
 
 ## Store and migration
 
-`00060_aws_secrets_manager_adapter.sql` widens the provider CHECK and the
+`00067_aws_secrets_manager_adapter.sql` widens the provider CHECK and the
 destination-kind CHECKs on `adapter_targets`, `adapter_route_move_targets`,
 `adapter_route_move_claims`, `adapter_ledger`. SQLite rebuilds five tables
 under `legacy_alter_table=ON` with every current column (including the 00040
 multi-target columns) and recreates `adapters_active_origin` and
 `adapter_ledger_active_provider_name`. `internal/store/migrate/aws_adapter_migration_test.go`
-seeds pre-00060 rows and proves they, the partial unique index, and the child
+seeds pre-00067 rows and proves they, the partial unique index, and the child
 FKs survive on both engines.
 
 `internal/buildcompat/development.json` was regenerated against the CI-pinned
-`postgres:18@sha256:06cad38a...` (the diff is exactly the version-60 entry and
-`schema_sha256` per engine). Regenerate it again after any change to 00060.
+`postgres:18@sha256:06cad38a...` (the diff is exactly the version-67 entry and
+`schema_sha256` per engine). Regenerate it again after any change to 00067.
 
 AWS-aware name collision (`refuseAWSNameCollision`, `reserveAWSMoveClaims`):
 one account and region is one namespace across both kinds, so claims are
@@ -157,3 +157,21 @@ with the same (empty) prefix in one account are allowed.
   generically; browser flows for AWS are not in the Playwright registry yet.
 - `ListSecrets` cannot be resource-scoped in IAM; per-key planning and
   connection tests need it.
+
+
+## PR #828 integration and adversarial review, 2026-09-27
+
+Merged main's sealed-webhook and SSH changes while retaining AWS workload
+identity opt-in, access descriptors, CLI routes and WebUI fields. Reserved
+migration 00067 on both engines; provider constraints retain sealed-webhook.
+The AWS credential parser previously accepted a complete JSON object followed
+by an unmatched `]` or `}`. A reproduced regression now requires EOF after
+the one descriptor, without returning raw credential bytes on errors.
+
+Validation: AWS provider and CLI tests, SQLite/PostgreSQL AWS migration tests,
+provider/restore-drill app tests, AWS isolation tests, Web typecheck/lint and
+1171 unit tests. Generated API/client/config inventory and empirical build
+compatibility were refreshed. Native cross-provider review skipped: session
+quota was still unknown after the policy response window. Ordinary review
+completed for this integration; remote CI and lower-PR integration remain
+required before merge.

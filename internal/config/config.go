@@ -119,6 +119,14 @@ type Config struct {
 	// OIDCEgressPolicy grants private-network access only to exact federation endpoint origins.
 	OIDCEgressPolicy map[string][]netip.Prefix
 
+	// SealedWebhook is the instance-admin registry of sealed webhook
+	// receivers (#163), loaded once at startup from the operator-owned file
+	// named by HIKYO_SEALED_WEBHOOK_FILE. Tenants can bind a sealed-webhook
+	// adapter only to an origin listed here; nil means none is configured.
+	// Cryptographic validation (fingerprint confirmation, key syntax) happens
+	// in the app layer before the server serves.
+	SealedWebhook *SealedWebhookConfig
+
 	// DynamicEgressPolicy is the dynamic-secret (#147) equivalent, keyed by an
 	// exact postgres:// origin. A self-hosted PostgreSQL target is normally on a
 	// private address, so without an entry the default-deny public-egress rule
@@ -305,6 +313,7 @@ var knownEnv = map[string]bool{
 	"HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY":  true,
 	"HIKYO_OIDC_EGRESS_POLICY_FILE":        true,
 	"HIKYO_DYNAMIC_EGRESS_POLICY_FILE":     true,
+	"HIKYO_SEALED_WEBHOOK_FILE":            true,
 	"HIKYO_REAUTH_WINDOW_SECONDS":          true,
 	"HIKYO_UPDATE_CHANNEL":                 true,
 	"HIKYO_MAIL_ADDR":                      true,
@@ -575,6 +584,11 @@ func load(subcommand string, args []string, getenv func(string) string, environ 
 		if err != nil {
 			return nil, nil, err
 		}
+		sealedWebhook, err := loadSealedWebhookConfig(getenv("HIKYO_SEALED_WEBHOOK_FILE"))
+		if err != nil {
+			return nil, nil, err
+		}
+		cfg.SealedWebhook = sealedWebhook
 		oidcPolicy, err := loadOIDCEgressPolicy(getenv("HIKYO_OIDC_EGRESS_POLICY_FILE"))
 		if err != nil {
 			return nil, nil, err

@@ -180,7 +180,20 @@ func (s *adapterKeySelection) flags(fs *flag.FlagSet) {
 	fs.StringVar(&s.classification, "classification", "", "keep only secret or config keys from the pattern selection")
 }
 
-func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection, aws adapterAWSDestination) (apigen.AdapterTargetInput, error) {
+// adapterProvider reads the adapter's provider so target validation matches the
+// routing shape that provider accepts.
+func adapterProvider(ctx context.Context, client *Client, base, adapterID string) (string, error) {
+	var out apigen.Adapter
+	if err := client.Do(ctx, http.MethodGet, base+"/adapters/"+url.PathEscape(adapterID), nil, &out); err != nil {
+		return "", err
+	}
+	return string(out.Provider), nil
+}
+
+// adapterTargetInput validates target routing for the adapter's provider. A
+// sealed-webhook target routes to a receiver namespace only: --kind
+// organization with --owner, and no repository, environment, or visibility.
+func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection, aws adapterAWSDestination) (apigen.AdapterTargetInput, error) {
 	ids := splitAdapterKeys(keys)
 	if env == "" || kind == "" || owner == "" || (len(ids) == 0 && selection.empty()) {
 		return apigen.AdapterTargetInput{}, failf(ExitUsage, "target requires --env, --kind, --owner, and keys via --keys, --names, --include, or --classification")
@@ -189,12 +202,22 @@ func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibili
 	if err != nil {
 		return apigen.AdapterTargetInput{}, err
 	}
+	sealed := provider == "sealed-webhook"
+	if sealed && kind != "organization" {
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "sealed-webhook target takes --kind organization and --owner <receiver namespace> only")
+	}
 	switch kind {
 	case "repository":
 		if repo == "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "repository target requires --repo and refuses environment/visibility routing")
 		}
 	case "organization":
+		if sealed {
+			if repo != "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
+				return apigen.AdapterTargetInput{}, failf(ExitUsage, "sealed-webhook target takes --kind organization and --owner <receiver namespace> only")
+			}
+			break
+		}
 		if repo != "" || destinationEnvironment != "" || (visibility != "all" && visibility != "private" && visibility != "selected") {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "organization target requires --visibility all|private|selected and refuses --repo/--destination-environment")
 		}
@@ -322,11 +345,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), or AWS Secrets Manager endpoint")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, or AWS Secrets Manager endpoint")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, or aws-secrets-manager")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, or aws-secrets-manager")
 		}
 		if sub == "update" {
 			fs.StringVar(&target, "target", "", "target id to mutate")
@@ -437,7 +460,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
 		if _, err := adapter.ParseProvider(provider); err != nil {
-			return failf(ExitUsage, "--provider must be forgejo, github-actions, or aws-secrets-manager")
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, sealed-webhook, or aws-secrets-manager")
 		}
 		awsKind := kind == "json-object" || kind == "per-key"
 		if (provider == string(adapter.AWSSecretsManagerProvider)) != awsKind {
@@ -450,7 +473,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
 		if err != nil {
 			return err
 		}
@@ -520,7 +543,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
+		provider, err := adapterProvider(ctx, client, base, adapterID)
+		if err != nil {
+			return err
+		}
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
 		if err != nil {
 			return err
 		}
@@ -738,10 +765,14 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		provider, err := adapterProvider(ctx, client, base, adapterID)
+		if err != nil {
+			return err
+		}
 		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, adapterID, "adapter.configure", envID); err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, awsDestination)
 		if err != nil {
 			return err
 		}

@@ -1,5 +1,13 @@
 [
   {
+    "key": "HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
     "key": "HIKYO_ADAPTER_EGRESS_POLICY_FILE",
     "audience": "server",
     "scope": "node",
@@ -435,6 +443,23 @@
     "secret": false,
     "import": "external",
     "referencedContentSecret": true
+  },
+  {
+    "key": "HIKYO_SEALED_WEBHOOK_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "external",
+    "referencedContentSecret": true
+  },
+  {
+    "key": "HIKYO_SECOND_FACTOR",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
   },
   {
     "key": "HIKYO_STATE_DIR",

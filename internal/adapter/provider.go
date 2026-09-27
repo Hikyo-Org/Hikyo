@@ -14,9 +14,10 @@ const (
 	// AWSSecretsManagerProvider is the first cloud secret-manager destination
 	// (#158). It is one-way and value-blind like the CI providers.
 	AWSSecretsManagerProvider Provider = "aws-secrets-manager"
+	SealedWebhookProvider     Provider = "sealed-webhook"
 )
 
-var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, AWSSecretsManagerProvider}
+var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, AWSSecretsManagerProvider}
 
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {

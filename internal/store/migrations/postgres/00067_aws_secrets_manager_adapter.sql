@@ -5,7 +5,7 @@
 -- key). Only the closed CHECK sets widen; no column or row changes.
 ALTER TABLE adapters DROP CONSTRAINT adapters_provider_check;
 ALTER TABLE adapters ADD CONSTRAINT adapters_provider_check
-    CHECK (provider IN ('forgejo', 'github-actions', 'aws-secrets-manager'));
+    CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook', 'aws-secrets-manager'));
 
 ALTER TABLE adapter_targets DROP CONSTRAINT adapter_targets_destination_kind_check;
 ALTER TABLE adapter_targets ADD CONSTRAINT adapter_targets_destination_kind_check

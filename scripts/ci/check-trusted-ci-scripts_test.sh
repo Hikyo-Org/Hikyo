@@ -107,6 +107,13 @@ if [ "$(grep -c "github.event.pull_request.head.repo.full_name != github.reposit
 	exit 1
 fi
 require_line "$workflow" "if: \${{ !cancelled() && github.event_name != 'push' && github.event_name != 'merge_group' }}"
+# Reusable jobs called from ci.yml keep the caller's event. floor-bench must
+# accept a merge group, or every queue run fails and nothing can merge.
+floor_bench="$script_dir/../../.github/workflows/floor-bench.yml"
+if [ "$(grep -c "github.event_name == 'merge_group'" "$floor_bench")" -ne 2 ]; then
+	printf 'trusted CI scripts fixture failed: floor-bench refuses or skips merge groups\n' >&2
+	exit 1
+fi
 # A queue candidate must not supply its own planning/checking scripts: merge
 # groups load them from merge_group.base_sha, like PRs, with the full plan.
 # shellcheck disable=SC2016

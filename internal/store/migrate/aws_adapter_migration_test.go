@@ -7,7 +7,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
-// 00060 widens the provider and destination-kind CHECK sets for AWS Secrets
+// 00067 widens the provider and destination-kind CHECK sets for AWS Secrets
 // Manager (#158). On SQLite that is a rebuild of five tables, so the proof is
 // that pre-existing rows, foreign keys, and the partial unique indexes survive
 // byte for byte, and that the new identities are then admitted.
@@ -40,7 +40,7 @@ func testAWSAdapterMigration(t *testing.T, cfg store.Config) {
 		}
 	}
 	if _, err := db.ExecContext(ctx, `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_early','org_aws','prj_aws','aws-secrets-manager','https://secretsmanager.eu-west-1.amazonaws.com','usr_aws','active','2026-09-01T00:00:00Z')`); err == nil {
-		t.Fatal("pre-00060 schema admitted the aws-secrets-manager provider")
+		t.Fatal("pre-00067 schema admitted the aws-secrets-manager provider")
 	}
 	if err := Run(ctx, cfg); err != nil {
 		t.Fatal(err)
@@ -58,7 +58,7 @@ func testAWSAdapterMigration(t *testing.T, cfg store.Config) {
 		`INSERT INTO adapter_ledger (id,org_id,project_id,environment_id,target_id,provider_origin,destination_kind,destination_id,surface,effective_name,normalized_name,state,updated_at) VALUES ('led_aws','org_aws','prj_aws','env_aws','tgt_keys','https://secretsmanager.eu-west-1.amazonaws.com','per-key',123456789012,'secret','prod/APP_TOKEN','PROD/APP_TOKEN','owned','2026-09-01T00:00:00Z')`,
 	} {
 		if _, err := db.ExecContext(ctx, statement); err != nil {
-			t.Fatalf("post-00060 %q: %v", statement, err)
+			t.Fatalf("post-00067 %q: %v", statement, err)
 		}
 	}
 	// The rebuilt partial unique index still refuses a second active owner.

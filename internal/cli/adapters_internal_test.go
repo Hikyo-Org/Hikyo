@@ -224,20 +224,45 @@ func TestAWSAccessDescriptorAssembly(t *testing.T) {
 }
 
 func TestAWSTargetInputRoutesSecretAndKMSKey(t *testing.T) {
-	input, err := adapterTargetInput("env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{secret: "prod/app", kmsKey: "alias/hikyo"})
+	input, err := adapterTargetInput("aws-secrets-manager", "env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{secret: "prod/app", kmsKey: "alias/hikyo"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if input.DestinationName != "prod/app" || input.DestinationEnvironment != "alias/hikyo" || input.DestinationKind != "json-object" {
 		t.Fatalf("input=%+v", input)
 	}
-	if _, err := adapterTargetInput("env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}); err == nil {
 		t.Fatal("json-object without --secret accepted")
 	}
-	if _, err := adapterTargetInput("env_prod", "per-key", "123456789012", "repo", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "per-key", "123456789012", "repo", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}); err == nil {
 		t.Fatal("per-key with --repo accepted")
 	}
-	if _, err := adapterTargetInput("env_prod", "repository", "acme", "app", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{kmsKey: "alias/x"}); err == nil {
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "repository", "acme", "app", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{kmsKey: "alias/x"}); err == nil {
 		t.Fatal("--kms-key accepted on a repository target")
+	}
+}
+
+func TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly(t *testing.T) {
+	const env = "env_019c1234-1234-7123-8123-123456789abc"
+	const key = "key_019c1234-1234-7123-8123-123456789abc"
+	got, err := adapterTargetInput("sealed-webhook", env, "organization", "prod", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{})
+	if err != nil {
+		t.Fatalf("sealed-webhook namespace target refused: %v", err)
+	}
+	if got.DestinationKind != "organization" || got.DestinationOwner != "prod" || got.Visibility != "" {
+		t.Fatalf("sealed-webhook target=%+v", got)
+	}
+	for name, args := range map[string][5]string{
+		"repository kind": {"repository", "prod", "repo", "", ""},
+		"repo":            {"organization", "prod", "repo", "", ""},
+		"environment":     {"organization", "prod", "", "staging", ""},
+		"visibility":      {"organization", "prod", "", "", "all"},
+	} {
+		if _, err := adapterTargetInput("sealed-webhook", env, args[0], args[1], args[2], args[3], args[4], "", "", key, adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+			t.Fatalf("sealed-webhook accepted %s routing", name)
+		}
+	}
+	if _, err := adapterTargetInput("github-actions", env, "organization", "team", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{}); err == nil {
+		t.Fatal("github-actions organization target accepted without visibility")
 	}
 }

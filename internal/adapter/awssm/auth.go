@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -104,7 +105,8 @@ func ParseDescriptor(raw string) (Descriptor, error) {
 		// The decoder error can quote descriptor bytes; never surface it.
 		return Descriptor{}, errors.New("aws-secrets-manager: credential is not a valid JSON access descriptor")
 	}
-	if decoder.More() {
+	var trailing json.RawMessage
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return Descriptor{}, errors.New("aws-secrets-manager: credential holds trailing data after the access descriptor")
 	}
 	return d, d.validate()

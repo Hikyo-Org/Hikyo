@@ -100,7 +100,7 @@ func TestAdapterActivationLoaderRefusesBeforePendingCredentialOpen(t *testing.T)
 	openCalled := false
 	journal := &orderedLoaderJournal{failAt: 2}
 	loader := &adapterLoader{
-		moduleFactory: newAdapterModuleFactory(nil, adapterProviderPolicy{}).Build,
+		moduleFactory: newAdapterModuleFactory(nil, nil, adapterProviderPolicy{}).Build,
 		loadActivation: func(context.Context, adapter.Job) (store.AdapterActivation, error) {
 			loadCalled = true
 			if journal.calls != 1 {

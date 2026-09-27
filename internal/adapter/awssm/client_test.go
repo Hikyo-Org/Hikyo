@@ -195,6 +195,11 @@ func TestDescriptorContract(t *testing.T) {
 			t.Errorf("descriptor error echoed secret material: %v", err)
 		}
 	}
+	for _, suffix := range []string{"]", "}", " {}", " true", " invalid"} {
+		if _, err := ParseDescriptor(`{"mode":"ambient"}` + suffix); err == nil {
+			t.Errorf("accepted descriptor with trailing data %q", suffix)
+		}
+	}
 	if _, err := ParseDescriptor(`{"mode":"assume-role","role_arn":"arn:aws:iam::123456789012:role/hikyo","external_id":"tenant-42","session_seconds":1800}`); err != nil {
 		t.Fatal(err)
 	}
