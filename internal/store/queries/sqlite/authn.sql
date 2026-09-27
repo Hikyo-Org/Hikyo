@@ -812,7 +812,7 @@ WHERE g.principal_id = ?
   AND p.privacy_state = 'active'
   AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1);
 
--- Verified source schemas 50 through 59 predate temporary access (#152): the
+-- Verified source schemas 50 through 65 predate temporary access (#152): the
 -- chokepoint projection without the access_grants branch, for guarded
 -- historical recovery only. Same privacy and restore reconciliation gates.
 -- hikyo:authn-resolution

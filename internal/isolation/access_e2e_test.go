@@ -13,6 +13,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
+	"github.com/Hikyo-Org/hikyo/internal/store/authn"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
 )
 
@@ -668,6 +669,66 @@ func TestAccessEmergencyPolicyCannotBypassGrantorBound(t *testing.T) {
 		input.Enabled = true
 		if _, err := h.access.UpdatePolicy(t.Context(), manager, h.proj, policy.ID, input); !errors.Is(err, service.ErrGrantorLacksCapability) {
 			t.Fatalf("manager reenabled unheld emergency delegation: %v", err)
+		}
+	})
+}
+
+func TestAccessQueueReusesAuthorityWithinOneRead(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		h := newAccessHarness(t, db)
+		ctx := t.Context()
+		input := h.policy(nil, custodian, alice)
+		input.MinApprovals = 2
+		if _, err := h.access.CreatePolicy(ctx, service.LocalPrincipal(orgAdmin), h.proj, input); err != nil {
+			t.Fatal(err)
+		}
+		add := func(capability string) {
+			id := h.request(capability)
+			if got := h.approve(id); got.State != "open" {
+				t.Fatalf("request resolved before quorum: %s", got.State)
+			}
+		}
+		add("reveal")
+		add("edit")
+		actor := h.session(reader, false)
+		queue := func() (service.AccessQueue, int) {
+			queries := 0
+			restore := authn.SetQueryObserver(func(string) { queries++ })
+			defer restore()
+			result, err := h.access.Queue(ctx, actor, h.scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return result, queries
+		}
+		first, baseline := queue()
+		if len(first.Requests) != 2 {
+			t.Fatalf("initial queue size: %d", len(first.Requests))
+		}
+		for i := 0; i < 6; i++ {
+			add("reveal")
+		}
+		larger, expanded := queue()
+		if len(larger.Requests) != 8 || expanded != baseline {
+			t.Fatalf("repeated voter authority reads grew: requests=%d queries=%d baseline=%d", len(larger.Requests), expanded, baseline)
+		}
+		for _, request := range larger.Requests {
+			if request.Approvals != 1 {
+				t.Fatalf("approval count: %+v", request)
+			}
+		}
+		if err := h.grants.Revoke(ctx, service.LocalPrincipal(orgAdmin), service.GrantSpec{Target: custodian, Capability: domain.CapEdit, Scope: domain.Scope{Org: orgA}}); err != nil {
+			t.Fatal(err)
+		}
+		refreshed, _ := queue()
+		for _, request := range refreshed.Requests {
+			want := 1
+			if request.Capabilities[0] == "edit" {
+				want = 0
+			}
+			if request.Approvals != want {
+				t.Fatalf("authority survived into a later queue or mixed capability sets: %+v", request)
+			}
 		}
 	})
 }

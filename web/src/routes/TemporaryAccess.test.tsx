@@ -275,3 +275,46 @@ it('takes one emergency grant however often the button is clicked during the win
     await unmount();
   }
 });
+
+it('disables policy deletion until the pending request settles', async () => {
+  const deletion = deferred<Response>();
+  let deletes = 0;
+  const policy = {
+    id: offer.policy_id, environment_id: env.id, capabilities: ['reveal'],
+    max_duration_seconds: 3600, min_approvals: 1, allow_self_approval: false,
+    request_ttl_seconds: 3600, enabled: true, version: 1, approvers: [], bypassers: [],
+    created_at: '2026-09-01T00:00:00Z', updated_at: '2026-09-01T00:00:00Z',
+  };
+  vi.stubGlobal('fetch', async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path.endsWith('/environments')) return Response.json({ items: [env], count: 1 });
+    if (path.endsWith('/access-policies')) return Response.json({ items: [policy], count: 1 });
+    if (path.endsWith(`/access-policies/${policy.id}`) && req.method === 'DELETE') {
+      deletes++;
+      return deletion.promise;
+    }
+    if (path.endsWith('/access-requests')) return Response.json({ offer, items: [] });
+    throw new Error(`unexpected ${req.method} ${path}`);
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    await act(async () => button(container, 'Delete').click());
+    expect(deletes).toBe(0);
+    expect(button(container, 'Delete policy').disabled).toBe(true);
+    const confirmation = container.querySelector('.danger-zone input');
+    if (!(confirmation instanceof HTMLInputElement)) throw new Error('confirmation input missing');
+    await act(async () => typeInto(confirmation, env.name));
+    await act(async () => button(container, 'Delete policy').click());
+    await settleTask();
+    expect(button(container, 'Delete').disabled).toBe(true);
+    expect(button(container, 'Delete policy').disabled).toBe(true);
+    await act(async () => button(container, 'Delete').click());
+    expect(deletes).toBe(1);
+    await act(async () => deletion.resolve(Response.json({ code: 'conflict', message: 'conflict' }, { status: 409 })));
+    await settleTask();
+    expect(button(container, 'Delete').disabled).toBe(false);
+  } finally {
+    await unmount();
+  }
+});
