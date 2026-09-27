@@ -148,6 +148,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 		case window.EffectiveWindowSeconds > 0:
 			why = "no authenticator is enrolled on this account"
 		}
+		if d.purpose == "access" {
+			return failf(ExitAuth, "emergency access in %s needs a reauthentication window and %s; open the window in the browser or enroll an authenticator", env, why)
+		}
 		if d.keys == nil || d.purpose == "" || ios.OpenURL == nil {
 			return failf(ExitAuth, "a disclosure in %s needs a reauthentication window and %s: the ceremony is the browser's, "+
 				"which this invocation cannot open; reveal it in the browser, or raise the window with `hikyo project-settings set --env %s --reauth-window-seconds 300`", env, why, env)

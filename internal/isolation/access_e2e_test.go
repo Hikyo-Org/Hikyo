@@ -732,3 +732,42 @@ func TestAccessQueueReusesAuthorityWithinOneRead(t *testing.T) {
 		}
 	})
 }
+
+func TestAccessQueueSelfApprovalAffordance(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		h := newAccessHarness(t, db)
+		input := h.policy(nil, reader)
+		policy, err := h.access.CreatePolicy(t.Context(), service.LocalPrincipal(orgAdmin), h.proj, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		check := func(id string, want bool) {
+			queue, err := h.access.Queue(t.Context(), h.session(reader, false), h.scope)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, req := range queue.Requests {
+				if req.ID == id {
+					if req.CanApprove != want {
+						t.Fatalf("can approve=%v want=%v", req.CanApprove, want)
+					}
+					return
+				}
+			}
+			t.Fatal("request missing")
+		}
+		old := h.request("read")
+		check(old, false)
+		input.AllowSelfApproval = true
+		if _, err := h.access.UpdatePolicy(t.Context(), service.LocalPrincipal(orgAdmin), h.proj, policy.ID, input); err != nil {
+			t.Fatal(err)
+		}
+		check(old, false) // Old policy version never gains an approval affordance.
+		current := h.request("read")
+		check(current, true)
+		if _, err := h.access.Vote(t.Context(), h.session(reader, false), h.scope, current, "approve"); err != nil {
+			t.Fatal(err)
+		}
+		check(current, false) // Already granted.
+	})
+}

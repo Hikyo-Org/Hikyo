@@ -39,8 +39,8 @@ func (c *capabilityList) Set(v string) error {
 }
 
 // runAccessPolicy validates and executes project policy commands, rendering
-// list and write results in the requested format. Updates send a full policy,
-// including flag defaults. Usage, authentication, HTTP, and rendering errors
+// list and write results in the requested format. Updates preserve omitted fields
+// from the current policy. Usage, authentication, HTTP, and rendering errors
 // are returned to the CLI.
 func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 	sub, rest, err := subverb("access policy", args, "list", "create", "update", "delete")
@@ -50,11 +50,13 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 	var format, env string
 	var minApprovals, ttl int
 	var maxDuration time.Duration
-	var allowSelf, disabled bool
+	var allowSelf, disabled, clearBypassers bool
 	var caps capabilityList
 	var approvers approverList
 	var bypassers stringList
+	var policyFlags *flag.FlagSet
 	st, flags, err := parseCommon("access policy "+sub, ios, rest, func(fs *flag.FlagSet) {
+		policyFlags = fs
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
 			fs.StringVar(&env, "covers", "", "environment id this policy covers; empty means every environment")
@@ -66,6 +68,7 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 			fs.BoolVar(&disabled, "disabled", false, "create/leave the policy disabled")
 			fs.Var(&approvers, "approver", "repeatable: principal:<id> or group:<groupId>:<bindingId>")
 			fs.Var(&bypassers, "bypasser", "repeatable: principal id allowed to take emergency access")
+			fs.BoolVar(&clearBypassers, "clear-bypassers", false, "remove all emergency-access bypassers")
 		}
 	})
 	if err != nil {
@@ -90,7 +93,7 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 			return failf(ExitUsage, "usage: hikyo access policy %s <policy>", sub)
 		}
 	}
-	if (sub == "create" || sub == "update") && (len(caps) == 0 || len(approvers) == 0) {
+	if sub == "create" && (len(caps) == 0 || len(approvers) == 0) {
 		return failf(ExitUsage, "hikyo access policy %s requires at least one --capability and one --approver", sub)
 	}
 	if (sub == "create" || sub == "update") && (maxDuration < time.Second || maxDuration/time.Second > math.MaxInt32) {
@@ -99,6 +102,11 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 	if (sub == "create" || sub == "update") && (minApprovals < 1 || minApprovals > math.MaxInt32 || ttl < 1 || ttl > math.MaxInt32) {
 		return failf(ExitUsage, "hikyo access policy %s: --min-approvals and --ttl must be between 1 and %d", sub, math.MaxInt32)
 	}
+	if clearBypassers && len(bypassers) > 0 {
+		return failf(ExitUsage, "--clear-bypassers cannot be combined with --bypasser")
+	}
+	set := make(map[string]bool)
+	policyFlags.Visit(func(f *flag.Flag) { set[f.Name] = true })
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
@@ -135,15 +143,63 @@ func runAccessPolicy(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, accessPolicyTable([]apigen.AccessPolicy{out}))
 	case "update":
-		var out apigen.AccessPolicy
-		if err := client.Do(ctx, http.MethodPut, base+"/access-policies/"+url.PathEscape(flags.positional()), input(), &out); err != nil {
+		var current apigen.AccessPolicyList
+		if err := client.Do(ctx, http.MethodGet, base+"/access-policies", nil, &current); err != nil {
 			return err
 		}
-		return Render(ios.Stdout, f, accessPolicyTable([]apigen.AccessPolicy{out}))
+		for _, policy := range current.Items {
+			if policy.Id != flags.positional() {
+				continue
+			}
+			body := mergeAccessPolicyInput(policy, input(), set)
+			if clearBypassers {
+				empty := []string{}
+				body.Bypassers = &empty
+			}
+			var out apigen.AccessPolicy
+			if err := client.Do(ctx, http.MethodPut, base+"/access-policies/"+url.PathEscape(flags.positional()), body, &out); err != nil {
+				return err
+			}
+			return Render(ios.Stdout, f, accessPolicyTable([]apigen.AccessPolicy{out}))
+		}
+		return failf(ExitRefused, "access policy not found")
 	case "delete":
 		return client.Do(ctx, http.MethodDelete, base+"/access-policies/"+url.PathEscape(flags.positional()), nil, nil)
 	}
 	return failf(ExitInternal, "hikyo access policy: unhandled subverb %q", sub)
+}
+
+// mergeAccessPolicyInput keeps defaults from broadening an update. Explicit
+// false booleans and an explicit empty --covers remain meaningful changes.
+func mergeAccessPolicyInput(current apigen.AccessPolicy, requested apigen.AccessPolicyInput, set map[string]bool) apigen.AccessPolicyInput {
+	if !set["covers"] {
+		requested.EnvironmentId = &current.EnvironmentId
+	}
+	if !set["capability"] {
+		requested.Capabilities = current.Capabilities
+	}
+	if !set["approver"] {
+		requested.Approvers = current.Approvers
+	}
+	if !set["max-duration"] {
+		requested.MaxDurationSeconds = current.MaxDurationSeconds
+	}
+	if !set["min-approvals"] {
+		requested.MinApprovals = current.MinApprovals
+	}
+	if !set["ttl"] {
+		requested.RequestTtlSeconds = current.RequestTtlSeconds
+	}
+	if !set["allow-self-approval"] {
+		requested.AllowSelfApproval = &current.AllowSelfApproval
+	}
+	if !set["disabled"] {
+		requested.Enabled = current.Enabled
+	}
+	if !set["bypasser"] {
+		requested.Bypassers = &current.Bypassers
+	}
+	return requested
 }
 
 // accessPolicyTable renders project-wide coverage as "(all)" and durations

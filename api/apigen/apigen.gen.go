@@ -4069,7 +4069,10 @@ type AccessRequest struct {
 	Approvals int32 `json:"approvals"`
 
 	// Bypassed Whether this is emergency access taken without the quorum.
-	Bypassed     bool               `json:"bypassed"`
+	Bypassed bool `json:"bypassed"`
+
+	// CanApprove Whether this queue caller can currently approve this request; the vote endpoint reauthorizes every decision.
+	CanApprove   *bool              `json:"can_approve,omitempty"`
 	Capabilities []AccessCapability `json:"capabilities"`
 
 	// CreatedAt RFC 3339 UTC, microsecond precision.
