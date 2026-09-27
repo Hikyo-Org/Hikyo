@@ -287,6 +287,8 @@ private PKI:
   a CA private key never leaves the server and is read only from --key-file
   or --key-stdin, never argv. A generated certificate key is shown exactly
   once, through the print triad; a CSR issuance never sends a private key.
+  human sessions use --csr-file, or the web UI for generated keys and its mint
+  ceremony. CLI --generate-key requires an authorized machine credential.
   profile updates may only narrow the policy; widen by creating a profile.
 
 delivery:                                          machine credential only
