@@ -36,11 +36,13 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// machine writes carry the federated pre-authentication refusal events.
 	// #155 adds seventeen SSH certificate routes, each linked to its own
 	// operation, and three CLI transport verbs.
-	if got := len(facts.Wire()); got != 366 {
-		t.Fatalf("wire entries = %d, want 366", got)
+	// #156 adds fifteen operation-linked transit-key routes and the cli:transit
+	// transport entry, which carries no operation or direct event.
+	if got := len(facts.Wire()); got != 382 {
+		t.Fatalf("wire entries = %d, want 382", got)
 	}
-	if got := len(facts.WireRoutes()); got != 260 {
-		t.Fatalf("operation-linked entries = %d, want 260", got)
+	if got := len(facts.WireRoutes()); got != 275 {
+		t.Fatalf("operation-linked entries = %d, want 275", got)
 	}
 	if got := len(facts.WireEvents()); got != 74 {
 		t.Fatalf("direct-event entries = %d, want 74", got)
