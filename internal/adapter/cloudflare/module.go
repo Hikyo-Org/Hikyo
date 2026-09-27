@@ -123,20 +123,27 @@ func capabilityError(d adapter.Destination, err error) error {
 		if IsStatus(err, http.StatusNotFound) {
 			return fmt.Errorf("cloudflare: Workers script %q not found in account %s (renamed or deleted?): %w", d.Name, d.Owner, err)
 		}
-		return fmt.Errorf("cloudflare: Workers script destination requires an account-scoped token with Workers Scripts: Edit: %w", err)
+		if errors.Is(err, adapter.ErrProviderAuth) {
+			return fmt.Errorf("cloudflare: Workers script destination requires an account-scoped token with Workers Scripts: Edit: %w", err)
+		}
+		return fmt.Errorf("cloudflare: Workers script %q: %w", d.Name, err)
 	case adapter.PagesProject:
 		if IsStatus(err, http.StatusNotFound) {
 			return fmt.Errorf("cloudflare: Pages project %q not found in account %s (renamed or deleted?): %w", d.Name, d.Owner, err)
 		}
-		return fmt.Errorf("cloudflare: Pages project destination requires an account-scoped token with Cloudflare Pages: Edit: %w", err)
+		if errors.Is(err, adapter.ErrProviderAuth) {
+			return fmt.Errorf("cloudflare: Pages project destination requires an account-scoped token with Cloudflare Pages: Edit: %w", err)
+		}
+		return fmt.Errorf("cloudflare: Pages project %q: %w", d.Name, err)
 	default:
 		return err
 	}
 }
 
 // resolve returns the destination fingerprint and the set of names present
-// at the destination, upper-cased. Pages names of every type count: a
-// plain_text variable Hikyo does not own is as much in the way as a secret.
+// at the destination, upper-cased. Names of every binding or variable type
+// count: a plain_text binding Hikyo does not own is as much in the way as a
+// secret, and a secret upsert must never collide with it.
 func (m *Module) resolve(ctx context.Context, d adapter.Destination) (int64, map[string]bool, error) {
 	switch d.Kind {
 	case adapter.WorkersScript:
@@ -144,7 +151,7 @@ func (m *Module) resolve(ctx context.Context, d adapter.Destination) (int64, map
 		if err != nil {
 			return 0, nil, err
 		}
-		names, err := m.API.ListSecretNames(ctx, d)
+		names, err := m.API.ListBindingNames(ctx, d)
 		if err != nil {
 			return 0, nil, err
 		}

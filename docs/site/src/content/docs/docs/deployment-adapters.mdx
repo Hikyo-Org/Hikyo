@@ -289,7 +289,9 @@ account are refused. The verified expiry is recorded as the credential expiry,
 and every sync re-verifies the token before its first write.
 
 **What Hikyo reads.** Workers: the script listing (for the script's immutable
-tag) and secret names. Pages: the project object, decoded into the project id
+tag) and the script settings, decoded into binding names only. Settings
+return `plain_text` binding values; they are never decoded, logged, or
+compared, and the response buffer is cleared. Pages: the project object, decoded into the project id
 and the names and types of the selected environment's variables only. Pages
 returns `plain_text` values in that response; they are never decoded, logged,
 or compared, and the response buffer is cleared. Secret values are never
@@ -298,7 +300,7 @@ returned by Cloudflare and never requested.
 **Ownership and conflicts.** Both Cloudflare writes are upserts, so Hikyo
 re-reads the destination names immediately before each first write of a name
 and refuses any name that already exists and is not in the ownership ledger,
-including Pages `plain_text` variables. Adopt an existing name through the
+including Workers bindings of any type and Pages `plain_text` variables. Adopt an existing name through the
 usual plan-and-adopt flow. A script or project that is renamed, deleted, or
 recreated under the same name changes its immutable id; the target then fails
 with a destination-identity refusal and needs reconfiguration.

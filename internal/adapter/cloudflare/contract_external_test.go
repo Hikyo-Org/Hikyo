@@ -43,7 +43,7 @@ func TestCloudflareRealLifecycle(t *testing.T) {
 		{KeyID: "key_2", CanonicalName: "MODE", Classification: adapter.ConfigClassification, Value: "config-" + run},
 	}
 
-	connect := func(d adapter.Destination) adapter.Target {
+	connect := func(t *testing.T, d adapter.Destination) adapter.Target {
 		t.Helper()
 		connection, err := module.TestConnection(t.Context(), adapter.ConnectionRequest{Destination: d, Access: adapter.Access{Credential: token}, Gate: allow})
 		if err != nil {
@@ -124,11 +124,11 @@ func TestCloudflareRealLifecycle(t *testing.T) {
 	}
 
 	t.Run("workers", func(t *testing.T) {
-		lifecycle(t, connect(adapter.Destination{Kind: adapter.WorkersScript, Owner: account, Name: script}), nil)
+		lifecycle(t, connect(t, adapter.Destination{Kind: adapter.WorkersScript, Owner: account, Name: script}), nil)
 	})
 	t.Run("pages", func(t *testing.T) {
-		preview := connect(adapter.Destination{Kind: adapter.PagesProject, Owner: account, Name: project, Environment: "preview"})
-		production := connect(adapter.Destination{Kind: adapter.PagesProject, Owner: account, Name: project, Environment: "production"})
+		preview := connect(t, adapter.Destination{Kind: adapter.PagesProject, Owner: account, Name: project, Environment: "preview"})
+		production := connect(t, adapter.Destination{Kind: adapter.PagesProject, Owner: account, Name: project, Environment: "production"})
 		if preview.Destination.NumericID == production.Destination.NumericID {
 			t.Fatal("preview and production share a destination id")
 		}

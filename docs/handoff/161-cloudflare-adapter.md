@@ -23,6 +23,10 @@ over the #65/#157 deployment seam.
   `clients/ts` regenerated), CLI flags and help, the web create/add-target form.
 - `internal/buildcompat/development.json` regenerated on PostgreSQL 18; the
   diff is exactly the new version-60 entry and `schema_sha256` per engine.
+- `internal/app/backup_upgrade_drill_test.go`: the legacy upgrade drill fixture
+  reverses 00060 (PostgreSQL restores the 00025 CHECKs by name; SQLite
+  recreates each rebuilt table from its stored declaration minus the added
+  kinds, and the catalog inspection proves the legacy text byte-for-byte).
 - `web/src/api/sensitiveInventory.json` re-pinned for `api/adapters.ts` and
   `routes/Adapters.tsx`. Reviewed: the credential still flows only through
   `useSensitiveState` into the existing create mutation.
@@ -33,8 +37,11 @@ over the #65/#157 deployment seam.
 ## Provider facts and the must-verify decision
 
 - Workers: `PUT /accounts/{a}/workers/scripts/{s}/secrets` with
-  `{name, text, type: "secret_text"}`; `GET .../secrets` lists names and types
-  only; `DELETE .../secrets/{name}`. Every write or delete deploys a new script
+  `{name, text, type: "secret_text"}`; `DELETE .../secrets/{name}`. Presence
+  is read from `GET .../settings`, whose `bindings` array covers every binding
+  type: it decodes binding names only (plain_text values are never decoded,
+  the buffer is cleared), so a secret upsert cannot land on an unowned
+  plain_text binding. `GET .../secrets` is not linked: it lists secrets only. Every write or delete deploys a new script
   version. Script identity is the `tag` from `GET /accounts/{a}/workers/scripts`.
 - Pages: `PATCH /accounts/{a}/pages/projects/{p}` merges `env_vars` per key
   (the pattern `wrangler pages secret put/delete` relies on: a single-key body

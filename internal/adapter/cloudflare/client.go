@@ -63,13 +63,14 @@ type ProjectShape struct {
 }
 
 // API is the closed provider surface Sync can link. There is no operation that
-// returns a Workers secret value or decodes a Pages variable value.
+// returns a secret value, and no operation decodes a plain_text value: the
+// Pages project read and the Workers settings read decode names only.
 type API interface {
 	VerifyToken(ctx context.Context, account string) (TokenStatus, error)
 	ListAccountIDs(ctx context.Context) ([]string, error)
 	ResolveScript(ctx context.Context, d adapter.Destination) (string, error)
 	ResolveProject(ctx context.Context, d adapter.Destination) (ProjectShape, error)
-	ListSecretNames(ctx context.Context, d adapter.Destination) ([]string, error)
+	ListBindingNames(ctx context.Context, d adapter.Destination) ([]string, error)
 	PutSecret(ctx context.Context, d adapter.Destination, name, value string) error
 	DeleteSecret(ctx context.Context, d adapter.Destination, name string) error
 	PatchPagesSecret(ctx context.Context, d adapter.Destination, name string, value *string) error
@@ -82,14 +83,15 @@ type operation struct {
 }
 
 // operationRegistry is the closed linked provider surface. The structural
-// test pins it: no operation reads a secret value, and the one Pages project
-// read is decoded through ProjectShape only.
+// test pins it: no operation reads a secret value, the Pages project read is
+// decoded through ProjectShape only, and the Workers settings read decodes
+// binding names only.
 var operationRegistry = map[string]operation{
 	"verify-account-token": {Method: http.MethodGet, Path: "/accounts/{account}/tokens/verify"},
 	"verify-user-token":    {Method: http.MethodGet, Path: "/user/tokens/verify"},
 	"list-accounts":        {Method: http.MethodGet, Path: "/accounts"},
 	"list-scripts":         {Method: http.MethodGet, Path: "/accounts/{account}/workers/scripts"},
-	"list-script-secrets":  {Method: http.MethodGet, Path: "/accounts/{account}/workers/scripts/{script}/secrets"},
+	"script-binding-names": {Method: http.MethodGet, Path: "/accounts/{account}/workers/scripts/{script}/settings"},
 	"put-script-secret":    {Method: http.MethodPut, Path: "/accounts/{account}/workers/scripts/{script}/secrets", Mutation: true},
 	"delete-script-secret": {Method: http.MethodDelete, Path: "/accounts/{account}/workers/scripts/{script}/secrets/{name}", Mutation: true},
 	"project-shape":        {Method: http.MethodGet, Path: "/accounts/{account}/pages/projects/{project}"},
@@ -217,7 +219,9 @@ func (e *rateLimitError) RetryAt() time.Time { return e.at }
 func retryDeadline(header http.Header, now time.Time) time.Time {
 	if raw := header.Get("Retry-After"); raw != "" {
 		if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 0 {
-			return now.Add(time.Duration(seconds) * time.Second)
+			// Clamp before converting: a huge value would overflow Duration
+			// and land in the past. The outbox caps the deadline again.
+			return now.Add(time.Duration(min(seconds, int(adapter.RetryCap/time.Second))) * time.Second)
 		}
 		if at, err := http.ParseTime(raw); err == nil {
 			return at.UTC()
@@ -449,27 +453,37 @@ func (c *Client) ResolveProject(ctx context.Context, d adapter.Destination) (Pro
 	return shape, nil
 }
 
-func (c *Client) ListSecretNames(ctx context.Context, d adapter.Destination) ([]string, error) {
+// ListBindingNames reads the script's settings and decodes only the names of
+// its bindings, every type included. plain_text binding values Cloudflare
+// returns in the same body are never decoded, and the buffer is cleared.
+func (c *Client) ListBindingNames(ctx context.Context, d adapter.Destination) ([]string, error) {
 	path, err := scriptPath(d)
 	if err != nil {
 		return nil, err
 	}
-	env, err := c.do(ctx, operationRegistry["list-script-secrets"], path+"/secrets", nil)
+	env, err := c.do(ctx, operationRegistry["script-binding-names"], path+"/settings", nil)
 	if err != nil {
 		return nil, err
 	}
-	var rows []struct {
-		Name string `json:"name"`
+	var out struct {
+		Bindings *[]struct {
+			Name string `json:"name"`
+		} `json:"bindings"`
 	}
-	if err := json.Unmarshal(env.Result, &rows); err != nil {
-		return nil, errors.New("cloudflare: secret listing did not match the expected shape")
+	decodeErr := json.Unmarshal(env.Result, &out)
+	clear(env.Result)
+	if decodeErr != nil || out.Bindings == nil {
+		return nil, errors.New("cloudflare: script settings did not match the expected shape")
 	}
-	if len(rows) > secretNameLimit {
-		return nil, errors.New("cloudflare: secret name listing exceeded the 10000-name safety limit")
+	if len(*out.Bindings) > secretNameLimit {
+		return nil, errors.New("cloudflare: binding name listing exceeded the 10000-name safety limit")
 	}
-	names := make([]string, 0, len(rows))
-	for _, row := range rows {
-		names = append(names, row.Name)
+	names := make([]string, 0, len(*out.Bindings))
+	for _, binding := range *out.Bindings {
+		if binding.Name == "" {
+			return nil, errors.New("cloudflare: script settings listed a binding without a name")
+		}
+		names = append(names, binding.Name)
 	}
 	return names, nil
 }

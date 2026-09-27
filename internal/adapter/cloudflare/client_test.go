@@ -24,7 +24,7 @@ func TestAPIIsClosedAndValueBlind(t *testing.T) {
 	for i := range typeOf.NumMethod() {
 		got = append(got, typeOf.Method(i).Name)
 	}
-	want := []string{"DeleteSecret", "ListAccountIDs", "ListSecretNames", "PatchPagesSecret", "PutSecret", "ResolveProject", "ResolveScript", "VerifyToken"}
+	want := []string{"DeleteSecret", "ListAccountIDs", "ListBindingNames", "PatchPagesSecret", "PutSecret", "ResolveProject", "ResolveScript", "VerifyToken"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("linked Cloudflare API = %v, want closed set %v", got, want)
 	}
@@ -145,6 +145,36 @@ func TestRateLimitCarriesRetryAt(t *testing.T) {
 	at, found := adapter.ProviderRetryAt(err)
 	if !errors.Is(err, adapter.ErrRateLimited) || !found || !at.Equal(time.Date(2026, 9, 1, 0, 0, 30, 0, time.UTC)) {
 		t.Fatalf("err=%v retryAt=%v", err, at)
+	}
+}
+
+func TestRetryAfterIsClampedBeforeDurationOverflow(t *testing.T) {
+	now := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	header := http.Header{"Retry-After": []string{"99999999999999"}}
+	if got := retryDeadline(header, now); !got.Equal(now.Add(adapter.RetryCap)) {
+		t.Fatalf("retryDeadline = %s, want %s", got, now.Add(adapter.RetryCap))
+	}
+}
+
+// Every binding type counts as present, so a secret upsert can never land on
+// an unowned plain_text binding; its value is never decoded.
+func TestBindingNamesCoverEveryTypeAndDiscardValues(t *testing.T) {
+	f := &fixture{handler: func(w http.ResponseWriter, _ *http.Request) {
+		ok(w, `{"compatibility_date":"2026-01-01","bindings":[{"name":"PUBLIC","type":"plain_text","text":"visible-plaintext"},{"name":"TOKEN","type":"secret_text"},{"name":"KV","type":"kv_namespace","namespace_id":"n"}]}`)
+	}}
+	names, err := f.client(t).ListBindingNames(t.Context(), workersTarget().Destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(names, []string{"PUBLIC", "TOKEN", "KV"}) {
+		t.Fatalf("names = %v", names)
+	}
+	if f.requests[0].method != http.MethodGet || f.requests[0].path != "/client/v4/accounts/"+testAccount+"/workers/scripts/api-worker/settings" {
+		t.Fatalf("request = %+v", f.requests[0])
+	}
+	missing := &fixture{handler: func(w http.ResponseWriter, _ *http.Request) { ok(w, `{"compatibility_date":"2026-01-01"}`) }}
+	if _, err := missing.client(t).ListBindingNames(t.Context(), workersTarget().Destination); err == nil {
+		t.Fatal("settings without a bindings array were accepted as an empty destination")
 	}
 }
 

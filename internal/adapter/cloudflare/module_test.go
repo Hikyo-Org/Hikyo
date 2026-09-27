@@ -52,7 +52,7 @@ func (f *fakeAPI) ResolveProject(_ context.Context, d adapter.Destination) (Proj
 	}
 	return shape, nil
 }
-func (f *fakeAPI) ListSecretNames(context.Context, adapter.Destination) ([]string, error) {
+func (f *fakeAPI) ListBindingNames(context.Context, adapter.Destination) ([]string, error) {
 	var out []string
 	for name := range f.names {
 		out = append(out, name)
@@ -411,6 +411,22 @@ func TestDestinationShapeRules(t *testing.T) {
 	} {
 		if err := ValidateDestination(d); err == nil {
 			t.Errorf("%s: ValidateDestination accepted %+v", name, d)
+		}
+	}
+}
+
+// Only an authorization refusal earns the token-permission hint; a rate limit
+// or validation refusal keeps the destination context without misdirecting.
+func TestCapabilityErrorHintsPermissionsOnlyForAuthFailures(t *testing.T) {
+	for _, d := range []adapter.Destination{workersTarget().Destination, pagesTarget("preview").Destination} {
+		if err := capabilityError(d, adapter.ErrProviderAuth); !strings.Contains(err.Error(), "requires an account-scoped token") {
+			t.Errorf("%s auth failure lost the permission hint: %v", d.Kind, err)
+		}
+		for _, cause := range []error{adapter.ErrRateLimited, &ResponseError{Status: http.StatusBadRequest}} {
+			err := capabilityError(d, cause)
+			if strings.Contains(err.Error(), "requires an account-scoped token") || !errors.Is(err, cause) || !strings.Contains(err.Error(), d.Name) {
+				t.Errorf("%s non-auth failure %v became %v", d.Kind, cause, err)
+			}
 		}
 	}
 }
