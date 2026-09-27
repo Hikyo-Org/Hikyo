@@ -835,6 +835,7 @@ function MoveDetail({
             resuming ? (
               <OriginMoveForm
                 title="Resume move"
+                provider={adapter?.provider}
                 submitLabel="Resume move"
                 initialOrigin={data.pending_origin}
                 busy={resume.isPending}

@@ -336,7 +336,7 @@ func isAWSDestinationKind(kind string) bool {
 // pending Cloudflare targets. Owner is the account id; Pages targets name one
 // environment so preview and production are separate destinations.
 func validateCloudflareTarget(m AdapterTargetMutation) error {
-	if m.DestinationName == "" || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
+	if m.RepositoryID != 0 || m.DestinationName == "" || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
 		return fmt.Errorf("%w: Cloudflare target requires account and script or project name only", domain.ErrInvalid)
 	}
 	switch m.DestinationKind {
