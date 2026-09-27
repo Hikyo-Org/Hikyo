@@ -290,6 +290,13 @@ func validateTargetMutation(m AdapterTargetMutation) error {
 		if err := adapter.ValidateAWSSecretsManagerDestination(targetDestination(m)); err != nil {
 			return fmt.Errorf("%w: %v", domain.ErrInvalid, err)
 		}
+	case string(adapter.WorkersScript), string(adapter.PagesProject):
+		if err := validateCloudflareTarget(m); err != nil {
+			return err
+		}
+		if m.RepositoryID != 0 {
+			return fmt.Errorf("%w: Cloudflare targets do not take repository routing fields", domain.ErrInvalid)
+		}
 	default:
 		return fmt.Errorf("%w: unsupported adapter destination kind", domain.ErrInvalid)
 	}
@@ -323,6 +330,26 @@ func targetDestination(m AdapterTargetMutation) adapter.Destination {
 // derive from the destination as well as the prefix.
 func isAWSDestinationKind(kind string) bool {
 	return kind == string(adapter.JSONObject) || kind == string(adapter.PerKey)
+}
+
+// validateCloudflareTarget checks the routing fields shared by committed and
+// pending Cloudflare targets. Owner is the account id; Pages targets name one
+// environment so preview and production are separate destinations.
+func validateCloudflareTarget(m AdapterTargetMutation) error {
+	if m.DestinationName == "" || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
+		return fmt.Errorf("%w: Cloudflare target requires account and script or project name only", domain.ErrInvalid)
+	}
+	switch m.DestinationKind {
+	case string(adapter.WorkersScript):
+		if m.DestinationEnvironment != "" {
+			return fmt.Errorf("%w: Workers script target does not take an environment", domain.ErrInvalid)
+		}
+	case string(adapter.PagesProject):
+		if m.DestinationEnvironment != "preview" && m.DestinationEnvironment != "production" {
+			return fmt.Errorf("%w: Pages project target environment must be preview or production", domain.ErrInvalid)
+		}
+	}
+	return nil
 }
 
 func targetManifest(ctx context.Context, db adapterDB, chain domain.Scope, m AdapterTargetMutation) ([]adapter.ManifestEntry, error) {
@@ -362,6 +389,10 @@ func targetProviderManifest(ctx context.Context, db adapterDB, chain domain.Scop
 	provider, err := adapterProvider(ctx, db, chain, m.AdapterID)
 	if err != nil {
 		return "", nil, err
+	}
+	cloudflareKind := m.DestinationKind == string(adapter.WorkersScript) || m.DestinationKind == string(adapter.PagesProject)
+	if cloudflareKind != (provider == string(adapter.CloudflareProvider)) {
+		return "", nil, fmt.Errorf("%w: destination kind %q is not supported by provider %q", domain.ErrInvalid, m.DestinationKind, provider)
 	}
 	args := []any{chain.Org, chain.Project}
 	for _, id := range m.KeyIDs {

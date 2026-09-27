@@ -2,6 +2,148 @@
 
 import * as z from 'zod';
 
+/**
+ * An issuer or profile name.
+ */
+export const zPkiName = z.string().min(1).max(63).regex(/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/);
+
+export const zPkiIssuerCreateRequest = z.object({
+    mode: z.enum([
+        'root',
+        'intermediate',
+        'import'
+    ]),
+    name: zPkiName,
+    common_name: z.string().max(64).optional(),
+    organization: z.string().max(64).optional(),
+    key_algorithm: z.enum([
+        'ecdsa-p256',
+        'ecdsa-p384',
+        'rsa-3072',
+        'rsa-4096'
+    ]).optional(),
+    ttl_seconds: z.coerce.bigint().gte(BigInt(86400)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    parent: zPkiName.optional(),
+    crl_distribution_url: z.string().max(2048).optional(),
+    private_key_pem: z.string().max(16384).optional(),
+    certificate_pem: z.string().max(65536).optional(),
+    chain_pem: z.string().max(262144).optional()
+});
+
+export const zPkiIssuerRotateRequest = z.object({
+    key_algorithm: z.enum([
+        'ecdsa-p256',
+        'ecdsa-p384',
+        'rsa-3072',
+        'rsa-4096'
+    ]).optional(),
+    ttl_seconds: z.coerce.bigint().gte(BigInt(86400)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    crl_distribution_url: z.string().max(2048).optional(),
+    private_key_pem: z.string().max(16384).optional(),
+    certificate_pem: z.string().max(65536).optional(),
+    chain_pem: z.string().max(262144).optional()
+});
+
+export const zPkiIssuerInstallRequest = z.object({
+    certificate_pem: z.string().max(65536),
+    chain_pem: z.string().max(262144)
+});
+
+export const zPkiCrl = z.object({
+    crl_pem: z.string()
+});
+
+/**
+ * A closed issuance policy. Name patterns are exact names, `*.suffix`
+ * (one leftmost label), CIDRs, or exact URIs and `prefix*`; never
+ * regular expressions, so narrowing is decidable.
+ *
+ */
+export const zPkiPolicy = z.object({
+    allowed_issuers: z.array(zPkiName).max(16),
+    dns_patterns: z.array(z.string().max(255)).max(64),
+    ip_ranges: z.array(z.string().max(64)).max(64),
+    uri_patterns: z.array(z.string().max(1024)).max(64),
+    allow_wildcard_names: z.boolean(),
+    key_algorithms: z.array(z.enum([
+        'ecdsa-p256',
+        'ecdsa-p384',
+        'ed25519',
+        'rsa-2048',
+        'rsa-3072',
+        'rsa-4096'
+    ])),
+    key_usages: z.array(z.enum([
+        'digital-signature',
+        'key-encipherment',
+        'key-agreement'
+    ])),
+    ext_key_usages: z.array(z.enum(['server-auth', 'client-auth'])),
+    max_ttl_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(7776000)),
+    default_ttl_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(7776000)),
+    renew_window_seconds: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    allow_csr: z.boolean(),
+    allow_generated_key: z.boolean(),
+    machine_issuance: z.boolean(),
+    organization: z.string().max(64)
+});
+
+export const zPkiProfileCreateRequest = z.object({
+    name: zPkiName,
+    policy: zPkiPolicy
+});
+
+export const zPkiProfileUpdateRequest = z.object({
+    policy: zPkiPolicy,
+    row_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zPkiProfileBindRequest = z.object({
+    org_id: z.string().max(64),
+    project_id: z.string().max(64),
+    environment_id: z.string().max(64).optional()
+});
+
+export const zCertificateProfile = z.object({
+    name: zPkiName,
+    policy: zPkiPolicy
+});
+
+export const zCertificateProfileList = z.object({
+    profiles: z.array(zCertificateProfile)
+});
+
+export const zCertificateIssueRequest = z.object({
+    profile: zPkiName,
+    issuer: zPkiName.optional(),
+    csr_pem: z.string().max(65536).optional(),
+    generate_key: z.boolean().optional(),
+    key_algorithm: z.enum([
+        'ecdsa-p256',
+        'ecdsa-p384',
+        'ed25519',
+        'rsa-2048',
+        'rsa-3072',
+        'rsa-4096'
+    ]).optional(),
+    common_name: z.string().max(255).optional(),
+    dns_names: z.array(z.string().max(255)).max(100).optional(),
+    ip_addresses: z.array(z.string().max(64)).max(100).optional(),
+    uris: z.array(z.string().max(1024)).max(100).optional(),
+    ttl_seconds: z.coerce.bigint().gte(BigInt(300)).lte(BigInt(7776000)).optional()
+});
+
+export const zCertificateRevokeRequest = z.object({
+    reason: z.enum([
+        'unspecified',
+        'key-compromise',
+        'affiliation-changed',
+        'superseded',
+        'cessation-of-operation',
+        'privilege-withdrawn'
+    ]).optional()
+});
+
 export const zRuntimeStatus = z.object({
     state: z.enum([
         'ready',
@@ -38,17 +180,133 @@ export const zUpdateAccountProfileRequest = z.object({
 export const zId = z.string().min(3).max(64).regex(/^[a-z]{2,8}_[0-9a-fA-F-]{36}$/);
 
 /**
+ * One CA key version's public surface. There is no private-key field:
+ * the key is sealed, non-exportable, and never leaves the server.
+ *
+ */
+export const zPkiIssuer = z.object({
+    id: zId,
+    name: zPkiName,
+    version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    kind: z.enum(['root', 'intermediate']),
+    origin: z.enum(['generated', 'imported']),
+    parent_id: z.string().nullish(),
+    state: z.enum([
+        'pending',
+        'active',
+        'retiring',
+        'retired',
+        'revoked'
+    ]),
+    key_algorithm: z.string(),
+    key_fingerprint: z.string(),
+    certificate_pem: z.string().nullish(),
+    csr_pem: z.string().nullish(),
+    chain_pem: z.string().nullish(),
+    subject_cn: z.string(),
+    subject_org: z.string().nullish(),
+    not_before: z.iso.datetime().nullish(),
+    not_after: z.iso.datetime().nullish(),
+    crl_distribution_url: z.string().nullish(),
+    restore_hold: z.boolean(),
+    issued_count: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    crl_number: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    crl_this_update: z.iso.datetime().nullish(),
+    crl_next_update: z.iso.datetime().nullish(),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime()
+});
+
+export const zPkiIssuerList = z.object({
+    issuers: z.array(zPkiIssuer)
+});
+
+export const zPkiProfileBinding = z.object({
+    id: zId,
+    org_id: z.string(),
+    project_id: z.string(),
+    environment_id: z.string().nullish(),
+    created_at: z.iso.datetime()
+});
+
+export const zPkiProfile = z.object({
+    id: zId,
+    name: zPkiName,
+    policy: zPkiPolicy,
+    bindings: z.array(zPkiProfileBinding),
+    row_version: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime()
+});
+
+export const zPkiProfileList = z.object({
+    profiles: z.array(zPkiProfile)
+});
+
+/**
+ * An issuance record. There is no private-key field, ever.
+ */
+export const zCertificate = z.object({
+    id: zId,
+    environment_id: z.string(),
+    profile: z.string(),
+    issuer_id: zId,
+    issuer_name: z.string(),
+    issuer_version: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    serial: z.string(),
+    state: z.enum([
+        'issuing',
+        'issued',
+        'renewed',
+        'revoked',
+        'expired',
+        'unknown',
+        'failed'
+    ]),
+    key_source: z.enum(['csr', 'generated']),
+    key_algorithm: z.string(),
+    key_fingerprint: z.string(),
+    common_name: z.string().nullish(),
+    dns_names: z.array(z.string()),
+    ip_addresses: z.array(z.string()),
+    uris: z.array(z.string()),
+    not_before: z.iso.datetime(),
+    not_after: z.iso.datetime(),
+    certificate_pem: z.string().nullish(),
+    chain_pem: z.string().nullish(),
+    principal_id: z.string(),
+    principal_class: z.string(),
+    renewed_from: z.string().nullish(),
+    renewed_by: z.string().nullish(),
+    revoked_at: z.iso.datetime().nullish(),
+    revocation_reason: z.string().nullish(),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime()
+});
+
+export const zCertificateList = z.object({
+    certificates: z.array(zCertificate)
+});
+
+export const zCertificateIssueResult = z.object({
+    certificate: zCertificate,
+    private_key_pem: z.string().optional()
+});
+
+/**
  * RFC 3339 UTC, microsecond precision.
  */
 export const zTimestamp = z.iso.datetime();
 
 /**
- * repository, organization, and environment are CI destinations (Forgejo, GitHub Actions). json-object and per-key are AWS Secrets Manager destinations: json-object writes one secret holding a JSON object, per-key writes one secret per key.
+ * repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
  */
 export const zAdapterDestinationKind = z.enum([
     'repository',
     'organization',
     'environment',
+    'workers-script',
+    'pages-project',
     'json-object',
     'per-key'
 ]);
@@ -2143,7 +2401,9 @@ export const zRetentionHealth = z.object({
     adapter_targets_failed: z.int().gte(0),
     adapter_targets_paused: z.int().gte(0),
     adapter_targets_attention: z.int().gte(0),
-    adapter_jobs_queued: z.int().gte(0)
+    adapter_jobs_queued: z.int().gte(0),
+    pki_certificates_unknown: z.int().gte(0).optional(),
+    pki_issuers_on_hold: z.int().gte(0).optional()
 });
 
 export const zProjectRetentionPolicy = z.object({
@@ -3759,6 +4019,184 @@ export const zScimMappingResult = z.object({
     origins_released: z.int()
 });
 
+export const zTransitKeyName = z.string().min(1).max(63).regex(/^[a-z0-9][a-z0-9._-]{0,62}$/);
+
+export const zTransitAlgorithm = z.enum([
+    'xchacha20-poly1305',
+    'ed25519',
+    'hmac-sha256'
+]);
+
+export const zTransitCustody = z.enum(['software', 'external']);
+
+export const zTransitOperation = z.enum([
+    'encrypt',
+    'decrypt',
+    'rewrap',
+    'datakey',
+    'datakey-plaintext',
+    'sign',
+    'verify',
+    'hmac',
+    'hmac-verify'
+]);
+
+export const zTransitKeyState = z.enum([
+    'active',
+    'retired',
+    'disabled',
+    'pending-deletion'
+]);
+
+export const zTransitCaller = z.object({
+    principal_id: zId,
+    operations: z.array(zTransitOperation).min(1).max(9)
+});
+
+export const zTransitKeyVersion = z.object({
+    version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    material: z.enum([
+        'sealed',
+        'external',
+        'erased'
+    ]),
+    public_key: z.string().nullish(),
+    created_at: zTimestamp
+});
+
+export const zTransitKey = z.object({
+    id: zId,
+    environment_id: zId,
+    name: zTransitKeyName,
+    algorithm: zTransitAlgorithm,
+    custody: zTransitCustody,
+    allowed_operations: z.array(zTransitOperation),
+    exportable: z.boolean(),
+    state: zTransitKeyState,
+    latest_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    min_encrypt_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    min_decrypt_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    compromised_through_version: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    rotation_period_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    rotation_due: z.boolean(),
+    deletion_after: z.iso.datetime().nullish(),
+    created_by: z.string(),
+    created_at: zTimestamp,
+    updated_at: zTimestamp,
+    versions: z.array(zTransitKeyVersion),
+    callers: z.array(zTransitCaller)
+});
+
+export const zTransitKeyList = z.object({
+    items: z.array(zTransitKey)
+});
+
+export const zCreateTransitKeyRequest = z.object({
+    name: zTransitKeyName,
+    algorithm: zTransitAlgorithm,
+    custody: zTransitCustody.optional(),
+    allowed_operations: z.array(zTransitOperation).max(9).optional(),
+    rotation_period_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    exportable: z.boolean().optional(),
+    callers: z.array(zTransitCaller).max(64).optional()
+});
+
+export const zConfigureTransitKeyRequest = z.object({
+    min_encrypt_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    min_decrypt_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    rotation_period_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional(),
+    callers: z.array(zTransitCaller).max(64).optional()
+});
+
+export const zTransitLifecycleRequest = z.object({
+    action: z.enum([
+        'disable',
+        'enable',
+        'retire',
+        'compromise',
+        'schedule-deletion',
+        'cancel-deletion'
+    ]),
+    delay_seconds: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zTransitTrimResult = z.object({
+    key: zTransitKey,
+    versions_deleted: z.coerce.bigint().gte(BigInt(0)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitEncryptRequest = z.object({
+    plaintext: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    context: z.string().max(1368).regex(/^[A-Za-z0-9+\/]*={0,2}$/).optional(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zTransitDecryptRequest = z.object({
+    ciphertext: z.string().min(1).max(131072),
+    context: z.string().max(1368).regex(/^[A-Za-z0-9+\/]*={0,2}$/).optional()
+});
+
+export const zTransitCiphertextResult = z.object({
+    ciphertext: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitDecryptResult = z.object({
+    plaintext: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitDataKeyRequest = z.object({
+    bits: z.union([
+        z.literal(128),
+        z.literal(256),
+        z.literal(512)
+    ]).optional(),
+    context: z.string().max(1368).regex(/^[A-Za-z0-9+\/]*={0,2}$/).optional(),
+    plaintext: z.boolean().optional()
+});
+
+export const zTransitDataKeyResult = z.object({
+    ciphertext: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    plaintext: z.string().nullish()
+});
+
+export const zTransitSignRequest = z.object({
+    message: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zTransitSignatureResult = z.object({
+    signature: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitVerifyRequest = z.object({
+    message: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    signature: z.string().min(1).max(131072)
+});
+
+export const zTransitVerifyResult = z.object({
+    valid: z.boolean(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitHmacRequest = z.object({
+    message: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).optional()
+});
+
+export const zTransitHmacResult = z.object({
+    mac: z.string(),
+    key_version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+export const zTransitHmacVerifyRequest = z.object({
+    message: z.string().max(87384).regex(/^[A-Za-z0-9+\/]*={0,2}$/),
+    mac: z.string().min(1).max(131072)
+});
+
 export const zCreateSshcaRequestWritable = z.object({
     name: zSshName,
     algorithm: zSshKeyAlgorithm.optional(),
@@ -3770,6 +4208,16 @@ export const zRotateSshcaRequestWritable = z.object({
     private_key: z.string().min(1).max(16384).optional(),
     overlap_seconds: z.coerce.bigint().gte(BigInt(0)).lte(BigInt(2592000)).nullish()
 });
+
+export const zPkiIssuerName = zPkiName;
+
+export const zPkiIssuerVersion = z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' });
+
+export const zPkiProfileName = zPkiName;
+
+export const zPkiBindingId = zId;
+
+export const zCertificateId = zId;
 
 /**
  * Login-challenge identifier returned by `localLogin` (202).
@@ -4139,6 +4587,11 @@ export const zAuditObjectId = z.string().max(64);
  *
  */
 export const zAuditCorrelationId = z.string().max(64);
+
+/**
+ * The transit key's name, unique among the environment's live keys.
+ */
+export const zTransitKeyName2 = zTransitKeyName;
 
 /**
  * Current runtime status. Responses must not be cached.
@@ -7474,3 +7927,442 @@ export const zRevokeSshCertificatePath = z.object({
  * Certificate after revocation.
  */
 export const zRevokeSshCertificateResponse = zSshCertificate;
+
+/**
+ * Issuer versions.
+ */
+export const zListPkiIssuersResponse = zPkiIssuerList;
+
+export const zCreatePkiIssuerBody = zPkiIssuerCreateRequest;
+
+/**
+ * The created version.
+ */
+export const zCreatePkiIssuerResponse = zPkiIssuer;
+
+export const zShowPkiIssuerPath = z.object({
+    issuer: zPkiName
+});
+
+/**
+ * Issuer versions.
+ */
+export const zShowPkiIssuerResponse = zPkiIssuerList;
+
+export const zRotatePkiIssuerBody = zPkiIssuerRotateRequest;
+
+export const zRotatePkiIssuerPath = z.object({
+    issuer: zPkiName
+});
+
+/**
+ * The new version.
+ */
+export const zRotatePkiIssuerResponse = zPkiIssuer;
+
+export const zInstallPkiIssuerCertificateBody = zPkiIssuerInstallRequest;
+
+export const zInstallPkiIssuerCertificatePath = z.object({
+    issuer: zPkiName
+});
+
+/**
+ * The activated version.
+ */
+export const zInstallPkiIssuerCertificateResponse = zPkiIssuer;
+
+export const zReleasePkiIssuerHoldPath = z.object({
+    issuer: zPkiName
+});
+
+/**
+ * Issuer versions.
+ */
+export const zReleasePkiIssuerHoldResponse = zPkiIssuerList;
+
+export const zRetirePkiIssuerPath = z.object({
+    issuer: zPkiName,
+    version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+/**
+ * The retired version.
+ */
+export const zRetirePkiIssuerResponse = zPkiIssuer;
+
+export const zRevokePkiIssuerPath = z.object({
+    issuer: zPkiName,
+    version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+/**
+ * The revoked version.
+ */
+export const zRevokePkiIssuerResponse = zPkiIssuer;
+
+export const zGetPkiIssuerCrlPath = z.object({
+    issuer: zPkiName,
+    version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+/**
+ * The CRL.
+ */
+export const zGetPkiIssuerCrlResponse = zPkiCrl;
+
+export const zPublishPkiIssuerCrlPath = z.object({
+    issuer: zPkiName,
+    version: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
+});
+
+/**
+ * The version with its new CRL.
+ */
+export const zPublishPkiIssuerCrlResponse = zPkiIssuer;
+
+/**
+ * Profiles.
+ */
+export const zListPkiProfilesResponse = zPkiProfileList;
+
+export const zCreatePkiProfileBody = zPkiProfileCreateRequest;
+
+/**
+ * The profile.
+ */
+export const zCreatePkiProfileResponse = zPkiProfile;
+
+export const zDeletePkiProfilePath = z.object({
+    profile: zPkiName
+});
+
+/**
+ * Deleted.
+ */
+export const zDeletePkiProfileResponse = z.void();
+
+export const zShowPkiProfilePath = z.object({
+    profile: zPkiName
+});
+
+/**
+ * The profile.
+ */
+export const zShowPkiProfileResponse = zPkiProfile;
+
+export const zUpdatePkiProfileBody = zPkiProfileUpdateRequest;
+
+export const zUpdatePkiProfilePath = z.object({
+    profile: zPkiName
+});
+
+/**
+ * The profile.
+ */
+export const zUpdatePkiProfileResponse = zPkiProfile;
+
+export const zBindPkiProfileBody = zPkiProfileBindRequest;
+
+export const zBindPkiProfilePath = z.object({
+    profile: zPkiName
+});
+
+/**
+ * The profile.
+ */
+export const zBindPkiProfileResponse = zPkiProfile;
+
+export const zUnbindPkiProfilePath = z.object({
+    profile: zPkiName,
+    binding: zId
+});
+
+/**
+ * The profile.
+ */
+export const zUnbindPkiProfileResponse = zPkiProfile;
+
+export const zListCertificateProfilesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Bound profiles.
+ */
+export const zListCertificateProfilesResponse = zCertificateProfileList;
+
+export const zListCertificatesPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Certificates.
+ */
+export const zListCertificatesResponse = zCertificateList;
+
+export const zIssueCertificateBody = zCertificateIssueRequest;
+
+export const zIssueCertificatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The certificate, and a generated private key once.
+ */
+export const zIssueCertificateResponse = zCertificateIssueResult;
+
+export const zShowCertificatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    certificate: zId
+});
+
+/**
+ * Certificate.
+ */
+export const zShowCertificateResponse = zCertificate;
+
+export const zRenewCertificatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    certificate: zId
+});
+
+/**
+ * The successor certificate.
+ */
+export const zRenewCertificateResponse = zCertificate;
+
+export const zRevokeCertificateBody = zCertificateRevokeRequest;
+
+export const zRevokeCertificatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    certificate: zId
+});
+
+/**
+ * The revoked certificate.
+ */
+export const zRevokeCertificateResponse = zCertificate;
+
+export const zGetCertificateCrlPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    certificate: zId
+});
+
+/**
+ * The CRL.
+ */
+export const zGetCertificateCrlResponse = zPkiCrl;
+
+export const zListTransitKeysPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * Transit keys.
+ */
+export const zListTransitKeysResponse = zTransitKeyList;
+
+export const zCreateTransitKeyBody = zCreateTransitKeyRequest;
+
+export const zCreateTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The created key.
+ */
+export const zCreateTransitKeyResponse = zTransitKey;
+
+export const zShowTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * Transit key.
+ */
+export const zShowTransitKeyResponse = zTransitKey;
+
+export const zConfigureTransitKeyBody = zConfigureTransitKeyRequest;
+
+export const zConfigureTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The reconfigured key.
+ */
+export const zConfigureTransitKeyResponse = zTransitKey;
+
+export const zRotateTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The rotated key.
+ */
+export const zRotateTransitKeyResponse = zTransitKey;
+
+export const zChangeTransitKeyStateBody = zTransitLifecycleRequest;
+
+export const zChangeTransitKeyStatePath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The key after the transition.
+ */
+export const zChangeTransitKeyStateResponse = zTransitKey;
+
+export const zTrimTransitKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The trimmed key.
+ */
+export const zTrimTransitKeyResponse = zTransitTrimResult;
+
+export const zTransitEncryptBody = zTransitEncryptRequest;
+
+export const zTransitEncryptPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The ciphertext.
+ */
+export const zTransitEncryptResponse = zTransitCiphertextResult;
+
+export const zTransitDecryptBody = zTransitDecryptRequest;
+
+export const zTransitDecryptPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The plaintext.
+ */
+export const zTransitDecryptResponse = zTransitDecryptResult;
+
+export const zTransitRewrapBody = zTransitDecryptRequest;
+
+export const zTransitRewrapPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The rewrapped ciphertext.
+ */
+export const zTransitRewrapResponse = zTransitCiphertextResult;
+
+export const zTransitDataKeyBody = zTransitDataKeyRequest;
+
+export const zTransitDataKeyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The data key.
+ */
+export const zTransitDataKeyResponse = zTransitDataKeyResult;
+
+export const zTransitSignBody = zTransitSignRequest;
+
+export const zTransitSignPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The signature.
+ */
+export const zTransitSignResponse = zTransitSignatureResult;
+
+export const zTransitVerifyBody = zTransitVerifyRequest;
+
+export const zTransitVerifyPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The verification result.
+ */
+export const zTransitVerifyResponse = zTransitVerifyResult;
+
+export const zTransitHmacBody = zTransitHmacRequest;
+
+export const zTransitHmacPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The MAC.
+ */
+export const zTransitHmacResponse = zTransitHmacResult;
+
+export const zTransitVerifyHmacBody = zTransitHmacVerifyRequest;
+
+export const zTransitVerifyHmacPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    transit_key: zTransitKeyName
+});
+
+/**
+ * The verification result.
+ */
+export const zTransitVerifyHmacResponse = zTransitVerifyResult;

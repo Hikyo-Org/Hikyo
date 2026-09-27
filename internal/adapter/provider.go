@@ -9,15 +9,15 @@ import (
 type Provider string
 
 const (
-	ForgejoProvider       Provider = "forgejo"
-	GitHubActionsProvider Provider = "github-actions"
-	// AWSSecretsManagerProvider is the first cloud secret-manager destination
-	// (#158). It is one-way and value-blind like the CI providers.
-	AWSSecretsManagerProvider Provider = "aws-secrets-manager"
+	ForgejoProvider           Provider = "forgejo"
+	GitHubActionsProvider     Provider = "github-actions"
 	SealedWebhookProvider     Provider = "sealed-webhook"
+	CloudflareProvider        Provider = "cloudflare"
+	VaultKVProvider           Provider = "vault-kv"
+	AWSSecretsManagerProvider Provider = "aws-secrets-manager"
 )
 
-var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, AWSSecretsManagerProvider}
+var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider}
 
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {

@@ -105,10 +105,20 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_ssh_certificates_active", MaxSeries: 1},
 		{Name: "hikyo_ssh_krl_entries", MaxSeries: 1},
 		{Name: "hikyo_ssh_gauges_known", MaxSeries: 1},
+		// Transit (#156): label-free, one series each, omitted (known=0) when
+		// the scrape cannot measure them.
+		{Name: "hikyo_transit_keys_live", MaxSeries: 1},
+		{Name: "hikyo_transit_keys_rotation_due", MaxSeries: 1},
+		{Name: "hikyo_transit_keys_pending_deletion", MaxSeries: 1},
+		{Name: "hikyo_transit_gauges_known", MaxSeries: 1},
+		{Name: "hikyo_pki_certificates_live", MaxSeries: 1},
+		{Name: "hikyo_pki_certificates_unknown", MaxSeries: 1},
+		{Name: "hikyo_pki_issuers_on_hold", MaxSeries: 1},
+		{Name: "hikyo_pki_gauges_known", MaxSeries: 1},
 	}
 }
 
-// stubMeasuredSources answers the approval and dynamic gauge reads with healthy
+// stubMeasuredSources answers the approval, dynamic and transit gauge reads with healthy
 // zeros: those families are omitted when unmeasured, so the registry pin needs
 // a source that measures.
 type stubMeasuredSources struct{}
@@ -119,7 +129,10 @@ func (stubMeasuredSources) ApprovalSnapshot() (server.ApprovalStats, error) {
 
 func (stubMeasuredSources) DynamicSnapshot() (int64, int64, error) { return 0, 0, nil }
 
-func (stubMeasuredSources) SSHSnapshot() (int64, int64, error) { return 0, 0, nil }
+func (stubMeasuredSources) SSHSnapshot() (int64, int64, error)        { return 0, 0, nil }
+func (stubMeasuredSources) PKISnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
+
+func (stubMeasuredSources) TransitSnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 
 // scrapeOperationalMetrics returns the /metrics body of a fresh operational
 // handler. NewMetrics pre-registers every label combination eagerly, so the
@@ -130,6 +143,8 @@ func scrapeOperationalMetrics(t *testing.T) string {
 	metrics.SetApprovalSource(stubMeasuredSources{})
 	metrics.SetDynamicSource(stubMeasuredSources{})
 	metrics.SetSSHSource(stubMeasuredSources{})
+	metrics.SetTransitSource(stubMeasuredSources{})
+	metrics.SetPKISource(stubMeasuredSources{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

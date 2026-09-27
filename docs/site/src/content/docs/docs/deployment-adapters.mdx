@@ -1,6 +1,7 @@
 ---
 title: Deployment adapters
 description: Push selected published values to Forgejo, GitHub Actions, AWS Secrets Manager, or a sealed webhook receiver without reading provider values back.
+description: Push selected published values to Forgejo, GitHub Actions, Cloudflare Workers and Pages, Vault/OpenBao KV v2, or a sealed webhook receiver without reading provider values back.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/deployment-adapters.mdx
 ---
 
@@ -16,10 +17,15 @@ write selected values from one Hikyo environment to a repository, organization,
 or GitHub repository-environment Actions namespace. The
 [AWS Secrets Manager adapter](#aws-secrets-manager) is one-way and value-blind
 too; it writes secrets into one AWS account and region. Neither adapter links a variable GET or list endpoint. Secret planning reads
+The Forgejo, GitHub Actions, and Cloudflare adapters are one-way and value-blind. The Forgejo and GitHub
+Actions adapters write selected values from one Hikyo environment to a
+repository, organization, or GitHub repository-environment Actions
+namespace. The Cloudflare adapter writes them as encrypted Workers secrets or
+Pages encrypted variables (see [Cloudflare Workers and Pages](#cloudflare-workers-and-pages)). The [Vault/OpenBao KV v2 adapter](#vaultopenbao-kv-v2) follows the same rules for a secret-manager destination. None of them links a variable GET or list endpoint. Secret planning reads
 names only; variable planning uses Hikyo's ownership ledger. Hikyo therefore
 cannot detect provider-side value drift. Run a converge to restore the last
-published Hikyo state. The third adapter, the
-[sealed webhook](#sealed-webhook-receivers), pushes to a generic HTTPS receiver
+published Hikyo state. The
+[sealed webhook](#sealed-webhook-receivers) adapter pushes to a generic HTTPS receiver
 an instance administrator has pinned; it has no read path at all.
 
 ## Requirements
@@ -252,6 +258,74 @@ written and the retry converges it. On a multi-node installation every worker
 competes for jobs under the outbox lease; a worker that loses its lease can no
 longer push, mark success, retry, or scrub.
 
+## Cloudflare Workers and Pages
+
+The `cloudflare` provider synchronizes into two explicit destination kinds that
+share one credential and one ownership model:
+
+| Kind | `--owner` / `--account` | `--repo` / `--script` / `--pages-project` | `--destination-environment` |
+|---|---|---|---|
+| `workers-script` | 32-character account id | Workers script name | empty |
+| `pages-project` | 32-character account id | Pages project name | `preview` or `production` |
+
+```sh
+hikyo adapter create --provider cloudflare --env prod --kind workers-script \
+  --account 0123456789abcdef0123456789abcdef --script api --keys key_1,key_2 --stdin
+hikyo adapter target add --adapter <adapter> --env preview --kind pages-project \
+  --account 0123456789abcdef0123456789abcdef --pages-project site \
+  --destination-environment preview --keys key_1
+```
+
+The origin is always `https://api.cloudflare.com`; the CLI fills it in.
+Preview and production of one Pages project are separate targets with separate
+sentinels and ownership ledgers, so a preview sync can never touch production.
+
+**Every write is `secret_text`.** Workers secrets are written with
+`type: secret_text`; Pages variables are written into
+`deployment_configs.<environment>.env_vars` with `type: secret_text`. Keys
+classified `config` are delivered as secrets too. The client has no operation
+that writes `plain_text`, so a destination that cannot keep a value secret is
+refused rather than downgraded. The management sentinel `MANAGED_BY_HIKYO` is
+a secret written first and removed last.
+
+**Credential.** Use a scoped API token sent as `Authorization: Bearer`. Grant
+`Workers Scripts: Edit` for Workers targets and `Cloudflare Pages: Edit` for
+Pages targets, on exactly one account. Before activation Hikyo verifies the
+token is active and unexpired and that it reaches exactly the configured
+account. Global API Keys, email/key pairs, and tokens that reach more than one
+account are refused. The verified expiry is recorded as the credential expiry,
+and every sync re-verifies the token before its first write.
+
+**What Hikyo reads.** Workers: the script listing (for the script's immutable
+tag) and the script settings, decoded into binding names only. Settings
+return `plain_text` binding values; they are never decoded, logged, or
+compared, and the response buffer is cleared. Pages: the project object, decoded into the project id
+and the names and types of the selected environment's variables only. Pages
+returns `plain_text` values in that response; they are never decoded, logged,
+or compared, and the response buffer is cleared. Secret values are never
+returned by Cloudflare and never requested.
+
+**Ownership and conflicts.** Both Cloudflare writes are upserts, so Hikyo
+re-reads the destination names immediately before each first write of a name
+and refuses any name that already exists and is not in the ownership ledger,
+including Workers bindings of any type and Pages `plain_text` variables. Adopt an existing name through the
+usual plan-and-adopt flow. A script or project that is renamed, deleted, or
+recreated under the same name changes its immutable id; the target then fails
+with a destination-identity refusal and needs reconfiguration.
+
+**Side effects.** Every Workers secret write or delete deploys a new version of
+the script. Pages variable changes apply from the next deployment of that
+environment; existing deployments keep their values. Target status carries
+both as warnings. Writes are one name per request so each effect has its own
+INTENT and OUTCOME; Pages `PATCH` merges per key and a delete sends the name as
+`null`.
+
+**Failures.** HTTP 429 honours `Retry-After` (five minutes without one, the
+length of Cloudflare's request window). A 2xx response whose envelope does not
+report `success: true` is recorded as an unknown outcome and replayed as an
+update. Hikyo cannot detect a value edited in the Cloudflare dashboard; the
+next converge overwrites owned names with the published Hikyo value.
+
 ## Private origins and GHES
 
 Adapters deny private, loopback, link-local, documentation, and reserved
@@ -369,6 +443,72 @@ A VPC endpoint origin (or a local emulator) needs `region` in the descriptor
 identity modes always use AWS's regional STS endpoint, because STS receives
 the node's own identity material; only `static` credentials may name a
 different STS endpoint (`sts_origin`, `--aws-sts-origin`), for an emulator.
+## Vault/OpenBao KV v2
+
+The `vault-kv` adapter delivers into a Vault or OpenBao **KV version 2** mount.
+It is a destination only: it never reads a value back, and it is separate from
+`hikyo import --from vault`, which reads a tree into Hikyo once.
+
+```text
+hikyo adapter create --provider vault-kv \
+  --origin https://vault.example.com:8200[/NAMESPACE] \
+  --env prod --mount secret --path apps/payments \
+  --keys ID,ID --stdin < credential.json
+```
+
+- **Addressing.** `--origin` names the server; append `/NAMESPACE` for a Vault
+  Enterprise or OpenBao namespace. `--mount` is the KV v2 mount and `--path` the
+  prefix under it (they fill the repository destination's owner and name, so
+  the API and browser take the same values). Each key becomes one secret at
+  `MOUNT/PATH/PREFIXNAME` with a single `value` field. `hikyo adapter target show
+  --format workflow` prints the path of every key. Secrets and config values
+  share the tree, so names must be unique across both, case-insensitively.
+  Values must be UTF-8 and at most 512 KiB. KV v1 mounts are refused: they have
+  no check-and-set.
+- **Credential.** A bare token, or JSON:
+  `{"method":"approle","role_id":"…","secret_id":"…","mount":"approle"}` or
+  `{"method":"token","token":"…"}`. Either form accepts `ca_pem` (your CA;
+  hostname is still verified) and `spki_sha256` (base64 SHA-256 of the server
+  leaf's public key, checked in addition to chain verification, so pair it with
+  `ca_pem` for a private CA). AppRole logs in once per delivery attempt, renews at most
+  twice within it, and revokes its token afterwards. A static token is never
+  revoked; its expiry is shown on the adapter. JWT/OIDC login is not supported.
+- **Least privilege.** The adapter needs no data read. A sufficient policy:
+
+  ```hcl
+  path "secret/data/apps/payments/*"     { capabilities = ["create", "update"] }
+  path "secret/delete/apps/payments/*"     { capabilities = ["update"] }
+  path "secret/metadata/apps/payments/*" { capabilities = ["patch", "read"] }
+  path "sys/internal/ui/mounts/secret"   { capabilities = ["read"] }
+  ```
+
+- **Ownership and conflicts.** Hikyo writes with check-and-set and records
+  `managed_by_hikyo`, `hikyo_version`, and `hikyo_pending_version` in each
+  path's custom metadata (names and version numbers only). A path that already
+  exists and is not Hikyo's is a conflict and is not touched until you adopt it
+  by name; adoption never reads the value. A Hikyo path that someone edits
+  outside Hikyo is also a conflict: Hikyo reports it and never overwrites it.
+  If that key is later removed from the selection or the target is removed,
+  Hikyo releases it with a warning instead of deleting the edit. A delivery interrupted mid-write replays safely from metadata.
+- **Retain, prune, destroy.** Removing a target with `--keep-remote` leaves every
+  path in place. Without it, and for keys that leave the selection, Hikyo
+  soft-deletes the current version: history and metadata stay, and
+  `vault kv undelete` recovers the value until the mount's own retention drops
+  it. Hikyo never destroys versions or deletes metadata; use Vault tooling for
+  that after removal.
+- **Versions.** Every converge re-delivers every selected value, so each key
+  gains a KV version per converge. Bound history with the mount's
+  `max_versions`.
+- **Loops.** A live `hikyo import --from vault` refuses to read a tree that an
+  active `vault-kv` target of the same project writes (same host, namespace,
+  mount, and overlapping path), so Hikyo never imports its own output.
+- **Failures.** A sealed or standby server and transport errors retry; a
+  `429` honors `Retry-After`; a refused token or AppRole login marks the
+  credential for replacement; a re-created or moved mount stops delivery until
+  you reconfigure the target.
+
+For a private Vault address, add an egress exception keyed by
+`https://HOST:PORT` (without the namespace).
 
 ## Sealed webhook receivers
 

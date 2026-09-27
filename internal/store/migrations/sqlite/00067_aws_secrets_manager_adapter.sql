@@ -16,7 +16,7 @@ CREATE TABLE adapters (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
-    provider TEXT NOT NULL CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook', 'aws-secrets-manager')),
+    provider TEXT NOT NULL CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook', 'cloudflare', 'vault-kv', 'aws-secrets-manager')),
     origin TEXT NOT NULL,
     credential_ciphertext BLOB,
     credential_set_at TEXT,
@@ -43,7 +43,7 @@ CREATE TABLE adapter_targets (
     project_id TEXT NOT NULL,
     environment_id TEXT NOT NULL,
     adapter_id TEXT NOT NULL,
-    destination_kind TEXT NOT NULL CHECK (destination_kind IN ('repository', 'organization', 'environment', 'json-object', 'per-key')),
+    destination_kind TEXT NOT NULL CHECK (destination_kind IN ('repository', 'organization', 'environment', 'workers-script', 'pages-project', 'json-object', 'per-key')),
     destination_owner TEXT NOT NULL,
     destination_name TEXT NOT NULL,
     destination_environment TEXT NOT NULL DEFAULT '',
@@ -83,7 +83,7 @@ DROP TABLE adapter_targets_before_aws;
 ALTER TABLE adapter_route_move_targets RENAME TO adapter_route_move_targets_before_aws;
 CREATE TABLE adapter_route_move_targets (
     move_id TEXT NOT NULL, org_id TEXT NOT NULL, project_id TEXT NOT NULL, environment_id TEXT NOT NULL, target_id TEXT NOT NULL,
-    destination_kind TEXT NOT NULL CHECK (destination_kind IN ('repository', 'organization', 'environment', 'json-object', 'per-key')),
+    destination_kind TEXT NOT NULL CHECK (destination_kind IN ('repository', 'organization', 'environment', 'workers-script', 'pages-project', 'json-object', 'per-key')),
     destination_owner TEXT NOT NULL, destination_name TEXT NOT NULL, destination_environment TEXT NOT NULL DEFAULT '',
     destination_id INTEGER NOT NULL CHECK (destination_id >= 0), repository_id INTEGER NOT NULL DEFAULT 0 CHECK (repository_id >= 0),
     visibility TEXT NOT NULL DEFAULT '' CHECK (visibility IN ('', 'all', 'private', 'selected')),
@@ -102,7 +102,7 @@ DROP TABLE adapter_route_move_targets_before_aws;
 ALTER TABLE adapter_route_move_claims RENAME TO adapter_route_move_claims_before_aws;
 CREATE TABLE adapter_route_move_claims (
     move_id TEXT NOT NULL, org_id TEXT NOT NULL, project_id TEXT NOT NULL, environment_id TEXT NOT NULL, target_id TEXT NOT NULL, key_id TEXT,
-    provider_origin TEXT NOT NULL, destination_kind TEXT NOT NULL CHECK (destination_kind IN ('repository', 'organization', 'environment', 'json-object', 'per-key')),
+    provider_origin TEXT NOT NULL, destination_kind TEXT NOT NULL CHECK (destination_kind IN ('repository', 'organization', 'environment', 'workers-script', 'pages-project', 'json-object', 'per-key')),
     destination_owner TEXT NOT NULL, destination_name TEXT NOT NULL, destination_environment TEXT NOT NULL DEFAULT '',
     surface TEXT NOT NULL CHECK (surface IN ('secret', 'variable')), effective_name TEXT NOT NULL, normalized_name TEXT NOT NULL,
     PRIMARY KEY (move_id, target_id, surface, normalized_name),
@@ -130,7 +130,7 @@ CREATE TABLE adapter_ledger (
     state TEXT NOT NULL CHECK (state IN ('reserved', 'dispatched', 'owned', 'released')),
     updated_at TEXT NOT NULL,
     destination_kind TEXT NOT NULL DEFAULT 'repository'
-        CHECK (destination_kind IN ('repository', 'organization', 'environment', 'json-object', 'per-key')),
+        CHECK (destination_kind IN ('repository', 'organization', 'environment', 'workers-script', 'pages-project', 'json-object', 'per-key')),
     repository_id INTEGER NOT NULL DEFAULT 0 CHECK (repository_id >= 0),
     missing INTEGER NOT NULL DEFAULT 0 CHECK (missing IN (0, 1)),
     UNIQUE (target_id, surface, normalized_name),

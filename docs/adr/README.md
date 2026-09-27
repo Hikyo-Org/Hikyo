@@ -45,6 +45,7 @@ for its ripple register.
 | inheritance-model ADR (superseded) | [inheritance-model.md](./inheritance-model.md) |
 | k8s-integration ADR | [k8s-integration.md](./k8s-integration.md) |
 | k8s-condition-reporting ADR | [k8s-condition-reporting.md](./k8s-condition-reporting.md) |
+| transit ADR | [transit.md](./transit.md) |
 | machine-identities ADR | [machine-identities.md](./machine-identities.md) |
 | mcp-server ADR | [mcp-server.md](./mcp-server.md) |
 | multi-instance ADR | [multi-instance.md](./multi-instance.md) |
@@ -63,6 +64,7 @@ for its ripple register.
 | tenant-isolation ADR | [tenant-isolation.md](./tenant-isolation.md) |
 | threat-model ADR | [threat-model.md](./threat-model.md) |
 | workload-push-delivery ADR (proposed) | [workload-push-delivery.md](./workload-push-delivery.md) |
+| vault-kv-adapter ADR | [vault-kv-adapter.md](./vault-kv-adapter.md) |
 
 Background research the ADRs cite lives in [`../research/`](../research/).
 

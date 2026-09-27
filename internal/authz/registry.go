@@ -626,6 +626,43 @@ const (
 	OpSSHCertIssue        Operation = "ssh-cert.issue"
 	OpSSHCertInspect      Operation = "ssh-cert.inspect"
 	OpSSHCertRevoke       Operation = "ssh-cert.revoke"
+	// Transit (#156, transit ADR D7). Key management rides crypto-manage at
+	// project scope (human-only); the data plane rides crypto-use at
+	// environment scope (workload and automation may hold it). Inspection is
+	// the bare `read@environment` metadata read, audited-none. transit.use
+	// carries postGrantForbidden: key policy (state, version window, per-key
+	// caller entries, allowed operations) refuses after the formula passes.
+	OpTransitKeyCreate    Operation = "transit.key-create"
+	OpTransitKeyInspect   Operation = "transit.key-inspect"
+	OpTransitKeyConfigure Operation = "transit.key-configure"
+	OpTransitKeyRotate    Operation = "transit.key-rotate"
+	OpTransitKeyLifecycle Operation = "transit.key-lifecycle"
+	OpTransitKeyTrim      Operation = "transit.key-trim"
+	OpTransitUse          Operation = "transit.use"
+
+	// Private PKI (#154, pki ADR). Issuers and profiles are instance policy
+	// (`instance-config`); issuance is an environment act under the
+	// `issue-certificate` atom, machine-holdable under the profile's
+	// machine_issuance opt-in, which the service applies per caller class (the
+	// lease.mint shape). Inspect is the audit-free certificate read.
+	OpPKIIssuerInspect     Operation = "pki-issuer.inspect"
+	OpPKIIssuerCreate      Operation = "pki-issuer.create"
+	OpPKIIssuerInstall     Operation = "pki-issuer.install"
+	OpPKIIssuerRotate      Operation = "pki-issuer.rotate"
+	OpPKIIssuerRetire      Operation = "pki-issuer.retire"
+	OpPKIIssuerRevoke      Operation = "pki-issuer.revoke"
+	OpPKIIssuerReleaseHold Operation = "pki-issuer.release-hold"
+	OpPKIIssuerPublishCRL  Operation = "pki-issuer.publish-crl"
+	OpPKIProfileInspect    Operation = "pki-profile.inspect"
+	OpPKIProfileCreate     Operation = "pki-profile.create"
+	OpPKIProfileUpdate     Operation = "pki-profile.update"
+	OpPKIProfileDelete     Operation = "pki-profile.delete"
+	OpPKIProfileBind       Operation = "pki-profile.bind"
+	OpPKIProfileUnbind     Operation = "pki-profile.unbind"
+	OpCertificateIssue     Operation = "certificate.issue"
+	OpCertificateRenew     Operation = "certificate.renew"
+	OpCertificateRevoke    Operation = "certificate.revoke"
+	OpCertificateInspect   Operation = "certificate.inspect"
 
 	// NOT REGISTERED, deliberately: the active-session listing and its revoke
 	// (#71 criterion 5). Both are SELF-SCOPED — they address the caller's own
@@ -839,6 +876,67 @@ const (
 	StoreSSHListCAKeysForReencrypt    StoreOp = "ssh.ListCAKeysForReencrypt"
 	StoreSSHReencryptCAKey            StoreOp = "ssh.ReencryptCAKey"
 	StoreSSHPurgeEnvironment          StoreOp = "ssh.PurgeEnvironment"
+	// Transit (#156, transit ADR). Request-path, proof-carrying store methods;
+	// the scheduler reaches the rotation and purge doors under scoped system
+	// authority.
+	StoreTransitKeysList                 StoreOp = "transit.ListKeys"
+	StoreTransitKeysGet                  StoreOp = "transit.GetKey"
+	StoreTransitKeysGetForUse            StoreOp = "transit.GetKeyForUse"
+	StoreTransitKeysCount                StoreOp = "transit.CountKeys"
+	StoreTransitKeysCreate               StoreOp = "transit.CreateKey"
+	StoreTransitKeysConfigure            StoreOp = "transit.Configure"
+	StoreTransitKeysChangeState          StoreOp = "transit.ChangeState"
+	StoreTransitKeysCompromise           StoreOp = "transit.Compromise"
+	StoreTransitVersionsList             StoreOp = "transit.ListVersions"
+	StoreTransitVersionMaterial          StoreOp = "transit.VersionMaterial"
+	StoreTransitVersionsAppend           StoreOp = "transit.AppendVersion"
+	StoreTransitVersionsTrim             StoreOp = "transit.Trim"
+	StoreTransitVersionsFenceTrim        StoreOp = "transit.FenceTrim"
+	StoreTransitVersionsListForReencrypt StoreOp = "transit.ListVersionsForReencrypt"
+	StoreTransitVersionsReencrypt        StoreOp = "transit.ReencryptVersion"
+	StoreTransitCallersList              StoreOp = "transit.ListCallers"
+	StoreTransitSelectDeletionDue        StoreOp = "transit.SelectDeletionDue"
+	StoreTransitSelectRotationDue        StoreOp = "transit.SelectRotationDue"
+	StoreTransitDestroyVersions          StoreOp = "transit.DestroyVersions"
+	StoreTransitDestroy                  StoreOp = "transit.Destroy"
+
+	// Private PKI (#154). Request-path store methods; the worker's expiry,
+	// unknown and CRL sweeps run through the proof-free PKIRuntime.
+	StorePKIIssuersList                 StoreOp = "pki.ListIssuers"
+	StorePKIIssuersGet                  StoreOp = "pki.GetIssuer"
+	StorePKIIssuersKey                  StoreOp = "pki.IssuerKey"
+	StorePKIIssuersCreate               StoreOp = "pki.CreateIssuer"
+	StorePKIIssuersInstall              StoreOp = "pki.InstallIssuerCertificate"
+	StorePKIIssuersTransition           StoreOp = "pki.TransitionIssuer"
+	StorePKIIssuersDestroyKey           StoreOp = "pki.DestroyIssuerKey"
+	StorePKIIssuersHold                 StoreOp = "pki.SetIssuerHold"
+	StorePKIIssuersPublishCRL           StoreOp = "pki.PublishCRL"
+	StorePKIIssuersPublic               StoreOp = "pki.IssuerPublic"
+	StorePKIIssuersActivePublic         StoreOp = "pki.ActiveIssuerPublic"
+	StorePKIIssuersSigning              StoreOp = "pki.IssuerForSigning"
+	StorePKIIssuersFence                StoreOp = "pki.FenceIssuance"
+	StorePKIProfilesList                StoreOp = "pki.ListProfiles"
+	StorePKIProfilesGet                 StoreOp = "pki.GetProfile"
+	StorePKIProfilesCreate              StoreOp = "pki.CreateProfile"
+	StorePKIProfilesUpdate              StoreOp = "pki.UpdateProfile"
+	StorePKIProfilesDelete              StoreOp = "pki.DeleteProfile"
+	StorePKIProfilesBound               StoreOp = "pki.BoundProfile"
+	StorePKIProfilesBoundList           StoreOp = "pki.BoundProfiles"
+	StorePKIBindingsList                StoreOp = "pki.ListBindings"
+	StorePKIBindingsCreate              StoreOp = "pki.CreateBinding"
+	StorePKIBindingsDelete              StoreOp = "pki.DeleteBinding"
+	StorePKICertificatesGet             StoreOp = "pki.GetCertificate"
+	StorePKICertificatesList            StoreOp = "pki.ListCertificates"
+	StorePKICertificatesCreate          StoreOp = "pki.CreateCertificate"
+	StorePKICertificatesFinish          StoreOp = "pki.FinishCertificate"
+	StorePKICertificatesFail            StoreOp = "pki.FailCertificate"
+	StorePKICertificatesClaimRenewal    StoreOp = "pki.ClaimRenewal"
+	StorePKICertificatesCompleteRenewal StoreOp = "pki.CompleteRenewal"
+	StorePKICertificatesReleaseRenewal  StoreOp = "pki.ReleaseRenewal"
+	StorePKICertificatesRevoke          StoreOp = "pki.RevokeCertificate"
+	StorePKICertificatesCountLive       StoreOp = "pki.CountLiveCertificates"
+	StorePKICertificatesRevokeLive      StoreOp = "pki.RevokeLiveCertificates"
+	StorePKICertificatesRevokedEntries  StoreOp = "pki.RevokedEntries"
 
 	StoreFoldersCreate StoreOp = "folders.Create"
 	StoreFoldersGet    StoreOp = "folders.Get"
@@ -1010,6 +1108,8 @@ const (
 	StoreReencryptSamlKey                  StoreOp = "reencrypt.ReencryptSamlKey"
 	StoreReencryptListRemotes              StoreOp = "reencrypt.ListRemotesForReencrypt"
 	StoreReencryptRemote                   StoreOp = "reencrypt.ReencryptRemote"
+	StoreReencryptListPkiIssuers           StoreOp = "reencrypt.ListPkiIssuersForReencrypt"
+	StoreReencryptPkiIssuer                StoreOp = "reencrypt.ReencryptPkiIssuer"
 	StoreKeysAssertRootKeyEpoch            StoreOp = "keys.AssertRootKeyEpoch"
 	StoreKeysRootRotatePrepare             StoreOp = "keys.RootKeyRotatePrepare"
 	StoreKeysRootRotateFinalize            StoreOp = "keys.RootKeyRotateFinalize"
@@ -1174,9 +1274,21 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreSSHListProfiles:     true,
 	StoreSSHGetCertificate:   true,
 	StoreSSHListCertificates: true,
+	// Transit key inspection is a bare-read (`read@env`) of metadata only (#156).
+	StoreTransitKeysList:     true,
+	StoreTransitKeysGet:      true,
+	StoreTransitVersionsList: true,
+	StoreTransitCallersList:  true,
 	StoreProjectsGet:         true,
 	StoreProjectsList:        true,
 	StoreProjectsListAll:     true,
+	// Private PKI (#154) reads. IssuerKey and IssuerForSigning return sealed
+	// key ciphertext for the in-process signer, which is still a read.
+	StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersKey: true,
+	StorePKIIssuersPublic: true, StorePKIIssuersActivePublic: true, StorePKIIssuersSigning: true,
+	StorePKIProfilesList: true, StorePKIProfilesGet: true, StorePKIProfilesBound: true,
+	StorePKIProfilesBoundList: true, StorePKIBindingsList: true, StorePKICertificatesGet: true,
+	StorePKICertificatesList: true, StorePKICertificatesCountLive: true, StorePKICertificatesRevokedEntries: true,
 	// The definitions-settings read is `read@project`, audited-none; its only
 	// non-project store op is the latest-applied-plan lookup (#70).
 	StoreDefinitionsLatestAppliedPlan: true,
@@ -1242,6 +1354,7 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreReencryptListOauth2Providers:         true,
 	StoreReencryptListSamlKeys:                true,
 	StoreReencryptListRemotes:                 true,
+	StoreReencryptListPkiIssuers:              true,
 	StoreAuditTenantPage:                      true,
 	StoreAuditInstancePage:                    true,
 	StoreAuditTenantMaxSeq:                    true,
@@ -2898,6 +3011,8 @@ var operationTable = map[Operation]opSpec{
 			StoreDynamicProvidersReencrypt:        true,
 			StoreSSHListCAKeysForReencrypt:        true,
 			StoreSSHReencryptCAKey:                true,
+			StoreTransitVersionsListForReencrypt:  true,
+			StoreTransitVersionsReencrypt:         true,
 			StoreKeysAssertActiveDEKVersion:       true,
 			StoreKeysRetireRetiringTier3:          true,
 			StoreReencryptSuccessWrite:            true,
@@ -2919,6 +3034,7 @@ var operationTable = map[Operation]opSpec{
 			StoreReencryptListSamlKeys: true, StoreReencryptSamlKey: true,
 			StoreReencryptListSelfConfigSeedInputs: true, StoreReencryptSelfConfigSeedInput: true,
 			StoreReencryptListRemotes: true, StoreReencryptRemote: true,
+			StoreReencryptListPkiIssuers: true, StoreReencryptPkiIssuer: true,
 			StoreKeysAssertActiveDEKVersion: true,
 			StoreKeysRetireRetiringTier3:    true,
 			StoreReencryptSuccessWrite:      true,
@@ -4463,7 +4579,168 @@ var operationTable = map[Operation]opSpec{
 		storeOps: map[StoreOp]bool{StoreSSHGetCertificate: true, StoreSSHRevokeCertificate: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventSSHCertificateRevoked},
 	},
+	// --- Transit (#156) --------------------------------------------------------
+	OpTransitKeyCreate: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreTransitKeysCount: true, StoreTransitKeysCreate: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventTransitKeyCreated},
+	},
+	OpTransitKeyInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreTransitKeysList: true, StoreTransitKeysGet: true, StoreTransitVersionsList: true, StoreTransitCallersList: true},
+		auditedNone: true,
+	},
+	OpTransitKeyConfigure: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreTransitCallersList: true, StoreTransitKeysConfigure: true, StoreTransitKeysGet: true, StoreTransitVersionsList: true},
+		events:   []audit.EventType{audit.EventTransitKeyConfigured},
+	},
+	OpTransitKeyRotate: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreKeysAssertActiveDEKVersion: true, StoreTransitCallersList: true, StoreTransitKeysGet: true, StoreTransitVersionsAppend: true, StoreTransitVersionsList: true},
+		events:   []audit.EventType{audit.EventTransitKeyRotated},
+	},
+	OpTransitKeyLifecycle: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreTransitCallersList: true, StoreTransitKeysChangeState: true, StoreTransitKeysCompromise: true, StoreTransitKeysGet: true, StoreTransitVersionsList: true},
+		events:   []audit.EventType{audit.EventTransitKeyStateChanged},
+	},
+	OpTransitKeyTrim: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapCryptoManage, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreAuditTenantInsert: true, StoreTransitCallersList: true, StoreTransitKeysGet: true, StoreTransitVersionMaterial: true, StoreTransitVersionsFenceTrim: true, StoreTransitVersionsList: true, StoreTransitVersionsTrim: true},
+		events:   []audit.EventType{audit.EventTransitKeyTrimmed},
+	},
+	OpTransitUse: {
+		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
+		formula:  Formula{{Cap: domain.CapCryptoUse, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreTransitKeysGetForUse: true, StoreTransitVersionMaterial: true, StoreTransitCallersList: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventTransitOperation},
+	},
+	// --- Private PKI (#154) ---------------------------------------------------
+	OpPKIIssuerInspect: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIInventoryRead},
+	},
+	OpPKIIssuerCreate: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersActivePublic: true, StorePKIIssuersKey: true, StorePKIIssuersCreate: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIIssuer},
+	},
+	OpPKIIssuerInstall: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersInstall: true, StorePKIIssuersTransition: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIIssuer},
+	},
+	OpPKIIssuerRotate: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersActivePublic: true, StorePKIIssuersKey: true, StorePKIIssuersCreate: true, StorePKIIssuersTransition: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIIssuer},
+	},
+	OpPKIIssuerRetire: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKICertificatesCountLive: true, StorePKIIssuersDestroyKey: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIIssuer},
+	},
+	OpPKIIssuerRevoke: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKICertificatesRevokeLive: true, StorePKIIssuersDestroyKey: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIIssuer},
+	},
+	OpPKIIssuerReleaseHold: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersHold: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIIssuer},
+	},
+	OpPKIIssuerPublishCRL: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersKey: true, StorePKICertificatesRevokedEntries: true, StorePKIIssuersPublishCRL: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKICRLPublished},
+	},
+	OpPKIProfileInspect: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIProfilesList: true, StorePKIProfilesGet: true, StorePKIBindingsList: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIInventoryRead},
+	},
+	OpPKIProfileCreate: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIProfilesGet: true, StorePKIProfilesCreate: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIProfile},
+	},
+	OpPKIProfileUpdate: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIIssuersList: true, StorePKIProfilesGet: true, StorePKIProfilesUpdate: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIProfile},
+	},
+	OpPKIProfileDelete: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIProfilesGet: true, StorePKIProfilesDelete: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIProfile},
+	},
+	OpPKIProfileBind: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIProfilesGet: true, StorePKIBindingsList: true, StorePKIBindingsCreate: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIProfile},
+	},
+	OpPKIProfileUnbind: {
+		class: ClassInstance, formula: pkiOperatorFormula,
+		storeOps: map[StoreOp]bool{StorePKIProfilesGet: true, StorePKIBindingsList: true, StorePKIBindingsDelete: true, StoreAuditInstanceInsert: true},
+		events:   []audit.EventType{audit.EventPKIProfile},
+	},
+	OpCertificateIssue: {
+		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
+		formula: pkiIssueFormula,
+		storeOps: map[StoreOp]bool{
+			StorePKIProfilesBound: true, StorePKIIssuersActivePublic: true, StorePKIIssuersSigning: true,
+			StorePKIIssuersFence: true, StorePKICertificatesCreate: true, StorePKICertificatesFinish: true,
+			StorePKICertificatesFail: true, StorePKICertificatesGet: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{
+			audit.EventPKICertificateTransitionIntent, audit.EventPKICertificateTransitionOutcome, audit.EventPKICertificateKeyDisclosed,
+		},
+	},
+	OpCertificateRenew: {
+		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
+		formula: pkiIssueFormula,
+		storeOps: map[StoreOp]bool{
+			StorePKICertificatesGet: true, StorePKIProfilesBound: true, StorePKIIssuersActivePublic: true,
+			StorePKIIssuersPublic: true, StorePKIIssuersSigning: true, StorePKIIssuersFence: true, StorePKICertificatesCreate: true,
+			StorePKICertificatesFinish: true, StorePKICertificatesFail: true, StorePKICertificatesClaimRenewal: true,
+			StorePKICertificatesCompleteRenewal: true, StorePKICertificatesReleaseRenewal: true, StoreAuditTenantInsert: true,
+		},
+		events: []audit.EventType{audit.EventPKICertificateTransitionIntent, audit.EventPKICertificateTransitionOutcome},
+	},
+	OpCertificateRevoke: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  pkiIssueFormula,
+		storeOps: map[StoreOp]bool{StorePKICertificatesGet: true, StorePKIIssuersPublic: true, StorePKICertificatesRevoke: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventPKICertificateTransitionOutcome},
+	},
+	// Certificate metadata, public certificates and the stored CRL are an
+	// environment metadata read (`read`, the lease.inspect shape), audit-free.
+	OpCertificateInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula: Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{
+			StorePKICertificatesGet: true, StorePKICertificatesList: true, StorePKIProfilesBoundList: true,
+			StorePKIIssuersPublic: true, StorePKIIssuersActivePublic: true,
+		},
+		auditedNone: true,
+	},
 }
+
+// pkiOperatorFormula governs issuers and profiles: instance policy, never a
+// tenant grant (pki ADR D1).
+var pkiOperatorFormula = Formula{{Cap: domain.CapInstanceConfig, At: domain.LevelNone}}
+
+// pkiIssueFormula is the certificate lifecycle's single atom (pki ADR D4).
+var pkiIssueFormula = Formula{{Cap: domain.CapIssueCertificate, At: domain.LevelEnv}}
 
 // scimAdminFormula is `manage-members` AT ORG SCOPE EXACTLY (ADR §1). The atom
 // sits at LevelOrg rather than at `manage-members`' own deepest level because
@@ -4603,6 +4880,16 @@ var systemSites = map[SystemSite]map[StoreOp]bool{
 		// emitted per row under scoped authority.
 		StoreDeliveryTargetsSelectExpired: true,
 		StoreDeliveryTargetsPurge:         true,
+		// Transit maintenance (#156, tenant-isolation amendment 2026-09-26):
+		// the installation-wide due reads, the guarded automatic-rotation
+		// append (plus the DEK writer fence its sealed material needs), and
+		// the guarded purge that erases material and tombstones the key.
+		StoreTransitSelectDeletionDue:   true,
+		StoreTransitSelectRotationDue:   true,
+		StoreTransitVersionsAppend:      true,
+		StoreTransitDestroyVersions:     true,
+		StoreTransitDestroy:             true,
+		StoreKeysAssertActiveDEKVersion: true,
 	},
 }
 
@@ -4625,6 +4912,8 @@ var systemSiteEvents = map[SystemSite][]audit.EventType{
 		audit.EventBackupExportFailed,
 		// The delivery-target 30-day purge (#788).
 		audit.EventDeliveryTargetPurged,
+		// Transit automatic rotation and deletion purge (#156).
+		audit.EventTransitKeyRotated, audit.EventTransitKeyDestroyed,
 	},
 }
 

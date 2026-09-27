@@ -206,6 +206,40 @@
     ]
   },
   {
+    "operation": "certificate.inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "certificate.issue",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "issue-certificate@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "certificate.renew",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "issue-certificate@environment"
+    ],
+    "post_grant_forbidden": true
+  },
+  {
+    "operation": "certificate.revoke",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "issue-certificate@environment"
+    ]
+  },
+  {
     "operation": "credential-reset.instance",
     "class": "instance",
     "level": "instance",
@@ -1057,6 +1091,118 @@
     ]
   },
   {
+    "operation": "pki-issuer.create",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-issuer.inspect",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-issuer.install",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-issuer.publish-crl",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-issuer.release-hold",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-issuer.retire",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-issuer.revoke",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-issuer.rotate",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-profile.bind",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-profile.create",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-profile.delete",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-profile.inspect",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-profile.unbind",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
+    "operation": "pki-profile.update",
+    "class": "instance",
+    "level": "instance",
+    "formula": [
+      "instance-config@instance"
+    ]
+  },
+  {
     "operation": "project.create",
     "class": "tenant",
     "level": "org",
@@ -1785,6 +1931,63 @@
     "formula": [
       "read@environment"
     ]
+  },
+  {
+    "operation": "transit.key-configure",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.key-create",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.key-inspect",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "read@environment"
+    ]
+  },
+  {
+    "operation": "transit.key-lifecycle",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.key-rotate",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.key-trim",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-manage@project"
+    ]
+  },
+  {
+    "operation": "transit.use",
+    "class": "tenant",
+    "level": "environment",
+    "formula": [
+      "crypto-use@environment"
+    ],
+    "post_grant_forbidden": true
   },
   {
     "operation": "update.job-read",

@@ -53,6 +53,11 @@ type PruneHealth struct {
 	// Adapters are the instance-wide deployment-adapter health counts (#157):
 	// the label-free gauges and the doctor finding read the same numbers.
 	Adapters store.AdapterHealthCounts
+	// PKI is the private-PKI half (#154): certificates in the uncertain
+	// `unknown` state and issuers held after a restore. PKIKnown is false when
+	// the counts could not be read, which must never read as healthy.
+	PKI      store.PKIGauges
+	PKIKnown bool
 }
 
 // peakProjectStorage sums each project's stored ciphertext bytes across both
@@ -98,6 +103,8 @@ type Retention struct {
 	// (#145). The zero value means no export policy: the health read then
 	// reports "not scheduled" rather than an RPO breach.
 	Backup BackupPolicy
+	// PKI, when set, supplies the private-PKI health counts (#154).
+	PKI *store.PKIRuntime
 }
 
 func (s *Retention) now() time.Time {
@@ -568,7 +575,20 @@ func (s *Retention) OperationalHealth(ctx context.Context) (PruneHealth, error) 
 	}
 	out := s.health(at, recorded, peak, backup, adapters)
 	out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
+	s.pkiHealth(ctx, &out)
 	return out, nil
+}
+
+// pkiHealth reads the aggregate private-PKI counts. They carry no tenant
+// identity, only instance-wide totals, and a failed read leaves PKIKnown
+// false rather than reporting zeros.
+func (s *Retention) pkiHealth(ctx context.Context, out *PruneHealth) {
+	if s.PKI == nil {
+		return
+	}
+	if gauges, err := s.PKI.Gauges(ctx, s.now()); err == nil {
+		out.PKI, out.PKIKnown = gauges, true
+	}
 }
 
 // GetHealth authorizes and audits the instance API read in one transaction.
@@ -627,5 +647,6 @@ func (s *Retention) GetHealth(ctx context.Context, actor Actor) (PruneHealth, er
 	// Storage measurement can perform network I/O. Do it only after the
 	// authorization and audit transaction has committed, without holding locks.
 	out.Diagnostics = s.diagnosticHealth(metadata, instance, incarnation)
+	s.pkiHealth(ctx, &out)
 	return out, nil
 }

@@ -20,6 +20,8 @@ it.each([
   ['forgejo', 'Forgejo'],
   ['github-actions', 'GitHub Actions'],
   ['aws-secrets-manager', 'AWS Secrets Manager'],
+  ['vault-kv', 'Vault / OpenBao KV'],
+  ['cloudflare', 'Cloudflare Workers & Pages'],
   ['future-provider', 'future-provider'],
 ])('renders the %s provider through the response decoder', async (provider, label) => {
   vi.stubGlobal('fetch', vi.fn((...args: Parameters<typeof fetch>) => {
@@ -221,6 +223,32 @@ it('TargetForm offers only the AWS destination kinds and routes the secret name 
     });
     await act(async () => selectValue(kind, 'per-key'));
     expect(field('Path prefix')).not.toBeNull();
+  } finally { await unmount(); }
+});
+
+it('TargetForm addresses a vault-kv target by mount and path prefix on the repository destination', async () => {
+  const submitted: AdapterTargetInput[] = [];
+  const { container, unmount } = await renderForm(<TargetForm title="Add target" provider="vault-kv" environments={[{ id: 'env_1', name: 'prod' }]} keys={[]} busy={false} onCancel={() => undefined} onSubmit={(input) => { submitted.push(input); return Promise.resolve(); }} />);
+  try {
+    const labels = [...container.querySelectorAll('label')];
+    expect(labels.some((label) => label.textContent?.startsWith('Destination kind'))).toBe(false);
+    const field = (text: string) => {
+      const input = labels.find((label) => label.textContent?.startsWith(text))?.querySelector('input');
+      if (!(input instanceof HTMLInputElement)) throw new Error(`${text} missing`);
+      return input;
+    };
+    await act(async () => typeInto(field('KV v2 mount'), 'kv/team-a'));
+    await act(async () => typeInto(field('Path prefix'), 'apps/pay'));
+    const form = container.querySelector('form');
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[0]).toMatchObject({
+      destination_kind: 'repository',
+      destination_owner: 'kv/team-a',
+      destination_name: 'apps/pay',
+      destination_environment: '',
+      visibility: '',
+      allow_environment_create: false,
+    });
   } finally {
     await unmount();
   }
@@ -241,4 +269,28 @@ it('assembles the AWS access descriptor with only the fields the mode takes', ()
   expect(JSON.parse(awsAccessDescriptor({ ...emptyAwsAccess, mode: 'ambient', region: 'eu-west-1' }))).toEqual({ mode: 'ambient', region: 'eu-west-1' });
   const key = { ...emptyAwsAccess, mode: 'static' as const, accessKeyId: 'AKIAHIKYOTEST0000001', secretAccessKey: 'sealed-on-save' };
   expect(JSON.parse(awsAccessDescriptor(key))).toEqual({ mode: 'static', access_key_id: 'AKIAHIKYOTEST0000001', secret_access_key: 'sealed-on-save' });
+});
+
+it('offers Cloudflare destinations and sends one Pages environment', async () => {
+  const submitted: AdapterTargetInput[] = [];
+  const { container, unmount } = await renderForm(<TargetForm title="Add target" provider="cloudflare" environments={[{ id: 'env_1', name: 'prod' }]} keys={[]} busy={false} onCancel={() => undefined} onSubmit={(input) => { submitted.push(input); return Promise.resolve(); }} />);
+  try {
+    const field = (label: string) => [...container.querySelectorAll('label')].find((node) => node.textContent?.startsWith(label));
+    const kind = field('Destination kind')?.querySelector('select');
+    if (!(kind instanceof HTMLSelectElement)) throw new Error('kind missing');
+    expect([...kind.options].map((option) => option.value)).toEqual(['workers-script', 'pages-project']);
+    const form = container.querySelector('form');
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[0]?.destination_kind).toBe('workers-script');
+    expect(submitted[0]?.destination_environment).toBe('');
+    await act(async () => selectValue(kind, 'pages-project'));
+    const environment = field('Pages environment')?.querySelector('select');
+    if (!(environment instanceof HTMLSelectElement)) throw new Error('pages environment missing');
+    await act(async () => selectValue(environment, 'preview'));
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[1]?.destination_kind).toBe('pages-project');
+    expect(submitted[1]?.destination_environment).toBe('preview');
+    expect(submitted[1]?.allow_environment_create).toBe(false);
+    expect(field('Account id')).toBeDefined();
+  } finally { await unmount(); }
 });

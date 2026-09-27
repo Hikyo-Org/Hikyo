@@ -851,6 +851,88 @@ type PinGeneration struct {
 	Generation    int64
 }
 
+type PkiCertificate struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	ProfileID        string
+	ProfileName      string
+	IssuerID         string
+	Serial           string
+	State            string
+	KeySource        string
+	KeyAlgorithm     string
+	KeyFingerprint   string
+	CommonName       string
+	Sans             string
+	NotBefore        string
+	NotAfter         string
+	CertificateDer   []byte
+	PrincipalID      string
+	PrincipalClass   string
+	RenewedFrom      sql.NullString
+	RenewedBy        sql.NullString
+	RevokedAt        sql.NullString
+	RevocationReason sql.NullString
+	IssuingDeadline  string
+	RowVersion       int64
+	CreatedAt        string
+	UpdatedAt        string
+}
+
+type PkiIssuer struct {
+	ID                  string
+	Name                string
+	Version             int64
+	Kind                string
+	Origin              string
+	ParentID            sql.NullString
+	State               string
+	KeyAlgorithm        string
+	KeyFingerprint      string
+	EncryptedPrivateKey []byte
+	DekVersion          sql.NullInt64
+	CertificateDer      []byte
+	CsrDer              []byte
+	ChainPem            string
+	SubjectCn           string
+	SubjectOrg          string
+	NotBefore           sql.NullString
+	NotAfter            sql.NullString
+	CrlDistributionUrl  string
+	RestoreHold         int64
+	IssuedCount         int64
+	CrlDer              []byte
+	CrlNumber           int64
+	CrlThisUpdate       sql.NullString
+	CrlNextUpdate       sql.NullString
+	RowVersion          int64
+	CreatedBy           string
+	CreatedAt           string
+	UpdatedAt           string
+}
+
+type PkiProfile struct {
+	ID         string
+	Name       string
+	Policy     string
+	RowVersion int64
+	CreatedBy  string
+	CreatedAt  string
+	UpdatedAt  string
+}
+
+type PkiProfileBinding struct {
+	ID            string
+	ProfileID     string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID sql.NullString
+	CreatedBy     string
+	CreatedAt     string
+}
+
 type Principal struct {
 	ID                string
 	Kind              string
@@ -1448,6 +1530,52 @@ type TotpCredential struct {
 	CreatedStep     int64
 	ConfirmedAt     sql.NullString
 	CreatedAt       string
+}
+
+type TransitKey struct {
+	ID                        string
+	OrgID                     string
+	ProjectID                 string
+	EnvironmentID             string
+	Name                      string
+	Algorithm                 string
+	Custody                   string
+	AllowedOperations         string
+	Exportable                int64
+	State                     string
+	LatestVersion             int64
+	MinEncryptVersion         int64
+	MinDecryptVersion         int64
+	MinAvailableVersion       int64
+	CompromisedThroughVersion int64
+	RotationPeriodSeconds     int64
+	PurgeStarted              int64
+	DeletionAfter             sql.NullString
+	CreatedBy                 string
+	CreatedAt                 string
+	UpdatedAt                 string
+}
+
+type TransitKeyCaller struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	PrincipalID   string
+	Operations    string
+}
+
+type TransitKeyVersion struct {
+	ID                 string
+	OrgID              string
+	ProjectID          string
+	EnvironmentID      string
+	KeyID              string
+	Version            int64
+	MaterialCiphertext []byte
+	ExternalRef        sql.NullString
+	PublicKey          []byte
+	CreatedAt          string
 }
 
 type ValueEntry struct {

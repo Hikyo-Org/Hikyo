@@ -193,6 +193,11 @@ func TestInvariant06OperationRegistryCompleteness(t *testing.T) {
 		// the audited operator read reaches them via retention.health-read, the
 		// unauthenticated /metrics scrape via the scheduler mint site.
 		authz.StoreAdaptersHealthCounts: true,
+		// Transit (#156, tenant-isolation amendment 2026-09-26): scheduled
+		// rotation appends a version through the same guarded compare-and-swap
+		// an operator rotation uses, behind the same DEK writer fence.
+		authz.StoreTransitVersionsAppend:      true,
+		authz.StoreKeysAssertActiveDEKVersion: true,
 	}
 	seenShared := map[authz.StoreOp]bool{}
 	for method := range expected {
@@ -393,6 +398,16 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		authz.StoreRetentionAuditPolicy:    true,
 		authz.StoreRetentionSetAuditPolicy: true,
 		authz.StoreRetentionPruneAudit:     true,
+		// Transit maintenance (#156, tenant-isolation amendment 2026-09-26):
+		// the installation-wide due reads, the guarded automatic-rotation
+		// append behind the DEK writer fence, and the guarded purge that
+		// erases material and tombstones the key. A reviewed widening.
+		authz.StoreTransitSelectDeletionDue:   true,
+		authz.StoreTransitSelectRotationDue:   true,
+		authz.StoreTransitVersionsAppend:      true,
+		authz.StoreKeysAssertActiveDEKVersion: true,
+		authz.StoreTransitDestroyVersions:     true,
+		authz.StoreTransitDestroy:             true,
 	}
 	wantEscrow := map[authz.StoreOp]bool{
 		authz.StoreKeysActiveMasterWrappers: true, authz.StoreKeysAllOpenableTier3: true,

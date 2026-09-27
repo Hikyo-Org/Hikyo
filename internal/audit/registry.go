@@ -805,6 +805,26 @@ const (
 	EventSSHCertificateIssued  EventType = "ssh.certificate_issued"
 	EventSSHCertificateRevoked EventType = "ssh.certificate_revoked"
 
+	// Transit (#156, transit ADR D8). Every event records a decision about a
+	// key: its id, versions, states and policy values. No schema below has a
+	// field that can carry plaintext, ciphertext, context, signatures, MACs,
+	// digests, data keys or key material.
+	EventTransitKeyCreated      EventType = "transit.key_created"
+	EventTransitKeyConfigured   EventType = "transit.key_configured"
+	EventTransitKeyRotated      EventType = "transit.key_rotated"
+	EventTransitKeyStateChanged EventType = "transit.key_state_changed"
+	EventTransitKeyTrimmed      EventType = "transit.key_trimmed"
+	EventTransitKeyDestroyed    EventType = "transit.key_destroyed"
+	EventTransitOperation       EventType = "transit.operation"
+	// Private PKI (#154, docs/adr/pki.md).
+	EventPKIInventoryRead                EventType = "pki.inventory_read"
+	EventPKIIssuer                       EventType = "pki.issuer"
+	EventPKIProfile                      EventType = "pki.profile"
+	EventPKICertificateTransitionIntent  EventType = "pki.certificate_transition_intent"
+	EventPKICertificateTransitionOutcome EventType = "pki.certificate_transition_outcome"
+	EventPKICertificateKeyDisclosed      EventType = "pki.certificate_key_disclosed"
+	EventPKICRLPublished                 EventType = "pki.crl_published"
+
 	// remote.* — the multi-instance categories (#71, multi-instance ADR §
 	// Audit) ARE registered above, every one of them that has an honest
 	// emitter, including remote.directory_served; its audited_exemptions.json
@@ -3261,6 +3281,179 @@ var registry = map[EventType]TypeSpec{
 			"reason": {Kind: KindString, Required: true, Enum: []string{"explicit", "authority-withdrawn", "profile-deleted"}},
 		},
 	},
+	// --- Transit (#156) --------------------------------------------------------
+	EventTransitKeyCreated: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"algorithm":               {Kind: KindString, Required: true, Enum: TransitAlgorithmValues},
+			"custody":                 {Kind: KindString, Required: true, Enum: []string{"software", "external"}},
+			"allowed_operations":      {Kind: KindStringList, Required: true, MaxLen: len(TransitOperationValues), MaxBytes: 32},
+			"rotation_period_seconds": {Kind: KindInt, Required: true},
+			"caller_count":            {Kind: KindInt, Required: true},
+		},
+	},
+	EventTransitKeyConfigured: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"min_encrypt_version":     {Kind: KindInt, Required: true},
+			"min_decrypt_version":     {Kind: KindInt, Required: true},
+			"rotation_period_seconds": {Kind: KindInt, Required: true},
+			"caller_count":            {Kind: KindInt, Required: true},
+			"callers_changed":         {Kind: KindBool, Required: true},
+		},
+	},
+	// Emitted by an operator rotation (actor = the principal) and by the
+	// scheduler's automatic rotation (actor class system).
+	EventTransitKeyRotated: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"version": {Kind: KindInt, Required: true},
+			"trigger": {Kind: KindString, Required: true, Enum: []string{"operator", "schedule"}},
+		},
+	},
+	EventTransitKeyStateChanged: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"action":                      {Kind: KindString, Required: true, Enum: TransitLifecycleActions},
+			"from_state":                  {Kind: KindString, Required: true, Enum: TransitKeyStates},
+			"to_state":                    {Kind: KindString, Required: true, Enum: TransitKeyStates},
+			"deletion_after":              {Kind: KindString},
+			"compromised_through_version": {Kind: KindInt},
+		},
+	},
+	EventTransitKeyTrimmed: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"min_decrypt_version": {Kind: KindInt, Required: true},
+			"versions_deleted":    {Kind: KindInt, Required: true},
+		},
+	},
+	// The scheduler's purge after the deletion delay (actor class system).
+	EventTransitKeyDestroyed: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"custody":         {Kind: KindString, Required: true, Enum: []string{"software", "external"}},
+			"versions_erased": {Kind: KindInt, Required: true},
+		},
+	},
+	// One event per data-plane operation: the decision, never the data. A
+	// refusal after the formula passed is recorded as denied with its closed
+	// cause; a custody failure as failure.
+	EventTransitOperation: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeDenied: true, OutcomeFailure: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"operation":     {Kind: KindString, Required: true, Enum: TransitOperationValues},
+			"key_version":   {Kind: KindInt},
+			"input_bytes":   {Kind: KindInt, Required: true},
+			"output_bytes":  {Kind: KindInt, Required: true},
+			"credential_id": {Kind: KindString},
+			"refusal":       {Kind: KindString, Enum: TransitRefusalCauses},
+		},
+	},
+	// --- Private PKI (#154) --------------------------------------------------
+	// No payload ever carries key material: issuer events name the version and
+	// its public-key fingerprint; certificate events name the serial and the
+	// issuer version. The generated private key's disclosure is recorded as a
+	// fact (pki.certificate_key_disclosed), never as the key.
+	EventPKIInventoryRead: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"object":    {Kind: KindString, Required: true, Enum: []string{"issuer", "profile", "crl"}},
+			"query":     {Kind: KindString, Required: true, Enum: []string{"list", "show"}},
+			"row_count": {Kind: KindInt, Required: true},
+		},
+	},
+	EventPKIIssuer: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"action":                {Kind: KindString, Required: true, Enum: []string{"create", "install", "rotate", "retire", "revoke", "release-hold"}},
+			"name":                  {Kind: KindString, Required: true},
+			"version":               {Kind: KindInt, Required: true},
+			"kind":                  {Kind: KindString, Required: true, Enum: []string{"root", "intermediate"}},
+			"state":                 {Kind: KindString, Required: true, Enum: []string{"pending", "active", "retiring", "retired", "revoked"}},
+			"key_fingerprint":       {Kind: KindString, Required: true},
+			"prior_key_fingerprint": {Kind: KindString},
+			"certificates_revoked":  {Kind: KindInt},
+		},
+	},
+	EventPKIProfile: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"action":              {Kind: KindString, Required: true, Enum: []string{"create", "update", "delete", "bind", "unbind"}},
+			"name":                {Kind: KindString, Required: true},
+			"binding_org":         {Kind: KindString},
+			"binding_project":     {Kind: KindString},
+			"binding_environment": {Kind: KindString},
+		},
+	},
+	// Issue and renew write the INTENT (serial reserved, state issuing) before
+	// signing and the OUTCOME after the issuer fence; revoke and expiry write
+	// the OUTCOME only. An issuing row the worker finds past its deadline gets
+	// an `unknown` OUTCOME and is published on the CRL (ADR D6).
+	EventPKICertificateTransitionIntent: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeIntent: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"kind":    {Kind: KindString, Required: true, Enum: []string{"issue", "renew"}},
+			"serial":  {Kind: KindString, Required: true},
+			"issuer":  {Kind: KindString, Required: true},
+			"profile": {Kind: KindString, Required: true},
+		},
+	},
+	EventPKICertificateTransitionOutcome: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true, OutcomeUnknown: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"kind":   {Kind: KindString, Required: true, Enum: []string{"issue", "renew", "revoke", "expire"}},
+			"serial": {Kind: KindString, Required: true},
+			"issuer": {Kind: KindString, Required: true},
+			"state":  {Kind: KindString, Required: true, Enum: []string{"issued", "renewed", "revoked", "expired", "unknown", "failed"}},
+			"reason": {Kind: KindString, Enum: []string{"unspecified", "key-compromise", "ca-compromise", "affiliation-changed", "superseded", "cessation-of-operation", "privilege-withdrawn"}},
+		},
+	},
+	EventPKICertificateKeyDisclosed: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"serial":          {Kind: KindString, Required: true},
+			"key_algorithm":   {Kind: KindString, Required: true, Enum: []string{"ecdsa-p256", "ecdsa-p384", "ed25519", "rsa-2048", "rsa-3072", "rsa-4096"}},
+			"principal_class": {Kind: KindString, Required: true},
+		},
+	},
+	EventPKICRLPublished: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"issuer":     {Kind: KindString, Required: true},
+			"version":    {Kind: KindInt, Required: true},
+			"crl_number": {Kind: KindInt, Required: true},
+			"entries":    {Kind: KindInt, Required: true},
+		},
+	},
 	EventAdapterPlan: adapterLifecycleEvent(Schema{
 		"changes": {Kind: KindStringList, Required: true},
 	}),
@@ -3570,3 +3763,22 @@ func Types() []EventType {
 	slices.Sort(out)
 	return out
 }
+
+// The closed transit vocabularies (#156, transit ADR). They live here, the leaf
+// the service and the audit schemas both import, so an enum in a payload and
+// the service's own vocabulary cannot drift apart.
+var (
+	TransitAlgorithmValues = []string{"xchacha20-poly1305", "ed25519", "hmac-sha256"}
+	TransitOperationValues = []string{
+		"encrypt", "decrypt", "rewrap", "datakey", "datakey-plaintext",
+		"sign", "verify", "hmac", "hmac-verify",
+	}
+	TransitKeyStates        = []string{"active", "retired", "disabled", "pending-deletion", "destroyed"}
+	TransitLifecycleActions = []string{"disable", "enable", "retire", "compromise", "schedule-deletion", "cancel-deletion"}
+	// TransitRefusalCauses: the key's state forbids the operation; the version
+	// is outside the key's window; the version is compromised; the per-key
+	// caller entries exclude the caller; the key does not allow the operation;
+	// the custody provider is unavailable; the input was malformed or failed
+	// verification is NOT a refusal (verify answers valid=false).
+	TransitRefusalCauses = []string{"state", "version", "compromised", "caller", "operation", "custody-unavailable", "invalid-input"}
+)

@@ -605,6 +605,10 @@ func validatePendingTarget(m AdapterTargetMutation) error {
 		if err := adapter.ValidateAWSSecretsManagerDestination(targetDestination(m)); err != nil {
 			return fmt.Errorf("%w: %v", domain.ErrInvalid, err)
 		}
+	case string(adapter.WorkersScript), string(adapter.PagesProject):
+		if err := validateCloudflareTarget(m); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("%w: unsupported adapter destination kind", domain.ErrInvalid)
 	}

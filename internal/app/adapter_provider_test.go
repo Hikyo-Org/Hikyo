@@ -11,6 +11,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/adapter/awssm"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/forgejo"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/githubactions"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/vaultkv"
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 )
 
@@ -46,6 +47,14 @@ func TestAdapterModuleFactoryDispatchesCompiledInProviders(t *testing.T) {
 		t.Fatalf("github module = %T", githubLease.Module)
 	}
 
+	vaultLease, err := factory.Build(adapter.VaultKVProvider, adapter.Config{Origin: "https://vault.example:8200/team-a"}, "hvs.static")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer vaultLease.Release()
+	if _, ok := vaultLease.Module.(*vaultkv.Module); !ok {
+		t.Fatalf("vault module = %T", vaultLease.Module)
+	}
 	awsLease, err := factory.Build(adapter.AWSSecretsManagerProvider, adapter.Config{Origin: "https://secretsmanager.eu-west-1.amazonaws.com"}, `{"mode":"static","access_key_id":"AKIAHIKYOTEST0000001","secret_access_key":"fixture"}`)
 	if err != nil {
 		t.Fatal(err)
@@ -142,4 +151,22 @@ func (stubProviderModule) Plan(context.Context, adapter.PlanRequest) (adapter.Pl
 }
 func (stubProviderModule) Sync(context.Context, adapter.SyncRequest, adapter.Journal) (adapter.SyncResult, error) {
 	return adapter.SyncResult{}, nil
+}
+
+func TestAdapterEgressOriginDropsVaultNamespaceOnly(t *testing.T) {
+	cases := []struct {
+		provider adapter.Provider
+		origin   string
+		want     string
+	}{
+		{adapter.VaultKVProvider, "https://vault.example:8200/team-a/child", "https://vault.example:8200"},
+		{adapter.VaultKVProvider, "https://vault.example:8200", "https://vault.example:8200"},
+		{adapter.GitHubActionsProvider, "https://ghes.example/api/v3", "https://ghes.example/api/v3"},
+		{adapter.ForgejoProvider, "https://forgejo.example", "https://forgejo.example"},
+	}
+	for _, tc := range cases {
+		if got := egressOrigin(tc.provider, tc.origin); got != tc.want {
+			t.Errorf("egressOrigin(%s, %s) = %s, want %s", tc.provider, tc.origin, got, tc.want)
+		}
+	}
 }

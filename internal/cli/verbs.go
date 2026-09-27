@@ -198,6 +198,9 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"ssh-ca":              runSSHCA,
 	"ssh-profile":         runSSHProfile,
 	"ssh-cert":            runSSHCert,
+	"transit":             runTransit,
+	"pki":                 runPKI,
+	"cert":                runCert,
 	"run":                 runRun,
 	"compose":             runCompose,
 	"update":              runUpdate,
@@ -373,8 +376,9 @@ revisions:                                         --env selects the environment
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance for instance
 
 adapters:
-  hikyo adapter create --provider forgejo|github-actions --origin <https-origin> --env E --kind repository|organization|environment
+  hikyo adapter create --provider forgejo|github-actions|vault-kv --origin <https-origin> --env E --kind repository|organization|environment
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
+      (vault-kv: --origin https://vault:8200[/<namespace>] --mount <kv-v2-mount> --path <prefix>)
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
@@ -384,6 +388,13 @@ adapters:
       --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn <arn>] [--aws-external-id <id>]
       [--aws-session-seconds 900-3600] [--aws-access-key-id <id>] [--aws-region <region>]
       [--aws-sts-origin <https-origin>] [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
+  hikyo adapter create --provider cloudflare --env E --kind workers-script --account <id> --script <name>
+  hikyo adapter create --provider cloudflare --env E --kind pages-project --account <id> --pages-project <name>
+      --destination-environment preview|production
+      (both forms: every write is secret_text; one scoped API token)
+      [--prefix <prefix>] --keys <id,...> [--names <NAME,...>]
+      [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
+      [--stdin | --value-file PATH]
   hikyo adapter list [-o table|json]
   hikyo adapter show <adapter> [-o table|json]
   hikyo adapter update <adapter> --origin <https-origin> [--stdin | --value-file PATH]
@@ -484,6 +495,67 @@ ssh certificates:
   returned; a generated user key is shown exactly once through the print
   triad. Hosts trust "ssh-ca trusted-keys" (TrustedUserCAKeys) and refuse
   "ssh-ca krl" (RevokedKeys); refresh both on a timer.
+
+transit (managed keys; key material never leaves custody):
+  hikyo transit key create <name> --env E --algorithm xchacha20-poly1305|ed25519|hmac-sha256
+      [--custody software] [--allow op,op] [--rotation-period 720h]
+      [--caller principal=op,op]...
+  hikyo transit key list --env E [-o table|json]
+  hikyo transit key show <name> --env E [-o table|json]
+  hikyo transit key configure <name> --env E [--min-encrypt-version N]
+      [--min-decrypt-version N] [--rotation-period D|0] [--caller p=op,op]... [--clear-callers]
+  hikyo transit key rotate|trim <name> --env E
+  hikyo transit key disable|enable|retire|compromise|cancel-deletion <name> --env E
+  hikyo transit key schedule-deletion <name> --env E [--delay 168h]
+  hikyo transit encrypt|sign|hmac <key> --env E (--stdin | --input-file PATH)
+      [--aad-file PATH] [--key-version N]
+  hikyo transit decrypt <key> --env E (--stdin | --input-file PATH) [--aad-file PATH]
+      [--output-file PATH | --dangerously-print]
+  hikyo transit rewrap <key> --env E (--stdin | --input-file PATH) [--aad-file PATH]
+  hikyo transit datakey <key> --env E [--bits 256] [--aad-file PATH]
+      [--plaintext [--output-file PATH | --dangerously-print]]
+  hikyo transit verify <key> --env E --signature S (--stdin | --input-file PATH)
+  hikyo transit hmac-verify <key> --env E --mac M (--stdin | --input-file PATH)
+
+  inputs come from stdin or a file, never argv. Decrypted plaintext and a
+  plaintext data key are shown exactly once, through the print triad.
+private PKI:
+  hikyo pki issuer list [-o table|json]
+  hikyo pki issuer show <issuer> [-o table|json]
+  hikyo pki issuer create-root <issuer> --common-name CN [--organization O]
+      [--key-algorithm ALG] [--ttl <duration>] [--crl-url URL]
+  hikyo pki issuer create-intermediate <issuer> --common-name CN [--parent <issuer>]
+      [--organization O] [--key-algorithm ALG] [--ttl <duration>] [--crl-url URL] [--csr-out PATH]
+  hikyo pki issuer import <issuer> (--key-file PATH | --key-stdin) --cert-file PATH
+      [--chain-file PATH] [--crl-url URL]
+  hikyo pki issuer install <issuer> --cert-file PATH --chain-file PATH
+  hikyo pki issuer rotate <issuer> [--key-algorithm ALG] [--ttl <duration>] [--csr-out PATH]
+      [--key-file PATH | --key-stdin] [--cert-file PATH] [--chain-file PATH]
+  hikyo pki issuer retire <issuer> --version N
+  hikyo pki issuer revoke <issuer> --version N
+  hikyo pki issuer release-hold <issuer>
+  hikyo pki issuer crl <issuer> --version N [--publish]
+  hikyo pki profile list [-o table|json]
+  hikyo pki profile show <profile> [-o table|json]
+  hikyo pki profile create <profile> --policy-file PATH
+  hikyo pki profile update <profile> --policy-file PATH [--row-version N]
+  hikyo pki profile delete <profile>
+  hikyo pki profile bind <profile> --org O --project P [--env E]
+  hikyo pki profile unbind <profile> <binding>
+  hikyo cert profiles --env E [-o table|json]
+  hikyo cert list --env E [-o table|json]
+  hikyo cert show <certificate> --env E [--pem] [--cert-out PATH]
+  hikyo cert issue --env E --profile <profile> (--csr-file PATH | --generate-key [--key-algorithm ALG])
+      [--dns NAME]... [--ip ADDR]... [--uri URI]... [--common-name CN] [--ttl <duration>]
+      [--issuer <issuer>] [--cert-out PATH] [--output-file PATH | --dangerously-print]
+  hikyo cert renew <certificate> --env E [--cert-out PATH]
+  hikyo cert revoke <certificate> --env E [--reason REASON]
+  hikyo cert crl <certificate> --env E
+
+  a CA private key never leaves the server and is read only from --key-file
+  or --key-stdin, never argv. A generated certificate key is shown exactly
+  once, through the print triad; a CSR issuance never sends a private key.
+  profile updates may only narrow the policy; widen by creating a profile.
 
 delivery:                                          machine credential only
   hikyo run [--config-only] [--allow-override KEY,KEY] [--project-directory DIR]

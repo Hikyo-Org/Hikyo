@@ -124,6 +124,11 @@ func RetryDelay(attempt int, jitter func(time.Duration) time.Duration) time.Dura
 
 func retryDue(now time.Time, attempt int, jitter func(time.Duration) time.Duration, err error) time.Time {
 	if at, ok := ProviderRetryAt(err); ok && at.After(now) {
+		// A provider-supplied deadline is honoured only up to the retry cap,
+		// so a hostile or garbled Retry-After cannot park the job for days.
+		if ceiling := now.Add(RetryCap); at.After(ceiling) {
+			return ceiling
+		}
 		return at
 	}
 	return now.Add(RetryDelay(attempt, jitter))
