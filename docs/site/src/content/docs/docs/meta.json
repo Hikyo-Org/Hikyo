@@ -39,6 +39,7 @@
     "private-pki",
     "mcp",
     "local-development",
+    "repository-scanning",
     "compose",
     "kubernetes-operator",
     "configuration-rollouts",

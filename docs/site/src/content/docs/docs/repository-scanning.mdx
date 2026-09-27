@@ -1,0 +1,197 @@
+---
+title: Scan repositories and CI
+description: Find credential-shaped strings in files, staged changes, and Git history with the same ruleset the server uses, locally, in a pre-commit hook, and in CI.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/repository-scanning.mdx
+---
+
+`hikyo scan` looks for credentials in your source before they reach a remote.
+It runs the ruleset the server uses for scan-on-value-entry: the same compiled
+rules, snapshot version and per-rule semantic digests. A token the server would
+flag in a config value is flagged in a file too, under the same rule id.
+
+The command is local. It needs no login and no context, it contacts no server,
+and nothing it reads or finds leaves the machine.
+
+## What it scans
+
+| Command | Scans |
+| --- | --- |
+| `hikyo scan [PATH...]` | Named files and directories. The default is the working directory. |
+| `hikyo scan --staged` | The Git index: exactly what the next commit records. |
+| `hikyo scan --unstaged` | Unstaged working-tree changes, plus untracked files Git does not ignore. |
+| `hikyo scan --history` | Every blob that any reachable commit introduced. |
+| `hikyo scan --range A..B` | The blobs that the commits of an explicit range introduced. |
+
+Range scans attribute merge-only changes to the merge commit and exclude content
+inherited unchanged from either parent. CI should scan the pull request head so
+synthetic merge commits do not change finding fingerprints.
+
+The Git modes read blob contents through `git` and never check anything out.
+They need Git 2.45 or newer on `PATH`; older versions refuse the scan.
+Lazy fetching and remote transports are disabled, and working-tree comparisons
+disable configured clean/process filters. Paths are always reported from the
+repository top level, so a directory scan and a staged scan of the same file
+agree on its path and fingerprint.
+
+In a history scan, each path and blob pair is reported once, against the first
+commit that introduced it. A merge that brings in a branch's secret is not
+reported a second time.
+
+Coverage is explicit. The scanner does not follow symlinks and does not
+descend into `.git`. It skips binary files (a NUL byte in the first 8 KiB),
+archives (by extension or magic bytes; they are never extracted), and files
+over 1 MiB. Every skip is counted in the summary, and no file is ever
+truncated.
+
+## Output never contains the secret
+
+A finding is a location, a rule and a fingerprint:
+
+```text
+LOCATION             RULE              COMMIT        FINGERPRINT
+config/app.env:3     github-pat        -             4b1f...e07c
+keys/deploy.txt:1    private-key       9c2e41a0d7b3  a83d...19f2
+```
+
+No output format prints the matched text, an offset, or an excerpt. Open the
+file at the reported line to see it. A summary line goes to stderr:
+
+```text
+scan (paths, ruleset gitleaks/v8.19.0+23f3bf389bd0): scanned 212 file(s), 1830442 byte(s); 2 finding(s), 0 suppressed; skipped 3 binary, 1 oversize
+```
+
+`-o json` prints the `hikyo.scan/v1` document. It includes the ruleset
+snapshot, every active rule with its semantic digest, the findings, the skip
+counts, and the budgets the run used. `-o sarif` prints SARIF 2.1.0 for
+code-scanning tools. Each result carries its fingerprint in
+`partialFingerprints["hikyo/v1"]`, and suppressed findings are included with
+their suppression.
+
+The fingerprint is a SHA-256 over the rule's semantic digest, the path, the
+line, and the commit (or `worktree` for the working tree and the index). It
+contains no part of the matched text, so it cannot be used to guess a token. It
+changes when the finding moves to another line or file, and when a ruleset
+upgrade changes what the rule matches.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Clean: no unsuppressed finding. |
+| `1` | Unsuppressed findings. This is a verdict, not an error, and prints no `hikyo:` diagnostic. |
+| `2` | Invalid usage or configuration. |
+| `4` | The scan was refused or failed: a budget was exceeded, the repository is malformed, or a root could not be read. |
+| `6` | Git is absent or older than 2.45 (Git modes only). |
+
+A scan that could not finish never exits `0`. These codes are stable, so CI
+can branch on them.
+
+## Budgets
+
+| Bound | Default |
+| --- | --- |
+| Files (or history blobs) per run | 50,000 |
+| Bytes per file | 1 MiB; larger files are skipped and counted |
+| Bytes scanned per run | 1 GiB |
+| Findings per run | 10,000 |
+| Commits per history or range scan | 50,000 |
+| Wall clock | 10 minutes; change it with `--timeout` |
+
+Exceeding a bound refuses the scan with exit `4` and names the bound. For a very
+large history, scan an explicit `--range`.
+
+## Configure exclusions and suppressions
+
+Put `.hikyo-scan.toml` at the repository top level, or pass `--config FILE`:
+
+```toml
+version = 1
+exclude_paths = ["vendor/**", "**/testdata/**"]
+exclude_rules = ["slack-bot-token"]
+
+[[suppressions]]
+fingerprint = "4b1f...e07c"          # the full 64-character fingerprint
+reason = "documentation example, not a live token"
+expires = 2026-12-31                 # optional; the suppression stops applying after this date
+```
+
+- `exclude_paths` are slash-separated globs relative to the repository top
+  level. `**` matches any number of directories. Patterns cannot be absolute or
+  contain `..`.
+- `exclude_rules` must name existing rules, and at least one rule must remain.
+- Each suppression names one fingerprint and needs a reason. An expired
+  suppression stops applying, and the summary counts it.
+- `--suppressions FILE` adds a file that contains only `version` and
+  `[[suppressions]]`. `--exclude-path` and `--exclude-rule` add to the
+  configuration for one run.
+
+Parsing fails closed. An unknown key, a missing `version`, a malformed
+fingerprint, or a duplicate is refused with exit `2`. The configuration can only
+narrow what the ruleset reports. There is no way to add a custom rule or turn
+scanning off.
+
+To suppress a single line in the source, add a directive for exactly one rule
+on that line:
+
+```bash
+EXAMPLE_TOKEN=ghp_... # hikyo-scan:ignore github-pat
+```
+
+The directive covers only its own line and only the rule it names. Any other
+rule that matches on the same line is still reported.
+
+## Pre-commit hook
+
+Scan only what the commit records:
+
+```bash
+#!/bin/sh
+# .git/hooks/pre-commit
+exec hikyo scan --staged
+```
+
+Make it executable with `chmod +x .git/hooks/pre-commit`. Exit `1` blocks the
+commit and lists the findings. Hikyo does not install hooks for you, so the hook
+stays under your review.
+
+## CI
+
+Run a range scan over the commits a pull request adds. Upload SARIF if your
+forge reads it. Fetch full history so the range resolves.
+
+```yaml
+# GitHub Actions
+- uses: actions/checkout@<pinned-sha>
+  with:
+    fetch-depth: 0
+    ref: ${{ github.event.pull_request.head.sha }}
+- name: Scan the pull request's commits
+  run: |
+    hikyo scan --range "origin/${{ github.base_ref }}..HEAD" -o sarif > hikyo-scan.sarif
+- name: Upload findings
+  if: always()
+  uses: github/codeql-action/upload-sarif@<pinned-sha>
+  with:
+    sarif_file: hikyo-scan.sarif
+```
+
+```yaml
+# Forgejo Actions
+- uses: actions/checkout@<pinned-sha>
+  with:
+    fetch-depth: 0
+    ref: ${{ github.event.pull_request.head.sha }}
+- run: hikyo scan --range "origin/${{ forgejo.base_ref }}..HEAD"
+```
+
+On a push to the default branch, `hikyo scan` without flags scans the checked-out
+tree. `hikyo scan --history` scans the whole history, bounded by the budgets
+above.
+
+## Relationship to value-entry scanning
+
+The server scans config values and public declaration text when they are
+written. It warns on a credential-shaped config value and blocks one in public
+declaration text. `hikyo scan` covers what the server never sees: your files
+and your Git history. Both use one ruleset built
+into the binary, so they cannot disagree about what a credential looks like.
