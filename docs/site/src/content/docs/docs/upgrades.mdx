@@ -72,6 +72,20 @@ or schema-applied targets can continue. An uncertain or failed schema change
 leaves the service stopped and requires explicit operator recovery; the command
 never automatically rolls back the database or starts an older binary.
 
+### Upgrade the CLI on macOS or Windows
+
+macOS and Windows have no supported server host, so `hikyo upgrade` there
+upgrades the CLI itself. Run it without `sudo`:
+
+```sh
+hikyo upgrade
+```
+
+It checks this binary's update channel, verifies the newest release exactly as
+the server command does, and atomically replaces the running executable. It
+refuses when run as root over an executable you own, and source builds (update
+channel `off`) must be rebuilt instead.
+
 ## Progress and disk use
 
 Use repeatable global verbosity options before the command or its other options:
@@ -157,10 +171,12 @@ join a release channel.
 At most once per 24 hours, Hikyo refreshes the selected track. When a newer
 release exists, the controlling terminal offers the appropriate download flow.
 Nightlies require an immutable release, authenticated policy, complete Sigstore
-bundle and the exact closed inventory of all published payloads. Accepting stages
-the verified download and assembled runtime bundle and prints their paths; it
-preserves the current executable. Use `sudo hikyo upgrade` to upgrade a supported
-server, including its installation-specific backup and restore proof.
+bundle and the exact closed inventory of all published payloads. On Linux,
+accepting stages the verified download and assembled runtime bundle and prints
+their paths; it preserves the current executable, which may be a server's. Use
+`sudo hikyo upgrade` to upgrade a supported server, including its
+installation-specific backup and restore proof. On macOS and Windows, accepting
+replaces the CLI executable after the same verification.
 Unsigned historical nightlies cannot pass this verification.
 
 Stable updates download the exact archive for the running OS and architecture,

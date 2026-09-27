@@ -137,11 +137,17 @@ func readWithin(root *os.Root, rel string, maxBytes int64) ([]byte, skipReason, 
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, skipVanished, nil
 		}
-		if errors.Is(err, fs.ErrPermission) {
-			return nil, 0, err
+		// Only a re-Lstat that confirms a swap or a disappearance is a skip;
+		// any other failure (EMFILE, EIO, permission) leaves the file unread
+		// and must stay a refusal.
+		now, lerr := root.Lstat(rel)
+		switch {
+		case lerr == nil && now.Mode()&fs.ModeSymlink != 0:
+			return nil, skipSymlink, nil
+		case errors.Is(lerr, fs.ErrNotExist):
+			return nil, skipVanished, nil
 		}
-		// A path swapped for a symlink leaving the root after the Lstat.
-		return nil, skipSymlink, nil
+		return nil, 0, err
 	}
 	defer f.Close()
 	opened, err := f.Stat()

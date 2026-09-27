@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/url"
+	"strings"
 )
 
 // SARIF 2.1.0, hand-rolled: the subset a code-scanning consumer needs and
@@ -87,9 +88,11 @@ type sarifSuppression struct {
 }
 
 // sarifURI percent-encodes a slash-separated relative path as a URI
-// reference, so an untrusted file name cannot inject URI syntax.
+// reference, so an untrusted file name cannot inject URI syntax. A colon is
+// legal in a path but would make the first segment ("a:b.txt", "C:/x") parse
+// as a scheme, so it is escaped too.
 func sarifURI(p string) string {
-	return (&url.URL{Path: p}).EscapedPath()
+	return strings.ReplaceAll((&url.URL{Path: p}).EscapedPath(), ":", "%3A")
 }
 
 // WriteSARIF renders the report as a SARIF 2.1.0 log. Suppressed findings

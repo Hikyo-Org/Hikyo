@@ -52,6 +52,7 @@ type Installer struct {
 	client         *http.Client
 	executablePath func() (string, error)
 	config         Config
+	stageNightlies bool
 }
 
 // NewInstaller constructs the production updater with Hikyo's restricted
@@ -68,7 +69,7 @@ func NewInstaller(config Config) (*Installer, error) {
 }
 
 func newInstaller(client *http.Client, executablePath func() (string, error)) *Installer {
-	return &Installer{client: client, executablePath: executablePath}
+	return &Installer{client: client, executablePath: executablePath, stageNightlies: StagesNightlies()}
 }
 
 // Apply replaces the resolved current executable with the selected release.
@@ -100,6 +101,11 @@ func (i *Installer) Apply(ctx context.Context, status updatecheck.Status) error 
 	if releaseidentity.CompareUpdateVersions(selectedVersion, installed) <= 0 {
 		return errors.New("selfupdate: selected release is not newer than the installed version")
 	}
+	// Refuse an unreplaceable executable before any download writes state.
+	target, mode, err := resolveExecutable(i.executablePath)
+	if err != nil {
+		return err
+	}
 
 	archiveFile, err := archiveName(status.LatestVersion, runtime.GOOS, runtime.GOARCH)
 	if err != nil {
@@ -129,38 +135,76 @@ func (i *Installer) Apply(ctx context.Context, status updatecheck.Status) error 
 	if !bytes.Equal(wantArchiveDigest, gotArchiveDigest[:]) {
 		return fmt.Errorf("selfupdate: archive checksum mismatch for %s", archiveFile)
 	}
+	var binary []byte
 	if isPrerelease {
-		return i.stageNightly(ctx, status)
-	}
-	if !isPrerelease {
+		if i.stageNightlies {
+			return i.stageNightly(ctx, status)
+		}
+		var prepared PreparedNightly
+		if err := i.prepareNightly(ctx, status, nil, true, &prepared); err != nil {
+			return err
+		}
+		if binary, err = readNightlyFile(prepared.BinaryPath, maxBinaryBytes); err != nil {
+			return err
+		}
+		if releaseidentity.Hash(binary) != prepared.BinarySHA256 {
+			return errors.New("selfupdate: prepared nightly executable changed after verification")
+		}
+		// A client keeps only the release it is about to install. Pruning first
+		// means a cleanup failure can never follow a completed replacement.
+		if err := i.PruneNightlyCache(ctx, prepared.Identity); err != nil {
+			return err
+		}
+	} else {
 		if err := i.verifyStable(ctx, status, archiveFile, archive); err != nil {
 			return err
 		}
+		if binary, err = extractBinary(archiveFile, archive); err != nil {
+			return err
+		}
 	}
-	binary, err := extractBinary(archiveFile, archive)
-	if err != nil {
-		return err
-	}
-
-	target, err := i.executablePath()
-	if err != nil {
-		return fmt.Errorf("selfupdate: locate current executable: %w", err)
-	}
-	target, err = filepath.EvalSymlinks(target)
-	if err != nil {
-		return fmt.Errorf("selfupdate: resolve current executable: %w", err)
-	}
-	info, err := os.Stat(target)
-	if err != nil {
-		return fmt.Errorf("selfupdate: inspect current executable: %w", err)
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("selfupdate: current executable is not a regular file: %s", target)
-	}
-	if err := replaceBinary(ctx, target, binary, info.Mode().Perm()); err != nil {
+	if err := replaceBinary(ctx, target, binary, mode); err != nil {
 		return fmt.Errorf("selfupdate: replace %s: %w", target, err)
 	}
 	return nil
+}
+
+// StagesNightlies reports whether nightly updates only stage verified evidence.
+// On Linux the CLI binary may be a systemd server's executable, which only
+// `sudo hikyo upgrade` may replace after its backup and restore proof. Other
+// platforms have no supported server host, so their CLI replaces itself.
+func StagesNightlies() bool { return runtime.GOOS == "linux" }
+
+// CheckReplaceable reports whether this process can replace the running
+// executable, before any update state or download is written.
+func (i *Installer) CheckReplaceable() error {
+	if i == nil || i.executablePath == nil {
+		return errors.New("selfupdate: installer is not configured")
+	}
+	_, _, err := resolveExecutable(i.executablePath)
+	return err
+}
+
+func resolveExecutable(executablePath func() (string, error)) (string, os.FileMode, error) {
+	target, err := executablePath()
+	if err != nil {
+		return "", 0, fmt.Errorf("selfupdate: locate current executable: %w", err)
+	}
+	target, err = filepath.EvalSymlinks(target)
+	if err != nil {
+		return "", 0, fmt.Errorf("selfupdate: resolve current executable: %w", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return "", 0, fmt.Errorf("selfupdate: inspect current executable: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", 0, fmt.Errorf("selfupdate: current executable is not a regular file: %s", target)
+	}
+	if err := checkReplacementOwner(target, info, os.Geteuid()); err != nil {
+		return "", 0, err
+	}
+	return target, info.Mode().Perm(), nil
 }
 
 func archiveName(version, goos, goarch string) (string, error) {

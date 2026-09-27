@@ -68,8 +68,10 @@ var authnImporters = map[string]bool{
 // Hikyo wrappers that consume them. The human-auth ADR owns OIDC, OAuth2, and
 // WebAuthn confinement; the machine-identities ADR owns oidcfed's direct OIDC
 // verifier; the saml-sp ADR owns SAML/XML-DSIG; and the import-paths ADR owns
-// SOPS. Exceptions are exact package paths: oidcfed verifies workload OIDC
-// tokens directly, while samltest is the signed IdP fixture harness. Generated
+// SOPS; the SSH-certificates handoff (#155) owns OpenSSH. Exceptions are exact
+// package paths: oidcfed verifies workload OIDC tokens directly, samltest is
+// the signed IdP fixture harness, and isolation checks issued certificates
+// with the library's own verifier. Generated
 // files receive no exception; go list includes their production imports, and
 // allImports adds both internal and external test imports to the same check.
 var protocolImportConfinements = []ImportConfinement{
@@ -108,7 +110,21 @@ var protocolImportConfinements = []ImportConfinement{
 		DependencyPrefixes: []string{"github.com/getsops/sops/v3"},
 		AllowedImporters:   []string{module + "/internal/importer"},
 	},
+	{
+		Name:               "OpenSSH",
+		DependencyPrefixes: []string{sshLibrary},
+		AllowedImporters: []string{
+			module + "/internal/sshca",
+			module + "/internal/isolation", // independent certificate oracle (tests only)
+		},
+	},
 }
+
+// sshLibrary is the OpenSSH wire-format and signing library (#155). It is not
+// an envelope primitive: it signs with the unrestricted stdlib asymmetric
+// packages. It is confined to internal/sshca by the OpenSSH protocol
+// confinement above instead of the crypto chokepoint below.
+const sshLibrary = "golang.org/x/crypto/ssh"
 
 // Forbidden direct edges match a package and its slash-separated children.
 var forbidden = []struct{ importer, imports, why string }{
@@ -128,8 +144,10 @@ var forbidden = []struct{ importer, imports, why string }{
 // Crypto chokepoint (encryption-model ADR CI invariant 12, placed by the
 // system-architecture ADR § Encryption boundary): no import of a
 // cryptographic primitive package outside the envelope package, and age
-// nowhere outside the backup package. crypto/sha256 and crypto/subtle stay
-// unrestricted — hashing verifiers is not envelope encryption.
+// nowhere outside the backup and sealed-webhook crypto packages. crypto/sha256
+// and crypto/subtle stay unrestricted — hashing verifiers is not envelope
+// encryption. The golang.org/x/crypto/ssh subtree is skipped here and confined
+// to internal/sshca by the OpenSSH protocol confinement instead.
 var cryptoPrimitiveImporters = map[string]bool{
 	module + "/internal/crypto": true,
 	// internal/crypto/backup imports no primitive of its own: the age
@@ -146,7 +164,8 @@ var cryptoPrimitivePrefixes = []string{
 }
 
 var ageImporters = map[string]bool{
-	module + "/internal/crypto/backup": true, // sole age importer (#76)
+	module + "/internal/crypto/backup":     true, // backup containers (#76)
+	module + "/internal/crypto/sealedhook": true, // sealed webhook payloads (#163)
 }
 
 type pkg struct {
@@ -329,13 +348,16 @@ func TestCryptoChokepoint(t *testing.T) {
 	eachContext(t, func(t *testing.T, pkgs []pkg) {
 		for _, p := range pkgs {
 			for _, imp := range allImports(p) {
+				if matchesDependencyPrefix(imp, sshLibrary) {
+					continue // OpenSSH protocol confinement owns this subtree
+				}
 				for _, prefix := range cryptoPrimitivePrefixes {
 					if strings.HasPrefix(imp, prefix) && !cryptoPrimitiveImporters[p.ImportPath] {
 						t.Errorf("%s imports %s: cryptographic primitives are confined to internal/crypto", p.ImportPath, imp)
 					}
 				}
 				if matchesDependencyPrefix(imp, "filippo.io/age") && !ageImporters[p.ImportPath] {
-					t.Errorf("%s imports %s: age is confined to internal/crypto/backup", p.ImportPath, imp)
+					t.Errorf("%s imports %s: age is confined to internal/crypto/backup and internal/crypto/sealedhook", p.ImportPath, imp)
 				}
 			}
 		}

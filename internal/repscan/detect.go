@@ -149,8 +149,11 @@ func lineText(data []byte, starts []int, i int) []byte {
 // locate returns the 1-based start line of each match of the single-rule
 // ruleset. For each match it binary-searches the shortest line-aligned prefix
 // that matches (the end line), then the latest start line that still matches
-// up to that end, and resumes after that start line. The cost is logarithmic
-// in the line count per finding.
+// up to that end, and resumes after that start line. The end line is found by
+// galloping forward from the current start (windows of 1, 2, 4, ... lines)
+// and then binary-searching the last bracket, so each finding costs work
+// proportional to its distance from the previous one, not to the file size;
+// only the final, match-free tail is scanned to the end once.
 func locate(ctx context.Context, single *scanning.Ruleset, data []byte, starts []int) ([]int, error) {
 	n := len(starts)
 	var scanErr error
@@ -167,10 +170,22 @@ func locate(ctx context.Context, single *scanning.Ruleset, data []byte, starts [
 	}
 	var lines []int
 	for from := 0; from < n; {
-		if !matches(from, n-1) {
+		prev, hi := from-1, -1
+		for step := 1; ; step *= 2 {
+			cand := min(from+step-1, n-1)
+			if matches(from, cand) {
+				hi = cand
+				break
+			}
+			if cand == n-1 {
+				break
+			}
+			prev = cand
+		}
+		if hi < 0 {
 			break
 		}
-		lo, hi := from, n-1
+		lo := prev + 1
 		for lo < hi {
 			mid := lo + (hi-lo)/2
 			if matches(from, mid) {

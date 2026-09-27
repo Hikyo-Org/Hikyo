@@ -38,6 +38,7 @@ for arg in "$@"; do
 done
 case $* in
 *"/issues/7/comments?per_page=100"*)
+	[ -z "${LOOKUP_FAIL:-}" ] || { printf 'gh: HTTP 502\n' >&2; exit 1; }
 	jq -r --arg id "${EXISTING:-}" "[{\"id\":1,\"user\":{\"login\":\"github-actions[bot]\"},\"body\":\"unrelated\"},
 		{\"id\":2,\"user\":{\"login\":\"mallory\"},\"body\":\"<!-- hikyo-dco-report -->forged\"}]
 		+ (if \$id == \"\" then [] else [{\"id\":(\$id|tonumber),\"user\":{\"login\":\"github-actions[bot]\"},\"body\":\"<!-- hikyo-dco-report -->\\nold\"}] end)
@@ -49,7 +50,7 @@ chmod +x "$work/bin/gh"
 
 run() {
 	: >"$work/calls"
-	PATH="$work/bin:$PATH" CALLS=$work/calls EXISTING=${2:-} GH_REPO=o/r PR_NUMBER=7 \
+	PATH="$work/bin:$PATH" CALLS=$work/calls EXISTING=${2:-} LOOKUP_FAIL=${3:-} GH_REPO=o/r PR_NUMBER=7 \
 		BASE_SHA=$base HEAD_SHA=$1 PR_AUTHOR=someone DCO_REPOSITORY=$repo "$script" >/dev/null 2>&1
 }
 
@@ -73,6 +74,10 @@ grep -F -- '-X DELETE repos/o/r/issues/comments/99' "$work/calls" >/dev/null || 
 
 run "$signed" || fail 'signed range without a comment reported failure'
 grep -F -- '-X ' "$work/calls" >/dev/null && fail 'signed range wrote a comment'
+run "$unsigned" '' fail && fail 'a failed comment lookup reported success'
+grep -F -- '-X ' "$work/calls" >/dev/null && fail 'wrote a comment after a failed lookup'
+run "$signed" 99 fail && fail 'a failed comment lookup on a signed range reported success'
+
 grep -E -- 'comments/(1|2)( |$)' "$work/calls" >/dev/null && fail 'touched a comment that is not the bot marker comment'
 
 printf 'DCO report fixture: unsigned commits get one SHA-only comment, updated in place and removed once signed\n'

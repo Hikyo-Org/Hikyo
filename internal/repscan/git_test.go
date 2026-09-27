@@ -1,6 +1,7 @@
 package repscan
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -250,5 +251,60 @@ func TestPathsAndGitAgreeOnIdentity(t *testing.T) {
 	}
 	if staged.Findings[0] != paths.Findings[0] {
 		t.Fatalf("identity differs:\n staged %+v\n paths  %+v", staged.Findings[0], paths.Findings[0])
+	}
+}
+
+func TestUnstagedDoesNotRunCleanFilter(t *testing.T) {
+	repo := newFixtureRepo(t)
+	repo.write("a.txt", "clean\n")
+	repo.write(".gitattributes", "*.txt filter=malicious\n")
+	repo.commit("base")
+	repo.git("config", "filter.malicious.clean", "echo invoked > filter-ran; cat")
+	repo.write("a.txt", githubPAT+"\n")
+	scan(t, repo.options(ModeUnstaged))
+	if _, err := os.Stat(filepath.Join(repo.dir, "filter-ran")); !os.IsNotExist(err) {
+		t.Fatalf("configured clean filter executed: %v", err)
+	}
+}
+
+func TestGitDisablesConfiguredFiltersAndDiff(t *testing.T) {
+	repo := newFixtureRepo(t)
+	repo.write("a.txt", "clean\n")
+	repo.write(".gitattributes", "*.txt filter=malicious\n")
+	repo.commit("base")
+	repo.git("config", "filter.malicious.clean", "echo invoked > clean-ran; cat")
+	repo.git("config", "filter.malicious.process", "echo invoked > process-ran; exit 1")
+	repo.git("config", "filter.malicious.required", "true")
+	repo.git("config", "diff.external", "echo invoked > diff-ran")
+	repo.write("a.txt", githubPAT+"\n")
+	g, err := (git{exe: "git", dir: repo.dir}).withoutFilters(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := g.output(context.Background(), "diff", 1<<20, "diff", "--no-ext-diff", "--raw"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"clean-ran", "process-ran", "diff-ran"} {
+		if _, err := os.Stat(filepath.Join(repo.dir, name)); !os.IsNotExist(err) {
+			t.Fatalf("configured command executed: %s: %v", name, err)
+		}
+	}
+}
+
+func TestMissingPromisorObjectDoesNotFetch(t *testing.T) {
+	repo := newFixtureRepo(t)
+	repo.write("a.txt", githubPAT+"\n")
+	repo.commit("base")
+	blob := repo.git("rev-parse", "HEAD:a.txt")
+	if err := os.Remove(filepath.Join(repo.dir, ".git", "objects", blob[:2], blob[2:])); err != nil {
+		t.Fatal(err)
+	}
+	repo.git("config", "remote.origin.url", "ssh://example.invalid/repo")
+	repo.git("config", "remote.origin.promisor", "true")
+	repo.git("config", "remote.origin.partialclonefilter", "blob:none")
+	t.Setenv("GIT_SSH_COMMAND", "echo invoked > transport-ran; exit 1")
+	refusal(t, repo.options(ModeHistory), KindRefused, "missing object")
+	if _, err := os.Stat(filepath.Join(repo.dir, "transport-ran")); !os.IsNotExist(err) {
+		t.Fatalf("transport executed: %v", err)
 	}
 }

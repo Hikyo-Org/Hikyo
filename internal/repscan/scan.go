@@ -1,6 +1,7 @@
 package repscan
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -569,7 +570,7 @@ func (r *run) scanStaged(ctx context.Context, g git) error {
 		return parseRaw(out, func(e blobEntry) error {
 			return r.collect(&entries, e)
 		})
-	}, "diff", "--cached", "--raw", "-z", "--no-renames", "--no-abbrev", "--diff-filter=AMT")
+	}, "diff", "--cached", "--no-ext-diff", "--raw", "-z", "--no-renames", "--no-abbrev", "--diff-filter=AMT")
 	if err != nil {
 		return err
 	}
@@ -580,12 +581,17 @@ func (r *run) scanStaged(ctx context.Context, g git) error {
 // untracked files git does not ignore, reading them through an os.Root at the
 // repository top level.
 func (r *run) scanUnstaged(ctx context.Context, g git) error {
+	var err error
+	g, err = g.withoutFilters(ctx)
+	if err != nil {
+		return err
+	}
 	var entries []blobEntry
-	err := g.stream(ctx, "diff", nil, func(out io.Reader) error {
+	err = g.stream(ctx, "diff", nil, func(out io.Reader) error {
 		return parseRaw(out, func(e blobEntry) error {
 			return r.collect(&entries, e)
 		})
-	}, "diff", "--raw", "-z", "--no-renames", "--no-abbrev", "--diff-filter=AMT")
+	}, "diff-files", "--no-ext-diff", "--raw", "-z", "--no-renames", "--no-abbrev", "--diff-filter=AMT")
 	if err != nil {
 		return err
 	}
@@ -626,20 +632,28 @@ func (r *run) scanUnstaged(ctx context.Context, g git) error {
 	return nil
 }
 
+// readNulFields streams NUL-terminated fields. An unterminated final field
+// means the output was cut short, which is a refusal, never a clean listing.
 func readNulFields(r io.Reader, emit func(string) error) error {
-	data, err := io.ReadAll(io.LimitReader(r, 256<<20))
-	if err != nil {
-		return err
-	}
-	for _, f := range strings.Split(string(data), "\x00") {
-		if f == "" {
+	br := bufio.NewReaderSize(r, 64<<10)
+	for {
+		f, err := br.ReadString(0)
+		if err == io.EOF {
+			if f != "" {
+				return refusedf("scan refused: truncated git output")
+			}
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if f = strings.TrimSuffix(f, "\x00"); f == "" {
 			continue
 		}
 		if err := emit(f); err != nil {
 			return err
 		}
 	}
-	return nil
 }
 
 // collect admits one listed entry. Symlinks and submodules are counted and

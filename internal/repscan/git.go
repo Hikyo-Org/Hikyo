@@ -21,15 +21,24 @@ import (
 // it can reach: an untrusted repository's config must not run code because it
 // was scanned.
 type git struct {
-	exe string
-	dir string
+	exe    string
+	dir    string
+	config []string
 }
 
 // gitSafetyArgs precede every git invocation.
 var gitSafetyArgs = []string{
-	"--no-pager", "--no-optional-locks",
+	// --no-lazy-fetch (git 2.45+) keeps a partial clone from fetching a
+	// missing object; an older git rejects the flag, so the scan is refused
+	// rather than run without it. protocol.allow=never forbids every
+	// transport, so no remote, SSH or credential helper can be reached.
+	"--no-pager", "--no-optional-locks", "--no-lazy-fetch",
 	"-c", "core.fsmonitor=false",
 	"-c", "core.quotepath=off",
+	"-c", "protocol.allow=never",
+	"-c", "core.sshCommand=",
+	"-c", "core.askPass=",
+	"-c", "credential.helper=",
 }
 
 func lookGit(name string) (string, error) {
@@ -38,15 +47,16 @@ func lookGit(name string) (string, error) {
 	}
 	exe, err := exec.LookPath(name)
 	if err != nil {
-		return "", &Error{Kind: KindUnavailable, Err: fmt.Errorf("git is required for this scan mode and was not found: %v", err)}
+		return "", &Error{Kind: KindUnavailable, Err: fmt.Errorf("git is required for this scan mode and was not found: %w", err)}
 	}
 	return exe, nil
 }
 
 func (g git) command(ctx context.Context, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, g.exe, append(slices.Clone(gitSafetyArgs), args...)...)
+	cmd := exec.CommandContext(ctx, g.exe, append(append(slices.Clone(gitSafetyArgs), g.config...), args...)...)
 	cmd.Dir = g.dir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0",
+		"GIT_ASKPASS=", "SSH_ASKPASS=", "GIT_SSH=", "GIT_SSH_COMMAND=", "GIT_NO_LAZY_FETCH=1")
 	return cmd
 }
 
@@ -331,4 +341,30 @@ func (c *catFile) read(id string, maxBytes int64) ([]byte, skipReason, error) {
 func (c *catFile) close() {
 	_ = c.in.Close()
 	_ = c.cmd.Wait()
+}
+
+// withoutFilters disables each configured clean/process driver before a
+// working-tree comparison. Even plumbing can consult clean filters when an
+// index entry's cached stat information is racy.
+func (g git) withoutFilters(ctx context.Context) (git, error) {
+	out, err := g.output(ctx, "config", 1<<20, "config", "--null", "--name-only", "--list")
+	if err != nil {
+		return g, err
+	}
+	for _, key := range strings.Split(string(out), "\x00") {
+		if !strings.HasPrefix(key, "filter.") {
+			continue
+		}
+		dot := strings.LastIndexByte(key, '.')
+		if dot <= len("filter.") {
+			continue
+		}
+		switch key[dot+1:] {
+		case "clean", "process":
+			g.config = append(g.config, "-c", key+"=")
+		case "required":
+			g.config = append(g.config, "-c", key+"=false")
+		}
+	}
+	return g, nil
 }

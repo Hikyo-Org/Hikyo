@@ -108,3 +108,25 @@ the ADRs they amend:
   passed.
 - `scripts/ci/check-cache-policy_test.sh`, `check-required-jobs_test.sh`,
   `classify-changed-paths_test.sh`, `analysis-shards_test.sh`: passed.
+
+
+## PR #831 reconciliation and review fixes
+
+Merged the current main branch while preserving both the SSH-certificate and
+scanner wire-registry additions and roadmap entries. The scan engine now:
+
+- Refuses unexpected file-open failures instead of counting them as symlink skips.
+- Localizes matches using galloping windows instead of repeatedly scanning the full tail.
+- Streams untracked path listings and refuses unterminated output.
+- Escapes colons in SARIF artifact paths.
+- Requires Git 2.45+, disables lazy fetches, transport/credential helpers and external
+  diffs, and disables configured clean/process filters for working-tree comparisons.
+
+Ordinary adversarial inspection reproduced clean-filter execution during an unstaged
+scan. Regression coverage verifies filters/external diff commands never execute and a
+missing promisor object refuses without invoking its transport. Further coverage checks
+SARIF colon escaping, truncated listings and localization across many match lines.
+
+Validation: relevant scanner, ruleset, CLI, authorization and executable package tests;
+scanner/ruleset race tests; relevant package vet. Cross-provider review and final remote
+CI/merge verification remain owned by the coordinating task.

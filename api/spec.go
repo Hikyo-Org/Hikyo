@@ -51,7 +51,9 @@ var SpecYAML []byte
 // Revision 4 adds public runtime maintenance status.
 // Revision 5 adds delivery-target condition reporting (report, tombstone,
 // list) and its `/meta` protocol capability.
-const Revision = 5
+// Revision 6 adds SSH user certificates (#155): CAs, profiles, issuance,
+// revocation, the host trust bundle and the KRL.
+const Revision = 6
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

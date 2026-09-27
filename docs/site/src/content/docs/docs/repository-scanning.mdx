@@ -23,7 +23,9 @@ and nothing it reads or finds leaves the machine.
 | `hikyo scan --range A..B` | The blobs that the commits of an explicit range introduced. |
 
 The Git modes read blob contents through `git` and never check anything out.
-They need the `git` executable on `PATH`. Paths are always reported from the
+They need Git 2.45 or newer on `PATH`; older versions refuse the scan.
+Lazy fetching and remote transports are disabled, and working-tree comparisons
+disable configured clean/process filters. Paths are always reported from the
 repository top level, so a directory scan and a staged scan of the same file
 agree on its path and fingerprint.
 

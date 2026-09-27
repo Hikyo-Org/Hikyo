@@ -123,6 +123,10 @@ expect_reject 'unselected web job failed instead of skipping' pull_request \
 expect_reject 'non-web app pull request ran browser matrix' pull_request \
 	"$(printf '%s' "$app_success" | jq '.web.result = "success"')" "$app_plan"
 expect_reject 'main push used a selective plan' push "$docs_success" "$docs_plan"
+expect_accept 'merge queue group' merge_group "$all_success" "$all_plan"
+expect_reject 'merge queue group used a selective plan' merge_group "$docs_success" "$docs_plan"
+expect_reject 'merge queue group with a failed client' merge_group \
+	"$(printf '%s' "$all_success" | jq '.client.result = "failure"')" "$all_plan"
 expect_reject 'classifier failed' pull_request \
 	"$(printf '%s' "$all_success" | jq '.changes.result = "failure"')" "$all_plan"
 expect_reject 'main push with skipped preflight' push \

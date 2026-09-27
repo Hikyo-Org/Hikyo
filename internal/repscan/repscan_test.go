@@ -603,3 +603,55 @@ func TestSymlinkedRootIsScanned(t *testing.T) {
 		t.Fatalf("findings = %v", got)
 	}
 }
+
+func TestSARIFURIEscapesSchemeColon(t *testing.T) {
+	for in, want := range map[string]string{
+		"a:b.txt":       "a%3Ab.txt",
+		"C:/x/y.txt":    "C%3A/x/y.txt",
+		"dir/a b.txt":   "dir/a%20b.txt",
+		"plain/file.go": "plain/file.go",
+	} {
+		if got := sarifURI(in); got != want {
+			t.Errorf("sarifURI(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestReadNulFieldsRefusesTruncatedOutput(t *testing.T) {
+	var got []string
+	emit := func(f string) error { got = append(got, f); return nil }
+	if err := readNulFields(strings.NewReader("a\x00\x00b c\x00"), emit); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []string{"a", "b c"}) {
+		t.Fatalf("fields = %q", got)
+	}
+	var e *Error
+	if err := readNulFields(strings.NewReader("a\x00partial"), emit); !errors.As(err, &e) || e.Kind != KindRefused {
+		t.Fatalf("truncated listing: err = %v, want a refusal", err)
+	}
+}
+
+func TestLocateFindsEveryMatchLine(t *testing.T) {
+	var b strings.Builder
+	want := []int{}
+	for i := 1; i <= 300; i++ {
+		if i%37 == 0 || i == 1 || i == 300 {
+			b.WriteString(githubPAT + "\n")
+			want = append(want, i)
+		} else {
+			b.WriteString("filler line " + strconv.Itoa(i) + "\n")
+		}
+	}
+	dir := t.TempDir()
+	write(t, dir, "many.txt", b.String())
+	r := scan(t, pathsOptions(dir))
+	got := []int{}
+	for _, f := range r.Findings {
+		got = append(got, f.Line)
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("lines = %v, want %v", got, want)
+	}
+}

@@ -25,7 +25,7 @@ if ! registry=$(jq -ce '
 fi
 
 case "$event" in
-	pull_request | pull_request_target | push) ;;
+	pull_request | pull_request_target | push | merge_group) ;;
 	*)
 		printf 'required jobs: unsupported event %s\n' "$event" >&2
 		exit 2
@@ -43,7 +43,7 @@ if ! validation=$(jq -cn \
 		.required_gate == "planned";
 	def should_run($rule):
 		if $rule.required_gate == "always" then true
-		elif $rule.required_gate == "pull-request" then $event != "push"
+		elif $rule.required_gate == "pull-request" then ($event != "push" and $event != "merge_group")
 		elif $rule.required_gate == "planned" then
 			any($rule.plan_jobs[]; $plan[.] == true)
 		else false
@@ -68,7 +68,7 @@ if ! validation=$(jq -cn \
 		valid: (
 			$results_shape and
 			$plan_shape and
-			(if $event == "push" then all($plan[]; . == true) else true end) and
+			(if $event == "push" or $event == "merge_group" then all($plan[]; . == true) else true end) and
 			($mismatches | length == 0)
 		),
 		mismatches: $mismatches

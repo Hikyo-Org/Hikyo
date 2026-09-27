@@ -135,7 +135,7 @@ func run() int {
 	case cmd == "migrate":
 		return runMigrate(ctx, args)
 	case cmd == "upgrade":
-		return runUpgradeOperator(ctx, args)
+		return runUpgradeOperator(ctx, args, builtChannel)
 	case cmd == "admin":
 		return runAdmin(ctx, args)
 	case cmd == "backup":
@@ -244,6 +244,8 @@ type unavailableBinaryUpdater struct{ err error }
 func (u unavailableBinaryUpdater) Apply(context.Context, updatecheck.Status) error {
 	return u.err
 }
+
+func (u unavailableBinaryUpdater) CheckReplaceable() error { return u.err }
 
 func binaryUpdater() cli.BinaryUpdater {
 	state, err := cli.NewState(cli.Env{Getenv: os.Getenv})
@@ -532,8 +534,17 @@ func runMigrate(ctx context.Context, args []string) int {
 	return 0
 }
 
-func runUpgradeOperator(ctx context.Context, args []string) int {
-	if len(args) == 0 || args[0] != "operator" {
+func runUpgradeOperator(ctx context.Context, args []string, channel updatecheck.Channel) int {
+	operator := len(args) > 0 && args[0] == "operator"
+	if !operator && !binaryupdate.StagesNightlies() {
+		// No supported server host here: upgrade this CLI in place.
+		err := cli.RunUpgrade(ctx, updateIO(nil, nil, channel), args)
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return cli.Report(os.Stderr, err)
+	}
+	if !operator {
 		terminal, terminalErr := disclose.OpenTerminalSession()
 		defer terminal.Close()
 		readPassword := func(prompt string) (string, error) {
@@ -599,7 +610,8 @@ server:
                                         hikyo server --help lists every flag
   hikyo migrate [--dev]
   sudo hikyo upgrade [--target VERSION] [--config FILE]
-                                        verified in-place upgrade on a systemd host
+                                        verified in-place upgrade on a Linux systemd host
+  hikyo upgrade                         macOS/Windows: install the newest verified CLI release
   hikyo upgrade operator rotate --statement FILE --signature FILE --new-public-key FILE
 
 kubernetes operator (separate deployable; HIKYO_OPERATOR_* env only):
