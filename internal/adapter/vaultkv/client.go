@@ -416,11 +416,16 @@ func (c *Client) do(ctx context.Context, key string, params map[string]string, b
 // adapter.ErrProviderAuth for 401 or 403. Encoding, request construction, and
 // transport errors propagate without including provider response bodies.
 func (c *Client) send(ctx context.Context, op operation, params map[string]string, token string, body, out any) error {
-	path := op.Path
+	path, query, _ := strings.Cut(op.Path, "?")
 	for name, value := range params {
 		placeholder := "{" + name + "}"
 		if value == "" || !strings.Contains(path, placeholder) {
 			return errors.New("vault-kv: invalid operation path parameter")
+		}
+		for _, segment := range strings.Split(value, "/") {
+			if segment == "" || segment == "." || segment == ".." {
+				return errors.New("vault-kv: invalid operation path segment")
+			}
 		}
 		path = strings.ReplaceAll(path, placeholder, escapePath(value))
 	}
@@ -436,10 +441,18 @@ func (c *Client) send(ctx context.Context, op operation, params map[string]strin
 		}
 		input = bytes.NewReader(raw)
 	}
-	req, err := http.NewRequestWithContext(ctx, op.Method, c.base+path, input)
+	req, err := http.NewRequestWithContext(ctx, op.Method, c.base, input)
 	if err != nil {
 		return err
 	}
+	// Request parameters may only affect the escaped path. Keep the validated
+	// origin and the registry-owned query separate from user-controlled names.
+	req.URL.Path, err = url.PathUnescape(path)
+	if err != nil {
+		return errors.New("vault-kv: invalid operation path encoding")
+	}
+	req.URL.RawPath = path
+	req.URL.RawQuery = query
 	req.Header.Set("Accept", "application/json")
 	if token != "" {
 		req.Header.Set("X-Vault-Token", token)
