@@ -12311,7 +12311,9 @@ components:
       description: >-
         Open provider discriminator. Clients preserve unknown response values;
         creation requires a provider supported by the receiving server.
-      x-extensible-enum: [forgejo, github-actions]
+        sealed-webhook binds only to an origin an instance admin activated in
+        the server's sealed webhook registry.
+      x-extensible-enum: [forgejo, github-actions, sealed-webhook]
 
     AdapterTargetInput:
       type: object

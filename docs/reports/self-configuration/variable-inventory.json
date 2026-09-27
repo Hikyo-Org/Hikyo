@@ -437,6 +437,23 @@
     "referencedContentSecret": true
   },
   {
+    "key": "HIKYO_SEALED_WEBHOOK_FILE",
+    "audience": "server",
+    "scope": "node",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "external",
+    "referencedContentSecret": true
+  },
+  {
+    "key": "HIKYO_SECOND_FACTOR",
+    "audience": "server",
+    "scope": "owner",
+    "activation": "app-reload",
+    "secret": false,
+    "import": "value"
+  },
+  {
     "key": "HIKYO_STATE_DIR",
     "audience": "client",
     "scope": "node",

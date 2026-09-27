@@ -166,7 +166,11 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 			return err
 		})
 	})
-	var moduleFactory adapter.ModuleFactory = newAdapterModuleFactory(cfg.AdapterEgressPolicy).Build
+	sealedEndpoints, err := activateSealedWebhookEndpoints(cfg.SealedWebhook)
+	if err != nil {
+		return nil, fmt.Errorf("boot: refusing to serve: %w", err)
+	}
+	var moduleFactory adapter.ModuleFactory = newAdapterModuleFactory(cfg.AdapterEgressPolicy, sealedEndpoints).Build
 	if cfg.Dev && cfg.DevAdapterFakeProvider {
 		// The browser flow suite's stand-in provider (#157): config.Load has
 		// already refused this switch on anything but a --dev server.

@@ -73,7 +73,7 @@ func ClassifyError(err error) ErrorClass {
 		return ErrorClassConflict
 	case errors.Is(err, ErrRateLimited), errors.Is(err, ErrQueueFull), errors.Is(err, ErrLedgerFull):
 		return ErrorClassProviderLimit
-	case errors.Is(err, ErrIndeterminate), errors.Is(err, ErrDestinationID), errors.Is(err, ErrVersionFloor):
+	case errors.Is(err, ErrIndeterminate), errors.Is(err, ErrDestinationID), errors.Is(err, ErrVersionFloor), errors.Is(err, ErrAckForged):
 		return ErrorClassProviderAmbiguous
 	case errors.Is(err, ErrUnauthorized), errors.Is(err, ErrSuperseded):
 		return ErrorClassRefused

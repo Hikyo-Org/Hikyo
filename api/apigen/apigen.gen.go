@@ -3304,7 +3304,7 @@ type Adapter struct {
 	Id     ID     `json:"id"`
 	Origin string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
 	Provider AdapterProvider `json:"provider"`
 	State    AdapterState    `json:"state"`
 	Targets  []AdapterTarget `json:"targets"`
@@ -3499,7 +3499,7 @@ type AdapterPlan struct {
 	Warnings   []string        `json:"warnings"`
 }
 
-// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
 type AdapterProvider = string
 
 // AdapterResume defines model for AdapterResume.
@@ -4335,7 +4335,7 @@ type CreateAdapterRequest struct {
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
 	Provider AdapterProvider    `json:"provider"`
 	Target   AdapterTargetInput `json:"target"`
 }
