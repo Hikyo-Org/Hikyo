@@ -155,6 +155,8 @@ func VerifyCA(certDER []byte, public crypto.PublicKey, chain []*x509.Certificate
 		return nil, fmt.Errorf("%w: basic constraints do not mark it as a CA", ErrInvalidCA)
 	case cert.KeyUsage&x509.KeyUsageCertSign == 0 || cert.KeyUsage&x509.KeyUsageCRLSign == 0:
 		return nil, fmt.Errorf("%w: key usage must include certificate and CRL signing", ErrInvalidCA)
+	case len(cert.SubjectKeyId) == 0:
+		return nil, fmt.Errorf("%w: subject key identifier is required for CRL signing", ErrInvalidCA)
 	case now.Before(cert.NotBefore) || !now.Before(cert.NotAfter):
 		return nil, fmt.Errorf("%w: it is not currently valid", ErrInvalidCA)
 	case !PublicKeysEqual(public, cert.PublicKey):

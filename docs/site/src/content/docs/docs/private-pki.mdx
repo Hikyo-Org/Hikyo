@@ -63,7 +63,8 @@ hikyo pki issuer create-intermediate issuing --common-name "Example Issuing CA" 
 
 On the offline machine, sign the CSR as a CA certificate that may sign only
 leaves (`basicConstraints=critical,CA:TRUE,pathlen:0` and
-`keyUsage=critical,keyCertSign,cRLSign,digitalSignature`), for example with
+`keyUsage=critical,keyCertSign,cRLSign,digitalSignature` and
+`subjectKeyIdentifier=hash`), for example with
 OpenSSL:
 
 ```sh
@@ -206,7 +207,7 @@ fetches it.
 | `hikyo_pki_certificates_live` | issued, unexpired leaves |
 | `hikyo_pki_certificates_unknown` | leaves with an uncertain outcome (alert on > 0) |
 | `hikyo_pki_issuers_on_hold` | issuer versions held after a restore (alert on > 0) |
-| `hikyo_pki_gauges_known` | 1 when the three above were measured; they are omitted when 0 |
+| `hikyo_pki_gauges_known` | 1 when the three above were measured; they are omitted when the snapshot is not measured, not when their values are zero |
 
 Every lifecycle step is audited: `pki.issuer`, `pki.profile`,
 `pki.certificate_transition_intent` and `_outcome`,
