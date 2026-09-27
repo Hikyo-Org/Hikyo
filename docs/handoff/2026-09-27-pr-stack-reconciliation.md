@@ -24,6 +24,11 @@ its CI verdict with local test results.
 - PKI validates CA signatures and leaf key usage. CRL publication records a
   captured revocation sequence so concurrent revocations remain due regardless
   of timestamp ordering. Renewal refreshes metadata even after a lost response.
+  Retirement retains revocation coverage until leaves and child CA certificates
+  expire; child revocation schedules its serial in the parent CRL. Human CLI
+  generated-key issuance refuses an unsupported mint handoff before any request;
+  browser mint and locally generated keys with CSR issuance remain supported.
+  Certificate lists and profile selection expose loading and failure states.
 - Transit serializes admission and trimming, fences purges, retains accurate
   deletion counts and rejects overflowing or negative delays before conversion.
 - Temporary access preserves the permanent-grant bound, locks policy/quorum
@@ -33,7 +38,9 @@ its CI verdict with local test results.
   uses the pre-access resolver for schemas below 66.
 - AWS descriptors reject trailing JSON. Node identity remains opt-in. Resuming
   an AWS origin move uses the AWS descriptor form. Live Vault imports apply the
-  loop guard in both flag and wizard flows.
+  loop guard in both flag and wizard flows. Malformed source or active Vault
+  origins refuse import because overlap cannot be established safely. Vault
+  mappings cannot fall through to another provider's workflow syntax.
 - GitLab updates preserve omitted boolean flags and scope, require ceremonies
   when weakening hidden protection, reject alias collisions, and retain explicit
   input presence in generated clients. AWS and GitLab clamp retry seconds before
@@ -42,6 +49,8 @@ its CI verdict with local test results.
   instead of trusting a replaceable cursor. Scanner refuses unsupported Git
   versions, does not run clean filters or lazy-fetch transports, and handles
   merge-range secret attribution without reporting inherited parent content.
+  Git attributes preserve checksum-pinned vendored bytes on Windows checkout;
+  the checksum test and its pinned upstream values remain intact.
 
 Duplicate ADR dispositions were consolidated without changing the recorded
 feature decisions. Amendment references and generated status evidence ordering
