@@ -113,6 +113,11 @@ tags:
       for secret and configuration changes in sensitive scopes. An approval
       authorises one exact reviewed change set and is never a second mutation
       path: merge and emergency bypass ride the ordinary publish endpoint.
+  - name: pki
+    description: |
+      Private PKI (#154): instance CA issuers and certificate profiles, and
+      environment-scoped certificate issuance, renewal and revocation. CA
+      private keys never cross this contract.
   - name: transit
     description: |
       Versioned cryptographic operations over managed keys (transit ADR): the
@@ -12016,6 +12021,573 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  /api/v1/instance/pki/issuers:
+    get:
+      operationId: listPkiIssuers
+      tags: [pki]
+      summary: "List every CA issuer version; public material only."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.inspect
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Issuer versions., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: createPkiIssuer
+      tags: [pki]
+      summary: "Create a CA issuer: evaluation root, Hikyo-signed or offline-signed intermediate, or imported CA."
+      description: |
+        The CA private key is generated in Hikyo or supplied once as protected
+        input (`import`), sealed under the instance key, and never returned by any
+        route. An intermediate without `parent` is created `pending` with a CSR for
+        an offline root to sign.
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.create
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerCreateRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The created version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/issuers/{issuer}:
+    parameters:
+      - $ref: "#/components/parameters/PkiIssuerName"
+    get:
+      operationId: showPkiIssuer
+      tags: [pki]
+      summary: "Show every version of one issuer."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.inspect
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Issuer versions., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/issuers/{issuer}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/PkiIssuerName"
+    post:
+      operationId: rotatePkiIssuer
+      tags: [pki]
+      summary: "Create the next key version of an issuer (overlap rotation)."
+      description: |
+        A root or Hikyo-signed intermediate activates at once and moves the
+        previous active version to `retiring`; an offline-signed intermediate
+        becomes `pending` with a CSR; an imported issuer needs the new material.
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.rotate
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerRotateRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The new version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/issuers/{issuer}/install:
+    parameters:
+      - $ref: "#/components/parameters/PkiIssuerName"
+    post:
+      operationId: installPkiIssuerCertificate
+      tags: [pki]
+      summary: "Activate a pending version with its offline-signed certificate."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.install
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerInstallRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The activated version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/issuers/{issuer}/release-hold:
+    parameters:
+      - $ref: "#/components/parameters/PkiIssuerName"
+    post:
+      operationId: releasePkiIssuerHold
+      tags: [pki]
+      summary: "Lift the post-restore hold on an issuer."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.release-hold
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Issuer versions., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerList"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire:
+    parameters:
+      - $ref: "#/components/parameters/PkiIssuerName"
+      - $ref: "#/components/parameters/PkiIssuerVersion"
+    post:
+      operationId: retirePkiIssuer
+      tags: [pki]
+      summary: "Retire a version with no live certificates; its key is destroyed."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.retire
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The retired version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/PkiIssuerName"
+      - $ref: "#/components/parameters/PkiIssuerVersion"
+    post:
+      operationId: revokePkiIssuer
+      tags: [pki]
+      summary: "Revoke a compromised version: key destroyed, live certificates revoked."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.revoke
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The revoked version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl:
+    parameters:
+      - $ref: "#/components/parameters/PkiIssuerName"
+      - $ref: "#/components/parameters/PkiIssuerVersion"
+    get:
+      operationId: getPkiIssuerCrl
+      tags: [pki]
+      summary: "Read the CRL a version last published."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.inspect
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The CRL., content: {application/json: {schema: {$ref: "#/components/schemas/PkiCrl"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: publishPkiIssuerCrl
+      tags: [pki]
+      summary: "Sign and publish a fresh CRL for a version now."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-issuer.publish-crl
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The version with its new CRL., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/profiles:
+    get:
+      operationId: listPkiProfiles
+      tags: [pki]
+      summary: "List certificate profiles with their bindings."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-profile.inspect
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Profiles., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfileList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: createPkiProfile
+      tags: [pki]
+      summary: "Create a certificate profile."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-profile.create
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfileCreateRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/profiles/{profile}:
+    parameters:
+      - $ref: "#/components/parameters/PkiProfileName"
+    get:
+      operationId: showPkiProfile
+      tags: [pki]
+      summary: "Show one certificate profile."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-profile.inspect
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+    put:
+      operationId: updatePkiProfile
+      tags: [pki]
+      summary: "Replace a profile policy with a provable narrowing."
+      description: |
+        Only a narrowing is accepted: any widening, or any change whose
+        containment cannot be decided, is refused with 409. Widen by creating a new
+        profile.
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-profile.update
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfileUpdateRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: deletePkiProfile
+      tags: [pki]
+      summary: "Delete a profile and its bindings."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-profile.delete
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204": {description: Deleted.}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/profiles/{profile}/bindings:
+    parameters:
+      - $ref: "#/components/parameters/PkiProfileName"
+    post:
+      operationId: bindPkiProfile
+      tags: [pki]
+      summary: "Bind a profile to a project or one of its environments."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-profile.bind
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfileBindRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/instance/pki/profiles/{profile}/bindings/{binding}:
+    parameters:
+      - $ref: "#/components/parameters/PkiProfileName"
+      - $ref: "#/components/parameters/PkiBindingID"
+    delete:
+      operationId: unbindPkiProfile
+      tags: [pki]
+      summary: "Remove one binding of a profile."
+      x-hikyo-class: instance
+      x-hikyo-operation: pki-profile.unbind
+      x-hikyo-formula: [instance-config@instance]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listCertificateProfiles
+      tags: [pki]
+      summary: "List the certificate profiles bound to this environment."
+      x-hikyo-class: tenant
+      x-hikyo-operation: certificate.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Bound profiles., content: {application/json: {schema: {$ref: "#/components/schemas/CertificateProfileList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listCertificates
+      tags: [pki]
+      summary: "List an environment's certificates: metadata and public certificates only."
+      x-hikyo-class: tenant
+      x-hikyo-operation: certificate.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Certificates., content: {application/json: {schema: {$ref: "#/components/schemas/CertificateList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: issueCertificate
+      tags: [pki]
+      summary: "Issue a certificate through a bound profile; a generated key is disclosed exactly once."
+      description: |
+        Supply a PEM CSR (only its public key is used; names come from the
+        request fields) or `generate_key`. A generated private key is in this
+        response and nowhere else, ever: it is never stored. A machine issues only
+        through a profile with `machine_issuance`; a human asking for a generated
+        key needs the mint reauthentication ceremony.
+      x-hikyo-class: tenant
+      x-hikyo-operation: certificate.issue
+      x-hikyo-formula: [issue-certificate@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CertificateIssueRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "The certificate, and a generated private key once.", content: {application/json: {schema: {$ref: "#/components/schemas/CertificateIssueResult"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/CertificateID"
+    get:
+      operationId: showCertificate
+      tags: [pki]
+      summary: "Show one certificate."
+      x-hikyo-class: tenant
+      x-hikyo-operation: certificate.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: Certificate., content: {application/json: {schema: {$ref: "#/components/schemas/Certificate"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/CertificateID"
+    post:
+      operationId: renewCertificate
+      tags: [pki]
+      summary: "Renew a certificate inside its renewal window, reusing its public key."
+      x-hikyo-class: tenant
+      x-hikyo-operation: certificate.renew
+      x-hikyo-formula: [issue-certificate@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The successor certificate., content: {application/json: {schema: {$ref: "#/components/schemas/Certificate"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/CertificateID"
+    post:
+      operationId: revokeCertificate
+      tags: [pki]
+      summary: "Revoke a certificate; revoking a revoked certificate returns it unchanged."
+      x-hikyo-class: tenant
+      x-hikyo-operation: certificate.revoke
+      x-hikyo-formula: [issue-certificate@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 7
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CertificateRevokeRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The revoked certificate., content: {application/json: {schema: {$ref: "#/components/schemas/Certificate"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/CertificateID"
+    get:
+      operationId: getCertificateCrl
+      tags: [pki]
+      summary: "Read the CRL published by the certificate's issuer version."
+      x-hikyo-class: tenant
+      x-hikyo-operation: certificate.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 7
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: The CRL., content: {application/json: {schema: {$ref: "#/components/schemas/PkiCrl"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12059,7 +12631,6 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12104,7 +12675,6 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12129,7 +12699,6 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12161,7 +12730,6 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12189,7 +12757,6 @@ paths:
         "404": {$ref: "#/components/responses/NotFound"}
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12217,7 +12784,6 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12247,7 +12813,6 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12275,7 +12840,6 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12308,7 +12872,6 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12336,7 +12899,6 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12366,7 +12928,6 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12394,7 +12955,6 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "429": {$ref: "#/components/responses/TooManyRequests"}
         "500": {$ref: "#/components/responses/Internal"}
-
   /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify:
     parameters:
       - $ref: "#/components/parameters/OrgID"
@@ -12437,6 +12997,31 @@ components:
         credential epoch are read from the row the verifier resolves to.
 
   parameters:
+    PkiIssuerName:
+      name: issuer
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/PkiName"}
+    PkiIssuerVersion:
+      name: version
+      in: path
+      required: true
+      schema: {type: integer, format: int64, minimum: 1}
+    PkiProfileName:
+      name: profile
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/PkiName"}
+    PkiBindingID:
+      name: binding
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    CertificateID:
+      name: certificate
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
     ChallengeId:
       name: challenge
       in: path
@@ -12480,12 +13065,6 @@ components:
       in: path
       required: true
       schema: {$ref: "#/components/schemas/ID"}
-    TransitKeyName:
-      name: transit_key
-      in: path
-      required: true
-      description: The transit key's name, unique among the environment's live keys.
-      schema: {$ref: "#/components/schemas/TransitKeyName"}
     LeaseID:
       name: lease
       in: path
@@ -12968,6 +13547,12 @@ components:
         type: string
         maxLength: 64
 
+    TransitKeyName:
+      name: transit_key
+      in: path
+      required: true
+      description: The transit key's name, unique among the environment's live keys.
+      schema: {$ref: "#/components/schemas/TransitKeyName"}
   responses:
     BadRequest:
       description: |
@@ -13086,6 +13671,284 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    PkiName:
+      type: string
+      description: An issuer or profile name.
+      minLength: 1
+      maxLength: 63
+      pattern: "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"
+
+    PkiIssuer:
+      type: object
+      additionalProperties: false
+      description: |
+        One CA key version's public surface. There is no private-key field:
+        the key is sealed, non-exportable, and never leaves the server.
+      required: [id, name, version, kind, origin, state, key_algorithm, key_fingerprint, subject_cn, restore_hold, issued_count, crl_number, created_at, updated_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        name: {$ref: "#/components/schemas/PkiName"}
+        version: {type: integer, format: int64, minimum: 1}
+        kind: {type: string, enum: [root, intermediate]}
+        origin: {type: string, enum: [generated, imported]}
+        parent_id: {type: [string, "null"]}
+        state: {type: string, enum: [pending, active, retiring, retired, revoked]}
+        key_algorithm: {type: string}
+        key_fingerprint: {type: string, description: "sha256:<base64url> of the SubjectPublicKeyInfo."}
+        certificate_pem: {type: [string, "null"]}
+        csr_pem: {type: [string, "null"], description: "The CSR of a pending version, for an offline root to sign."}
+        chain_pem: {type: [string, "null"]}
+        subject_cn: {type: string}
+        subject_org: {type: [string, "null"]}
+        not_before: {type: [string, "null"], format: date-time}
+        not_after: {type: [string, "null"], format: date-time}
+        crl_distribution_url: {type: [string, "null"]}
+        restore_hold: {type: boolean, description: "True after a restore until the issuer is reconciled; no issuance while held."}
+        issued_count: {type: integer, format: int64}
+        crl_number: {type: integer, format: int64}
+        crl_this_update: {type: [string, "null"], format: date-time}
+        crl_next_update: {type: [string, "null"], format: date-time}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+
+    PkiIssuerList:
+      type: object
+      additionalProperties: false
+      required: [issuers]
+      properties:
+        issuers:
+          type: array
+          items: {$ref: "#/components/schemas/PkiIssuer"}
+
+    PkiIssuerCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [mode, name]
+      properties:
+        mode: {type: string, enum: [root, intermediate, import]}
+        name: {$ref: "#/components/schemas/PkiName"}
+        common_name: {type: string, maxLength: 64}
+        organization: {type: string, maxLength: 64}
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096]}
+        ttl_seconds: {type: integer, format: int64, minimum: 86400}
+        parent: {$ref: "#/components/schemas/PkiName"}
+        crl_distribution_url: {type: string, maxLength: 2048}
+        private_key_pem:
+          type: string
+          maxLength: 16384
+          description: Import only. Protected input, sealed on arrival and never returned.
+        certificate_pem: {type: string, maxLength: 65536}
+        chain_pem: {type: string, maxLength: 262144}
+
+    PkiIssuerRotateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, rsa-3072, rsa-4096]}
+        ttl_seconds: {type: integer, format: int64, minimum: 86400}
+        crl_distribution_url: {type: string, maxLength: 2048}
+        private_key_pem:
+          type: string
+          maxLength: 16384
+          description: Imported issuers only. Protected input, sealed on arrival and never returned.
+        certificate_pem: {type: string, maxLength: 65536}
+        chain_pem: {type: string, maxLength: 262144}
+
+    PkiIssuerInstallRequest:
+      type: object
+      additionalProperties: false
+      required: [certificate_pem, chain_pem]
+      properties:
+        certificate_pem: {type: string, maxLength: 65536}
+        chain_pem: {type: string, maxLength: 262144, description: "The signing chain, ending with the offline root."}
+
+    PkiCrl:
+      type: object
+      additionalProperties: false
+      required: [crl_pem]
+      properties:
+        crl_pem: {type: string}
+
+    PkiPolicy:
+      type: object
+      additionalProperties: false
+      description: |
+        A closed issuance policy. Name patterns are exact names, `*.suffix`
+        (one leftmost label), CIDRs, or exact URIs and `prefix/*`; never
+        regular expressions, so narrowing is decidable.
+      required: [allowed_issuers, dns_patterns, ip_ranges, uri_patterns, allow_wildcard_names, key_algorithms, key_usages, ext_key_usages, max_ttl_seconds, default_ttl_seconds, renew_window_seconds, allow_csr, allow_generated_key, machine_issuance, organization]
+      properties:
+        allowed_issuers: {type: array, items: {$ref: "#/components/schemas/PkiName"}, maxItems: 16}
+        dns_patterns: {type: array, items: {type: string, maxLength: 255}, maxItems: 64}
+        ip_ranges: {type: array, items: {type: string, maxLength: 64}, maxItems: 64}
+        uri_patterns: {type: array, items: {type: string, maxLength: 1024}, maxItems: 64}
+        allow_wildcard_names: {type: boolean}
+        key_algorithms: {type: array, items: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096]}}
+        key_usages: {type: array, items: {type: string, enum: [digital-signature, key-encipherment, key-agreement]}}
+        ext_key_usages: {type: array, items: {type: string, enum: [server-auth, client-auth]}}
+        max_ttl_seconds: {type: integer, format: int64, minimum: 300, maximum: 7776000}
+        default_ttl_seconds: {type: integer, format: int64, minimum: 300, maximum: 7776000}
+        renew_window_seconds: {type: integer, format: int64, minimum: 1}
+        allow_csr: {type: boolean}
+        allow_generated_key: {type: boolean}
+        machine_issuance: {type: boolean}
+        organization: {type: string, maxLength: 64}
+
+    PkiProfileBinding:
+      type: object
+      additionalProperties: false
+      required: [id, org_id, project_id, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        org_id: {type: string}
+        project_id: {type: string}
+        environment_id: {type: [string, "null"]}
+        created_at: {type: string, format: date-time}
+
+    PkiProfile:
+      type: object
+      additionalProperties: false
+      required: [id, name, policy, bindings, row_version, created_at, updated_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        name: {$ref: "#/components/schemas/PkiName"}
+        policy: {$ref: "#/components/schemas/PkiPolicy"}
+        bindings:
+          type: array
+          items: {$ref: "#/components/schemas/PkiProfileBinding"}
+        row_version: {type: integer, format: int64}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+
+    PkiProfileList:
+      type: object
+      additionalProperties: false
+      required: [profiles]
+      properties:
+        profiles:
+          type: array
+          items: {$ref: "#/components/schemas/PkiProfile"}
+
+    PkiProfileCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [name, policy]
+      properties:
+        name: {$ref: "#/components/schemas/PkiName"}
+        policy: {$ref: "#/components/schemas/PkiPolicy"}
+
+    PkiProfileUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [policy]
+      properties:
+        policy: {$ref: "#/components/schemas/PkiPolicy"}
+        row_version: {type: integer, format: int64, minimum: 1, description: "The version the operator reviewed; a concurrent edit is refused."}
+
+    PkiProfileBindRequest:
+      type: object
+      additionalProperties: false
+      required: [org_id, project_id]
+      properties:
+        org_id: {type: string, maxLength: 64}
+        project_id: {type: string, maxLength: 64}
+        environment_id: {type: string, maxLength: 64}
+
+    CertificateProfile:
+      type: object
+      additionalProperties: false
+      required: [name, policy]
+      properties:
+        name: {$ref: "#/components/schemas/PkiName"}
+        policy: {$ref: "#/components/schemas/PkiPolicy"}
+
+    CertificateProfileList:
+      type: object
+      additionalProperties: false
+      required: [profiles]
+      properties:
+        profiles:
+          type: array
+          items: {$ref: "#/components/schemas/CertificateProfile"}
+
+    Certificate:
+      type: object
+      additionalProperties: false
+      description: An issuance record. There is no private-key field, ever.
+      required: [id, environment_id, profile, issuer_id, issuer_name, issuer_version, serial, state, key_source, key_algorithm, key_fingerprint, dns_names, ip_addresses, uris, not_before, not_after, principal_id, principal_class, created_at, updated_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id: {type: string}
+        profile: {type: string}
+        issuer_id: {$ref: "#/components/schemas/ID"}
+        issuer_name: {type: string}
+        issuer_version: {type: integer, format: int64}
+        serial: {type: string, description: "Lowercase hexadecimal serial number."}
+        state: {type: string, enum: [issuing, issued, renewed, revoked, expired, unknown, failed]}
+        key_source: {type: string, enum: [csr, generated]}
+        key_algorithm: {type: string}
+        key_fingerprint: {type: string}
+        common_name: {type: [string, "null"]}
+        dns_names: {type: array, items: {type: string}}
+        ip_addresses: {type: array, items: {type: string}}
+        uris: {type: array, items: {type: string}}
+        not_before: {type: string, format: date-time}
+        not_after: {type: string, format: date-time}
+        certificate_pem: {type: [string, "null"]}
+        chain_pem: {type: [string, "null"], description: "The issuing CA certificate followed by its chain."}
+        principal_id: {type: string}
+        principal_class: {type: string}
+        renewed_from: {type: [string, "null"]}
+        renewed_by: {type: [string, "null"]}
+        revoked_at: {type: [string, "null"], format: date-time}
+        revocation_reason: {type: [string, "null"]}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+
+    CertificateList:
+      type: object
+      additionalProperties: false
+      required: [certificates]
+      properties:
+        certificates:
+          type: array
+          items: {$ref: "#/components/schemas/Certificate"}
+
+    CertificateIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [profile]
+      properties:
+        profile: {$ref: "#/components/schemas/PkiName"}
+        issuer: {$ref: "#/components/schemas/PkiName"}
+        csr_pem: {type: string, maxLength: 65536}
+        generate_key: {type: boolean}
+        key_algorithm: {type: string, enum: [ecdsa-p256, ecdsa-p384, ed25519, rsa-2048, rsa-3072, rsa-4096]}
+        common_name: {type: string, maxLength: 255}
+        dns_names: {type: array, items: {type: string, maxLength: 255}, maxItems: 100}
+        ip_addresses: {type: array, items: {type: string, maxLength: 64}, maxItems: 100}
+        uris: {type: array, items: {type: string, maxLength: 1024}, maxItems: 100}
+        ttl_seconds: {type: integer, format: int64, minimum: 300, maximum: 7776000}
+
+    CertificateIssueResult:
+      type: object
+      additionalProperties: false
+      required: [certificate]
+      properties:
+        certificate: {$ref: "#/components/schemas/Certificate"}
+        private_key_pem:
+          type: string
+          description: |
+            A server-generated PKCS#8 private key, returned EXACTLY ONCE to
+            exactly one caller and never stored. Absent for a CSR issuance.
+            No other route in this contract returns it.
+
+    CertificateRevokeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason: {type: string, enum: [unspecified, key-compromise, affiliation-changed, superseded, cessation-of-operation, privilege-withdrawn]}
+
     RuntimeStatus:
       type: object
       additionalProperties: false
@@ -13146,7 +14009,13 @@ components:
 
     AdapterDestinationKind:
       type: string
-      enum: [repository, organization, environment]
+      description: >-
+        repository, organization and environment are Forgejo and GitHub Actions
+        destinations. workers-script and pages-project are Cloudflare
+        destinations: destination_owner is the account id, destination_name
+        the Workers script or Pages project, and a pages-project target names
+        exactly one Pages environment (preview or production).
+      enum: [repository, organization, environment, workers-script, pages-project]
 
     AdapterVisibility:
       type: string
@@ -13159,7 +14028,7 @@ components:
         creation requires a provider supported by the receiving server.
         sealed-webhook binds only to an origin an instance admin activated in
         the server's sealed webhook registry.
-      x-extensible-enum: [forgejo, github-actions, sealed-webhook]
+      x-extensible-enum: [forgejo, github-actions, sealed-webhook, cloudflare, vault-kv]
 
     AdapterTargetInput:
       type: object
@@ -13172,15 +14041,19 @@ components:
           description: Explicit consent to create missing GitHub environments using Administration:write.
         environment_id: {$ref: "#/components/schemas/ID"}
         destination_kind: {$ref: "#/components/schemas/AdapterDestinationKind"}
-        destination_owner: {type: string, minLength: 1, maxLength: 255}
+        destination_owner:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Repository or organization owner; the KV v2 mount path for vault-kv (destination_kind repository).
         destination_name:
           type: string
           maxLength: 255
-          description: Repository name; empty for organization destinations.
+          description: Repository name, Workers script name or Pages project name; empty for organization destinations; the KV path prefix for vault-kv.
         destination_environment:
           type: string
           maxLength: 255
-          description: GitHub environment name; empty for repository and organization destinations.
+          description: GitHub environment name, or the Pages environment (preview or production) of a pages-project target; empty for other destinations.
         visibility:
           type: string
           enum: ["", all, private, selected]
@@ -13826,234 +14699,6 @@ components:
           description: |
             For a generated key only: the OpenSSH private key, returned EXACTLY
             ONCE to exactly one caller and never stored. No other route returns it.
-
-    TransitKeyName:
-      type: string
-      minLength: 1
-      maxLength: 63
-      pattern: "^[a-z0-9][a-z0-9._-]{0,62}$"
-
-    TransitAlgorithm:
-      type: string
-      enum: [xchacha20-poly1305, ed25519, hmac-sha256]
-
-    TransitCustody:
-      type: string
-      enum: [software, external]
-
-    TransitOperation:
-      type: string
-      enum: [encrypt, decrypt, rewrap, datakey, datakey-plaintext, sign, verify, hmac, hmac-verify]
-
-    TransitKeyState:
-      type: string
-      enum: [active, retired, disabled, pending-deletion]
-
-    TransitCaller:
-      type: object
-      additionalProperties: false
-      required: [principal_id, operations]
-      properties:
-        principal_id: {$ref: "#/components/schemas/ID"}
-        operations: {type: array, minItems: 1, maxItems: 9, items: {$ref: "#/components/schemas/TransitOperation"}}
-
-    TransitKeyVersion:
-      type: object
-      additionalProperties: false
-      required: [version, material, created_at]
-      properties:
-        version: {type: integer, format: int64, minimum: 1}
-        material:
-          type: string
-          enum: [sealed, external, erased]
-          description: Where the version's material lives. The material itself is never returned.
-        public_key:
-          type: [string, "null"]
-          description: The Ed25519 public key (standard base64) for signing keys; public metadata.
-        created_at: {$ref: "#/components/schemas/Timestamp"}
-
-    TransitKey:
-      type: object
-      additionalProperties: false
-      required: [id, environment_id, name, algorithm, custody, allowed_operations, exportable, state, latest_version, min_encrypt_version, min_decrypt_version, compromised_through_version, rotation_period_seconds, rotation_due, created_by, created_at, updated_at, versions, callers]
-      properties:
-        id: {$ref: "#/components/schemas/ID"}
-        environment_id: {$ref: "#/components/schemas/ID"}
-        name: {$ref: "#/components/schemas/TransitKeyName"}
-        algorithm: {$ref: "#/components/schemas/TransitAlgorithm"}
-        custody: {$ref: "#/components/schemas/TransitCustody"}
-        allowed_operations: {type: array, items: {$ref: "#/components/schemas/TransitOperation"}}
-        exportable: {type: boolean, description: Always false; key material never leaves custody.}
-        state: {$ref: "#/components/schemas/TransitKeyState"}
-        latest_version: {type: integer, format: int64, minimum: 1}
-        min_encrypt_version: {type: integer, format: int64, minimum: 1}
-        min_decrypt_version: {type: integer, format: int64, minimum: 1}
-        compromised_through_version: {type: integer, format: int64, minimum: 0, description: Versions at or below this are compromised; zero means none.}
-        rotation_period_seconds: {type: integer, format: int64, minimum: 0}
-        rotation_due: {type: boolean}
-        deletion_after: {type: [string, "null"], format: date-time}
-        created_by: {type: string}
-        created_at: {$ref: "#/components/schemas/Timestamp"}
-        updated_at: {$ref: "#/components/schemas/Timestamp"}
-        versions: {type: array, items: {$ref: "#/components/schemas/TransitKeyVersion"}}
-        callers: {type: array, items: {$ref: "#/components/schemas/TransitCaller"}}
-
-    TransitKeyList:
-      type: object
-      additionalProperties: false
-      required: [items]
-      properties:
-        items: {type: array, items: {$ref: "#/components/schemas/TransitKey"}}
-
-    CreateTransitKeyRequest:
-      type: object
-      additionalProperties: false
-      required: [name, algorithm]
-      properties:
-        name: {$ref: "#/components/schemas/TransitKeyName"}
-        algorithm: {$ref: "#/components/schemas/TransitAlgorithm"}
-        custody: {$ref: "#/components/schemas/TransitCustody"}
-        allowed_operations: {type: array, maxItems: 9, items: {$ref: "#/components/schemas/TransitOperation"}}
-        rotation_period_seconds: {type: integer, format: int64, minimum: 0}
-        exportable: {type: boolean, description: Must be false or absent; exportable keys are refused.}
-        callers: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/TransitCaller"}}
-
-    ConfigureTransitKeyRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        min_encrypt_version: {type: integer, format: int64, minimum: 1}
-        min_decrypt_version: {type: integer, format: int64, minimum: 1}
-        rotation_period_seconds: {type: integer, format: int64, minimum: 0}
-        callers: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/TransitCaller"}}
-
-    TransitLifecycleRequest:
-      type: object
-      additionalProperties: false
-      required: [action]
-      properties:
-        action:
-          type: string
-          enum: [disable, enable, retire, compromise, schedule-deletion, cancel-deletion]
-        delay_seconds:
-          type: integer
-          format: int64
-          minimum: 0
-          description: schedule-deletion only; between one and ninety days, seven by default.
-
-    TransitTrimResult:
-      type: object
-      additionalProperties: false
-      required: [key, versions_deleted]
-      properties:
-        key: {$ref: "#/components/schemas/TransitKey"}
-        versions_deleted: {type: integer, format: int64, minimum: 0}
-
-    TransitEncryptRequest:
-      type: object
-      additionalProperties: false
-      required: [plaintext]
-      properties:
-        plaintext: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
-        context: {type: string, maxLength: 1368, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
-        key_version: {type: integer, format: int64, minimum: 1}
-
-    TransitDecryptRequest:
-      type: object
-      additionalProperties: false
-      required: [ciphertext]
-      properties:
-        ciphertext: {type: string, minLength: 1, maxLength: 131072, description: "A transit ciphertext, `hikyo:v<version>:<base64url>`."}
-        context: {type: string, maxLength: 1368, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
-
-    TransitCiphertextResult:
-      type: object
-      additionalProperties: false
-      required: [ciphertext, key_version]
-      properties:
-        ciphertext: {type: string}
-        key_version: {type: integer, format: int64, minimum: 1}
-
-    TransitDecryptResult:
-      type: object
-      additionalProperties: false
-      required: [plaintext, key_version]
-      properties:
-        plaintext: {type: string, description: Standard base64. Display-once; never stored or logged.}
-        key_version: {type: integer, format: int64, minimum: 1}
-
-    TransitDataKeyRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        bits: {type: integer, enum: [128, 256, 512]}
-        context: {type: string, maxLength: 1368, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
-        plaintext: {type: boolean, description: Also return the data key in plaintext; requires datakey-plaintext.}
-
-    TransitDataKeyResult:
-      type: object
-      additionalProperties: false
-      required: [ciphertext, key_version]
-      properties:
-        ciphertext: {type: string}
-        key_version: {type: integer, format: int64, minimum: 1}
-        plaintext: {type: [string, "null"], description: Standard base64 data key when requested. Display-once.}
-
-    TransitSignRequest:
-      type: object
-      additionalProperties: false
-      required: [message]
-      properties:
-        message: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
-        key_version: {type: integer, format: int64, minimum: 1}
-
-    TransitSignatureResult:
-      type: object
-      additionalProperties: false
-      required: [signature, key_version]
-      properties:
-        signature: {type: string}
-        key_version: {type: integer, format: int64, minimum: 1}
-
-    TransitVerifyRequest:
-      type: object
-      additionalProperties: false
-      required: [message, signature]
-      properties:
-        message: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
-        signature: {type: string, minLength: 1, maxLength: 131072}
-
-    TransitVerifyResult:
-      type: object
-      additionalProperties: false
-      required: [valid, key_version]
-      properties:
-        valid: {type: boolean}
-        key_version: {type: integer, format: int64, minimum: 1}
-
-    TransitHMACRequest:
-      type: object
-      additionalProperties: false
-      required: [message]
-      properties:
-        message: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
-        key_version: {type: integer, format: int64, minimum: 1}
-
-    TransitHMACResult:
-      type: object
-      additionalProperties: false
-      required: [mac, key_version]
-      properties:
-        mac: {type: string}
-        key_version: {type: integer, format: int64, minimum: 1}
-
-    TransitHMACVerifyRequest:
-      type: object
-      additionalProperties: false
-      required: [message, mac]
-      properties:
-        message: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
-        mac: {type: string, minLength: 1, maxLength: 131072}
 
     AdapterConflictEntry:
       type: object
@@ -17992,6 +18637,14 @@ components:
           type: integer
           minimum: 0
           description: Deployment-adapter outbox jobs waiting to be claimed, instance-wide.
+        pki_certificates_unknown:
+          type: integer
+          minimum: 0
+          description: Private-PKI certificates in the uncertain unknown state, published on the CRL as revoked (#154). Absent when not measured.
+        pki_issuers_on_hold:
+          type: integer
+          minimum: 0
+          description: Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
 
     BackupHealth:
       type: object
@@ -20507,6 +21160,234 @@ components:
         binding_id: {$ref: "#/components/schemas/ID"}
         mapping_id: {$ref: "#/components/schemas/ID"}
         group_id: {$ref: "#/components/schemas/ID"}
+
+    TransitKeyName:
+      type: string
+      minLength: 1
+      maxLength: 63
+      pattern: "^[a-z0-9][a-z0-9._-]{0,62}$"
+
+    TransitAlgorithm:
+      type: string
+      enum: [xchacha20-poly1305, ed25519, hmac-sha256]
+
+    TransitCustody:
+      type: string
+      enum: [software, external]
+
+    TransitOperation:
+      type: string
+      enum: [encrypt, decrypt, rewrap, datakey, datakey-plaintext, sign, verify, hmac, hmac-verify]
+
+    TransitKeyState:
+      type: string
+      enum: [active, retired, disabled, pending-deletion]
+
+    TransitCaller:
+      type: object
+      additionalProperties: false
+      required: [principal_id, operations]
+      properties:
+        principal_id: {$ref: "#/components/schemas/ID"}
+        operations: {type: array, minItems: 1, maxItems: 9, items: {$ref: "#/components/schemas/TransitOperation"}}
+
+    TransitKeyVersion:
+      type: object
+      additionalProperties: false
+      required: [version, material, created_at]
+      properties:
+        version: {type: integer, format: int64, minimum: 1}
+        material:
+          type: string
+          enum: [sealed, external, erased]
+          description: Where the version's material lives. The material itself is never returned.
+        public_key:
+          type: [string, "null"]
+          description: The Ed25519 public key (standard base64) for signing keys; public metadata.
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+
+    TransitKey:
+      type: object
+      additionalProperties: false
+      required: [id, environment_id, name, algorithm, custody, allowed_operations, exportable, state, latest_version, min_encrypt_version, min_decrypt_version, compromised_through_version, rotation_period_seconds, rotation_due, created_by, created_at, updated_at, versions, callers]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        environment_id: {$ref: "#/components/schemas/ID"}
+        name: {$ref: "#/components/schemas/TransitKeyName"}
+        algorithm: {$ref: "#/components/schemas/TransitAlgorithm"}
+        custody: {$ref: "#/components/schemas/TransitCustody"}
+        allowed_operations: {type: array, items: {$ref: "#/components/schemas/TransitOperation"}}
+        exportable: {type: boolean, description: Always false; key material never leaves custody.}
+        state: {$ref: "#/components/schemas/TransitKeyState"}
+        latest_version: {type: integer, format: int64, minimum: 1}
+        min_encrypt_version: {type: integer, format: int64, minimum: 1}
+        min_decrypt_version: {type: integer, format: int64, minimum: 1}
+        compromised_through_version: {type: integer, format: int64, minimum: 0, description: Versions at or below this are compromised; zero means none.}
+        rotation_period_seconds: {type: integer, format: int64, minimum: 0}
+        rotation_due: {type: boolean}
+        deletion_after: {type: [string, "null"], format: date-time}
+        created_by: {type: string}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {$ref: "#/components/schemas/Timestamp"}
+        versions: {type: array, items: {$ref: "#/components/schemas/TransitKeyVersion"}}
+        callers: {type: array, items: {$ref: "#/components/schemas/TransitCaller"}}
+
+    TransitKeyList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/TransitKey"}}
+
+    CreateTransitKeyRequest:
+      type: object
+      additionalProperties: false
+      required: [name, algorithm]
+      properties:
+        name: {$ref: "#/components/schemas/TransitKeyName"}
+        algorithm: {$ref: "#/components/schemas/TransitAlgorithm"}
+        custody: {$ref: "#/components/schemas/TransitCustody"}
+        allowed_operations: {type: array, maxItems: 9, items: {$ref: "#/components/schemas/TransitOperation"}}
+        rotation_period_seconds: {type: integer, format: int64, minimum: 0}
+        exportable: {type: boolean, description: Must be false or absent; exportable keys are refused.}
+        callers: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/TransitCaller"}}
+
+    ConfigureTransitKeyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        min_encrypt_version: {type: integer, format: int64, minimum: 1}
+        min_decrypt_version: {type: integer, format: int64, minimum: 1}
+        rotation_period_seconds: {type: integer, format: int64, minimum: 0}
+        callers: {type: array, maxItems: 64, items: {$ref: "#/components/schemas/TransitCaller"}}
+
+    TransitLifecycleRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [disable, enable, retire, compromise, schedule-deletion, cancel-deletion]
+        delay_seconds:
+          type: integer
+          format: int64
+          minimum: 0
+          description: schedule-deletion only; between one and ninety days, seven by default.
+
+    TransitTrimResult:
+      type: object
+      additionalProperties: false
+      required: [key, versions_deleted]
+      properties:
+        key: {$ref: "#/components/schemas/TransitKey"}
+        versions_deleted: {type: integer, format: int64, minimum: 0}
+
+    TransitEncryptRequest:
+      type: object
+      additionalProperties: false
+      required: [plaintext]
+      properties:
+        plaintext: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
+        context: {type: string, maxLength: 1368, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
+        key_version: {type: integer, format: int64, minimum: 1}
+
+    TransitDecryptRequest:
+      type: object
+      additionalProperties: false
+      required: [ciphertext]
+      properties:
+        ciphertext: {type: string, minLength: 1, maxLength: 131072, description: "A transit ciphertext, `hikyo:v<version>:<base64url>`."}
+        context: {type: string, maxLength: 1368, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
+
+    TransitCiphertextResult:
+      type: object
+      additionalProperties: false
+      required: [ciphertext, key_version]
+      properties:
+        ciphertext: {type: string}
+        key_version: {type: integer, format: int64, minimum: 1}
+
+    TransitDecryptResult:
+      type: object
+      additionalProperties: false
+      required: [plaintext, key_version]
+      properties:
+        plaintext: {type: string, description: Standard base64. Display-once; never stored or logged.}
+        key_version: {type: integer, format: int64, minimum: 1}
+
+    TransitDataKeyRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        bits: {type: integer, enum: [128, 256, 512]}
+        context: {type: string, maxLength: 1368, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
+        plaintext: {type: boolean, description: Also return the data key in plaintext; requires datakey-plaintext.}
+
+    TransitDataKeyResult:
+      type: object
+      additionalProperties: false
+      required: [ciphertext, key_version]
+      properties:
+        ciphertext: {type: string}
+        key_version: {type: integer, format: int64, minimum: 1}
+        plaintext: {type: [string, "null"], description: Standard base64 data key when requested. Display-once.}
+
+    TransitSignRequest:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
+        key_version: {type: integer, format: int64, minimum: 1}
+
+    TransitSignatureResult:
+      type: object
+      additionalProperties: false
+      required: [signature, key_version]
+      properties:
+        signature: {type: string}
+        key_version: {type: integer, format: int64, minimum: 1}
+
+    TransitVerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [message, signature]
+      properties:
+        message: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
+        signature: {type: string, minLength: 1, maxLength: 131072}
+
+    TransitVerifyResult:
+      type: object
+      additionalProperties: false
+      required: [valid, key_version]
+      properties:
+        valid: {type: boolean}
+        key_version: {type: integer, format: int64, minimum: 1}
+
+    TransitHMACRequest:
+      type: object
+      additionalProperties: false
+      required: [message]
+      properties:
+        message: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
+        key_version: {type: integer, format: int64, minimum: 1}
+
+    TransitHMACResult:
+      type: object
+      additionalProperties: false
+      required: [mac, key_version]
+      properties:
+        mac: {type: string}
+        key_version: {type: integer, format: int64, minimum: 1}
+
+    TransitHMACVerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [message, mac]
+      properties:
+        message: {type: string, maxLength: 87384, pattern: "^[A-Za-z0-9+/]*={0,2}$", description: Standard base64.}
+        mac: {type: string, minLength: 1, maxLength: 131072}
 
 security:
   - hikyoSession: []

@@ -111,6 +111,12 @@ const CAPABILITY_REGISTRY: readonly RegistryCapability[] = [
     humanGrantable: true,
   },
   {
+    id: 'issue-certificate',
+    deepest: 'environment',
+    covers: 'request, renew and revoke X.509 certificates through a certificate profile bound to this environment',
+    humanGrantable: true,
+  },
+  {
     id: 'audit-read',
     deepest: 'environment',
     covers: 'read the audit trail for this scope: its own power, and a second factor is required',

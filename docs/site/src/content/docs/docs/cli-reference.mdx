@@ -105,6 +105,8 @@ stored locally and are never printed as a login receipt.
 | `dynamic-provider`, `lease` | Register dynamic-secret providers and mint, renew, revoke, and settle short-lived leases. |
 | `ssh-ca`, `ssh-profile`, `ssh-cert` | Run SSH user CAs, define signing profiles, and issue and revoke short-lived SSH certificates. See [SSH certificates](/docs/ssh-certificates/). |
 | `transit` | Create, rotate, retire and delete managed keys, and encrypt, decrypt, rewrap, sign, verify and MAC with them. See [Transit](./transit). |
+| `pki` | Operate the private PKI: create, import, install, rotate, retire and revoke CA issuers, release restore holds, read CRLs, and manage narrowing-only certificate profiles and their bindings. |
+| `cert` | Issue (by CSR or display-once generated key), list, show, renew and revoke environment certificates, and read a certificate's CRL. |
 | `revision`, `pin`, `approval` | Inspect lineage, pin workloads to a revision, and run change-approval policies and requests. |
 | `definitions`, `import` | Author and apply the reviewable catalogue, and stage values from other systems. |
 | `remote`, `remote-credential` | Peer instances and the credentials they present. |
@@ -121,6 +123,10 @@ its first target. Credential input is a no-echo terminal, `--stdin`, or
 
 ```text
 hikyo adapter create --provider forgejo|github-actions|sealed-webhook --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider vault-kv --origin URL[/NAMESPACE] --env ENV --mount MOUNT --path PREFIX --keys ID,ID [--prefix PREFIX] [--stdin|--value-file FILE]
+
+hikyo adapter create --provider cloudflare --env ENV --kind workers-script --account ACCOUNT_ID --script NAME [--prefix PREFIX] --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider cloudflare --env ENV --kind pages-project --account ACCOUNT_ID --pages-project NAME --destination-environment preview|production [--prefix PREFIX] --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --origin URL [--keep-remote] [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --target TARGET --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--keep-remote]
 hikyo adapter update ADAPTER --move MOVE --origin URL [--stdin|--value-file FILE]
@@ -130,6 +136,7 @@ hikyo adapter credential set --adapter ADAPTER [--stdin|--value-file FILE]
 hikyo adapter credential set --adapter ADAPTER --move MOVE [--stdin|--value-file FILE]
 hikyo adapter credential revoke --adapter ADAPTER
 hikyo adapter target add --adapter ADAPTER --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --keys ID,ID
+hikyo adapter target add --adapter ADAPTER --env ENV --mount MOUNT --path PREFIX --keys ID,ID
 hikyo adapter target list --adapter ADAPTER
 hikyo adapter target show|remove TARGET
 hikyo adapter plan|sync|test --target TARGET

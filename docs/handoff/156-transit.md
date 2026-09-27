@@ -132,3 +132,13 @@ governance tickets is the human's.
 - Transit migration is reserved as 00065 for the concurrent feature merge batch. Generated schema claims come from actual SQLite and PostgreSQL catalogs.
 - Regression entry point: `go test ./internal/isolation -run 'TestTransit'` with `HIKYO_TEST_POSTGRES_DSN` set to an isolated scratch PostgreSQL database. Covers both custody providers, interleaved trim failure/retry, retained-version quota and concurrent key admission. Unit validation: `go test ./internal/service -run 'TestTransit'`. Generated client: `pnpm --dir clients/ts verify`.
 - Cross-provider review remains skipped under the central quota gate; ordinary adversarial inspection and regression testing are separate evidence.
+
+
+## Integrated lower PR stack
+
+Merged #822 Cloudflare, #823 Vault KV and #825 private PKI before transit's
+00065 migration. Retained both cryptographic surfaces, capability atoms, audit
+registries, API operations, metrics and CLI verbs. Regenerated the combined
+API clients and compatibility declaration from an isolated PostgreSQL schema.
+The upgrade fixture now reviews and reverses the complete 45 through 65
+post-legacy migration sequence, preserving the prior evidence refusal gates.

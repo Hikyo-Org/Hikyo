@@ -601,6 +601,10 @@ func validatePendingTarget(m AdapterTargetMutation) error {
 		if m.DestinationName == "" || m.DestinationEnvironment == "" || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
 			return fmt.Errorf("%w: environment target requires repository and environment", domain.ErrInvalid)
 		}
+	case string(adapter.WorkersScript), string(adapter.PagesProject):
+		if err := validateCloudflareTarget(m); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("%w: unsupported adapter destination kind", domain.ErrInvalid)
 	}

@@ -44,6 +44,7 @@ type applicationGeneration struct {
 	adapterWorker                     *adapter.Worker
 	dynamicWorker                     *dynamicWorker
 	sshSweeper                        *sshSweeper
+	pkiWorker                         *pkiWorker
 	updateReconciler                  *service.Updates
 }
 
@@ -148,7 +149,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		}
 		diagnostics.Volume = postgresStorage.Read
 	}
-	retentionSvc := &service.Retention{DB: db, AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
+	retentionSvc := &service.Retention{DB: db, PKI: store.NewPKIRuntime(db), AuditPolicy: store.AuditRetentionPolicy{AccessDays: cfg.AuditAccessRetainDays, SecurityDays: cfg.AuditSecurityRetainDays}, Backup: backupPolicy(cfg), Diagnostics: diagnostics}
 	backupSvc := &service.Backup{DB: db, Options: backup.Options{Recipients: cfg.BackupRecipients}}
 	approvalsSvc := &service.Approvals{DB: db, Auth: authSvc, Keyring: kr}
 	updateHTTP, err := updatecheck.NewHTTPClient(3 * time.Second)
@@ -217,6 +218,9 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 	metrics.SetDynamicSource(dynamicGaugeSource{runtime: dynamicRuntime, log: log})
 	metrics.SetSSHSource(sshGaugeSource{svc: sshService, log: log})
 	metrics.SetTransitSource(transitGaugeSource{runtime: transitRuntime, log: log})
+	pkiRuntime := store.NewPKIRuntime(db)
+	pkiService := &service.PKI{DB: db, Auth: authSvc, Keyring: kr, Budget: budget, Runtime: pkiRuntime}
+	metrics.SetPKISource(pkiGaugeSource{runtime: pkiRuntime, log: log})
 	// The hierarchy, value, and revision services are named here so the read-only
 	// MCP tools (#629) map onto the SAME instances the REST surface uses: one
 	// keyring, one budget, one authorization path.
@@ -308,6 +312,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		Dynamic:       dynamicService,
 		SSH:           sshService,
 		Transit:       transitService,
+		PKI:           pkiService,
 		Audits:        &service.Audits{DB: db, Budget: budget},
 		Approvals:     approvalsSvc,
 		// ONE SCIM service behind both surfaces: the administration verbs and
@@ -463,6 +468,7 @@ func (owner *ownerRuntime) prepareGeneration(ctx context.Context, cfg *config.Co
 		adapterWorker:    adapterWorker,
 		dynamicWorker:    &dynamicWorker{svc: dynamicService, id: "dynamic-worker-" + uuid.Must(uuid.NewV7()).String(), log: log, selfConfig: selfConfig},
 		sshSweeper:       &sshSweeper{svc: sshService, log: log, selfConfig: selfConfig},
+		pkiWorker:        &pkiWorker{svc: pkiService, log: log, selfConfig: selfConfig},
 		updateReconciler: updatesService,
 	}
 	if cfg.BackupScheduled() {

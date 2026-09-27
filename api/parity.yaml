@@ -447,6 +447,33 @@ operations:
   showSshCertificate:          {webui: machine-access, via: [listSshCertificates]}
   revokeSshCertificate:        {webui: machine-access}
 
+  # private PKI (#154): issuers and profiles are instance-admin panels; the
+  # environment certificate lifecycle is the machine-access Certificates tab.
+  listPkiIssuers:              {webui: instance-admin}
+  showPkiIssuer:               {webui: instance-admin, via: [listPkiIssuers]}
+  createPkiIssuer:             {webui: instance-admin}
+  rotatePkiIssuer:             {webui: instance-admin}
+  installPkiIssuerCertificate: {webui: instance-admin}
+  releasePkiIssuerHold:          {webui: instance-admin}
+  retirePkiIssuer:             {webui: instance-admin}
+  revokePkiIssuer:             {webui: instance-admin}
+  getPkiIssuerCrl:             {webui: instance-admin}
+  publishPkiIssuerCrl:         {webui: instance-admin}
+  listPkiProfiles:             {webui: instance-admin}
+  showPkiProfile:              {webui: instance-admin, via: [listPkiProfiles]}
+  createPkiProfile:            {webui: instance-admin}
+  updatePkiProfile:            {webui: instance-admin}
+  deletePkiProfile:            {webui: instance-admin}
+  bindPkiProfile:              {webui: instance-admin}
+  unbindPkiProfile:            {webui: instance-admin}
+  listCertificateProfiles:     {webui: machine-access}
+  listCertificates:            {webui: machine-access}
+  showCertificate:             {webui: machine-access, via: [listCertificates]}
+  issueCertificate:            {webui: machine-access}
+  renewCertificate:            {webui: machine-access}
+  revokeCertificate:           {webui: machine-access}
+  getCertificateCrl:           {webui: machine-access}
+
   diffRevisions: {webui: history}
   revealRevisionDiff: {webui: history}
 

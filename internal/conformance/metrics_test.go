@@ -111,6 +111,10 @@ func pinnedMetricRegistry() []metricFamily {
 		{Name: "hikyo_transit_keys_rotation_due", MaxSeries: 1},
 		{Name: "hikyo_transit_keys_pending_deletion", MaxSeries: 1},
 		{Name: "hikyo_transit_gauges_known", MaxSeries: 1},
+		{Name: "hikyo_pki_certificates_live", MaxSeries: 1},
+		{Name: "hikyo_pki_certificates_unknown", MaxSeries: 1},
+		{Name: "hikyo_pki_issuers_on_hold", MaxSeries: 1},
+		{Name: "hikyo_pki_gauges_known", MaxSeries: 1},
 	}
 }
 
@@ -125,7 +129,8 @@ func (stubMeasuredSources) ApprovalSnapshot() (server.ApprovalStats, error) {
 
 func (stubMeasuredSources) DynamicSnapshot() (int64, int64, error) { return 0, 0, nil }
 
-func (stubMeasuredSources) SSHSnapshot() (int64, int64, error) { return 0, 0, nil }
+func (stubMeasuredSources) SSHSnapshot() (int64, int64, error)        { return 0, 0, nil }
+func (stubMeasuredSources) PKISnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 
 func (stubMeasuredSources) TransitSnapshot() (int64, int64, int64, error) { return 0, 0, 0, nil }
 
@@ -139,6 +144,7 @@ func scrapeOperationalMetrics(t *testing.T) string {
 	metrics.SetDynamicSource(stubMeasuredSources{})
 	metrics.SetSSHSource(stubMeasuredSources{})
 	metrics.SetTransitSource(stubMeasuredSources{})
+	metrics.SetPKISource(stubMeasuredSources{})
 	_ = metrics.ObserveMCP(http.NotFoundHandler(), nil, mcpserver.AllToolNames())
 	handler := server.NewOperational(nil, stubRetentionHealth{}, metrics)
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)

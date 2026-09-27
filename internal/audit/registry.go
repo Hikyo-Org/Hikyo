@@ -816,6 +816,14 @@ const (
 	EventTransitKeyTrimmed      EventType = "transit.key_trimmed"
 	EventTransitKeyDestroyed    EventType = "transit.key_destroyed"
 	EventTransitOperation       EventType = "transit.operation"
+	// Private PKI (#154, docs/adr/pki.md).
+	EventPKIInventoryRead                EventType = "pki.inventory_read"
+	EventPKIIssuer                       EventType = "pki.issuer"
+	EventPKIProfile                      EventType = "pki.profile"
+	EventPKICertificateTransitionIntent  EventType = "pki.certificate_transition_intent"
+	EventPKICertificateTransitionOutcome EventType = "pki.certificate_transition_outcome"
+	EventPKICertificateKeyDisclosed      EventType = "pki.certificate_key_disclosed"
+	EventPKICRLPublished                 EventType = "pki.crl_published"
 
 	// remote.* — the multi-instance categories (#71, multi-instance ADR §
 	// Audit) ARE registered above, every one of them that has an honest
@@ -3354,6 +3362,96 @@ var registry = map[EventType]TypeSpec{
 			"output_bytes":  {Kind: KindInt, Required: true},
 			"credential_id": {Kind: KindString},
 			"refusal":       {Kind: KindString, Enum: TransitRefusalCauses},
+		},
+	},
+	// --- Private PKI (#154) --------------------------------------------------
+	// No payload ever carries key material: issuer events name the version and
+	// its public-key fingerprint; certificate events name the serial and the
+	// issuer version. The generated private key's disclosure is recorded as a
+	// fact (pki.certificate_key_disclosed), never as the key.
+	EventPKIInventoryRead: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"object":    {Kind: KindString, Required: true, Enum: []string{"issuer", "profile", "crl"}},
+			"query":     {Kind: KindString, Required: true, Enum: []string{"list", "show"}},
+			"row_count": {Kind: KindInt, Required: true},
+		},
+	},
+	EventPKIIssuer: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"action":                {Kind: KindString, Required: true, Enum: []string{"create", "install", "rotate", "retire", "revoke", "release-hold"}},
+			"name":                  {Kind: KindString, Required: true},
+			"version":               {Kind: KindInt, Required: true},
+			"kind":                  {Kind: KindString, Required: true, Enum: []string{"root", "intermediate"}},
+			"state":                 {Kind: KindString, Required: true, Enum: []string{"pending", "active", "retiring", "retired", "revoked"}},
+			"key_fingerprint":       {Kind: KindString, Required: true},
+			"prior_key_fingerprint": {Kind: KindString},
+			"certificates_revoked":  {Kind: KindInt},
+		},
+	},
+	EventPKIProfile: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"action":              {Kind: KindString, Required: true, Enum: []string{"create", "update", "delete", "bind", "unbind"}},
+			"name":                {Kind: KindString, Required: true},
+			"binding_org":         {Kind: KindString},
+			"binding_project":     {Kind: KindString},
+			"binding_environment": {Kind: KindString},
+		},
+	},
+	// Issue and renew write the INTENT (serial reserved, state issuing) before
+	// signing and the OUTCOME after the issuer fence; revoke and expiry write
+	// the OUTCOME only. An issuing row the worker finds past its deadline gets
+	// an `unknown` OUTCOME and is published on the CRL (ADR D6).
+	EventPKICertificateTransitionIntent: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeIntent: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"kind":    {Kind: KindString, Required: true, Enum: []string{"issue", "renew"}},
+			"serial":  {Kind: KindString, Required: true},
+			"issuer":  {Kind: KindString, Required: true},
+			"profile": {Kind: KindString, Required: true},
+		},
+	},
+	EventPKICertificateTransitionOutcome: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true, OutcomeFailure: true, OutcomeUnknown: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"kind":   {Kind: KindString, Required: true, Enum: []string{"issue", "renew", "revoke", "expire"}},
+			"serial": {Kind: KindString, Required: true},
+			"issuer": {Kind: KindString, Required: true},
+			"state":  {Kind: KindString, Required: true, Enum: []string{"issued", "renewed", "revoked", "expired", "unknown", "failed"}},
+			"reason": {Kind: KindString, Enum: []string{"unspecified", "key-compromise", "ca-compromise", "affiliation-changed", "superseded", "cessation-of-operation", "privilege-withdrawn"}},
+		},
+	},
+	EventPKICertificateKeyDisclosed: {
+		SchemaVersion: 1, Retention: RetentionAccess,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"serial":          {Kind: KindString, Required: true},
+			"key_algorithm":   {Kind: KindString, Required: true, Enum: []string{"ecdsa-p256", "ecdsa-p384", "ed25519", "rsa-2048", "rsa-3072", "rsa-4096"}},
+			"principal_class": {Kind: KindString, Required: true},
+		},
+	},
+	EventPKICRLPublished: {
+		SchemaVersion: 1, Retention: RetentionSecurity,
+		Outcomes: map[Outcome]bool{OutcomeSuccess: true},
+		Trails:   map[Trail]bool{TrailInstance: true},
+		Schema: Schema{
+			"issuer":     {Kind: KindString, Required: true},
+			"version":    {Kind: KindInt, Required: true},
+			"crl_number": {Kind: KindInt, Required: true},
+			"entries":    {Kind: KindInt, Required: true},
 		},
 	},
 	EventAdapterPlan: adapterLifecycleEvent(Schema{

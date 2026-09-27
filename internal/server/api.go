@@ -182,6 +182,8 @@ type API struct {
 	// Transit is the managed-key surface (#156). Concrete like Dynamic: it
 	// resolves the caller and applies key policy itself.
 	Transit *service.Transit
+	// PKI is the private-PKI surface (#154).
+	PKI *service.PKI
 	// Audits is the trail read/export surface. Concrete like Adapters: it is
 	// principal-keyed and the handler resolves the session before calling it.
 	Audits *service.Audits

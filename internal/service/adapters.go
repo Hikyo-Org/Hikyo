@@ -1677,7 +1677,11 @@ func (s *Adapters) InspectTarget(ctx context.Context, actor Actor, scope domain.
 		if err != nil {
 			return err
 		}
-		out.Workflow, err = adapter.WorkflowForProvider(out.Target.Provider, out.Target.NamePrefix, out.Mapping)
+		if out.Target.Provider == string(adapter.VaultKVProvider) {
+			out.Workflow, err = adapter.VaultKVMapping(out.Target.DestinationOwner, out.Target.DestinationName, out.Target.NamePrefix, out.Mapping)
+		} else {
+			out.Workflow, err = adapter.WorkflowForProvider(out.Target.Provider, out.Target.NamePrefix, out.Mapping)
+		}
 		if err != nil {
 			return err
 		}

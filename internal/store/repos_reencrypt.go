@@ -2,16 +2,18 @@ package store
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/Hikyo-Org/hikyo/internal/authz"
 	"github.com/Hikyo-Org/hikyo/internal/store/pggen"
 	"github.com/Hikyo-Org/hikyo/internal/store/sqlitegen"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // ReencryptRepo is the instance-credential reencrypt surface (#75/#187): the
 // instance-DEK ciphertext columns the `reencrypt --instance` walk moves onto the
 // active version. They live on one repo rather than spread across auth, factors,
-// providers, saml and remotes because they share one operation (OpReencryptInstance)
+// providers, saml, remotes and PKI issuers because they share one operation (OpReencryptInstance)
 // and one walk shape. class=authn/instance: no tenant chain.
 //
 // Versioned tables carry dek_version + row_version, so their re-seal is a
@@ -35,6 +37,8 @@ type ReencryptRepo interface {
 	ReencryptSamlKey(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 	ListRemotesForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
 	ReencryptRemote(ctx context.Context, p authz.Proof, id string, newCiphertext, oldCiphertext []byte) (bool, error)
+	ListPkiIssuersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error)
+	ReencryptPkiIssuer(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error)
 }
 
 // ReencryptInstanceRow is one instance credential row the walk considers: its id
@@ -440,5 +444,51 @@ func (r pgReencrypt) ReencryptSelfConfigSeedInput(ctx context.Context, p authz.P
 		return false, err
 	}
 	n, err := r.q.ReencryptSelfConfigSeedInput(ctx, pggen.ReencryptSelfConfigSeedInputParams{Ct: newCiphertext, OldCt: oldCiphertext, DekVersion: int32(dekVersion), NodeID: id, RowVersion: int32(rowVersion)})
+	return n == 1, err
+}
+
+func (r sqliteReencrypt) ListPkiIssuersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListPkiIssuers, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListPkiIssuersForReencrypt(ctx, sqlitegen.ListPkiIssuersForReencryptParams{ID: cursor, Limit: int64(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.EncryptedPrivateKey, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+	}
+	return out, nil
+}
+
+func (r sqliteReencrypt) ReencryptPkiIssuer(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptPkiIssuer, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptPkiIssuer(ctx, sqlitegen.ReencryptPkiIssuerParams{Ct: newCiphertext, DekVersion: sql.NullInt64{Int64: int64(dekVersion), Valid: true}, ID: id, RowVersion: int64(rowVersion)})
+	return n == 1, err
+}
+
+func (r pgReencrypt) ListPkiIssuersForReencrypt(ctx context.Context, p authz.Proof, cursor string, limit int) ([]ReencryptInstanceRow, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptListPkiIssuers, r.tok); err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListPkiIssuersForReencrypt(ctx, pggen.ListPkiIssuersForReencryptParams{Cursor: cursor, PageLimit: int32(limit)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReencryptInstanceRow, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, ReencryptInstanceRow{ID: x.ID, Ciphertext: x.EncryptedPrivateKey, DEKVersion: uint32(x.DekVersion), RowVersion: uint32(x.RowVersion)})
+	}
+	return out, nil
+}
+
+func (r pgReencrypt) ReencryptPkiIssuer(ctx context.Context, p authz.Proof, id string, newCiphertext []byte, dekVersion, rowVersion uint32) (bool, error) {
+	if _, err := authz.Verify(p, authz.StoreReencryptPkiIssuer, r.tok); err != nil {
+		return false, err
+	}
+	n, err := r.q.ReencryptPkiIssuer(ctx, pggen.ReencryptPkiIssuerParams{Ct: newCiphertext, DekVersion: pgtype.Int8{Int64: int64(dekVersion), Valid: true}, ID: id, RowVersion: int64(rowVersion)})
 	return n == 1, err
 }

@@ -131,6 +131,17 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 		"transitVerify":     "verification verdict only, crypto-use required",
 		"transitHMAC":       "caller-supplied input, crypto-use required",
 		"transitVerifyHMAC": "verification verdict only, crypto-use required",
+		// Private PKI (#154): a workload requests and manages its OWN service
+		// certificate. A generated key is created for the caller and disclosed
+		// once (never a stored Hikyo value); the rest is public certificate
+		// material and metadata.
+		"issueCertificate":        "display-once generated key or CSR certificate issuance",
+		"renewCertificate":        "certificate lifecycle, no stored value",
+		"revokeCertificate":       "certificate lifecycle, no stored value",
+		"listCertificates":        "public certificates and metadata",
+		"showCertificate":         "public certificate and metadata",
+		"getCertificateCrl":       "public CRL",
+		"listCertificateProfiles": "bound profile policy, no stored value",
 	}
 	seen := make(map[string]bool, len(wantMachine))
 	for _, operation := range operations {

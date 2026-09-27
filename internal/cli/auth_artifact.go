@@ -118,6 +118,11 @@ var authRuleRows = []authRuleRow{
 		"transit key create", "transit key configure", "transit key rotate", "transit key trim",
 		"transit key disable", "transit key enable", "transit key retire", "transit key compromise",
 		"transit key schedule-deletion", "transit key cancel-deletion",
+		"pki issuer list", "pki issuer show", "pki issuer create-root", "pki issuer create-intermediate",
+		"pki issuer import", "pki issuer rotate", "pki issuer install", "pki issuer retire", "pki issuer revoke",
+		"pki issuer release-hold", "pki issuer crl",
+		"pki profile list", "pki profile show", "pki profile create", "pki profile update", "pki profile delete",
+		"pki profile bind", "pki profile unbind",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations(
 		"env list", "env show", "env create", "env delete",
@@ -133,6 +138,7 @@ var authRuleRows = []authRuleRow{
 		"transit key list", "transit key show",
 		"transit encrypt", "transit decrypt", "transit rewrap", "transit datakey",
 		"transit sign", "transit verify", "transit hmac", "transit hmac-verify",
+		"cert profiles", "cert list", "cert show", "cert issue", "cert renew", "cert revoke", "cert crl",
 	)},
 	{Kinds: machineOnly, Operations: authOperations(
 		"compose render", "compose sync", "compose doctor",

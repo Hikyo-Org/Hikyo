@@ -86,6 +86,11 @@ const (
 	// and neither is seeded by a template.
 	CapCryptoUse    Capability = "crypto-use"
 	CapCryptoManage Capability = "crypto-manage"
+	// CapIssueCertificate is the private-PKI amendment's atom (#154, pki ADR
+	// D4): request, renew and revoke X.509 leaf certificates through an
+	// instance certificate profile bound to the environment. It reads and
+	// writes no value, definition or grant, and is never implied by `read`.
+	CapIssueCertificate Capability = "issue-certificate"
 )
 
 // capabilityLevels is the closed atom table: each atom mapped to the DEEPEST
@@ -103,6 +108,7 @@ var capabilityLevels = map[Capability]Level{
 
 	CapReportDeliveryStatus: LevelEnv,
 	CapCryptoUse:            LevelEnv,
+	CapIssueCertificate:     LevelEnv,
 
 	CapDefinitionsEdit:  LevelProject,
 	CapProjectSettings:  LevelProject,

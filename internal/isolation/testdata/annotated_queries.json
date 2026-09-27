@@ -943,6 +943,12 @@
   },
   {
     "engine": "postgres",
+    "name": "HoldRestoredPKIIssuers",
+    "annotation": "authn-resolution",
+    "hash": "fd13729c16a828f1f75a5490917c88c0abdcd00d60326ba1732b0a8563eeef1f"
+  },
+  {
+    "engine": "postgres",
     "name": "InsertAccount",
     "annotation": "authn-resolution",
     "hash": "e49a478aa77279183d2d478de60367f0c515bc5bfe4cb5d8646e105088bd215a"
@@ -1324,6 +1330,12 @@
     "name": "ListPasswordCredsForReencrypt",
     "annotation": "authn-resolution",
     "hash": "e7a15ddf11fb2cec3d152f62218af861cfa158a0b575faf6b010b89e52396c7d"
+  },
+  {
+    "engine": "postgres",
+    "name": "ListPkiIssuersForReencrypt",
+    "annotation": "instance-scoped",
+    "hash": "cd67b0fbc1a86de1e674efe05ede36d9b8311aad83e5ec2ff748816468b5e0b9"
   },
   {
     "engine": "postgres",
@@ -1798,6 +1810,12 @@
     "name": "ReencryptPasswordCred",
     "annotation": "authn-resolution",
     "hash": "a52ab6c3f463b2287608749032f766d8e7f02cac5790dc73f099ad7eb24475bf"
+  },
+  {
+    "engine": "postgres",
+    "name": "ReencryptPkiIssuer",
+    "annotation": "instance-scoped",
+    "hash": "d52aa0359d6f30cc87c6e7edc4e5782191e816876bfddfcded2306807291d6f4"
   },
   {
     "engine": "postgres",
@@ -3055,6 +3073,12 @@
   },
   {
     "engine": "sqlite",
+    "name": "HoldRestoredPKIIssuers",
+    "annotation": "authn-resolution",
+    "hash": "fd13729c16a828f1f75a5490917c88c0abdcd00d60326ba1732b0a8563eeef1f"
+  },
+  {
+    "engine": "sqlite",
     "name": "InsertAccount",
     "annotation": "authn-resolution",
     "hash": "53162bffe9c6fec06198d7b5430de4813739f09f157f3e9fb5748fe66fa97c62"
@@ -3436,6 +3460,12 @@
     "name": "ListPasswordCredsForReencrypt",
     "annotation": "authn-resolution",
     "hash": "d05b767efd734b08508c8612835cc67d775d786fad8ccef6c6cd4b4cecd1afc6"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ListPkiIssuersForReencrypt",
+    "annotation": "instance-scoped",
+    "hash": "c3d6608b2550a202d688d7060eb764ad5bcda0fa8d78df316f78b4e8ee69c626"
   },
   {
     "engine": "sqlite",
@@ -3910,6 +3940,12 @@
     "name": "ReencryptPasswordCred",
     "annotation": "authn-resolution",
     "hash": "a52ab6c3f463b2287608749032f766d8e7f02cac5790dc73f099ad7eb24475bf"
+  },
+  {
+    "engine": "sqlite",
+    "name": "ReencryptPkiIssuer",
+    "annotation": "instance-scoped",
+    "hash": "d52aa0359d6f30cc87c6e7edc4e5782191e816876bfddfcded2306807291d6f4"
   },
   {
     "engine": "sqlite",

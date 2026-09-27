@@ -93,10 +93,10 @@ func TestRegistryWellFormed(t *testing.T) {
 		}
 		// Outcome licensing (invariant 12): intent / unknown / disconnected
 		// only where the envelope section licenses them.
-		if spec.Outcomes[OutcomeIntent] && typ != EventAuditExportStarted && typ != EventAdapterPushIntent && typ != EventUpdateRequested && typ != EventDynamicLeaseTransitionIntent {
+		if spec.Outcomes[OutcomeIntent] && typ != EventAuditExportStarted && typ != EventAdapterPushIntent && typ != EventUpdateRequested && typ != EventDynamicLeaseTransitionIntent && typ != EventPKICertificateTransitionIntent {
 			t.Errorf("%s: intent outcome licensed outside the INTENT-phase set", typ)
 		}
-		if spec.Outcomes[OutcomeUnknown] && typ != EventAdapterPushOutcome && typ != EventDynamicLeaseTransitionOutcome {
+		if spec.Outcomes[OutcomeUnknown] && typ != EventAdapterPushOutcome && typ != EventDynamicLeaseTransitionOutcome && typ != EventPKICertificateTransitionOutcome {
 			t.Errorf("%s: unknown outcome licensed outside adapter.push_outcome", typ)
 		}
 		if spec.Outcomes[OutcomeDisconnected] && typ != EventAuditExportCompleted {

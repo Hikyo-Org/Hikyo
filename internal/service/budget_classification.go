@@ -97,6 +97,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpDynamicProviderConfigure, authz.OpDynamicProviderCredentialSet, authz.OpLeaseMint)
 	add(budgetClassDefaultExpensive, "ssh certificates: in-request key generation (RSA-3072 is the costly case) and signing",
 		authz.OpSSHCAConfigure, authz.OpSSHCARotate, authz.OpSSHCertIssue)
+	add(budgetClassDefaultExpensive, "private PKI: in-request signing, and key generation for a generated-key issuance (#154)",
+		authz.OpCertificateIssue, authz.OpCertificateRenew)
 
 	// ---- EXEMPT ----
 	add(budgetClassExempt, "self-configuration: one unresolved durable apply, 10 intents/minute/instance and 30-second preparation deadline",
@@ -173,6 +175,12 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpSAMLProviderGet, authz.OpSAMLProviderList, authz.OpSAMLProviderPut,
 		authz.OpSAMLProviderPatch, authz.OpSAMLProviderDelete, authz.OpSAMLProviderRefreshMetadata,
 		authz.OpSAMLSPKeyList, authz.OpSAMLSPKeyRotate, authz.OpSAMLSPKeyRetire, authz.OpSAMLSPKeyCompromiseRetire,
+		// private PKI issuers and profiles (#154): instance-config, human
+		// session, the SAML SP key custody shape
+		authz.OpPKIIssuerInspect, authz.OpPKIIssuerCreate, authz.OpPKIIssuerInstall, authz.OpPKIIssuerRotate,
+		authz.OpPKIIssuerRetire, authz.OpPKIIssuerRevoke, authz.OpPKIIssuerReleaseHold, authz.OpPKIIssuerPublishCRL,
+		authz.OpPKIProfileInspect, authz.OpPKIProfileCreate, authz.OpPKIProfileUpdate, authz.OpPKIProfileDelete,
+		authz.OpPKIProfileBind, authz.OpPKIProfileUnbind,
 		// SCIM (provisioning bindings, credentials, mappings, and the provisioning verbs)
 		authz.OpSCIMBindingCreate, authz.OpSCIMBindingGet, authz.OpSCIMBindingList, authz.OpSCIMBindingDelete,
 		authz.OpSCIMCredentialMint, authz.OpSCIMCredentialGet, authz.OpSCIMCredentialList, authz.OpSCIMCredentialRevoke,
@@ -220,6 +228,9 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// category above
 		authz.OpTransitKeyCreate, authz.OpTransitKeyInspect, authz.OpTransitKeyConfigure,
 		authz.OpTransitKeyRotate, authz.OpTransitKeyLifecycle, authz.OpTransitKeyTrim,
+		// private PKI (#154): certificate reads and revocation write one row
+		// and sign nothing; the CRL is re-signed by the worker, not the request
+		authz.OpCertificateInspect, authz.OpCertificateRevoke,
 	)
 
 	return m

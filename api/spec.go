@@ -55,6 +55,8 @@ var SpecYAML []byte
 // revocation, the host trust bundle and the KRL.
 // Revision 7 adds transit: managed-key lifecycle and the cryptographic
 // data plane (#156, transit ADR).
+// Revision 7 adds the private PKI (#154): instance CA issuers and certificate
+// profiles, and environment-scoped certificate issuance.
 const Revision = 7
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
