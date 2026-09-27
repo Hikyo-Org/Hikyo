@@ -212,8 +212,9 @@ adapters:
   --aws-auth assembles the access descriptor; only static reads a secret (the
   secret access key, like any credential). ambient, assume-role and
   web-identity use this server's AWS identity and need the node operator's
-  HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow. --aws-* flags also apply to
-  adapter update --origin and adapter credential set.
+  HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow. web-identity also needs the
+  server to run with AWS_WEB_IDENTITY_TOKEN_FILE set. --aws-* flags also
+  apply to adapter update --origin and adapter credential set.
 
 dynamic secrets:
   hikyo dynamic-provider create --provider postgres --origin <postgres://user@host:port/db>
