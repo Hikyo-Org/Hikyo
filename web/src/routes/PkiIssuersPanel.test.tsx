@@ -69,3 +69,19 @@ it('lists issuer versions with public material only, shows a pending CSR, and ro
     await unmount();
   }
 });
+
+it('offers rotation only for the numerically newest string version', async () => {
+  vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json({ issuers: [
+    issuer({ version: '2', state: 'retiring' }),
+    issuer({ id: 'pkii_00000000-0000-7000-8000-000000000010', version: '10' }),
+  ] }))));
+  const { container, unmount } = await renderForm(<PkiIssuersPanel />);
+  try {
+    await settleTask();
+    const rows = container.querySelectorAll('[data-pki-issuer]');
+    expect([...rows[0]!.querySelectorAll('button')].some((button) => button.textContent === 'Rotate')).toBe(false);
+    expect([...rows[1]!.querySelectorAll('button')].some((button) => button.textContent === 'Rotate')).toBe(true);
+  } finally {
+    await unmount();
+  }
+});
