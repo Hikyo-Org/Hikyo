@@ -216,10 +216,11 @@ func (s *fileSyncSession) pass(ctx context.Context, ios IO) (fileSyncOutcome, er
 		// refuses their flush is the same outage offline serve exists for.
 		return s.offline(ctx, ios, dest, err)
 	}
-	present := ""
+	present, presentStamp := "", ""
 	if stored := s.loadCursor(); stored != nil && stored.Credential == credentialFingerprint(s.token) && stored.ConfigDigest == s.configDigest() {
 		if st, ok, err := dest.Intact(s.keys, s.cfg.Target, s.policy, s.fileNames()); err == nil && ok && st.Stamp == stored.Stamp {
 			present = stored.Cursor
+			presentStamp = st.Stamp
 		}
 	}
 	resp, ferr := s.fetch(ctx, present)
@@ -231,10 +232,7 @@ func (s *fileSyncSession) pass(ctx context.Context, ios IO) (fileSyncOutcome, er
 		generation = *resp.FileTargetGeneration
 	}
 	if resp.Current {
-		stamp := ""
-		if stored := s.loadCursor(); stored != nil {
-			stamp = stored.Stamp
-		}
+		stamp := presentStamp
 		fmt.Fprintf(ios.Stderr, "up to date: revision %d, generation %s\n", resp.Revision, stamp)
 		s.report(ctx, ios, "current", resp.Revision, generation, stamp)
 		return fileSyncCurrent, nil

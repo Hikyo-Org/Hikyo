@@ -262,11 +262,11 @@ compose:                                           machine credential only
   hikyo compose sync [--project-directory DIR] [--token-file PATH]
   hikyo compose doctor [--project-directory DIR] [-o table|json] [--token-file PATH]
 
-file sync:                                         machine credential only
+file sync:
   hikyo file-sync render --config FILE [--token-file PATH]
-                                                 pull the bound target, publish one generation
+                                                 machine credential only; pull bound target, publish one generation
   hikyo file-sync doctor --config FILE [-o table|json]
-                                                 local checks only, no network
+                                                 local checks only, no network or credential
 
   the config file is client-local and names the destination directory; the
   server never learns it. render is one-shot or poll-until-current (refresh.mode),

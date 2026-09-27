@@ -32,6 +32,8 @@ func TestVerbAuthKindsCoverEveryVerb(t *testing.T) {
 		want      bool
 	}{
 		{operation: "logout", kind: AuthKindHumanSession, want: true},
+		{operation: "file-sync doctor", kind: AuthKindUnauthenticated, want: true},
+		{operation: "file-sync render", kind: AuthKindHumanSession, want: false},
 		{operation: "logout", kind: AuthKindMachineCredential, want: false},
 		{operation: "adapter sync", kind: AuthKindMachineCredential, want: false},
 		{operation: "definitions export", kind: AuthKindMachineCredential, want: false},
