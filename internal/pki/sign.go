@@ -140,9 +140,11 @@ func SignIntermediate(parent Parent, public crypto.PublicKey, subject Subject, n
 
 // VerifyCA checks that certDER is a usable issuer for key: a CA certificate
 // with certificate and CRL signing, currently valid, whose public key is the
-// sealed key's, and which chains to one of the supplied chain certificates
-// when a chain is given (a self-signed certificate must verify against
-// itself).
+// sealed key's, and which chains to the last supplied chain certificate,
+// using earlier entries as intermediates. With no chain, the certificate
+// must be self-signed. A self-issued trust anchor must verify its own
+// signature; a cross-signed rollover is verified against the supplied parent.
+// Every rejection wraps ErrInvalidCA.
 func VerifyCA(certDER []byte, public crypto.PublicKey, chain []*x509.Certificate, now time.Time) (*x509.Certificate, error) {
 	cert, err := x509.ParseCertificate(certDER)
 	if err != nil {
@@ -222,8 +224,9 @@ type Leaf struct {
 	CRLDistributionPoints []string
 }
 
-// LeafWindow computes a leaf's validity window and refuses one that would
-// outlive the issuer.
+// LeafWindow returns [now - 1 minute, now + ttl], allowing clock skew. It
+// returns ErrIssuerExpiry if the end exceeds the issuer's NotAfter; equality
+// is allowed. The caller must validate ttl.
 func LeafWindow(issuer *x509.Certificate, now time.Time, ttl time.Duration) (time.Time, time.Time, error) {
 	notBefore, notAfter := now.Add(-backdate), now.Add(ttl)
 	if notAfter.After(issuer.NotAfter) {
@@ -314,7 +317,8 @@ var reasonCodes = map[RevocationReason]int{
 }
 
 // ParseRequestedReason accepts the reasons a caller may request. ca-compromise
-// is system-only: it is recorded when an issuer is revoked.
+// is system-only: it is recorded when an issuer is revoked. An empty string
+// selects unspecified; unknown or system-only reasons return an error.
 func ParseRequestedReason(s string) (RevocationReason, error) {
 	if s == "" {
 		return ReasonUnspecified, nil

@@ -327,6 +327,9 @@ func (r pkiQueries) GetIssuer(ctx context.Context, p authz.Proof, id string) (PK
 	return scanPKIIssuer(r.db.QueryRow(ctx, r.db.SQL(`SELECT `+pkiIssuerColumns+` FROM pki_issuers WHERE id=?`), id))
 }
 
+// IssuerKey returns the sealed key and DEK version after verifying the proof.
+// An absent issuer or destroyed key returns ErrNotFound; proof and database
+// errors are propagated.
 func (r pkiQueries) IssuerKey(ctx context.Context, p authz.Proof, id string) ([]byte, uint32, error) {
 	if _, err := authz.Verify(p, authz.StorePKIIssuersKey, r.tok); err != nil {
 		return nil, 0, err
@@ -371,6 +374,9 @@ func nilIfEmpty(b []byte) any {
 	return b
 }
 
+// InstallIssuerCertificate activates a pending issuer only if its row version
+// matches. It reports whether a row changed; a missing or changed issuer returns
+// false without error, while proof and database failures return errors.
 func (r pkiQueries) InstallIssuerCertificate(ctx context.Context, p authz.Proof, m PKIIssuerInstall) (bool, error) {
 	if _, err := authz.Verify(p, authz.StorePKIIssuersInstall, r.tok); err != nil {
 		return false, err
@@ -379,6 +385,9 @@ func (r pkiQueries) InstallIssuerCertificate(ctx context.Context, p authz.Proof,
 	return affectedOne(r.db.Exec(ctx, query, m.CertificateDER, m.ChainPEM, r.db.Stamp(m.NotBefore), r.db.Stamp(m.NotAfter), r.db.Stamp(m.At), m.ID, m.RowVersion))
 }
 
+// TransitionIssuer changes state only when both from and rowVersion match,
+// incrementing the row version. A missing or changed issuer returns false
+// without error; proof and database failures return errors.
 func (r pkiQueries) TransitionIssuer(ctx context.Context, p authz.Proof, id, from, to string, rowVersion int64, at time.Time) (bool, error) {
 	if _, err := authz.Verify(p, authz.StorePKIIssuersTransition, r.tok); err != nil {
 		return false, err
@@ -401,6 +410,8 @@ func (r pkiQueries) DestroyIssuerKey(ctx context.Context, p authz.Proof, id, fro
 	return affectedOne(r.db.Exec(ctx, query, to, r.db.Stamp(at), id, from, rowVersion))
 }
 
+// SetIssuerHold changes the restore hold only at the expected row version.
+// It reports whether a row changed and propagates proof and database errors.
 func (r pkiQueries) SetIssuerHold(ctx context.Context, p authz.Proof, id string, hold bool, rowVersion int64, at time.Time) (bool, error) {
 	if _, err := authz.Verify(p, authz.StorePKIIssuersHold, r.tok); err != nil {
 		return false, err
@@ -414,7 +425,8 @@ func (r pkiQueries) SetIssuerHold(ctx context.Context, p authz.Proof, id string,
 }
 
 // CountLiveCertificates counts leaves of one issuer version that relying
-// parties may still accept: issued, renewed or unknown, not yet expired.
+// parties may still accept, plus reserved issuances: issuing, issued, renewed
+// or unknown, with not_after strictly later than now.
 func (r pkiQueries) CountLiveCertificates(ctx context.Context, p authz.Proof, issuerID string, now time.Time) (int64, error) {
 	if _, err := authz.Verify(p, authz.StorePKICertificatesCountLive, r.tok); err != nil {
 		return 0, err
@@ -424,8 +436,10 @@ func (r pkiQueries) CountLiveCertificates(ctx context.Context, p authz.Proof, is
 	return n, err
 }
 
-// RevokeLiveCertificates is the compromised-issuer cascade: every live leaf of
-// the version is revoked with the system-only ca-compromise reason.
+// RevokeLiveCertificates revokes all issuing, issued, renewed, and unknown
+// rows for an issuer, regardless of expiry, using the supplied reason. The
+// compromise caller supplies ca-compromise. It returns the affected count
+// and propagates proof and database errors.
 func (r pkiQueries) RevokeLiveCertificates(ctx context.Context, p authz.Proof, issuerID, reason string, at time.Time) (int64, error) {
 	if _, err := authz.Verify(p, authz.StorePKICertificatesRevokeLive, r.tok); err != nil {
 		return 0, err
@@ -435,6 +449,10 @@ func (r pkiQueries) RevokeLiveCertificates(ctx context.Context, p authz.Proof, i
 	return r.db.Exec(ctx, query, stamp, reason, stamp, issuerID)
 }
 
+// RevokedEntries returns unexpired revoked and unknown serials, ordered by
+// serial, for the issuer's CRL. Missing revocation times and reasons fall back
+// to the update time and unspecified reason. Proof, database, and timestamp
+// errors are propagated.
 func (r pkiQueries) RevokedEntries(ctx context.Context, p authz.Proof, issuerID string, now time.Time) ([]PKIRevokedEntry, error) {
 	if _, err := authz.Verify(p, authz.StorePKICertificatesRevokedEntries, r.tok); err != nil {
 		return nil, err
@@ -456,6 +474,10 @@ func revokedEntries(ctx context.Context, db adapterDB, issuerID string, now time
 	})
 }
 
+// PublishCRL stores DER and update times only for an active or retiring issuer
+// whose CRL number equals previousNumber. It returns false without error when
+// no row matches; proof and database errors are propagated. The caller must
+// choose a number greater than previousNumber.
 func (r pkiQueries) PublishCRL(ctx context.Context, p authz.Proof, issuerID string, der []byte, previousNumber, number int64, thisUpdate, nextUpdate time.Time) (bool, error) {
 	if _, err := authz.Verify(p, authz.StorePKIIssuersPublishCRL, r.tok); err != nil {
 		return false, err
@@ -463,8 +485,9 @@ func (r pkiQueries) PublishCRL(ctx context.Context, p authz.Proof, issuerID stri
 	return publishCRL(ctx, r.db, issuerID, der, previousNumber, number, thisUpdate, nextUpdate)
 }
 
-// publishCRL stores a CRL under a CAS on the prior CRL number, so two nodes
-// racing to republish cannot move the number backwards.
+// publishCRL stores a CRL for an active or retiring issuer under a CAS on the
+// prior CRL number. It returns false without error when no row matches. The
+// caller must supply an increasing number; this helper does not enforce it.
 func publishCRL(ctx context.Context, db adapterDB, issuerID string, der []byte, previousNumber, number int64, thisUpdate, nextUpdate time.Time) (bool, error) {
 	query := db.SQL(`UPDATE pki_issuers SET crl_der=?, crl_number=?, crl_this_update=?, crl_next_update=? WHERE id=? AND crl_number=? AND state IN ('active','retiring')`)
 	return affectedOne(db.Exec(ctx, query, der, number, db.Stamp(thisUpdate), db.Stamp(nextUpdate), issuerID, previousNumber))
@@ -512,6 +535,9 @@ func (r pkiQueries) CreateProfile(ctx context.Context, p authz.Proof, m PKIProfi
 	return err
 }
 
+// UpdateProfile replaces stored policy JSON at the expected row version and
+// reports whether a row changed. The caller must validate and check narrowing;
+// proof and database errors are propagated.
 func (r pkiQueries) UpdateProfile(ctx context.Context, p authz.Proof, id, policy string, rowVersion int64, at time.Time) (bool, error) {
 	if _, err := authz.Verify(p, authz.StorePKIProfilesUpdate, r.tok); err != nil {
 		return false, err
@@ -520,6 +546,9 @@ func (r pkiQueries) UpdateProfile(ctx context.Context, p authz.Proof, id, policy
 		policy, r.db.Stamp(at), id, rowVersion))
 }
 
+// DeleteProfile removes a profile's bindings and then the profile in the
+// caller's transaction, reporting whether the profile existed. Proof and
+// database errors are propagated.
 func (r pkiQueries) DeleteProfile(ctx context.Context, p authz.Proof, id string) (bool, error) {
 	if _, err := authz.Verify(p, authz.StorePKIProfilesDelete, r.tok); err != nil {
 		return false, err
@@ -590,6 +619,8 @@ func (r pkiQueries) BoundProfile(ctx context.Context, p authz.Proof, name string
 	return scanPKIProfile(r.db.QueryRow(ctx, query, name, chain.Org, chain.Project, chain.Env))
 }
 
+// BoundProfiles lists profiles bound to the proof's environment or whole
+// project, ordered by name. Proof, database, and timestamp errors are returned.
 func (r pkiQueries) BoundProfiles(ctx context.Context, p authz.Proof) ([]PKIProfile, error) {
 	chain, err := authz.Verify(p, authz.StorePKIProfilesBoundList, r.tok)
 	if err != nil {
@@ -629,6 +660,9 @@ func (r pkiQueries) GetCertificate(ctx context.Context, p authz.Proof, id string
 	return scanPKICertificate(r.db.QueryRow(ctx, query, id, chain.Org, chain.Project, chain.Env))
 }
 
+// ListCertificates returns at most 500 rows in the proof's environment, ordered
+// by creation time and ID descending. Proof, database, and timestamp errors
+// are propagated.
 func (r pkiQueries) ListCertificates(ctx context.Context, p authz.Proof) ([]PKICertificate, error) {
 	chain, err := authz.Verify(p, authz.StorePKICertificatesList, r.tok)
 	if err != nil {
@@ -682,6 +716,9 @@ func (r pkiQueries) FenceIssuance(ctx context.Context, p authz.Proof, issuerID s
 	return affectedOne(r.db.Exec(ctx, r.db.SQL(`UPDATE pki_issuers SET issued_count=issued_count+1 WHERE id=? AND state='active' AND restore_hold=0`), issuerID))
 }
 
+// CreateCertificate reserves an issuing row using the environment from the
+// verified proof. It stores metadata and the deadline, without a certificate or
+// private key, and propagates proof and database errors.
 func (r pkiQueries) CreateCertificate(ctx context.Context, p authz.Proof, m PKICertificateCreate) error {
 	chain, err := authz.Verify(p, authz.StorePKICertificatesCreate, r.tok)
 	if err != nil {
@@ -708,11 +745,17 @@ func (r pkiQueries) certificateCAS(ctx context.Context, p authz.Proof, op authz.
 	return affectedOne(r.db.Exec(ctx, query, append(args, chain.Org, chain.Project, chain.Env)...))
 }
 
+// FinishCertificate stores the signed DER and marks an issuing row issued in
+// the proof's environment. Missing rows or other states return false without
+// error; proof and database failures return errors.
 func (r pkiQueries) FinishCertificate(ctx context.Context, p authz.Proof, id string, der []byte, at time.Time) (bool, error) {
 	return r.certificateCAS(ctx, p, authz.StorePKICertificatesFinish, `state='issued', certificate_der=?, updated_at=?`,
 		`id=? AND state='issuing'`, der, r.db.Stamp(at), id)
 }
 
+// FailCertificate marks an issuing row failed in the proof's environment.
+// Missing rows or other states return false without error; proof and database
+// failures return errors.
 func (r pkiQueries) FailCertificate(ctx context.Context, p authz.Proof, id string, at time.Time) (bool, error) {
 	return r.certificateCAS(ctx, p, authz.StorePKICertificatesFail, `state='failed', updated_at=?`,
 		`id=? AND state='issuing'`, r.db.Stamp(at), id)
@@ -726,16 +769,25 @@ func (r pkiQueries) ClaimRenewal(ctx context.Context, p authz.Proof, id, success
 		`id=? AND state='issued' AND renewed_by IS NULL`, successorID, r.db.Stamp(at), id)
 }
 
+// CompleteRenewal marks an issued predecessor renewed only when it names
+// successorID in the proof's environment. It reports whether a row changed and
+// propagates proof and database errors.
 func (r pkiQueries) CompleteRenewal(ctx context.Context, p authz.Proof, id, successorID string, at time.Time) (bool, error) {
 	return r.certificateCAS(ctx, p, authz.StorePKICertificatesCompleteRenewal, `state='renewed', updated_at=?`,
 		`id=? AND state='issued' AND renewed_by=?`, r.db.Stamp(at), id, successorID)
 }
 
+// ReleaseRenewal clears a matching successor claim in the proof's environment,
+// regardless of certificate state. It reports whether a row changed and
+// propagates proof and database errors.
 func (r pkiQueries) ReleaseRenewal(ctx context.Context, p authz.Proof, id, successorID string, at time.Time) (bool, error) {
 	return r.certificateCAS(ctx, p, authz.StorePKICertificatesReleaseRenewal, `renewed_by=NULL, updated_at=?`,
 		`id=? AND renewed_by=?`, r.db.Stamp(at), id, successorID)
 }
 
+// RevokeCertificate marks an issued, renewed, or unknown row revoked in the
+// proof's environment, recording the supplied reason and time. Missing rows or
+// other states return false without error; proof and database errors propagate.
 func (r pkiQueries) RevokeCertificate(ctx context.Context, p authz.Proof, id, reason string, at time.Time) (bool, error) {
 	stamp := r.db.Stamp(at)
 	return r.certificateCAS(ctx, p, authz.StorePKICertificatesRevoke, `state='revoked', revoked_at=?, revocation_reason=?, updated_at=?`,

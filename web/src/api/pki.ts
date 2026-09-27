@@ -58,6 +58,7 @@ export function usePkiIssuers() {
   });
 }
 
+/** Wraps an issuer mutation and invalidates the issuer listing on success. */
 function useIssuerMutation<Input, Result>(fn: (input: Input) => Promise<Result>) {
   const queries = useQueryClient();
   return useMutation({
@@ -84,6 +85,8 @@ export type IssuerDraft = {
   readonly crlUrl: string;
 };
 
+/** Creates an issuer from a trimmed draft, rounding its lifetime from days to
+ * whole seconds, then invalidates the issuer listing on success. */
 export function useCreatePkiIssuer() {
   return useIssuerMutation((draft: IssuerDraft) =>
     parsed(createPkiIssuerOp, {
@@ -101,10 +104,14 @@ export function useCreatePkiIssuer() {
   );
 }
 
+/** Rotates using the server's stored issuer settings and refreshes the issuer
+ * listing on success. Imported issuers still require material through the CLI. */
 export function useRotatePkiIssuer() {
   return useIssuerMutation((issuer: string) => parsed(rotatePkiIssuerOp, { path: { issuer }, body: {} }));
 }
 
+/** Installs a pending issuer's certificate and chain, invalidating the issuer
+ * listing on success. */
 export function useInstallPkiIssuerCertificate() {
   return useIssuerMutation((input: { issuer: string; certificatePem: string; chainPem: string }) =>
     parsed(installPkiIssuerCertificateOp, {
@@ -114,22 +121,30 @@ export function useInstallPkiIssuerCertificate() {
   );
 }
 
+/** Retires the selected key version and invalidates the issuer listing on
+ * success. The server refuses retirement while live certificates remain. */
 export function useRetirePkiIssuer() {
   return useIssuerMutation((input: { issuer: string; version: number }) =>
     parsed(retirePkiIssuerOp, { path: { issuer: input.issuer, version: input.version } }),
   );
 }
 
+/** Revokes the selected issuer version and its live certificates, then
+ * invalidates the issuer listing on success. */
 export function useRevokePkiIssuer() {
   return useIssuerMutation((input: { issuer: string; version: number }) =>
     parsed(revokePkiIssuerOp, { path: { issuer: input.issuer, version: input.version } }),
   );
 }
 
+/** Releases restore holds for all versions of a named issuer and invalidates
+ * the issuer listing on success. */
 export function useReleasePkiIssuerHold() {
   return useIssuerMutation((issuer: string) => parsed(releasePkiIssuerHoldOp, { path: { issuer } }));
 }
 
+/** Publishes a fresh CRL for one issuer version and invalidates the issuer
+ * listing on success. */
 export function usePublishPkiIssuerCrl() {
   return useIssuerMutation((input: { issuer: string; version: number }) =>
     parsed(publishPkiIssuerCrlOp, { path: { issuer: input.issuer, version: input.version } }),
@@ -144,6 +159,7 @@ export async function fetchIssuerCrl(issuer: string, version: number): Promise<s
 
 // ---- Profiles ---------------------------------------------------------------
 
+/** Queries instance certificate profiles, including their policies and bindings. */
 export function usePkiProfiles() {
   return useQuery({
     queryKey: profilesKey,
@@ -151,6 +167,7 @@ export function usePkiProfiles() {
   });
 }
 
+/** Wraps a profile mutation and invalidates the profile listing on success. */
 function useProfileMutation<Input, Result>(fn: (input: Input) => Promise<Result>) {
   const queries = useQueryClient();
   return useMutation({
@@ -162,7 +179,9 @@ function useProfileMutation<Input, Result>(fn: (input: Input) => Promise<Result>
 }
 
 /** parsePolicy validates a pasted policy document against the contract's own
- * schema, so a typo is refused in the page before any request is sent. */
+ * schema, so a typo is refused in the page before any request is sent. Returns
+ * a request body with durations in seconds, or a validation message for invalid
+ * JSON or schema failures; semantic policy validation remains on the server. */
 export function parsePolicy(text: string): PkiPolicyBody | string {
   let value: unknown;
   try {
@@ -190,6 +209,8 @@ export function policyText(policy: PkiPolicy): string {
   return JSON.stringify(policy, (_key, value: unknown) => (typeof value === 'bigint' ? Number(value) : value), 2);
 }
 
+/** Creates a profile with a trimmed name and invalidates the profile listing
+ * on success. The server validates the supplied policy. */
 export function useCreatePkiProfile() {
   return useProfileMutation((input: { name: string; policy: PkiPolicyBody }) =>
     parsed(createPkiProfileOp, { body: { name: input.name.trim(), policy: input.policy } }),
@@ -207,10 +228,13 @@ export function useUpdatePkiProfile() {
   );
 }
 
+/** Deletes a profile and its bindings, invalidating the profile listing on success. */
 export function useDeletePkiProfile() {
   return useProfileMutation((name: string) => ok(deletePkiProfileOp, { path: { profile: name } }));
 }
 
+/** Binds a profile to a project or one environment and invalidates the profile
+ * listing on success. An empty environment selects the whole project. */
 export function useBindPkiProfile() {
   return useProfileMutation((input: { name: string; org: string; project: string; environment: string }) =>
     parsed(bindPkiProfileOp, {
@@ -224,6 +248,7 @@ export function useBindPkiProfile() {
   );
 }
 
+/** Removes a profile binding and invalidates the profile listing on success. */
 export function useUnbindPkiProfile() {
   return useProfileMutation((input: { name: string; binding: string }) =>
     parsed(unbindPkiProfileOp, { path: { profile: input.name, binding: input.binding } }),
@@ -244,8 +269,10 @@ export type CertificateRow = { readonly environmentId: string; readonly environm
 
 /**
  * useCertificates lists certificates across a project's environments, the
- * `useLeases` fan-out. Metadata and public certificates only: a private key is
- * never stored, so it is never listed.
+ * `useLeases` fan-out, with up to 500 records per environment. Pending or
+ * failed queries contribute no rows unless cached data is available; the
+ * combined flags indicate that the listing may be incomplete. Metadata and
+ * public certificates only: a private key is never stored, so it is never listed.
  */
 export function useCertificates(p: ProjectRef, environments: readonly EnvRef[]) {
   const transport = useTransport();
@@ -270,7 +297,8 @@ export function useCertificates(p: ProjectRef, environments: readonly EnvRef[]) 
   });
 }
 
-/** useCertificateProfiles lists the profiles bound to one environment. */
+/** useCertificateProfiles lists the profiles bound to one environment.
+ * An empty environment disables the query. */
 export function useCertificateProfiles(p: ProjectRef, environment: string) {
   const transport = useTransport();
   return useQuery({
@@ -284,9 +312,9 @@ export function useCertificateProfiles(p: ProjectRef, environment: string) {
   });
 }
 
-/** useRefreshCertificates re-reads one environment's listing, on the success
- * AND the failure path of an issuance: a request whose response was lost may
- * still have committed a certificate. */
+/** useRefreshCertificates returns a callback that invalidates one environment's
+ * listing. Issuance callers invoke it on both success and failure because a
+ * request whose response was lost may still have committed a certificate. */
 export function useRefreshCertificates(p: ProjectRef): (environment: string) => void {
   const queries = useQueryClient();
   return (environment: string) => {
@@ -303,6 +331,8 @@ export type IssueDraft = {
   readonly ttlHours: number | null;
 };
 
+/** Builds the shared issuance fields, omitting empty names and lists. A null
+ * lifetime selects the profile default; hours are rounded to whole seconds. */
 function issueBody(draft: IssueDraft) {
   return {
     profile: draft.profile,
@@ -340,6 +370,8 @@ export type GeneratedCertificate = { readonly certificate: Certificate; readonly
  * whole contract is that it lives in exactly one place, the dialog that shows
  * it once. The caller must run the mint reauthentication ceremony first, and
  * passes its `useTransport()` so a workspace issues on the remote it shows.
+ * Request and response-validation errors reject the promise; a response without
+ * a private key also throws, even though the certificate may already exist.
  */
 export async function issueGeneratedCertificate(
   p: ProjectRef & { readonly environment: string },
@@ -362,6 +394,8 @@ export async function issueGeneratedCertificate(
   return { certificate: result.certificate, privateKeyPem: result.private_key_pem };
 }
 
+/** Renews with the existing public key and invalidates the environment's
+ * certificate listing on success. */
 export function useRenewCertificate(p: ProjectRef) {
   const refresh = useRefreshCertificates(p);
   const transport = useTransport();
@@ -383,6 +417,8 @@ export type RevocationReason =
   | 'cessation-of-operation'
   | 'privilege-withdrawn';
 
+/** Revokes with the selected reason and invalidates the environment's
+ * certificate listing on success. */
 export function useRevokeCertificate(p: ProjectRef) {
   const refresh = useRefreshCertificates(p);
   const transport = useTransport();
@@ -442,8 +478,9 @@ export function pkiAdminRefusalText(error: unknown, action: string): string {
   return `Could not ${action}.`;
 }
 
-/** certificateRefusalText names a certificate refusal before anything was
- * issued: the server said no, so nothing exists to revoke. */
+/** certificateRefusalText formats an API or unknown error for a certificate
+ * action. It does not determine whether issuance committed; use issueFailureText
+ * for failures after an issuance request was sent. */
 export function certificateRefusalText(error: unknown, action: string): string {
   if (error instanceof ApiError) {
     switch (error.status) {
