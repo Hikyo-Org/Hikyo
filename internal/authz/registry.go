@@ -1284,8 +1284,8 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	StoreProjectsListAll:     true,
 	// Private PKI (#154) reads. IssuerKey and IssuerForSigning return sealed
 	// key ciphertext for the in-process signer, which is still a read.
-	StorePKIIssuersList: true, StorePKIIssuersGet: true, StorePKIIssuersKey: true,
-	StorePKIIssuersPublic: true, StorePKIIssuersActivePublic: true, StorePKIIssuersSigning: true,
+	StorePKIIssuersList: true, StorePKIIssuersGet: true,
+	StorePKIIssuersPublic: true, StorePKIIssuersActivePublic: true,
 	StorePKIProfilesList: true, StorePKIProfilesGet: true, StorePKIProfilesBound: true,
 	StorePKIProfilesBoundList: true, StorePKIBindingsList: true, StorePKICertificatesGet: true,
 	StorePKICertificatesList: true, StorePKICertificatesCountLive: true, StorePKICertificatesRevokedEntries: true,

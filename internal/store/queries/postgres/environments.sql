@@ -87,3 +87,8 @@ WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id
 -- name: SetEnvironmentParameters :execrows
 UPDATE environments SET parameters_json = sqlc.arg(parameters_json)
 WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id) AND id = sqlc.arg(chain_env_id);
+
+-- A certificate's revocation evidence outlives its environment's configuration.
+-- name: CountEnvironmentPKICertificates :one
+SELECT COUNT(*) FROM pki_certificates
+WHERE org_id = sqlc.arg(chain_org_id) AND project_id = sqlc.arg(chain_project_id) AND environment_id = sqlc.arg(chain_env_id);
