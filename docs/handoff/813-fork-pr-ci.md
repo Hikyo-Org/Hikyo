@@ -105,6 +105,36 @@ checks out or runs a file from the fetched commits, the alert becomes real.
 
 ## Known limits
 
+- **Retargeted PRs → merge queue.** `trusted-ci` does not run on `edited`. It
+  must not: a title edit would publish a *skipped* `ci-required`, and a skipped
+  check counts as passing. So a base change used to leave the old result in
+  place. Strict status checks closed that only partly (a head that already
+  contains `main`'s tip needed no update). `main` now requires the **merge
+  queue**. `trusted-ci` also runs on `merge_group` and validates the exact
+  merge result against the real base with the full suite. Like a PR, a merge
+  group loads every planning and checking script from the base
+  (`merge_group.base_sha`), never from the candidate. The classifier's `--all`
+  plan is used, and the DCO step is skipped. A retarget or a stale head therefore
+  cannot land on an old pass. Strict checks are off because the queue
+  supersedes them. The spec gained the `merge_queue` rule and the live
+  `required_signatures` rule it lacked. (Codex gpt-6-astra review, rounds 1–2.)
+- **Residual after retarget (Codex round 3, left for the maintainer).** In the
+  queue, workflow YAML comes from the candidate, so nothing enforceable there
+  can re-check the fork `.github/` rule or DCO. Suppose a fork PR passed
+  against a maintainer-created branch whose `.github/` differs from `main`,
+  then was retargeted to `main`. Its stale PR-level pass admits it to the
+  queue, where candidate YAML runs and the commit range is not re-checked for
+  sign-offs. Only `main` is protected, a retarget is visible in the PR, and a
+  maintainer queues every PR. Treat a retargeted fork PR as needing a fresh
+  push before queueing.
+- **Fork code in the queue.** A queued fork PR's merge commit runs in the base
+  repository context, like the `push` run it becomes seconds later. `ci.yml`
+  references no secrets, and a maintainer has already approved the PR by
+  queueing it. A fork workflow with `on: merge_group` would run there too, but
+  the fork gate refuses any PR that touches `.github/`, so such a PR cannot
+  reach the queue on a fresh PR-level pass. The exception is the retarget case
+  above: a stale pass from another base can admit it, so give a retargeted
+  fork PR a fresh push before queueing.
 - **Same-name check spoofing (pre-existing).** A fork PR can add an
   `on: pull_request` workflow with a job named `ci-required`. GitHub would
   publish a green check under the required name, and branch protection matches
