@@ -150,3 +150,31 @@ it('counts certificates only once every listing settled', async () => {
   expect(certificateCount({ rows: [], isPending: false, isError: true })).toBe('unknown');
   expect(certificateCount({ rows: [], isPending: false, isError: false })).toBe(0);
 });
+
+
+it('announces certificate listing progress instead of an empty result', async () => {
+  const { container, unmount } = await renderForm(<CertificatesTab project={project} environments={environments} view={{ rows: [], isPending: true, isError: false }} />);
+  try {
+    expect(container.querySelector('[role="status"]')?.textContent).toBe('Loading certificates…');
+    expect(container.textContent).not.toContain('No certificates in this project yet.');
+  } finally { await unmount(); }
+});
+
+it('blocks issuance while profiles load and after their request fails', async () => {
+  let finish: ((response: Response) => void) | undefined;
+  const fetchMock = vi.fn(() => new Promise<Response>((resolve) => { finish = resolve; }));
+  vi.stubGlobal('fetch', fetchMock);
+  const { container, unmount } = await renderForm(<CertificatesTab project={project} environments={environments} view={{ rows: [], isPending: false, isError: false }} />);
+  try {
+    await act(async () => button(container, 'Issue certificate').click());
+    await settleTask();
+    expect(document.body.textContent).toContain('Loading certificate profiles…');
+    expect(button(document.body, 'Issue').disabled).toBe(true);
+    await act(async () => finish?.(Response.json({ error: { code: 'forbidden', message: 'not permitted' } }, { status: 403 })));
+    await settleTask();
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('Certificate profiles could not be loaded');
+    expect(button(document.body, 'Issue').disabled).toBe(true);
+    await act(async () => button(document.body, 'Issue').click());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  } finally { await unmount(); }
+});

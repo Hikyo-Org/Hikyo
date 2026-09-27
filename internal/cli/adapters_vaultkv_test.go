@@ -77,7 +77,10 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 		{"other mount", source("team-a", "kv", "apps/pay"), false},
 		{"other namespace", source("", "secret", "apps/pay"), false},
 	} {
-		name, loop := vaultImportLoop(tc.source, adapters)
+		name, loop, err := vaultImportLoop(tc.source, adapters)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if loop != tc.loop {
 			t.Errorf("%s: loop = %v (%s), want %v", tc.name, loop, name, tc.loop)
 		}
@@ -92,12 +95,33 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 	}}}
 	for identity, loop := range map[string]bool{"https://vault.example:443": true, "https://Vault.Example": true, "https://vault.example:8443": false} {
 		result := importer.Result{Identity: identity, Namespace: "team-a", Scope: importer.Scope{Mount: "secret", PathPrefix: "apps/pay"}}
-		if _, got := vaultImportLoop(result, defaultPort); got != loop {
+		if _, got, err := vaultImportLoop(result, defaultPort); got != loop || err != nil {
 			t.Errorf("%s: loop = %v, want %v", identity, got, loop)
 		}
 	}
 	adapters.Items[0].Targets[0].State = apigen.AdapterTargetStateTombstoned
-	if _, loop := vaultImportLoop(source("team-a", "secret", "apps/pay"), adapters); loop {
+	if _, loop, err := vaultImportLoop(source("team-a", "secret", "apps/pay"), adapters); loop || err != nil {
 		t.Fatal("tombstoned target still refuses imports")
+	}
+}
+
+func TestVaultImportLoopRefusesUnverifiableOrigins(t *testing.T) {
+	valid := importer.Result{Identity: "https://vault.example", Scope: importer.Scope{Mount: "secret", PathPrefix: "apps"}}
+	for _, identity := range []string{"", "vault.example", "https://", "https://vault.example/%zz", "ftp://vault.example", "https://user:pass@vault.example"} {
+		source := valid
+		source.Identity = identity
+		if _, _, err := vaultImportLoop(source, apigen.AdapterList{}); err == nil {
+			t.Errorf("accepted source identity %q", identity)
+		}
+	}
+	for _, origin := range []string{"", "vault.example", "https://", "https://vault.example/%zz"} {
+		adapters := apigen.AdapterList{Items: []apigen.Adapter{{Provider: "vault-kv", Origin: origin, State: apigen.AdapterStateActive}}}
+		if _, _, err := vaultImportLoop(valid, adapters); err == nil {
+			t.Errorf("accepted active adapter origin %q", origin)
+		}
+		adapters.Items[0].State = apigen.AdapterStateTombstoned
+		if _, _, err := vaultImportLoop(valid, adapters); err != nil {
+			t.Errorf("retired adapter blocked import: %v", err)
+		}
 	}
 }

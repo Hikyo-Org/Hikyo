@@ -332,3 +332,14 @@ func TestGitLabManifestRefusesCanonicalAliasCollision(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestVaultWorkflowRequiresDestinationMapping(t *testing.T) {
+	entries := []ManifestEntry{{CanonicalName: "TOKEN", Classification: SecretClassification}}
+	if got, err := WorkflowForProvider("vault-kv", "P_", entries); err == nil || got != "" {
+		t.Fatalf("generic workflow escaped Vault boundary: %q %v", got, err)
+	}
+	got, err := VaultKVMapping("secret", "apps/pay", "P_", entries)
+	if err != nil || !strings.Contains(got, "secret/apps/pay/P_TOKEN#value") || strings.Contains(got, "${{") {
+		t.Fatalf("destination mapping=%q err=%v", got, err)
+	}
+}

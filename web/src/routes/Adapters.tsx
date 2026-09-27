@@ -40,6 +40,7 @@ import {
   type AdapterPlan,
   type AdapterProviderKind,
   type AdapterTarget,
+  type AdapterTargetDetail,
   type AdapterTargetInput,
   type ProjectEnvironment,
   type ProjectKey,
@@ -836,10 +837,10 @@ function MoveDetail({
             ))}
           </ul>
           {data.state === 'attention_required' ? (
-            resuming ? (
+            resuming && adapter !== undefined ? (
               <OriginMoveForm
                 title="Resume move"
-                provider={adapter?.provider}
+                provider={adapter.provider}
                 submitLabel="Resume move"
                 initialOrigin={data.pending_origin}
                 busy={resume.isPending}
@@ -857,7 +858,7 @@ function MoveDetail({
               />
             ) : (
               <div className="panel__actions">
-                <Button type="button" variant="primary" disabled={busy} onClick={() => setResuming(true)}>
+                <Button type="button" variant="primary" disabled={busy || adapter === undefined} onClick={() => setResuming(true)}>
                   Resume with a new credential
                 </Button>
                 <Button
@@ -1461,6 +1462,20 @@ export function TargetForm({
   );
 }
 
+/** Names-only consumption hints use only the destination provider's syntax. */
+export function targetMappingText(
+  provider: string,
+  mapping: AdapterTargetDetail['mapping'],
+): string {
+  return mapping.map((entry) => {
+    let destination = entry.effective_name;
+    if (provider === 'forgejo' || provider === 'github-actions') {
+      destination = `\${{ ${entry.surface === 'secret' ? 'secrets' : 'vars'}.${entry.effective_name} }}`;
+    }
+    return `${entry.canonical_name}: ${destination}`;
+  }).join('\n');
+}
+
 function TargetDetail({
   refData,
   adapter,
@@ -1728,10 +1743,10 @@ function TargetDetail({
             </section>
           ) : null}
 
-          <h3>Workflow mapping</h3>
+          <h3>Destination mapping</h3>
           <p className="field__hint">Names only. Applications keep canonical names.</p>
           <pre className="adapters__workflow mono">
-            {detail.data?.mapping.map((entry) => `${entry.canonical_name}: \${{ ${entry.surface === 'secret' ? 'secrets' : 'vars'}.${entry.effective_name} }}`).join('\n')}
+            {detail.data === undefined ? '' : targetMappingText(adapter.provider, detail.data.mapping)}
           </pre>
         </>
       )}
