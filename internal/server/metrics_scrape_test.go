@@ -252,6 +252,10 @@ func (s stubMeasuredGauges) DynamicSnapshot() (int64, int64, error) {
 	return s.active, s.unknown, s.err
 }
 
+func (s stubMeasuredGauges) SSHSnapshot() (int64, int64, error) {
+	return s.active + 10, s.unknown + 10, s.err
+}
+
 func (s stubMeasuredGauges) PKISnapshot() (int64, int64, int64, error) {
 	return s.pkiLive, s.pkiUnknown, s.pkiHeld, s.err
 }
@@ -266,6 +270,7 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 		metrics := server.NewMetrics(stubAdmissionSnapshot{})
 		metrics.SetApprovalSource(source)
 		metrics.SetDynamicSource(source)
+		metrics.SetSSHSource(source)
 		metrics.SetPKISource(source)
 		operational := httptest.NewServer(server.NewOperational(stubReady{}, stubRetentionHealth{}, metrics))
 		t.Cleanup(operational.Close)
@@ -283,6 +288,7 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 	valueGauges := []string{
 		server.MetricDynamicLeasesActive, server.MetricDynamicEffectsUnknown,
 		server.MetricApprovalRequestsOpen, server.MetricApprovalRequestsExpired,
+		server.MetricSSHCertificatesActive, server.MetricSSHKRLEntries,
 		server.MetricPKICertificatesLive, server.MetricPKICertificatesUnknown, server.MetricPKIIssuersOnHold,
 	}
 
@@ -294,6 +300,7 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 	}
 	mustContain(t, body, server.MetricDynamicGaugesKnown+" 0")
 	mustContain(t, body, server.MetricApprovalGaugesKnown+" 0")
+	mustContain(t, body, server.MetricSSHGaugesKnown+" 0")
 	mustContain(t, body, server.MetricPKIGaugesKnown+" 0")
 
 	body = scrape(t, stubMeasuredGauges{approvals: server.ApprovalStats{Open: 3, Expired: 1}, active: 5, unknown: 2, pkiLive: 7, pkiUnknown: 1, pkiHeld: 2})
@@ -307,6 +314,9 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 	mustContain(t, body, server.MetricApprovalRequestsExpired+" 1")
 	mustContain(t, body, server.MetricDynamicGaugesKnown+" 1")
 	mustContain(t, body, server.MetricApprovalGaugesKnown+" 1")
+	mustContain(t, body, server.MetricSSHCertificatesActive+" 15")
+	mustContain(t, body, server.MetricSSHKRLEntries+" 12")
+	mustContain(t, body, server.MetricSSHGaugesKnown+" 1")
 
 	// No source wired is equally unmeasured, never a synthetic zero.
 	metrics := server.NewMetrics(stubAdmissionSnapshot{})
@@ -329,5 +339,6 @@ func TestMeasuredGaugesAreOmittedWhenTheSourceFails(t *testing.T) {
 	}
 	mustContain(t, unwired, server.MetricDynamicGaugesKnown+" 0")
 	mustContain(t, unwired, server.MetricApprovalGaugesKnown+" 0")
+	mustContain(t, unwired, server.MetricSSHGaugesKnown+" 0")
 	mustContain(t, unwired, server.MetricPKIGaugesKnown+" 0")
 }

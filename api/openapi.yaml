@@ -70,6 +70,11 @@ tags:
       by-id route is tenant-scoped, so unauthorized is indistinguishable from
       nonexistent at every level.
 
+  - name: ssh
+    description: |
+      Short-lived OpenSSH user certificates (#155): environment-scoped CAs,
+      signing profiles, issuance, revocation, the host trust bundle and the
+      Key Revocation List. Certificates only: no shell, proxy or inventory.
   - name: keys
     description: |
       The key catalogue and its groups - the project's schema. There is no
@@ -11610,6 +11615,408 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "500": {$ref: "#/components/responses/Internal"}
 
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listSshCas
+      tags: [ssh]
+      summary: List an environment's SSH user CAs and their public keys.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-ca.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "CA list.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCAList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: createSshCa
+      tags: [ssh]
+      summary: Create an SSH user CA with a generated key, or import one; the private key is write-only.
+      description: |
+        The CA private key is sealed under the project key and never returned
+        by any route. An imported key must be unencrypted (decrypt it locally
+        first) and one of ed25519, ecdsa-p256 or RSA of at least 3072 bits.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-ca.configure
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 6
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CreateSSHCARequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "201": {description: "CA created.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCA"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/SSHCAID"
+    get:
+      operationId: showSshCa
+      tags: [ssh]
+      summary: Show one SSH CA, its keys and which of them hosts trust now.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-ca.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "CA.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCA"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: deleteSshCa
+      tags: [ssh]
+      summary: Delete a CA and destroy its signing material; record deletion, not revocation.
+      description: |
+        Refused while live profiles use the CA. Certificates it signed stay
+        valid on any host that still lists its keys in TrustedUserCAKeys until
+        they expire: remove the keys from host trust.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-ca.delete
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "204": {description: "CA deleted."}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/SSHCAID"
+    post:
+      operationId: rotateSshCa
+      tags: [ssh]
+      summary: Rotate a CA to a new key; the old key stays trusted, never signing, for a bounded overlap.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-ca.rotate
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 6
+      requestBody: {required: false, content: {application/json: {schema: {$ref: "#/components/schemas/RotateSSHCARequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "CA after rotation.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCA"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/SSHCAID"
+      - $ref: "#/components/parameters/SSHCAKeyID"
+    post:
+      operationId: retireSshCaKey
+      tags: [ssh]
+      summary: End a retiring key's overlap now; it leaves the trust bundle.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-ca.retire-key
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "CA after retirement.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCA"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/SSHCAID"
+    get:
+      operationId: getSshTrustedKeys
+      tags: [ssh]
+      summary: The CA's host trust bundle in sshd TrustedUserCAKeys format.
+      description: |
+        One line per key hosts should trust now: the active key and every
+        retiring key still inside its overlap. Refresh it on the same timer as
+        the KRL.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-ca.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "TrustedUserCAKeys file content.", content: {text/plain: {schema: {type: string}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/SSHCAID"
+    get:
+      operationId: getSshKrl
+      tags: [ssh]
+      summary: The CA's OpenSSH Key Revocation List for sshd RevokedKeys.
+      description: |
+        Binary KRL (OpenSSH PROTOCOL.krl, format 1) listing the serials of
+        revoked, unexpired certificates signed by keys hosts still trust. It
+        is bounded at 65536 serials; beyond that the request fails with 409
+        rather than publish a truncated list.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-ca.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "KRL bytes.", content: {application/octet-stream: {schema: {type: string, format: binary}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listSshProfiles
+      tags: [ssh]
+      summary: List an environment's SSH certificate profiles.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-profile.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "Profile list.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHProfileList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: createSshProfile
+      tags: [ssh]
+      summary: Create a profile bounding principals, options, extensions, algorithms, TTL and requesters.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-profile.configure
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 6
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SSHProfileRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "201": {description: "Profile created.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHProfile"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/SSHProfileID"
+    get:
+      operationId: showSshProfile
+      tags: [ssh]
+      summary: Show one SSH certificate profile.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-profile.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "Profile.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHProfile"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    put:
+      operationId: updateSshProfile
+      tags: [ssh]
+      summary: Replace a profile; a removed requester's live certificates are revoked in the same write.
+      description: |
+        Disabling (enabled=false) stops issuance at once on every node and
+        revokes nothing. Removing a principal from requesters revokes its live
+        certificates issued through this profile.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-profile.configure
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 6
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/SSHProfileRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "Profile after update.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHProfile"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+    delete:
+      operationId: deleteSshProfile
+      tags: [ssh]
+      summary: Delete a profile; issued certificates stay valid unless revoke_issued.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-profile.delete
+      x-hikyo-formula: [manage-identities@project]
+      x-hikyo-artifacts: [human-session]
+      x-hikyo-min-revision: 6
+      parameters:
+        - name: revoke_issued
+          in: query
+          required: false
+          description: Also revoke every live certificate issued through this profile.
+          schema: {type: boolean, default: false}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "Profile deleted.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHProfileDeletion"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+    get:
+      operationId: listSshCertificates
+      tags: [ssh]
+      summary: List an environment's most recent certificates with derived status.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-cert.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "Certificate list, newest first, at most 500.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCertificateList"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+    post:
+      operationId: issueSshCertificate
+      tags: [ssh]
+      summary: Issue one short-lived SSH user certificate through a profile.
+      description: |
+        Signs the supplied public key, or generates a key pair and returns its
+        private key EXACTLY ONCE in this response (it is never stored). The
+        caller must be on the profile's requester list; a human requester also
+        needs the mint reauthentication ceremony. A retry issues a NEW
+        certificate. There is no renewal: request a new certificate.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-cert.issue
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/IssueSSHCertificateRequest"}}}}
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "The certificate and, for a generated key, its display-once private key.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCertificateIssue"}}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/SSHCertificateID"
+    get:
+      operationId: showSshCertificate
+      tags: [ssh]
+      summary: Show one certificate record and its derived status.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-cert.inspect
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "Certificate.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCertificate"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
+  /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/OrgID"
+      - $ref: "#/components/parameters/ProjectID"
+      - $ref: "#/components/parameters/EnvironmentID"
+      - $ref: "#/components/parameters/SSHCertificateID"
+    post:
+      operationId: revokeSshCertificate
+      tags: [ssh]
+      summary: Revoke a certificate; its serial enters the CA's KRL. Idempotent.
+      description: |
+        The requester may revoke its own certificate; anyone else needs
+        manage-identities over the project.
+      x-hikyo-class: tenant
+      x-hikyo-operation: ssh-cert.revoke
+      x-hikyo-formula: [read@environment]
+      x-hikyo-artifacts: [human-session, machine-credential]
+      x-hikyo-min-revision: 6
+      responses:
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+        "200": {description: "Certificate after revocation.", content: {application/json: {schema: {$ref: "#/components/schemas/SSHCertificate"}}}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "404": {$ref: "#/components/responses/NotFound"}
+        "500": {$ref: "#/components/responses/Internal"}
+
   /api/v1/instance/pki/issuers:
     get:
       operationId: listPkiIssuers
@@ -11619,7 +12026,7 @@ paths:
       x-hikyo-operation: pki-issuer.inspect
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11642,7 +12049,7 @@ paths:
       x-hikyo-operation: pki-issuer.create
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerCreateRequest"}}}}
       responses:
         "503":
@@ -11667,7 +12074,7 @@ paths:
       x-hikyo-operation: pki-issuer.inspect
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11693,7 +12100,7 @@ paths:
       x-hikyo-operation: pki-issuer.rotate
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerRotateRequest"}}}}
       responses:
         "503":
@@ -11718,7 +12125,7 @@ paths:
       x-hikyo-operation: pki-issuer.install
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuerInstallRequest"}}}}
       responses:
         "503":
@@ -11743,7 +12150,7 @@ paths:
       x-hikyo-operation: pki-issuer.release-hold
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11768,7 +12175,7 @@ paths:
       x-hikyo-operation: pki-issuer.retire
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11793,7 +12200,7 @@ paths:
       x-hikyo-operation: pki-issuer.revoke
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11818,7 +12225,7 @@ paths:
       x-hikyo-operation: pki-issuer.inspect
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11836,7 +12243,7 @@ paths:
       x-hikyo-operation: pki-issuer.publish-crl
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11858,7 +12265,7 @@ paths:
       x-hikyo-operation: pki-profile.inspect
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11876,7 +12283,7 @@ paths:
       x-hikyo-operation: pki-profile.create
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfileCreateRequest"}}}}
       responses:
         "503":
@@ -11901,7 +12308,7 @@ paths:
       x-hikyo-operation: pki-profile.inspect
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11923,7 +12330,7 @@ paths:
       x-hikyo-operation: pki-profile.update
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfileUpdateRequest"}}}}
       responses:
         "503":
@@ -11944,7 +12351,7 @@ paths:
       x-hikyo-operation: pki-profile.delete
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -11968,7 +12375,7 @@ paths:
       x-hikyo-operation: pki-profile.bind
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfileBindRequest"}}}}
       responses:
         "503":
@@ -11994,7 +12401,7 @@ paths:
       x-hikyo-operation: pki-profile.unbind
       x-hikyo-formula: [instance-config@instance]
       x-hikyo-artifacts: [human-session]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -12020,7 +12427,7 @@ paths:
       x-hikyo-operation: certificate.inspect
       x-hikyo-formula: [read@environment]
       x-hikyo-artifacts: [human-session, machine-credential]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -12042,7 +12449,7 @@ paths:
       x-hikyo-operation: certificate.inspect
       x-hikyo-formula: [read@environment]
       x-hikyo-artifacts: [human-session, machine-credential]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -12064,7 +12471,7 @@ paths:
       x-hikyo-operation: certificate.issue
       x-hikyo-formula: [issue-certificate@environment]
       x-hikyo-artifacts: [human-session, machine-credential]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CertificateIssueRequest"}}}}
       responses:
         "503":
@@ -12092,7 +12499,7 @@ paths:
       x-hikyo-operation: certificate.inspect
       x-hikyo-formula: [read@environment]
       x-hikyo-artifacts: [human-session, machine-credential]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -12115,7 +12522,7 @@ paths:
       x-hikyo-operation: certificate.renew
       x-hikyo-formula: [issue-certificate@environment]
       x-hikyo-artifacts: [human-session, machine-credential]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -12142,7 +12549,7 @@ paths:
       x-hikyo-operation: certificate.revoke
       x-hikyo-formula: [issue-certificate@environment]
       x-hikyo-artifacts: [human-session, machine-credential]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       requestBody: {required: true, content: {application/json: {schema: {$ref: "#/components/schemas/CertificateRevokeRequest"}}}}
       responses:
         "503":
@@ -12168,7 +12575,7 @@ paths:
       x-hikyo-operation: certificate.inspect
       x-hikyo-formula: [read@environment]
       x-hikyo-artifacts: [human-session, machine-credential]
-      x-hikyo-min-revision: 6
+      x-hikyo-min-revision: 7
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
@@ -12259,6 +12666,26 @@ components:
       schema: {$ref: "#/components/schemas/ID"}
     LeaseID:
       name: lease
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    SSHCAID:
+      name: sshCA
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    SSHCAKeyID:
+      name: sshCAKey
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    SSHProfileID:
+      name: sshProfile
+      in: path
+      required: true
+      schema: {$ref: "#/components/schemas/ID"}
+    SSHCertificateID:
+      name: sshCertificate
       in: path
       required: true
       schema: {$ref: "#/components/schemas/ID"}
@@ -13617,6 +14044,244 @@ components:
             The credential secret, returned EXACTLY ONCE to exactly one caller.
             No other route in this contract returns it.
         expires_at: {type: [string, "null"], format: date-time}
+
+    SSHKeyAlgorithm:
+      type: string
+      enum: [ed25519, ecdsa-p256, rsa-3072]
+      description: The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+
+    SSHExtension:
+      type: string
+      enum: [permit-X11-forwarding, permit-agent-forwarding, permit-port-forwarding, permit-pty, permit-user-rc]
+
+    SSHName:
+      type: string
+      minLength: 1
+      maxLength: 64
+      pattern: "^[a-z0-9._-]+$"
+
+    SSHCAKey:
+      type: object
+      additionalProperties: false
+      required: [id, algorithm, public_key, fingerprint, origin, state, trusted, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        algorithm: {$ref: "#/components/schemas/SSHKeyAlgorithm"}
+        public_key: {type: string, description: The public key in authorized_keys format.}
+        fingerprint: {type: string, description: OpenSSH SHA256 fingerprint.}
+        origin: {type: string, enum: [generated, imported]}
+        state: {type: string, enum: [active, retiring, retired]}
+        trusted: {type: boolean, description: Whether hosts following the trust bundle accept this key now.}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        retiring_at: {type: [string, "null"], format: date-time}
+        retire_after: {type: [string, "null"], format: date-time, description: End of the rotation overlap.}
+        retired_at: {type: [string, "null"], format: date-time}
+
+    SSHCA:
+      type: object
+      additionalProperties: false
+      required: [id, name, authority_principal_id, created_at, keys]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        name: {$ref: "#/components/schemas/SSHName"}
+        authority_principal_id: {$ref: "#/components/schemas/ID"}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        keys:
+          type: array
+          description: Newest first. At most one key is active.
+          items: {$ref: "#/components/schemas/SSHCAKey"}
+
+    SSHCAList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/SSHCA"}}
+
+    CreateSSHCARequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {$ref: "#/components/schemas/SSHName"}
+        algorithm: {$ref: "#/components/schemas/SSHKeyAlgorithm"}
+        private_key:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          writeOnly: true
+          description: An unencrypted OpenSSH or PKCS#8 PEM private key to import. Omit to generate.
+
+    RotateSSHCARequest:
+      type: object
+      additionalProperties: false
+      properties:
+        algorithm: {$ref: "#/components/schemas/SSHKeyAlgorithm"}
+        private_key:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          writeOnly: true
+          description: An unencrypted private key to import as the new key. Omit to generate.
+        overlap_seconds:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+          maximum: 2592000
+          description: How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
+
+    SSHProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [ca_id, name, principals, key_algorithms, default_ttl_seconds, max_ttl_seconds]
+      properties:
+        ca_id: {$ref: "#/components/schemas/ID"}
+        name: {$ref: "#/components/schemas/SSHName"}
+        principals:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items: {type: string, minLength: 1, maxLength: 256}
+        force_command: {type: string, maxLength: 1024}
+        source_addresses:
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 64}
+          description: CIDRs a certificate is bound to (source-address); a request may only narrow them.
+        extensions:
+          type: array
+          maxItems: 5
+          items: {$ref: "#/components/schemas/SSHExtension"}
+        key_algorithms:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items: {$ref: "#/components/schemas/SSHKeyAlgorithm"}
+        default_ttl_seconds: {type: integer, format: int64, minimum: 60, maximum: 2592000}
+        max_ttl_seconds: {type: integer, format: int64, minimum: 60, maximum: 2592000}
+        enabled: {type: boolean, default: true}
+        requesters:
+          type: array
+          maxItems: 256
+          items: {$ref: "#/components/schemas/ID"}
+          description: The principals allowed to request certificates through this profile.
+
+    SSHProfile:
+      type: object
+      additionalProperties: false
+      required: [id, ca_id, name, principals, force_command, source_addresses, extensions, key_algorithms, default_ttl_seconds, max_ttl_seconds, enabled, requesters, created_at, updated_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        ca_id: {$ref: "#/components/schemas/ID"}
+        name: {$ref: "#/components/schemas/SSHName"}
+        principals: {type: array, items: {type: string}}
+        force_command: {type: string}
+        source_addresses: {type: array, items: {type: string}}
+        extensions: {type: array, items: {$ref: "#/components/schemas/SSHExtension"}}
+        key_algorithms: {type: array, items: {$ref: "#/components/schemas/SSHKeyAlgorithm"}}
+        default_ttl_seconds: {type: integer, format: int64}
+        max_ttl_seconds: {type: integer, format: int64}
+        enabled: {type: boolean}
+        requesters: {type: array, items: {$ref: "#/components/schemas/ID"}}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+        updated_at: {$ref: "#/components/schemas/Timestamp"}
+
+    SSHProfileList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/SSHProfile"}}
+
+    SSHProfileDeletion:
+      type: object
+      additionalProperties: false
+      required: [profile_id, revoked_certificate_count]
+      properties:
+        profile_id: {$ref: "#/components/schemas/ID"}
+        revoked_certificate_count: {type: integer, format: int64, minimum: 0}
+
+    SSHCertificate:
+      type: object
+      additionalProperties: false
+      required: [id, ca_id, ca_key_id, profile_id, serial, key_id, principals, public_key_fingerprint, key_algorithm, key_origin, valid_after, valid_before, requester_principal_id, requester_class, status, in_krl, created_at]
+      properties:
+        id: {$ref: "#/components/schemas/ID"}
+        ca_id: {$ref: "#/components/schemas/ID"}
+        ca_key_id: {$ref: "#/components/schemas/ID"}
+        profile_id: {$ref: "#/components/schemas/ID"}
+        serial: {type: string, pattern: "^[1-9][0-9]{0,18}$", description: The certificate serial as a decimal string (64-bit).}
+        key_id: {type: string}
+        principals: {type: array, items: {type: string}}
+        public_key_fingerprint: {type: string}
+        key_algorithm: {$ref: "#/components/schemas/SSHKeyAlgorithm"}
+        key_origin: {type: string, enum: [generated, supplied]}
+        valid_after: {$ref: "#/components/schemas/Timestamp"}
+        valid_before: {$ref: "#/components/schemas/Timestamp"}
+        requester_principal_id: {$ref: "#/components/schemas/ID"}
+        requester_class: {type: string}
+        status:
+          type: string
+          enum: [active, expired, revoked, untrusted]
+          description: |
+            revoked: cryptographically revoked (in_krl says whether the KRL
+            still needs to carry it); expired: past valid_before; untrusted:
+            its signing key was retired or its CA deleted, so hosts that follow
+            the trust bundle refuse it; active: none of these.
+        in_krl: {type: boolean}
+        revoked_at: {type: [string, "null"], format: date-time}
+        revocation_reason: {type: [string, "null"], enum: [explicit, authority-withdrawn, profile-deleted, null]}
+        created_at: {$ref: "#/components/schemas/Timestamp"}
+
+    SSHCertificateList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: "#/components/schemas/SSHCertificate"}}
+
+    IssueSSHCertificateRequest:
+      type: object
+      additionalProperties: false
+      required: [profile_id]
+      properties:
+        profile_id: {$ref: "#/components/schemas/ID"}
+        public_key:
+          type: string
+          maxLength: 8192
+          description: An authorized_keys line to certify. Omit to have a key pair generated.
+        key_algorithm: {$ref: "#/components/schemas/SSHKeyAlgorithm"}
+        principals:
+          type: array
+          maxItems: 32
+          items: {type: string, minLength: 1, maxLength: 256}
+          description: A subset of the profile's principals; required when it allows several.
+        source_addresses:
+          type: array
+          maxItems: 32
+          items: {type: string, maxLength: 64}
+        extensions:
+          type: array
+          maxItems: 5
+          items: {$ref: "#/components/schemas/SSHExtension"}
+          description: A subset of the profile's extensions. Omit for the profile's set; an empty list asks for none.
+        ttl_seconds: {type: integer, format: int64, minimum: 60, maximum: 2592000}
+
+    SSHCertificateIssue:
+      type: object
+      additionalProperties: false
+      required: [certificate, certificate_text, public_key]
+      properties:
+        certificate: {$ref: "#/components/schemas/SSHCertificate"}
+        certificate_text:
+          type: string
+          description: The certificate in authorized_keys format (save as <key>-cert.pub).
+        public_key: {type: string}
+        private_key:
+          type: [string, "null"]
+          description: |
+            For a generated key only: the OpenSSH private key, returned EXACTLY
+            ONCE to exactly one caller and never stored. No other route returns it.
 
     AdapterConflictEntry:
       type: object

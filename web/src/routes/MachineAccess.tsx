@@ -69,6 +69,7 @@ import {
 import { useCertificates } from '../api/pki.ts';
 import { CertificatesTab, certificateCount } from './CertificatesTab.tsx';
 import { DeliveryTargetsPanel } from './DeliveryTargets.tsx';
+import { SSHCertificatesPanel } from './SSHCertificates.tsx';
 import { TypedNameConfirm } from './Sections.tsx';
 import { ApiError } from '../api/client.ts';
 import { gateSystemScope } from './SystemScope.tsx';
@@ -144,7 +145,7 @@ import {
 
  */
 
-type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases' | 'certificates';
+type Tab = 'accounts' | 'federation' | 'kubernetes' | 'providers' | 'leases' | 'ssh' | 'certificates';
 
 /** The route's one-at-a-time dialog selector (not the `ui/Dialog` atom). */
 type DialogState =
@@ -187,6 +188,7 @@ const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
   { id: 'kubernetes', label: 'Kubernetes targets' },
   { id: 'providers', label: 'Providers' },
   { id: 'leases', label: 'Leases' },
+  { id: 'ssh', label: 'SSH certificates' },
   { id: 'certificates', label: 'Certificates' },
 ];
 
@@ -395,12 +397,14 @@ export function MachineAccessPage() {
       : 'unknown',
     providers: providersQuery.isSuccess ? providers.length : 'unknown',
     leases: leases.isPending || leases.isError ? 'unknown' : leases.rows.length,
+    // SSH objects are per environment; the tab carries no project-wide count.
+    ssh: 'unknown',
     certificates: certificateCount(certificates),
   };
   const unknownLeases = leases.rows.filter((row) => row.lease.state === 'unknown').length;
   const countedTabs: readonly TabItem<Tab>[] = TABS.map((entry) => ({
     id: entry.id,
-    label: tabLabel(entry.label, tabCount[entry.id]),
+    label: entry.id === 'ssh' ? entry.label : tabLabel(entry.label, tabCount[entry.id]),
   }));
 
   const doRevoke = (account: ServiceAccount, credential: MachineCredential) => {
@@ -889,6 +893,20 @@ export function MachineAccessPage() {
               </p>
             ) : null}
           </>
+        ) : null}
+        {tab === 'ssh' ? (
+          <SSHCertificatesPanel
+            org={project.org}
+            project={project.project}
+            sessionId={liveSessionId}
+            environments={environments.map((environment) => ({ id: environment.id, name: environment.name }))}
+            requesterOptions={[
+              ...(auth.identity === null || auth.identity === undefined
+                ? []
+                : [{ id: auth.identity.principal.id, label: 'me' }]),
+              ...accounts.map((account) => ({ id: account.principal_id, label: account.name })),
+            ]}
+          />
         ) : null}
       </TabPanel>
 

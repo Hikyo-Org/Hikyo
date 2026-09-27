@@ -502,6 +502,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// once), worker-driven renew/revoke, an ambiguous outcome, reconcile and
 		// provider deletion all traverse the real service, runtime and store.
 		runDynamicLifecycle(t, db)
+		// SSH user certificates (#155): CA create/rotate/retire/delete,
+		// profile configure/delete, issuance and revocation all traverse the
+		// real service and store.
+		runSSHLifecycle(t, db, false)
 		// Private PKI (#154): issuer, profile, issuance with a display-once
 		// generated key, revocation and the worker's CRL all traverse the
 		// real service, runtime and store.

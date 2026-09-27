@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 61, while the
+// The runtime-created fixture includes migrations 45 through 61 plus 64, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+17 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 61 only")
+	if len(current.Entries) != len(legacy.Entries)+18 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 61 plus 64 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 64} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -296,7 +296,14 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// notice may be discarded by the reversal below.
 		"SELECT COUNT(*) FROM delivery_target_reports",
 		"SELECT COUNT(*) FROM delivery_target_quota_notices",
-		// 00061 (private PKI): no issuer, profile, binding or certificate
+		// 00061 (SSH user certificates): no CA, key, profile, requester or
+		// certificate record may be discarded by the reversal below.
+		"SELECT COUNT(*) FROM ssh_cas",
+		"SELECT COUNT(*) FROM ssh_ca_keys",
+		"SELECT COUNT(*) FROM ssh_profiles",
+		"SELECT COUNT(*) FROM ssh_profile_requesters",
+		"SELECT COUNT(*) FROM ssh_certificates",
+		// 00064 (private PKI): no issuer, profile, binding or certificate
 		// may be discarded by the reversal below.
 		"SELECT COUNT(*) FROM pki_issuers",
 		"SELECT COUNT(*) FROM pki_profiles",
@@ -310,18 +317,17 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target or PKI evidence", query, err)
+			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate or PKI evidence", query, err)
 		}
 	}
-	// Reverse 00061 (private PKI) and then 00059 (delivery-target condition
-	// reporting) first: newest migration first, before 00057's reversal
-	// rebuilds tables their rows reference. 00060 (sealed webhook) only widens
-	// the adapters provider CHECK and is reversed with the adapters rebuild.
+	// Reverse 00064 (private PKI) first, then 00061 (SSH user certificates),
+	// children before parents: newest migration first.
+	for _, table := range []string{"pki_certificates", "pki_profile_bindings", "pki_profiles", "pki_issuers", "ssh_certificates", "ssh_profile_requesters", "ssh_profiles", "ssh_ca_keys", "ssh_cas"} {
+		drillExec(t, db, "DROP TABLE "+table)
+	}
+	// Reverse 00059 (delivery-target condition reporting) next, before
+	// 00057's reversal rebuilds tables its rows reference.
 	for _, query := range []string{
-		"DROP TABLE pki_certificates",
-		"DROP TABLE pki_profile_bindings",
-		"DROP TABLE pki_profiles",
-		"DROP TABLE pki_issuers",
 		"DROP INDEX audit_tenant_events_env_actor_type_seq",
 		"DROP TABLE delivery_target_quota_notices",
 		"DROP TABLE delivery_target_reports",
@@ -435,7 +441,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,64)",
 	} {
 		drillExec(t, db, query)
 	}

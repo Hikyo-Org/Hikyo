@@ -354,3 +354,52 @@ func TestPrivateKeyRoundTripAndRefusals(t *testing.T) {
 		t.Fatal("a caller may not request ca-compromise")
 	}
 }
+
+func TestVerifyCARejectsInvalidSelfSignature(t *testing.T) {
+	key, err := GenerateKey(ECDSAP256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := CreateRoot(key, Subject{CommonName: "test"}, epoch, 365*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der[len(der)-1] ^= 1
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, chain := range [][]*x509.Certificate{nil, {cert}} {
+		if _, err := VerifyCA(der, key.Public(), chain, epoch); !errors.Is(err, ErrInvalidCA) {
+			t.Fatalf("invalid self-signature accepted: %v", err)
+		}
+	}
+}
+
+func TestSignLeafDoesNotInventKeyUsages(t *testing.T) {
+	key, err := GenerateKey(ECDSAP256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := CreateRoot(key, Subject{CommonName: "test"}, epoch, 365*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serial, err := NewSerial()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = SignLeaf(Parent{Certificate: cert, Signer: key}, Resolved{DNSNames: []string{"api.example.com"}}, Leaf{Serial: serial, PublicKey: key.Public(), NotBefore: epoch, NotAfter: epoch.Add(time.Hour), KeyUsages: []KeyUsage{UsageKeyEncipherment}, ExtKeyUsages: []ExtKeyUsage{ExtUsageServerAuth}})
+	if err == nil {
+		t.Fatal("incompatible key usage silently became digital-signature")
+	}
+	policy := basePolicy()
+	policy.KeyUsages = []KeyUsage{UsageKeyEncipherment}
+	if _, err := policy.Check(Request{DNSNames: []string{"api.example.com"}, PublicKey: key.Public()}); err == nil {
+		t.Fatal("incompatible key usage passed policy preflight")
+	}
+}

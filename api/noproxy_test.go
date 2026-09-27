@@ -259,6 +259,26 @@ var pinnedContractSurface = map[string]bool{
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew":  true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke": true,
 	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle": true,
+	// SSH user certificates (#155): CA, profile and certificate rows are this
+	// instance's own durable state; issuance signs in-process with the sealed
+	// CA key and contacts no upstream. No request member selects a remote.
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas":                                   true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas":                                  true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}":                           true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}":                        true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate":                   true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire":   true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys":              true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl":                       true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles":                              true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles":                             true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}":                 true,
+	"PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}":                 true,
+	"DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}":              true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates":                          true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates":                         true,
+	"GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}":         true,
+	"POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke": true,
 	// Private PKI (#154): issuers, profiles, bindings, certificates and CRLs
 	// are this instance's own durable state, and signing happens in-process.
 	// No route contacts any upstream: a CRL distribution URL is only embedded

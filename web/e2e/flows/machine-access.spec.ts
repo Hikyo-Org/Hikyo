@@ -89,15 +89,17 @@ test.describe('machine access', () => {
     await expect(page.getByRole('heading', { name: 'Machine access', level: 1 })).toBeVisible();
   });
 
-  test('the inventory has six tabs, and every one of them says what it holds', async () => {
+  test('the inventory has seven tabs, and every one of them says what it holds', async () => {
     const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(6);
+    await expect(tabs).toHaveCount(7);
     await expect(tabs.nth(0)).toHaveText(/Service accounts \(3\)/);
     await expect(tabs.nth(1)).toHaveText(/Federation \(1\)/);
     await expect(tabs.nth(2)).toHaveText(/Kubernetes targets \(0\)/);
     await expect(tabs.nth(3)).toHaveText(/Providers \(0\)/);
     await expect(tabs.nth(4)).toHaveText(/Leases \(0\)/);
-    await expect(tabs.nth(5)).toHaveText(/Certificates \(0\)/);
+    // SSH objects are per environment, so the tab carries no project count.
+    await expect(tabs.nth(5)).toHaveText('SSH certificates');
+    await expect(tabs.nth(6)).toHaveText(/Certificates \(0\)/);
 
     // The policy strip: the per-project opt-in is stated, not offered as a
     // control whose only outcome would be a refusal.
@@ -155,6 +157,90 @@ test.describe('machine access', () => {
     await expect(
       page.getByText('Configure a provider with a credential first', { exact: false }),
     ).toBeVisible();
+  });
+
+  test('runs an SSH CA end to end: create, profile, display-once issue, revoke, teardown', async ({}, testInfo) => {
+    // Names are per Playwright project: the desktop and mobile projects share
+    // one instance and run this serially against the same environment.
+    const suffix = testInfo.project.name.replace(/[^a-z0-9]/g, '');
+    const caName = `ops-${suffix}`;
+    const profileName = `deploy-${suffix}`;
+    await page.getByRole('tab', { name: 'SSH certificates' }).click();
+    await expect(page.getByRole('heading', { name: 'SSH certificates', level: 2 })).toBeVisible();
+
+    // A CA with a generated key: the page shows its public fingerprint only.
+    await page.getByRole('button', { name: 'Create CA' }).click();
+    let dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Name', { exact: true }).fill(caName);
+    await dialog.getByRole('button', { name: 'Create' }).click();
+    await expect(dialog).toBeHidden();
+    const caRow = page
+      .getByRole('row')
+      .filter({ hasText: caName })
+      .filter({ has: page.getByRole('button', { name: 'Trust bundle' }) });
+    await expect(caRow).toContainText('active');
+    await expect(caRow).toContainText('SHA256:');
+    await expect(page.getByText('-----BEGIN', { exact: false })).toHaveCount(0);
+
+    // The trust bundle is the TrustedUserCAKeys line hosts install.
+    await caRow.getByRole('button', { name: 'Trust bundle' }).click();
+    dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.machine__token')).toContainText('ssh-ed25519 ');
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden();
+
+    // A profile that names the signed-in operator as its only requester.
+    await page.getByRole('button', { name: 'Create profile' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Name', { exact: true }).fill(profileName);
+    await dialog.getByLabel('Allowed principals', { exact: false }).fill('deploy');
+    await dialog.getByRole('button', { name: 'Add me' }).click();
+    await dialog.getByRole('button', { name: 'Save' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole('row').filter({ hasText: profileName })).toContainText('enabled');
+
+    // Issue with a generated key: the private key is shown exactly once and
+    // the stored confirmation gates dismissal.
+    await page.getByRole('button', { name: 'Issue certificate' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Profile', { exact: true }).selectOption({ label: `${profileName} (deploy)` });
+    await dialog.getByRole('button', { name: 'Use a passkey and issue' }).click();
+    const privateKey = dialog.locator('#ssh-issued-key');
+    await expect(privateKey).toContainText('BEGIN OPENSSH PRIVATE KEY');
+    await expect(dialog.locator('#ssh-issued-cert')).toContainText('-cert-v01@openssh.com ');
+    const secret = (await privateKey.textContent()) ?? '';
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog.getByRole('alert')).toContainText('there is no second look');
+    await dialog.getByRole('checkbox', { name: 'I have stored this private key.' }).check();
+    await dialog.getByRole('button', { name: 'Done' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByText(secret.trim().split('\n')[1] ?? 'unreachable')).toHaveCount(0);
+
+    // The record is public metadata; revoking puts its serial in the KRL.
+    const certRow = page.getByRole('row').filter({ hasText: 'deploy' }).filter({ has: page.getByRole('button', { name: 'Revoke' }) }).first();
+    await expect(certRow).toContainText('active');
+    await certRow.getByRole('button', { name: 'Revoke' }).click();
+    await expect(page.getByRole('status').filter({ hasText: 'The serial is in the KRL' })).toBeVisible();
+    await expect(page.getByRole('row').filter({ hasText: 'in KRL' }).first()).toContainText('revoked');
+    await expect(page.getByRole('link', { name: 'Download KRL' }).first()).toHaveAttribute('href', /\/ssh-cas\/.+\/krl$/);
+
+    // Teardown through the UI: a CA with profiles refuses deletion; deleting
+    // the profile first (revoking what it issued) then the CA succeeds.
+    await caRow.getByRole('button', { name: 'Delete' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Delete CA' }).click();
+    await expect(dialog.getByRole('alert')).toContainText('still has profiles');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('row').filter({ hasText: profileName }).getByRole('button', { name: 'Delete' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByRole('checkbox').check();
+    await dialog.getByRole('button', { name: 'Delete profile' }).click();
+    await expect(dialog).toBeHidden();
+    await caRow.getByRole('button', { name: 'Delete' }).click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByRole('button', { name: 'Delete CA' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(caRow).toHaveCount(0);
   });
 
   test('configuring a provider validates its inputs before it dials anything', async () => {
@@ -764,11 +850,11 @@ test.describe('machine access', () => {
     await page.getByRole('button', { name: 'Create service account', exact: true }).first().click();
     const dialog = page.getByRole('dialog');
     // A seeded account name is guaranteed to already be live.
-    await dialog.getByLabel('Name').fill(seed.machine.workload);
+    await dialog.getByLabel('Name', { exact: true }).fill(seed.machine.workload);
     await dialog.getByRole('button', { name: 'Create service account' }).click();
     await expect(dialog.getByRole('alert')).toContainText('already used');
     // The dialog stays open and editable: editing clears the refusal.
-    await dialog.getByLabel('Name').fill(`${seed.machine.workload}-x`);
+    await dialog.getByLabel('Name', { exact: true }).fill(`${seed.machine.workload}-x`);
     await expect(dialog.getByRole('alert')).toHaveCount(0);
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).toBeHidden();

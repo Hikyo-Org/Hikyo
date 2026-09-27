@@ -443,6 +443,8 @@ type Repos interface {
 	Adapters() AdapterRepo
 	// Dynamic is the dynamic-secret provider + lease surface (#147).
 	Dynamic() DynamicRepo
+	// SSH is the SSH user-certificate surface (#155).
+	SSH() SSHRepo
 	// PKI is the private-PKI issuer, profile and certificate surface (#154).
 	PKI() PKIRepo
 	// Definitions is the plan ledger behind definitions plan/apply (#70).
@@ -509,6 +511,7 @@ type ReadRepos interface {
 	Remotes() RemoteReader
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
+	SSH() SSHReader
 	PKI() PKIReader
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader

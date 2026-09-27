@@ -92,7 +92,7 @@ func encodeSANs(resolved pki.Resolved) (string, error) {
 	return string(body), err
 }
 
-func certificateView(cert store.PKICertificate, issuer store.PKIIssuer) CertificateView {
+func pkiCertificateView(cert store.PKICertificate, issuer store.PKIIssuer) CertificateView {
 	var sans certificateSANs
 	_ = json.Unmarshal([]byte(cert.SANs), &sans)
 	view := CertificateView{
@@ -473,7 +473,7 @@ func (s *PKI) IssueCertificate(ctx context.Context, actor Actor, scope domain.Sc
 	if !issued {
 		return CertificateIssueResult{}, ErrPKISigning
 	}
-	result := CertificateIssueResult{Certificate: certificateView(settled, plan.issuer)}
+	result := CertificateIssueResult{Certificate: pkiCertificateView(settled, plan.issuer)}
 	if generatedKey != nil {
 		pkcs8, err := pki.MarshalPrivateKey(generatedKey)
 		if err != nil {
@@ -522,7 +522,7 @@ func (s *PKI) RenewCertificate(ctx context.Context, actor Actor, scope domain.Sc
 			if err != nil {
 				return err
 			}
-			view := certificateView(next, issuer)
+			view := pkiCertificateView(next, issuer)
 			successor = &view
 			return nil
 		}
@@ -618,7 +618,7 @@ func (s *PKI) RenewCertificate(ctx context.Context, actor Actor, scope domain.Sc
 	if !issued {
 		return CertificateView{}, ErrPKISigning
 	}
-	return certificateView(settled, plan.issuer), nil
+	return pkiCertificateView(settled, plan.issuer), nil
 }
 
 // RevokeCertificate revokes a leaf with a caller-chosen RFC 5280 reason. It
@@ -648,7 +648,7 @@ func (s *PKI) RevokeCertificate(ctx context.Context, actor Actor, scope domain.S
 			return err
 		}
 		if current.State == "revoked" {
-			out = certificateView(current, issuer)
+			out = pkiCertificateView(current, issuer)
 			return nil
 		}
 		revoked, err := r.PKI().RevokeCertificate(ctx, proof, certificateID, string(parsed), now)
@@ -665,7 +665,7 @@ func (s *PKI) RevokeCertificate(ctx context.Context, actor Actor, scope domain.S
 		if err != nil {
 			return err
 		}
-		out = certificateView(updated, issuer)
+		out = pkiCertificateView(updated, issuer)
 		return nil
 	})
 	return out, err
@@ -695,7 +695,7 @@ func (s *PKI) ListCertificates(ctx context.Context, actor Actor, scope domain.Sc
 				}
 				issuers[row.IssuerID] = issuer
 			}
-			out = append(out, certificateView(row, issuer))
+			out = append(out, pkiCertificateView(row, issuer))
 		}
 		return nil
 	})
@@ -720,7 +720,7 @@ func (s *PKI) ShowCertificate(ctx context.Context, actor Actor, scope domain.Sco
 		if err != nil {
 			return err
 		}
-		out = certificateView(cert, issuer)
+		out = pkiCertificateView(cert, issuer)
 		return nil
 	})
 	return out, err

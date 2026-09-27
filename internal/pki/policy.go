@@ -413,6 +413,9 @@ func (p Policy) Check(req Request) (Resolved, error) {
 	if !slices.Contains(p.KeyAlgorithms, algorithm) {
 		return refuse("key algorithm %s is not allowed", algorithm)
 	}
+	if applicableKeyUsage(req.PublicKey, p.KeyUsages) == 0 {
+		return refuse("no configured key usage applies to key algorithm %s", algorithm)
+	}
 	out := Resolved{KeyAlgorithm: algorithm}
 	if len(req.DNSNames)+len(req.IPAddresses)+len(req.URIs) == 0 {
 		return refuse("at least one subject alternative name is required")

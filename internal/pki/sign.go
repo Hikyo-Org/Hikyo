@@ -163,8 +163,15 @@ func VerifyCA(certDER []byte, public crypto.PublicKey, chain []*x509.Certificate
 	}
 	roots := x509.NewCertPool()
 	intermediates := x509.NewCertPool()
-	if bytes.Equal(cert.RawIssuer, cert.RawSubject) && len(chain) == 0 {
-		roots.AddCert(cert)
+	if bytes.Equal(cert.RawIssuer, cert.RawSubject) {
+		// Verify treats trust anchors as trusted without checking their own
+		// signature. A self-signed import must also prove that signature.
+		if err := cert.CheckSignatureFrom(cert); err != nil {
+			return nil, fmt.Errorf("%w: self-signature does not verify: %v", ErrInvalidCA, err)
+		}
+		if len(chain) == 0 {
+			roots.AddCert(cert)
+		}
 	}
 	for i, c := range chain {
 		if i == len(chain)-1 {
@@ -236,23 +243,9 @@ func SignLeaf(parent Parent, resolved Resolved, leaf Leaf) ([]byte, error) {
 	if leaf.Organization != "" {
 		subject.Organization = []string{leaf.Organization}
 	}
-	var usage x509.KeyUsage
-	for _, u := range leaf.KeyUsages {
-		switch u {
-		case UsageDigitalSignature:
-			usage |= x509.KeyUsageDigitalSignature
-		case UsageKeyEncipherment:
-			if _, ok := leaf.PublicKey.(*rsa.PublicKey); ok {
-				usage |= x509.KeyUsageKeyEncipherment
-			}
-		case UsageKeyAgreement:
-			if _, ok := leaf.PublicKey.(*ecdsa.PublicKey); ok {
-				usage |= x509.KeyUsageKeyAgreement
-			}
-		}
-	}
+	usage := applicableKeyUsage(leaf.PublicKey, leaf.KeyUsages)
 	if usage == 0 {
-		usage = x509.KeyUsageDigitalSignature
+		return nil, fmt.Errorf("%w: no configured key usage applies to the public key", ErrInvalidPolicy)
 	}
 	var extended []x509.ExtKeyUsage
 	for _, u := range leaf.ExtKeyUsages {
@@ -278,6 +271,27 @@ func SignLeaf(parent Parent, resolved Resolved, leaf Leaf) ([]byte, error) {
 		CRLDistributionPoints: leaf.CRLDistributionPoints,
 	}
 	return x509.CreateCertificate(rand.Reader, template, parent.Certificate, leaf.PublicKey, parent.Signer)
+}
+
+// applicableKeyUsage intersects configured usages with the key's capabilities.
+// It never grants a usage absent from the policy.
+func applicableKeyUsage(public crypto.PublicKey, usages []KeyUsage) x509.KeyUsage {
+	var usage x509.KeyUsage
+	for _, u := range usages {
+		switch u {
+		case UsageDigitalSignature:
+			usage |= x509.KeyUsageDigitalSignature
+		case UsageKeyEncipherment:
+			if _, ok := public.(*rsa.PublicKey); ok {
+				usage |= x509.KeyUsageKeyEncipherment
+			}
+		case UsageKeyAgreement:
+			if _, ok := public.(*ecdsa.PublicKey); ok {
+				usage |= x509.KeyUsageKeyAgreement
+			}
+		}
+	}
+	return usage
 }
 
 // RevocationReason is the closed RFC 5280 reason enum Hikyo records.

@@ -177,6 +177,8 @@ type API struct {
 	// Dynamic is the dynamic-secret provider + lease surface (#147). Concrete
 	// like Adapters: it resolves the session and mints/settles leases itself.
 	Dynamic *service.Dynamic
+	// SSH is the SSH user-certificate surface (#155).
+	SSH *service.SSH
 	// PKI is the private-PKI surface (#154).
 	PKI *service.PKI
 	// Audits is the trail read/export surface. Concrete like Adapters: it is

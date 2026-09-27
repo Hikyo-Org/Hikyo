@@ -93,6 +93,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpRotateMasterKey)
 	add(budgetClassDefaultExpensive, "dynamic secret: in-request external PostgreSQL round-trip (provider connection test / synchronous lease mint)",
 		authz.OpDynamicProviderConfigure, authz.OpDynamicProviderCredentialSet, authz.OpLeaseMint)
+	add(budgetClassDefaultExpensive, "ssh certificates: in-request key generation (RSA-3072 is the costly case) and signing",
+		authz.OpSSHCAConfigure, authz.OpSSHCARotate, authz.OpSSHCertIssue)
 	add(budgetClassDefaultExpensive, "private PKI: in-request signing, and key generation for a generated-key issuance (#154)",
 		authz.OpCertificateIssue, authz.OpCertificateRenew)
 
@@ -213,6 +215,12 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// concurrency cap; the request itself only writes a row)
 		authz.OpDynamicProviderInspect, authz.OpDynamicProviderCredentialRevoke, authz.OpDynamicProviderDelete,
 		authz.OpLeaseInspect, authz.OpLeaseRenew, authz.OpLeaseRevoke, authz.OpLeaseSettle,
+		// ssh certificates (#155): bounded reads of one environment's CAs,
+		// profiles and certificates (the KRL read is capped at its serial
+		// bound), and single-row lifecycle writes with no external call
+		authz.OpSSHCAInspect, authz.OpSSHCARetireKey, authz.OpSSHCADelete,
+		authz.OpSSHProfileConfigure, authz.OpSSHProfileInspect, authz.OpSSHProfileDelete,
+		authz.OpSSHCertInspect, authz.OpSSHCertRevoke,
 		// private PKI (#154): certificate reads and revocation write one row
 		// and sign nothing; the CRL is re-signed by the worker, not the request
 		authz.OpCertificateInspect, authz.OpCertificateRevoke,
