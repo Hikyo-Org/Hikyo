@@ -40,6 +40,7 @@ import {
   type AdapterPlan,
   type AdapterProviderKind,
   type AdapterTarget,
+  type AdapterTargetDetail,
   type AdapterTargetInput,
   type ProjectEnvironment,
   type ProjectKey,
@@ -1284,6 +1285,25 @@ export function TargetForm({
   );
 }
 
+/** Names-only consumption hints use only the destination provider's syntax. */
+export function targetMappingText(
+  provider: string,
+  target: Pick<AdapterTarget, 'destination_owner' | 'destination_name'>,
+  mapping: AdapterTargetDetail['mapping'],
+): string {
+  return mapping.map((entry) => {
+    let destination = entry.effective_name;
+    if (provider === 'forgejo' || provider === 'github-actions') {
+      destination = `\${{ ${entry.surface === 'secret' ? 'secrets' : 'vars'}.${entry.effective_name} }}`;
+    } else if (provider === 'cloudflare') {
+      destination = `env.${entry.effective_name}`;
+    } else if (provider === 'vault-kv') {
+      destination = `${target.destination_owner}/${target.destination_name}/${entry.effective_name}#value`;
+    }
+    return `${entry.canonical_name}: ${destination}`;
+  }).join('\n');
+}
+
 function TargetDetail({
   refData,
   adapter,
@@ -1551,10 +1571,10 @@ function TargetDetail({
             </section>
           ) : null}
 
-          <h3>Workflow mapping</h3>
+          <h3>Destination mapping</h3>
           <p className="field__hint">Names only. Applications keep canonical names.</p>
           <pre className="adapters__workflow mono">
-            {detail.data?.mapping.map((entry) => `${entry.canonical_name}: \${{ ${entry.surface === 'secret' ? 'secrets' : 'vars'}.${entry.effective_name} }}`).join('\n')}
+            {detail.data === undefined ? '' : targetMappingText(adapter.provider, detail.data.target, detail.data.mapping)}
           </pre>
         </>
       )}

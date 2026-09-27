@@ -508,6 +508,7 @@ func (c *Client) retryAt(header http.Header) time.Time {
 	now := c.now()
 	if raw := header.Get("Retry-After"); raw != "" {
 		if seconds, err := strconv.Atoi(raw); err == nil && seconds >= 0 {
+			seconds = min(seconds, int(adapter.RetryCap/time.Second))
 			return now.Add(time.Duration(seconds) * time.Second)
 		}
 		if at, err := http.ParseTime(raw); err == nil {

@@ -21,7 +21,11 @@ func refuseVaultImportLoop(ctx context.Context, client *Client, project string, 
 	if err := client.Do(ctx, http.MethodGet, project+"/adapters", nil, &adapters); err != nil {
 		return failf(ExitRefused, "cannot confirm this Vault/OpenBao import is loop-safe: listing the project's sync adapters failed: %v", err)
 	}
-	if name, found := vaultImportLoop(result, adapters); found {
+	name, found, err := vaultImportLoop(result, adapters)
+	if err != nil {
+		return err
+	}
+	if found {
 		return failf(ExitRefused,
 			"refusing a loop: %s is an active vault-kv sync destination of this project. "+
 				"Hikyo delivers to that tree, so importing from it would feed Hikyo's own output back as source. "+
@@ -33,10 +37,10 @@ func refuseVaultImportLoop(ctx context.Context, client *Client, project string, 
 // vaultImportLoop reports the first active vault-kv target whose tree
 // overlaps the imported selection: the same host, namespace and mount, and one
 // path prefix containing the other.
-func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (string, bool) {
+func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (string, bool, error) {
 	source, err := url.Parse(result.Identity)
-	if err != nil || source.Host == "" {
-		return "", false
+	if err != nil || !validLoopOrigin(source) {
+		return "", false, failf(ExitRefused, "cannot confirm this Vault/OpenBao import is loop-safe: invalid source identity")
 	}
 	sourceMount := strings.Trim(result.Scope.Mount, "/")
 	sourcePath := strings.Trim(result.Scope.PathPrefix, "/")
@@ -45,7 +49,10 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 			continue
 		}
 		origin, err := url.Parse(a.Origin)
-		if err != nil || !sameEndpoint(origin, source) || strings.Trim(origin.Path, "/") != strings.Trim(result.Namespace, "/") {
+		if err != nil || !validLoopOrigin(origin) {
+			return "", false, failf(ExitRefused, "cannot confirm this Vault/OpenBao import is loop-safe: invalid active sync adapter origin")
+		}
+		if !sameEndpoint(origin, source) || strings.Trim(origin.Path, "/") != strings.Trim(result.Namespace, "/") {
 			continue
 		}
 		for _, target := range a.Targets {
@@ -53,11 +60,15 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 				continue
 			}
 			if pathsOverlap(sourcePath, strings.Trim(target.DestinationName, "/")) {
-				return "adapter " + string(a.Id) + " target " + string(target.Id) + " (" + target.DestinationOwner + "/" + target.DestinationName + ")", true
+				return "adapter " + string(a.Id) + " target " + string(target.Id) + " (" + target.DestinationOwner + "/" + target.DestinationName + ")", true, nil
 			}
 		}
 	}
-	return "", false
+	return "", false, nil
+}
+
+func validLoopOrigin(origin *url.URL) bool {
+	return origin != nil && (origin.Scheme == "http" || origin.Scheme == "https") && origin.Hostname() != "" && origin.User == nil && origin.RawQuery == "" && origin.Fragment == ""
 }
 
 // pathsOverlap reports equal paths or ancestry at a slash boundary. Inputs
