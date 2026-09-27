@@ -37,7 +37,8 @@ its CI verdict with local test results.
   eligibility, including permitted self-approval. Historical recovery dispatch
   uses the pre-access resolver for schemas below 66.
 - AWS descriptors reject trailing JSON. Node identity remains opt-in. Resuming
-  an AWS origin move uses the AWS descriptor form. Live Vault imports apply the
+  an AWS origin move waits for its provider to load and uses the AWS descriptor
+  form. Live Vault imports apply the
   loop guard in both flag and wizard flows. Malformed source or active Vault
   origins refuse import because overlap cannot be established safely. Vault
   mappings cannot fall through to another provider's workflow syntax.
