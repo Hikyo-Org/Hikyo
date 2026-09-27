@@ -42,7 +42,9 @@ func PrivateKeyPEM(pkcs8 []byte) []byte {
 
 // ParseCertificates reads every CERTIFICATE block from PEM input, in order,
 // refusing any other block type (a stray private key in a chain file is an
-// operator mistake to surface, not to ignore).
+// operator mistake to surface, not to ignore). The results contain parsed
+// certificates and their corresponding DER bytes. Empty input returns empty
+// results; malformed certificates and trailing non-whitespace return errors.
 func ParseCertificates(input []byte) ([]*x509.Certificate, [][]byte, error) {
 	var certs []*x509.Certificate
 	var ders [][]byte
@@ -70,7 +72,9 @@ func ParseCertificates(input []byte) ([]*x509.Certificate, [][]byte, error) {
 }
 
 // ParsePrivateKey reads one PKCS#8, PKCS#1 (RSA) or SEC 1 (EC) private key
-// from PEM protected input. The returned key is the caller's to seal and drop.
+// from unencrypted PEM input. Missing or extra blocks, malformed keys,
+// non-signing keys, and unsupported algorithms return errors. The returned
+// key is the caller's to seal and drop.
 func ParsePrivateKey(input []byte) (crypto.Signer, error) {
 	block, rest := pem.Decode(input)
 	if block == nil {

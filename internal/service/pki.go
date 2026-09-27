@@ -220,8 +220,10 @@ func (s *PKI) ShowIssuer(ctx context.Context, actor Actor, name string) ([]PKIIs
 	return out, err
 }
 
-// IssuerCRL returns the stored CRL of one issuer version (latest active or
-// retiring version when version is zero). Serving it touches no key material.
+// IssuerCRL returns the stored DER CRL of one issuer version. A nonpositive
+// version selects the newest version with a published CRL, regardless of
+// lifecycle state. Missing issuers, versions, or CRLs return a not-found error.
+// The read is authorized and audited and touches no key material.
 func (s *PKI) IssuerCRL(ctx context.Context, actor Actor, name string, version int64) ([]byte, error) {
 	var out []byte
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
@@ -361,8 +363,9 @@ func (s *PKI) sealIssuerKey(key crypto.Signer) (pkiKeyMaterial, error) {
 }
 
 // openIssuerKey unseals a CA key for exactly one signing act. The PKCS#8
-// buffer is zeroed before return; the parsed key lives only on the caller's
-// stack (encryption-model ADR: best-effort memory hygiene, no enclave).
+// buffer is zeroed before return; the caller owns the parsed key's lifetime
+// (encryption-model ADR: best-effort memory hygiene, no enclave).
+// Decryption and PKCS#8 parsing errors are returned to the caller.
 func (s *PKI) openIssuerKey(id string, sealed []byte) (crypto.Signer, error) {
 	pkcs8, err := s.Keyring.ForInstance().OpenField(pkiIssuerKeyAAD(id), sealed)
 	if err != nil {
@@ -372,6 +375,9 @@ func (s *PKI) openIssuerKey(id string, sealed []byte) (crypto.Signer, error) {
 	return pki.UnmarshalPrivateKey(pkcs8)
 }
 
+// validateCRLURL trims an optional HTTP(S) distribution URL, rejecting a
+// missing host, userinfo, or fragment with domain.ErrInvalid. It never fetches
+// the URL; an empty value disables the distribution point.
 func validateCRLURL(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {

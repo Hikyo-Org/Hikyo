@@ -289,8 +289,10 @@ func recordCertificateOutcome(ctx context.Context, r store.Repos, proof authz.Pr
 
 // settleLeaf is the OUTCOME transaction for issue and renew: re-authorize,
 // re-apply the caller-class gate (without a second ceremony), fence on the
-// issuer row, then record the signed leaf. Any refusal settles the row to
-// `failed` and the leaf, which never left this process, is discarded.
+// issuer row, then record the signed leaf. A nil DER, failed binding lookup
+// or caller gate, or lost issuer fence records `failed`. Authorization and
+// transaction errors are returned and can leave the row `issuing` for the
+// worker to mark `unknown`. The boolean reports issuance only when err is nil.
 func (s *PKI) settleLeaf(ctx context.Context, actor Actor, op authz.Operation, scope domain.Scope, plan leafPlan, der []byte, kind string, generated bool, onSuccess, onFailure func(context.Context, store.Repos, authz.Proof) error) (store.PKICertificate, bool, error) {
 	var settled store.PKICertificate
 	var issued bool
@@ -376,8 +378,13 @@ func envScopeRequired(scope domain.Scope, what string) error {
 	return nil
 }
 
-// IssueCertificate issues one leaf (ADR D6). A generated private key is in the
-// result exactly once and nowhere else, ever.
+// IssueCertificate issues one leaf in an environment through a bound profile
+// (ADR D6), using exactly one of a CSR or a generated key. Names come from req,
+// not the CSR. A zero TTL uses the profile default. A generated private key
+// is returned only on success, never stored, and must be zeroed by the caller.
+// Validation, authorization, budget, storage, and signing errors reach the
+// caller. Errors after reservation can leave a failed or unresolved issuance
+// record; an error does not imply that no record was created.
 func (s *PKI) IssueCertificate(ctx context.Context, actor Actor, scope domain.Scope, req CertificateIssueRequest) (CertificateIssueResult, error) {
 	if err := envScopeRequired(scope, "certificate issue"); err != nil {
 		return CertificateIssueResult{}, err
@@ -671,6 +678,9 @@ func (s *PKI) RevokeCertificate(ctx context.Context, actor Actor, scope domain.S
 	return out, err
 }
 
+// ListCertificates returns up to 500 certificates in the authorized
+// environment, newest first, with public issuer chains. It requires a complete
+// environment scope and propagates authorization and storage errors.
 func (s *PKI) ListCertificates(ctx context.Context, actor Actor, scope domain.Scope) ([]CertificateView, error) {
 	if err := envScopeRequired(scope, "certificate list"); err != nil {
 		return nil, err
@@ -702,6 +712,9 @@ func (s *PKI) ListCertificates(ctx context.Context, actor Actor, scope domain.Sc
 	return out, err
 }
 
+// ShowCertificate returns one certificate and its public issuer chain within
+// the authorized environment. Missing or out-of-scope records return not found;
+// scope validation, authorization, and storage errors are propagated.
 func (s *PKI) ShowCertificate(ctx context.Context, actor Actor, scope domain.Scope, certificateID string) (CertificateView, error) {
 	if err := envScopeRequired(scope, "certificate show"); err != nil {
 		return CertificateView{}, err
@@ -762,6 +775,9 @@ type PKIBoundProfileView struct {
 	Policy pki.Policy
 }
 
+// BoundProfiles returns policies bound to the authorized environment or its
+// whole project, without exposing bindings. It requires a complete environment
+// scope and propagates authorization, storage, and policy decoding errors.
 func (s *PKI) BoundProfiles(ctx context.Context, actor Actor, scope domain.Scope) ([]PKIBoundProfileView, error) {
 	if err := envScopeRequired(scope, "certificate profile list"); err != nil {
 		return nil, err

@@ -59,6 +59,8 @@ func nonNil(in []string) []string {
 	return in
 }
 
+// encodePKIPolicy normalizes a policy and encodes it as JSON, using empty arrays
+// for absent lists and whole seconds for durations. It does not validate policy.
 func encodePKIPolicy(p pki.Policy) (string, error) {
 	p = p.Normalize()
 	body, err := json.Marshal(pkiPolicyJSON{
@@ -73,6 +75,8 @@ func encodePKIPolicy(p pki.Policy) (string, error) {
 	return string(body), err
 }
 
+// decodePKIPolicy parses stored JSON, converts second counts to durations, and
+// normalizes the policy without validating it. Malformed JSON returns an error.
 func decodePKIPolicy(raw string) (pki.Policy, error) {
 	var in pkiPolicyJSON
 	if err := json.Unmarshal([]byte(raw), &in); err != nil {
@@ -156,6 +160,9 @@ func checkProfileIssuers(ctx context.Context, r store.Repos, proof authz.Proof, 
 	return nil
 }
 
+// ListProfiles returns profiles ordered by name, including policy and bindings,
+// and audits the inventory read. Authorization, storage, policy decoding, and
+// audit errors are returned; results are usable only when err is nil.
 func (s *PKI) ListProfiles(ctx context.Context, actor Actor) ([]PKIProfileView, error) {
 	var out []PKIProfileView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
@@ -184,6 +191,9 @@ func (s *PKI) ListProfiles(ctx context.Context, actor Actor) ([]PKIProfileView, 
 	return out, err
 }
 
+// ShowProfile returns a named profile with its policy and bindings and audits
+// the read. Missing profiles return not found; authorization, storage, policy
+// decoding, and audit errors are propagated.
 func (s *PKI) ShowProfile(ctx context.Context, actor Actor, name string) (PKIProfileView, error) {
 	var out PKIProfileView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
@@ -207,6 +217,10 @@ func (s *PKI) ShowProfile(ctx context.Context, actor Actor, name string) (PKIPro
 	return out, err
 }
 
+// CreateProfile validates and stores a normalized policy with no bindings,
+// requiring every named issuer to exist, and audits the creation. Invalid input
+// wraps domain.ErrInvalid; an existing name returns ErrPKIProfileExists.
+// Authorization, storage, and audit errors are propagated.
 func (s *PKI) CreateProfile(ctx context.Context, actor Actor, name string, policy pki.Policy) (PKIProfileView, error) {
 	if err := pki.ValidateName(name); err != nil {
 		return PKIProfileView{}, fmt.Errorf("%w: profile name: %v", domain.ErrInvalid, err)
@@ -383,6 +397,10 @@ func (s *PKI) BindProfile(ctx context.Context, actor Actor, name, orgID, project
 	return out, err
 }
 
+// UnbindProfile removes one binding from the named profile and audits the
+// change, returning the remaining bindings. A missing profile or binding
+// returns not found; a lost deletion returns ErrPKIProfileRace. Authorization,
+// storage, policy decoding, and audit errors are propagated.
 func (s *PKI) UnbindProfile(ctx context.Context, actor Actor, name, bindingID string) (PKIProfileView, error) {
 	var out PKIProfileView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {

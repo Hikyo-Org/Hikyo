@@ -105,6 +105,9 @@ function stateTone(state: PkiIssuer['state']): 'neutral' | 'danger' {
   return state === 'revoked' || state === 'retired' ? 'danger' : 'neutral';
 }
 
+/** Shows one issuer version with actions allowed by its displayed state.
+ * The newest flag controls rotation; retirement and revocation require name
+ * confirmation, while CRL retrieval reports public PEM through onCrl. */
 function IssuerRow({
   issuer,
   newest,
@@ -346,6 +349,8 @@ function IssuerRow({
   );
 }
 
+/** Creates a root or intermediate, defaulting to a pending intermediate for
+ * offline signing. names supplies the selectable online parents. */
 function CreateIssuerForm({
   names,
   onDone,
