@@ -832,10 +832,10 @@ function MoveDetail({
             ))}
           </ul>
           {data.state === 'attention_required' ? (
-            resuming ? (
+            resuming && adapter !== undefined ? (
               <OriginMoveForm
                 title="Resume move"
-                provider={adapter?.provider}
+                provider={adapter.provider}
                 submitLabel="Resume move"
                 initialOrigin={data.pending_origin}
                 busy={resume.isPending}
@@ -853,7 +853,7 @@ function MoveDetail({
               />
             ) : (
               <div className="panel__actions">
-                <Button type="button" variant="primary" disabled={busy} onClick={() => setResuming(true)}>
+                <Button type="button" variant="primary" disabled={busy || adapter === undefined} onClick={() => setResuming(true)}>
                   Resume with a new credential
                 </Button>
                 <Button
