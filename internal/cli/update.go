@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,6 +20,10 @@ import (
 const (
 	releaseSnapshotTTL = 24 * time.Hour
 	updateStateSchema  = 1
+	// The pre-command notice must not stall an unrelated command; an explicit
+	// check or upgrade waits long enough for a slow release API.
+	passiveCheckTimeout  = 2 * time.Second
+	explicitCheckTimeout = 30 * time.Second
 )
 
 type updateState struct {
@@ -135,28 +140,10 @@ func runUpdate(ctx context.Context, ios IO, args []string) error {
 			fmt.Fprintln(ios.Stdout, "Update checks are off.")
 			return nil
 		}
-		fmt.Fprint(ios.Stderr, console.UpdateCheckMessage(string(current.Channel)))
-		if err := refreshReleaseSnapshot(ctx, ios); err != nil {
-			return failf(ExitUnavailable, "update check failed: %v", err)
-		}
-		current, err = state.updates(ios.DefaultUpdateChannel)
-		if err != nil {
+		status, err := checkForUpdate(ctx, ios, state, current.Channel)
+		if err != nil || !status.Available {
 			return err
 		}
-		status, err := updatecheck.Select(ios.Version, current.Channel, current.Releases)
-		if err != nil {
-			return err
-		}
-		if !status.Available {
-			fmt.Fprint(ios.Stdout, console.UpdateCurrentMessage(console.UpdateInfo{
-				Current: ios.Version, Channel: string(current.Channel),
-			}))
-			return nil
-		}
-		fmt.Fprint(ios.Stdout, console.UpdateAvailableMessage(console.UpdateInfo{
-			Current: ios.Version, Latest: status.LatestVersion,
-			Channel: string(current.Channel), ReleaseURL: status.URL,
-		}))
 		if _, err := promptAndApplyUpdate(ctx, ios, status); err != nil {
 			return failf(ExitUnavailable, "update failed: %v", err)
 		}
@@ -166,11 +153,96 @@ func runUpdate(ctx context.Context, ios IO, args []string) error {
 	}
 }
 
-func updateSource(ios IO) (updatecheck.Source, error) {
+// RunUpgrade is `hikyo upgrade` where no server host is supported: it installs
+// the newest verified release on this CLI's track over the running executable.
+// Naming the command is the confirmation, so it does not prompt.
+func RunUpgrade(ctx context.Context, ios IO, args []string) error {
+	flags := flag.NewFlagSet("hikyo upgrade", flag.ContinueOnError)
+	flags.SetOutput(ios.Stderr)
+	flags.Usage = func() {
+		fmt.Fprintln(flags.Output(), "Usage: hikyo [-v|-vv|-vvv] upgrade")
+		fmt.Fprintln(flags.Output(), "Installs the newest verified release on this CLI's update channel over the running executable.")
+		fmt.Fprintln(flags.Output(), "Server hosts upgrade with sudo hikyo upgrade on Linux.")
+	}
+	// Requested help is the payload and goes to stdout; a malformed
+	// invocation is a usage error on stderr.
+	if HelpRequested(args) {
+		flags.SetOutput(ios.Stdout)
+	}
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return err
+		}
+		return &Error{Code: ExitUsage, Err: err}
+	}
+	if flags.NArg() != 0 {
+		return failf(ExitUsage, "usage: hikyo upgrade")
+	}
+	// Refuse before the release refresh writes state, e.g. sudo over a
+	// user-owned executable.
+	if ios.BinaryUpdater == nil {
+		return errors.New("binary updater is unavailable")
+	}
+	if err := ios.BinaryUpdater.CheckReplaceable(); err != nil {
+		return failf(ExitUsage, "%v", err)
+	}
+	state, err := NewState(ios.Env)
+	if err != nil {
+		return err
+	}
+	current, err := state.updates(ios.DefaultUpdateChannel)
+	if err != nil {
+		return err
+	}
+	if ios.DefaultUpdateChannel == updatecheck.ChannelOff {
+		return failf(ExitUsage, "source builds keep update checks off; rebuild from a reviewed source revision instead")
+	}
+	if current.Channel == updatecheck.ChannelOff {
+		return failf(ExitUsage, "update checks are off; select a track with hikyo update channel stable|nightly")
+	}
+	status, err := checkForUpdate(ctx, ios, state, current.Channel)
+	if err != nil || !status.Available {
+		return err
+	}
+	if _, err := applyUpdate(ctx, ios, status); err != nil {
+		return failf(ExitUnavailable, "update failed: %v", err)
+	}
+	return nil
+}
+
+// checkForUpdate refreshes the release snapshot immediately and reports the
+// selected release, printing the current or available version.
+func checkForUpdate(ctx context.Context, ios IO, state *State, channel updatecheck.Channel) (updatecheck.Status, error) {
+	fmt.Fprint(ios.Stderr, console.UpdateCheckMessage(string(channel)))
+	if err := refreshReleaseSnapshot(ctx, ios, explicitCheckTimeout); err != nil {
+		return updatecheck.Status{}, failf(ExitUnavailable, "update check failed: %v", err)
+	}
+	current, err := state.updates(ios.DefaultUpdateChannel)
+	if err != nil {
+		return updatecheck.Status{}, err
+	}
+	status, err := updatecheck.Select(ios.Version, current.Channel, current.Releases)
+	if err != nil {
+		return updatecheck.Status{}, err
+	}
+	if !status.Available {
+		fmt.Fprint(ios.Stdout, console.UpdateCurrentMessage(console.UpdateInfo{
+			Current: ios.Version, Channel: string(current.Channel),
+		}))
+		return status, nil
+	}
+	fmt.Fprint(ios.Stdout, console.UpdateAvailableMessage(console.UpdateInfo{
+		Current: ios.Version, Latest: status.LatestVersion,
+		Channel: string(current.Channel), ReleaseURL: status.URL,
+	}))
+	return status, nil
+}
+
+func updateSource(ios IO, timeout time.Duration) (updatecheck.Source, error) {
 	if ios.UpdateSource != nil {
 		return ios.UpdateSource, nil
 	}
-	client, err := updatecheck.NewHTTPClient(2 * time.Second)
+	client, err := updatecheck.NewHTTPClient(timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +250,7 @@ func updateSource(ios IO) (updatecheck.Source, error) {
 	return updatecheck.NewGitHubSource(client), nil
 }
 
-func refreshReleaseSnapshot(ctx context.Context, ios IO) error {
+func refreshReleaseSnapshot(ctx context.Context, ios IO, timeout time.Duration) error {
 	diagnostics.Printf(ctx, 1, "refreshing release metadata")
 	defer diagnostics.Time(ctx, "refresh release metadata")()
 	state, err := NewState(ios.Env)
@@ -193,7 +265,7 @@ func refreshReleaseSnapshot(ctx context.Context, ios IO) error {
 		if current.Channel == updatecheck.ChannelOff {
 			return nil
 		}
-		source, err := updateSource(ios)
+		source, err := updateSource(ios, timeout)
 		if err != nil {
 			return err
 		}
@@ -232,7 +304,7 @@ func NotifyUpdate(ctx context.Context, ios IO) bool {
 	}
 	age := ios.now().Sub(current.CheckedAt)
 	if current.Schema != updateStateSchema || current.CheckedAt.IsZero() || age < 0 || age >= releaseSnapshotTTL {
-		if refreshErr := refreshReleaseSnapshot(ctx, ios); refreshErr == nil {
+		if refreshErr := refreshReleaseSnapshot(ctx, ios, passiveCheckTimeout); refreshErr == nil {
 			current, err = state.updates(ios.DefaultUpdateChannel)
 		}
 	}
@@ -259,7 +331,7 @@ func promptAndApplyUpdate(ctx context.Context, ios IO, status updatecheck.Status
 		return false, nil
 	}
 	prompt := fmt.Sprintf("Update Hikyo to %s now?", status.LatestVersion)
-	if status.Channel == updatecheck.ChannelNightly && status.Prerelease {
+	if status.Channel == updatecheck.ChannelNightly && status.Prerelease && selfupdate.StagesNightlies() {
 		prompt = fmt.Sprintf("Download and verify Hikyo %s for a manual server upgrade?", status.LatestVersion)
 	}
 	confirmed, err := ios.TerminalSession.Confirm(prompt)
@@ -269,6 +341,10 @@ func promptAndApplyUpdate(ctx context.Context, ios IO, status updatecheck.Status
 	if !confirmed {
 		return false, nil
 	}
+	return applyUpdate(ctx, ios, status)
+}
+
+func applyUpdate(ctx context.Context, ios IO, status updatecheck.Status) (bool, error) {
 	if ios.BinaryUpdater == nil {
 		return false, errors.New("binary updater is unavailable")
 	}

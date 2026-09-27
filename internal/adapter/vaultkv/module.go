@@ -643,7 +643,7 @@ func (m *Module) pruneRow(ctx context.Context, target adapter.Target, row adapte
 		deleteErr = m.finalize(ctx, target, path, live.version)
 	}
 	if deleteErr == nil && !live.released {
-		deleteErr = m.API.DeleteLatest(ctx, mount, path)
+		deleteErr = m.API.DeleteVersion(ctx, mount, path, live.version)
 	}
 	if deleteErr != nil && !IsNotFound(deleteErr) {
 		outcome := adapter.OutcomeUnknown

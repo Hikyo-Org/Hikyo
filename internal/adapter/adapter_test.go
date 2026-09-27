@@ -162,7 +162,7 @@ func TestDesiredRowsOrderSentinelsFirst(t *testing.T) {
 }
 
 func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
-	want := []Provider{ForgejoProvider, GitHubActionsProvider, VaultKVProvider}
+	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, VaultKVProvider}
 	if got := SupportedProviders(); !slices.Equal(got, want) {
 		t.Fatalf("SupportedProviders() = %v, want %v", got, want)
 	}
@@ -172,7 +172,7 @@ func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
 			t.Fatalf("ParseProvider(%q) = %q, %v", provider, got, err)
 		}
 	}
-	for _, raw := range []string{"", "gitlab", "FORGEJO"} {
+	for _, raw := range []string{"", "gitlab", "FORGEJO", "webhook", "sealed_webhook"} {
 		if _, err := ParseProvider(raw); err == nil {
 			t.Fatalf("ParseProvider(%q) accepted unknown provider", raw)
 		}

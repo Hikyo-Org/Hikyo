@@ -185,7 +185,7 @@ function useInvalidateAdapters(ref: ProjectRef) {
 }
 
 /** The providers this build can create; responses may name others. */
-export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'vault-kv';
+export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'sealed-webhook' | 'vault-kv';
 
 export type CreateAdapterInput = {
   readonly provider: AdapterProviderKind;

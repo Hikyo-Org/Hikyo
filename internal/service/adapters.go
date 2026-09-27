@@ -1721,6 +1721,12 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 			if err != nil {
 				return err
 			}
+			if target.Provider == string(adapter.SealedWebhookProvider) {
+				// The sealed protocol carries no adopt intent: a receiver never
+				// transfers an unowned name to a route, so adoption could only
+				// loop on conflict. The receiver releases the name instead.
+				return fmt.Errorf("%w: sealed-webhook conflicts resolve by releasing the name on the receiver or renaming, not adoption", domain.ErrInvalid)
+			}
 			if target.Generation != request.ExpectedGeneration || target.RepositoryID != request.ExpectedRepositoryID || target.DestinationID != request.ExpectedDestinationID {
 				return fmt.Errorf("%w: adoption target no longer matches the selected artifact", domain.ErrConflict)
 			}

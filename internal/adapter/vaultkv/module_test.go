@@ -15,12 +15,13 @@ import (
 // metadata, and soft-delete semantics. It records values only so tests can
 // prove what reached the destination; the module can never read them back.
 type fakeKV struct {
-	mount   Mount
-	paths   map[string]*fakePath
-	calls   []string
-	sealed  bool
-	failOn  map[string]error
-	applyOn map[string]error // apply the write, then return this error
+	mount        Mount
+	paths        map[string]*fakePath
+	calls        []string
+	sealed       bool
+	failOn       map[string]error
+	applyOn      map[string]error // apply the write, then return this error
+	beforeDelete func(string)
 }
 
 type fakePath struct {
@@ -127,7 +128,10 @@ func (f *fakeKV) WriteCAS(_ context.Context, _, path, value string, cas int64) (
 	return p.current, f.applied("write:" + path)
 }
 
-func (f *fakeKV) DeleteLatest(_ context.Context, _, path string) error {
+func (f *fakeKV) DeleteVersion(_ context.Context, _, path string, version int64) error {
+	if f.beforeDelete != nil {
+		f.beforeDelete(path)
+	}
 	if err := f.record("soft-delete:" + path); err != nil {
 		return err
 	}
@@ -135,7 +139,7 @@ func (f *fakeKV) DeleteLatest(_ context.Context, _, path string) error {
 	if p == nil {
 		return &ResponseError{Status: 404}
 	}
-	p.deleted[p.current] = true
+	p.deleted[version] = true
 	return f.applied("soft-delete:" + path)
 }
 
@@ -803,5 +807,23 @@ func TestConnectionToleratesPolicyWithoutLookupSelf(t *testing.T) {
 	connection, err := (&Module{API: lookupRefusedKV{kv}}).TestConnection(t.Context(), adapter.ConnectionRequest{Destination: adapter.Destination{Kind: adapter.Repository, Owner: "secret", Name: "apps"}, Gate: func(context.Context) error { return nil }})
 	if err != nil || connection.DestinationID <= 0 || !connection.CredentialExpiresAt.IsZero() {
 		t.Fatalf("TestConnection() = %+v, %v; want success with unknown expiry", connection, err)
+	}
+}
+
+func TestPrunePreservesConcurrentExternalVersion(t *testing.T) {
+	kv := newFakeKV()
+	journal := newFakeJournal()
+	target := testTarget(t, kv)
+	module := &Module{API: kv}
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest}, journal); err != nil {
+		t.Fatal(err)
+	}
+	kv.beforeDelete = func(path string) { kv.externalWrite(path, "concurrent-external-value") }
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}, journal); err != nil {
+		t.Fatal(err)
+	}
+	p := kv.paths["apps/pay/LOG_LEVEL"]
+	if !p.deleted[1] || p.deleted[2] || p.values[2] != "concurrent-external-value" {
+		t.Fatalf("prune affected concurrent external version: %+v", p)
 	}
 }

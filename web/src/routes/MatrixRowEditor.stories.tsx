@@ -119,3 +119,57 @@ export const Edits: Story = {
     );
   },
 };
+
+// An unbroken value (a token, a masked secret's run of dots) wraps inside the
+// dialog: the textarea sizes to its content, so without a break opportunity it
+// grew to the value's full length and the dialog scrolled sideways.
+const longValue = 'x'.repeat(400);
+
+/** Fails when the value control is wider than the dialog it sits in. */
+async function expectNoHorizontalOverflow(textarea: HTMLElement) {
+  const dialog = textarea.closest('dialog');
+  await expect(dialog).not.toBeNull();
+  await expect(dialog?.scrollWidth).toBeLessThanOrEqual(dialog?.clientWidth ?? 0);
+  await expect(textarea.getBoundingClientRect().width).toBeLessThanOrEqual(
+    dialog?.getBoundingClientRect().width ?? 0,
+  );
+}
+
+export const LongValue: Story = {
+  args: {
+    rows: rows.map((row) => ({
+      ...row,
+      cell: row.cell === undefined ? undefined : { ...row.cell, value: longValue },
+    })),
+  },
+  play: async ({ canvas }) => {
+    const textarea = canvas.getByRole('textbox', { name: 'development value' });
+    await expect(textarea).toHaveValue(longValue);
+    await expectNoHorizontalOverflow(textarea);
+  },
+};
+
+// The screenshot case: a secret is masked while typing, one long run of dots.
+export const LongSecretValue: Story = {
+  args: {
+    keyRecord: { ...keyRecord, name: 'API_TOKEN', classification: 'secret' },
+    rows: rows.map((row) => ({
+      ...row,
+      cell: {
+        key_id: keyRecord.id,
+        name: 'API_TOKEN',
+        classification: 'secret',
+        set: false,
+        revealed: false,
+      },
+    })),
+  },
+  play: async ({ canvas }) => {
+    const textarea = canvas.getByRole('textbox', { name: 'development value' });
+    await expect(textarea).toHaveClass('matrix-editor__value--masked');
+    await userEvent.click(textarea);
+    await userEvent.paste(longValue);
+    await expect(textarea).toHaveValue(longValue);
+    await expectNoHorizontalOverflow(textarea);
+  },
+};

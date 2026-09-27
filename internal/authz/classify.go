@@ -793,6 +793,24 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/renew":  {Class: ClassTenant, Ops: []Operation{OpLeaseRenew}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/revoke": {Class: ClassTenant, Ops: []Operation{OpLeaseRevoke}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle": {Class: ClassTenant, Ops: []Operation{OpLeaseSettle}},
+	// SSH user certificates (#155).
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas":                                   {Class: ClassTenant, Ops: []Operation{OpSSHCAInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas":                                  {Class: ClassTenant, Ops: []Operation{OpSSHCAConfigure}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}":                           {Class: ClassTenant, Ops: []Operation{OpSSHCAInspect}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}":                        {Class: ClassTenant, Ops: []Operation{OpSSHCADelete}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate":                   {Class: ClassTenant, Ops: []Operation{OpSSHCARotate}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire":   {Class: ClassTenant, Ops: []Operation{OpSSHCARetireKey}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys":              {Class: ClassTenant, Ops: []Operation{OpSSHCAInspect}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl":                       {Class: ClassTenant, Ops: []Operation{OpSSHCAInspect}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles":                              {Class: ClassTenant, Ops: []Operation{OpSSHProfileInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles":                             {Class: ClassTenant, Ops: []Operation{OpSSHProfileConfigure}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}":                 {Class: ClassTenant, Ops: []Operation{OpSSHProfileInspect}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}":                 {Class: ClassTenant, Ops: []Operation{OpSSHProfileConfigure}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}":              {Class: ClassTenant, Ops: []Operation{OpSSHProfileDelete}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates":                          {Class: ClassTenant, Ops: []Operation{OpSSHCertInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates":                         {Class: ClassTenant, Ops: []Operation{OpSSHCertIssue}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}":         {Class: ClassTenant, Ops: []Operation{OpSSHCertInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke": {Class: ClassTenant, Ops: []Operation{OpSSHCertRevoke}},
 
 	"http:GET /api/v1/orgs/{org}/projects/{project}/key-groups":            {Class: ClassTenant, Ops: []Operation{OpKeyGroupList}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/key-groups":           {Class: ClassTenant, Ops: []Operation{OpKeyGroupCreate}},
@@ -933,6 +951,11 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	// tenant-scoped provider and lease routes and nothing wider.
 	"cli:dynamic-provider": {Class: ClassTenant},
 	"cli:lease":            {Class: ClassTenant},
+	// SSH user certificates (#155): client transport for the tenant-scoped
+	// CA, profile and certificate routes and nothing wider.
+	"cli:ssh-ca":      {Class: ClassTenant},
+	"cli:ssh-profile": {Class: ClassTenant},
+	"cli:ssh-cert":    {Class: ClassTenant},
 
 	// The Compose delivery verbs (#63). `run` and `compose` both reach the
 	// tenant-scoped delivery routes (GET .../delivery and its offline-records

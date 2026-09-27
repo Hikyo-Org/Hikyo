@@ -137,7 +137,8 @@ func (h *kvHarness) fixture(mount string) string {
 	h.must(http.MethodPost, "/v1/sys/mounts/"+mount, map[string]any{"type": "kv", "options": map[string]string{"version": "2"}})
 	h.t.Cleanup(func() { h.do(http.MethodDelete, "/v1/sys/mounts/"+mount, nil) })
 	policy := fmt.Sprintf(`
-path "%[1]s/data/*"     { capabilities = ["create", "update", "delete"] }
+path "%[1]s/data/*"     { capabilities = ["create", "update"] }
+path "%[1]s/delete/*"     { capabilities = ["update"] }
 path "%[1]s/metadata/*" { capabilities = ["patch", "read"] }
 path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }
 `, mount)

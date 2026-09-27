@@ -2429,6 +2429,11 @@ fieldset.field > legend {
   width: 100%;
   max-block-size: 40vh;
   field-sizing: content;
+  /* field-sizing grows the box inline to an unbroken value's length (a masked
+     secret is one long run of dots), pushing the dialog into horizontal
+     scroll; breaking anywhere keeps it at the dialog's width and grows it
+     downward instead. */
+  overflow-wrap: anywhere;
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: var(--radius-control);

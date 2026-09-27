@@ -83,7 +83,7 @@ type API interface {
 	ReadMetadata(ctx context.Context, mount, path string) (Metadata, error)
 	PatchCustomMetadata(ctx context.Context, mount, path string, custom map[string]*string) error
 	WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error)
-	DeleteLatest(ctx context.Context, mount, path string) error
+	DeleteVersion(ctx context.Context, mount, path string, version int64) error
 }
 
 type operation struct {
@@ -109,7 +109,7 @@ var operationRegistry = map[string]operation{
 	"read-metadata":    {Method: http.MethodGet, Path: "/v1/{mount}/metadata/{path}", Authenticated: true},
 	"patch-metadata":   {Method: http.MethodPatch, Path: "/v1/{mount}/metadata/{path}", Authenticated: true},
 	"write-cas":        {Method: http.MethodPost, Path: "/v1/{mount}/data/{path}", Authenticated: true},
-	"soft-delete-data": {Method: http.MethodDelete, Path: "/v1/{mount}/data/{path}", Authenticated: true},
+	"soft-delete-data": {Method: http.MethodPost, Path: "/v1/{mount}/delete/{path}", Authenticated: true},
 }
 
 type ClientConfig struct {
@@ -599,6 +599,6 @@ func (c *Client) WriteCAS(ctx context.Context, mount, path, value string, cas in
 	return out.Data.Version, nil
 }
 
-func (c *Client) DeleteLatest(ctx context.Context, mount, path string) error {
-	return c.do(ctx, "soft-delete-data", kvPath("data", mount, path), nil, nil)
+func (c *Client) DeleteVersion(ctx context.Context, mount, path string, version int64) error {
+	return c.do(ctx, "soft-delete-data", kvPath("delete", mount, path), map[string][]int64{"versions": {version}}, nil)
 }

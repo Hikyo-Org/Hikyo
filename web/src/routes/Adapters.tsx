@@ -986,6 +986,8 @@ export function providerLabel(provider: string): string {
       return 'Forgejo';
     case 'github-actions':
       return 'GitHub Actions';
+    case 'sealed-webhook':
+      return 'Sealed webhook';
     case 'vault-kv':
       return 'Vault / OpenBao KV';
     default:

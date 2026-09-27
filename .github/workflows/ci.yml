@@ -1,5 +1,8 @@
 # CI for the walking skeleton (#42): trusted base-branch orchestration runs
-# every validation domain affected by PR paths; main runs the complete suite.
+# every validation domain affected by PR paths; main and the merge queue
+# (merge_group, the exact merge result about to land) run the complete suite.
+# Merge groups, like PRs, load every planning/checking script from the base
+# (merge_group.base_sha), never from the candidate being validated.
 # Validation checks out exact PR heads with read-only permissions and no cache
 # writes. Actions and toolchains remain pinned.
 name: ci
@@ -36,7 +39,7 @@ jobs:
         id: classify
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -o pipefail
@@ -49,8 +52,14 @@ jobs:
             git show "$BASE_SHA:scripts/ci/classify-changed-paths.sh" >"$trusted_classifier"
             git show "$BASE_SHA:scripts/ci/ci-job-registry.json" >"$trusted_registry"
             chmod +x "$trusted_classifier"
-            plan=$(git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA" |
-              CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --files)
+            if [ "$EVENT_NAME" = merge_group ]; then
+              # The queue candidate gets the full plan from the base's trusted
+              # classifier: a candidate must not choose its own plan (#813).
+              plan=$(CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --all)
+            else
+              plan=$(git diff --no-renames --name-only "$BASE_SHA...$HEAD_SHA" |
+                CI_JOB_REGISTRY="$trusted_registry" "$trusted_classifier" --files)
+            fi
           else
             echo "trusted CI classifier or job registry is missing at $BASE_SHA" >&2
             exit 1
@@ -514,7 +523,7 @@ jobs:
           path: ~/.cache/go-build
           key: ${{ steps.generated-go-cache.outputs.cache-primary-key }}
       - name: Require DCO sign-off on every PR commit
-        if: ${{ !cancelled() && github.event_name != 'push' }}
+        if: ${{ !cancelled() && github.event_name != 'push' && github.event_name != 'merge_group' }}
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -1167,7 +1176,7 @@ jobs:
       - name: Plan complete test, race, and fuzz shards
         id: plan
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -o pipefail
@@ -1351,7 +1360,7 @@ jobs:
           HIKYO_TEST_POSTGRES_DSN: postgres://hikyo:hikyo@127.0.0.1:5432/hikyo_test
           RACE_PLAN: ${{ needs.analysis_shards.outputs.race_plan }}
           RACE_SHARD: ${{ matrix.shard }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           packages="$RUNNER_TEMP/race-packages"
@@ -1656,7 +1665,7 @@ jobs:
           retention-days: 30
       - name: Require every validation job
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
           NEEDS_JSON: ${{ toJSON(needs) }}
           PLAN_JSON: ${{ needs.changes.outputs.plan }}
         run: |

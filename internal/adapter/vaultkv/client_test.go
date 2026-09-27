@@ -31,9 +31,12 @@ func TestNoValueReadPathExists(t *testing.T) {
 	for i := range typeOf.NumMethod() {
 		got = append(got, typeOf.Method(i).Name)
 	}
-	want := []string{"DeleteLatest", "Health", "LookupSelf", "MountInfo", "PatchCustomMetadata", "ReadMetadata", "WriteCAS"}
+	want := []string{"DeleteVersion", "Health", "LookupSelf", "MountInfo", "PatchCustomMetadata", "ReadMetadata", "WriteCAS"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("linked Vault API operations = %v, want closed value-blind set %v", got, want)
+	}
+	if got := operationRegistry["soft-delete-data"]; got.Method != http.MethodPost || got.Path != "/v1/{mount}/delete/{path}" {
+		t.Fatalf("soft delete must address an explicit version: %+v", got)
 	}
 	for name, op := range operationRegistry {
 		switch {
@@ -41,7 +44,7 @@ func TestNoValueReadPathExists(t *testing.T) {
 			t.Errorf("operation %s links a value read %s %s", name, op.Method, op.Path)
 		case op.Method == "LIST":
 			t.Errorf("operation %s links a LIST", name)
-		case strings.Contains(op.Path, "/destroy/") || strings.Contains(op.Path, "/delete/") || strings.Contains(op.Path, "/undelete/"):
+		case strings.Contains(op.Path, "/destroy/") || strings.Contains(op.Path, "/undelete/"):
 			t.Errorf("operation %s links version lifecycle %s", name, op.Path)
 		case strings.Contains(op.Path, "/metadata/") && op.Method == http.MethodDelete:
 			t.Errorf("operation %s links irreversible metadata deletion", name)
@@ -461,5 +464,23 @@ func TestReadMetadataRefusesMalformedDeletionTime(t *testing.T) {
 	defer server.Close()
 	if _, err := pinnedClient(t, server, "", "hvs.static").ReadMetadata(t.Context(), "secret", "apps/pay/TOKEN"); err == nil || !strings.Contains(err.Error(), "malformed deletion time") {
 		t.Fatalf("ReadMetadata() = %v, want malformed deletion time refusal", err)
+	}
+}
+
+func TestDeleteVersionSendsOnlyInspectedVersion(t *testing.T) {
+	stub := &vaultStub{t: t, handle: func(w http.ResponseWriter, r recordedRequest) {
+		if r.Method != http.MethodPost || r.Path != "/v1/secret/delete/apps/pay/TOKEN" {
+			t.Errorf("unexpected delete request: %s %s", r.Method, r.Path)
+		}
+		if !reflect.DeepEqual(r.Body, map[string]any{"versions": []any{float64(7)}}) {
+			t.Errorf("delete must select only version 7: %v", r.Body)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}}
+	server := httptest.NewTLSServer(stub)
+	defer server.Close()
+	client := pinnedClient(t, server, "", "hvs.fixture")
+	if err := client.DeleteVersion(t.Context(), "secret", "apps/pay/TOKEN", 7); err != nil {
+		t.Fatal(err)
 	}
 }

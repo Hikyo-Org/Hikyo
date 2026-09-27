@@ -30,9 +30,9 @@ The client is hand-rolled `net/http` behind a closed `API` interface whose metho
 | ReadMetadata | `GET {mount}/metadata/{path}` | versions and custom metadata, **never data** |
 | PatchCustomMetadata | `PATCH {mount}/metadata/{path}` (merge; keys set to null are removed) | nothing |
 | WriteCAS | `POST {mount}/data/{path}` with `options.cas` | the new version |
-| DeleteLatest | `DELETE {mount}/data/{path}` | nothing (soft delete) |
+| DeleteVersion | `POST {mount}/delete/{path}` with the inspected version | nothing (recoverable soft delete) |
 
-Excluded, and refused by the tests: any `GET` or `LIST` of `{mount}/data/…`, `LIST` of anything, `destroy`, `delete`/`undelete` of versions, `DELETE` of metadata, and `sys/raw`. The contract suite runs the adapter on an AppRole whose policy **denies every read of the data path**, so a passing run proves the server itself would refuse a value read. Custom metadata carries names and version numbers only: no value, digest, or verifier of a value is ever written to the destination.
+Excluded, and refused by the tests: any `GET` or `LIST` of `{mount}/data/…`, `LIST` of anything, `destroy`, `undelete` of versions, `DELETE` of metadata, and `sys/raw`. The contract suite runs the adapter on an AppRole whose policy **denies every read of the data path**, so a passing run proves the server itself would refuse a value read. Custom metadata carries names and version numbers only: no value, digest, or verifier of a value is ever written to the destination.
 
 ## Ownership and concurrency: CAS plus a marker protocol
 
@@ -52,7 +52,7 @@ Every sync re-delivers every owned value (the seam's converge rule), which creat
 ## Retain, prune, destroy
 
 - **Retain** (`--keep-remote`) releases ledger custody and leaves every path untouched.
-- **Prune** (the default on removal, and for names that leave the selection) soft-deletes the current version with `DELETE {mount}/data/{path}`. History and metadata survive, and `vault kv undelete` recovers the value until the mount's own retention removes it. A path that moved externally is never deleted: its custody is released with a recorded conflict and a target warning, and the prune or teardown continues, so someone else's edit neither disappears nor wedges removal.
+- **Prune** (the default on removal, and for names that leave the selection) soft-deletes only the inspected version with `POST {mount}/delete/{path}`. A concurrent newer version is never deleted. History and metadata survive, and `vault kv undelete` recovers the value until the mount's own retention removes it. A path that moved externally is never deleted: its custody is released with a recorded conflict and a target warning, and the prune or teardown continues, so someone else's edit neither disappears nor wedges removal.
 - **Destroy** is not linked. Hikyo never destroys versions or deletes metadata; an operator who needs irreversible removal uses their own Vault tooling after retaining or pruning. A later ceremony-gated destroy would be a new operation in this ADR, not a flag.
 
 ## Authentication
@@ -78,3 +78,10 @@ One tree cannot be both an import source and a sync destination of the same proj
 | Transport error, `5xx` | `unknown`, replayed via the marker protocol |
 
 Partial progress is per name: each path has its own INTENT and OUTCOME, and completed names are skipped when a job resumes.
+
+### Amendment: version-bound prune
+
+Pruning uses the explicit-version soft-delete endpoint because deleting the latest
+version can erase an external write racing the metadata inspection. The provider
+still cannot destroy or undelete versions. Policies grant update on the delete
+path instead of delete on the data path.

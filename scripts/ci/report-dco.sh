@@ -23,8 +23,11 @@ output=$("$script_dir/check-dco.sh" "$BASE_SHA" "$HEAD_SHA" "$repo" 2>&1) || sta
 printf '%s\n' "$output"
 [ "$status" -le 1 ] || exit "$status"
 
-existing=$(gh api --paginate "repos/$GH_REPO/issues/$PR_NUMBER/comments?per_page=100" \
-	--jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | head -n 1)
+# Captured before head: a pipeline would report head's status and hide a
+# failed lookup, which would post a duplicate comment or leave a stale one.
+ids=$(gh api --paginate "repos/$GH_REPO/issues/$PR_NUMBER/comments?per_page=100" \
+	--jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id")
+existing=$(printf '%s\n' "$ids" | head -n 1)
 
 if [ "$status" -eq 0 ]; then
 	if [ -n "$existing" ]; then

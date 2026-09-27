@@ -26,7 +26,7 @@ review, see "Open").
   CHECK; SQLite: the existing 00025 `adapters` restore already covers it).
 - **`internal/adapter/vaultkv`**: hand-rolled client behind a closed `API`
   (Health, MountInfo, LookupSelf, ReadMetadata,
-  PatchCustomMetadata, WriteCAS, DeleteLatest) and one operation registry.
+  PatchCustomMetadata, WriteCAS, DeleteVersion) and one operation registry.
   No data GET/LIST, no destroy, no metadata delete, no sys/raw: pinned by a
   reflection test plus a source scan. Credential is a bare token or JSON
   (`token` | `approle`, optional `ca_pem`, `spki_sha256`), unknown fields

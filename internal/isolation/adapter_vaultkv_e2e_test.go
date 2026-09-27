@@ -179,7 +179,8 @@ func runVaultKVEndToEnd(t *testing.T, db *store.DB) {
 	mount := fmt.Sprintf("hikyo-e2e-%d", time.Now().UnixNano())
 	server.must(t, http.MethodPost, "/v1/sys/mounts/"+mount, map[string]any{"type": "kv", "options": map[string]string{"version": "2"}})
 	t.Cleanup(func() { server.do(t, http.MethodDelete, "/v1/sys/mounts/"+mount, nil) })
-	policy := fmt.Sprintf(`path "%[1]s/data/*" { capabilities = ["create", "update", "delete"] }
+	policy := fmt.Sprintf(`path "%[1]s/data/*" { capabilities = ["create", "update"] }
+path "%[1]s/delete/*" { capabilities = ["update"] }
 path "%[1]s/metadata/*" { capabilities = ["patch", "read"] }
 path "sys/internal/ui/mounts/%[1]s" { capabilities = ["read"] }`, mount)
 	server.must(t, http.MethodPut, "/v1/sys/policies/acl/"+mount, map[string]string{"policy": policy})

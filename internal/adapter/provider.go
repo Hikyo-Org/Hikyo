@@ -11,11 +11,12 @@ type Provider string
 const (
 	ForgejoProvider       Provider = "forgejo"
 	GitHubActionsProvider Provider = "github-actions"
+	SealedWebhookProvider Provider = "sealed-webhook"
 	// VaultKVProvider is the one-way Vault/OpenBao KV v2 destination (#162).
 	VaultKVProvider Provider = "vault-kv"
 )
 
-var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, VaultKVProvider}
+var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, VaultKVProvider}
 
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {
