@@ -162,7 +162,7 @@ func TestDesiredRowsOrderSentinelsFirst(t *testing.T) {
 }
 
 func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
-	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider}
+	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider}
 	if got := SupportedProviders(); !slices.Equal(got, want) {
 		t.Fatalf("SupportedProviders() = %v, want %v", got, want)
 	}

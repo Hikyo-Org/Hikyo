@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/internal/adapter"
+	"github.com/Hikyo-Org/hikyo/internal/adapter/cloudflare"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/forgejo"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/githubactions"
 	"github.com/Hikyo-Org/hikyo/internal/adapter/sealedwebhook"
@@ -53,6 +54,13 @@ func deploymentProviderRegistry(endpoints sealedWebhookEndpoints) map[adapter.Pr
 				return nil, nil, err
 			}
 			return &sealedwebhook.Module{API: client, Endpoint: endpoint, Binding: credential}, client.Forget, nil
+		},
+		adapter.CloudflareProvider: func(config adapter.Config, credential string, allowed []netip.Prefix) (adapter.Module, func(), error) {
+			client, err := cloudflare.NewClient(cloudflare.ClientConfig{Origin: config.Origin, Credential: credential, AllowedCIDRs: allowed, Deadline: 15 * time.Second})
+			if err != nil {
+				return nil, nil, err
+			}
+			return &cloudflare.Module{API: client}, client.Forget, nil
 		},
 	}
 }
