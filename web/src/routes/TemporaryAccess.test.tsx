@@ -45,6 +45,7 @@ function request(overrides: Record<string, unknown>) {
     reason: 'incident 42',
     bypassed: false,
     state: 'open',
+    can_approve: true,
     invalidated_cause: '',
     min_approvals: 1,
     approvals: 0,
@@ -94,7 +95,7 @@ it('files an immutable request within the offer and keeps policy administration 
     if (path.endsWith('/access-requests') && req.method === 'POST') {
       const body: unknown = await req.json();
       bodies.push(body);
-      const filed = request({ requester: 'usr_00000000-0000-0000-0000-00000000000a', requester_name: 'Me' });
+      const filed = request({ requester: 'usr_00000000-0000-0000-0000-00000000000a', requester_name: 'Me', can_approve: false });
       queue = { offer, items: [filed] };
       return Response.json(filed);
     }
@@ -130,7 +131,7 @@ it('files an immutable request within the offer and keeps policy administration 
     await settleTask();
     expect(bodies).toEqual([{ capabilities: ['reveal'], reason: 'incident 42', duration_seconds: 7200 }]);
     expect(container.textContent).toContain('Request submitted.');
-    // The requester withdraws, never approves, their own request.
+    // This policy does not permit this requester to approve their own request.
     expect(button(container, 'Withdraw')).toBeDefined();
     expect([...container.querySelectorAll('button')].some((b) => b.textContent === 'Approve')).toBe(false);
     expect(container.querySelector('.temporary-access__request-state')?.textContent).toBe('open · 0/1 approvals');
@@ -317,4 +318,25 @@ it('disables policy deletion until the pending request settles', async () => {
   } finally {
     await unmount();
   }
+});
+
+it('offers self-approval only when the server grants the request affordance', async () => {
+  const own = request({ requester: 'usr_00000000-0000-0000-0000-00000000000a', can_approve: true });
+  vi.stubGlobal('fetch', async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path.endsWith('/environments')) return Response.json({ items: [env], count: 1 });
+    if (path.endsWith('/access-policies')) return Response.json({ items: [] });
+    if (path.endsWith('/access-requests')) return Response.json({ offer, items: [own] });
+    throw new Error(`unexpected ${req.method} ${path}`);
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const select = container.querySelector('#ta-env');
+    if (!(select instanceof HTMLSelectElement)) throw new Error('environment select missing');
+    await act(async () => selectValue(select, env.id));
+    await settleTask();
+    expect(button(container, 'Approve').disabled).toBe(false);
+    expect(button(container, 'Withdraw')).toBeDefined();
+  } finally { await unmount(); }
 });

@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"reflect"
 	"slices"
@@ -85,6 +87,7 @@ func TestAccessSyntaxRejectedBeforeAuthentication(t *testing.T) {
 		{"policy quorum overflow", []string{"policy", "create", "--capability", "read", "--approver", "principal:usr_one", "--min-approvals", "2147483648"}, "--min-approvals"},
 		{"policy ttl zero", []string{"policy", "create", "--capability", "read", "--approver", "principal:usr_one", "--ttl", "0"}, "--ttl"},
 		{"policy ttl overflow", []string{"policy", "create", "--capability", "read", "--approver", "principal:usr_one", "--ttl", "2147483648"}, "--ttl"},
+		{"update no changes", []string{"policy", "update", "xpol_one"}, "policy flag"},
 		{"update missing id", []string{"policy", "update"}, "<policy>"},
 		{"delete extra ids", []string{"policy", "delete", "one", "two"}, "<policy>"},
 		{"request missing reason", []string{"request", "create", "--capability", "read", "--duration", "1h"}, "--reason"},
@@ -127,5 +130,36 @@ func TestAccessRequestTable(t *testing.T) {
 	}
 	if got := accessRequestTable(requests[:1], nil).JSON; !reflect.DeepEqual(got, apigen.AccessQueue{Items: requests[:1]}) {
 		t.Fatalf("single request JSON = %+v", got)
+	}
+}
+
+func TestAccessPolicyUpdatePreservesOmittedFields(t *testing.T) {
+	current := apigen.AccessPolicy{EnvironmentId: "env_production", Capabilities: []apigen.AccessCapability{"read"}, MaxDurationSeconds: 60, MinApprovals: 2, RequestTtlSeconds: 120, Enabled: false, AllowSelfApproval: true, Bypassers: []string{"usr_one"}, Approvers: []apigen.ApprovalApprover{{Kind: "principal", SubjectId: "usr_two"}}}
+	empty, no := "", false
+	defaults := apigen.AccessPolicyInput{EnvironmentId: &empty, MaxDurationSeconds: 28800, MinApprovals: 1, RequestTtlSeconds: 86400, Enabled: true, AllowSelfApproval: &no}
+	got := mergeAccessPolicyInput(current, defaults, nil)
+	if *got.EnvironmentId != current.EnvironmentId || got.MaxDurationSeconds != 60 || got.MinApprovals != 2 || got.RequestTtlSeconds != 120 || got.Enabled || !*got.AllowSelfApproval || !slices.Equal(*got.Bypassers, current.Bypassers) || !slices.Equal(got.Capabilities, current.Capabilities) || !reflect.DeepEqual(got.Approvers, current.Approvers) {
+		t.Fatalf("omissions changed policy: %+v", got)
+	}
+	explicit := mergeAccessPolicyInput(current, defaults, map[string]bool{"covers": true, "allow-self-approval": true, "disabled": true})
+	if *explicit.EnvironmentId != "" || *explicit.AllowSelfApproval || !explicit.Enabled {
+		t.Fatalf("explicit empty/false ignored: %+v", explicit)
+	}
+}
+
+func TestAccessReauthWithoutInlineTOTPReturnsAuthRefusal(t *testing.T) {
+	for _, keys := range []bool{false, true} {
+		d := disclosure{purpose: "access", window: func(context.Context, string) (apigen.RevealWindow, error) { return apigen.RevealWindow{}, nil }}
+		if keys {
+			d.keys = func(context.Context, string) ([]string, error) {
+				t.Error("access tried browser key resolution")
+				return nil, nil
+			}
+		}
+		err := ensureRevealWindow(t.Context(), nil, nil, IO{OpenURL: func(string) error { t.Error("opened unsupported access browser handoff"); return nil }}, nil, "", "env_one", d, errors.New("reauth required"))
+		var refusal *Error
+		if !errors.As(err, &refusal) || refusal.Code != ExitAuth {
+			t.Fatalf("keys=%v refusal=%v", keys, err)
+		}
 	}
 }

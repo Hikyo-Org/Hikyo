@@ -386,7 +386,9 @@ adapters:
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--stdin | --value-file PATH] [--create-environment]
   hikyo adapter create --provider gitlab --origin <https-origin> --env E --kind project|group
-      --owner <numeric-id> [--scope <environment-scope>] [--protected] [--hidden] [--expand-variables]
+      --owner <namespace-or-group-path> [--repo <project>] [--scope <environment-scope>]
+      (project targets require --repo; group targets refuse it)
+      [--protected] [--hidden] [--expand-variables]
       [--spki-pin <base64-sha256>] [--ca-bundle-file PATH] [--allow-personal-token]
       [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
   hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.<region>.amazonaws.com
@@ -630,7 +632,8 @@ access:
   hikyo access policy list [-o table|json]
   hikyo access policy create --capability C --approver principal:<id> [--covers ENV] [--max-duration 8h]
       [--min-approvals N] [--ttl SECONDS] [--allow-self-approval] [--disabled] [--bypasser <id>]
-  hikyo access policy update <policy> …same flags as create…
+  hikyo access policy update <policy> …same flags as create… [--clear-bypassers]
+      (omitted fields keep their current values)
   hikyo access policy delete <policy>
   hikyo access request list --env E [-o table|json]
   hikyo access request create --env E --capability C --duration 1h --reason R

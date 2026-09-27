@@ -1627,6 +1627,7 @@ export const zAccessVoteRequest = z.object({
 });
 
 export const zAccessRequest = z.object({
+    can_approve: z.boolean().readonly().optional(),
     requester_name: z.string().optional(),
     id: zId,
     environment_id: zId,
@@ -4417,6 +4418,48 @@ export const zRotateSshcaRequestWritable = z.object({
     algorithm: zSshKeyAlgorithm.optional(),
     private_key: z.string().min(1).max(16384).optional(),
     overlap_seconds: z.coerce.bigint().gte(BigInt(0)).lte(BigInt(2592000)).nullish()
+});
+
+export const zAccessRequestWritable = z.object({
+    requester_name: z.string().optional(),
+    id: zId,
+    environment_id: zId,
+    policy_id: zId,
+    policy_version: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    requester: zId,
+    capabilities: z.array(zAccessCapability),
+    duration_seconds: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    reason: z.string(),
+    bypassed: z.boolean(),
+    state: z.enum([
+        'open',
+        'granted',
+        'rejected',
+        'cancelled',
+        'expired',
+        'invalidated',
+        'revoked'
+    ]),
+    invalidated_cause: z.enum([
+        '',
+        'policy_changed',
+        'policy_disabled',
+        'approver_removed'
+    ]),
+    resolved_by: zId.optional(),
+    min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    votes: z.array(zApprovalVote),
+    created_at: zTimestamp,
+    review_expires_at: zTimestamp,
+    granted_at: zTimestamp.optional(),
+    expires_at: zTimestamp.optional(),
+    resolved_at: zTimestamp.optional()
+});
+
+export const zAccessQueueWritable = z.object({
+    offer: zAccessOffer.optional(),
+    items: z.array(zAccessRequestWritable)
 });
 
 export const zPkiIssuerName = zPkiName;
