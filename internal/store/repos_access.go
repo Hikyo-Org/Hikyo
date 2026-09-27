@@ -1041,3 +1041,6 @@ func (r pgAccess) OperationalCounts(ctx context.Context, p authz.Proof, now time
 	}
 	return open, active, nil
 }
+
+func (r sqliteReadRepos) Access() AccessReader { return r.r.Access() }
+func (r pgReadRepos) Access() AccessReader     { return r.r.Access() }

@@ -12645,7 +12645,7 @@ paths:
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
-        "200": {description: The created version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
+        "201": {description: The created version., content: {application/json: {schema: {$ref: "#/components/schemas/PkiIssuer"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -12879,7 +12879,7 @@ paths:
       responses:
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
-        "200": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
+        "201": {description: The profile., content: {application/json: {schema: {$ref: "#/components/schemas/PkiProfile"}}}}
         "400": {$ref: "#/components/responses/BadRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
@@ -15596,7 +15596,7 @@ components:
     AdapterMoveTarget:
       type: object
       additionalProperties: false
-      required: [target_id, environment_id, destination_kind, destination_owner, destination_name, destination_environment, destination_id, repository_id, visibility, selected_repository_ids, name_prefix, orphaned_names, jobs]
+      required: [target_id, environment_id, destination_kind, destination_owner, destination_name, destination_environment, destination_scope, destination_id, repository_id, visibility, selected_repository_ids, name_prefix, orphaned_names, jobs]
       properties:
         target_id: {$ref: "#/components/schemas/ID"}
         environment_id: {$ref: "#/components/schemas/ID"}
@@ -15604,6 +15604,7 @@ components:
         destination_owner: {type: string}
         destination_name: {type: string}
         destination_environment: {type: string}
+        destination_scope: {type: string, description: GitLab environment_scope; empty for other providers.}
         destination_id: {type: integer, format: int64, minimum: 0}
         repository_id: {type: integer, format: int64, minimum: 0}
         visibility: {type: string, enum: ["", all, private, selected]}

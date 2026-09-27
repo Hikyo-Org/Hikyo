@@ -26,3 +26,10 @@ DROP INDEX adapter_ledger_active_provider_name;
 CREATE UNIQUE INDEX adapter_ledger_active_provider_name
     ON adapter_ledger (provider_origin, destination_kind, repository_id, destination_id, destination_scope, surface, normalized_name)
     WHERE state <> 'released';
+
+-- Pending route ownership uses the same immutable GitLab environment scope.
+ALTER TABLE adapter_route_move_targets ADD COLUMN destination_scope TEXT NOT NULL DEFAULT '';
+ALTER TABLE adapter_route_move_claims ADD COLUMN destination_scope TEXT NOT NULL DEFAULT '';
+ALTER TABLE adapter_route_move_claims DROP CONSTRAINT adapter_route_move_claims_provider_destination_name_unique;
+ALTER TABLE adapter_route_move_claims ADD CONSTRAINT adapter_route_move_claims_provider_destination_name_unique
+    UNIQUE (provider_origin, destination_kind, destination_owner, destination_name, destination_environment, destination_scope, surface, normalized_name);

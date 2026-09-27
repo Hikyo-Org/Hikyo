@@ -4447,6 +4447,9 @@ type AdapterMoveTarget struct {
 	DestinationName  string                 `json:"destination_name"`
 	DestinationOwner string                 `json:"destination_owner"`
 
+	// DestinationScope GitLab environment_scope; empty for other providers.
+	DestinationScope string `json:"destination_scope"`
+
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId         ID               `json:"environment_id"`
 	Jobs                  []AdapterMoveJob `json:"jobs"`
@@ -38600,16 +38603,16 @@ type CreatePkiIssuerResponseObject interface {
 	VisitCreatePkiIssuerResponse(w http.ResponseWriter) error
 }
 
-type CreatePkiIssuer200JSONResponse PkiIssuer
+type CreatePkiIssuer201JSONResponse PkiIssuer
 
-func (response CreatePkiIssuer200JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+func (response CreatePkiIssuer201JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
+	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -39881,16 +39884,16 @@ type CreatePkiProfileResponseObject interface {
 	VisitCreatePkiProfileResponse(w http.ResponseWriter) error
 }
 
-type CreatePkiProfile200JSONResponse PkiProfile
+type CreatePkiProfile201JSONResponse PkiProfile
 
-func (response CreatePkiProfile200JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+func (response CreatePkiProfile201JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(200)
+	w.WriteHeader(201)
 	_, err := buf.WriteTo(w)
 	return err
 }

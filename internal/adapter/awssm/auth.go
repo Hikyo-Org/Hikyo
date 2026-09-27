@@ -52,11 +52,12 @@ var (
 	// project administrator could write wherever the server's role can.
 	ErrWorkloadIdentityDisabled = errors.New("aws-secrets-manager: server workload identity is disabled; the instance operator must set HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow, or use static credentials")
 
-	awsRegion  = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
-	awsRoleARN = regexp.MustCompile(`^arn:aws(-cn|-us-gov)?:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$`)
-	awsKeyID   = regexp.MustCompile(`^[A-Z0-9]{16,128}$`)
-	externalID = regexp.MustCompile(`^[A-Za-z0-9+=,.@:/-]+$`)
-	endpoint   = regexp.MustCompile(`^secretsmanager(-fips)?\.([a-z0-9-]+)\.amazonaws\.com(\.cn)?$`)
+	awsRegion   = regexp.MustCompile(`^[a-z]{2}(-[a-z]+)+-[0-9]+$`)
+	awsRoleARN  = regexp.MustCompile(`^arn:aws(-cn|-us-gov)?:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$`)
+	awsKeyID    = regexp.MustCompile(`^[A-Z0-9]{16,128}$`)
+	externalID  = regexp.MustCompile(`^[A-Za-z0-9+=,.@:/-]+$`)
+	vpcEndpoint = regexp.MustCompile(`^vpce-[a-z0-9-]+(?:\.|-)secretsmanager(-fips)?\.([a-z0-9-]+)\.vpce\.amazonaws\.com(\.cn)?$`)
+	endpoint    = regexp.MustCompile(`^secretsmanager(-fips)?\.([a-z0-9-]+)\.amazonaws\.com(\.cn)?$`)
 )
 
 // ConfigError is a caller-correctable refusal of an origin, access
@@ -202,10 +203,14 @@ func resolveRoute(rawOrigin string, d Descriptor) (route, error) {
 	if err != nil {
 		return route{}, err
 	}
-	host := strings.TrimPrefix(origin, "https://")
+	parsedOrigin, _ := url.Parse(origin) // canonicalOrigin already validated it.
+	host := parsedOrigin.Hostname()
+	if port := parsedOrigin.Port(); port != "" && port != "443" {
+		host = parsedOrigin.Host // A nonstandard port is not an AWS service endpoint.
+	}
 	if match := endpoint.FindStringSubmatch(host); match != nil {
 		region := match[2]
-		if !awsRegion.MatchString(region) {
+		if !awsRegion.MatchString(region) || strings.HasPrefix(region, "cn-") != (match[3] == ".cn") {
 			return route{}, fmt.Errorf("aws-secrets-manager: origin region %q is not an AWS region name", region)
 		}
 		if d.Region != "" && d.Region != region {
@@ -224,6 +229,12 @@ func resolveRoute(rawOrigin string, d Descriptor) (route, error) {
 		return route{}, errors.New("aws-secrets-manager: a non-AWS origin (VPC endpoint or emulator) requires region in the access descriptor")
 	}
 	if d.usesWorkloadIdentity() {
+		// Only AWS-owned Secrets Manager DNS forms can receive node-derived
+		// credentials and values. Egress CIDR permission is not that authority.
+		match := vpcEndpoint.FindStringSubmatch(host)
+		if match == nil || match[2] != d.Region || strings.HasPrefix(d.Region, "cn-") != (match[3] == ".cn") {
+			return route{}, errors.New("aws-secrets-manager: workload identity requires an AWS Secrets Manager regional or VPC endpoint matching the descriptor region")
+		}
 		// STS receives the node's own identity material: the projected web
 		// identity token, or a signed AssumeRole a receiver could replay for
 		// credentials. A tenant-configured endpoint never gets it; these

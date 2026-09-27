@@ -561,7 +561,9 @@ func (s *PKI) RenewCertificate(ctx context.Context, actor Actor, scope domain.Sc
 		if err := json.Unmarshal([]byte(current.SANs), &sans); err != nil {
 			return err
 		}
-		ttl := min(current.NotAfter.Sub(current.NotBefore)-time.Minute, policy.MaxTTL).Round(time.Minute)
+		// X.509 and database timestamps may lose subsecond precision. Keep the
+		// minimum valid lifetime, but never round above a non-minute policy cap.
+		ttl := min(max(current.NotAfter.Sub(current.NotBefore)-time.Minute, pki.MinLeafTTL), policy.MaxTTL)
 		resolved, err := policy.Check(pki.Request{
 			CommonName: current.CommonName, DNSNames: sans.DNS, IPAddresses: sans.IP, URIs: sans.URI,
 			TTL: ttl, PublicKey: leaf.PublicKey, Renewal: true,

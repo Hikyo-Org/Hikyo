@@ -478,9 +478,9 @@ func refuseDestinationNameCollision(ctx context.Context, db adapterDB, chain dom
 		return err
 	}
 	pendingQuery := db.SQL(
-		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind=? AND c.destination_owner=? AND c.destination_name=? AND c.destination_environment=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`,
+		`SELECT c.target_id,c.effective_name FROM adapter_route_move_claims c JOIN adapters candidate ON candidate.id=? AND candidate.org_id=c.org_id AND candidate.project_id=c.project_id WHERE c.org_id=? AND c.project_id=? AND c.provider_origin=candidate.origin AND c.destination_kind=? AND c.destination_owner=? AND c.destination_name=? AND c.destination_environment=? AND c.destination_scope=? AND c.target_id<>? ORDER BY c.target_id,c.effective_name`,
 	)
-	pendingRows, err := db.Query(ctx, pendingQuery, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, excludeTargetID)
+	pendingRows, err := db.Query(ctx, pendingQuery, m.AdapterID, chain.Org, chain.Project, m.DestinationKind, m.DestinationOwner, m.DestinationName, m.DestinationEnvironment, m.DestinationScope, excludeTargetID)
 	if err != nil {
 		return err
 	}

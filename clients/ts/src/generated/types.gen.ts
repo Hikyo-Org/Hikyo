@@ -1008,6 +1008,10 @@ export type AdapterMoveTarget = {
     destination_owner: string;
     destination_name: string;
     destination_environment: string;
+    /**
+     * GitLab environment_scope; empty for other providers.
+     */
+    destination_scope: string;
     destination_id: number;
     repository_id: number;
     visibility: '' | 'all' | 'private' | 'selected';
@@ -29220,7 +29224,7 @@ export type CreatePkiIssuerResponses = {
     /**
      * The created version.
      */
-    200: PkiIssuer;
+    201: PkiIssuer;
 };
 
 export type CreatePkiIssuerResponse = CreatePkiIssuerResponses[keyof CreatePkiIssuerResponses];
@@ -30002,7 +30006,7 @@ export type CreatePkiProfileResponses = {
     /**
      * The profile.
      */
-    200: PkiProfile;
+    201: PkiProfile;
 };
 
 export type CreatePkiProfileResponse = CreatePkiProfileResponses[keyof CreatePkiProfileResponses];

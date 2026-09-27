@@ -11,6 +11,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countEnvironmentPKICertificates = `-- name: CountEnvironmentPKICertificates :one
+SELECT COUNT(*) FROM pki_certificates
+WHERE org_id = $1 AND project_id = $2 AND environment_id = $3
+`
+
+type CountEnvironmentPKICertificatesParams struct {
+	ChainOrgID     string
+	ChainProjectID string
+	ChainEnvID     string
+}
+
+// A certificate's revocation evidence outlives its environment's configuration.
+func (q *Queries) CountEnvironmentPKICertificates(ctx context.Context, arg CountEnvironmentPKICertificatesParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countEnvironmentPKICertificates, arg.ChainOrgID, arg.ChainProjectID, arg.ChainEnvID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countEnvironments = `-- name: CountEnvironments :one
 SELECT COUNT(*) FROM environments WHERE org_id = $1 AND project_id = $2
 `

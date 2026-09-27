@@ -464,7 +464,7 @@ type Repos interface {
 	Approvals() ApprovalRepo
 	// Access is the approval-mediated temporary access engine (#152): policies,
 	// requests and votes. The time-bound grant rows it writes live on the
-	// resolution surface, not here. WRITE bundle only, like Approvals.
+	// resolution surface, not here. Operational counts also have a read-only surface.
 	Access() AccessRepo
 	// DeliveryTargets is the delivery-target condition-report surface (#788).
 	DeliveryTargets() DeliveryTargetRepo
@@ -502,6 +502,7 @@ type ScanningDismissalRepo interface {
 // transaction. There is no proof-free read path: authorization is evaluated
 // in-transaction, so reads run under internal/store/tx too.
 type ReadRepos interface {
+	Access() AccessReader
 	SelfConfig() SelfConfigReader
 	Orgs() OrgReader
 	Keys() KeyReader
@@ -843,11 +844,11 @@ type AdapterMoveJob struct {
 }
 
 type AdapterMoveTarget struct {
-	TargetID, EnvironmentID, DestinationKind, DestinationOwner, DestinationName, DestinationEnvironment, Visibility, NamePrefix string
-	DestinationID, RepositoryID                                                                                                 int64
-	SelectedRepositoryIDs                                                                                                       []int64
-	Orphaned                                                                                                                    []string
-	Jobs                                                                                                                        []AdapterMoveJob
+	TargetID, EnvironmentID, DestinationKind, DestinationOwner, DestinationName, DestinationEnvironment, DestinationScope, Visibility, NamePrefix string
+	DestinationID, RepositoryID                                                                                                                   int64
+	SelectedRepositoryIDs                                                                                                                         []int64
+	Orphaned                                                                                                                                      []string
+	Jobs                                                                                                                                          []AdapterMoveJob
 }
 
 type AdapterMove struct {

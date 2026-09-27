@@ -57,6 +57,25 @@ CREATE UNIQUE INDEX adapter_ledger_active_provider_name
     ON adapter_ledger (provider_origin, destination_kind, repository_id, destination_id, destination_scope, surface, normalized_name)
     WHERE state <> 'released';
 
+-- Pending ownership is separate for each GitLab environment scope.
+ALTER TABLE adapter_route_move_targets ADD COLUMN destination_scope TEXT NOT NULL DEFAULT '';
+ALTER TABLE adapter_route_move_claims RENAME TO adapter_route_move_claims_before_gitlab;
+CREATE TABLE adapter_route_move_claims (
+    move_id TEXT NOT NULL, org_id TEXT NOT NULL, project_id TEXT NOT NULL, environment_id TEXT NOT NULL, target_id TEXT NOT NULL, key_id TEXT,
+    provider_origin TEXT NOT NULL, destination_kind TEXT NOT NULL CHECK (destination_kind IN ('repository', 'organization', 'environment', 'workers-script', 'pages-project', 'json-object', 'per-key')),
+    destination_owner TEXT NOT NULL, destination_name TEXT NOT NULL, destination_environment TEXT NOT NULL DEFAULT '', destination_scope TEXT NOT NULL DEFAULT '',
+    surface TEXT NOT NULL CHECK (surface IN ('secret', 'variable')), effective_name TEXT NOT NULL, normalized_name TEXT NOT NULL,
+    PRIMARY KEY (move_id, target_id, surface, normalized_name),
+    UNIQUE (provider_origin, destination_kind, destination_owner, destination_name, destination_environment, destination_scope, surface, normalized_name),
+    FOREIGN KEY (org_id, project_id, environment_id, move_id, target_id) REFERENCES adapter_route_move_targets (org_id, project_id, environment_id, move_id, target_id),
+    FOREIGN KEY (org_id, project_id, environment_id, move_id, target_id, key_id) REFERENCES adapter_route_move_keys (org_id, project_id, environment_id, move_id, target_id, key_id) ON DELETE CASCADE
+);
+INSERT INTO adapter_route_move_claims (move_id,org_id,project_id,environment_id,target_id,key_id,provider_origin,destination_kind,destination_owner,destination_name,destination_environment,surface,effective_name,normalized_name)
+SELECT move_id,org_id,project_id,environment_id,target_id,key_id,provider_origin,destination_kind,destination_owner,destination_name,destination_environment,surface,effective_name,normalized_name
+FROM adapter_route_move_claims_before_gitlab;
+DROP TABLE adapter_route_move_claims_before_gitlab;
+
+
 COMMIT;
 PRAGMA legacy_alter_table = OFF;
 PRAGMA foreign_keys = ON;

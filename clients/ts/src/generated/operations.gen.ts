@@ -1147,8 +1147,8 @@ export const createKeyOp: BodyOperation<CreateKeyData, typeof zCreateKeyResponse
 export const createKeyGroupOp: BodyOperation<CreateKeyGroupData, typeof zCreateKeyGroupResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createKeyGroup, [201], zCreateKeyGroupResponse);
 export const createOrgOp: BodyOperation<CreateOrgData, typeof zCreateOrgResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createOrg, [201], zCreateOrgResponse);
 export const createOrgGrantOp: BodyOperation<CreateOrgGrantData, typeof zCreateOrgGrantResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createOrgGrant, [200], zCreateOrgGrantResponse);
-export const createPkiIssuerOp: BodyOperation<CreatePkiIssuerData, typeof zCreatePkiIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createPkiIssuer, [200], zCreatePkiIssuerResponse);
-export const createPkiProfileOp: BodyOperation<CreatePkiProfileData, typeof zCreatePkiProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createPkiProfile, [200], zCreatePkiProfileResponse);
+export const createPkiIssuerOp: BodyOperation<CreatePkiIssuerData, typeof zCreatePkiIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createPkiIssuer, [201], zCreatePkiIssuerResponse);
+export const createPkiProfileOp: BodyOperation<CreatePkiProfileData, typeof zCreatePkiProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createPkiProfile, [201], zCreatePkiProfileResponse);
 export const createProjectOp: BodyOperation<CreateProjectData, typeof zCreateProjectResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createProject, [201], zCreateProjectResponse);
 export const createProjectGrantOp: BodyOperation<CreateProjectGrantData, typeof zCreateProjectGrantResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createProjectGrant, [200], zCreateProjectGrantResponse);
 export const createRevisionPinOp: BodyOperation<CreateRevisionPinData, typeof zCreateRevisionPinResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createRevisionPin, [200], zCreateRevisionPinResponse);
