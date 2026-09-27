@@ -6,6 +6,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -30,7 +31,7 @@ func TestAccessPolicyUpdateMissingUsesNotFoundExit(t *testing.T) {
 	}
 	ios, _, stderr := composeIO(stateDir, t.TempDir(), "", nil)
 	code := Run(t.Context(), ios, []string{"access", "policy", "update", "xpol_missing", "--disabled", "--instance", "local", "--org", "org_one", "--project", "prj_one"})
-	if code != ExitNotFound || requests != 1 {
+	if code != ExitNotFound || requests != 1 || !strings.Contains(stderr.String(), "xpol_missing") {
 		t.Fatalf("exit=%d requests=%d stderr=%s", code, requests, stderr)
 	}
 }
