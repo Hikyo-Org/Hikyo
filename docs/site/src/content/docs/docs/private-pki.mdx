@@ -152,6 +152,17 @@ hikyo cert issue --token-file /run/secrets/hikyo-token --env prod --profile web 
 - `hikyo cert revoke <id> --reason key-compromise` is immediate and
   idempotent. The next CRL lists the serial.
 
+## Retained issuance history
+
+Hikyo retains certificate issuance history, including expired certificates and
+failed issuance attempts. Deleting an environment or service account with this
+history returns an explicit conflict; certificate expiry does not make the
+history eligible for automatic deletion.
+
+To deprovision access, revoke the affected certificates and service-account
+credentials. These revocations preserve the issuance history and do not remove
+the deletion guard. There is no automatic purge of this history.
+
 ## Rotation and retirement
 
 ```sh
