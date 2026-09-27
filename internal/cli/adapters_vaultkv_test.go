@@ -70,6 +70,10 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 		loop   bool
 	}{
 		{"same tree", source("team-a", "secret", "apps/pay"), true},
+		{"root namespace mount alias", source("", "team-a/secret", "apps/pay"), true},
+		{"root namespace alias ancestor", source("", "team-a/secret", "apps"), true},
+		{"root namespace alias sibling", source("", "team-a/secret", "apps/payroll"), false},
+		{"namespace case remains distinct", source("", "Team-A/secret", "apps/pay"), false},
 		{"parent of destination", source("team-a", "secret", "apps"), true},
 		{"whole mount", source("team-a", "secret", ""), true},
 		{"inside destination", source("team-a/", "secret", "apps/pay/api"), true},
@@ -93,7 +97,7 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 		Id: "adp_kv", Provider: "vault-kv", Origin: "https://vault.example/team-a", State: apigen.AdapterStateActive,
 		Targets: []apigen.AdapterTarget{{Id: "tgt_kv", State: apigen.AdapterTargetStateActive, DestinationOwner: "secret", DestinationName: "apps/pay"}},
 	}}}
-	for identity, loop := range map[string]bool{"https://vault.example:443": true, "https://Vault.Example": true, "https://vault.example:8443": false} {
+	for identity, loop := range map[string]bool{"https://vault.example:0443": true, "https://vault.example:443": true, "https://Vault.Example": true, "https://vault.example:8443": false} {
 		result := importer.Result{Identity: identity, Namespace: "team-a", Scope: importer.Scope{Mount: "secret", PathPrefix: "apps/pay"}}
 		if _, got, err := vaultImportLoop(result, defaultPort); got != loop || err != nil {
 			t.Errorf("%s: loop = %v, want %v", identity, got, loop)
@@ -107,14 +111,14 @@ func TestVaultImportLoopRefusesOverlappingActiveSyncDestination(t *testing.T) {
 
 func TestVaultImportLoopRefusesUnverifiableOrigins(t *testing.T) {
 	valid := importer.Result{Identity: "https://vault.example", Scope: importer.Scope{Mount: "secret", PathPrefix: "apps"}}
-	for _, identity := range []string{"", "vault.example", "https://", "https://vault.example/%zz", "ftp://vault.example", "https://user:pass@vault.example"} {
+	for _, identity := range []string{"https://vault.example:", "https://vault.example:0", "https://vault.example:65536", "https://vault.example:999999999999999999999", "https://vault.example:bad", "", "vault.example", "https://", "https://vault.example/%zz", "ftp://vault.example", "https://user:pass@vault.example"} {
 		source := valid
 		source.Identity = identity
 		if _, _, err := vaultImportLoop(source, apigen.AdapterList{}); err == nil {
 			t.Errorf("accepted source identity %q", identity)
 		}
 	}
-	for _, origin := range []string{"", "vault.example", "https://", "https://vault.example/%zz"} {
+	for _, origin := range []string{"https://vault.example:", "https://vault.example:0", "https://vault.example:65536", "https://vault.example:999999999999999999999", "https://vault.example:bad", "", "vault.example", "https://", "https://vault.example/%zz"} {
 		adapters := apigen.AdapterList{Items: []apigen.Adapter{{Provider: "vault-kv", Origin: origin, State: apigen.AdapterStateActive}}}
 		if _, _, err := vaultImportLoop(valid, adapters); err == nil {
 			t.Errorf("accepted active adapter origin %q", origin)
@@ -122,6 +126,20 @@ func TestVaultImportLoopRefusesUnverifiableOrigins(t *testing.T) {
 		adapters.Items[0].State = apigen.AdapterStateTombstoned
 		if _, _, err := vaultImportLoop(valid, adapters); err != nil {
 			t.Errorf("retired adapter blocked import: %v", err)
+		}
+	}
+}
+
+func TestVaultImportLoopNamespaceMountAliasesAreSymmetric(t *testing.T) {
+	for _, tc := range []struct{ origin, destinationMount, sourceNamespace, sourceMount string }{
+		{"https://vault.example", "team-a/secret", "team-a", "secret"},
+		{"https://vault.example/team-a", "child/secret", "team-a/child", "secret"},
+		{"https://vault.example/team-a/child", "secret", "team-a", "child/secret"},
+	} {
+		adapters := apigen.AdapterList{Items: []apigen.Adapter{{Id: "adp_kv", Provider: "vault-kv", Origin: tc.origin, State: apigen.AdapterStateActive, Targets: []apigen.AdapterTarget{{Id: "tgt_kv", State: apigen.AdapterTargetStateActive, DestinationOwner: tc.destinationMount, DestinationName: "apps/pay"}}}}}
+		source := importer.Result{Identity: "https://vault.example", Namespace: tc.sourceNamespace, Scope: importer.Scope{Mount: tc.sourceMount, PathPrefix: "apps/pay"}}
+		if _, loop, err := vaultImportLoop(source, adapters); err != nil || !loop {
+			t.Fatalf("alias %+v: loop=%v err=%v", tc, loop, err)
 		}
 	}
 }
