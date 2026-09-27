@@ -352,23 +352,28 @@ func (r *Resolver) DeleteServiceAccountAggregate(ctx context.Context, in DeleteS
 		return ServiceAccountDeletion{}, err
 	}
 
-	// The locked principal serializes issuance's foreign-key reference with
-	// deletion. Keep historical and revoked certificates, never cascade them.
-	var certificates int64
-	if r.sq != nil {
-		certificates, err = r.sq.CountServiceAccountPKICertificates(ctx, sqlitegen.CountServiceAccountPKICertificatesParams{
-			OrgID: string(in.Scope.Org), ProjectID: string(in.Scope.Project), PrincipalID: string(sa.PrincipalID),
-		})
-	} else {
-		certificates, err = r.pg.CountServiceAccountPKICertificates(ctx, pggen.CountServiceAccountPKICertificatesParams{
-			OrgID: string(in.Scope.Org), ProjectID: string(in.Scope.Project), PrincipalID: string(sa.PrincipalID),
-		})
-	}
-	if err != nil {
-		return ServiceAccountDeletion{}, err
-	}
-	if certificates != 0 {
-		return ServiceAccountDeletion{}, domain.ErrPKICertificateRetention
+	// Only authenticated historical recovery before schema64 lacks PKI storage.
+	// Ordinary resolvers and recovery at schema64 or newer always enforce retention.
+	if !r.historicalRecoveryBeforePKI {
+		// The locked principal serializes issuance's foreign-key reference with
+		// deletion. Keep historical and revoked certificates, never cascade them.
+		var certificates int64
+		if r.sq != nil {
+			certificates, err = r.sq.CountServiceAccountPKICertificates(ctx, sqlitegen.CountServiceAccountPKICertificatesParams{
+				OrgID: string(in.Scope.Org), ProjectID: string(in.Scope.Project), PrincipalID: string(sa.PrincipalID),
+			})
+		} else {
+			certificates, err = r.pg.CountServiceAccountPKICertificates(ctx, pggen.CountServiceAccountPKICertificatesParams{
+				OrgID: string(in.Scope.Org), ProjectID: string(in.Scope.Project), PrincipalID: string(sa.PrincipalID),
+			})
+		}
+		if err != nil {
+			return ServiceAccountDeletion{}, err
+		}
+		if certificates != 0 {
+			return ServiceAccountDeletion{}, domain.ErrPKICertificateRetention
+		}
+
 	}
 
 	result := ServiceAccountDeletion{Account: sa}
