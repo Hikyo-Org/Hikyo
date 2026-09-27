@@ -23,6 +23,8 @@ import (
 // process arguments are public. Plaintext outputs (decrypt, a revealed data key)
 // leave through the display-once print triad, exactly like a leased credential.
 
+// transitKeyTable formats key metadata, including compromise and rotation status,
+// for table output and retains the full list for JSON output.
 func transitKeyTable(list apigen.TransitKeyList) Table {
 	rows := make([][]string, 0, len(list.Items))
 	for _, k := range list.Items {
@@ -58,6 +60,8 @@ type transitInput struct {
 	file  string
 }
 
+// read returns input of at most bound bytes from exactly one source. Invalid source
+// selection, file or read failures, and oversized input return ExitUsage errors.
 func (s transitInput) read(ios IO, what string, bound int) ([]byte, error) {
 	if s.stdin == (s.file != "") {
 		return nil, failf(ExitUsage, "read the %s from exactly one of --stdin or --input-file", what)
@@ -83,7 +87,9 @@ func (s transitInput) read(ios IO, what string, bound int) ([]byte, error) {
 	return raw, nil
 }
 
-// readAAD reads optional associated data (the API's `context`) from a file.
+// readAAD returns file contents as standard base64 for the API's context, or
+// nil for an empty path. File errors and input over MaxTransitContextBytes
+// return ExitUsage errors.
 func readAAD(path string) (*string, error) {
 	if path == "" {
 		return nil, nil
@@ -102,8 +108,12 @@ func readAAD(path string) (*string, error) {
 // parseTransitCallers parses repeated --caller principal=op,op values.
 type callerFlags []apigen.TransitCaller
 
+// String returns an empty default value for flag help.
 func (c *callerFlags) String() string { return "" }
 
+// Set appends a principal=operation[,operation...] caller entry, trimming
+// whitespace around operations. Missing principal or operation text is an error;
+// principal and operation validity are checked by the service.
 func (c *callerFlags) Set(v string) error {
 	principal, ops, ok := strings.Cut(v, "=")
 	if !ok || principal == "" || ops == "" {
@@ -117,6 +127,8 @@ func (c *callerFlags) Set(v string) error {
 	return nil
 }
 
+// runTransit dispatches transit key management and cryptographic commands,
+// returning command errors to the CLI.
 func runTransit(ctx context.Context, ios IO, args []string) error {
 	sub, rest, err := subverb("transit", args, "key", "encrypt", "decrypt", "rewrap", "datakey", "sign", "verify", "hmac", "hmac-verify")
 	if err != nil {
@@ -128,6 +140,9 @@ func runTransit(ctx context.Context, ios IO, args []string) error {
 	return runTransitData(ctx, ios, sub, rest)
 }
 
+// transitBase resolves an authenticated client and the environment-scoped key
+// URL. Authentication and missing organization, project, or environment errors
+// are returned to the caller.
 func transitBase(ios IO, st *State, flags commonFlags) (*Client, string, error) {
 	client, _, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
@@ -153,6 +168,8 @@ var transitLifecycleVerbs = map[string]bool{
 	"schedule-deletion": true, "cancel-deletion": true,
 }
 
+// runTransitKey executes a key management command and renders metadata.
+// Usage, authentication, API, and rendering errors are returned to the CLI.
 func runTransitKey(ctx context.Context, ios IO, args []string) error {
 	sub, rest, err := subverb("transit key", args, "create", "list", "show", "configure", "rotate", "trim",
 		"disable", "enable", "retire", "compromise", "schedule-deletion", "cancel-deletion")
@@ -307,7 +324,9 @@ func runTransitKey(ctx context.Context, ios IO, args []string) error {
 	return failf(ExitUsage, "unknown transit key verb %q", sub)
 }
 
-// transitSeconds parses a duration flag into whole seconds; "0" disables.
+// transitSeconds parses a duration flag into seconds, truncating fractional
+// seconds. "0" returns zero; other durations below one second and malformed
+// values return ExitUsage errors.
 func transitSeconds(flagName, raw string) (int64, error) {
 	if raw == "0" {
 		return 0, nil
@@ -319,6 +338,10 @@ func transitSeconds(flagName, raw string) (int64, error) {
 	return int64(d / time.Second), nil
 }
 
+// runTransitData executes a cryptographic command using file or stdin input.
+// Decrypt and revealed data keys require a prepared disclosure destination before
+// the request. Verification mismatches print "invalid" and return ExitRefused;
+// request, input, and disclosure failures also reach the caller.
 func runTransitData(ctx context.Context, ios IO, sub string, args []string) (returnErr error) {
 	var input transitInput
 	var aadFile, signature, mac, outputFile string

@@ -105,6 +105,8 @@ type transitGaugeSource struct {
 	log     *slog.Logger
 }
 
+// TransitSnapshot reads current transit counts with a two-second timeout.
+// A read failure returns zero counts and the error so the scrape is marked unknown.
 func (s transitGaugeSource) TransitSnapshot() (live, rotationDue, pendingDeletion int64, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
