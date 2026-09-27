@@ -35,14 +35,14 @@ func refuseVaultImportLoop(ctx context.Context, client *Client, project string, 
 }
 
 // vaultImportLoop reports the first active vault-kv target whose tree
-// overlaps the imported selection: the same host, namespace and mount, and one
+// overlaps the imported selection: the same host and combined namespace/mount, and one
 // path prefix containing the other.
 func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (string, bool, error) {
 	source, err := url.Parse(result.Identity)
 	if err != nil || !validLoopOrigin(source) {
 		return "", false, failf(ExitRefused, "cannot confirm this Vault/OpenBao import is loop-safe: invalid source identity")
 	}
-	sourceMount := strings.Trim(result.Scope.Mount, "/")
+	sourceMount := vaultNamespaceMount(result.Namespace, result.Scope.Mount)
 	sourcePath := strings.Trim(result.Scope.PathPrefix, "/")
 	for _, a := range adapters.Items {
 		if string(a.Provider) != "vault-kv" || a.State == apigen.AdapterStateTombstoned {
@@ -52,11 +52,11 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 		if err != nil || !validLoopOrigin(origin) {
 			return "", false, failf(ExitRefused, "cannot confirm this Vault/OpenBao import is loop-safe: invalid active sync adapter origin")
 		}
-		if !sameEndpoint(origin, source) || strings.Trim(origin.Path, "/") != strings.Trim(result.Namespace, "/") {
+		if !sameEndpoint(origin, source) {
 			continue
 		}
 		for _, target := range a.Targets {
-			if target.State == apigen.AdapterTargetStateTombstoned || strings.Trim(target.DestinationOwner, "/") != sourceMount {
+			if target.State == apigen.AdapterTargetStateTombstoned || vaultNamespaceMount(origin.Path, target.DestinationOwner) != sourceMount {
 				continue
 			}
 			if pathsOverlap(sourcePath, strings.Trim(target.DestinationName, "/")) {
@@ -65,6 +65,12 @@ func vaultImportLoop(result importer.Result, adapters apigen.AdapterList) (strin
 		}
 	}
 	return "", false, nil
+}
+
+// vaultNamespaceMount unifies a child namespace's mount with its root-namespace
+// path-prefix spelling without altering the case-sensitive path segments.
+func vaultNamespaceMount(namespace, mount string) string {
+	return strings.Trim(strings.Trim(namespace, "/")+"/"+strings.Trim(mount, "/"), "/")
 }
 
 func validLoopOrigin(origin *url.URL) bool {

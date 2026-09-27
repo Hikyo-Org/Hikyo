@@ -112,6 +112,11 @@ func (h *cliWizardHost) ReadSource(source string, sel importer.Selector) (import
 		if err != nil {
 			return importer.SourceRead{}, err
 		}
+		if source == "vault" {
+			if err := refuseVaultImportLoop(h.ctx, h.client, h.projectBase, res); err != nil {
+				return importer.SourceRead{}, err
+			}
+		}
 		diagnostics.Printf(h.ctx, 2, "import: parsed records=%d skipped=%d", len(res.Records), len(res.Skipped))
 		return importer.SourceRead{Result: res, EnvSlug: sel.EnvSlug}, nil
 	}
