@@ -221,7 +221,7 @@ var authCodes = map[string]bool{
 
 var throttleCodes = map[string]bool{
 	"ThrottlingException": true, "Throttling": true, "TooManyRequestsException": true,
-	"RequestLimitExceeded": true, "LimitExceededException": true,
+	"RequestLimitExceeded": true,
 }
 
 func codeOf(err error) string {

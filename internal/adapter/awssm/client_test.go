@@ -292,3 +292,24 @@ func TestRetryAfterClampsSecondsBeforeDurationConversion(t *testing.T) {
 		t.Errorf("normal delay changed: %v", got)
 	}
 }
+
+func TestServiceQuotaFailureIsDefiniteWithoutThrottleRetry(t *testing.T) {
+	server := awssmtest.New(testAccount, testRegion)
+	defer server.Close()
+	client := emulatorClient(t, server)
+	for _, operation := range []string{"CreateSecret", "PutSecretValue"} {
+		server.FailNext(operation, 400, "LimitExceededException", "")
+		var err error
+		if operation == "CreateSecret" {
+			err = client.CreateSecret(t.Context(), CreateSecretInput{Name: "quota"})
+		} else {
+			err = client.PutSecretValue(t.Context(), "quota", strings.Repeat("a", 64), "value")
+		}
+		if !IsDefinite(err) || errors.Is(err, adapter.ErrRateLimited) {
+			t.Fatalf("%s quota classification: %v", operation, err)
+		}
+		if _, ok := adapter.ProviderRetryAt(err); ok {
+			t.Fatalf("%s quota error offered automatic retry", operation)
+		}
+	}
+}
