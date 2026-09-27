@@ -189,7 +189,7 @@ type SSHRepo interface {
 	RetireCAKey(ctx context.Context, p authz.Proof, caID, keyID string, at time.Time) error
 	DeleteCA(ctx context.Context, p authz.Proof, caID string, at time.Time) error
 	CountLiveProfilesForCA(ctx context.Context, p authz.Proof, caID string) (int, error)
-	MaxProfileTTLForCA(ctx context.Context, p authz.Proof, caID string) (int64, error)
+	ActiveKeyLastExpiry(ctx context.Context, p authz.Proof, caID string, now time.Time) (*time.Time, error)
 	CreateProfile(ctx context.Context, p authz.Proof, m SSHProfileWrite) error
 	UpdateProfile(ctx context.Context, p authz.Proof, m SSHProfileWrite) error
 	DeleteProfile(ctx context.Context, p authz.Proof, profileID string, at time.Time) error
@@ -491,15 +491,23 @@ func (r sshQueries) CountLiveProfilesForCA(ctx context.Context, p authz.Proof, c
 	return n, err
 }
 
-func (r sshQueries) MaxProfileTTLForCA(ctx context.Context, p authz.Proof, caID string) (int64, error) {
-	chain, err := r.envChain(p, authz.StoreSSHMaxProfileTTLForCA)
+// ActiveKeyLastExpiry returns the latest valid_before among the live issued
+// certificates the CA's active key signed, or nil when there are none. It
+// reads the certificate rows, not profile bounds, so certificates of a
+// deleted profile or issued under a since-lowered max_ttl are covered.
+func (r sshQueries) ActiveKeyLastExpiry(ctx context.Context, p authz.Proof, caID string, now time.Time) (*time.Time, error) {
+	chain, err := r.envChain(p, authz.StoreSSHActiveKeyLastExpiry)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	query := r.db.SQL(`SELECT COALESCE(MAX(max_ttl_seconds),0) FROM ssh_profiles WHERE ca_id=? AND org_id=? AND project_id=? AND environment_id=? AND state<>'tombstoned'`)
-	var n int64
-	err = r.db.QueryRow(ctx, query, caID, chain.Org, chain.Project, string(chain.Env)).Scan(&n)
-	return n, err
+	query := r.db.SQL(`SELECT MAX(c.valid_before) FROM ssh_certificates c
+JOIN ssh_ca_keys k ON k.id=c.ca_key_id AND k.org_id=c.org_id AND k.project_id=c.project_id AND k.environment_id=c.environment_id
+WHERE c.ca_id=? AND c.org_id=? AND c.project_id=? AND c.environment_id=? AND k.state='active' AND c.state='issued' AND c.valid_before>?`)
+	var last adapterStoredTime
+	if err := r.db.QueryRow(ctx, query, caID, chain.Org, chain.Project, string(chain.Env), r.db.Stamp(now)).Scan(&last); err != nil {
+		return nil, err
+	}
+	return last.Time()
 }
 
 // ---- Profiles ---------------------------------------------------------------

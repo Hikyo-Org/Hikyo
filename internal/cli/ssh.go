@@ -164,7 +164,7 @@ func runSSHCA(ctx context.Context, ios IO, args []string) error {
 			fs.StringVar(&keyFile, "key-file", "", "import an unencrypted private key read from this file")
 		}
 		if sub == "rotate" {
-			fs.StringVar(&overlap, "overlap", "", "how long the old key stays trusted, e.g. 8h (default: the CA's longest profile max TTL)")
+			fs.StringVar(&overlap, "overlap", "", "how long the old key stays trusted, e.g. 8h (default: until the old key's last live certificate expires)")
 		}
 		if sub == "retire-key" {
 			fs.StringVar(&retireKey, "key", "", "the retiring key to retire now")

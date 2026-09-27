@@ -157,8 +157,8 @@ Rotation creates a new signing key at once and moves the old key to
 `retiring`: it **can no longer sign** (its sealed private key is destroyed in
 the same transaction) but stays in the trust bundle until the overlap ends, so
 certificates issued just before the rotation keep working. The overlap
-defaults to the longest `max_ttl` among the CA's profiles and is capped at 30
-days. Hosts pick up the new key on their next trust-bundle refresh; refresh
+defaults to the time until the last live certificate signed by the old key
+expires and is capped at 30 days. Hosts pick up the new key on their next trust-bundle refresh; refresh
 them before the overlap ends.
 
 ## Multi-node behavior

@@ -452,8 +452,9 @@ ssh certificates:
   hikyo ssh-profile list|show <profile> --env E [-o table|json]
   hikyo ssh-profile delete <profile> --env E [--revoke-issued]
   hikyo ssh-cert issue --profile <profile> --env E [--principal P...] [--ttl D]
-      [--public-key-file PATH | --output-file PATH | --dangerously-print]
-      [--cert-file PATH] [--source-address CIDR...] [--extension X...]
+      [--public-key-file PATH | --key-algorithm A --output-file PATH |
+       --key-algorithm A --dangerously-print] [--cert-file PATH]
+      [--source-address CIDR...] [--extension X... | --no-extensions]
   hikyo ssh-cert list|show <cert> --env E [-o table|json]
   hikyo ssh-cert revoke <cert> --env E
 

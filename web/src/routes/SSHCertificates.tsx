@@ -502,7 +502,7 @@ function CADialog({
           </div>
         ) : (
           <div className="field">
-            <label htmlFor="ssh-ca-overlap">Overlap (seconds, empty for the longest profile max TTL)</label>
+            <label htmlFor="ssh-ca-overlap">Overlap (seconds, empty until the old key's last live certificate expires)</label>
             <input id="ssh-ca-overlap" className="mono" inputMode="numeric" value={overlap} onChange={(e) => setOverlap(e.target.value)} />
           </div>
         )}

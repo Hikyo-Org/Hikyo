@@ -45,7 +45,9 @@ described the #147 promotion's own scope and is left as history.
    old key to `retiring` with `retire_after = now + overlap`. The old key's
    ciphertext is nulled in the same transaction: a retiring key can never sign
    again, only be trusted. Overlap is bounded `[0, 30d]` and defaults to the
-   longest `max_ttl` among the CA's live profiles, so certificates issued just
+   time until the latest `valid_before` among the live issued certificates the
+   old key signed (read from the certificate rows, so a deleted profile or a
+   since-lowered `max_ttl` cannot cut it short), so certificates issued just
    before rotation stay valid for their whole life. `retire` ends the overlap
    early. The trust bundle is `active` plus `retiring` keys whose
    `retire_after` is still in the future; retirement needs no worker because

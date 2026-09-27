@@ -7836,7 +7836,7 @@ type RotateSSHCARequest struct {
 	// Algorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
 	Algorithm *SSHKeyAlgorithm `json:"algorithm,omitempty"`
 
-	// OverlapSeconds How long the old key stays trusted. Defaults to the longest max_ttl among the CA's profiles.
+	// OverlapSeconds How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
 	OverlapSeconds *int64 `json:"overlap_seconds,omitempty"`
 
 	// PrivateKey An unencrypted private key to import as the new key. Omit to generate.

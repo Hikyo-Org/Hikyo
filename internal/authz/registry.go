@@ -823,7 +823,7 @@ const (
 	StoreSSHRetireCAKey               StoreOp = "ssh.RetireCAKey"
 	StoreSSHDeleteCA                  StoreOp = "ssh.DeleteCA"
 	StoreSSHCountLiveProfilesForCA    StoreOp = "ssh.CountLiveProfilesForCA"
-	StoreSSHMaxProfileTTLForCA        StoreOp = "ssh.MaxProfileTTLForCA"
+	StoreSSHActiveKeyLastExpiry       StoreOp = "ssh.ActiveKeyLastExpiry"
 	StoreSSHGetProfile                StoreOp = "ssh.GetProfile"
 	StoreSSHListProfiles              StoreOp = "ssh.ListProfiles"
 	StoreSSHCreateProfile             StoreOp = "ssh.CreateProfile"
@@ -4412,7 +4412,7 @@ var operationTable = map[Operation]opSpec{
 	OpSSHCARotate: {
 		class: ClassTenant, level: domain.LevelEnv,
 		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
-		storeOps: map[StoreOp]bool{StoreSSHGetCA: true, StoreSSHMaxProfileTTLForCA: true, StoreSSHRetireActiveCAKey: true, StoreSSHInsertCAKey: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		storeOps: map[StoreOp]bool{StoreSSHGetCA: true, StoreSSHActiveKeyLastExpiry: true, StoreSSHRetireActiveCAKey: true, StoreSSHInsertCAKey: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventSSHCARotated},
 	},
 	OpSSHCARetireKey: {

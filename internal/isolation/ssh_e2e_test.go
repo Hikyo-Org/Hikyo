@@ -372,12 +372,14 @@ func runSSHLifecycle(t *testing.T, db *store.DB, full bool) {
 	// valid: the sweeper must not read the tombstone as a withdrawal.
 	kept, err := nodeA.svc.CreateProfile(ctx, admin, env, service.SSHProfileRequest{
 		CAID: ca.ID, Name: "kept", Principals: []string{"ops"}, KeyAlgorithms: []string{"ed25519"},
-		DefaultTTLSeconds: 3600, MaxTTLSeconds: 3600, Enabled: true, Requesters: []string{string(alice)},
+		DefaultTTLSeconds: 3600, MaxTTLSeconds: 24 * 3600, Enabled: true, Requesters: []string{string(alice)},
 	})
 	if err != nil {
 		t.Fatalf("create kept profile: %v", err)
 	}
-	keptCert, err := nodeA.svc.Issue(ctx, human, env, service.IssueSSHCertificateRequest{ProfileID: kept.ID, Principals: []string{"ops"}})
+	// Outlives every remaining profile's max_ttl: the default rotation overlap
+	// in finishSSHLifecycle must still cover it.
+	keptCert, err := nodeA.svc.Issue(ctx, human, env, service.IssueSSHCertificateRequest{ProfileID: kept.ID, Principals: []string{"ops"}, TTLSeconds: 20 * 3600})
 	if err != nil {
 		t.Fatalf("issue through kept profile: %v", err)
 	}
@@ -427,10 +429,13 @@ func finishSSHLifecycle(t *testing.T, db *store.DB, node *sshHarness, admin serv
 	if err != nil {
 		t.Fatalf("rotate with default overlap: %v", err)
 	}
-	// The default overlap is the longest live profile max_ttl.
+	// The default overlap runs until the old key's last live certificate expires.
 	retiring := rotated.Keys[1]
 	if retiring.State != "retiring" || retiring.RetireAfter == "" {
 		t.Fatalf("default-overlap rotation left %+v", retiring)
+	}
+	if outlived := queryInt(t, db, "SELECT COUNT(*) FROM ssh_certificates c JOIN ssh_ca_keys k ON k.id=c.ca_key_id WHERE k.id='"+retiring.ID+"' AND c.state='issued' AND c.valid_before > k.retire_after"); outlived != 0 {
+		t.Fatalf("default overlap ends before %d live certificates of the old key expire", outlived)
 	}
 	if _, err := node.svc.RetireCAKey(ctx, admin, env, caID, retiring.ID); err != nil {
 		t.Fatalf("retire after default rotation: %v", err)

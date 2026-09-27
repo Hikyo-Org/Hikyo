@@ -429,7 +429,7 @@ export type CreateSshcaRequest = {
 export type RotateSshcaRequest = {
     algorithm?: SshKeyAlgorithm;
     /**
-     * How long the old key stays trusted. Defaults to the longest max_ttl among the CA's profiles.
+     * How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
      */
     overlap_seconds?: number | null;
 };
@@ -5076,7 +5076,7 @@ export type RotateSshcaRequestWritable = {
      */
     private_key?: string;
     /**
-     * How long the old key stays trusted. Defaults to the longest max_ttl among the CA's profiles.
+     * How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
      */
     overlap_seconds?: number | null;
 };

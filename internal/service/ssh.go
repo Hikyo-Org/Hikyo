@@ -424,7 +424,8 @@ func (s *SSH) KRL(ctx context.Context, actor Actor, scope domain.Scope, caID str
 }
 
 // RotateSSHCARequest rotates a CA to a new generated or imported key. A nil
-// OverlapSeconds takes the longest max_ttl among the CA's live profiles.
+// OverlapSeconds lasts until the latest expiry among the live certificates the
+// active key signed (zero when there are none), capped at 30 days.
 type RotateSSHCARequest struct {
 	Algorithm      string
 	PrivateKey     []byte
@@ -481,8 +482,13 @@ func (s *SSH) RotateCA(ctx context.Context, actor Actor, scope domain.Scope, caI
 		if req.OverlapSeconds != nil {
 			overlap = *req.OverlapSeconds
 		} else {
-			if overlap, err = r.SSH().MaxProfileTTLForCA(ctx, proof, caID); err != nil {
+			last, err := r.SSH().ActiveKeyLastExpiry(ctx, proof, caID, now)
+			if err != nil {
 				return SSHCAView{}, err
+			}
+			if last != nil {
+				// Round up so the last certificate never outlives its key's trust.
+				overlap = int64((last.Sub(now) + time.Second - 1) / time.Second)
 			}
 			overlap = min(overlap, int64(sshMaxOverlap/time.Second))
 		}
