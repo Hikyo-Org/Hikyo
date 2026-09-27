@@ -133,6 +133,9 @@ export function TemporaryAccess() {
   const [reason, setReason] = useState('');
   const [emergencyReason, setEmergencyReason] = useState('');
   const [ceremony, setCeremony] = useState<{ request: CeremonyRequest; draft: EmergencyAccessDraft } | null>(null);
+  // The window check runs before any mutation starts, so action.isPending
+  // alone would let a second click take a second, separately revocable grant.
+  const [checkingWindow, setCheckingWindow] = useState(false);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -177,6 +180,7 @@ export function TemporaryAccess() {
   // live sliding window already stands over this environment.
   const takeEmergency = async () => {
     start();
+    setCheckingWindow(true);
     const draftRequest: EmergencyAccessDraft = { capabilities: offered, reason: emergencyReason };
     try {
       const window = await fetchRevealWindow({ org, project, environment: selectedEnv });
@@ -190,6 +194,8 @@ export function TemporaryAccess() {
       });
     } catch (error) {
       setActionError(refusal(error));
+    } finally {
+      setCheckingWindow(false);
     }
   };
 
@@ -331,7 +337,9 @@ export function TemporaryAccess() {
                 <Button
                   type="button"
                   variant="danger"
-                  disabled={action.isPending || offered.length === 0 || emergencyReason.trim() === ''}
+                  disabled={
+                    action.isPending || checkingWindow || ceremony !== null || offered.length === 0 || emergencyReason.trim() === ''
+                  }
                   onClick={() => void takeEmergency()}
                 >
                   Take emergency access

@@ -3,6 +3,7 @@ import { act } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { deferred, revealWindow } from '../testkit/ceremony.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
 import { duration, TemporaryAccess } from './TemporaryAccess.tsx';
 
@@ -226,6 +227,50 @@ it('sends only the capabilities the current environment offers', async () => {
     await act(async () => button(container, 'Request access').click());
     await settleTask();
     expect(bodies).toEqual([{ capabilities: ['reveal'], reason: 'incident 43', duration_seconds: 3600 }]);
+  } finally {
+    await unmount();
+  }
+});
+
+it('takes one emergency grant however often the button is clicked during the window check', async () => {
+  const pending = deferred<Response>();
+  let windowChecks = 0;
+  const emergencies: unknown[] = [];
+  vi.stubGlobal('fetch', async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path.endsWith('/environments')) return Response.json({ items: [env], count: 1 });
+    if (path.endsWith('/access-policies')) return Response.json({ code: 'not_found', message: 'not found' }, { status: 404 });
+    if (path.endsWith('/access-requests')) return Response.json({ offer: { ...offer, caller_may_bypass: true }, items: [] });
+    if (path.endsWith('/reveal-window')) {
+      windowChecks += 1;
+      return pending.promise;
+    }
+    if (path.endsWith('/emergency')) {
+      emergencies.push(await req.json());
+      return Response.json(request({ state: 'granted', bypassed: true, requester: 'usr_00000000-0000-0000-0000-00000000000a' }));
+    }
+    throw new Error(`unexpected ${req.method} ${path}`);
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const select = container.querySelector('#ta-env');
+    if (!(select instanceof HTMLSelectElement)) throw new Error('environment select missing');
+    await act(async () => selectValue(select, env.id));
+    await settleTask();
+    const revealLabel = [...container.querySelectorAll('fieldset label')].find((l) => l.textContent === 'reveal');
+    const reveal = container.querySelector<HTMLInputElement>(`#${CSS.escape(revealLabel?.getAttribute('for') ?? '')}`);
+    await act(async () => reveal?.click());
+    const reason = container.querySelector('#ta-emergency-reason');
+    if (!(reason instanceof HTMLInputElement)) throw new Error('emergency reason missing');
+    await act(async () => typeInto(reason, 'outage'));
+    await act(async () => button(container, 'Take emergency access').click());
+    expect(button(container, 'Take emergency access').disabled).toBe(true);
+    await act(async () => button(container, 'Take emergency access').click());
+    await act(async () => pending.resolve(Response.json(revealWindow(true))));
+    await settleTask();
+    expect(windowChecks).toBe(1);
+    expect(emergencies).toHaveLength(1);
   } finally {
     await unmount();
   }
