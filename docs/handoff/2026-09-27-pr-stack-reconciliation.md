@@ -27,6 +27,8 @@ its CI verdict with local test results.
   usage. Renewal respects non-minute TTL limits. Parent deletion explicitly
   refuses while certificate history exists, including cross-project issuance;
   credentials can be revoked without deleting retained revocation evidence.
+  Authenticated recovery before schema 64 omits unavailable PKI queries;
+  ordinary runtime deletion still fails closed if PKI storage is missing.
   CRL publication records a
   captured revocation sequence so concurrent revocations remain due regardless
   of timestamp ordering. Renewal refreshes metadata even after a lost response.
