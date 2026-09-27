@@ -58,7 +58,7 @@ var authRuleRows = []authRuleRow{
 		"context create", "context list", "context show", "context delete",
 		"account establish-credential", "account recovery begin",
 		"account passkey enrol", "account passkey list", "account passkey remove",
-		"definitions scaffold",
+		"definitions scaffold", "scan",
 		"update channel stable", "update channel nightly", "update channel off", "update check",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations("env param list", "env param add", "env param delete")},

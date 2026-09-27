@@ -2,3 +2,7 @@
 graphify-out/graph.json linguist-generated=true
 graphify-out/graph.html linguist-generated=true
 graphify-out/.graphify_labels.json linguist-generated=true
+
+# Preserve the exact upstream bytes checked by the scanner vendoring record.
+internal/scanning/rules/vendor/gitleaks.toml -text
+internal/scanning/rules/vendor/LICENSE -text
