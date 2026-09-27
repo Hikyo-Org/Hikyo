@@ -2,12 +2,13 @@ package cli
 
 import (
 	"encoding/json"
-	"github.com/Hikyo-Org/hikyo/api"
-	"github.com/Hikyo-Org/hikyo/api/apigen"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Hikyo-Org/hikyo/api"
+	"github.com/Hikyo-Org/hikyo/api/apigen"
 )
 
 func TestAccessPolicyUpdateMissingUsesNotFoundExit(t *testing.T) {

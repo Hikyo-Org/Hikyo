@@ -10,25 +10,27 @@ import (
 
 // Historical constructors are confined to tx/recovery.go. They may be selected
 // only from the verified source manifest under guarded RecoveryDB authority.
-// Their compatibility differences are the pre-47 privacy, pre-50 profile and
-// pre-66 temporary-access projections; they do
-// not add a session/login path or remove the restore reconciliation gate.
+// Compatibility uses pre-47 privacy, pre-50 profile, and pre-66 access
+// projections, and omits PKI retention queries only before schema64. These
+// constructors add no login path and preserve restore reconciliation.
 func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r := NewSQLite(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
 	r.historicalRecoveryBeforeSelfConfig = version < 50
 	r.historicalRecoveryBeforeAccess = version < 66
+	r.historicalRecoveryBeforePKI = version < 64
 	return r
 }
 
 // NewHistoricalRecoveryPG binds a resolver to a verified source schema version
-// for guarded recovery. Versions before 47, 50, and 66 use the corresponding
-// privacy, profile, and temporary-access compatibility projections.
+// for guarded recovery. Versions before 47, 50, 64, and 66 use the corresponding
+// privacy, profile, PKI-retention, and temporary-access compatibility behavior.
 func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r := NewPG(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
 	r.historicalRecoveryBeforeSelfConfig = version < 50
 	r.historicalRecoveryBeforeAccess = version < 66
+	r.historicalRecoveryBeforePKI = version < 64
 	return r
 }
 func (r *Resolver) recoveryGrantsBeforePrivacy(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
