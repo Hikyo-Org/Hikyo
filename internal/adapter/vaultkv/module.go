@@ -65,6 +65,9 @@ func ValidateDestination(destination adapter.Destination) error {
 	return validatePath("path prefix", destination.Name)
 }
 
+// validatePath requires 1..255 bytes of slash-separated ASCII name segments,
+// rejecting empty, dot, and dot-dot segments. The label identifies the field
+// in validation errors.
 func validatePath(label, path string) error {
 	if path == "" || len(path) > 255 {
 		return fmt.Errorf("vault-kv: %s must be 1..255 bytes", label)
@@ -78,8 +81,8 @@ func validatePath(label, path string) error {
 }
 
 // DestinationID binds a target to the live mount identity and its path
-// prefix. A mount that is disabled and re-enabled, or moved, gets a new UUID,
-// so the id changes and every write refuses with ErrDestinationID.
+// prefix, using the UUID or, when absent, the accessor. It returns a positive
+// identifier or an error if neither mount identity is available.
 func DestinationID(mount Mount, pathPrefix string) (int64, error) {
 	identity := mount.UUID
 	if identity == "" {
@@ -96,6 +99,11 @@ func DestinationID(mount Mount, pathPrefix string) (int64, error) {
 	return id, nil
 }
 
+// TestConnection checks server health and KV v2 mount identity through the
+// required authorization gate, then returns version, destination ID, and token
+// expiry. A nonzero configured ID must match or adapter.ErrDestinationID is
+// returned. Only adapter.ErrProviderAuth from the optional expiry lookup is
+// ignored; validation, gate, health, and other provider errors propagate.
 func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionRequest) (adapter.Connection, error) {
 	if m.API == nil {
 		return adapter.Connection{}, errors.New("vault-kv: API is not configured")
@@ -139,6 +147,9 @@ func (m *Module) TestConnection(ctx context.Context, req adapter.ConnectionReque
 	return adapter.Connection{Version: health.Version, DestinationID: id, CredentialExpiresAt: info.ExpireTime}, nil
 }
 
+// resolve requires a KV v2 mount and returns its destination ID. A missing
+// mount becomes adapter.ErrDestinationID; other provider and identity errors
+// propagate, and incompatible engine types or versions are rejected.
 func (m *Module) resolve(ctx context.Context, destination adapter.Destination) (int64, error) {
 	mount, err := m.API.MountInfo(ctx, destination.Owner)
 	if err != nil {
@@ -156,6 +167,8 @@ func (m *Module) resolve(ctx context.Context, destination adapter.Destination) (
 	return DestinationID(mount, destination.Name)
 }
 
+// verifyDestination checks the live mount and prefix against the saved ID,
+// returning adapter.ErrDestinationID on a mismatch or the resolution error.
 func (m *Module) verifyDestination(ctx context.Context, target adapter.Target) error {
 	id, err := m.resolve(ctx, target.Destination)
 	if err != nil {
@@ -212,6 +225,8 @@ type pathState struct {
 	released bool
 }
 
+// parseVersion parses a nonnegative decimal version marker. An empty marker
+// means version zero; the boolean is false for malformed or negative values.
 func parseVersion(raw string) (int64, bool) {
 	if raw == "" {
 		return 0, true
@@ -220,6 +235,10 @@ func parseVersion(raw string) (int64, bool) {
 	return version, err == nil && version >= 0
 }
 
+// classify derives ownership, pending-write status, and external version
+// movement from metadata. A zero current version or a deleted or destroyed
+// current version is released when the path is unmarked or its own markers
+// are consistent.
 func classify(meta Metadata, targetID string) pathState {
 	marker := meta.CustomMetadata[MarkerKey]
 	current := meta.CurrentVersion
@@ -245,6 +264,8 @@ func classify(meta Metadata, targetID string) pathState {
 	return pathState{kind: pathMoved, version: current}
 }
 
+// inspect classifies the named destination path using metadata alone. A 404
+// becomes pathAbsent; other metadata errors propagate.
 func (m *Module) inspect(ctx context.Context, target adapter.Target, name string) (pathState, error) {
 	meta, err := m.API.ReadMetadata(ctx, target.Destination.Owner, secretPath(target, name))
 	if IsNotFound(err) {
@@ -261,23 +282,32 @@ func (m *Module) inspect(ctx context.Context, target adapter.Target, name string
 // when this target's own marker shows a released (soft-deleted) earlier
 // delivery; everything else is `exists, unowned`. Claimed paths refuse
 // another target's marker and external version movement.
-func writable(claimed bool, state pathState) bool {
+func writable(claimed bool, claim adapter.LedgerState, state pathState) bool {
 	switch state.kind {
 	case pathAbsent:
 		return true
 	case pathClean, pathLanded:
 		return claimed || state.released
 	case pathUnmarked:
-		return claimed
+		// A dispatched unmarked create can only have produced version one.
+		// Owned unmarked rows are explicit adoptions and retain that authority.
+		return claimed && (claim == adapter.Owned || state.version == 1)
 	default:
 		return false
 	}
 }
 
+// claimedState reports whether an existing ledger claim is owned or dispatched;
+// a reservation alone does not authorize overwriting an existing path.
 func claimedState(record adapter.LedgerEntry, claimed bool) bool {
 	return claimed && (record.State == adapter.Owned || record.State == adapter.Dispatched)
 }
 
+// Plan returns sorted proposed changes using metadata and ledger ownership,
+// without reading values or writing to the destination. It includes the
+// management sentinel and reports desired-path conflicts as plan entries.
+// Validation, authorization gate, destination identity, metadata, and ledger
+// errors abort planning.
 func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Plan, error) {
 	if m.API == nil {
 		return adapter.Plan{}, errors.New("vault-kv: API is not configured")
@@ -318,7 +348,7 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		}
 		disposition := adapter.Create
 		switch {
-		case !writable(owned, state):
+		case !writable(owned, record.State, state):
 			disposition = adapter.Conflict
 		case owned && state.kind != pathAbsent:
 			disposition = adapter.Update
@@ -335,6 +365,12 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 	return adapter.Plan{Changes: changes}, nil
 }
 
+// Sync writes desired rows with check-and-set and prunes obsolete claims using
+// the durable journal. Completed rows are skipped; teardown omits the sentinel
+// from desired rows. It returns partial progress on error, including
+// adapter.ErrConflict for ownership or CAS conflicts and adapter.ErrIndeterminate for
+// ambiguous writes. Validation, destination, provider, and journal errors may
+// also propagate. Pruning externally moved paths releases custody with warnings.
 func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adapter.Journal) (adapter.SyncResult, error) {
 	if m.API == nil || journal == nil {
 		return adapter.SyncResult{}, errors.New("vault-kv: API and durable journal are required")
@@ -395,6 +431,8 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 	return result, nil
 }
 
+// releaseWithoutRequest journals a claim as released without contacting the
+// provider, returning any gate, preparation, or completion error.
 func (m *Module) releaseWithoutRequest(ctx context.Context, row adapter.LedgerEntry, journal adapter.Journal) error {
 	effect := adapter.Effect{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
 	if err := journal.Gate(ctx, effect); err != nil {
@@ -406,6 +444,11 @@ func (m *Module) releaseWithoutRequest(ctx context.Context, row adapter.LedgerEn
 	return journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Released})
 }
 
+// syncRow reserves and journals one desired row, updating ledger and result
+// as work completes. Ownership or CAS conflicts return adapter.ErrConflict;
+// ambiguous writes also carry adapter.ErrIndeterminate. Provider failures
+// propagate unless persisting completion fails, in which case the journal
+// error takes precedence.
 func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter.DesiredRow, ledger map[adapter.LedgerKey]adapter.LedgerEntry, journal adapter.Journal, result *adapter.SyncResult) error {
 	key := adapter.NewLedgerKey(row.Surface, row.EffectiveName)
 	effect := adapter.Effect{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Create, KeyID: row.KeyID}
@@ -435,7 +478,7 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		return err
 	}
 	conflict := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Conflict}
-	if !writable(owned, live) {
+	if !writable(owned, record.State, live) {
 		if state == adapter.Reserved {
 			if err := journal.Refuse(ctx, effect); err != nil {
 				return err
@@ -526,6 +569,10 @@ func versionString(version int64) *string {
 	return &value
 }
 
+// errPendingStranded marks a lost check-and-set whose pending-marker
+// withdrawal failed, leaving a marker that names the racing write's version.
+var errPendingStranded = errors.New("vault-kv: withdrawing the pending marker after a lost check-and-set")
+
 // write delivers one value with the crash-safe marker protocol:
 //
 //  1. an absent path is created with check-and-set 0 before any metadata is
@@ -542,11 +589,10 @@ func versionString(version int64) *string {
 // the next attempt resolves from metadata alone: current == pending means the
 // write landed, current == pending-1 means it did not, anything else is
 // external movement. A create that landed before its marker leaves an
-// unmarked path that the durable dispatched claim still covers.
-// errPendingStranded marks a lost check-and-set whose pending-marker
-// withdrawal failed, leaving a marker that names the racing write's version.
-var errPendingStranded = errors.New("vault-kv: withdrawing the pending marker after a lost check-and-set")
-
+// unmarked version-one path that the durable dispatched claim still covers.
+// Failed finalization after a successful value write is indeterminate and keeps
+// the claim dispatched for safe replay. Earlier metadata and write errors propagate, with
+// errPendingStranded added if withdrawal after a CAS mismatch also fails.
 func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.DesiredRow, live pathState) error {
 	mount, path := target.Destination.Owner, secretPath(target, row.EffectiveName)
 	cas := live.version
@@ -580,10 +626,17 @@ func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.D
 	// The value is delivered. A failed finalize leaves either a pending
 	// version equal to current_version, which the next attempt finalizes as
 	// landed, or an unmarked create held by the dispatched claim.
-	_ = m.finalize(ctx, target, path, version)
+	if err := m.finalize(ctx, target, path, version); err != nil {
+		// The value write succeeded, so even a definitive metadata refusal
+		// cannot prove the overall effect did not apply. Keep a dispatched
+		// claim and never wrap the metadata error as a definitive write error.
+		return fmt.Errorf("%w: metadata finalization failed: %v", adapter.ErrIndeterminate, err)
+	}
 	return nil
 }
 
+// finalize records this target and the delivered version, removing the pending
+// marker. Metadata patch errors propagate to the caller.
 func (m *Module) finalize(ctx context.Context, target adapter.Target, path string, version int64) error {
 	marker := target.ID
 	return m.API.PatchCustomMetadata(ctx, target.Destination.Owner, path, map[string]*string{MarkerKey: &marker, VersionKey: versionString(version), PendingKey: nil})
@@ -618,6 +671,9 @@ func (m *Module) pruneRow(ctx context.Context, target adapter.Target, row adapte
 		return gateErr
 	}
 	deleted := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
+	if live.kind == pathUnmarked && row.State == adapter.Dispatched && live.version != 1 {
+		live.kind = pathMoved
+	}
 	switch live.kind {
 	case pathAbsent:
 		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Released}); err != nil {

@@ -615,8 +615,11 @@ func TestFailedMarkAfterCreateReplays(t *testing.T) {
 	target := testTarget(t, kv)
 	kv.failOn["patch-metadata:apps/pay/DATABASE_URL"] = errors.New("timeout")
 	module := &Module{API: kv}
-	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); err != nil {
-		t.Fatalf("Sync() = %v", err)
+	if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
+		t.Fatalf("Sync() = %v, want indeterminate", err)
+	}
+	if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
+		t.Fatal("unmarked create must remain dispatched")
 	}
 	if custom := kv.paths["apps/pay/DATABASE_URL"].custom; custom[MarkerKey] != "" {
 		t.Fatalf("custom metadata = %v, want the unmarked create", custom)
@@ -825,5 +828,39 @@ func TestPrunePreservesConcurrentExternalVersion(t *testing.T) {
 	p := kv.paths["apps/pay/LOG_LEVEL"]
 	if !p.deleted[1] || p.deleted[2] || p.values[2] != "concurrent-external-value" {
 		t.Fatalf("prune affected concurrent external version: %+v", p)
+	}
+}
+
+func TestFailedCreateFinalizeNeverOverwritesOrPrunesLaterExternalEdit(t *testing.T) {
+	for _, teardown := range []bool{false, true} {
+		t.Run(fmt.Sprint(teardown), func(t *testing.T) {
+			kv := newFakeKV()
+			journal := newFakeJournal()
+			target := testTarget(t, kv)
+			module := &Module{API: kv}
+			kv.failOn["patch-metadata:apps/pay/DATABASE_URL"] = &ResponseError{Status: 403}
+			if _, err := module.Sync(t.Context(), adapter.SyncRequest{Target: target, Manifest: manifest[:1]}, journal); !errors.Is(err, adapter.ErrIndeterminate) {
+				t.Fatalf("create finalize: %v", err)
+			}
+			if journal.states["secret:DATABASE_URL"] != adapter.Dispatched {
+				t.Fatal("create finalize refusal must retain dispatched claim")
+			}
+			kv.externalWrite("apps/pay/DATABASE_URL", "external")
+			req := adapter.SyncRequest{Target: target, Manifest: manifest[:1], Ledger: journal.ledger()}
+			if teardown {
+				req.Manifest = nil
+				req.Teardown = true
+			}
+			result, err := module.Sync(t.Context(), req, journal)
+			if !teardown && !errors.Is(err, adapter.ErrConflict) {
+				t.Fatalf("replay = %v", err)
+			}
+			if teardown && (err != nil || len(result.Warnings) == 0) {
+				t.Fatalf("teardown = %+v, %v", result, err)
+			}
+			if value, ok := kv.value("apps/pay/DATABASE_URL"); !ok || value != "external" {
+				t.Fatalf("external version altered: %q %v", value, ok)
+			}
+		})
 	}
 }

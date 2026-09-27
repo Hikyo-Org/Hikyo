@@ -16,13 +16,13 @@ review, see "Open").
   the OpenAPI `AdapterProvider` open enum (+ `apigen`, `clients/ts`), and the
   web create form. `TestProviderSetIsPinnedAcrossSurfaces` pins the compiled
   set against OpenAPI and the newest provider CHECK of both engines.
-- **Migration 00060** (both engines): widens `adapters.provider` only. SQLite
-  rebuilds `adapters` exactly as 00054 left it. KV addressing reuses the
+- **Migration 00063** (both engines): widens `adapters.provider` only. SQLite
+  rebuilds `adapters` with the provider set left by 00062. KV addressing reuses the
   repository destination (`destination_owner` = mount, `destination_name` =
   path prefix), so the closed `AdapterDestinationKind` response enum did not
   grow (freeze-safe). `internal/buildcompat/development.json` regenerated
-  against PostgreSQL 18.6 (diff: the two 00060 entries and both schema
-  digests); the legacy upgrade drill reverses 00060 (Postgres: narrow the
+  against PostgreSQL 18.6 (diff: the two 00063 entries and both schema
+  digests); the legacy upgrade drill reverses migrations 00045 through 00063 (Postgres: narrow the
   CHECK; SQLite: the existing 00025 `adapters` restore already covers it).
 - **`internal/adapter/vaultkv`**: hand-rolled client behind a closed `API`
   (Health, MountInfo, LookupSelf, ReadMetadata,
@@ -41,8 +41,8 @@ review, see "Open").
   unmarked) paths are taken over with CAS on the observed version; a claimed
   desired path that moved is a conflict that keeps its claim; an undesired
   path that moved is released with a conflict and a target warning, never
-  deleted (so removal cannot wedge). Prune = soft delete of the current
-  version. `destination_id` = hash(mount uuid, path prefix) so remounts
+  deleted (so removal cannot wedge). Prune = soft delete of only the inspected
+  version through the explicit-version endpoint. `destination_id` = hash(mount uuid, path prefix) so remounts
   refuse. Only one sentinel (both surfaces share one tree).
 - **Service**: `InspectTarget --format workflow` renders KV paths
   (`adapter.VaultKVMapping`). Origin must be spelled canonically.
@@ -134,3 +134,15 @@ Validation: 1172 browser unit tests; browser typecheck/lint; generated client
 20 tests and typecheck; Vault race tests; relevant adapter/CLI/store/service/app
 checks and both-engine upgrade/restore fixtures. The coordinating task owns
 remote CI and final merge. Cross-provider review was skipped by its quota gate.
+
+
+Follow-up review fixes: failed create finalization now preserves a Dispatched
+claim and returns indeterminate; an unmarked replay can only adopt the original
+create version (1), so later external edits conflict and teardown releases them.
+Explicit Owned adoption retains its intended authority. Request URLs now derive
+from registered operation templates, and missing/unknown path parameters refuse
+before HTTP. AppRole renewal uses a lease-relative window; exhausting its bounded
+renewals does not reject a token that can still outlive one request. The edit form
+uses the actual adapter provider for its Vault labels. Regression tests cover all
+three provider behaviors, and documentation describes exact-version pruning and
+Cloudflare's metadata-only decoding precisely.
