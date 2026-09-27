@@ -136,7 +136,8 @@ func wireAccessRequest(r service.AccessRequestView) apigen.AccessRequest {
 		Reason: r.Reason, Bypassed: r.Bypassed, State: apigen.AccessRequestState(r.State),
 		InvalidatedCause: apigen.AccessRequestInvalidatedCause(r.InvalidatedCause),
 		MinApprovals:     int32(r.MinApprovals), Approvals: int32(r.Approvals), Votes: votes,
-		CreatedAt: r.CreatedAt, ReviewExpiresAt: r.ReviewExpiresAt,
+		CanApprove: &r.CanApprove,
+		CreatedAt:  r.CreatedAt, ReviewExpiresAt: r.ReviewExpiresAt,
 		GrantedAt: r.GrantedAt, ExpiresAt: r.ExpiresAt, ResolvedAt: r.ResolvedAt,
 	}
 	if r.ResolvedBy != "" {

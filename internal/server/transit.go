@@ -239,8 +239,8 @@ func (a *API) RotateTransitKey(ctx context.Context, req apigen.RotateTransitKeyR
 func (a *API) ChangeTransitKeyState(ctx context.Context, req apigen.ChangeTransitKeyStateRequestObject) (apigen.ChangeTransitKeyStateResponseObject, error) {
 	var delay time.Duration
 	if req.Body.DelaySeconds != nil {
-		if *req.Body.DelaySeconds > int64(service.MaxTransitDeletionDelay/time.Second) {
-			return nil, fmt.Errorf("%w: delay_seconds exceeds the maximum deletion delay", domain.ErrInvalid)
+		if *req.Body.DelaySeconds < 0 || *req.Body.DelaySeconds > int64(service.MaxTransitDeletionDelay/time.Second) {
+			return nil, fmt.Errorf("%w: delay_seconds must be nonnegative and within the maximum deletion delay", domain.ErrInvalid)
 		}
 		delay = time.Duration(*req.Body.DelaySeconds) * time.Second
 	}

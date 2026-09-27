@@ -16866,6 +16866,10 @@ components:
       required: [id, environment_id, policy_id, policy_version, requester, capabilities, duration_seconds, reason, bypassed, state, invalidated_cause, min_approvals, approvals, votes, created_at, review_expires_at]
       additionalProperties: false
       properties:
+        can_approve:
+          type: boolean
+          readOnly: true
+          description: Whether this queue caller can currently approve this request; the vote endpoint reauthorizes every decision.
         requester_name:
           type: string
           description: Current display name of the referenced principal, when available.
