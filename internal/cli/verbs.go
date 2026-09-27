@@ -383,6 +383,10 @@ adapters:
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--stdin | --value-file PATH] [--create-environment]
+  hikyo adapter create --provider gitlab --origin <https-origin> --env E --kind project|group
+      --owner <numeric-id> [--scope <environment-scope>] [--protected] [--hidden] [--expand-variables]
+      [--spki-pin <base64-sha256>] [--ca-bundle-file PATH] [--allow-personal-token]
+      [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
   hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.<region>.amazonaws.com
       --env E --kind json-object|per-key --owner <account-id> [--secret <name-or-path/>] [--kms-key <key>]
       --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn <arn>] [--aws-external-id <id>]
@@ -407,6 +411,7 @@ adapters:
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
       [--secret <name-or-path/>] [--kms-key <key>]
+      [--scope <environment-scope>] [--protected=true|false] [--hidden=true|false] [--expand-variables=true|false]
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
   hikyo adapter delete <adapter> [--keep-remote]
@@ -419,6 +424,7 @@ adapters:
       [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
       [--secret <name-or-path/>] [--kms-key <key>]
+      [--scope <environment-scope>] [--protected=true|false] [--hidden=true|false] [--expand-variables=true|false]
       [--prefix <prefix>] --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--create-environment]
