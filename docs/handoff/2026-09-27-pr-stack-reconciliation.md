@@ -77,6 +77,18 @@ regenerated from real SQLite and PostgreSQL catalogs after migration changes.
 
 ## Verification and remaining delivery evidence
 
+After PKI merged, the file-sync diff fell below the repository review service's
+300-file limit. Its full review identified additional fixes: YAML C1 controls
+and noncharacters require escapes; GitLab sentinel names are reserved without
+case sensitivity; AWS service-quota exhaustion is a definite refusal rather
+than throttling; destination moves must reject simultaneous variable-flag
+changes instead of dropping them. Transit audit tests now validate a complete
+baseline before adding forbidden fields, and restart tests decrypt ciphertext
+created before service reconstruction. Temporary-access voting buttons use
+server eligibility, browser cookies follow the configured origin, and cleanup
+errors no longer replace the original test failure. CLI section spacing and the
+file-sync amendment reference were corrected as well.
+
 Local validation includes relevant Go/race tests, both database backends,
 backup/restore upgrade drills, authorization/query inventories, generated API
 and TypeScript checks, CLI golden help, web tests/typecheck/lint, documentation
