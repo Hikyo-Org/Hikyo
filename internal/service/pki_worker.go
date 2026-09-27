@@ -18,7 +18,9 @@ const pkiSweepBatch = 200
 // `expired`, and every issuer version whose CRL is due gets a freshly signed
 // one. Every write is a CAS, so concurrent nodes never double-apply. It
 // reports whether it did any work, so the caller can loop without sleeping
-// while a backlog drains.
+// while a backlog drains. Sweep errors stop the tick; CRL publication errors
+// do not prevent attempts for other candidates, and the first is returned
+// alongside whether any work succeeded.
 func (s *PKI) RunPKISweep(ctx context.Context) (bool, error) {
 	if s.Runtime == nil {
 		return false, errors.New("service: PKI worker has no runtime")
@@ -55,6 +57,9 @@ func (s *PKI) RunPKISweep(ctx context.Context) (bool, error) {
 	return unknown+expired+published > 0, firstErr
 }
 
+// publishDueCRL signs and stores a candidate's CRL with its current revocations.
+// It returns false without error if publication loses the compare-and-swap;
+// read, key, certificate, signing, and publication errors reach the caller.
 func (s *PKI) publishDueCRL(ctx context.Context, candidate store.PKICRLCandidate) (bool, error) {
 	now := store.CanonTime(s.now())
 	entries, err := s.Runtime.RevokedEntries(ctx, candidate.IssuerID, now)

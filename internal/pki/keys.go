@@ -60,7 +60,8 @@ func ParseKeyAlgorithm(s string) (KeyAlgorithm, error) {
 	return "", fmt.Errorf("%w %q", ErrUnknownAlgorithm, s)
 }
 
-// GenerateKey creates a fresh private key of the given algorithm.
+// GenerateKey creates a fresh private key of the given algorithm. Unknown
+// algorithms wrap ErrUnknownAlgorithm; key-generation errors are propagated.
 func GenerateKey(algorithm KeyAlgorithm) (crypto.Signer, error) {
 	switch algorithm {
 	case ECDSAP256:
@@ -134,8 +135,9 @@ func PublicKeysEqual(a, b crypto.PublicKey) bool {
 	return ok && left.Equal(b)
 }
 
-// NewSerial returns a positive 128-bit random serial number (RFC 5280 §4.1.2.2
-// allows up to 20 octets; CA/B guidance asks for at least 64 bits of entropy).
+// NewSerial returns a random serial number in [1, 2^127), propagating errors
+// from the random source (RFC 5280 §4.1.2.2 allows up to 20 octets; CA/B
+// guidance asks for at least 64 bits of entropy).
 func NewSerial() (*big.Int, error) {
 	limit := new(big.Int).Lsh(big.NewInt(1), 127)
 	for {

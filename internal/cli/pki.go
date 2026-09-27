@@ -91,6 +91,9 @@ type pkiKeySource struct {
 
 func (s pkiKeySource) set() bool { return s.stdin || s.file != "" }
 
+// read loads the CA key from exactly one configured file or stdin source.
+// Inputs over 16384 bytes and read failures return ExitRefused; selecting both
+// sources returns ExitUsage. The caller must zero the returned buffer.
 func (s pkiKeySource) read(ios IO) ([]byte, error) {
 	if s.stdin && s.file != "" {
 		return nil, failf(ExitUsage, "--key-stdin and --key-file are mutually exclusive")
@@ -142,6 +145,10 @@ func runPKI(ctx context.Context, ios IO, args []string) error {
 	return runPKIProfile(ctx, ios, rest)
 }
 
+// runPKIIssuer executes an issuer lifecycle command and renders its public
+// result. Imports read protected key input; pending CSRs may be written to a
+// file. Local input, API, and output errors reach the caller, including output
+// failures after a server-side mutation has succeeded.
 func runPKIIssuer(ctx context.Context, ios IO, args []string) error {
 	sub, rest, err := subverb("pki issuer", args, "list", "show", "create-root", "create-intermediate", "import",
 		"rotate", "install", "retire", "revoke", "release-hold", "crl")
@@ -347,6 +354,8 @@ func runPKIIssuer(ctx context.Context, ios IO, args []string) error {
 	return failf(ExitUsage, "unknown pki issuer verb %q", sub)
 }
 
+// renderCRL writes the JSON response for FormatJSON or raw PEM otherwise,
+// propagating output errors.
 func renderCRL(ios IO, f Format, out apigen.PkiCrl) error {
 	if f == FormatJSON {
 		return Render(ios.Stdout, f, Table{JSON: out})
@@ -355,6 +364,9 @@ func renderCRL(ios IO, f Format, out apigen.PkiCrl) error {
 	return err
 }
 
+// readPolicy decodes a required JSON policy file, rejecting unknown fields.
+// Missing or unreadable input and decoding failures return ExitUsage; semantic
+// policy validation remains the server's responsibility.
 func readPolicy(path string) (apigen.PkiPolicy, error) {
 	raw, err := readPublicFile(path, "the policy file")
 	if err != nil {
@@ -372,6 +384,9 @@ func readPolicy(path string) (apigen.PkiPolicy, error) {
 	return policy, nil
 }
 
+// runPKIProfile executes profile administration and renders returned profiles.
+// Bindings cover the resolved project unless --env is explicitly supplied.
+// Input, authentication, API, and rendering errors reach the caller.
 func runPKIProfile(ctx context.Context, ios IO, args []string) error {
 	sub, rest, err := subverb("pki profile", args, "list", "show", "create", "update", "delete", "bind", "unbind")
 	if err != nil {
@@ -480,6 +495,11 @@ func runPKIProfile(ctx context.Context, ios IO, args []string) error {
 	return one(out)
 }
 
+// runCert executes certificate operations in the resolved environment.
+// Generated keys use a disclosure destination prepared before network access;
+// public certificates and chains may also be written to a file. Input, API,
+// disclosure, and output failures are returned, so an error after issuance
+// does not imply that the server created no certificate.
 func runCert(ctx context.Context, ios IO, args []string) (returnErr error) {
 	sub, rest, err := subverb("cert", args, "profiles", "list", "show", "issue", "renew", "revoke", "crl")
 	if err != nil {

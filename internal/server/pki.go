@@ -28,6 +28,8 @@ func seconds(v int64) (time.Duration, error) {
 	return time.Duration(v) * time.Second, nil
 }
 
+// optionalSeconds treats an omitted duration as zero and otherwise rejects
+// negative or overflowing second counts with domain.ErrInvalid.
 func optionalSeconds(p *int64) (time.Duration, error) {
 	if p == nil {
 		return 0, nil
@@ -85,6 +87,9 @@ func nonNilStrings(in []string) []string {
 	return in
 }
 
+// pkiPolicyRequest converts wire durations from seconds, rejecting negative
+// or overflowing counts with domain.ErrInvalid. Policy validation and
+// normalization remain the service's responsibility.
 func pkiPolicyRequest(p apigen.PkiPolicy) (pki.Policy, error) {
 	maxTTL, err := seconds(p.MaxTtlSeconds)
 	if err != nil {
@@ -452,6 +457,9 @@ func stringsOf(p *[]string) []string {
 	return *p
 }
 
+// IssueCertificate returns the public certificate and, for generated-key
+// issuance, its display-once private key. It zeroes the service's key buffer
+// after copying it into the response. Conversion and service errors propagate.
 func (a *API) IssueCertificate(ctx context.Context, req apigen.IssueCertificateRequestObject) (apigen.IssueCertificateResponseObject, error) {
 	svc, err := a.pkiService()
 	if err != nil {
