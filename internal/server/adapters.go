@@ -265,7 +265,7 @@ func (a *API) ResumeAdapterMove(ctx context.Context, req apigen.ResumeAdapterMov
 		for _, id := range target.KeyIds {
 			input.KeyIDs = append(input.KeyIDs, string(id))
 		}
-		move, err = a.Adapters.ResumeTargetMove(ctx, service.Bearer(bearer(ctx)), scope, string(req.Move), service.UpdateAdapterTargetRequest{TargetID: string(target.TargetId), Target: input})
+		move, err = a.Adapters.ResumeTargetMove(ctx, service.Bearer(bearer(ctx)), scope, string(req.Move), service.UpdateAdapterTargetRequest{TargetID: string(target.TargetId), Target: input, Flags: &service.AdapterTargetFlagPatch{}})
 	}
 	if err != nil {
 		return nil, err

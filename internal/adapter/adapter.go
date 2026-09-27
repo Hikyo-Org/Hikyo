@@ -380,7 +380,7 @@ func ValidateGitLabManifest(prefix string, entries []ManifestEntry, values bool)
 		switch {
 		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
 			return fmt.Errorf("gitlab: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
-		case name == prefix+SentinelName:
+		case strings.EqualFold(name, prefix+SentinelName):
 			return fmt.Errorf("gitlab: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
 		case len(name) > 255:
 			return fmt.Errorf("gitlab: %s: effective name exceeds GitLab's 255-character key limit", entry.CanonicalName)

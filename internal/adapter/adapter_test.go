@@ -343,3 +343,17 @@ func TestVaultWorkflowRequiresDestinationMapping(t *testing.T) {
 		t.Fatalf("destination mapping=%q err=%v", got, err)
 	}
 }
+
+func TestGitLabManifestReservesSentinelCaseInsensitively(t *testing.T) {
+	for _, prefix := range []string{"", "P_"} {
+		for _, name := range []string{SentinelName, strings.ToLower(SentinelName), "Managed_By_Hikyo"} {
+			err := ValidateGitLabManifest(prefix, []ManifestEntry{{CanonicalName: name, Classification: ConfigClassification}}, false)
+			if err == nil || !strings.Contains(err.Error(), "management sentinel") {
+				t.Fatalf("prefix=%q name=%q: %v", prefix, name, err)
+			}
+		}
+		if err := ValidateGitLabManifest(prefix, []ManifestEntry{{CanonicalName: "MANAGED_BY_HIKYO_OTHER", Classification: ConfigClassification}}, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

@@ -41,7 +41,7 @@ func gitLabMoveWrite(t *testing.T, db *store.DB, fn func(context.Context, store.
 	})
 }
 func gitLabPendingTarget(id, scope, name string) store.AdapterTargetMutation {
-	return store.AdapterTargetMutation{ID: id, AdapterID: "adp_gitlab", EnvironmentID: "env_gitlab_e2e", DestinationKind: "repository", DestinationOwner: "team", DestinationName: name, DestinationScope: scope, NamePrefix: "P_", KeyIDs: []string{"key_gitlab_move"}}
+	return store.AdapterTargetMutation{ID: id, AdapterID: "adp_gitlab", EnvironmentID: "env_gitlab_e2e", DestinationKind: "repository", DestinationOwner: "team", DestinationName: name, DestinationScope: scope, NamePrefix: "P_", VariableProtected: true, KeyIDs: []string{"key_gitlab_move"}}
 }
 func gitLabAttention(t *testing.T, db *store.DB, move string) {
 	t.Helper()
@@ -127,7 +127,7 @@ func TestGitLabTargetMovesScopeClaimsAndResume(t *testing.T) {
 		gitLabAttention(t, db, "arm_a")
 		replace := func(scope string) error {
 			m, err := (&service.Adapters{DB: db}).ResumeTargetMove(t.Context(), service.LocalPrincipal("usr_gitlab"), domain.Scope{Org: "org_gitlab", Project: "prj_gitlab"}, "arm_a", service.UpdateAdapterTargetRequest{
-				TargetID: "tgt_gitlab_a", Target: service.AdapterTargetInput{EnvironmentID: "env_gitlab_e2e", DestinationKind: "repository", DestinationOwner: "team", DestinationName: "retry-api", DestinationScope: scope, NamePrefix: "P_", KeyIDs: []string{"key_gitlab_move"}},
+				TargetID: "tgt_gitlab_a", Target: service.AdapterTargetInput{EnvironmentID: "env_gitlab_e2e", DestinationKind: "repository", DestinationOwner: "team", DestinationName: "retry-api", DestinationScope: scope, NamePrefix: "P_", VariableProtected: true, KeyIDs: []string{"key_gitlab_move"}},
 			})
 			if err == nil {
 				assertGitLabMoveScopes(t, m, map[string]string{"tgt_gitlab_a": "production"})
@@ -161,4 +161,85 @@ func TestGitLabConfiguredMoveScopeConflicts(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestGitLabMovesRejectFlagChangesAndPreservePendingState(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		seedGitLabMoves(t, db, "staging")
+		execRealAdoption(t, db, `UPDATE adapter_targets SET variable_protected=TRUE,variable_hidden=TRUE WHERE id='tgt_gitlab_a'`)
+		target := gitLabPendingTarget("tgt_gitlab_a", "production", "new-api")
+		target.VariableProtected, target.VariableHidden = true, true
+		changes := []func(*store.AdapterTargetMutation){func(x *store.AdapterTargetMutation) { x.VariableProtected = false }, func(x *store.AdapterTargetMutation) { x.VariableHidden = false }, func(x *store.AdapterTargetMutation) { x.VariableExpand = true }}
+		begin := func(m store.AdapterTargetMutation) error {
+			return gitLabMoveWrite(t, db, func(ctx context.Context, r store.Repos, p authz.Proof) error {
+				_, err := r.Adapters().MoveTarget(ctx, p, store.AdapterRouteMoveMutation{MoveID: "arm_flags", Target: m, ExpectedGeneration: 1, AuthorityPrincipalID: "usr_gitlab", KeepRemote: true, At: time.Now().UTC()})
+				return err
+			})
+		}
+		for _, change := range changes {
+			changed := target
+			change(&changed)
+			if err := begin(changed); !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("move flag change: %v", err)
+			}
+		}
+		if got := queryInt(t, db, "SELECT COUNT(*) FROM adapter_route_moves WHERE id='arm_flags'"); got != 0 {
+			t.Fatal("refused move persisted route")
+		}
+		if err := begin(target); err != nil {
+			t.Fatalf("unchanged flags: %v", err)
+		}
+		gitLabAttention(t, db, "arm_flags")
+		assertPending := func() {
+			t.Helper()
+			if err := gitLabMoveWrite(t, db, func(ctx context.Context, r store.Repos, p authz.Proof) error {
+				move, err := r.Adapters().Move(ctx, p, "arm_flags")
+				if err != nil {
+					return err
+				}
+				assertGitLabMoveScopes(t, move, map[string]string{"tgt_gitlab_a": "production"})
+				if move.State != "attention_required" || move.Targets[0].DestinationName != "new-api" {
+					t.Fatalf("refusal changed pending move: %+v", move)
+				}
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if got := queryInt(t, db, "SELECT COUNT(*) FROM adapter_targets WHERE id='tgt_gitlab_a' AND variable_protected=TRUE AND variable_hidden=TRUE AND variable_expand=FALSE"); got != 1 {
+				t.Fatal("refusal changed variable flags")
+			}
+		}
+		for _, change := range changes {
+			changed := target
+			changed.DestinationName = "ignored"
+			change(&changed)
+			err := gitLabMoveWrite(t, db, func(ctx context.Context, r store.Repos, p authz.Proof) error {
+				_, err := r.Adapters().ReplaceMoveTarget(ctx, p, "arm_flags", changed, "usr_gitlab", time.Now().UTC())
+				return err
+			})
+			if !errors.Is(err, domain.ErrInvalid) {
+				t.Fatalf("replacement flag change: %v", err)
+			}
+			assertPending()
+		}
+		disabled := false
+		svc := &service.Adapters{DB: db}
+		req := service.UpdateAdapterTargetRequest{TargetID: target.ID, Target: service.AdapterTargetInput{EnvironmentID: target.EnvironmentID, DestinationKind: target.DestinationKind, DestinationOwner: target.DestinationOwner, DestinationName: "retry-api", DestinationScope: "production", NamePrefix: "P_", KeyIDs: target.KeyIDs}, Flags: &service.AdapterTargetFlagPatch{VariableProtected: &disabled}}
+		scope := domain.Scope{Org: "org_gitlab", Project: "prj_gitlab"}
+		if _, err := svc.ResumeTargetMove(t.Context(), service.LocalPrincipal("usr_gitlab"), scope, "arm_flags", req); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("service resumed changed flags: %v", err)
+		}
+		assertPending()
+		req.Flags = nil
+		if _, err := svc.ResumeTargetMove(t.Context(), service.LocalPrincipal("usr_gitlab"), scope, "arm_flags", req); !errors.Is(err, domain.ErrInvalid) {
+			t.Fatalf("direct all-false flags accepted: %v", err)
+		}
+		assertPending()
+		req.Flags = &service.AdapterTargetFlagPatch{}
+		resumed, err := svc.ResumeTargetMove(t.Context(), service.LocalPrincipal("usr_gitlab"), scope, "arm_flags", req)
+		if err != nil {
+			t.Fatalf("omitted flags resume: %v", err)
+		}
+		assertGitLabMoveScopes(t, resumed, map[string]string{"tgt_gitlab_a": "production"})
+	})
 }

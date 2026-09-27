@@ -51,6 +51,27 @@ func TestGitLabAdapterPersistsTransportPolicyScopeAndFlags(t *testing.T) {
 		t.Fatalf("Get() = %+v", shown)
 	}
 
+	// Move records preserve existing flags; changes must be applied separately.
+	disabledMoveFlag, enabledMoveFlag := false, true
+	for name, flags := range map[string]*AdapterTargetFlagPatch{
+		"protected": {VariableProtected: &disabledMoveFlag},
+		"hidden":    {VariableHidden: &disabledMoveFlag},
+		"expand":    {VariableExpand: &enabledMoveFlag},
+	} {
+		_, err := svc.ApplyTargetMutation(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
+			TargetID: target.ID, ExpectedGeneration: target.Generation,
+			Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "platform", DestinationName: "moved", KeyIDs: []string{"key_gitlab"}},
+			Flags:  flags,
+		}, false)
+		if !errors.Is(err, domain.ErrInvalid) || !strings.Contains(err.Error(), "variable flags separately") {
+			t.Fatalf("move with changed %s flag: %v", name, err)
+		}
+	}
+	unchanged, err := svc.Get(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, view.Adapter.ID)
+	if err != nil || unchanged.Targets[0].Generation != target.Generation || unchanged.Targets[0].DestinationName != "api" {
+		t.Fatalf("refused move changed target: %+v %v", unchanged, err)
+	}
+
 	// Older clients omit the optional flags. Preserve all persisted options.
 	result, err := svc.ApplyTargetMutation(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
 		TargetID: target.ID, ExpectedGeneration: target.Generation,
