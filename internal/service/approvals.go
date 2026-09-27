@@ -266,6 +266,16 @@ func (s *Approvals) DeletePolicy(ctx context.Context, actor Actor, scope domain.
 		if err != nil {
 			return err
 		}
+		// The deletion record states what was removed: read the member sets
+		// before the cascade takes them.
+		approvers, err := r.Approvals().ListApprovers(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		bypassers, err := r.Approvals().ListBypassers(ctx, p, id)
+		if err != nil {
+			return err
+		}
 		deleted, err := r.Approvals().DeletePolicy(ctx, p, id)
 		if err != nil {
 			return err
@@ -274,7 +284,7 @@ func (s *Approvals) DeletePolicy(ctx context.Context, actor Actor, scope domain.
 			return domain.ErrNotFound
 		}
 		return recordPolicyChangeCounts(ctx, r, p, caller.Principal, id, "deleted", policy.EnvironmentID,
-			policy.MinApprovals, policy.AllowSelfApproval, false, 0, 0)
+			policy.MinApprovals, policy.AllowSelfApproval, policy.Enabled, len(approvers), len(bypassers))
 	})
 }
 

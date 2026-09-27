@@ -141,6 +141,9 @@ export function TemporaryAccess() {
   const [bypassersText, setBypassersText] = useState('');
 
   const offer = queue.data?.offer;
+  // Only what the current environment offers is sent: a capability ticked
+  // under another environment's offer stays hidden, so it must not ride along.
+  const offered = requested.filter((capability) => offer?.capabilities.includes(capability) ?? false);
   const envName = envItems.find((e) => e.id === selectedEnv)?.name ?? selectedEnv;
   const isManager = policies.isSuccess;
 
@@ -158,7 +161,7 @@ export function TemporaryAccess() {
     action.mutate(
       {
         kind: 'request',
-        draft: { capabilities: requested, durationSeconds: Math.round(requestHours * 3600), reason },
+        draft: { capabilities: offered, durationSeconds: Math.round(requestHours * 3600), reason },
       },
       {
         onSuccess: () => {
@@ -174,7 +177,7 @@ export function TemporaryAccess() {
   // live sliding window already stands over this environment.
   const takeEmergency = async () => {
     start();
-    const draftRequest: EmergencyAccessDraft = { capabilities: requested, reason: emergencyReason };
+    const draftRequest: EmergencyAccessDraft = { capabilities: offered, reason: emergencyReason };
     try {
       const window = await fetchRevealWindow({ org, project, environment: selectedEnv });
       if (window.live && !window.single_decision) {
@@ -310,7 +313,7 @@ export function TemporaryAccess() {
               <Button
                 type="submit"
                 variant="primary"
-                disabled={action.isPending || requested.length === 0 || reason.trim() === '' || !(requestHours > 0)}
+                disabled={action.isPending || offered.length === 0 || reason.trim() === '' || !(requestHours > 0)}
               >
                 Request access
               </Button>
@@ -328,7 +331,7 @@ export function TemporaryAccess() {
                 <Button
                   type="button"
                   variant="danger"
-                  disabled={action.isPending || requested.length === 0 || emergencyReason.trim() === ''}
+                  disabled={action.isPending || offered.length === 0 || emergencyReason.trim() === ''}
                   onClick={() => void takeEmergency()}
                 >
                   Take emergency access

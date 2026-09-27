@@ -528,6 +528,16 @@ func runAccessLifecycle(t *testing.T, db *store.DB) {
 		t.Fatal("restoring the principal did not restore its unexpired access")
 	}
 
+	// 17b. Deleting the policy records what was removed (enabled, one
+	// approver, one bypasser), not zeroed defaults.
+	if err := h.access.DeletePolicy(ctx, admin, h.proj, created.ID); err != nil {
+		t.Fatalf("delete policy: %v", err)
+	}
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'access.policy_changed' AND object_id = '"+created.ID+
+		`' AND payload LIKE '%"action":"deleted"%' AND payload LIKE '%"enabled":true%' AND payload LIKE '%"approver_count":1%' AND payload LIKE '%"bypasser_count":1%'`); n != 1 {
+		t.Fatalf("policy deletion audit records = %d, want 1 carrying enabled and the member counts", n)
+	}
+
 	// 18. Deleting the environment cascades its requests and rows away.
 	envs := &service.Environments{DB: db, Keyring: probeKeyring(t, db)}
 	if err := envs.Delete(ctx, service.LocalPrincipal(alice), h.scope); err != nil {

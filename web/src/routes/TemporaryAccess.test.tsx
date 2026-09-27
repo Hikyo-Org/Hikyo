@@ -178,3 +178,55 @@ it('lets an approver decide another person\'s request and revoke granted access'
     await unmount();
   }
 });
+
+it('sends only the capabilities the current environment offers', async () => {
+  const staging = { ...env, id: 'env_00000000-0000-0000-0000-000000000002', name: 'staging', display_order: 1 };
+  const bodies: unknown[] = [];
+  vi.stubGlobal('fetch', async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path.endsWith('/environments')) return Response.json({ items: [env, staging], count: 2 });
+    if (path.endsWith('/access-policies')) return Response.json({ code: 'not_found', message: 'not found' }, { status: 404 });
+    if (path.endsWith('/access-requests') && req.method === 'GET') {
+      const wide = path.includes(env.id);
+      return Response.json({ offer: { ...offer, capabilities: wide ? ['edit', 'read', 'reveal'] : ['read', 'reveal'] }, items: [] });
+    }
+    if (path.endsWith('/access-requests') && req.method === 'POST') {
+      bodies.push(await req.json());
+      return Response.json(request({ environment_id: staging.id }));
+    }
+    throw new Error(`unexpected ${req.method} ${path}`);
+  });
+  const tick = async (container: HTMLElement, name: string) => {
+    const label = [...container.querySelectorAll('fieldset label')].find((l) => l.textContent === name);
+    const box = container.querySelector<HTMLInputElement>(`#${CSS.escape(label?.getAttribute('for') ?? '')}`);
+    if (box === null) throw new Error(`missing capability ${name}`);
+    await act(async () => box.click());
+  };
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const select = container.querySelector('#ta-env');
+    if (!(select instanceof HTMLSelectElement)) throw new Error('environment select missing');
+    await act(async () => selectValue(select, env.id));
+    await settleTask();
+    await tick(container, 'edit');
+    await tick(container, 'reveal');
+    // Switching to an environment that does not offer `edit` hides it; the
+    // hidden tick must not ride along in the request.
+    await act(async () => selectValue(select, staging.id));
+    await settleTask();
+    expect([...container.querySelectorAll('fieldset label')].map((l) => l.textContent)).toEqual(['read', 'reveal']);
+    const reason = container.querySelector('#ta-reason');
+    if (!(reason instanceof HTMLTextAreaElement)) throw new Error('reason missing');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(reason, 'incident 43');
+      reason.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => button(container, 'Request access').click());
+    await settleTask();
+    expect(bodies).toEqual([{ capabilities: ['reveal'], reason: 'incident 43', duration_seconds: 3600 }]);
+  } finally {
+    await unmount();
+  }
+});

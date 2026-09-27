@@ -222,7 +222,7 @@ func (s *Access) CreatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if err := writeAccessPolicyMembers(ctx, r, p, id, input); err != nil {
 			return err
 		}
-		if err := recordAccessPolicyChange(ctx, r, p, caller.Principal, id, "created", input.EnvironmentID, caps, input); err != nil {
+		if err := recordAccessPolicyChange(ctx, r, p, caller.Principal, id, "created", input.EnvironmentID, caps, input, len(input.Approvers), len(input.Bypassers)); err != nil {
 			return err
 		}
 		view, err = loadAccessPolicyView(ctx, r, az, p, id)
@@ -273,7 +273,7 @@ func (s *Access) UpdatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if err := writeAccessPolicyMembers(ctx, r, p, id, input); err != nil {
 			return err
 		}
-		if err := recordAccessPolicyChange(ctx, r, p, caller.Principal, id, "updated", input.EnvironmentID, caps, input); err != nil {
+		if err := recordAccessPolicyChange(ctx, r, p, caller.Principal, id, "updated", input.EnvironmentID, caps, input, len(input.Approvers), len(input.Bypassers)); err != nil {
 			return err
 		}
 		view, err = loadAccessPolicyView(ctx, r, az, p, id)
@@ -295,6 +295,16 @@ func (s *Access) DeletePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if err != nil {
 			return err
 		}
+		// The deletion record states what was removed: read the member sets
+		// before the cascade takes them.
+		approvers, err := r.Access().ListApprovers(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		bypassers, err := r.Access().ListBypassers(ctx, p, id)
+		if err != nil {
+			return err
+		}
 		deleted, err := r.Access().DeletePolicy(ctx, p, id)
 		if err != nil {
 			return err
@@ -305,8 +315,8 @@ func (s *Access) DeletePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		return recordAccessPolicyChange(ctx, r, p, caller.Principal, id, "deleted", policy.EnvironmentID,
 			policy.Capabilities, AccessPolicyInput{
 				MaxDurationSeconds: policy.MaxDurationSeconds, MinApprovals: policy.MinApprovals,
-				AllowSelfApproval: policy.AllowSelfApproval,
-			})
+				AllowSelfApproval: policy.AllowSelfApproval, Enabled: policy.Enabled,
+			}, len(approvers), len(bypassers))
 	})
 }
 
@@ -997,13 +1007,13 @@ func writeAccessPolicyMembers(ctx context.Context, r store.Repos, p authz.Proof,
 }
 
 func recordAccessPolicyChange(ctx context.Context, r store.Repos, p authz.Proof, principal domain.PrincipalID,
-	policyID, action, envID string, caps []string, input AccessPolicyInput) error {
+	policyID, action, envID string, caps []string, input AccessPolicyInput, approvers, bypassers int) error {
 	ev, err := domainEvent(ctx, audit.EventAccessPolicyChanged, principal,
 		audit.Object{Type: "access-policy", ID: policyID}, audit.Payload{
 			"action": action, "environment": envID, "capabilities": slices.Clone(caps),
 			"max_duration_seconds": input.MaxDurationSeconds, "min_approvals": input.MinApprovals,
 			"self_approval": input.AllowSelfApproval, "enabled": input.Enabled,
-			"approver_count": len(input.Approvers), "bypasser_count": len(input.Bypassers),
+			"approver_count": approvers, "bypasser_count": bypassers,
 		})
 	if err != nil {
 		return err
