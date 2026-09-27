@@ -514,7 +514,7 @@ func runCert(ctx context.Context, ios IO, args []string) (returnErr error) {
 			fs.StringVar(&profile, "profile", "", "certificate profile bound to the environment")
 			fs.StringVar(&issuer, "issuer", "", "issuer the profile allows (default: the first with an active version)")
 			fs.StringVar(&csrFile, "csr-file", "", "PEM CSR (only its public key is used)")
-			fs.BoolVar(&generate, "generate-key", false, "have the server generate the key; it is shown exactly once")
+			fs.BoolVar(&generate, "generate-key", false, "generate a display-once key (machine credentials only; humans use the web UI or --csr-file)")
 			fs.StringVar(&alg, "key-algorithm", "", "algorithm for --generate-key (default ecdsa-p256)")
 			fs.StringVar(&cn, "common-name", "", "subject common name (must be one of the --dns names)")
 			fs.Var(&dns, "dns", "DNS subject alternative name (repeatable)")
@@ -571,7 +571,7 @@ func runCert(ctx context.Context, ios IO, args []string) (returnErr error) {
 			defer sink.AbortOnReturn(&returnErr)
 		}
 	}
-	client, _, resolved, err := authenticatedTarget(st, ios, flags)
+	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {
 		return err
 	}
@@ -690,6 +690,13 @@ func runCert(ctx context.Context, ios IO, args []string) (returnErr error) {
 			}
 			body.TtlSeconds = &secs
 		}
+		if _, human := artifact.(HumanSession); generate && human {
+			// The CLI browser handoff does not support the PKI mint purpose.
+			// Reveal authority is distinct from certificate issuance authority;
+			// do not substitute a reveal ceremony or create a certificate first.
+			return failf(ExitAuth, "generating a certificate key with a human session requires the browser's mint ceremony; issue it in the web UI, or use --csr-file with a locally generated key")
+		}
+
 		var out apigen.CertificateIssueResult
 		if err := client.Do(ctx, http.MethodPost, base, body, &out); err != nil {
 			return err
