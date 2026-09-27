@@ -1618,7 +1618,6 @@ test.describe('change approvals', () => {
             name: pair.slice(0, equals),
             value: pair.slice(equals + 1),
             url: BASE_URL,
-            secure: true,
             httpOnly: /;\s*httponly/i.test(header),
             sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
           };
@@ -1843,7 +1842,6 @@ test.describe('temporary access', () => {
             name: pair.slice(0, equals),
             value: pair.slice(equals + 1),
             url: BASE_URL,
-            secure: true,
             httpOnly: /;\s*httponly/i.test(header),
             sameSite: /;\s*samesite=strict/i.test(header) ? ('Strict' as const) : ('Lax' as const),
           };
