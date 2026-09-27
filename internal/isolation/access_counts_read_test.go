@@ -2,10 +2,11 @@ package isolation
 
 import (
 	"context"
-	"github.com/Hikyo-Org/hikyo/internal/service"
-	"github.com/Hikyo-Org/hikyo/internal/store"
 	"testing"
 	"time"
+
+	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/store"
 )
 
 func TestAccessOperationalCountsUseReadTransaction(t *testing.T) {
