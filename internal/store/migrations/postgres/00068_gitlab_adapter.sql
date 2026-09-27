@@ -4,7 +4,7 @@
 -- 'organization'; destination_scope is the GitLab environment_scope.
 ALTER TABLE adapters DROP CONSTRAINT adapters_provider_check;
 ALTER TABLE adapters ADD CONSTRAINT adapters_provider_check
-    CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook', 'gitlab'));
+    CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook', 'cloudflare', 'vault-kv', 'aws-secrets-manager', 'gitlab'));
 -- Adapter egress trust for self-hosted GitLab. None of these is a secret: the
 -- pin is a public-key hash and the bundle holds public certificates.
 ALTER TABLE adapters

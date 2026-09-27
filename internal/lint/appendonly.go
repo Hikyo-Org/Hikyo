@@ -140,14 +140,20 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"writeProofFreeEvent": true,
 	// Bootstrap under local host authority (#47) — the closed local-authority
 	// exception set's boot/bootstrap member, never reachable over the network.
-	"CreatePrincipal":           true,
-	"CorrectPrivacyAccount":     true,
-	"UpdateAccountProfile":      true,
-	"RestrictPrivacyPrincipal":  true,
-	"ErasePrivacyAccount":       true,
-	"CreateAccount":             true,
-	"CreateGrant":               true,
-	"CreateCredentialAuthority": true,
+	"CreatePrincipal":          true,
+	"CorrectPrivacyAccount":    true,
+	"UpdateAccountProfile":     true,
+	"RestrictPrivacyPrincipal": true,
+	"ErasePrivacyAccount":      true,
+	"CreateAccount":            true,
+	"CreateGrant":              true,
+	// Approval-mediated temporary access (#152): the time-bound grant rows are
+	// read by authorize(), so they are written on the resolution surface after
+	// the access service proved its own chokepoint operation, under the
+	// principal-row lock like every grant writer.
+	"CreateAccessGrant":            true,
+	"DeleteAccessGrantsForRequest": true,
+	"CreateCredentialAuthority":    true,
 	// Credential establishment and the local floor (#47). None of these can
 	// hold a proof: the first has no session by design, the rest are the
 	// session's own lifecycle.
@@ -355,7 +361,10 @@ var ResolutionSurfaceWriters = map[string]bool{
 	// authenticates to an external engine with no Hikyo credential epoch, so the
 	// same local-host restore act erases it.
 	"InvalidateRestoredDynamicProviderCredentials": true,
-	"ReconcilePrincipal":                           true,
+	// #154: a restore can resurrect certificates revoked after the backup,
+	// so the same local-host restore act holds every restored CA issuer.
+	"HoldRestoredPKIIssuers": true,
+	"ReconcilePrincipal":     true,
 	// #73 section 9.1: the reconciliation commit drops restored `scim` origins
 	// and any grant row they were the last hold on, in the same act.
 	"dropRestoredSCIMOrigins": true,

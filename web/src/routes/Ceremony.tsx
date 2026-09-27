@@ -73,7 +73,8 @@ export type CeremonyPurpose =
   | 'pin'
   | 'approve'
   | 'reject'
-  | 'bypass';
+  | 'bypass'
+  | 'access';
 
 const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   reveal: 'reveal',
@@ -85,6 +86,7 @@ const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
   approve: 'approve changes in',
   reject: 'reject changes in',
   bypass: 'bypass approvals in',
+  access: 'take emergency access in',
 };
 
 /**
@@ -102,7 +104,7 @@ const PURPOSE_VERB: Record<CeremonyPurpose, string> = {
  */
 const SIGNED_OPERATION: Record<
   CeremonyPurpose,
-  'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass'
+  'reveal' | 'copy' | 'publish' | 'approve' | 'reject' | 'bypass' | 'access'
 > = {
   reveal: 'reveal',
   clipboard: 'reveal',
@@ -119,6 +121,10 @@ const SIGNED_OPERATION: Record<
   approve: 'approve',
   reject: 'reject',
   bypass: 'bypass',
+  // Emergency temporary access (#152) is its own signed decision, bound to the
+  // environment alone: consent to force a change through is not consent to
+  // take standing authority.
+  access: 'access',
 };
 
 /**
@@ -133,6 +139,7 @@ const LEDE_NOUN: Record<(typeof SIGNED_OPERATION)[CeremonyPurpose], string> = {
   approve: 'change decision',
   reject: 'change decision',
   bypass: 'change decision',
+  access: 'emergency access decision',
 };
 
 export type CeremonyRequest = {
@@ -148,6 +155,12 @@ export type CeremonyRequest = {
   window: RevealWindow;
 };
 
+/**
+ * Runs reauthentication for the requested purpose and calls onAuthorised after
+ * success; ceremony failures are displayed in the dialog. For emergency access,
+ * callers supply an empty key list. It must run on the owning instance, so a
+ * workspace context shows guidance instead of a handoff.
+ */
 export function Ceremony({
   request,
   onAuthorised,
@@ -177,6 +190,7 @@ export function Ceremony({
   const methods = useAuthMethods();
   const oidcProvider = useSessionOIDCProvider();
   const offersOIDC = request.window.totp_offered && oidcProvider !== null;
+  const signed = SIGNED_OPERATION[request.purpose];
 
   const attempt = async (factor: 'passkey' | 'oidc' | 'totp', run: () => Promise<void>) => {
     setPending(factor);
@@ -194,7 +208,7 @@ export function Ceremony({
   const onPasskey = () =>
     void attempt('passkey', () =>
       runPasskeyCeremony({
-        operation: SIGNED_OPERATION[request.purpose],
+        operation: signed,
         environmentId: request.environmentId,
         keyIds: request.keys.map((k) => k.id),
       }),
@@ -221,7 +235,7 @@ export function Ceremony({
       title={title}
       lede={
         <>
-          This confirms a <strong>{LEDE_NOUN[SIGNED_OPERATION[request.purpose]]}</strong>, not your account security. It is separate from
+          This confirms a <strong>{LEDE_NOUN[signed]}</strong>, not your account security. It is separate from
           signing in and from any step-up you have already done.
           {workspace === null ? null : (
             <>
@@ -240,23 +254,32 @@ export function Ceremony({
         onCancel();
       }}
     >
-      <p className="ceremony__scope">
-        One decision over exactly the {request.keys.length}{' '}
-        {request.keys.length === 1 ? 'key' : 'keys'} below.
-      </p>
-      <ul className="ceremony__keys" aria-label="Keys this decision covers">
-        {request.keys.map((key) => (
-          <li className="mono" key={key.id}>
-            {key.classification === 'secret' ? (
-              <>
-                <Glyph name="lock" />{' '}
-                <span className="visually-hidden">secret </span>
-              </>
-            ) : null}
-            {key.name}
-          </li>
-        ))}
-      </ul>
+      {request.purpose === 'access' ? (
+        <p className="ceremony__scope">
+          One decision to take time-bound access in this environment without the required
+          approvals. It is recorded as emergency access.
+        </p>
+      ) : (
+        <>
+          <p className="ceremony__scope">
+            One decision over exactly the {request.keys.length}{' '}
+            {request.keys.length === 1 ? 'key' : 'keys'} below.
+          </p>
+          <ul className="ceremony__keys" aria-label="Keys this decision covers">
+            {request.keys.map((key) => (
+              <li className="mono" key={key.id}>
+                {key.classification === 'secret' ? (
+                  <>
+                    <Glyph name="lock" />{' '}
+                    <span className="visually-hidden">secret </span>
+                  </>
+                ) : null}
+                {key.name}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       {failure !== null ? (
         <Alert>{failure}</Alert>
@@ -335,10 +358,14 @@ export function Ceremony({
             </form>
           ) : null}
         </>
+      ) : signed === 'access' ? (
+        // Emergency access is taken on the instance that holds the policy, in
+        // its own browser session; a workspace does not carry it.
+        <Alert>Emergency access is taken on {workspace.origin} directly, not through a workspace.</Alert>
       ) : (
         <WorkspaceStepUp
           origin={workspace.origin}
-          operation={SIGNED_OPERATION[request.purpose]}
+          operation={signed}
           environmentId={request.environmentId}
           keyIds={request.keys.map((k) => k.id)}
           firstRef={first}

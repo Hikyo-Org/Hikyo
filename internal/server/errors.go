@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/schema"
 	"github.com/Hikyo-Org/hikyo/internal/service"
+	"github.com/Hikyo-Org/hikyo/internal/transit"
 )
 
 // Uniform error rendering.
@@ -243,6 +244,10 @@ var wireErrorRules = []struct {
 	// (the fence surfaces ErrProviderBusy once ctx is spent) and must render a
 	// uniform 409, never a 500. Neither carries a SafeDetail, so the conflict
 	// body stays byte-identical to every other conflict.
+	// Transit (#156): a key whose custody provider cannot serve fails closed
+	// with a retryable 503, never a 500 and never a fallback.
+	{transit.ErrUnavailable, apigen.ErrorCodeServiceUnavailable},
+
 	{adapter.ErrProviderBusy, apigen.ErrorCodeConflict},
 	{adapter.ErrSuperseded, apigen.ErrorCodeConflict},
 

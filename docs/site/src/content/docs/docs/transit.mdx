@@ -1,0 +1,225 @@
+---
+title: Transit
+description: Encrypt, sign and MAC with managed keys whose material never leaves Hikyo's custody.
+editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/transit.mdx
+---
+
+Transit is policy-bound cryptography as a service. An application asks Hikyo to
+encrypt a value, sign a webhook or MAC a token under a **named, versioned key**,
+and gets back ciphertext, a signature or a MAC. The key material never leaves
+Hikyo: there is no export path in the API, the CLI, logs, audit records or
+backup diagnostics, and Hikyo never stores what you send it.
+
+Transit is a bounded surface, not a general secrets engine: a closed set of
+algorithms and operations, no PKI, no SSH certificates, no key import and no key
+export. The normative contract is the
+[transit ADR](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/adr/transit.md).
+
+## Keys
+
+A transit key belongs to exactly one environment and has a name that is unique
+among that environment's keys (`[a-z0-9][a-z0-9._-]{0,62}`). Three things are
+fixed when the key is created and never change:
+
+| Algorithm | Purpose | Operations |
+|---|---|---|
+| `xchacha20-poly1305` | encryption | `encrypt`, `decrypt`, `rewrap`, `datakey`, `datakey-plaintext` |
+| `ed25519` | signing | `sign`, `verify` |
+| `hmac-sha256` | message authentication | `hmac`, `hmac-verify` |
+
+- the **algorithm**, and so the key's purpose;
+- the **allowed operations**, a subset of the algorithm's (by default all of them
+  except `datakey-plaintext`, which you must name explicitly);
+- the **custody**: `software` in this release (see [Custody](#custody)).
+
+```sh
+hikyo transit key create payments --env prod --algorithm xchacha20-poly1305 \
+  --rotation-period 720h
+hikyo transit key create webhooks --env prod --algorithm ed25519
+hikyo transit key list --env prod
+```
+
+## Who may do what
+
+Two capabilities govern transit, granted like any other:
+
+- **`crypto-use`** at an environment lets a principal run the data-plane
+  operations on that environment's keys. Workload and automation service
+  accounts may hold it.
+- **`crypto-manage`** at a project lets a person create, configure, rotate,
+  retire and delete keys. It is human-only.
+
+Neither is part of any role template, and neither is implied by `read` or
+`reveal`: grant them explicitly. Anyone with `read` on the environment can see
+key metadata (names, versions, states, Ed25519 public keys), never material.
+
+A key can additionally carry **caller entries** that narrow `crypto-use` to named
+principals and operations:
+
+```sh
+hikyo transit key configure payments --env prod \
+  --caller svc_0198...=encrypt --caller svc_0198...=decrypt,rewrap
+```
+
+With caller entries set, a principal that holds `crypto-use` but is not listed,
+or asks for an operation its entry does not name, is refused. Caller entries
+never widen anything.
+
+## Encrypt and decrypt
+
+Inputs are read from stdin or a file, never from the command line, because
+process arguments are visible to other users of the machine.
+
+```sh
+printf '4111-1111-1111-1111' | hikyo transit encrypt payments --env prod --stdin
+# hikyo:v1:AQgBAAAA...
+```
+
+A ciphertext looks like `hikyo:v<version>:<base64url>`. It opens only under the
+same key, version and environment, and under the same **associated data** if you
+supplied some (`--aad-file`, the API's `context`): use it to bind a ciphertext
+to, for example, the row id it belongs to.
+
+```sh
+hikyo transit decrypt payments --env prod --input-file card.ct --output-file card.txt
+```
+
+Decrypted plaintext is shown exactly once through the same print triad as
+other disclosures: a controlling terminal, `--output-file`, or
+`--dangerously-print`.
+
+Over HTTP every input is standard base64 in a JSON body:
+
+```sh
+curl -sS -X POST "$HIKYO/api/v1/orgs/$ORG/projects/$PRJ/environments/$ENV/transit-keys/payments/encrypt" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"plaintext\": \"$(printf 'hello' | base64)\"}"
+```
+
+## Data keys
+
+For envelope encryption of large payloads, ask for a data key: a fresh 128, 256
+or 512-bit key returned **wrapped** under the transit key. Store the wrapped form
+next to your data and ask Hikyo to decrypt it when you need the key again.
+
+```sh
+hikyo transit datakey payments --env prod --bits 256
+```
+
+If the key allows `datakey-plaintext`, `--plaintext` also returns the data key
+itself, once, through the print triad.
+
+## Sign, verify and MAC
+
+```sh
+hikyo transit sign webhooks --env prod --input-file body.json
+hikyo transit verify webhooks --env prod --input-file body.json --signature 'hikyo:v1:...'
+hikyo transit hmac tokens --env prod --stdin < session-id
+```
+
+Signatures are pure Ed25519 (RFC 8032) over the message bytes, so anyone holding
+the version's public key (shown by `hikyo transit key show`) can verify them
+without Hikyo. MAC verification is constant-time. An invalid signature or MAC is
+a successful answer of `valid: false`, and the CLI exits with status 4.
+
+## Rotation and the version window
+
+Rotation appends a new version; new output uses it immediately and old
+ciphertext keeps working.
+
+```sh
+hikyo transit key rotate payments --env prod
+hikyo transit rewrap payments --env prod --input-file card.ct   # move off an old version
+hikyo transit key configure payments --env prod --min-decrypt-version 3 --min-encrypt-version 3
+hikyo transit key trim payments --env prod                      # delete versions below 3
+```
+
+- `min_encrypt_version` is the lowest version new output may use.
+- `min_decrypt_version` is the lowest version presented input may use. Raising
+  it is reversible until `trim` starts. Trimming permanently fences out versions
+  below that minimum before erasing their material. If external custody fails
+  during trimming, retry the trim; its minimum cannot be lowered again.
+- A **rotation period** (at least one hour) makes the hourly scheduler rotate the
+  key when its latest version is older than the period. Keys past their period
+  are counted by the `hikyo_transit_keys_rotation_due` gauge.
+
+## Lifecycle
+
+| State | Encrypt, sign, MAC, data keys | Decrypt, verify, rewrap input |
+|---|---|---|
+| `active` | yes | yes |
+| `retired` | no | yes |
+| `disabled` | no | no |
+| `pending-deletion` | no | no |
+
+```sh
+hikyo transit key disable payments --env prod
+hikyo transit key schedule-deletion payments --env prod --delay 168h
+hikyo transit key cancel-deletion payments --env prod   # back to disabled, never straight to active
+```
+
+Deletion waits at least 24 hours (7 days by default, 90 at most). You can cancel
+it only while that delay is running; once it has passed, the key can no longer
+be revived. When the delay has passed, the scheduler erases every version's
+material and leaves a tombstone, so the key's id is never reused; the name
+becomes free again.
+
+**Compromise.** `hikyo transit key compromise` marks every existing version
+compromised. Hikyo then refuses to produce new output under those versions (so
+rotate first) and refuses to verify signatures or MACs made with them, because
+whoever holds the material can forge them. It still decrypts and rewraps them, so
+you can recover your data: rotate, rewrap, raise `min_decrypt_version`, trim.
+
+Every state check reads the key inside the operation's own transaction, so a
+disable or compromise on one node binds the next request on every node of a
+[multi-node](./high-availability) installation.
+
+## Custody
+
+This release ships **software custody**: each version's material is sealed under
+the owning project's data key, so `rotate-dek`, `reencrypt`, `rotate-master-key`
+and project deletion cover it like any other sealed field.
+
+The external-custody seam (for an HSM, a KMIP server or a cloud KMS) is defined
+and tested against a mock provider, but no production provider ships yet, so a
+request for an external key is refused. A key whose custody provider is
+unavailable refuses every operation with a retryable `503`; Hikyo never falls
+back to software custody.
+
+## What erasure does and does not do
+
+Trimming versions or destroying a software-custody key erases the material from
+the **live** database only. Every backup taken earlier still contains it,
+exactly like any other sealed field. Restoring such a backup restores the key as
+it was then, including versions later trimmed and keys later destroyed, and
+ciphertext produced under versions created after the backup fails with a
+`version` refusal. Deleting the backups, or destroying every identity that opens
+them, is the only way to retire material from history.
+
+## Audit, limits and monitoring
+
+- Every operation writes one `transit.operation` audit event that records the
+  decision (key, version, operation, outcome, input and output sizes) and never
+  the data: no plaintext, ciphertext, associated data, signature or MAC.
+  Refusals by key policy are recorded as `denied` with their cause.
+- Plaintext, messages and decrypted output are capped at 64 KiB, associated data
+  at 1 KiB, and presented ciphertext, signatures and MACs at 128 KiB. An
+  environment holds at most 256 keys and a key at most 1024 live versions.
+- The data plane is rate limited at 600 operations per minute per principal and
+  6000 per minute per organisation; under multi-node HA the counters are shared.
+- `/metrics` exposes `hikyo_transit_keys_live`,
+  `hikyo_transit_keys_rotation_due`, `hikyo_transit_keys_pending_deletion` and
+  the `hikyo_transit_gauges_known` guard.
+
+## Refusals
+
+| Answer | Meaning |
+|---|---|
+| `404` | No such key, or you lack the capability (indistinguishable by design). |
+| `403` | The key does not allow the operation, or its caller entries exclude you. |
+| `409 state` | The key's state refuses the operation. |
+| `409 version` | The version is outside the key's window, trimmed, or unknown after a restore. |
+| `409 compromised` | The version is compromised for this operation. |
+| `400` | Malformed input, or a ciphertext that does not open under this key, version and associated data. |
+| `429` | The transit rate limit. |
+| `503` | The key's custody provider is unavailable. |

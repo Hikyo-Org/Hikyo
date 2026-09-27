@@ -557,3 +557,20 @@ func TestContextsListTaggedAndPlatformFiles(t *testing.T) {
 		t.Fatalf("windows context filedurability files = %v, want the windows leg listed", got)
 	}
 }
+
+// The transit mock external custody provider (transit ADR D3) exists only to
+// prove software and external custody share semantics. A production package
+// importing it would let a binary serve "external" keys from process memory,
+// which is software custody under another name.
+func TestTransitMockCustodyIsTestOnly(t *testing.T) {
+	const mock = module + "/internal/transit/transittest"
+	eachContext(t, func(t *testing.T, pkgs []pkg) {
+		for _, p := range pkgs {
+			for _, imp := range p.Imports {
+				if imp == mock {
+					t.Errorf("%s imports %s outside a test file: the mock custody provider is test-only", p.ImportPath, imp)
+				}
+			}
+		}
+	})
+}

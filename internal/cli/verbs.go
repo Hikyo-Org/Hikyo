@@ -198,6 +198,9 @@ var verbHandlers = map[string]func(context.Context, IO, []string) error{
 	"ssh-ca":              runSSHCA,
 	"ssh-profile":         runSSHProfile,
 	"ssh-cert":            runSSHCert,
+	"transit":             runTransit,
+	"pki":                 runPKI,
+	"cert":                runCert,
 	"run":                 runRun,
 	"compose":             runCompose,
 	"update":              runUpdate,
@@ -373,28 +376,49 @@ revisions:                                         --env selects the environment
   hikyo reencrypt --org O --project P                complete a project rotate-dek; --instance for instance
 
 adapters:
-  hikyo adapter create --provider forgejo|github-actions --origin <https-origin> --env E --kind repository|organization|environment
+  hikyo adapter create --provider forgejo|github-actions|vault-kv --origin <https-origin> --env E --kind repository|organization|environment
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
+      (vault-kv: --origin https://vault:8200[/<namespace>] --mount <kv-v2-mount> --path <prefix>)
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--stdin | --value-file PATH] [--create-environment]
+  hikyo adapter create --provider aws-secrets-manager --origin https://secretsmanager.<region>.amazonaws.com
+      --env E --kind json-object|per-key --owner <account-id> [--secret <name-or-path/>] [--kms-key <key>]
+      --aws-auth ambient|assume-role|web-identity|static [--aws-role-arn <arn>] [--aws-external-id <id>]
+      [--aws-session-seconds 900-3600] [--aws-access-key-id <id>] [--aws-region <region>]
+      [--aws-sts-origin <https-origin>] [--prefix <prefix>] --keys <id,...> [--names <NAME,...>] [--stdin | --value-file PATH]
+  hikyo adapter create --provider cloudflare --env E --kind workers-script --account <id> --script <name>
+  hikyo adapter create --provider cloudflare --env E --kind pages-project --account <id> --pages-project <name>
+      --destination-environment preview|production
+      (both forms: every write is secret_text; one scoped API token)
+      [--prefix <prefix>] --keys <id,...> [--names <NAME,...>]
+      [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
+      [--stdin | --value-file PATH]
   hikyo adapter list [-o table|json]
   hikyo adapter show <adapter> [-o table|json]
-  hikyo adapter update <adapter> --origin <https-origin>
+  hikyo adapter update <adapter> --origin <https-origin> [--stdin | --value-file PATH]
+      [--aws-auth ambient|assume-role|web-identity|static] [--aws-role-arn <arn>]
+      [--aws-external-id <id>] [--aws-session-seconds 900-3600] [--aws-access-key-id <id>]
+      [--aws-region <region>] [--aws-sts-origin <https-origin>]
   hikyo adapter update <adapter> --move <move-id> | --cancel-move
                                                    resume or cancel an attention-required origin move
   hikyo adapter update <adapter> --target <target> --env E --kind <kind>
       --owner <owner> [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
+      [--secret <name-or-path/>] [--kms-key <key>]
       --prefix <prefix> --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
   hikyo adapter delete <adapter> [--keep-remote]
   hikyo adapter credential set --adapter <adapter> [--stdin | --value-file PATH] [--move <move-id>]
+      [--aws-auth ambient|assume-role|web-identity|static] [--aws-role-arn <arn>]
+      [--aws-external-id <id>] [--aws-session-seconds 900-3600] [--aws-access-key-id <id>]
+      [--aws-region <region>] [--aws-sts-origin <https-origin>]
   hikyo adapter credential revoke --adapter <adapter>
   hikyo adapter target add --adapter <adapter> --env E --kind <kind> --owner <owner>
       [--repo <repo>] [--destination-environment <name>]
       [--visibility all|private|selected] [--selected-repository-ids <id,...>]
+      [--secret <name-or-path/>] [--kms-key <key>]
       [--prefix <prefix>] --keys <id,...> [--names <NAME,...>]
       [--include <glob,...>] [--exclude <glob,...>] [--classification secret|config]
       [--create-environment]
@@ -413,6 +437,15 @@ adapters:
 
   adapter credentials are read with terminal echo disabled, from stdin, or
   from --value-file. There is no credential-value argv flag.
+
+  aws-secrets-manager is one-way and never reads a value back: json-object
+  writes one secret holding a JSON object, per-key one secret per key.
+  --aws-auth assembles the access descriptor; only static reads a secret (the
+  secret access key, like any credential). ambient, assume-role and
+  web-identity use this server's AWS identity and need the node operator's
+  HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow. web-identity also needs the
+  server to run with AWS_WEB_IDENTITY_TOKEN_FILE set. --aws-* flags also
+  apply to adapter update --origin and adapter credential set.
 
 dynamic secrets:
   hikyo dynamic-provider create --provider postgres --origin <postgres://user@host:port/db>
@@ -463,6 +496,67 @@ ssh certificates:
   triad. Hosts trust "ssh-ca trusted-keys" (TrustedUserCAKeys) and refuse
   "ssh-ca krl" (RevokedKeys); refresh both on a timer.
 
+transit (managed keys; key material never leaves custody):
+  hikyo transit key create <name> --env E --algorithm xchacha20-poly1305|ed25519|hmac-sha256
+      [--custody software] [--allow op,op] [--rotation-period 720h]
+      [--caller principal=op,op]...
+  hikyo transit key list --env E [-o table|json]
+  hikyo transit key show <name> --env E [-o table|json]
+  hikyo transit key configure <name> --env E [--min-encrypt-version N]
+      [--min-decrypt-version N] [--rotation-period D|0] [--caller p=op,op]... [--clear-callers]
+  hikyo transit key rotate|trim <name> --env E
+  hikyo transit key disable|enable|retire|compromise|cancel-deletion <name> --env E
+  hikyo transit key schedule-deletion <name> --env E [--delay 168h]
+  hikyo transit encrypt|sign|hmac <key> --env E (--stdin | --input-file PATH)
+      [--aad-file PATH] [--key-version N]
+  hikyo transit decrypt <key> --env E (--stdin | --input-file PATH) [--aad-file PATH]
+      [--output-file PATH | --dangerously-print]
+  hikyo transit rewrap <key> --env E (--stdin | --input-file PATH) [--aad-file PATH]
+  hikyo transit datakey <key> --env E [--bits 256] [--aad-file PATH]
+      [--plaintext [--output-file PATH | --dangerously-print]]
+  hikyo transit verify <key> --env E --signature S (--stdin | --input-file PATH)
+  hikyo transit hmac-verify <key> --env E --mac M (--stdin | --input-file PATH)
+
+  inputs come from stdin or a file, never argv. Decrypted plaintext and a
+  plaintext data key are shown exactly once, through the print triad.
+private PKI:
+  hikyo pki issuer list [-o table|json]
+  hikyo pki issuer show <issuer> [-o table|json]
+  hikyo pki issuer create-root <issuer> --common-name CN [--organization O]
+      [--key-algorithm ALG] [--ttl <duration>] [--crl-url URL]
+  hikyo pki issuer create-intermediate <issuer> --common-name CN [--parent <issuer>]
+      [--organization O] [--key-algorithm ALG] [--ttl <duration>] [--crl-url URL] [--csr-out PATH]
+  hikyo pki issuer import <issuer> (--key-file PATH | --key-stdin) --cert-file PATH
+      [--chain-file PATH] [--crl-url URL]
+  hikyo pki issuer install <issuer> --cert-file PATH --chain-file PATH
+  hikyo pki issuer rotate <issuer> [--key-algorithm ALG] [--ttl <duration>] [--csr-out PATH]
+      [--key-file PATH | --key-stdin] [--cert-file PATH] [--chain-file PATH]
+  hikyo pki issuer retire <issuer> --version N
+  hikyo pki issuer revoke <issuer> --version N
+  hikyo pki issuer release-hold <issuer>
+  hikyo pki issuer crl <issuer> --version N [--publish]
+  hikyo pki profile list [-o table|json]
+  hikyo pki profile show <profile> [-o table|json]
+  hikyo pki profile create <profile> --policy-file PATH
+  hikyo pki profile update <profile> --policy-file PATH [--row-version N]
+  hikyo pki profile delete <profile>
+  hikyo pki profile bind <profile> --org O --project P [--env E]
+  hikyo pki profile unbind <profile> <binding>
+  hikyo cert profiles --env E [-o table|json]
+  hikyo cert list --env E [-o table|json]
+  hikyo cert show <certificate> --env E [--pem] [--cert-out PATH]
+  hikyo cert issue --env E --profile <profile> (--csr-file PATH | --generate-key [--key-algorithm ALG])
+      [--dns NAME]... [--ip ADDR]... [--uri URI]... [--common-name CN] [--ttl <duration>]
+      [--issuer <issuer>] [--cert-out PATH] [--output-file PATH | --dangerously-print]
+  hikyo cert renew <certificate> --env E [--cert-out PATH]
+  hikyo cert revoke <certificate> --env E [--reason REASON]
+  hikyo cert crl <certificate> --env E
+
+  a CA private key never leaves the server and is read only from --key-file
+  or --key-stdin, never argv. A generated certificate key is shown exactly
+  once, through the print triad; a CSR issuance never sends a private key.
+  profile updates may only narrow the policy; widen by creating a profile.
+
 delivery:                                          machine credential only
   hikyo run [--config-only] [--allow-override KEY,KEY] [--project-directory DIR]
       [--token-file PATH] -- <command> [args...]   fetch, merge, exec
@@ -507,6 +601,15 @@ access:
   hikyo access registration show [--org O | --instance-scope] [-o table|json]
   hikyo access registration set [--org O | --instance-scope] --file <policy.json>
   hikyo access registration delete [--org O | --instance-scope]
+  hikyo access policy list [-o table|json]
+  hikyo access policy create --capability C --approver principal:<id> [--covers ENV] [--max-duration 8h]
+      [--min-approvals N] [--ttl SECONDS] [--allow-self-approval] [--disabled] [--bypasser <id>]
+  hikyo access policy update <policy> …same flags as create…
+  hikyo access policy delete <policy>
+  hikyo access request list --env E [-o table|json]
+  hikyo access request create --env E --capability C --duration 1h --reason R
+  hikyo access request approve|reject|cancel|revoke <request> --env E
+  hikyo access request emergency --env E --capability C --reason R [--duration 30m]
   hikyo project-settings get --env E [-o table|json]
   hikyo project-settings set --env E [--protected true|false] [--reauth-window-seconds N|inherit]
   hikyo project-settings machine-reveal get|set --enabled true|false

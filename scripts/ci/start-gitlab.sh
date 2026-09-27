@@ -29,6 +29,7 @@ nginx['ssl_certificate'] = '/etc/gitlab/ssl/127.0.0.1.crt'; nginx['ssl_certifica
 prometheus_monitoring['enable'] = false; puma['worker_processes'] = 0; sidekiq['concurrency'] = 5; \
 gitlab_rails['initial_root_password'] = 'hikyo-e2e-$(openssl rand -hex 12)';" \
 	"$image" >/dev/null
+echo "HIKYO_TEST_GITLAB_CONTAINER=$container" >>"${GITHUB_ENV:?GITHUB_ENV must be set}"
 
 deadline=$((SECONDS + 1500))
 # /-/readiness is limited to the monitoring allow-list, which excludes the
@@ -75,5 +76,4 @@ echo "::add-mask::$bot_token"
 	echo "HIKYO_TEST_GITLAB_CA_FILE=$dir/127.0.0.1.crt"
 	echo "HIKYO_TEST_GITLAB_SPKI_PIN=$pin"
 	echo "HIKYO_TEST_GITLAB_ALLOWED_CIDR=127.0.0.0/8"
-	echo "HIKYO_TEST_GITLAB_CONTAINER=$container"
 } >>"${GITHUB_ENV:?GITHUB_ENV must be set}"

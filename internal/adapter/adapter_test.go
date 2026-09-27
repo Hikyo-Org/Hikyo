@@ -162,7 +162,7 @@ func TestDesiredRowsOrderSentinelsFirst(t *testing.T) {
 }
 
 func TestProviderKindsAreClosedAndRejectUnknownValues(t *testing.T) {
-	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, GitLabProvider}
+	want := []Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
 	if got := SupportedProviders(); !slices.Equal(got, want) {
 		t.Fatalf("SupportedProviders() = %v, want %v", got, want)
 	}
@@ -226,6 +226,109 @@ func TestValidateGitLabManifestNamesKeysNeverValues(t *testing.T) {
 	}
 	// Name-only validation (plan, workflow rendering) never sees values.
 	if err := ValidateGitLabManifest("", []ManifestEntry{{CanonicalName: "TOKEN", Classification: SecretClassification}}, false); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Every compiled-in provider names the destination kinds it accepts, and no
+// provider accepts another's kinds: the seam cannot route a CI target into a
+// cloud secret manager or the reverse.
+func TestDestinationKindsArePartitionedByProvider(t *testing.T) {
+	entries := []ManifestEntry{{KeyID: "key", CanonicalName: "TOKEN", Classification: SecretClassification, Value: "abcdefgh"}}
+	cases := map[Provider][]Destination{
+		GitLabProvider:            {{Kind: Repository, Owner: "o", Name: "r"}, {Kind: Organization, Owner: "o"}},
+		SealedWebhookProvider:     {{Kind: Organization, Owner: "receiver"}},
+		CloudflareProvider:        {{Kind: WorkersScript, Owner: "account", Name: "script"}, {Kind: PagesProject, Owner: "account", Name: "project", Environment: "preview"}},
+		VaultKVProvider:           {{Kind: Repository, Owner: "secret", Name: "app"}},
+		ForgejoProvider:           {{Kind: Repository, Owner: "o", Name: "r"}, {Kind: Organization, Owner: "o"}},
+		GitHubActionsProvider:     {{Kind: Repository, Owner: "o", Name: "r"}, {Kind: Organization, Owner: "o"}, {Kind: Environment, Owner: "o", Name: "r", Environment: "e"}},
+		AWSSecretsManagerProvider: {{Kind: JSONObject, Owner: "123456789012", Name: "app"}, {Kind: PerKey, Owner: "123456789012"}},
+	}
+	for provider, destinations := range cases {
+		for _, destination := range destinations {
+			if err := ValidateTargetManifest(string(provider), destination, "", entries, true); err != nil {
+				t.Errorf("%s rejected its own kind %s: %v", provider, destination.Kind, err)
+			}
+		}
+		for other, foreign := range cases {
+			if other == provider || (provider != AWSSecretsManagerProvider && other != AWSSecretsManagerProvider) {
+				continue
+			}
+			for _, destination := range foreign {
+				if err := ValidateTargetManifest(string(provider), destination, "", entries, true); err == nil {
+					t.Errorf("%s accepted %s's destination kind %s", provider, other, destination.Kind)
+				}
+			}
+		}
+	}
+	if len(cases) != len(SupportedProviders()) {
+		t.Fatalf("destination partition covers %d providers, compiled-in set has %d", len(cases), len(SupportedProviders()))
+	}
+}
+
+func TestVaultKVManifestIsOnePathSegmentPerNameAcrossSurfaces(t *testing.T) {
+	ok := []ManifestEntry{
+		{CanonicalName: "DATABASE_URL", Classification: SecretClassification, Value: "postgres://x"},
+		{CanonicalName: "log.level", Classification: ConfigClassification, Value: ""},
+		{CanonicalName: "GITHUB_TOKEN", Classification: SecretClassification, Value: "v"},
+	}
+	if err := ValidateVaultKVManifest("APP_", ok, true); err != nil {
+		t.Fatalf("valid manifest refused: %v", err)
+	}
+	cases := map[string][]ManifestEntry{
+		"reserved for the management sentinel": {{CanonicalName: "managed_by_hikyo", Classification: SecretClassification}},
+		"single safe KV path segment":          {{CanonicalName: "a/b", Classification: SecretClassification}},
+		"collides case-insensitively": {
+			{CanonicalName: "TOKEN", Classification: SecretClassification},
+			{CanonicalName: "token", Classification: ConfigClassification},
+		},
+		"non-UTF-8":            {{CanonicalName: "BIN", Classification: SecretClassification, Value: "\xff"}},
+		"KV v2 delivery limit": {{CanonicalName: "BIG", Classification: SecretClassification, Value: strings.Repeat("x", VaultKVValueLimit+1)}},
+	}
+	for want, entries := range cases {
+		err := ValidateVaultKVManifest("", entries, true)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ValidateVaultKVManifest(%v) = %v, want %q", entries[0].CanonicalName, err, want)
+		}
+	}
+	// Names-only validation ignores values so Plan and configuration never
+	// need plaintext.
+	if err := ValidateVaultKVManifest("", []ManifestEntry{{CanonicalName: "BIN", Classification: SecretClassification, Value: "\xff"}}, false); err != nil {
+		t.Fatalf("names-only validation inspected a value: %v", err)
+	}
+	if err := ValidateProviderManifest(string(VaultKVProvider), "", ok, true); err != nil {
+		t.Fatalf("provider dispatch refused vault-kv manifest: %v", err)
+	}
+}
+
+func TestVaultKVMappingNamesPathsOnly(t *testing.T) {
+	got, err := VaultKVMapping("secret", "apps/pay", "P_", []ManifestEntry{
+		{CanonicalName: "B", Classification: ConfigClassification, Value: "plaintext-b"},
+		{CanonicalName: "A", Classification: SecretClassification, Value: "plaintext-a"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# Vault/OpenBao KV v2: one secret per key, field \"value\".\nenv:\n  A: secret/apps/pay/P_A#value\n  B: secret/apps/pay/P_B#value\n"
+	if got != want || strings.Contains(got, "plaintext") {
+		t.Fatalf("VaultKVMapping() = %q, want %q", got, want)
+	}
+}
+
+func TestGitLabManifestRefusesCanonicalAliasCollision(t *testing.T) {
+	for _, names := range [][]string{{"A", "P_A"}, {"p_a", "A"}, {"P_MANAGED_BY_HIKYO"}} {
+		entries := make([]ManifestEntry, 0, len(names))
+		for _, name := range names {
+			entries = append(entries, ManifestEntry{CanonicalName: name, Classification: ConfigClassification})
+		}
+		if err := ValidateGitLabManifest("P_", entries, false); err == nil || !strings.Contains(err.Error(), "canonical alias") {
+			t.Fatalf("names %v: %v", names, err)
+		}
+		if _, err := WorkflowForProvider("gitlab", "P_", entries); err == nil {
+			t.Fatalf("workflow accepted aliases %v", names)
+		}
+	}
+	if err := ValidateGitLabManifest("", []ManifestEntry{{CanonicalName: "A", Classification: ConfigClassification}, {CanonicalName: "P_A", Classification: ConfigClassification}}, false); err != nil {
 		t.Fatal(err)
 	}
 }

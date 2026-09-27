@@ -9,13 +9,16 @@ import (
 type Provider string
 
 const (
-	ForgejoProvider       Provider = "forgejo"
-	GitHubActionsProvider Provider = "github-actions"
-	GitLabProvider        Provider = "gitlab"
-	SealedWebhookProvider Provider = "sealed-webhook"
+	ForgejoProvider           Provider = "forgejo"
+	GitHubActionsProvider     Provider = "github-actions"
+	SealedWebhookProvider     Provider = "sealed-webhook"
+	CloudflareProvider        Provider = "cloudflare"
+	VaultKVProvider           Provider = "vault-kv"
+	AWSSecretsManagerProvider Provider = "aws-secrets-manager"
+	GitLabProvider            Provider = "gitlab"
 )
 
-var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, GitLabProvider}
+var supportedProviders = [...]Provider{ForgejoProvider, GitHubActionsProvider, SealedWebhookProvider, CloudflareProvider, VaultKVProvider, AWSSecretsManagerProvider, GitLabProvider}
 
 // SupportedProviders returns the complete compiled-in provider set.
 func SupportedProviders() []Provider {

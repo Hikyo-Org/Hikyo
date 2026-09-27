@@ -601,6 +601,14 @@ func validatePendingTarget(m AdapterTargetMutation) error {
 		if m.DestinationName == "" || m.DestinationEnvironment == "" || m.Visibility != "" || len(m.SelectedRepositoryIDs) != 0 {
 			return fmt.Errorf("%w: environment target requires repository and environment", domain.ErrInvalid)
 		}
+	case string(adapter.JSONObject), string(adapter.PerKey):
+		if err := adapter.ValidateAWSSecretsManagerDestination(targetDestination(m)); err != nil {
+			return fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+		}
+	case string(adapter.WorkersScript), string(adapter.PagesProject):
+		if err := validateCloudflareTarget(m); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("%w: unsupported adapter destination kind", domain.ErrInvalid)
 	}
@@ -761,6 +769,13 @@ func beginAdapterTargetMove(ctx context.Context, db adapterDB, chain domain.Scop
 }
 
 func reserveAdapterMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope, moveID, origin string, target AdapterTargetMutation) error {
+	provider, err := adapterProvider(ctx, db, chain, target.AdapterID)
+	if err != nil {
+		return err
+	}
+	if provider == string(adapter.AWSSecretsManagerProvider) || isAWSDestinationKind(target.DestinationKind) {
+		return reserveAWSMoveClaims(ctx, db, chain, moveID, origin, provider, target)
+	}
 	keyQuery := db.SQLPerEngine(
 		`SELECT id,name,classification FROM keys WHERE org_id=? AND project_id=? AND id IN (`+db.Placeholders(len(target.KeyIDs), 3)+`) ORDER BY id`,
 		`SELECT id,name,classification FROM keys WHERE org_id=$1 AND project_id=$2 AND id IN (`+db.Placeholders(len(target.KeyIDs), 3)+`) ORDER BY id`)
@@ -813,6 +828,73 @@ func reserveAdapterMoveClaims(ctx context.Context, db adapterDB, chain domain.Sc
 		if _, err := db.Exec(ctx, insert, moveID, chain.Org, chain.Project, target.EnvironmentID, target.ID, keyID, origin, target.DestinationKind, target.DestinationOwner, target.DestinationName, target.DestinationEnvironment, pending.surface, pending.effective, strings.ToUpper(pending.effective)); err != nil {
 			if constraint(err) != nil {
 				return fmt.Errorf("%w: pending effective name %q is already claimed", domain.ErrConflict, pending.effective)
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// reserveAWSMoveClaims reserves the pending route's AWS secret names. The
+// pending route may name a different account or region, so the configured
+// check runs against the pending origin and account, not the current ones.
+func reserveAWSMoveClaims(ctx context.Context, db adapterDB, chain domain.Scope, moveID, origin, provider string, target AdapterTargetMutation) error {
+	_, manifest, err := targetProviderManifest(ctx, db, chain, target)
+	if err != nil {
+		return err
+	}
+	if err := adapter.ValidateTargetManifest(provider, targetDestination(target), target.NamePrefix, manifest, false); err != nil {
+		return fmt.Errorf("%w: %v", domain.ErrInvalid, err)
+	}
+	claims := adapter.ClaimedNames(provider, targetDestination(target), target.NamePrefix, manifest)
+	desired := make(map[string]bool, len(claims))
+	for _, claim := range claims {
+		desired[strings.ToUpper(claim.EffectiveName)] = true
+	}
+	configured := db.SQL(`SELECT t.id,t.destination_kind,t.destination_name,t.name_prefix,COALESCE(k.name,'')
+		FROM adapter_targets t
+		JOIN adapters a ON a.id=t.adapter_id AND a.org_id=t.org_id AND a.project_id=t.project_id
+		LEFT JOIN adapter_target_keys tk ON tk.target_id=t.id AND tk.org_id=t.org_id AND tk.project_id=t.project_id AND tk.environment_id=t.environment_id
+		LEFT JOIN keys k ON k.id=tk.key_id AND k.org_id=tk.org_id AND k.project_id=tk.project_id
+		WHERE t.org_id=? AND t.project_id=? AND t.id<>? AND t.state='active' AND a.state='active' AND a.origin=?
+		AND t.destination_kind IN ('json-object','per-key') AND t.destination_owner=?
+		ORDER BY t.id,k.name`)
+	rows, err := db.Query(ctx, configured, chain.Org, chain.Project, target.ID, origin, target.DestinationOwner)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var targetID, kind, name, prefix, keyName string
+		if err := rows.Scan(&targetID, &kind, &name, &prefix, &keyName); err != nil {
+			_ = closeMoveRows(rows)
+			return err
+		}
+		claimed := name
+		if kind == string(adapter.PerKey) {
+			if keyName == "" {
+				continue
+			}
+			claimed = name + prefix + keyName
+		}
+		if desired[strings.ToUpper(claimed)] {
+			_ = closeMoveRows(rows)
+			return fmt.Errorf("%w: effective name %q is already configured on the pending destination", domain.ErrConflict, claimed)
+		}
+	}
+	if err := closeMoveRows(rows); err != nil {
+		return err
+	}
+	for _, claim := range claims {
+		insert := db.SQL(
+			`INSERT INTO adapter_route_move_claims (move_id,org_id,project_id,environment_id,target_id,key_id,provider_origin,destination_kind,destination_owner,destination_name,destination_environment,surface,effective_name,normalized_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		)
+		var keyID any
+		if claim.KeyID != "" {
+			keyID = claim.KeyID
+		}
+		if _, err := db.Exec(ctx, insert, moveID, chain.Org, chain.Project, target.EnvironmentID, target.ID, keyID, origin, target.DestinationKind, target.DestinationOwner, target.DestinationName, target.DestinationEnvironment, string(claim.Surface), claim.EffectiveName, strings.ToUpper(claim.EffectiveName)); err != nil {
+			if constraint(err) != nil {
+				return fmt.Errorf("%w: pending effective name %q is already claimed", domain.ErrConflict, claim.EffectiveName)
 			}
 			return err
 		}

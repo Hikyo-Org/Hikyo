@@ -738,6 +738,19 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests":                            {Class: ClassTenant, Ops: []Operation{OpApprovalRequestRead}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony": {Class: ClassTenant, Ops: []Operation{OpApprovalVote}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/vote":    {Class: ClassTenant, Ops: []Operation{OpApprovalVote}, Events: []audit.EventType{audit.EventApprovalVoted, audit.EventApprovalInvalidated}},
+	// Temporary access (#152). Policy administration is manage-members at the
+	// project; the request queue and every decision are read@env with the
+	// finer eligibility checked after the grant (a reachable 403).
+	"http:GET /api/v1/orgs/{org}/projects/{project}/access-policies":                                                    {Class: ClassTenant, Ops: []Operation{OpAccessPolicyRead}, Events: []audit.EventType{audit.EventAccessPolicyRead}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/access-policies":                                                   {Class: ClassTenant, Ops: []Operation{OpAccessPolicyWrite}, Events: []audit.EventType{audit.EventAccessPolicyChanged}},
+	"http:PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}":                                           {Class: ClassTenant, Ops: []Operation{OpAccessPolicyWrite}, Events: []audit.EventType{audit.EventAccessPolicyChanged}},
+	"http:DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy}":                                        {Class: ClassTenant, Ops: []Operation{OpAccessPolicyWrite}, Events: []audit.EventType{audit.EventAccessPolicyChanged}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests":                         {Class: ClassTenant, Ops: []Operation{OpAccessRequestRead}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests":                        {Class: ClassTenant, Ops: []Operation{OpAccessRequestCreate}, Events: []audit.EventType{audit.EventAccessRequested}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency":              {Class: ClassTenant, Ops: []Operation{OpAccessBypass}, Events: []audit.EventType{audit.EventAccessBypassed}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote":   {Class: ClassTenant, Ops: []Operation{OpAccessVote}, Events: []audit.EventType{audit.EventAccessVoted, audit.EventAccessGranted, audit.EventAccessInvalidated}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel": {Class: ClassTenant, Ops: []Operation{OpAccessCancel}, Events: []audit.EventType{audit.EventAccessCancelled}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke": {Class: ClassTenant, Ops: []Operation{OpAccessRevoke}, Events: []audit.EventType{audit.EventAccessRevoked}},
 	// The root token key belongs to the instance, so there is no tenant object
 	// whose nonexistence a refusal could mimic. The same holds for every DEK: a
 	// DEK belongs to the instance's crypto hierarchy, not a tenant.
@@ -811,6 +824,48 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates":                         {Class: ClassTenant, Ops: []Operation{OpSSHCertIssue}},
 	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}":         {Class: ClassTenant, Ops: []Operation{OpSSHCertInspect}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke": {Class: ClassTenant, Ops: []Operation{OpSSHCertRevoke}},
+	// Private PKI (#154).
+	"http:GET /api/v1/instance/pki/issuers":                                                                        {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInspect}},
+	"http:POST /api/v1/instance/pki/issuers":                                                                       {Class: ClassInstance, Ops: []Operation{OpPKIIssuerCreate}},
+	"http:GET /api/v1/instance/pki/issuers/{issuer}":                                                               {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInspect}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/rotate":                                                       {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRotate}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/install":                                                      {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInstall}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/release-hold":                                                 {Class: ClassInstance, Ops: []Operation{OpPKIIssuerReleaseHold}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire":                                    {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRetire}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke":                                    {Class: ClassInstance, Ops: []Operation{OpPKIIssuerRevoke}},
+	"http:GET /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl":                                        {Class: ClassInstance, Ops: []Operation{OpPKIIssuerInspect}},
+	"http:POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl":                                       {Class: ClassInstance, Ops: []Operation{OpPKIIssuerPublishCRL}},
+	"http:GET /api/v1/instance/pki/profiles":                                                                       {Class: ClassInstance, Ops: []Operation{OpPKIProfileInspect}},
+	"http:POST /api/v1/instance/pki/profiles":                                                                      {Class: ClassInstance, Ops: []Operation{OpPKIProfileCreate}},
+	"http:GET /api/v1/instance/pki/profiles/{profile}":                                                             {Class: ClassInstance, Ops: []Operation{OpPKIProfileInspect}},
+	"http:PUT /api/v1/instance/pki/profiles/{profile}":                                                             {Class: ClassInstance, Ops: []Operation{OpPKIProfileUpdate}},
+	"http:DELETE /api/v1/instance/pki/profiles/{profile}":                                                          {Class: ClassInstance, Ops: []Operation{OpPKIProfileDelete}},
+	"http:POST /api/v1/instance/pki/profiles/{profile}/bindings":                                                   {Class: ClassInstance, Ops: []Operation{OpPKIProfileBind}},
+	"http:DELETE /api/v1/instance/pki/profiles/{profile}/bindings/{binding}":                                       {Class: ClassInstance, Ops: []Operation{OpPKIProfileUnbind}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles":               {Class: ClassTenant, Ops: []Operation{OpCertificateInspect}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates":                       {Class: ClassTenant, Ops: []Operation{OpCertificateInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates":                      {Class: ClassTenant, Ops: []Operation{OpCertificateIssue}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}":         {Class: ClassTenant, Ops: []Operation{OpCertificateInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew":  {Class: ClassTenant, Ops: []Operation{OpCertificateRenew}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke": {Class: ClassTenant, Ops: []Operation{OpCertificateRevoke}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl":     {Class: ClassTenant, Ops: []Operation{OpCertificateInspect}},
+
+	// Transit (#156).
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys":                            {Class: ClassTenant, Ops: []Operation{OpTransitKeyInspect}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys":                           {Class: ClassTenant, Ops: []Operation{OpTransitKeyCreate}},
+	"http:GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}":              {Class: ClassTenant, Ops: []Operation{OpTransitKeyInspect}},
+	"http:PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}":            {Class: ClassTenant, Ops: []Operation{OpTransitKeyConfigure}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate":      {Class: ClassTenant, Ops: []Operation{OpTransitKeyRotate}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle":   {Class: ClassTenant, Ops: []Operation{OpTransitKeyLifecycle}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim":        {Class: ClassTenant, Ops: []Operation{OpTransitKeyTrim}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt":     {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt":     {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap":      {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey":     {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign":        {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify":      {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac":        {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
+	"http:POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify": {Class: ClassTenant, Ops: []Operation{OpTransitUse}},
 
 	"http:GET /api/v1/orgs/{org}/projects/{project}/key-groups":            {Class: ClassTenant, Ops: []Operation{OpKeyGroupList}},
 	"http:POST /api/v1/orgs/{org}/projects/{project}/key-groups":           {Class: ClassTenant, Ops: []Operation{OpKeyGroupCreate}},
@@ -956,6 +1011,11 @@ var wireRegistry = mustNewWireRegistry(map[string]wireEntry{
 	"cli:ssh-ca":      {Class: ClassTenant},
 	"cli:ssh-profile": {Class: ClassTenant},
 	"cli:ssh-cert":    {Class: ClassTenant},
+	"cli:transit":     {Class: ClassTenant},
+	// Private PKI (#154): `pki` drives the instance issuer and profile
+	// routes, `cert` the environment certificate routes.
+	"cli:pki":  {Class: ClassInstance},
+	"cli:cert": {Class: ClassTenant},
 
 	// The Compose delivery verbs (#63). `run` and `compose` both reach the
 	// tenant-scoped delivery routes (GET .../delivery and its offline-records

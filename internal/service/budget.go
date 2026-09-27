@@ -159,6 +159,11 @@ const (
 	BudgetDefaultOrgConcurrency = 8
 	// § 151 (§ 8) schema-revision rate limit, per project.
 	BudgetSchemaRevisionPerHour = 60
+	// Transit data plane (transit ADR D9, #156): rate-only, per principal and
+	// per org. Under multi-node HA the transit service charges the shared
+	// admission counters instead, so node hopping cannot multiply it.
+	BudgetTransitRatePerMin    = 600
+	BudgetTransitOrgRatePerMin = 6000
 	// § 10 signup (ops-spec banner 2026-09-03, #579 d7): rate-only and
 	// instance-wide, shared by the `none` and `fresh-org` landings.
 	BudgetSignupPerHour = 20
@@ -276,6 +281,15 @@ var (
 		rates: []budgetRateRule{
 			{dimPrincipal, deliverytarget.PrincipalBudget, time.Minute},
 			{dimOrg, deliverytarget.OrgBudget, time.Minute},
+		},
+	}
+	// budgetTransit is the transit data-plane bucket (#156). Both keys resolve
+	// only after authorization, so it is charged in-tx via chargeOnce.
+	budgetTransit = budgetCategory{
+		name: "transit",
+		rates: []budgetRateRule{
+			{dimPrincipal, BudgetTransitRatePerMin, time.Minute},
+			{dimOrg, BudgetTransitOrgRatePerMin, time.Minute},
 		},
 	}
 	budgetSchemaRevision = budgetCategory{

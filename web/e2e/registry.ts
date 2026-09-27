@@ -63,6 +63,8 @@ export const FLOWS: readonly Flow[] = [
   // set runs from PR-checked-out content; a new spec file would never run on
   // this PR (the merge gate loads ci.yml from base).
   { id: 'change-approvals', spec: 'flows/matrix.spec.ts', surfaces: ['change-approvals'] },
+  // Temporary access (#152) rides matrix.spec.ts for the same reason.
+  { id: 'temporary-access', spec: 'flows/matrix.spec.ts', surfaces: ['temporary-access'] },
   {
     id: 'chrome-settings',
     spec: 'flows/settings.spec.ts',

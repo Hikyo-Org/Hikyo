@@ -184,10 +184,68 @@ func TestAdapterCancelMoveRequiresOnlyExplicitMove(t *testing.T) {
 	}
 }
 
+// The AWS access descriptor is assembled from flags; the only secret in it,
+// the static secret access key, still arrives through the no-argv intake.
+func TestAWSAccessDescriptorAssembly(t *testing.T) {
+	var prompted string
+	ios := IO{Stdin: strings.NewReader("stdin-secret-key\n"), ReadPassword: func(prompt string) (string, error) {
+		prompted = prompt
+		return "tty-secret-key", nil
+	}}
+	raw, err := adapterAWSAuth{mode: "static", accessKeyID: "AKIAHIKYOTEST0000001"}.credential(ios, adapterCredentialSource{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prompted != "AWS secret access key: " || string(raw) != `{"mode":"static","access_key_id":"AKIAHIKYOTEST0000001","secret_access_key":"tty-secret-key"}` {
+		t.Fatalf("static descriptor=%s prompt=%q", raw, prompted)
+	}
+	raw, err = adapterAWSAuth{mode: "assume-role", roleARN: "arn:aws:iam::123456789012:role/hikyo", externalID: "tenant-42", sessionSeconds: 1800}.credential(ios, adapterCredentialSource{})
+	if err != nil || string(raw) != `{"mode":"assume-role","role_arn":"arn:aws:iam::123456789012:role/hikyo","external_id":"tenant-42","session_seconds":1800}` {
+		t.Fatalf("assume-role descriptor=%s %v", raw, err)
+	}
+	for _, bad := range []struct {
+		auth   adapterAWSAuth
+		source adapterCredentialSource
+	}{
+		{adapterAWSAuth{mode: "ambient"}, adapterCredentialSource{stdin: true}},
+		{adapterAWSAuth{roleARN: "arn:aws:iam::123456789012:role/hikyo"}, adapterCredentialSource{}},
+		{adapterAWSAuth{mode: "assume-role", roleARN: "arn:aws:iam::123456789012:role/hikyo", sessionSeconds: 7200}, adapterCredentialSource{}},
+		{adapterAWSAuth{mode: "root"}, adapterCredentialSource{}},
+	} {
+		if _, err := bad.auth.credential(ios, bad.source); err == nil {
+			t.Errorf("%+v with %+v accepted", bad.auth, bad.source)
+		}
+	}
+	// Without --aws-auth the raw credential (a hand-written descriptor) passes through.
+	raw, err = adapterAWSAuth{}.credential(ios, adapterCredentialSource{stdin: true})
+	if err != nil || string(raw) != "stdin-secret-key" {
+		t.Fatalf("raw passthrough=%q %v", raw, err)
+	}
+}
+
+func TestAWSTargetInputRoutesSecretAndKMSKey(t *testing.T) {
+	input, err := adapterTargetInput("aws-secrets-manager", "env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{secret: "prod/app", kmsKey: "alias/hikyo"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.DestinationName != "prod/app" || input.DestinationEnvironment != "alias/hikyo" || input.DestinationKind != "json-object" {
+		t.Fatalf("input=%+v", input)
+	}
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "json-object", "123456789012", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
+		t.Fatal("json-object without --secret accepted")
+	}
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "per-key", "123456789012", "repo", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
+		t.Fatal("per-key with --repo accepted")
+	}
+	if _, err := adapterTargetInput("aws-secrets-manager", "env_prod", "repository", "acme", "app", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{kmsKey: "alias/x"}, nil); err == nil {
+		t.Fatal("--kms-key accepted on a repository target")
+	}
+}
+
 func TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly(t *testing.T) {
 	const env = "env_019c1234-1234-7123-8123-123456789abc"
 	const key = "key_019c1234-1234-7123-8123-123456789abc"
-	got, err := adapterTargetInput("sealed-webhook", env, "organization", "prod", "", "", "", "", "", key, adapterKeySelection{}, nil)
+	got, err := adapterTargetInput("sealed-webhook", env, "organization", "prod", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{}, nil)
 	if err != nil {
 		t.Fatalf("sealed-webhook namespace target refused: %v", err)
 	}
@@ -200,11 +258,35 @@ func TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly(t *testing.T) {
 		"environment":     {"organization", "prod", "", "staging", ""},
 		"visibility":      {"organization", "prod", "", "", "all"},
 	} {
-		if _, err := adapterTargetInput("sealed-webhook", env, args[0], args[1], args[2], args[3], args[4], "", "", key, adapterKeySelection{}, nil); err == nil {
+		if _, err := adapterTargetInput("sealed-webhook", env, args[0], args[1], args[2], args[3], args[4], "", "", key, adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
 			t.Fatalf("sealed-webhook accepted %s routing", name)
 		}
 	}
-	if _, err := adapterTargetInput("github-actions", env, "organization", "team", "", "", "", "", "", key, adapterKeySelection{}, nil); err == nil {
+	if _, err := adapterTargetInput("github-actions", env, "organization", "team", "", "", "", "", "", key, adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
 		t.Fatal("github-actions organization target accepted without visibility")
+	}
+}
+
+func TestAdapterCloudflareTargetInput(t *testing.T) {
+	const account = "0123456789abcdef0123456789abcdef"
+	got, err := adapterTargetInput("cloudflare", "env_1", "pages-project", account, "site", "preview", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DestinationKind != "pages-project" || got.DestinationOwner != account || got.DestinationName != "site" || got.DestinationEnvironment != "preview" {
+		t.Fatalf("input = %+v", got)
+	}
+	if _, err := adapterTargetInput("cloudflare", "env_1", "workers-script", account, "api", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil); err != nil {
+		t.Fatalf("workers-script refused: %v", err)
+	}
+	for name, args := range map[string][3]string{
+		"pages staging":    {"pages-project", "site", "staging"},
+		"pages no env":     {"pages-project", "site", ""},
+		"workers with env": {"workers-script", "api", "production"},
+		"workers no name":  {"workers-script", "", ""},
+	} {
+		if _, err := adapterTargetInput("cloudflare", "env_1", args[0], account, args[1], args[2], "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, nil); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }

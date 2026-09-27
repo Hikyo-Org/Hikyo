@@ -179,12 +179,19 @@ type API struct {
 	Dynamic *service.Dynamic
 	// SSH is the SSH user-certificate surface (#155).
 	SSH *service.SSH
+	// Transit is the managed-key surface (#156). Concrete like Dynamic: it
+	// resolves the caller and applies key policy itself.
+	Transit *service.Transit
+	// PKI is the private-PKI surface (#154).
+	PKI *service.PKI
 	// Audits is the trail read/export surface. Concrete like Adapters: it is
 	// principal-keyed and the handler resolves the session before calling it.
 	Audits *service.Audits
 	// Approvals is the change-approval administration and review surface (#151).
 	// The merge/bypass DECISION rides Revisions.PublishPlanned, not this.
 	Approvals ApprovalService
+	// Access is the approval-mediated temporary-access surface (#152).
+	Access AccessService
 	// SCIM is the provisioning ADMINISTRATION surface (human sessions,
 	// `manage-members` at org scope); SCIMWire is the identity provider's own
 	// protocol path (a provisioning credential, `scim-provision`). They are two

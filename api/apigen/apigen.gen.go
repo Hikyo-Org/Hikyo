@@ -20,6 +20,111 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for AccessCapability.
+const (
+	AccessCapabilityEdit          AccessCapability = "edit"
+	AccessCapabilityPin           AccessCapability = "pin"
+	AccessCapabilityPublish       AccessCapability = "publish"
+	AccessCapabilityRead          AccessCapability = "read"
+	AccessCapabilityReveal        AccessCapability = "reveal"
+	AccessCapabilityRevealHistory AccessCapability = "reveal-history"
+)
+
+// Valid indicates whether the value is a known member of the AccessCapability enum.
+func (e AccessCapability) Valid() bool {
+	switch e {
+	case AccessCapabilityEdit:
+		return true
+	case AccessCapabilityPin:
+		return true
+	case AccessCapabilityPublish:
+		return true
+	case AccessCapabilityRead:
+		return true
+	case AccessCapabilityReveal:
+		return true
+	case AccessCapabilityRevealHistory:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccessRequestInvalidatedCause.
+const (
+	AccessRequestInvalidatedCauseApproverRemoved AccessRequestInvalidatedCause = "approver_removed"
+	AccessRequestInvalidatedCauseEmpty           AccessRequestInvalidatedCause = ""
+	AccessRequestInvalidatedCausePolicyChanged   AccessRequestInvalidatedCause = "policy_changed"
+	AccessRequestInvalidatedCausePolicyDisabled  AccessRequestInvalidatedCause = "policy_disabled"
+)
+
+// Valid indicates whether the value is a known member of the AccessRequestInvalidatedCause enum.
+func (e AccessRequestInvalidatedCause) Valid() bool {
+	switch e {
+	case AccessRequestInvalidatedCauseApproverRemoved:
+		return true
+	case AccessRequestInvalidatedCauseEmpty:
+		return true
+	case AccessRequestInvalidatedCausePolicyChanged:
+		return true
+	case AccessRequestInvalidatedCausePolicyDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccessRequestState.
+const (
+	AccessRequestStateCancelled   AccessRequestState = "cancelled"
+	AccessRequestStateExpired     AccessRequestState = "expired"
+	AccessRequestStateGranted     AccessRequestState = "granted"
+	AccessRequestStateInvalidated AccessRequestState = "invalidated"
+	AccessRequestStateOpen        AccessRequestState = "open"
+	AccessRequestStateRejected    AccessRequestState = "rejected"
+	AccessRequestStateRevoked     AccessRequestState = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the AccessRequestState enum.
+func (e AccessRequestState) Valid() bool {
+	switch e {
+	case AccessRequestStateCancelled:
+		return true
+	case AccessRequestStateExpired:
+		return true
+	case AccessRequestStateGranted:
+		return true
+	case AccessRequestStateInvalidated:
+		return true
+	case AccessRequestStateOpen:
+		return true
+	case AccessRequestStateRejected:
+		return true
+	case AccessRequestStateRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccessVoteRequestDecision.
+const (
+	AccessVoteRequestDecisionApprove AccessVoteRequestDecision = "approve"
+	AccessVoteRequestDecisionReject  AccessVoteRequestDecision = "reject"
+)
+
+// Valid indicates whether the value is a known member of the AccessVoteRequestDecision enum.
+func (e AccessVoteRequestDecision) Valid() bool {
+	switch e {
+	case AccessVoteRequestDecisionApprove:
+		return true
+	case AccessVoteRequestDecisionReject:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ActiveSessionArtifact.
 const (
 	ActiveSessionArtifactBrowser   ActiveSessionArtifact = "browser"
@@ -130,9 +235,13 @@ func (e AdapterConflictEntrySurface) Valid() bool {
 
 // Defines values for AdapterDestinationKind.
 const (
-	AdapterDestinationKindEnvironment  AdapterDestinationKind = "environment"
-	AdapterDestinationKindOrganization AdapterDestinationKind = "organization"
-	AdapterDestinationKindRepository   AdapterDestinationKind = "repository"
+	AdapterDestinationKindEnvironment   AdapterDestinationKind = "environment"
+	AdapterDestinationKindJsonObject    AdapterDestinationKind = "json-object"
+	AdapterDestinationKindOrganization  AdapterDestinationKind = "organization"
+	AdapterDestinationKindPagesProject  AdapterDestinationKind = "pages-project"
+	AdapterDestinationKindPerKey        AdapterDestinationKind = "per-key"
+	AdapterDestinationKindRepository    AdapterDestinationKind = "repository"
+	AdapterDestinationKindWorkersScript AdapterDestinationKind = "workers-script"
 )
 
 // Valid indicates whether the value is a known member of the AdapterDestinationKind enum.
@@ -140,9 +249,17 @@ func (e AdapterDestinationKind) Valid() bool {
 	switch e {
 	case AdapterDestinationKindEnvironment:
 		return true
+	case AdapterDestinationKindJsonObject:
+		return true
 	case AdapterDestinationKindOrganization:
 		return true
+	case AdapterDestinationKindPagesProject:
+		return true
+	case AdapterDestinationKindPerKey:
+		return true
 	case AdapterDestinationKindRepository:
+		return true
+	case AdapterDestinationKindWorkersScript:
 		return true
 	default:
 		return false
@@ -905,6 +1022,117 @@ func (e CellSignalPendingOperation) Valid() bool {
 	case CellSignalPendingOperationSet:
 		return true
 	case CellSignalPendingOperationUnset:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CertificateKeySource.
+const (
+	CertificateKeySourceCsr       CertificateKeySource = "csr"
+	CertificateKeySourceGenerated CertificateKeySource = "generated"
+)
+
+// Valid indicates whether the value is a known member of the CertificateKeySource enum.
+func (e CertificateKeySource) Valid() bool {
+	switch e {
+	case CertificateKeySourceCsr:
+		return true
+	case CertificateKeySourceGenerated:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CertificateState.
+const (
+	CertificateStateExpired CertificateState = "expired"
+	CertificateStateFailed  CertificateState = "failed"
+	CertificateStateIssued  CertificateState = "issued"
+	CertificateStateIssuing CertificateState = "issuing"
+	CertificateStateRenewed CertificateState = "renewed"
+	CertificateStateRevoked CertificateState = "revoked"
+	CertificateStateUnknown CertificateState = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the CertificateState enum.
+func (e CertificateState) Valid() bool {
+	switch e {
+	case CertificateStateExpired:
+		return true
+	case CertificateStateFailed:
+		return true
+	case CertificateStateIssued:
+		return true
+	case CertificateStateIssuing:
+		return true
+	case CertificateStateRenewed:
+		return true
+	case CertificateStateRevoked:
+		return true
+	case CertificateStateUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CertificateIssueRequestKeyAlgorithm.
+const (
+	CertificateIssueRequestKeyAlgorithmEcdsaP256 CertificateIssueRequestKeyAlgorithm = "ecdsa-p256"
+	CertificateIssueRequestKeyAlgorithmEcdsaP384 CertificateIssueRequestKeyAlgorithm = "ecdsa-p384"
+	CertificateIssueRequestKeyAlgorithmEd25519   CertificateIssueRequestKeyAlgorithm = "ed25519"
+	CertificateIssueRequestKeyAlgorithmRsa2048   CertificateIssueRequestKeyAlgorithm = "rsa-2048"
+	CertificateIssueRequestKeyAlgorithmRsa3072   CertificateIssueRequestKeyAlgorithm = "rsa-3072"
+	CertificateIssueRequestKeyAlgorithmRsa4096   CertificateIssueRequestKeyAlgorithm = "rsa-4096"
+)
+
+// Valid indicates whether the value is a known member of the CertificateIssueRequestKeyAlgorithm enum.
+func (e CertificateIssueRequestKeyAlgorithm) Valid() bool {
+	switch e {
+	case CertificateIssueRequestKeyAlgorithmEcdsaP256:
+		return true
+	case CertificateIssueRequestKeyAlgorithmEcdsaP384:
+		return true
+	case CertificateIssueRequestKeyAlgorithmEd25519:
+		return true
+	case CertificateIssueRequestKeyAlgorithmRsa2048:
+		return true
+	case CertificateIssueRequestKeyAlgorithmRsa3072:
+		return true
+	case CertificateIssueRequestKeyAlgorithmRsa4096:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CertificateRevokeRequestReason.
+const (
+	CertificateRevokeRequestReasonAffiliationChanged   CertificateRevokeRequestReason = "affiliation-changed"
+	CertificateRevokeRequestReasonCessationOfOperation CertificateRevokeRequestReason = "cessation-of-operation"
+	CertificateRevokeRequestReasonKeyCompromise        CertificateRevokeRequestReason = "key-compromise"
+	CertificateRevokeRequestReasonPrivilegeWithdrawn   CertificateRevokeRequestReason = "privilege-withdrawn"
+	CertificateRevokeRequestReasonSuperseded           CertificateRevokeRequestReason = "superseded"
+	CertificateRevokeRequestReasonUnspecified          CertificateRevokeRequestReason = "unspecified"
+)
+
+// Valid indicates whether the value is a known member of the CertificateRevokeRequestReason enum.
+func (e CertificateRevokeRequestReason) Valid() bool {
+	switch e {
+	case CertificateRevokeRequestReasonAffiliationChanged:
+		return true
+	case CertificateRevokeRequestReasonCessationOfOperation:
+		return true
+	case CertificateRevokeRequestReasonKeyCompromise:
+		return true
+	case CertificateRevokeRequestReasonPrivilegeWithdrawn:
+		return true
+	case CertificateRevokeRequestReasonSuperseded:
+		return true
+	case CertificateRevokeRequestReasonUnspecified:
 		return true
 	default:
 		return false
@@ -1784,6 +2012,207 @@ func (e PendingDraftOperation) Valid() bool {
 	}
 }
 
+// Defines values for PkiIssuerKind.
+const (
+	PkiIssuerKindIntermediate PkiIssuerKind = "intermediate"
+	PkiIssuerKindRoot         PkiIssuerKind = "root"
+)
+
+// Valid indicates whether the value is a known member of the PkiIssuerKind enum.
+func (e PkiIssuerKind) Valid() bool {
+	switch e {
+	case PkiIssuerKindIntermediate:
+		return true
+	case PkiIssuerKindRoot:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PkiIssuerOrigin.
+const (
+	PkiIssuerOriginGenerated PkiIssuerOrigin = "generated"
+	PkiIssuerOriginImported  PkiIssuerOrigin = "imported"
+)
+
+// Valid indicates whether the value is a known member of the PkiIssuerOrigin enum.
+func (e PkiIssuerOrigin) Valid() bool {
+	switch e {
+	case PkiIssuerOriginGenerated:
+		return true
+	case PkiIssuerOriginImported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PkiIssuerState.
+const (
+	PkiIssuerStateActive   PkiIssuerState = "active"
+	PkiIssuerStatePending  PkiIssuerState = "pending"
+	PkiIssuerStateRetired  PkiIssuerState = "retired"
+	PkiIssuerStateRetiring PkiIssuerState = "retiring"
+	PkiIssuerStateRevoked  PkiIssuerState = "revoked"
+)
+
+// Valid indicates whether the value is a known member of the PkiIssuerState enum.
+func (e PkiIssuerState) Valid() bool {
+	switch e {
+	case PkiIssuerStateActive:
+		return true
+	case PkiIssuerStatePending:
+		return true
+	case PkiIssuerStateRetired:
+		return true
+	case PkiIssuerStateRetiring:
+		return true
+	case PkiIssuerStateRevoked:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PkiIssuerCreateRequestKeyAlgorithm.
+const (
+	PkiIssuerCreateRequestKeyAlgorithmEcdsaP256 PkiIssuerCreateRequestKeyAlgorithm = "ecdsa-p256"
+	PkiIssuerCreateRequestKeyAlgorithmEcdsaP384 PkiIssuerCreateRequestKeyAlgorithm = "ecdsa-p384"
+	PkiIssuerCreateRequestKeyAlgorithmRsa3072   PkiIssuerCreateRequestKeyAlgorithm = "rsa-3072"
+	PkiIssuerCreateRequestKeyAlgorithmRsa4096   PkiIssuerCreateRequestKeyAlgorithm = "rsa-4096"
+)
+
+// Valid indicates whether the value is a known member of the PkiIssuerCreateRequestKeyAlgorithm enum.
+func (e PkiIssuerCreateRequestKeyAlgorithm) Valid() bool {
+	switch e {
+	case PkiIssuerCreateRequestKeyAlgorithmEcdsaP256:
+		return true
+	case PkiIssuerCreateRequestKeyAlgorithmEcdsaP384:
+		return true
+	case PkiIssuerCreateRequestKeyAlgorithmRsa3072:
+		return true
+	case PkiIssuerCreateRequestKeyAlgorithmRsa4096:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PkiIssuerCreateRequestMode.
+const (
+	PkiIssuerCreateRequestModeImport       PkiIssuerCreateRequestMode = "import"
+	PkiIssuerCreateRequestModeIntermediate PkiIssuerCreateRequestMode = "intermediate"
+	PkiIssuerCreateRequestModeRoot         PkiIssuerCreateRequestMode = "root"
+)
+
+// Valid indicates whether the value is a known member of the PkiIssuerCreateRequestMode enum.
+func (e PkiIssuerCreateRequestMode) Valid() bool {
+	switch e {
+	case PkiIssuerCreateRequestModeImport:
+		return true
+	case PkiIssuerCreateRequestModeIntermediate:
+		return true
+	case PkiIssuerCreateRequestModeRoot:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PkiIssuerRotateRequestKeyAlgorithm.
+const (
+	PkiIssuerRotateRequestKeyAlgorithmEcdsaP256 PkiIssuerRotateRequestKeyAlgorithm = "ecdsa-p256"
+	PkiIssuerRotateRequestKeyAlgorithmEcdsaP384 PkiIssuerRotateRequestKeyAlgorithm = "ecdsa-p384"
+	PkiIssuerRotateRequestKeyAlgorithmRsa3072   PkiIssuerRotateRequestKeyAlgorithm = "rsa-3072"
+	PkiIssuerRotateRequestKeyAlgorithmRsa4096   PkiIssuerRotateRequestKeyAlgorithm = "rsa-4096"
+)
+
+// Valid indicates whether the value is a known member of the PkiIssuerRotateRequestKeyAlgorithm enum.
+func (e PkiIssuerRotateRequestKeyAlgorithm) Valid() bool {
+	switch e {
+	case PkiIssuerRotateRequestKeyAlgorithmEcdsaP256:
+		return true
+	case PkiIssuerRotateRequestKeyAlgorithmEcdsaP384:
+		return true
+	case PkiIssuerRotateRequestKeyAlgorithmRsa3072:
+		return true
+	case PkiIssuerRotateRequestKeyAlgorithmRsa4096:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PkiPolicyExtKeyUsages.
+const (
+	ClientAuth PkiPolicyExtKeyUsages = "client-auth"
+	ServerAuth PkiPolicyExtKeyUsages = "server-auth"
+)
+
+// Valid indicates whether the value is a known member of the PkiPolicyExtKeyUsages enum.
+func (e PkiPolicyExtKeyUsages) Valid() bool {
+	switch e {
+	case ClientAuth:
+		return true
+	case ServerAuth:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PkiPolicyKeyAlgorithms.
+const (
+	PkiPolicyKeyAlgorithmsEcdsaP256 PkiPolicyKeyAlgorithms = "ecdsa-p256"
+	PkiPolicyKeyAlgorithmsEcdsaP384 PkiPolicyKeyAlgorithms = "ecdsa-p384"
+	PkiPolicyKeyAlgorithmsEd25519   PkiPolicyKeyAlgorithms = "ed25519"
+	PkiPolicyKeyAlgorithmsRsa2048   PkiPolicyKeyAlgorithms = "rsa-2048"
+	PkiPolicyKeyAlgorithmsRsa3072   PkiPolicyKeyAlgorithms = "rsa-3072"
+	PkiPolicyKeyAlgorithmsRsa4096   PkiPolicyKeyAlgorithms = "rsa-4096"
+)
+
+// Valid indicates whether the value is a known member of the PkiPolicyKeyAlgorithms enum.
+func (e PkiPolicyKeyAlgorithms) Valid() bool {
+	switch e {
+	case PkiPolicyKeyAlgorithmsEcdsaP256:
+		return true
+	case PkiPolicyKeyAlgorithmsEcdsaP384:
+		return true
+	case PkiPolicyKeyAlgorithmsEd25519:
+		return true
+	case PkiPolicyKeyAlgorithmsRsa2048:
+		return true
+	case PkiPolicyKeyAlgorithmsRsa3072:
+		return true
+	case PkiPolicyKeyAlgorithmsRsa4096:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PkiPolicyKeyUsages.
+const (
+	DigitalSignature PkiPolicyKeyUsages = "digital-signature"
+	KeyAgreement     PkiPolicyKeyUsages = "key-agreement"
+	KeyEncipherment  PkiPolicyKeyUsages = "key-encipherment"
+)
+
+// Valid indicates whether the value is a known member of the PkiPolicyKeyUsages enum.
+func (e PkiPolicyKeyUsages) Valid() bool {
+	switch e {
+	case DigitalSignature:
+		return true
+	case KeyAgreement:
+		return true
+	case KeyEncipherment:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PrincipalKind.
 const (
 	Human   PrincipalKind = "human"
@@ -1822,6 +2251,7 @@ func (e ProjectRetentionPolicyMode) Valid() bool {
 
 // Defines values for ReauthPurpose.
 const (
+	ReauthPurposeAccess     ReauthPurpose = "access"
 	ReauthPurposeAdapter    ReauthPurpose = "adapter"
 	ReauthPurposeApprove    ReauthPurpose = "approve"
 	ReauthPurposeBypass     ReauthPurpose = "bypass"
@@ -1836,6 +2266,8 @@ const (
 // Valid indicates whether the value is a known member of the ReauthPurpose enum.
 func (e ReauthPurpose) Valid() bool {
 	switch e {
+	case ReauthPurposeAccess:
+		return true
 	case ReauthPurposeAdapter:
 		return true
 	case ReauthPurposeApprove:
@@ -2080,19 +2512,19 @@ func (e RevisionDiffRowStatus) Valid() bool {
 
 // Defines values for RevisionPinResultAction.
 const (
-	Created    RevisionPinResultAction = "created"
-	Reassigned RevisionPinResultAction = "reassigned"
-	Renewed    RevisionPinResultAction = "renewed"
+	RevisionPinResultActionCreated    RevisionPinResultAction = "created"
+	RevisionPinResultActionReassigned RevisionPinResultAction = "reassigned"
+	RevisionPinResultActionRenewed    RevisionPinResultAction = "renewed"
 )
 
 // Valid indicates whether the value is a known member of the RevisionPinResultAction enum.
 func (e RevisionPinResultAction) Valid() bool {
 	switch e {
-	case Created:
+	case RevisionPinResultActionCreated:
 		return true
-	case Reassigned:
+	case RevisionPinResultActionReassigned:
 		return true
-	case Renewed:
+	case RevisionPinResultActionRenewed:
 		return true
 	default:
 		return false
@@ -2380,19 +2812,19 @@ func (e SSHExtension) Valid() bool {
 
 // Defines values for SSHKeyAlgorithm.
 const (
-	EcdsaP256 SSHKeyAlgorithm = "ecdsa-p256"
-	Ed25519   SSHKeyAlgorithm = "ed25519"
-	Rsa3072   SSHKeyAlgorithm = "rsa-3072"
+	SSHKeyAlgorithmEcdsaP256 SSHKeyAlgorithm = "ecdsa-p256"
+	SSHKeyAlgorithmEd25519   SSHKeyAlgorithm = "ed25519"
+	SSHKeyAlgorithmRsa3072   SSHKeyAlgorithm = "rsa-3072"
 )
 
 // Valid indicates whether the value is a known member of the SSHKeyAlgorithm enum.
 func (e SSHKeyAlgorithm) Valid() bool {
 	switch e {
-	case EcdsaP256:
+	case SSHKeyAlgorithmEcdsaP256:
 		return true
-	case Ed25519:
+	case SSHKeyAlgorithmEd25519:
 		return true
-	case Rsa3072:
+	case SSHKeyAlgorithmRsa3072:
 		return true
 	default:
 		return false
@@ -2710,6 +3142,7 @@ func (e TotpAdapterReauthRequestOperation) Valid() bool {
 
 // Defines values for TotpAdapterReauthRequestPurpose.
 const (
+	TotpAdapterReauthRequestPurposeAccess     TotpAdapterReauthRequestPurpose = "access"
 	TotpAdapterReauthRequestPurposeAdapter    TotpAdapterReauthRequestPurpose = "adapter"
 	TotpAdapterReauthRequestPurposeApprove    TotpAdapterReauthRequestPurpose = "approve"
 	TotpAdapterReauthRequestPurposeBypass     TotpAdapterReauthRequestPurpose = "bypass"
@@ -2724,6 +3157,8 @@ const (
 // Valid indicates whether the value is a known member of the TotpAdapterReauthRequestPurpose enum.
 func (e TotpAdapterReauthRequestPurpose) Valid() bool {
 	switch e {
+	case TotpAdapterReauthRequestPurposeAccess:
+		return true
 	case TotpAdapterReauthRequestPurposeAdapter:
 		return true
 	case TotpAdapterReauthRequestPurposeApprove:
@@ -2756,6 +3191,180 @@ const (
 func (e TotpSelfConfigReauthRequestPurpose) Valid() bool {
 	switch e {
 	case TotpSelfConfigReauthRequestPurposeSelfConfig:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitAlgorithm.
+const (
+	TransitAlgorithmEd25519           TransitAlgorithm = "ed25519"
+	TransitAlgorithmHmacSha256        TransitAlgorithm = "hmac-sha256"
+	TransitAlgorithmXchacha20Poly1305 TransitAlgorithm = "xchacha20-poly1305"
+)
+
+// Valid indicates whether the value is a known member of the TransitAlgorithm enum.
+func (e TransitAlgorithm) Valid() bool {
+	switch e {
+	case TransitAlgorithmEd25519:
+		return true
+	case TransitAlgorithmHmacSha256:
+		return true
+	case TransitAlgorithmXchacha20Poly1305:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitCustody.
+const (
+	TransitCustodyExternal TransitCustody = "external"
+	TransitCustodySoftware TransitCustody = "software"
+)
+
+// Valid indicates whether the value is a known member of the TransitCustody enum.
+func (e TransitCustody) Valid() bool {
+	switch e {
+	case TransitCustodyExternal:
+		return true
+	case TransitCustodySoftware:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitDataKeyRequestBits.
+const (
+	N128 TransitDataKeyRequestBits = 128
+	N256 TransitDataKeyRequestBits = 256
+	N512 TransitDataKeyRequestBits = 512
+)
+
+// Valid indicates whether the value is a known member of the TransitDataKeyRequestBits enum.
+func (e TransitDataKeyRequestBits) Valid() bool {
+	switch e {
+	case N128:
+		return true
+	case N256:
+		return true
+	case N512:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitKeyState.
+const (
+	TransitKeyStateActive          TransitKeyState = "active"
+	TransitKeyStateDisabled        TransitKeyState = "disabled"
+	TransitKeyStatePendingDeletion TransitKeyState = "pending-deletion"
+	TransitKeyStateRetired         TransitKeyState = "retired"
+)
+
+// Valid indicates whether the value is a known member of the TransitKeyState enum.
+func (e TransitKeyState) Valid() bool {
+	switch e {
+	case TransitKeyStateActive:
+		return true
+	case TransitKeyStateDisabled:
+		return true
+	case TransitKeyStatePendingDeletion:
+		return true
+	case TransitKeyStateRetired:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitKeyVersionMaterial.
+const (
+	TransitKeyVersionMaterialErased   TransitKeyVersionMaterial = "erased"
+	TransitKeyVersionMaterialExternal TransitKeyVersionMaterial = "external"
+	TransitKeyVersionMaterialSealed   TransitKeyVersionMaterial = "sealed"
+)
+
+// Valid indicates whether the value is a known member of the TransitKeyVersionMaterial enum.
+func (e TransitKeyVersionMaterial) Valid() bool {
+	switch e {
+	case TransitKeyVersionMaterialErased:
+		return true
+	case TransitKeyVersionMaterialExternal:
+		return true
+	case TransitKeyVersionMaterialSealed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitLifecycleRequestAction.
+const (
+	CancelDeletion   TransitLifecycleRequestAction = "cancel-deletion"
+	Compromise       TransitLifecycleRequestAction = "compromise"
+	Disable          TransitLifecycleRequestAction = "disable"
+	Enable           TransitLifecycleRequestAction = "enable"
+	Retire           TransitLifecycleRequestAction = "retire"
+	ScheduleDeletion TransitLifecycleRequestAction = "schedule-deletion"
+)
+
+// Valid indicates whether the value is a known member of the TransitLifecycleRequestAction enum.
+func (e TransitLifecycleRequestAction) Valid() bool {
+	switch e {
+	case CancelDeletion:
+		return true
+	case Compromise:
+		return true
+	case Disable:
+		return true
+	case Enable:
+		return true
+	case Retire:
+		return true
+	case ScheduleDeletion:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TransitOperation.
+const (
+	TransitOperationDatakey          TransitOperation = "datakey"
+	TransitOperationDatakeyPlaintext TransitOperation = "datakey-plaintext"
+	TransitOperationDecrypt          TransitOperation = "decrypt"
+	TransitOperationEncrypt          TransitOperation = "encrypt"
+	TransitOperationHmac             TransitOperation = "hmac"
+	TransitOperationHmacVerify       TransitOperation = "hmac-verify"
+	TransitOperationRewrap           TransitOperation = "rewrap"
+	TransitOperationSign             TransitOperation = "sign"
+	TransitOperationVerify           TransitOperation = "verify"
+)
+
+// Valid indicates whether the value is a known member of the TransitOperation enum.
+func (e TransitOperation) Valid() bool {
+	switch e {
+	case TransitOperationDatakey:
+		return true
+	case TransitOperationDatakeyPlaintext:
+		return true
+	case TransitOperationDecrypt:
+		return true
+	case TransitOperationEncrypt:
+		return true
+	case TransitOperationHmac:
+		return true
+	case TransitOperationHmacVerify:
+		return true
+	case TransitOperationRewrap:
+		return true
+	case TransitOperationSign:
+		return true
+	case TransitOperationVerify:
 		return true
 	default:
 		return false
@@ -3383,6 +3992,158 @@ func (e ChangeEnvironmentParameterJSONBodyAction) Valid() bool {
 	}
 }
 
+// AccessCapability The closed set of capabilities temporary access may confer.
+type AccessCapability string
+
+// AccessOffer What may be requested in this environment. The approver roster is deliberately absent.
+type AccessOffer struct {
+	// CallerMayBypass Whether the caller is a named emergency-access principal of this policy.
+	CallerMayBypass    bool               `json:"caller_may_bypass"`
+	Capabilities       []AccessCapability `json:"capabilities"`
+	Enabled            bool               `json:"enabled"`
+	MaxDurationSeconds int32              `json:"max_duration_seconds"`
+	MinApprovals       int32              `json:"min_approvals"`
+
+	// PolicyId A prefixed UUIDv7, e.g. `org_0198…`.
+	PolicyId      ID    `json:"policy_id"`
+	PolicyVersion int64 `json:"policy_version"`
+}
+
+// AccessPolicy defines model for AccessPolicy.
+type AccessPolicy struct {
+	AllowSelfApproval bool               `json:"allow_self_approval"`
+	Approvers         []ApprovalApprover `json:"approvers"`
+	Bypassers         []ID               `json:"bypassers"`
+	Capabilities      []AccessCapability `json:"capabilities"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt     Timestamp `json:"created_at"`
+	Enabled       bool      `json:"enabled"`
+	EnvironmentId string    `json:"environment_id"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id                 ID    `json:"id"`
+	MaxDurationSeconds int32 `json:"max_duration_seconds"`
+	MinApprovals       int32 `json:"min_approvals"`
+
+	// PrincipalNames Current names for principal approvers and bypassers already disclosed by this policy; not a user directory.
+	PrincipalNames    *map[string]string `json:"principal_names,omitempty"`
+	RequestTtlSeconds int32              `json:"request_ttl_seconds"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp `json:"updated_at"`
+	Version   int64     `json:"version"`
+}
+
+// AccessPolicyInput defines model for AccessPolicyInput.
+type AccessPolicyInput struct {
+	AllowSelfApproval *bool              `json:"allow_self_approval,omitempty"`
+	Approvers         []ApprovalApprover `json:"approvers"`
+
+	// Bypassers Principals who may take emergency access without the quorum.
+	Bypassers    *[]ID              `json:"bypassers,omitempty"`
+	Capabilities []AccessCapability `json:"capabilities"`
+	Enabled      bool               `json:"enabled"`
+
+	// EnvironmentId The environment this policy covers; empty means every environment in the project.
+	EnvironmentId *string `json:"environment_id,omitempty"`
+
+	// MaxDurationSeconds The longest duration a request (or emergency access) may run.
+	MaxDurationSeconds int32 `json:"max_duration_seconds"`
+	MinApprovals       int32 `json:"min_approvals"`
+
+	// RequestTtlSeconds How long a request may wait for a decision before it expires.
+	RequestTtlSeconds int32 `json:"request_ttl_seconds"`
+}
+
+// AccessPolicyList defines model for AccessPolicyList.
+type AccessPolicyList struct {
+	Items []AccessPolicy `json:"items"`
+}
+
+// AccessQueue defines model for AccessQueue.
+type AccessQueue struct {
+	Items []AccessRequest `json:"items"`
+
+	// Offer What may be requested in this environment. The approver roster is deliberately absent.
+	Offer *AccessOffer `json:"offer,omitempty"`
+}
+
+// AccessRequest defines model for AccessRequest.
+type AccessRequest struct {
+	// Approvals Approvals from currently-eligible approvers, for an open request.
+	Approvals int32 `json:"approvals"`
+
+	// Bypassed Whether this is emergency access taken without the quorum.
+	Bypassed     bool               `json:"bypassed"`
+	Capabilities []AccessCapability `json:"capabilities"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt       Timestamp `json:"created_at"`
+	DurationSeconds int32     `json:"duration_seconds"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID `json:"environment_id"`
+
+	// ExpiresAt The absolute instant granted access stops.
+	ExpiresAt *Timestamp `json:"expires_at,omitempty"`
+
+	// GrantedAt RFC 3339 UTC, microsecond precision.
+	GrantedAt *Timestamp `json:"granted_at,omitempty"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id               ID                            `json:"id"`
+	InvalidatedCause AccessRequestInvalidatedCause `json:"invalidated_cause"`
+	MinApprovals     int32                         `json:"min_approvals"`
+
+	// PolicyId A prefixed UUIDv7, e.g. `org_0198…`.
+	PolicyId      ID     `json:"policy_id"`
+	PolicyVersion int64  `json:"policy_version"`
+	Reason        string `json:"reason"`
+
+	// Requester A prefixed UUIDv7, e.g. `org_0198…`.
+	Requester ID `json:"requester"`
+
+	// RequesterName Current display name of the referenced principal, when available.
+	RequesterName *string `json:"requester_name,omitempty"`
+
+	// ResolvedAt RFC 3339 UTC, microsecond precision.
+	ResolvedAt *Timestamp `json:"resolved_at,omitempty"`
+
+	// ResolvedBy Who resolved the request, when a person did.
+	ResolvedBy *ID `json:"resolved_by,omitempty"`
+
+	// ReviewExpiresAt RFC 3339 UTC, microsecond precision.
+	ReviewExpiresAt Timestamp          `json:"review_expires_at"`
+	State           AccessRequestState `json:"state"`
+	Votes           []ApprovalVote     `json:"votes"`
+}
+
+// AccessRequestInvalidatedCause defines model for AccessRequest.InvalidatedCause.
+type AccessRequestInvalidatedCause string
+
+// AccessRequestState defines model for AccessRequest.State.
+type AccessRequestState string
+
+// AccessRequestInput defines model for AccessRequestInput.
+type AccessRequestInput struct {
+	Capabilities []AccessCapability `json:"capabilities"`
+
+	// DurationSeconds How long the access should last, at most the policy maximum.
+	DurationSeconds int32 `json:"duration_seconds"`
+
+	// Reason Why the access is needed. Recorded in the audit trail.
+	Reason string `json:"reason"`
+}
+
+// AccessVoteRequest defines model for AccessVoteRequest.
+type AccessVoteRequest struct {
+	Decision AccessVoteRequestDecision `json:"decision"`
+}
+
+// AccessVoteRequestDecision defines model for AccessVoteRequest.Decision.
+type AccessVoteRequestDecision string
+
 // AccountProfile defines model for AccountProfile.
 type AccountProfile struct {
 	DisplayName string `json:"display_name"`
@@ -3528,7 +4289,7 @@ type AdapterConnection struct {
 	Version             string     `json:"version"`
 }
 
-// AdapterDestinationKind defines model for AdapterDestinationKind.
+// AdapterDestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
 type AdapterDestinationKind string
 
 // AdapterFinding defines model for AdapterFinding.
@@ -3630,11 +4391,13 @@ type AdapterMoveJobState string
 
 // AdapterMoveTarget defines model for AdapterMoveTarget.
 type AdapterMoveTarget struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationId          int64                  `json:"destination_id"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+	DestinationId          int64  `json:"destination_id"`
+
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId         ID               `json:"environment_id"`
@@ -3683,12 +4446,14 @@ type AdapterTarget struct {
 	Conflicts []AdapterConflictArtifact `json:"conflicts"`
 
 	// ConvergedRevision The last revision a converge completed.
-	ConvergedRevision      *int64                 `json:"converged_revision"`
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationId          int64                  `json:"destination_id"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	ConvergedRevision      *int64 `json:"converged_revision"`
+	DestinationEnvironment string `json:"destination_environment"`
+	DestinationId          int64  `json:"destination_id"`
+
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// DestinationScope GitLab environment_scope; empty for other providers.
 	DestinationScope *string `json:"destination_scope,omitempty"`
@@ -3764,12 +4529,16 @@ type AdapterTargetInput struct {
 	// AllowEnvironmentCreate Explicit consent to create missing GitHub environments using Administration:write.
 	AllowEnvironmentCreate *bool `json:"allow_environment_create,omitempty"`
 
-	// DestinationEnvironment GitHub environment name; empty for repository and organization destinations.
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
+	// DestinationEnvironment GitHub environment, or the Pages environment (preview or production). For AWS, the optional customer KMS key (id, ARN, or alias) applied when creating a secret; changing it is a destination move. Empty for other destinations.
+	DestinationEnvironment string `json:"destination_environment"`
 
-	// DestinationName Repository name; empty for organization destinations.
-	DestinationName  string `json:"destination_name"`
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
+	DestinationKind AdapterDestinationKind `json:"destination_kind"`
+
+	// DestinationName Repository, Workers script, or Pages project name; empty for organization destinations; the KV path prefix for vault-kv. For AWS json-object, the secret name; for per-key, an optional path prefix ending in `/`.
+	DestinationName string `json:"destination_name"`
+
+	// DestinationOwner Provider owner or organization; the KV v2 mount for vault-kv, or the 12-digit AWS account id.
 	DestinationOwner string `json:"destination_owner"`
 
 	// DestinationScope GitLab environment_scope (default `*`). Empty for other providers. Immutable once a target exists; remove and re-add the target to change it.
@@ -4402,6 +5171,112 @@ type CellSignal struct {
 // CellSignalPendingOperation defines model for CellSignal.PendingOperation.
 type CellSignalPendingOperation string
 
+// Certificate An issuance record. There is no private-key field, ever.
+type Certificate struct {
+	CertificatePem *string `json:"certificate_pem,omitempty"`
+
+	// ChainPem The issuing CA certificate followed by its chain.
+	ChainPem      *string   `json:"chain_pem,omitempty"`
+	CommonName    *string   `json:"common_name,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	DnsNames      []string  `json:"dns_names"`
+	EnvironmentId string    `json:"environment_id"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id          ID       `json:"id"`
+	IpAddresses []string `json:"ip_addresses"`
+
+	// IssuerId A prefixed UUIDv7, e.g. `org_0198…`.
+	IssuerId         ID                   `json:"issuer_id"`
+	IssuerName       string               `json:"issuer_name"`
+	IssuerVersion    int64                `json:"issuer_version"`
+	KeyAlgorithm     string               `json:"key_algorithm"`
+	KeyFingerprint   string               `json:"key_fingerprint"`
+	KeySource        CertificateKeySource `json:"key_source"`
+	NotAfter         time.Time            `json:"not_after"`
+	NotBefore        time.Time            `json:"not_before"`
+	PrincipalClass   string               `json:"principal_class"`
+	PrincipalId      string               `json:"principal_id"`
+	Profile          string               `json:"profile"`
+	RenewedBy        *string              `json:"renewed_by,omitempty"`
+	RenewedFrom      *string              `json:"renewed_from,omitempty"`
+	RevocationReason *string              `json:"revocation_reason,omitempty"`
+	RevokedAt        *time.Time           `json:"revoked_at,omitempty"`
+
+	// Serial Lowercase hexadecimal serial number.
+	Serial    string           `json:"serial"`
+	State     CertificateState `json:"state"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	Uris      []string         `json:"uris"`
+}
+
+// CertificateKeySource defines model for Certificate.KeySource.
+type CertificateKeySource string
+
+// CertificateState defines model for Certificate.State.
+type CertificateState string
+
+// CertificateIssueRequest defines model for CertificateIssueRequest.
+type CertificateIssueRequest struct {
+	CommonName  *string   `json:"common_name,omitempty"`
+	CsrPem      *string   `json:"csr_pem,omitempty"`
+	DnsNames    *[]string `json:"dns_names,omitempty"`
+	GenerateKey *bool     `json:"generate_key,omitempty"`
+	IpAddresses *[]string `json:"ip_addresses,omitempty"`
+
+	// Issuer An issuer or profile name.
+	Issuer       *PkiName                             `json:"issuer,omitempty"`
+	KeyAlgorithm *CertificateIssueRequestKeyAlgorithm `json:"key_algorithm,omitempty"`
+
+	// Profile An issuer or profile name.
+	Profile    PkiName   `json:"profile"`
+	TtlSeconds *int64    `json:"ttl_seconds,omitempty"`
+	Uris       *[]string `json:"uris,omitempty"`
+}
+
+// CertificateIssueRequestKeyAlgorithm defines model for CertificateIssueRequest.KeyAlgorithm.
+type CertificateIssueRequestKeyAlgorithm string
+
+// CertificateIssueResult defines model for CertificateIssueResult.
+type CertificateIssueResult struct {
+	// Certificate An issuance record. There is no private-key field, ever.
+	Certificate Certificate `json:"certificate"`
+
+	// PrivateKeyPem A server-generated PKCS#8 private key, returned EXACTLY ONCE to
+	// exactly one caller and never stored. Absent for a CSR issuance.
+	// No other route in this contract returns it.
+	PrivateKeyPem *string `json:"private_key_pem,omitempty"`
+}
+
+// CertificateList defines model for CertificateList.
+type CertificateList struct {
+	Certificates []Certificate `json:"certificates"`
+}
+
+// CertificateProfile defines model for CertificateProfile.
+type CertificateProfile struct {
+	// Name An issuer or profile name.
+	Name PkiName `json:"name"`
+
+	// Policy A closed issuance policy. Name patterns are exact names, `*.suffix`
+	// (one leftmost label), CIDRs, or exact URIs and `prefix/*`; never
+	// regular expressions, so narrowing is decidable.
+	Policy PkiPolicy `json:"policy"`
+}
+
+// CertificateProfileList defines model for CertificateProfileList.
+type CertificateProfileList struct {
+	Profiles []CertificateProfile `json:"profiles"`
+}
+
+// CertificateRevokeRequest defines model for CertificateRevokeRequest.
+type CertificateRevokeRequest struct {
+	Reason *CertificateRevokeRequestReason `json:"reason,omitempty"`
+}
+
+// CertificateRevokeRequestReason defines model for CertificateRevokeRequest.Reason.
+type CertificateRevokeRequestReason string
+
 // ChangedKey One lineage row. It carries a key id, the key's name at that revision
 // and the transition - and nothing derived from a value.
 type ChangedKey struct {
@@ -4471,6 +5346,14 @@ type ClonedEnvironment struct {
 	UncopiedSecrets []KeyName `json:"uncopied_secrets"`
 }
 
+// ConfigureTransitKeyRequest defines model for ConfigureTransitKeyRequest.
+type ConfigureTransitKeyRequest struct {
+	Callers               *[]TransitCaller `json:"callers,omitempty"`
+	MinDecryptVersion     *int64           `json:"min_decrypt_version,omitempty"`
+	MinEncryptVersion     *int64           `json:"min_encrypt_version,omitempty"`
+	RotationPeriodSeconds *int64           `json:"rotation_period_seconds,omitempty"`
+}
+
 // CopyValuesRequest defines model for CopyValuesRequest.
 type CopyValuesRequest struct {
 	// ConfirmProtected The protected-environment confirmation. A protected destination
@@ -4516,7 +5399,7 @@ type CreateAdapterRequest struct {
 	// CaBundle GitLab only. PEM trust anchors added to the system roots for a self-hosted instance.
 	CaBundle *string `json:"ca_bundle,omitempty"`
 
-	// Credential Write-only provider credential. Never returned.
+	// Credential Write-only provider credential. Never returned. For aws-secrets-manager it is a JSON access descriptor: `{"mode":"ambient"}`, `{"mode":"assume-role","role_arn":...,"external_id":...,"session_seconds":900}`, `{"mode":"web-identity","role_arn":...}`, or `{"mode":"static","access_key_id":...,"secret_access_key":...}`, plus `region` (and optional `sts_origin`) for a non-AWS origin. Modes that use the server's own AWS identity require the node operator's HIKYO_ADAPTER_AWS_WORKLOAD_IDENTITY=allow.
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
@@ -4816,6 +5699,19 @@ type CreateServiceAccountRequest struct {
 	// creation and IMMUTABLE afterwards.
 	Kind ServiceAccountKind `json:"kind"`
 	Name string             `json:"name"`
+}
+
+// CreateTransitKeyRequest defines model for CreateTransitKeyRequest.
+type CreateTransitKeyRequest struct {
+	Algorithm         TransitAlgorithm    `json:"algorithm"`
+	AllowedOperations *[]TransitOperation `json:"allowed_operations,omitempty"`
+	Callers           *[]TransitCaller    `json:"callers,omitempty"`
+	Custody           *TransitCustody     `json:"custody,omitempty"`
+
+	// Exportable Must be false or absent; exportable keys are refused.
+	Exportable            *bool          `json:"exportable,omitempty"`
+	Name                  TransitKeyName `json:"name"`
+	RotationPeriodSeconds *int64         `json:"rotation_period_seconds,omitempty"`
 }
 
 // CredentialKind How a credential authenticates its service account. The discriminator
@@ -5425,6 +6321,17 @@ type DynamicProviderList struct {
 
 // DynamicProviderState defines model for DynamicProviderState.
 type DynamicProviderState string
+
+// EmergencyAccessInput defines model for EmergencyAccessInput.
+type EmergencyAccessInput struct {
+	Capabilities []AccessCapability `json:"capabilities"`
+
+	// DurationSeconds Optional; defaults to one hour, capped by the policy maximum.
+	DurationSeconds *int32 `json:"duration_seconds,omitempty"`
+
+	// Reason Why emergency access is needed. Recorded in the audit trail.
+	Reason string `json:"reason"`
+}
 
 // EntityName A display name for an organisation, project or environment. Identity is
 // the immutable id, so this is a label and a rename never breaks a
@@ -7001,6 +7908,211 @@ type PendingDraftList struct {
 	Items []PendingDraft `json:"items"`
 }
 
+// PkiCrl defines model for PkiCrl.
+type PkiCrl struct {
+	CrlPem string `json:"crl_pem"`
+}
+
+// PkiIssuer One CA key version's public surface. There is no private-key field:
+// the key is sealed, non-exportable, and never leaves the server.
+type PkiIssuer struct {
+	CertificatePem     *string    `json:"certificate_pem,omitempty"`
+	ChainPem           *string    `json:"chain_pem,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	CrlDistributionUrl *string    `json:"crl_distribution_url,omitempty"`
+	CrlNextUpdate      *time.Time `json:"crl_next_update,omitempty"`
+	CrlNumber          int64      `json:"crl_number"`
+	CrlThisUpdate      *time.Time `json:"crl_this_update,omitempty"`
+
+	// CsrPem The CSR of a pending version, for an offline root to sign.
+	CsrPem *string `json:"csr_pem,omitempty"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id           ID     `json:"id"`
+	IssuedCount  int64  `json:"issued_count"`
+	KeyAlgorithm string `json:"key_algorithm"`
+
+	// KeyFingerprint sha256:<base64url> of the SubjectPublicKeyInfo.
+	KeyFingerprint string        `json:"key_fingerprint"`
+	Kind           PkiIssuerKind `json:"kind"`
+
+	// Name An issuer or profile name.
+	Name      PkiName         `json:"name"`
+	NotAfter  *time.Time      `json:"not_after,omitempty"`
+	NotBefore *time.Time      `json:"not_before,omitempty"`
+	Origin    PkiIssuerOrigin `json:"origin"`
+	ParentId  *string         `json:"parent_id,omitempty"`
+
+	// RestoreHold True after a restore until the issuer is reconciled; no issuance while held.
+	RestoreHold bool           `json:"restore_hold"`
+	State       PkiIssuerState `json:"state"`
+	SubjectCn   string         `json:"subject_cn"`
+	SubjectOrg  *string        `json:"subject_org,omitempty"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	Version     int64          `json:"version"`
+}
+
+// PkiIssuerKind defines model for PkiIssuer.Kind.
+type PkiIssuerKind string
+
+// PkiIssuerOrigin defines model for PkiIssuer.Origin.
+type PkiIssuerOrigin string
+
+// PkiIssuerState defines model for PkiIssuer.State.
+type PkiIssuerState string
+
+// PkiIssuerCreateRequest defines model for PkiIssuerCreateRequest.
+type PkiIssuerCreateRequest struct {
+	CertificatePem     *string                             `json:"certificate_pem,omitempty"`
+	ChainPem           *string                             `json:"chain_pem,omitempty"`
+	CommonName         *string                             `json:"common_name,omitempty"`
+	CrlDistributionUrl *string                             `json:"crl_distribution_url,omitempty"`
+	KeyAlgorithm       *PkiIssuerCreateRequestKeyAlgorithm `json:"key_algorithm,omitempty"`
+	Mode               PkiIssuerCreateRequestMode          `json:"mode"`
+
+	// Name An issuer or profile name.
+	Name         PkiName `json:"name"`
+	Organization *string `json:"organization,omitempty"`
+
+	// Parent An issuer or profile name.
+	Parent *PkiName `json:"parent,omitempty"`
+
+	// PrivateKeyPem Import only. Protected input, sealed on arrival and never returned.
+	PrivateKeyPem *string `json:"private_key_pem,omitempty"`
+	TtlSeconds    *int64  `json:"ttl_seconds,omitempty"`
+}
+
+// PkiIssuerCreateRequestKeyAlgorithm defines model for PkiIssuerCreateRequest.KeyAlgorithm.
+type PkiIssuerCreateRequestKeyAlgorithm string
+
+// PkiIssuerCreateRequestMode defines model for PkiIssuerCreateRequest.Mode.
+type PkiIssuerCreateRequestMode string
+
+// PkiIssuerInstallRequest defines model for PkiIssuerInstallRequest.
+type PkiIssuerInstallRequest struct {
+	CertificatePem string `json:"certificate_pem"`
+
+	// ChainPem The signing chain, ending with the offline root.
+	ChainPem string `json:"chain_pem"`
+}
+
+// PkiIssuerList defines model for PkiIssuerList.
+type PkiIssuerList struct {
+	Issuers []PkiIssuer `json:"issuers"`
+}
+
+// PkiIssuerRotateRequest defines model for PkiIssuerRotateRequest.
+type PkiIssuerRotateRequest struct {
+	CertificatePem     *string                             `json:"certificate_pem,omitempty"`
+	ChainPem           *string                             `json:"chain_pem,omitempty"`
+	CrlDistributionUrl *string                             `json:"crl_distribution_url,omitempty"`
+	KeyAlgorithm       *PkiIssuerRotateRequestKeyAlgorithm `json:"key_algorithm,omitempty"`
+
+	// PrivateKeyPem Imported issuers only. Protected input, sealed on arrival and never returned.
+	PrivateKeyPem *string `json:"private_key_pem,omitempty"`
+	TtlSeconds    *int64  `json:"ttl_seconds,omitempty"`
+}
+
+// PkiIssuerRotateRequestKeyAlgorithm defines model for PkiIssuerRotateRequest.KeyAlgorithm.
+type PkiIssuerRotateRequestKeyAlgorithm string
+
+// PkiName An issuer or profile name.
+type PkiName = string
+
+// PkiPolicy A closed issuance policy. Name patterns are exact names, `*.suffix`
+// (one leftmost label), CIDRs, or exact URIs and `prefix/*`; never
+// regular expressions, so narrowing is decidable.
+type PkiPolicy struct {
+	AllowCsr           bool                     `json:"allow_csr"`
+	AllowGeneratedKey  bool                     `json:"allow_generated_key"`
+	AllowWildcardNames bool                     `json:"allow_wildcard_names"`
+	AllowedIssuers     []PkiName                `json:"allowed_issuers"`
+	DefaultTtlSeconds  int64                    `json:"default_ttl_seconds"`
+	DnsPatterns        []string                 `json:"dns_patterns"`
+	ExtKeyUsages       []PkiPolicyExtKeyUsages  `json:"ext_key_usages"`
+	IpRanges           []string                 `json:"ip_ranges"`
+	KeyAlgorithms      []PkiPolicyKeyAlgorithms `json:"key_algorithms"`
+	KeyUsages          []PkiPolicyKeyUsages     `json:"key_usages"`
+	MachineIssuance    bool                     `json:"machine_issuance"`
+	MaxTtlSeconds      int64                    `json:"max_ttl_seconds"`
+	Organization       string                   `json:"organization"`
+	RenewWindowSeconds int64                    `json:"renew_window_seconds"`
+	UriPatterns        []string                 `json:"uri_patterns"`
+}
+
+// PkiPolicyExtKeyUsages defines model for PkiPolicy.ExtKeyUsages.
+type PkiPolicyExtKeyUsages string
+
+// PkiPolicyKeyAlgorithms defines model for PkiPolicy.KeyAlgorithms.
+type PkiPolicyKeyAlgorithms string
+
+// PkiPolicyKeyUsages defines model for PkiPolicy.KeyUsages.
+type PkiPolicyKeyUsages string
+
+// PkiProfile defines model for PkiProfile.
+type PkiProfile struct {
+	Bindings  []PkiProfileBinding `json:"bindings"`
+	CreatedAt time.Time           `json:"created_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// Name An issuer or profile name.
+	Name PkiName `json:"name"`
+
+	// Policy A closed issuance policy. Name patterns are exact names, `*.suffix`
+	// (one leftmost label), CIDRs, or exact URIs and `prefix/*`; never
+	// regular expressions, so narrowing is decidable.
+	Policy     PkiPolicy `json:"policy"`
+	RowVersion int64     `json:"row_version"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// PkiProfileBindRequest defines model for PkiProfileBindRequest.
+type PkiProfileBindRequest struct {
+	EnvironmentId *string `json:"environment_id,omitempty"`
+	OrgId         string  `json:"org_id"`
+	ProjectId     string  `json:"project_id"`
+}
+
+// PkiProfileBinding defines model for PkiProfileBinding.
+type PkiProfileBinding struct {
+	CreatedAt     time.Time `json:"created_at"`
+	EnvironmentId *string   `json:"environment_id,omitempty"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id        ID     `json:"id"`
+	OrgId     string `json:"org_id"`
+	ProjectId string `json:"project_id"`
+}
+
+// PkiProfileCreateRequest defines model for PkiProfileCreateRequest.
+type PkiProfileCreateRequest struct {
+	// Name An issuer or profile name.
+	Name PkiName `json:"name"`
+
+	// Policy A closed issuance policy. Name patterns are exact names, `*.suffix`
+	// (one leftmost label), CIDRs, or exact URIs and `prefix/*`; never
+	// regular expressions, so narrowing is decidable.
+	Policy PkiPolicy `json:"policy"`
+}
+
+// PkiProfileList defines model for PkiProfileList.
+type PkiProfileList struct {
+	Profiles []PkiProfile `json:"profiles"`
+}
+
+// PkiProfileUpdateRequest defines model for PkiProfileUpdateRequest.
+type PkiProfileUpdateRequest struct {
+	// Policy A closed issuance policy. Name patterns are exact names, `*.suffix`
+	// (one leftmost label), CIDRs, or exact URIs and `prefix/*`; never
+	// regular expressions, so narrowing is decidable.
+	Policy PkiPolicy `json:"policy"`
+
+	// RowVersion The version the operator reviewed; a concurrent edit is refused.
+	RowVersion *int64 `json:"row_version,omitempty"`
+}
+
 // Principal defines model for Principal.
 type Principal struct {
 	// DisplayName For display only. Never a linking key, at any point, for any provider.
@@ -7520,10 +8632,12 @@ type ResumeAdapterOriginMoveRequest struct {
 
 // ResumeAdapterTargetMoveRequest defines model for ResumeAdapterTargetMoveRequest.
 type ResumeAdapterTargetMoveRequest struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
 	EnvironmentId         ID      `json:"environment_id"`
@@ -7567,7 +8681,13 @@ type RetentionHealth struct {
 	LastPruneSuccess *time.Time              `json:"last_prune_success"`
 
 	// PeakProjectBytes Largest per-project stored payload across the instance, in bytes (ciphertext of value cells plus published snapshot entries). The per-project storage high-water surface.
-	PeakProjectBytes  int                              `json:"peak_project_bytes"`
+	PeakProjectBytes int `json:"peak_project_bytes"`
+
+	// PkiCertificatesUnknown Private-PKI certificates in the uncertain unknown state, published on the CRL as revoked (#154). Absent when not measured.
+	PkiCertificatesUnknown *int `json:"pki_certificates_unknown,omitempty"`
+
+	// PkiIssuersOnHold Private-PKI issuer versions held after a restore until reconciled (#154). Absent when not measured.
+	PkiIssuersOnHold  *int                             `json:"pki_issuers_on_hold,omitempty"`
 	Stale             bool                             `json:"stale"`
 	StaleAfterSeconds RetentionHealthStaleAfterSeconds `json:"stale_after_seconds"`
 
@@ -8873,6 +9993,208 @@ type TotpStatus struct {
 	Pending bool `json:"pending"`
 }
 
+// TransitAlgorithm defines model for TransitAlgorithm.
+type TransitAlgorithm string
+
+// TransitCaller defines model for TransitCaller.
+type TransitCaller struct {
+	Operations []TransitOperation `json:"operations"`
+
+	// PrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	PrincipalId ID `json:"principal_id"`
+}
+
+// TransitCiphertextResult defines model for TransitCiphertextResult.
+type TransitCiphertextResult struct {
+	Ciphertext string `json:"ciphertext"`
+	KeyVersion int64  `json:"key_version"`
+}
+
+// TransitCustody defines model for TransitCustody.
+type TransitCustody string
+
+// TransitDataKeyRequest defines model for TransitDataKeyRequest.
+type TransitDataKeyRequest struct {
+	Bits *TransitDataKeyRequestBits `json:"bits,omitempty"`
+
+	// Context Standard base64.
+	Context *string `json:"context,omitempty"`
+
+	// Plaintext Also return the data key in plaintext; requires datakey-plaintext.
+	Plaintext *bool `json:"plaintext,omitempty"`
+}
+
+// TransitDataKeyRequestBits defines model for TransitDataKeyRequest.Bits.
+type TransitDataKeyRequestBits int
+
+// TransitDataKeyResult defines model for TransitDataKeyResult.
+type TransitDataKeyResult struct {
+	Ciphertext string `json:"ciphertext"`
+	KeyVersion int64  `json:"key_version"`
+
+	// Plaintext Standard base64 data key when requested. Display-once.
+	Plaintext *string `json:"plaintext,omitempty"`
+}
+
+// TransitDecryptRequest defines model for TransitDecryptRequest.
+type TransitDecryptRequest struct {
+	// Ciphertext A transit ciphertext, `hikyo:v<version>:<base64url>`.
+	Ciphertext string `json:"ciphertext"`
+
+	// Context Standard base64.
+	Context *string `json:"context,omitempty"`
+}
+
+// TransitDecryptResult defines model for TransitDecryptResult.
+type TransitDecryptResult struct {
+	KeyVersion int64 `json:"key_version"`
+
+	// Plaintext Standard base64. Display-once; never stored or logged.
+	Plaintext string `json:"plaintext"`
+}
+
+// TransitEncryptRequest defines model for TransitEncryptRequest.
+type TransitEncryptRequest struct {
+	// Context Standard base64.
+	Context    *string `json:"context,omitempty"`
+	KeyVersion *int64  `json:"key_version,omitempty"`
+
+	// Plaintext Standard base64.
+	Plaintext string `json:"plaintext"`
+}
+
+// TransitHMACRequest defines model for TransitHMACRequest.
+type TransitHMACRequest struct {
+	KeyVersion *int64 `json:"key_version,omitempty"`
+
+	// Message Standard base64.
+	Message string `json:"message"`
+}
+
+// TransitHMACResult defines model for TransitHMACResult.
+type TransitHMACResult struct {
+	KeyVersion int64  `json:"key_version"`
+	Mac        string `json:"mac"`
+}
+
+// TransitHMACVerifyRequest defines model for TransitHMACVerifyRequest.
+type TransitHMACVerifyRequest struct {
+	Mac string `json:"mac"`
+
+	// Message Standard base64.
+	Message string `json:"message"`
+}
+
+// TransitKey defines model for TransitKey.
+type TransitKey struct {
+	Algorithm         TransitAlgorithm   `json:"algorithm"`
+	AllowedOperations []TransitOperation `json:"allowed_operations"`
+	Callers           []TransitCaller    `json:"callers"`
+
+	// CompromisedThroughVersion Versions at or below this are compromised; zero means none.
+	CompromisedThroughVersion int64 `json:"compromised_through_version"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt     Timestamp      `json:"created_at"`
+	CreatedBy     string         `json:"created_by"`
+	Custody       TransitCustody `json:"custody"`
+	DeletionAfter *time.Time     `json:"deletion_after,omitempty"`
+
+	// EnvironmentId A prefixed UUIDv7, e.g. `org_0198…`.
+	EnvironmentId ID `json:"environment_id"`
+
+	// Exportable Always false; key material never leaves custody.
+	Exportable bool `json:"exportable"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id                    ID              `json:"id"`
+	LatestVersion         int64           `json:"latest_version"`
+	MinDecryptVersion     int64           `json:"min_decrypt_version"`
+	MinEncryptVersion     int64           `json:"min_encrypt_version"`
+	Name                  TransitKeyName  `json:"name"`
+	RotationDue           bool            `json:"rotation_due"`
+	RotationPeriodSeconds int64           `json:"rotation_period_seconds"`
+	State                 TransitKeyState `json:"state"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp           `json:"updated_at"`
+	Versions  []TransitKeyVersion `json:"versions"`
+}
+
+// TransitKeyList defines model for TransitKeyList.
+type TransitKeyList struct {
+	Items []TransitKey `json:"items"`
+}
+
+// TransitKeyName defines model for TransitKeyName.
+type TransitKeyName = string
+
+// TransitKeyState defines model for TransitKeyState.
+type TransitKeyState string
+
+// TransitKeyVersion defines model for TransitKeyVersion.
+type TransitKeyVersion struct {
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// Material Where the version's material lives. The material itself is never returned.
+	Material TransitKeyVersionMaterial `json:"material"`
+
+	// PublicKey The Ed25519 public key (standard base64) for signing keys; public metadata.
+	PublicKey *string `json:"public_key,omitempty"`
+	Version   int64   `json:"version"`
+}
+
+// TransitKeyVersionMaterial Where the version's material lives. The material itself is never returned.
+type TransitKeyVersionMaterial string
+
+// TransitLifecycleRequest defines model for TransitLifecycleRequest.
+type TransitLifecycleRequest struct {
+	Action TransitLifecycleRequestAction `json:"action"`
+
+	// DelaySeconds schedule-deletion only; between one and ninety days, seven by default.
+	DelaySeconds *int64 `json:"delay_seconds,omitempty"`
+}
+
+// TransitLifecycleRequestAction defines model for TransitLifecycleRequest.Action.
+type TransitLifecycleRequestAction string
+
+// TransitOperation defines model for TransitOperation.
+type TransitOperation string
+
+// TransitSignRequest defines model for TransitSignRequest.
+type TransitSignRequest struct {
+	KeyVersion *int64 `json:"key_version,omitempty"`
+
+	// Message Standard base64.
+	Message string `json:"message"`
+}
+
+// TransitSignatureResult defines model for TransitSignatureResult.
+type TransitSignatureResult struct {
+	KeyVersion int64  `json:"key_version"`
+	Signature  string `json:"signature"`
+}
+
+// TransitTrimResult defines model for TransitTrimResult.
+type TransitTrimResult struct {
+	Key             TransitKey `json:"key"`
+	VersionsDeleted int64      `json:"versions_deleted"`
+}
+
+// TransitVerifyRequest defines model for TransitVerifyRequest.
+type TransitVerifyRequest struct {
+	// Message Standard base64.
+	Message   string `json:"message"`
+	Signature string `json:"signature"`
+}
+
+// TransitVerifyResult defines model for TransitVerifyResult.
+type TransitVerifyResult struct {
+	KeyVersion int64 `json:"key_version"`
+	Valid      bool  `json:"valid"`
+}
+
 // UnheldGrantReach Where the caller may grant `report-delivery-status`. No human holds that atom, so every grant of it is an unheld grant, which only `manage-members` at instance or organisation scope may make. The machine-access grant dialog offers the atom only inside this reach.
 type UnheldGrantReach struct {
 	// Instance The caller holds `manage-members` at instance scope, which reaches every organisation.
@@ -8899,10 +10221,12 @@ type UpdateAdapterOriginRequest struct {
 
 // UpdateAdapterTargetRequest defines model for UpdateAdapterTargetRequest.
 type UpdateAdapterTargetRequest struct {
-	DestinationEnvironment string                 `json:"destination_environment"`
-	DestinationKind        AdapterDestinationKind `json:"destination_kind"`
-	DestinationName        string                 `json:"destination_name"`
-	DestinationOwner       string                 `json:"destination_owner"`
+	DestinationEnvironment string `json:"destination_environment"`
+
+	// DestinationKind repository, organization, and environment are CI destinations. workers-script and pages-project are Cloudflare destinations: the owner is the account id, the name is the script or project, and Pages targets select exactly one environment (preview or production). json-object writes one AWS Secrets Manager JSON secret; per-key writes one per key.
+	DestinationKind  AdapterDestinationKind `json:"destination_kind"`
+	DestinationName  string                 `json:"destination_name"`
+	DestinationOwner string                 `json:"destination_owner"`
 
 	// DestinationScope GitLab environment_scope (default `*`). Empty for other providers. Immutable once a target exists; remove and re-add the target to change it.
 	DestinationScope *string `json:"destination_scope,omitempty"`
@@ -8925,13 +10249,13 @@ type UpdateAdapterTargetRequest struct {
 	NamePrefix            string               `json:"name_prefix"`
 	SelectedRepositoryIds []int64              `json:"selected_repository_ids"`
 
-	// VariableExpand GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
+	// VariableExpand GitLab only. Allow `$VAR` expansion inside values. Omission preserves the current value.
 	VariableExpand *bool `json:"variable_expand,omitempty"`
 
-	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
+	// VariableHidden GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab. Omission preserves the current value.
 	VariableHidden *bool `json:"variable_hidden,omitempty"`
 
-	// VariableProtected GitLab only. Deliver managed variables as protected (protected branches and tags only).
+	// VariableProtected GitLab only. Deliver managed variables as protected (protected branches and tags only). Omission preserves the current value.
 	VariableProtected *bool                                `json:"variable_protected,omitempty"`
 	Visibility        UpdateAdapterTargetRequestVisibility `json:"visibility"`
 }
@@ -9472,6 +10796,9 @@ type AuditTo = time.Time
 // AuditToSeq defines model for AuditToSeq.
 type AuditToSeq = int64
 
+// CertificateID A prefixed UUIDv7, e.g. `org_0198…`.
+type CertificateID = ID
+
 // ChallengeId A prefixed UUIDv7, e.g. `org_0198…`.
 type ChallengeId = ID
 
@@ -9534,6 +10861,18 @@ type LeaseID = ID
 
 // OrgID A prefixed UUIDv7, e.g. `org_0198…`.
 type OrgID = ID
+
+// PkiBindingID A prefixed UUIDv7, e.g. `org_0198…`.
+type PkiBindingID = ID
+
+// PkiIssuerName An issuer or profile name.
+type PkiIssuerName = PkiName
+
+// PkiIssuerVersion defines model for PkiIssuerVersion.
+type PkiIssuerVersion = int64
+
+// PkiProfileName An issuer or profile name.
+type PkiProfileName = PkiName
 
 // ProjectID A prefixed UUIDv7, e.g. `org_0198…`.
 type ProjectID = ID
@@ -10383,6 +11722,24 @@ type InviteInstanceMemberJSONRequestBody = InviteMemberRequest
 // PutOidcProviderJSONRequestBody defines body for PutOidcProvider for application/json ContentType.
 type PutOidcProviderJSONRequestBody = OidcProviderInput
 
+// CreatePkiIssuerJSONRequestBody defines body for CreatePkiIssuer for application/json ContentType.
+type CreatePkiIssuerJSONRequestBody = PkiIssuerCreateRequest
+
+// InstallPkiIssuerCertificateJSONRequestBody defines body for InstallPkiIssuerCertificate for application/json ContentType.
+type InstallPkiIssuerCertificateJSONRequestBody = PkiIssuerInstallRequest
+
+// RotatePkiIssuerJSONRequestBody defines body for RotatePkiIssuer for application/json ContentType.
+type RotatePkiIssuerJSONRequestBody = PkiIssuerRotateRequest
+
+// CreatePkiProfileJSONRequestBody defines body for CreatePkiProfile for application/json ContentType.
+type CreatePkiProfileJSONRequestBody = PkiProfileCreateRequest
+
+// UpdatePkiProfileJSONRequestBody defines body for UpdatePkiProfile for application/json ContentType.
+type UpdatePkiProfileJSONRequestBody = PkiProfileUpdateRequest
+
+// BindPkiProfileJSONRequestBody defines body for BindPkiProfile for application/json ContentType.
+type BindPkiProfileJSONRequestBody = PkiProfileBindRequest
+
 // DeleteInstanceRegistrationPolicyJSONRequestBody defines body for DeleteInstanceRegistrationPolicy for application/json ContentType.
 type DeleteInstanceRegistrationPolicyJSONRequestBody = RegistrationPolicyDeleteRequest
 
@@ -10443,6 +11800,12 @@ type CreateProjectJSONRequestBody = CreateProjectRequest
 // RenameProjectJSONRequestBody defines body for RenameProject for application/json ContentType.
 type RenameProjectJSONRequestBody = RenameRequest
 
+// CreateAccessPolicyJSONRequestBody defines body for CreateAccessPolicy for application/json ContentType.
+type CreateAccessPolicyJSONRequestBody = AccessPolicyInput
+
+// UpdateAccessPolicyJSONRequestBody defines body for UpdateAccessPolicy for application/json ContentType.
+type UpdateAccessPolicyJSONRequestBody = AccessPolicyInput
+
 // ResumeAdapterMoveJSONRequestBody defines body for ResumeAdapterMove for application/json ContentType.
 type ResumeAdapterMoveJSONRequestBody = ResumeAdapterMoveRequest
 
@@ -10500,8 +11863,23 @@ type ReorderEnvironmentsJSONRequestBody = EnvironmentOrderRequest
 // RenameEnvironmentJSONRequestBody defines body for RenameEnvironment for application/json ContentType.
 type RenameEnvironmentJSONRequestBody = RenameRequest
 
+// CreateAccessRequestJSONRequestBody defines body for CreateAccessRequest for application/json ContentType.
+type CreateAccessRequestJSONRequestBody = AccessRequestInput
+
+// EmergencyAccessJSONRequestBody defines body for EmergencyAccess for application/json ContentType.
+type EmergencyAccessJSONRequestBody = EmergencyAccessInput
+
+// VoteAccessRequestJSONRequestBody defines body for VoteAccessRequest for application/json ContentType.
+type VoteAccessRequestJSONRequestBody = AccessVoteRequest
+
 // VoteApprovalRequestJSONRequestBody defines body for VoteApprovalRequest for application/json ContentType.
 type VoteApprovalRequestJSONRequestBody = ApprovalVoteRequest
+
+// IssueCertificateJSONRequestBody defines body for IssueCertificate for application/json ContentType.
+type IssueCertificateJSONRequestBody = CertificateIssueRequest
+
+// RevokeCertificateJSONRequestBody defines body for RevokeCertificate for application/json ContentType.
+type RevokeCertificateJSONRequestBody = CertificateRevokeRequest
 
 // ReportDeliveryTargetJSONRequestBody defines body for ReportDeliveryTarget for application/json ContentType.
 type ReportDeliveryTargetJSONRequestBody = DeliveryTargetReportRequest
@@ -10559,6 +11937,39 @@ type CreateSshProfileJSONRequestBody = SSHProfileRequest
 
 // UpdateSshProfileJSONRequestBody defines body for UpdateSshProfile for application/json ContentType.
 type UpdateSshProfileJSONRequestBody = SSHProfileRequest
+
+// CreateTransitKeyJSONRequestBody defines body for CreateTransitKey for application/json ContentType.
+type CreateTransitKeyJSONRequestBody = CreateTransitKeyRequest
+
+// ConfigureTransitKeyJSONRequestBody defines body for ConfigureTransitKey for application/json ContentType.
+type ConfigureTransitKeyJSONRequestBody = ConfigureTransitKeyRequest
+
+// TransitDataKeyJSONRequestBody defines body for TransitDataKey for application/json ContentType.
+type TransitDataKeyJSONRequestBody = TransitDataKeyRequest
+
+// TransitDecryptJSONRequestBody defines body for TransitDecrypt for application/json ContentType.
+type TransitDecryptJSONRequestBody = TransitDecryptRequest
+
+// TransitEncryptJSONRequestBody defines body for TransitEncrypt for application/json ContentType.
+type TransitEncryptJSONRequestBody = TransitEncryptRequest
+
+// TransitHMACJSONRequestBody defines body for TransitHMAC for application/json ContentType.
+type TransitHMACJSONRequestBody = TransitHMACRequest
+
+// TransitVerifyHMACJSONRequestBody defines body for TransitVerifyHMAC for application/json ContentType.
+type TransitVerifyHMACJSONRequestBody = TransitHMACVerifyRequest
+
+// ChangeTransitKeyStateJSONRequestBody defines body for ChangeTransitKeyState for application/json ContentType.
+type ChangeTransitKeyStateJSONRequestBody = TransitLifecycleRequest
+
+// TransitRewrapJSONRequestBody defines body for TransitRewrap for application/json ContentType.
+type TransitRewrapJSONRequestBody = TransitDecryptRequest
+
+// TransitSignJSONRequestBody defines body for TransitSign for application/json ContentType.
+type TransitSignJSONRequestBody = TransitSignRequest
+
+// TransitVerifyJSONRequestBody defines body for TransitVerify for application/json ContentType.
+type TransitVerifyJSONRequestBody = TransitVerifyRequest
 
 // ExportValuesJSONRequestBody defines body for ExportValues for application/json ContentType.
 type ExportValuesJSONRequestBody = ExportValuesRequest
@@ -11169,6 +12580,57 @@ type ServerInterface interface {
 	// PutOidcProvider Create or reconfigure an OIDC provider.
 	// (PUT /api/v1/instance/oidc-providers/{slug})
 	PutOidcProvider(w http.ResponseWriter, r *http.Request, slug ProviderSlugPath)
+	// ListPkiIssuers List every CA issuer version; public material only.
+	// (GET /api/v1/instance/pki/issuers)
+	ListPkiIssuers(w http.ResponseWriter, r *http.Request)
+	// CreatePkiIssuer Create a CA issuer: evaluation root, Hikyo-signed or offline-signed intermediate, or imported CA.
+	// (POST /api/v1/instance/pki/issuers)
+	CreatePkiIssuer(w http.ResponseWriter, r *http.Request)
+	// ShowPkiIssuer Show every version of one issuer.
+	// (GET /api/v1/instance/pki/issuers/{issuer})
+	ShowPkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName)
+	// InstallPkiIssuerCertificate Activate a pending version with its offline-signed certificate.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/install)
+	InstallPkiIssuerCertificate(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName)
+	// ReleasePkiIssuerHold Lift the post-restore hold on an issuer.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/release-hold)
+	ReleasePkiIssuerHold(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName)
+	// RotatePkiIssuer Create the next key version of an issuer (overlap rotation).
+	// (POST /api/v1/instance/pki/issuers/{issuer}/rotate)
+	RotatePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName)
+	// GetPkiIssuerCrl Read the CRL a version last published.
+	// (GET /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl)
+	GetPkiIssuerCrl(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion)
+	// PublishPkiIssuerCrl Sign and publish a fresh CRL for a version now.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl)
+	PublishPkiIssuerCrl(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion)
+	// RetirePkiIssuer Retire a version with no live certificates; its key is destroyed.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire)
+	RetirePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion)
+	// RevokePkiIssuer Revoke a compromised version: key destroyed, live certificates revoked.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke)
+	RevokePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion)
+	// ListPkiProfiles List certificate profiles with their bindings.
+	// (GET /api/v1/instance/pki/profiles)
+	ListPkiProfiles(w http.ResponseWriter, r *http.Request)
+	// CreatePkiProfile Create a certificate profile.
+	// (POST /api/v1/instance/pki/profiles)
+	CreatePkiProfile(w http.ResponseWriter, r *http.Request)
+	// DeletePkiProfile Delete a profile and its bindings.
+	// (DELETE /api/v1/instance/pki/profiles/{profile})
+	DeletePkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName)
+	// ShowPkiProfile Show one certificate profile.
+	// (GET /api/v1/instance/pki/profiles/{profile})
+	ShowPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName)
+	// UpdatePkiProfile Replace a profile policy with a provable narrowing.
+	// (PUT /api/v1/instance/pki/profiles/{profile})
+	UpdatePkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName)
+	// BindPkiProfile Bind a profile to a project or one of its environments.
+	// (POST /api/v1/instance/pki/profiles/{profile}/bindings)
+	BindPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName)
+	// UnbindPkiProfile Remove one binding of a profile.
+	// (DELETE /api/v1/instance/pki/profiles/{profile}/bindings/{binding})
+	UnbindPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName, binding PkiBindingID)
 	// ReencryptInstance Walk the instance credential ciphertext onto the active DEK version.
 	// (POST /api/v1/instance/reencrypt)
 	ReencryptInstance(w http.ResponseWriter, r *http.Request)
@@ -11331,6 +12793,18 @@ type ServerInterface interface {
 	// RenameProject Rename a project.
 	// (PATCH /api/v1/orgs/{org}/projects/{project})
 	RenameProject(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// ListAccessPolicies The project's temporary-access policies.
+	// (GET /api/v1/orgs/{org}/projects/{project}/access-policies)
+	ListAccessPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// CreateAccessPolicy Create a temporary-access policy.
+	// (POST /api/v1/orgs/{org}/projects/{project}/access-policies)
+	CreateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID)
+	// DeleteAccessPolicy Delete a temporary-access policy.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+	DeleteAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID)
+	// UpdateAccessPolicy Update a temporary-access policy.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+	UpdateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID)
 	// CancelAdapterMove Cancel an attention-required move and reconverge the old route.
 	// (DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move})
 	CancelAdapterMove(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, move ID)
@@ -11472,6 +12946,24 @@ type ServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ListAccessRequests The environment's temporary-access requests.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+	ListAccessRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CreateAccessRequest Request temporary access.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+	CreateAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// EmergencyAccess Take emergency temporary access.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency)
+	EmergencyAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CancelAccessRequest Withdraw an open temporary-access request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel)
+	CancelAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID)
+	// RevokeAccessRequest End granted temporary access early.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke)
+	RevokeAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID)
+	// VoteAccessRequest Approve or reject a temporary-access request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote)
+	VoteAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID)
 	// ListApprovalRequests The environment's change-approval requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
 	ListApprovalRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -11487,6 +12979,27 @@ type ServerInterface interface {
 	// ExportEnvAudit Stream the environment's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export)
 	ExportEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ExportEnvAuditParams)
+	// ListCertificateProfiles List the certificate profiles bound to this environment.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles)
+	ListCertificateProfiles(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ListCertificates List an environment's certificates: metadata and public certificates only.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates)
+	ListCertificates(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// IssueCertificate Issue a certificate through a bound profile; a generated key is disclosed exactly once.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates)
+	IssueCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ShowCertificate Show one certificate.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate})
+	ShowCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID)
+	// GetCertificateCrl Read the CRL published by the certificate's issuer version.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl)
+	GetCertificateCrl(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID)
+	// RenewCertificate Renew a certificate inside its renewal window, reusing its public key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew)
+	RenewCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID)
+	// RevokeCertificate Revoke a certificate; revoking a revoked certificate returns it unchanged.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke)
+	RevokeCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID)
 	// FetchDelivery Fetch the authorized projection, conditionally.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 	FetchDelivery(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params FetchDeliveryParams)
@@ -11628,6 +13141,51 @@ type ServerInterface interface {
 	// UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
 	UpdateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID)
+	// ListTransitKeys List the environment's transit keys (metadata only, never material).
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+	ListTransitKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CreateTransitKey Create a named transit key with its first version.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+	CreateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ShowTransitKey Show one transit key with its versions and caller entries.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+	ShowTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// ConfigureTransitKey Change a key's version window, rotation period or caller entries.
+	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+	ConfigureTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitDataKey Generate a data key, wrapped under the key and optionally in plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey)
+	TransitDataKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitDecrypt Decrypt a transit ciphertext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt)
+	TransitDecrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitEncrypt Encrypt plaintext under the key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt)
+	TransitEncrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitHMAC Compute an HMAC-SHA256 over a message.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac)
+	TransitHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitVerifyHMAC Verify an HMAC-SHA256 in constant time.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify)
+	TransitVerifyHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// ChangeTransitKeyState Disable, enable, retire, compromise, schedule or cancel deletion.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle)
+	ChangeTransitKeyState(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitRewrap Move a ciphertext onto the latest key version without returning plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap)
+	TransitRewrap(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// RotateTransitKey Append a new key version; new output uses it.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate)
+	RotateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitSign Sign a message with an Ed25519 key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
+	TransitSign(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TrimTransitKey Permanently delete versions below min_decrypt_version.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim)
+	TrimTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
+	// TransitVerify Verify an Ed25519 signature.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
+	TransitVerify(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName)
 	// ListValues The environment's resolved values.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values)
 	ListValues(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -12306,6 +13864,108 @@ func (_ Unimplemented) PutOidcProvider(w http.ResponseWriter, r *http.Request, s
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListPkiIssuers List every CA issuer version; public material only.
+// (GET /api/v1/instance/pki/issuers)
+func (_ Unimplemented) ListPkiIssuers(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreatePkiIssuer Create a CA issuer: evaluation root, Hikyo-signed or offline-signed intermediate, or imported CA.
+// (POST /api/v1/instance/pki/issuers)
+func (_ Unimplemented) CreatePkiIssuer(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowPkiIssuer Show every version of one issuer.
+// (GET /api/v1/instance/pki/issuers/{issuer})
+func (_ Unimplemented) ShowPkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// InstallPkiIssuerCertificate Activate a pending version with its offline-signed certificate.
+// (POST /api/v1/instance/pki/issuers/{issuer}/install)
+func (_ Unimplemented) InstallPkiIssuerCertificate(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReleasePkiIssuerHold Lift the post-restore hold on an issuer.
+// (POST /api/v1/instance/pki/issuers/{issuer}/release-hold)
+func (_ Unimplemented) ReleasePkiIssuerHold(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RotatePkiIssuer Create the next key version of an issuer (overlap rotation).
+// (POST /api/v1/instance/pki/issuers/{issuer}/rotate)
+func (_ Unimplemented) RotatePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetPkiIssuerCrl Read the CRL a version last published.
+// (GET /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl)
+func (_ Unimplemented) GetPkiIssuerCrl(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// PublishPkiIssuerCrl Sign and publish a fresh CRL for a version now.
+// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl)
+func (_ Unimplemented) PublishPkiIssuerCrl(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RetirePkiIssuer Retire a version with no live certificates; its key is destroyed.
+// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire)
+func (_ Unimplemented) RetirePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokePkiIssuer Revoke a compromised version: key destroyed, live certificates revoked.
+// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke)
+func (_ Unimplemented) RevokePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListPkiProfiles List certificate profiles with their bindings.
+// (GET /api/v1/instance/pki/profiles)
+func (_ Unimplemented) ListPkiProfiles(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreatePkiProfile Create a certificate profile.
+// (POST /api/v1/instance/pki/profiles)
+func (_ Unimplemented) CreatePkiProfile(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeletePkiProfile Delete a profile and its bindings.
+// (DELETE /api/v1/instance/pki/profiles/{profile})
+func (_ Unimplemented) DeletePkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowPkiProfile Show one certificate profile.
+// (GET /api/v1/instance/pki/profiles/{profile})
+func (_ Unimplemented) ShowPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdatePkiProfile Replace a profile policy with a provable narrowing.
+// (PUT /api/v1/instance/pki/profiles/{profile})
+func (_ Unimplemented) UpdatePkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// BindPkiProfile Bind a profile to a project or one of its environments.
+// (POST /api/v1/instance/pki/profiles/{profile}/bindings)
+func (_ Unimplemented) BindPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UnbindPkiProfile Remove one binding of a profile.
+// (DELETE /api/v1/instance/pki/profiles/{profile}/bindings/{binding})
+func (_ Unimplemented) UnbindPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName, binding PkiBindingID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ReencryptInstance Walk the instance credential ciphertext onto the active DEK version.
 // (POST /api/v1/instance/reencrypt)
 func (_ Unimplemented) ReencryptInstance(w http.ResponseWriter, r *http.Request) {
@@ -12630,6 +14290,30 @@ func (_ Unimplemented) RenameProject(w http.ResponseWriter, r *http.Request, org
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListAccessPolicies The project's temporary-access policies.
+// (GET /api/v1/orgs/{org}/projects/{project}/access-policies)
+func (_ Unimplemented) ListAccessPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateAccessPolicy Create a temporary-access policy.
+// (POST /api/v1/orgs/{org}/projects/{project}/access-policies)
+func (_ Unimplemented) CreateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteAccessPolicy Delete a temporary-access policy.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+func (_ Unimplemented) DeleteAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateAccessPolicy Update a temporary-access policy.
+// (PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+func (_ Unimplemented) UpdateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // CancelAdapterMove Cancel an attention-required move and reconverge the old route.
 // (DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move})
 func (_ Unimplemented) CancelAdapterMove(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, move ID) {
@@ -12912,6 +14596,42 @@ func (_ Unimplemented) RenameEnvironment(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ListAccessRequests The environment's temporary-access requests.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+func (_ Unimplemented) ListAccessRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateAccessRequest Request temporary access.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+func (_ Unimplemented) CreateAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// EmergencyAccess Take emergency temporary access.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency)
+func (_ Unimplemented) EmergencyAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CancelAccessRequest Withdraw an open temporary-access request.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel)
+func (_ Unimplemented) CancelAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeAccessRequest End granted temporary access early.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke)
+func (_ Unimplemented) RevokeAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// VoteAccessRequest Approve or reject a temporary-access request.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote)
+func (_ Unimplemented) VoteAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ListApprovalRequests The environment's change-approval requests.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
 func (_ Unimplemented) ListApprovalRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
@@ -12939,6 +14659,48 @@ func (_ Unimplemented) QueryEnvAudit(w http.ResponseWriter, r *http.Request, org
 // ExportEnvAudit Stream the environment's audit trail as JSONL.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export)
 func (_ Unimplemented) ExportEnvAudit(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, params ExportEnvAuditParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListCertificateProfiles List the certificate profiles bound to this environment.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles)
+func (_ Unimplemented) ListCertificateProfiles(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListCertificates List an environment's certificates: metadata and public certificates only.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates)
+func (_ Unimplemented) ListCertificates(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// IssueCertificate Issue a certificate through a bound profile; a generated key is disclosed exactly once.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates)
+func (_ Unimplemented) IssueCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowCertificate Show one certificate.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate})
+func (_ Unimplemented) ShowCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetCertificateCrl Read the CRL published by the certificate's issuer version.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl)
+func (_ Unimplemented) GetCertificateCrl(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RenewCertificate Renew a certificate inside its renewal window, reusing its public key.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew)
+func (_ Unimplemented) RenewCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeCertificate Revoke a certificate; revoking a revoked certificate returns it unchanged.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke)
+func (_ Unimplemented) RevokeCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -13221,6 +14983,96 @@ func (_ Unimplemented) ShowSshProfile(w http.ResponseWriter, r *http.Request, or
 // UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
 // (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
 func (_ Unimplemented) UpdateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListTransitKeys List the environment's transit keys (metadata only, never material).
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+func (_ Unimplemented) ListTransitKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateTransitKey Create a named transit key with its first version.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+func (_ Unimplemented) CreateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowTransitKey Show one transit key with its versions and caller entries.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+func (_ Unimplemented) ShowTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ConfigureTransitKey Change a key's version window, rotation period or caller entries.
+// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+func (_ Unimplemented) ConfigureTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitDataKey Generate a data key, wrapped under the key and optionally in plaintext.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey)
+func (_ Unimplemented) TransitDataKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitDecrypt Decrypt a transit ciphertext.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt)
+func (_ Unimplemented) TransitDecrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitEncrypt Encrypt plaintext under the key.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt)
+func (_ Unimplemented) TransitEncrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitHMAC Compute an HMAC-SHA256 over a message.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac)
+func (_ Unimplemented) TransitHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitVerifyHMAC Verify an HMAC-SHA256 in constant time.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify)
+func (_ Unimplemented) TransitVerifyHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ChangeTransitKeyState Disable, enable, retire, compromise, schedule or cancel deletion.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle)
+func (_ Unimplemented) ChangeTransitKeyState(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitRewrap Move a ciphertext onto the latest key version without returning plaintext.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap)
+func (_ Unimplemented) TransitRewrap(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RotateTransitKey Append a new key version; new output uses it.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate)
+func (_ Unimplemented) RotateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitSign Sign a message with an Ed25519 key.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
+func (_ Unimplemented) TransitSign(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TrimTransitKey Permanently delete versions below min_decrypt_version.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim)
+func (_ Unimplemented) TrimTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransitVerify Verify an Ed25519 signature.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
+func (_ Unimplemented) TransitVerify(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -15059,6 +16911,445 @@ func (siw *ServerInterfaceWrapper) PutOidcProvider(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ListPkiIssuers operation middleware
+func (siw *ServerInterfaceWrapper) ListPkiIssuers(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPkiIssuers(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePkiIssuer operation middleware
+func (siw *ServerInterfaceWrapper) CreatePkiIssuer(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePkiIssuer(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowPkiIssuer operation middleware
+func (siw *ServerInterfaceWrapper) ShowPkiIssuer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "issuer" -------------
+	var issuer PkiIssuerName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issuer", chi.URLParam(r, "issuer"), &issuer, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issuer", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowPkiIssuer(w, r, issuer)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// InstallPkiIssuerCertificate operation middleware
+func (siw *ServerInterfaceWrapper) InstallPkiIssuerCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "issuer" -------------
+	var issuer PkiIssuerName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issuer", chi.URLParam(r, "issuer"), &issuer, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issuer", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.InstallPkiIssuerCertificate(w, r, issuer)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReleasePkiIssuerHold operation middleware
+func (siw *ServerInterfaceWrapper) ReleasePkiIssuerHold(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "issuer" -------------
+	var issuer PkiIssuerName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issuer", chi.URLParam(r, "issuer"), &issuer, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issuer", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReleasePkiIssuerHold(w, r, issuer)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RotatePkiIssuer operation middleware
+func (siw *ServerInterfaceWrapper) RotatePkiIssuer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "issuer" -------------
+	var issuer PkiIssuerName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issuer", chi.URLParam(r, "issuer"), &issuer, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issuer", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RotatePkiIssuer(w, r, issuer)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPkiIssuerCrl operation middleware
+func (siw *ServerInterfaceWrapper) GetPkiIssuerCrl(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "issuer" -------------
+	var issuer PkiIssuerName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issuer", chi.URLParam(r, "issuer"), &issuer, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issuer", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version PkiIssuerVersion
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", chi.URLParam(r, "version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPkiIssuerCrl(w, r, issuer, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PublishPkiIssuerCrl operation middleware
+func (siw *ServerInterfaceWrapper) PublishPkiIssuerCrl(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "issuer" -------------
+	var issuer PkiIssuerName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issuer", chi.URLParam(r, "issuer"), &issuer, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issuer", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version PkiIssuerVersion
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", chi.URLParam(r, "version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PublishPkiIssuerCrl(w, r, issuer, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetirePkiIssuer operation middleware
+func (siw *ServerInterfaceWrapper) RetirePkiIssuer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "issuer" -------------
+	var issuer PkiIssuerName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issuer", chi.URLParam(r, "issuer"), &issuer, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issuer", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version PkiIssuerVersion
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", chi.URLParam(r, "version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetirePkiIssuer(w, r, issuer, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokePkiIssuer operation middleware
+func (siw *ServerInterfaceWrapper) RevokePkiIssuer(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "issuer" -------------
+	var issuer PkiIssuerName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "issuer", chi.URLParam(r, "issuer"), &issuer, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "issuer", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "version" -------------
+	var version PkiIssuerVersion
+
+	err = runtime.BindStyledParameterWithOptions("simple", "version", chi.URLParam(r, "version"), &version, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokePkiIssuer(w, r, issuer, version)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPkiProfiles operation middleware
+func (siw *ServerInterfaceWrapper) ListPkiProfiles(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPkiProfiles(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePkiProfile operation middleware
+func (siw *ServerInterfaceWrapper) CreatePkiProfile(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePkiProfile(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePkiProfile operation middleware
+func (siw *ServerInterfaceWrapper) DeletePkiProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "profile" -------------
+	var profile PkiProfileName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profile", chi.URLParam(r, "profile"), &profile, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profile", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePkiProfile(w, r, profile)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowPkiProfile operation middleware
+func (siw *ServerInterfaceWrapper) ShowPkiProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "profile" -------------
+	var profile PkiProfileName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profile", chi.URLParam(r, "profile"), &profile, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profile", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowPkiProfile(w, r, profile)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePkiProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePkiProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "profile" -------------
+	var profile PkiProfileName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profile", chi.URLParam(r, "profile"), &profile, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profile", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePkiProfile(w, r, profile)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BindPkiProfile operation middleware
+func (siw *ServerInterfaceWrapper) BindPkiProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "profile" -------------
+	var profile PkiProfileName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profile", chi.URLParam(r, "profile"), &profile, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profile", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BindPkiProfile(w, r, profile)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnbindPkiProfile operation middleware
+func (siw *ServerInterfaceWrapper) UnbindPkiProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "profile" -------------
+	var profile PkiProfileName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "profile", chi.URLParam(r, "profile"), &profile, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "profile", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "binding" -------------
+	var binding PkiBindingID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "binding", chi.URLParam(r, "binding"), &binding, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "binding", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnbindPkiProfile(w, r, profile, binding)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReencryptInstance operation middleware
 func (siw *ServerInterfaceWrapper) ReencryptInstance(w http.ResponseWriter, r *http.Request) {
 
@@ -16510,6 +18801,164 @@ func (siw *ServerInterfaceWrapper) RenameProject(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.RenameProject(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAccessPolicies operation middleware
+func (siw *ServerInterfaceWrapper) ListAccessPolicies(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccessPolicies(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccessPolicy operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccessPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccessPolicy(w, r, org, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteAccessPolicy operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAccessPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "policy" -------------
+	var policy ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policy", chi.URLParam(r, "policy"), &policy, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policy", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAccessPolicy(w, r, org, project, policy)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateAccessPolicy operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAccessPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "policy" -------------
+	var policy ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policy", chi.URLParam(r, "policy"), &policy, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policy", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAccessPolicy(w, r, org, project, policy)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -18835,6 +21284,297 @@ func (siw *ServerInterfaceWrapper) RenameEnvironment(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListAccessRequests operation middleware
+func (siw *ServerInterfaceWrapper) ListAccessRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAccessRequests(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAccessRequest operation middleware
+func (siw *ServerInterfaceWrapper) CreateAccessRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAccessRequest(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EmergencyAccess operation middleware
+func (siw *ServerInterfaceWrapper) EmergencyAccess(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EmergencyAccess(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelAccessRequest operation middleware
+func (siw *ServerInterfaceWrapper) CancelAccessRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accessRequest" -------------
+	var accessRequest ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accessRequest", chi.URLParam(r, "accessRequest"), &accessRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accessRequest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelAccessRequest(w, r, org, project, environment, accessRequest)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeAccessRequest operation middleware
+func (siw *ServerInterfaceWrapper) RevokeAccessRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accessRequest" -------------
+	var accessRequest ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accessRequest", chi.URLParam(r, "accessRequest"), &accessRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accessRequest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeAccessRequest(w, r, org, project, environment, accessRequest)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// VoteAccessRequest operation middleware
+func (siw *ServerInterfaceWrapper) VoteAccessRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "accessRequest" -------------
+	var accessRequest ID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "accessRequest", chi.URLParam(r, "accessRequest"), &accessRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "accessRequest", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.VoteAccessRequest(w, r, org, project, environment, accessRequest)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListApprovalRequests operation middleware
 func (siw *ServerInterfaceWrapper) ListApprovalRequests(w http.ResponseWriter, r *http.Request) {
 
@@ -19369,6 +22109,350 @@ func (siw *ServerInterfaceWrapper) ExportEnvAudit(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExportEnvAudit(w, r, org, project, environment, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCertificateProfiles operation middleware
+func (siw *ServerInterfaceWrapper) ListCertificateProfiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCertificateProfiles(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCertificates operation middleware
+func (siw *ServerInterfaceWrapper) ListCertificates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCertificates(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssueCertificate operation middleware
+func (siw *ServerInterfaceWrapper) IssueCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueCertificate(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowCertificate operation middleware
+func (siw *ServerInterfaceWrapper) ShowCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "certificate" -------------
+	var certificate CertificateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "certificate", chi.URLParam(r, "certificate"), &certificate, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "certificate", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowCertificate(w, r, org, project, environment, certificate)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCertificateCrl operation middleware
+func (siw *ServerInterfaceWrapper) GetCertificateCrl(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "certificate" -------------
+	var certificate CertificateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "certificate", chi.URLParam(r, "certificate"), &certificate, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "certificate", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCertificateCrl(w, r, org, project, environment, certificate)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenewCertificate operation middleware
+func (siw *ServerInterfaceWrapper) RenewCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "certificate" -------------
+	var certificate CertificateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "certificate", chi.URLParam(r, "certificate"), &certificate, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "certificate", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenewCertificate(w, r, org, project, environment, certificate)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeCertificate operation middleware
+func (siw *ServerInterfaceWrapper) RevokeCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "certificate" -------------
+	var certificate CertificateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "certificate", chi.URLParam(r, "certificate"), &certificate, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "certificate", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeCertificate(w, r, org, project, environment, certificate)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -21737,6 +24821,783 @@ func (siw *ServerInterfaceWrapper) UpdateSshProfile(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateSshProfile(w, r, org, project, environment, sshProfile)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTransitKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListTransitKeys(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTransitKeys(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTransitKey(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) ShowTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowTransitKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfigureTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) ConfigureTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfigureTransitKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitDataKey operation middleware
+func (siw *ServerInterfaceWrapper) TransitDataKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitDataKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitDecrypt operation middleware
+func (siw *ServerInterfaceWrapper) TransitDecrypt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitDecrypt(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitEncrypt operation middleware
+func (siw *ServerInterfaceWrapper) TransitEncrypt(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitEncrypt(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitHMAC operation middleware
+func (siw *ServerInterfaceWrapper) TransitHMAC(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitHMAC(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitVerifyHMAC operation middleware
+func (siw *ServerInterfaceWrapper) TransitVerifyHMAC(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitVerifyHMAC(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeTransitKeyState operation middleware
+func (siw *ServerInterfaceWrapper) ChangeTransitKeyState(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeTransitKeyState(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitRewrap operation middleware
+func (siw *ServerInterfaceWrapper) TransitRewrap(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitRewrap(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RotateTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) RotateTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RotateTransitKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitSign operation middleware
+func (siw *ServerInterfaceWrapper) TransitSign(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitSign(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TrimTransitKey operation middleware
+func (siw *ServerInterfaceWrapper) TrimTransitKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TrimTransitKey(w, r, org, project, environment, transitKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TransitVerify operation middleware
+func (siw *ServerInterfaceWrapper) TransitVerify(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "transit_key" -------------
+	var transitKey TransitKeyName
+
+	err = runtime.BindStyledParameterWithOptions("simple", "transit_key", chi.URLParam(r, "transit_key"), &transitKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "transit_key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransitVerify(w, r, org, project, environment, transitKey)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -26172,6 +30033,36 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests/{approvalRequest}/ceremony", wrapper.GetApprovalCeremony)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies", wrapper.ListAccessPolicies)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies", wrapper.CreateAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}", wrapper.DeleteAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/access-policies/{policy}", wrapper.UpdateAccessPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.ListAccessRequests)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests", wrapper.CreateAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency", wrapper.EmergencyAccess)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote", wrapper.VoteAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel", wrapper.CancelAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke", wrapper.RevokeAccessRequest)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/revisions/diff", wrapper.DiffRevisions)
 	})
 	r.Group(func(r chi.Router) {
@@ -26395,6 +30286,123 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke", wrapper.RevokeSshCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/pki/issuers", wrapper.ListPkiIssuers)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers", wrapper.CreatePkiIssuer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}", wrapper.ShowPkiIssuer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/rotate", wrapper.RotatePkiIssuer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/install", wrapper.InstallPkiIssuerCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/release-hold", wrapper.ReleasePkiIssuerHold)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire", wrapper.RetirePkiIssuer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke", wrapper.RevokePkiIssuer)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl", wrapper.GetPkiIssuerCrl)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl", wrapper.PublishPkiIssuerCrl)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/pki/profiles", wrapper.ListPkiProfiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/profiles", wrapper.CreatePkiProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/pki/profiles/{profile}", wrapper.DeletePkiProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/instance/pki/profiles/{profile}", wrapper.ShowPkiProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/instance/pki/profiles/{profile}", wrapper.UpdatePkiProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/instance/pki/profiles/{profile}/bindings", wrapper.BindPkiProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/instance/pki/profiles/{profile}/bindings/{binding}", wrapper.UnbindPkiProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles", wrapper.ListCertificateProfiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates", wrapper.ListCertificates)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates", wrapper.IssueCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}", wrapper.ShowCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew", wrapper.RenewCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke", wrapper.RevokeCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl", wrapper.GetCertificateCrl)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys", wrapper.ListTransitKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys", wrapper.CreateTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}", wrapper.ShowTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}", wrapper.ConfigureTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate", wrapper.RotateTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle", wrapper.ChangeTransitKeyState)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim", wrapper.TrimTransitKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt", wrapper.TransitEncrypt)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt", wrapper.TransitDecrypt)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap", wrapper.TransitRewrap)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey", wrapper.TransitDataKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign", wrapper.TransitSign)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify", wrapper.TransitVerify)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac", wrapper.TransitHMAC)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify", wrapper.TransitVerifyHMAC)
 	})
 
 	return r
@@ -33938,6 +37946,2179 @@ func (response PutOidcProvider503JSONResponse) VisitPutOidcProviderResponse(w ht
 	return err
 }
 
+type ListPkiIssuersRequestObject struct {
+}
+
+type ListPkiIssuersResponseObject interface {
+	VisitListPkiIssuersResponse(w http.ResponseWriter) error
+}
+
+type ListPkiIssuers200JSONResponse PkiIssuerList
+
+func (response ListPkiIssuers200JSONResponse) VisitListPkiIssuersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiIssuers401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListPkiIssuers401JSONResponse) VisitListPkiIssuersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiIssuers403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListPkiIssuers403JSONResponse) VisitListPkiIssuersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiIssuers404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListPkiIssuers404JSONResponse) VisitListPkiIssuersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiIssuers429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListPkiIssuers429JSONResponse) VisitListPkiIssuersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiIssuers500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListPkiIssuers500JSONResponse) VisitListPkiIssuersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiIssuers503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListPkiIssuers503JSONResponse) VisitListPkiIssuersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuerRequestObject struct {
+	Body *CreatePkiIssuerJSONRequestBody
+}
+
+type CreatePkiIssuerResponseObject interface {
+	VisitCreatePkiIssuerResponse(w http.ResponseWriter) error
+}
+
+type CreatePkiIssuer200JSONResponse PkiIssuer
+
+func (response CreatePkiIssuer200JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreatePkiIssuer400JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuer401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreatePkiIssuer401JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuer403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreatePkiIssuer403JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreatePkiIssuer404JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreatePkiIssuer409JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuer429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreatePkiIssuer429JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuer500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreatePkiIssuer500JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreatePkiIssuer503JSONResponse) VisitCreatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiIssuerRequestObject struct {
+	Issuer PkiIssuerName `json:"issuer"`
+}
+
+type ShowPkiIssuerResponseObject interface {
+	VisitShowPkiIssuerResponse(w http.ResponseWriter) error
+}
+
+type ShowPkiIssuer200JSONResponse PkiIssuerList
+
+func (response ShowPkiIssuer200JSONResponse) VisitShowPkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiIssuer401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowPkiIssuer401JSONResponse) VisitShowPkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiIssuer403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ShowPkiIssuer403JSONResponse) VisitShowPkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiIssuer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowPkiIssuer404JSONResponse) VisitShowPkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiIssuer429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ShowPkiIssuer429JSONResponse) VisitShowPkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiIssuer500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowPkiIssuer500JSONResponse) VisitShowPkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowPkiIssuer503JSONResponse) VisitShowPkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificateRequestObject struct {
+	Issuer PkiIssuerName `json:"issuer"`
+	Body   *InstallPkiIssuerCertificateJSONRequestBody
+}
+
+type InstallPkiIssuerCertificateResponseObject interface {
+	VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error
+}
+
+type InstallPkiIssuerCertificate200JSONResponse PkiIssuer
+
+func (response InstallPkiIssuerCertificate200JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response InstallPkiIssuerCertificate400JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response InstallPkiIssuerCertificate401JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificate403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response InstallPkiIssuerCertificate403JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response InstallPkiIssuerCertificate404JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificate409JSONResponse struct{ ConflictJSONResponse }
+
+func (response InstallPkiIssuerCertificate409JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificate429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response InstallPkiIssuerCertificate429JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificate500JSONResponse struct{ InternalJSONResponse }
+
+func (response InstallPkiIssuerCertificate500JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type InstallPkiIssuerCertificate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response InstallPkiIssuerCertificate503JSONResponse) VisitInstallPkiIssuerCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHoldRequestObject struct {
+	Issuer PkiIssuerName `json:"issuer"`
+}
+
+type ReleasePkiIssuerHoldResponseObject interface {
+	VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error
+}
+
+type ReleasePkiIssuerHold200JSONResponse PkiIssuerList
+
+func (response ReleasePkiIssuerHold200JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHold400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ReleasePkiIssuerHold400JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHold401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ReleasePkiIssuerHold401JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHold403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ReleasePkiIssuerHold403JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHold404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ReleasePkiIssuerHold404JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHold409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReleasePkiIssuerHold409JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHold429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ReleasePkiIssuerHold429JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHold500JSONResponse struct{ InternalJSONResponse }
+
+func (response ReleasePkiIssuerHold500JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReleasePkiIssuerHold503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ReleasePkiIssuerHold503JSONResponse) VisitReleasePkiIssuerHoldResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuerRequestObject struct {
+	Issuer PkiIssuerName `json:"issuer"`
+	Body   *RotatePkiIssuerJSONRequestBody
+}
+
+type RotatePkiIssuerResponseObject interface {
+	VisitRotatePkiIssuerResponse(w http.ResponseWriter) error
+}
+
+type RotatePkiIssuer200JSONResponse PkiIssuer
+
+func (response RotatePkiIssuer200JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RotatePkiIssuer400JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuer401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RotatePkiIssuer401JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuer403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RotatePkiIssuer403JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RotatePkiIssuer404JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RotatePkiIssuer409JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuer429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RotatePkiIssuer429JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuer500JSONResponse struct{ InternalJSONResponse }
+
+func (response RotatePkiIssuer500JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotatePkiIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotatePkiIssuer503JSONResponse) VisitRotatePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPkiIssuerCrlRequestObject struct {
+	Issuer  PkiIssuerName    `json:"issuer"`
+	Version PkiIssuerVersion `json:"version"`
+}
+
+type GetPkiIssuerCrlResponseObject interface {
+	VisitGetPkiIssuerCrlResponse(w http.ResponseWriter) error
+}
+
+type GetPkiIssuerCrl200JSONResponse PkiCrl
+
+func (response GetPkiIssuerCrl200JSONResponse) VisitGetPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPkiIssuerCrl401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetPkiIssuerCrl401JSONResponse) VisitGetPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPkiIssuerCrl403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response GetPkiIssuerCrl403JSONResponse) VisitGetPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPkiIssuerCrl404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetPkiIssuerCrl404JSONResponse) VisitGetPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPkiIssuerCrl429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response GetPkiIssuerCrl429JSONResponse) VisitGetPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPkiIssuerCrl500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetPkiIssuerCrl500JSONResponse) VisitGetPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPkiIssuerCrl503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetPkiIssuerCrl503JSONResponse) VisitGetPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrlRequestObject struct {
+	Issuer  PkiIssuerName    `json:"issuer"`
+	Version PkiIssuerVersion `json:"version"`
+}
+
+type PublishPkiIssuerCrlResponseObject interface {
+	VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error
+}
+
+type PublishPkiIssuerCrl200JSONResponse PkiIssuer
+
+func (response PublishPkiIssuerCrl200JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrl400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PublishPkiIssuerCrl400JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrl401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response PublishPkiIssuerCrl401JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrl403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response PublishPkiIssuerCrl403JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrl404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PublishPkiIssuerCrl404JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrl409JSONResponse struct{ ConflictJSONResponse }
+
+func (response PublishPkiIssuerCrl409JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrl429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response PublishPkiIssuerCrl429JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrl500JSONResponse struct{ InternalJSONResponse }
+
+func (response PublishPkiIssuerCrl500JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PublishPkiIssuerCrl503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response PublishPkiIssuerCrl503JSONResponse) VisitPublishPkiIssuerCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuerRequestObject struct {
+	Issuer  PkiIssuerName    `json:"issuer"`
+	Version PkiIssuerVersion `json:"version"`
+}
+
+type RetirePkiIssuerResponseObject interface {
+	VisitRetirePkiIssuerResponse(w http.ResponseWriter) error
+}
+
+type RetirePkiIssuer200JSONResponse PkiIssuer
+
+func (response RetirePkiIssuer200JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RetirePkiIssuer400JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuer401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RetirePkiIssuer401JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuer403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RetirePkiIssuer403JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RetirePkiIssuer404JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RetirePkiIssuer409JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuer429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RetirePkiIssuer429JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuer500JSONResponse struct{ InternalJSONResponse }
+
+func (response RetirePkiIssuer500JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetirePkiIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RetirePkiIssuer503JSONResponse) VisitRetirePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuerRequestObject struct {
+	Issuer  PkiIssuerName    `json:"issuer"`
+	Version PkiIssuerVersion `json:"version"`
+}
+
+type RevokePkiIssuerResponseObject interface {
+	VisitRevokePkiIssuerResponse(w http.ResponseWriter) error
+}
+
+type RevokePkiIssuer200JSONResponse PkiIssuer
+
+func (response RevokePkiIssuer200JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuer400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevokePkiIssuer400JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuer401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokePkiIssuer401JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuer403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokePkiIssuer403JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuer404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokePkiIssuer404JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuer409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokePkiIssuer409JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuer429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokePkiIssuer429JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuer500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokePkiIssuer500JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokePkiIssuer503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokePkiIssuer503JSONResponse) VisitRevokePkiIssuerResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiProfilesRequestObject struct {
+}
+
+type ListPkiProfilesResponseObject interface {
+	VisitListPkiProfilesResponse(w http.ResponseWriter) error
+}
+
+type ListPkiProfiles200JSONResponse PkiProfileList
+
+func (response ListPkiProfiles200JSONResponse) VisitListPkiProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiProfiles401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListPkiProfiles401JSONResponse) VisitListPkiProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiProfiles403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListPkiProfiles403JSONResponse) VisitListPkiProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiProfiles404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListPkiProfiles404JSONResponse) VisitListPkiProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiProfiles429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListPkiProfiles429JSONResponse) VisitListPkiProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiProfiles500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListPkiProfiles500JSONResponse) VisitListPkiProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPkiProfiles503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListPkiProfiles503JSONResponse) VisitListPkiProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfileRequestObject struct {
+	Body *CreatePkiProfileJSONRequestBody
+}
+
+type CreatePkiProfileResponseObject interface {
+	VisitCreatePkiProfileResponse(w http.ResponseWriter) error
+}
+
+type CreatePkiProfile200JSONResponse PkiProfile
+
+func (response CreatePkiProfile200JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreatePkiProfile400JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreatePkiProfile401JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreatePkiProfile403JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreatePkiProfile404JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreatePkiProfile409JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreatePkiProfile429JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreatePkiProfile500JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreatePkiProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreatePkiProfile503JSONResponse) VisitCreatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePkiProfileRequestObject struct {
+	Profile PkiProfileName `json:"profile"`
+}
+
+type DeletePkiProfileResponseObject interface {
+	VisitDeletePkiProfileResponse(w http.ResponseWriter) error
+}
+
+type DeletePkiProfile204Response struct {
+}
+
+func (response DeletePkiProfile204Response) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeletePkiProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response DeletePkiProfile400JSONResponse) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePkiProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeletePkiProfile401JSONResponse) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePkiProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeletePkiProfile403JSONResponse) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePkiProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeletePkiProfile404JSONResponse) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePkiProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeletePkiProfile409JSONResponse) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePkiProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeletePkiProfile429JSONResponse) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePkiProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeletePkiProfile500JSONResponse) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeletePkiProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeletePkiProfile503JSONResponse) VisitDeletePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiProfileRequestObject struct {
+	Profile PkiProfileName `json:"profile"`
+}
+
+type ShowPkiProfileResponseObject interface {
+	VisitShowPkiProfileResponse(w http.ResponseWriter) error
+}
+
+type ShowPkiProfile200JSONResponse PkiProfile
+
+func (response ShowPkiProfile200JSONResponse) VisitShowPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowPkiProfile401JSONResponse) VisitShowPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ShowPkiProfile403JSONResponse) VisitShowPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowPkiProfile404JSONResponse) VisitShowPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ShowPkiProfile429JSONResponse) VisitShowPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowPkiProfile500JSONResponse) VisitShowPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowPkiProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowPkiProfile503JSONResponse) VisitShowPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfileRequestObject struct {
+	Profile PkiProfileName `json:"profile"`
+	Body    *UpdatePkiProfileJSONRequestBody
+}
+
+type UpdatePkiProfileResponseObject interface {
+	VisitUpdatePkiProfileResponse(w http.ResponseWriter) error
+}
+
+type UpdatePkiProfile200JSONResponse PkiProfile
+
+func (response UpdatePkiProfile200JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdatePkiProfile400JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdatePkiProfile401JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdatePkiProfile403JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdatePkiProfile404JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdatePkiProfile409JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response UpdatePkiProfile429JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response UpdatePkiProfile500JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdatePkiProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdatePkiProfile503JSONResponse) VisitUpdatePkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfileRequestObject struct {
+	Profile PkiProfileName `json:"profile"`
+	Body    *BindPkiProfileJSONRequestBody
+}
+
+type BindPkiProfileResponseObject interface {
+	VisitBindPkiProfileResponse(w http.ResponseWriter) error
+}
+
+type BindPkiProfile200JSONResponse PkiProfile
+
+func (response BindPkiProfile200JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response BindPkiProfile400JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response BindPkiProfile401JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response BindPkiProfile403JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response BindPkiProfile404JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response BindPkiProfile409JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response BindPkiProfile429JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response BindPkiProfile500JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type BindPkiProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response BindPkiProfile503JSONResponse) VisitBindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfileRequestObject struct {
+	Profile PkiProfileName `json:"profile"`
+	Binding PkiBindingID   `json:"binding"`
+}
+
+type UnbindPkiProfileResponseObject interface {
+	VisitUnbindPkiProfileResponse(w http.ResponseWriter) error
+}
+
+type UnbindPkiProfile200JSONResponse PkiProfile
+
+func (response UnbindPkiProfile200JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UnbindPkiProfile400JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UnbindPkiProfile401JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfile403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UnbindPkiProfile403JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UnbindPkiProfile404JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UnbindPkiProfile409JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfile429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response UnbindPkiProfile429JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response UnbindPkiProfile500JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnbindPkiProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UnbindPkiProfile503JSONResponse) VisitUnbindPkiProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReencryptInstanceRequestObject struct {
 }
 
@@ -40113,6 +46294,496 @@ func (response RenameProject503JSONResponse) VisitRenameProjectResponse(w http.R
 	return err
 }
 
+type ListAccessPoliciesRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+}
+
+type ListAccessPoliciesResponseObject interface {
+	VisitListAccessPoliciesResponse(w http.ResponseWriter) error
+}
+
+type ListAccessPolicies200JSONResponse AccessPolicyList
+
+func (response ListAccessPolicies200JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListAccessPolicies401JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response ListAccessPolicies403JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAccessPolicies404JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListAccessPolicies429JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListAccessPolicies500JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessPolicies503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListAccessPolicies503JSONResponse) VisitListAccessPoliciesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Body    *CreateAccessPolicyJSONRequestBody
+}
+
+type CreateAccessPolicyResponseObject interface {
+	VisitCreateAccessPolicyResponse(w http.ResponseWriter) error
+}
+
+type CreateAccessPolicy200JSONResponse AccessPolicy
+
+func (response CreateAccessPolicy200JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAccessPolicy400JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateAccessPolicy401JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateAccessPolicy403JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateAccessPolicy404JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateAccessPolicy409JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreateAccessPolicy429JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateAccessPolicy500JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateAccessPolicy503JSONResponse) VisitCreateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Policy  ID        `json:"policy"`
+}
+
+type DeleteAccessPolicyResponseObject interface {
+	VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error
+}
+
+type DeleteAccessPolicy204Response struct {
+}
+
+func (response DeleteAccessPolicy204Response) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteAccessPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteAccessPolicy401JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response DeleteAccessPolicy403JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteAccessPolicy404JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response DeleteAccessPolicy429JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteAccessPolicy500JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAccessPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteAccessPolicy503JSONResponse) VisitDeleteAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicyRequestObject struct {
+	Org     OrgID     `json:"org"`
+	Project ProjectID `json:"project"`
+	Policy  ID        `json:"policy"`
+	Body    *UpdateAccessPolicyJSONRequestBody
+}
+
+type UpdateAccessPolicyResponseObject interface {
+	VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error
+}
+
+type UpdateAccessPolicy200JSONResponse AccessPolicy
+
+func (response UpdateAccessPolicy200JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateAccessPolicy400JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateAccessPolicy401JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response UpdateAccessPolicy403JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateAccessPolicy404JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateAccessPolicy409JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response UpdateAccessPolicy429JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy500JSONResponse struct{ InternalJSONResponse }
+
+func (response UpdateAccessPolicy500JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateAccessPolicy503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateAccessPolicy503JSONResponse) VisitUpdateAccessPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CancelAdapterMoveRequestObject struct {
 	Org     OrgID     `json:"org"`
 	Project ProjectID `json:"project"`
@@ -45046,6 +51717,770 @@ func (response RenameEnvironment503JSONResponse) VisitRenameEnvironmentResponse(
 	return err
 }
 
+type ListAccessRequestsRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListAccessRequestsResponseObject interface {
+	VisitListAccessRequestsResponse(w http.ResponseWriter) error
+}
+
+type ListAccessRequests200JSONResponse AccessQueue
+
+func (response ListAccessRequests200JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListAccessRequests401JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAccessRequests404JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response ListAccessRequests429JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListAccessRequests500JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAccessRequests503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListAccessRequests503JSONResponse) VisitListAccessRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequestRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *CreateAccessRequestJSONRequestBody
+}
+
+type CreateAccessRequestResponseObject interface {
+	VisitCreateAccessRequestResponse(w http.ResponseWriter) error
+}
+
+type CreateAccessRequest200JSONResponse AccessRequest
+
+func (response CreateAccessRequest200JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAccessRequest400JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateAccessRequest401JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CreateAccessRequest403JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateAccessRequest404JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateAccessRequest409JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CreateAccessRequest429JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateAccessRequest500JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAccessRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateAccessRequest503JSONResponse) VisitCreateAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccessRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *EmergencyAccessJSONRequestBody
+}
+
+type EmergencyAccessResponseObject interface {
+	VisitEmergencyAccessResponse(w http.ResponseWriter) error
+}
+
+type EmergencyAccess200JSONResponse AccessRequest
+
+func (response EmergencyAccess200JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response EmergencyAccess400JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response EmergencyAccess401JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response EmergencyAccess403JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response EmergencyAccess404JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess409JSONResponse struct{ ConflictJSONResponse }
+
+func (response EmergencyAccess409JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response EmergencyAccess429JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess500JSONResponse struct{ InternalJSONResponse }
+
+func (response EmergencyAccess500JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type EmergencyAccess503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response EmergencyAccess503JSONResponse) VisitEmergencyAccessResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequestRequestObject struct {
+	Org           OrgID         `json:"org"`
+	Project       ProjectID     `json:"project"`
+	Environment   EnvironmentID `json:"environment"`
+	AccessRequest ID            `json:"accessRequest"`
+}
+
+type CancelAccessRequestResponseObject interface {
+	VisitCancelAccessRequestResponse(w http.ResponseWriter) error
+}
+
+type CancelAccessRequest200JSONResponse AccessRequest
+
+func (response CancelAccessRequest200JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CancelAccessRequest401JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response CancelAccessRequest403JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CancelAccessRequest404JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CancelAccessRequest409JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response CancelAccessRequest429JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response CancelAccessRequest500JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelAccessRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CancelAccessRequest503JSONResponse) VisitCancelAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequestRequestObject struct {
+	Org           OrgID         `json:"org"`
+	Project       ProjectID     `json:"project"`
+	Environment   EnvironmentID `json:"environment"`
+	AccessRequest ID            `json:"accessRequest"`
+}
+
+type RevokeAccessRequestResponseObject interface {
+	VisitRevokeAccessRequestResponse(w http.ResponseWriter) error
+}
+
+type RevokeAccessRequest200JSONResponse AccessRequest
+
+func (response RevokeAccessRequest200JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeAccessRequest401JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RevokeAccessRequest403JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeAccessRequest404JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokeAccessRequest409JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RevokeAccessRequest429JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeAccessRequest500JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeAccessRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeAccessRequest503JSONResponse) VisitRevokeAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequestRequestObject struct {
+	Org           OrgID         `json:"org"`
+	Project       ProjectID     `json:"project"`
+	Environment   EnvironmentID `json:"environment"`
+	AccessRequest ID            `json:"accessRequest"`
+	Body          *VoteAccessRequestJSONRequestBody
+}
+
+type VoteAccessRequestResponseObject interface {
+	VisitVoteAccessRequestResponse(w http.ResponseWriter) error
+}
+
+type VoteAccessRequest200JSONResponse AccessRequest
+
+func (response VoteAccessRequest200JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response VoteAccessRequest400JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response VoteAccessRequest401JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response VoteAccessRequest403JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response VoteAccessRequest404JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest409JSONResponse struct{ ConflictJSONResponse }
+
+func (response VoteAccessRequest409JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response VoteAccessRequest429JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest500JSONResponse struct{ InternalJSONResponse }
+
+func (response VoteAccessRequest500JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type VoteAccessRequest503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response VoteAccessRequest503JSONResponse) VisitVoteAccessRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListApprovalRequestsRequestObject struct {
 	Org         OrgID         `json:"org"`
 	Project     ProjectID     `json:"project"`
@@ -45632,6 +53067,721 @@ func (response ExportEnvAudit500JSONResponse) VisitExportEnvAuditResponse(w http
 type ExportEnvAudit503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response ExportEnvAudit503JSONResponse) VisitExportEnvAuditResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificateProfilesRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListCertificateProfilesResponseObject interface {
+	VisitListCertificateProfilesResponse(w http.ResponseWriter) error
+}
+
+type ListCertificateProfiles200JSONResponse CertificateProfileList
+
+func (response ListCertificateProfiles200JSONResponse) VisitListCertificateProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificateProfiles401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListCertificateProfiles401JSONResponse) VisitListCertificateProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificateProfiles404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListCertificateProfiles404JSONResponse) VisitListCertificateProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificateProfiles500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListCertificateProfiles500JSONResponse) VisitListCertificateProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificateProfiles503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListCertificateProfiles503JSONResponse) VisitListCertificateProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificatesRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListCertificatesResponseObject interface {
+	VisitListCertificatesResponse(w http.ResponseWriter) error
+}
+
+type ListCertificates200JSONResponse CertificateList
+
+func (response ListCertificates200JSONResponse) VisitListCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificates401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListCertificates401JSONResponse) VisitListCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificates404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListCertificates404JSONResponse) VisitListCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificates500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListCertificates500JSONResponse) VisitListCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListCertificates503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListCertificates503JSONResponse) VisitListCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificateRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *IssueCertificateJSONRequestBody
+}
+
+type IssueCertificateResponseObject interface {
+	VisitIssueCertificateResponse(w http.ResponseWriter) error
+}
+
+type IssueCertificate200JSONResponse CertificateIssueResult
+
+func (response IssueCertificate200JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response IssueCertificate400JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response IssueCertificate401JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificate403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response IssueCertificate403JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response IssueCertificate404JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificate409JSONResponse struct{ ConflictJSONResponse }
+
+func (response IssueCertificate409JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificate429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response IssueCertificate429JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificate500JSONResponse struct{ InternalJSONResponse }
+
+func (response IssueCertificate500JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueCertificate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response IssueCertificate503JSONResponse) VisitIssueCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCertificateRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Certificate CertificateID `json:"certificate"`
+}
+
+type ShowCertificateResponseObject interface {
+	VisitShowCertificateResponse(w http.ResponseWriter) error
+}
+
+type ShowCertificate200JSONResponse Certificate
+
+func (response ShowCertificate200JSONResponse) VisitShowCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCertificate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowCertificate401JSONResponse) VisitShowCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCertificate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowCertificate404JSONResponse) VisitShowCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCertificate500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowCertificate500JSONResponse) VisitShowCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowCertificate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowCertificate503JSONResponse) VisitShowCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCertificateCrlRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Certificate CertificateID `json:"certificate"`
+}
+
+type GetCertificateCrlResponseObject interface {
+	VisitGetCertificateCrlResponse(w http.ResponseWriter) error
+}
+
+type GetCertificateCrl200JSONResponse PkiCrl
+
+func (response GetCertificateCrl200JSONResponse) VisitGetCertificateCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCertificateCrl401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetCertificateCrl401JSONResponse) VisitGetCertificateCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCertificateCrl404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetCertificateCrl404JSONResponse) VisitGetCertificateCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCertificateCrl500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetCertificateCrl500JSONResponse) VisitGetCertificateCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetCertificateCrl503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetCertificateCrl503JSONResponse) VisitGetCertificateCrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificateRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Certificate CertificateID `json:"certificate"`
+}
+
+type RenewCertificateResponseObject interface {
+	VisitRenewCertificateResponse(w http.ResponseWriter) error
+}
+
+type RenewCertificate200JSONResponse Certificate
+
+func (response RenewCertificate200JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RenewCertificate400JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RenewCertificate401JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificate403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response RenewCertificate403JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RenewCertificate404JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificate409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RenewCertificate409JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificate429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response RenewCertificate429JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificate500JSONResponse struct{ InternalJSONResponse }
+
+func (response RenewCertificate500JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewCertificate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RenewCertificate503JSONResponse) VisitRenewCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeCertificateRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Certificate CertificateID `json:"certificate"`
+	Body        *RevokeCertificateJSONRequestBody
+}
+
+type RevokeCertificateResponseObject interface {
+	VisitRevokeCertificateResponse(w http.ResponseWriter) error
+}
+
+type RevokeCertificate200JSONResponse Certificate
+
+func (response RevokeCertificate200JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeCertificate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RevokeCertificate400JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeCertificate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeCertificate401JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeCertificate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeCertificate404JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeCertificate409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RevokeCertificate409JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeCertificate500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeCertificate500JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeCertificate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeCertificate503JSONResponse) VisitRevokeCertificateResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -50544,6 +58694,1841 @@ func (response UpdateSshProfile500JSONResponse) VisitUpdateSshProfileResponse(w 
 type UpdateSshProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response UpdateSshProfile503JSONResponse) VisitUpdateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeysRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListTransitKeysResponseObject interface {
+	VisitListTransitKeysResponse(w http.ResponseWriter) error
+}
+
+type ListTransitKeys200JSONResponse TransitKeyList
+
+func (response ListTransitKeys200JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeys401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListTransitKeys401JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeys404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListTransitKeys404JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeys500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListTransitKeys500JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTransitKeys503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListTransitKeys503JSONResponse) VisitListTransitKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKeyRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *CreateTransitKeyJSONRequestBody
+}
+
+type CreateTransitKeyResponseObject interface {
+	VisitCreateTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type CreateTransitKey201JSONResponse TransitKey
+
+func (response CreateTransitKey201JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateTransitKey400JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateTransitKey401JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateTransitKey404JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateTransitKey409JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateTransitKey500JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateTransitKey503JSONResponse) VisitCreateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+}
+
+type ShowTransitKeyResponseObject interface {
+	VisitShowTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type ShowTransitKey200JSONResponse TransitKey
+
+func (response ShowTransitKey200JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowTransitKey401JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowTransitKey404JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowTransitKey500JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowTransitKey503JSONResponse) VisitShowTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *ConfigureTransitKeyJSONRequestBody
+}
+
+type ConfigureTransitKeyResponseObject interface {
+	VisitConfigureTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type ConfigureTransitKey200JSONResponse TransitKey
+
+func (response ConfigureTransitKey200JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ConfigureTransitKey400JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ConfigureTransitKey401JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ConfigureTransitKey404JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ConfigureTransitKey409JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response ConfigureTransitKey500JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ConfigureTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ConfigureTransitKey503JSONResponse) VisitConfigureTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitDataKeyJSONRequestBody
+}
+
+type TransitDataKeyResponseObject interface {
+	VisitTransitDataKeyResponse(w http.ResponseWriter) error
+}
+
+type TransitDataKey200JSONResponse TransitDataKeyResult
+
+func (response TransitDataKey200JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitDataKey400JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitDataKey401JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitDataKey403JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitDataKey404JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitDataKey409JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitDataKey429JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitDataKey500JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDataKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitDataKey503JSONResponse) VisitTransitDataKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecryptRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitDecryptJSONRequestBody
+}
+
+type TransitDecryptResponseObject interface {
+	VisitTransitDecryptResponse(w http.ResponseWriter) error
+}
+
+type TransitDecrypt200JSONResponse TransitDecryptResult
+
+func (response TransitDecrypt200JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitDecrypt400JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitDecrypt401JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitDecrypt403JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitDecrypt404JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitDecrypt409JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitDecrypt429JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitDecrypt500JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitDecrypt503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitDecrypt503JSONResponse) VisitTransitDecryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncryptRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitEncryptJSONRequestBody
+}
+
+type TransitEncryptResponseObject interface {
+	VisitTransitEncryptResponse(w http.ResponseWriter) error
+}
+
+type TransitEncrypt200JSONResponse TransitCiphertextResult
+
+func (response TransitEncrypt200JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitEncrypt400JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitEncrypt401JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitEncrypt403JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitEncrypt404JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitEncrypt409JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitEncrypt429JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitEncrypt500JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitEncrypt503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitEncrypt503JSONResponse) VisitTransitEncryptResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMACRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitHMACJSONRequestBody
+}
+
+type TransitHMACResponseObject interface {
+	VisitTransitHMACResponse(w http.ResponseWriter) error
+}
+
+type TransitHMAC200JSONResponse TransitHMACResult
+
+func (response TransitHMAC200JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitHMAC400JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitHMAC401JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitHMAC403JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitHMAC404JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitHMAC409JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitHMAC429JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitHMAC500JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitHMAC503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitHMAC503JSONResponse) VisitTransitHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMACRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitVerifyHMACJSONRequestBody
+}
+
+type TransitVerifyHMACResponseObject interface {
+	VisitTransitVerifyHMACResponse(w http.ResponseWriter) error
+}
+
+type TransitVerifyHMAC200JSONResponse TransitVerifyResult
+
+func (response TransitVerifyHMAC200JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitVerifyHMAC400JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitVerifyHMAC401JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitVerifyHMAC403JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitVerifyHMAC404JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitVerifyHMAC409JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitVerifyHMAC429JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitVerifyHMAC500JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyHMAC503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitVerifyHMAC503JSONResponse) VisitTransitVerifyHMACResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyStateRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *ChangeTransitKeyStateJSONRequestBody
+}
+
+type ChangeTransitKeyStateResponseObject interface {
+	VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error
+}
+
+type ChangeTransitKeyState200JSONResponse TransitKey
+
+func (response ChangeTransitKeyState200JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ChangeTransitKeyState400JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ChangeTransitKeyState401JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ChangeTransitKeyState404JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ChangeTransitKeyState409JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState500JSONResponse struct{ InternalJSONResponse }
+
+func (response ChangeTransitKeyState500JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ChangeTransitKeyState503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ChangeTransitKeyState503JSONResponse) VisitChangeTransitKeyStateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrapRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitRewrapJSONRequestBody
+}
+
+type TransitRewrapResponseObject interface {
+	VisitTransitRewrapResponse(w http.ResponseWriter) error
+}
+
+type TransitRewrap200JSONResponse TransitCiphertextResult
+
+func (response TransitRewrap200JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitRewrap400JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitRewrap401JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitRewrap403JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitRewrap404JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitRewrap409JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitRewrap429JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitRewrap500JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitRewrap503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitRewrap503JSONResponse) VisitTransitRewrapResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+}
+
+type RotateTransitKeyResponseObject interface {
+	VisitRotateTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type RotateTransitKey200JSONResponse TransitKey
+
+func (response RotateTransitKey200JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RotateTransitKey400JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RotateTransitKey401JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RotateTransitKey404JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RotateTransitKey409JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response RotateTransitKey500JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateTransitKey503JSONResponse) VisitRotateTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSignRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitSignJSONRequestBody
+}
+
+type TransitSignResponseObject interface {
+	VisitTransitSignResponse(w http.ResponseWriter) error
+}
+
+type TransitSign200JSONResponse TransitSignatureResult
+
+func (response TransitSign200JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitSign400JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitSign401JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitSign403JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitSign404JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitSign409JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitSign429JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitSign500JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitSign503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitSign503JSONResponse) VisitTransitSignResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKeyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+}
+
+type TrimTransitKeyResponseObject interface {
+	VisitTrimTransitKeyResponse(w http.ResponseWriter) error
+}
+
+type TrimTransitKey200JSONResponse TransitTrimResult
+
+func (response TrimTransitKey200JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TrimTransitKey400JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TrimTransitKey401JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TrimTransitKey404JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TrimTransitKey409JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response TrimTransitKey500JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TrimTransitKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TrimTransitKey503JSONResponse) VisitTrimTransitKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerifyRequestObject struct {
+	Org         OrgID          `json:"org"`
+	Project     ProjectID      `json:"project"`
+	Environment EnvironmentID  `json:"environment"`
+	TransitKey  TransitKeyName `json:"transit_key"`
+	Body        *TransitVerifyJSONRequestBody
+}
+
+type TransitVerifyResponseObject interface {
+	VisitTransitVerifyResponse(w http.ResponseWriter) error
+}
+
+type TransitVerify200JSONResponse TransitVerifyResult
+
+func (response TransitVerify200JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response TransitVerify400JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response TransitVerify401JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response TransitVerify403JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response TransitVerify404JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify409JSONResponse struct{ ConflictJSONResponse }
+
+func (response TransitVerify409JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify429JSONResponse struct{ TooManyRequestsJSONResponse }
+
+func (response TransitVerify429JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(429)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify500JSONResponse struct{ InternalJSONResponse }
+
+func (response TransitVerify500JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransitVerify503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response TransitVerify503JSONResponse) VisitTransitVerifyResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -60729,6 +70714,57 @@ type StrictServerInterface interface {
 	// PutOidcProvider Create or reconfigure an OIDC provider.
 	// (PUT /api/v1/instance/oidc-providers/{slug})
 	PutOidcProvider(ctx context.Context, request PutOidcProviderRequestObject) (PutOidcProviderResponseObject, error)
+	// ListPkiIssuers List every CA issuer version; public material only.
+	// (GET /api/v1/instance/pki/issuers)
+	ListPkiIssuers(ctx context.Context, request ListPkiIssuersRequestObject) (ListPkiIssuersResponseObject, error)
+	// CreatePkiIssuer Create a CA issuer: evaluation root, Hikyo-signed or offline-signed intermediate, or imported CA.
+	// (POST /api/v1/instance/pki/issuers)
+	CreatePkiIssuer(ctx context.Context, request CreatePkiIssuerRequestObject) (CreatePkiIssuerResponseObject, error)
+	// ShowPkiIssuer Show every version of one issuer.
+	// (GET /api/v1/instance/pki/issuers/{issuer})
+	ShowPkiIssuer(ctx context.Context, request ShowPkiIssuerRequestObject) (ShowPkiIssuerResponseObject, error)
+	// InstallPkiIssuerCertificate Activate a pending version with its offline-signed certificate.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/install)
+	InstallPkiIssuerCertificate(ctx context.Context, request InstallPkiIssuerCertificateRequestObject) (InstallPkiIssuerCertificateResponseObject, error)
+	// ReleasePkiIssuerHold Lift the post-restore hold on an issuer.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/release-hold)
+	ReleasePkiIssuerHold(ctx context.Context, request ReleasePkiIssuerHoldRequestObject) (ReleasePkiIssuerHoldResponseObject, error)
+	// RotatePkiIssuer Create the next key version of an issuer (overlap rotation).
+	// (POST /api/v1/instance/pki/issuers/{issuer}/rotate)
+	RotatePkiIssuer(ctx context.Context, request RotatePkiIssuerRequestObject) (RotatePkiIssuerResponseObject, error)
+	// GetPkiIssuerCrl Read the CRL a version last published.
+	// (GET /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl)
+	GetPkiIssuerCrl(ctx context.Context, request GetPkiIssuerCrlRequestObject) (GetPkiIssuerCrlResponseObject, error)
+	// PublishPkiIssuerCrl Sign and publish a fresh CRL for a version now.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/crl)
+	PublishPkiIssuerCrl(ctx context.Context, request PublishPkiIssuerCrlRequestObject) (PublishPkiIssuerCrlResponseObject, error)
+	// RetirePkiIssuer Retire a version with no live certificates; its key is destroyed.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/retire)
+	RetirePkiIssuer(ctx context.Context, request RetirePkiIssuerRequestObject) (RetirePkiIssuerResponseObject, error)
+	// RevokePkiIssuer Revoke a compromised version: key destroyed, live certificates revoked.
+	// (POST /api/v1/instance/pki/issuers/{issuer}/versions/{version}/revoke)
+	RevokePkiIssuer(ctx context.Context, request RevokePkiIssuerRequestObject) (RevokePkiIssuerResponseObject, error)
+	// ListPkiProfiles List certificate profiles with their bindings.
+	// (GET /api/v1/instance/pki/profiles)
+	ListPkiProfiles(ctx context.Context, request ListPkiProfilesRequestObject) (ListPkiProfilesResponseObject, error)
+	// CreatePkiProfile Create a certificate profile.
+	// (POST /api/v1/instance/pki/profiles)
+	CreatePkiProfile(ctx context.Context, request CreatePkiProfileRequestObject) (CreatePkiProfileResponseObject, error)
+	// DeletePkiProfile Delete a profile and its bindings.
+	// (DELETE /api/v1/instance/pki/profiles/{profile})
+	DeletePkiProfile(ctx context.Context, request DeletePkiProfileRequestObject) (DeletePkiProfileResponseObject, error)
+	// ShowPkiProfile Show one certificate profile.
+	// (GET /api/v1/instance/pki/profiles/{profile})
+	ShowPkiProfile(ctx context.Context, request ShowPkiProfileRequestObject) (ShowPkiProfileResponseObject, error)
+	// UpdatePkiProfile Replace a profile policy with a provable narrowing.
+	// (PUT /api/v1/instance/pki/profiles/{profile})
+	UpdatePkiProfile(ctx context.Context, request UpdatePkiProfileRequestObject) (UpdatePkiProfileResponseObject, error)
+	// BindPkiProfile Bind a profile to a project or one of its environments.
+	// (POST /api/v1/instance/pki/profiles/{profile}/bindings)
+	BindPkiProfile(ctx context.Context, request BindPkiProfileRequestObject) (BindPkiProfileResponseObject, error)
+	// UnbindPkiProfile Remove one binding of a profile.
+	// (DELETE /api/v1/instance/pki/profiles/{profile}/bindings/{binding})
+	UnbindPkiProfile(ctx context.Context, request UnbindPkiProfileRequestObject) (UnbindPkiProfileResponseObject, error)
 	// ReencryptInstance Walk the instance credential ciphertext onto the active DEK version.
 	// (POST /api/v1/instance/reencrypt)
 	ReencryptInstance(ctx context.Context, request ReencryptInstanceRequestObject) (ReencryptInstanceResponseObject, error)
@@ -60891,6 +70927,18 @@ type StrictServerInterface interface {
 	// RenameProject Rename a project.
 	// (PATCH /api/v1/orgs/{org}/projects/{project})
 	RenameProject(ctx context.Context, request RenameProjectRequestObject) (RenameProjectResponseObject, error)
+	// ListAccessPolicies The project's temporary-access policies.
+	// (GET /api/v1/orgs/{org}/projects/{project}/access-policies)
+	ListAccessPolicies(ctx context.Context, request ListAccessPoliciesRequestObject) (ListAccessPoliciesResponseObject, error)
+	// CreateAccessPolicy Create a temporary-access policy.
+	// (POST /api/v1/orgs/{org}/projects/{project}/access-policies)
+	CreateAccessPolicy(ctx context.Context, request CreateAccessPolicyRequestObject) (CreateAccessPolicyResponseObject, error)
+	// DeleteAccessPolicy Delete a temporary-access policy.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+	DeleteAccessPolicy(ctx context.Context, request DeleteAccessPolicyRequestObject) (DeleteAccessPolicyResponseObject, error)
+	// UpdateAccessPolicy Update a temporary-access policy.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/access-policies/{policy})
+	UpdateAccessPolicy(ctx context.Context, request UpdateAccessPolicyRequestObject) (UpdateAccessPolicyResponseObject, error)
 	// CancelAdapterMove Cancel an attention-required move and reconverge the old route.
 	// (DELETE /api/v1/orgs/{org}/projects/{project}/adapter-moves/{move})
 	CancelAdapterMove(ctx context.Context, request CancelAdapterMoveRequestObject) (CancelAdapterMoveResponseObject, error)
@@ -61032,6 +71080,24 @@ type StrictServerInterface interface {
 	// RenameEnvironment Rename an environment.
 	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment})
 	RenameEnvironment(ctx context.Context, request RenameEnvironmentRequestObject) (RenameEnvironmentResponseObject, error)
+	// ListAccessRequests The environment's temporary-access requests.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+	ListAccessRequests(ctx context.Context, request ListAccessRequestsRequestObject) (ListAccessRequestsResponseObject, error)
+	// CreateAccessRequest Request temporary access.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests)
+	CreateAccessRequest(ctx context.Context, request CreateAccessRequestRequestObject) (CreateAccessRequestResponseObject, error)
+	// EmergencyAccess Take emergency temporary access.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/emergency)
+	EmergencyAccess(ctx context.Context, request EmergencyAccessRequestObject) (EmergencyAccessResponseObject, error)
+	// CancelAccessRequest Withdraw an open temporary-access request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/cancel)
+	CancelAccessRequest(ctx context.Context, request CancelAccessRequestRequestObject) (CancelAccessRequestResponseObject, error)
+	// RevokeAccessRequest End granted temporary access early.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/revoke)
+	RevokeAccessRequest(ctx context.Context, request RevokeAccessRequestRequestObject) (RevokeAccessRequestResponseObject, error)
+	// VoteAccessRequest Approve or reject a temporary-access request.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/access-requests/{accessRequest}/vote)
+	VoteAccessRequest(ctx context.Context, request VoteAccessRequestRequestObject) (VoteAccessRequestResponseObject, error)
 	// ListApprovalRequests The environment's change-approval requests.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/approval-requests)
 	ListApprovalRequests(ctx context.Context, request ListApprovalRequestsRequestObject) (ListApprovalRequestsResponseObject, error)
@@ -61047,6 +71113,27 @@ type StrictServerInterface interface {
 	// ExportEnvAudit Stream the environment's audit trail as JSONL.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/audit/export)
 	ExportEnvAudit(ctx context.Context, request ExportEnvAuditRequestObject) (ExportEnvAuditResponseObject, error)
+	// ListCertificateProfiles List the certificate profiles bound to this environment.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificate-profiles)
+	ListCertificateProfiles(ctx context.Context, request ListCertificateProfilesRequestObject) (ListCertificateProfilesResponseObject, error)
+	// ListCertificates List an environment's certificates: metadata and public certificates only.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates)
+	ListCertificates(ctx context.Context, request ListCertificatesRequestObject) (ListCertificatesResponseObject, error)
+	// IssueCertificate Issue a certificate through a bound profile; a generated key is disclosed exactly once.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates)
+	IssueCertificate(ctx context.Context, request IssueCertificateRequestObject) (IssueCertificateResponseObject, error)
+	// ShowCertificate Show one certificate.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate})
+	ShowCertificate(ctx context.Context, request ShowCertificateRequestObject) (ShowCertificateResponseObject, error)
+	// GetCertificateCrl Read the CRL published by the certificate's issuer version.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/crl)
+	GetCertificateCrl(ctx context.Context, request GetCertificateCrlRequestObject) (GetCertificateCrlResponseObject, error)
+	// RenewCertificate Renew a certificate inside its renewal window, reusing its public key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/renew)
+	RenewCertificate(ctx context.Context, request RenewCertificateRequestObject) (RenewCertificateResponseObject, error)
+	// RevokeCertificate Revoke a certificate; revoking a revoked certificate returns it unchanged.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/certificates/{certificate}/revoke)
+	RevokeCertificate(ctx context.Context, request RevokeCertificateRequestObject) (RevokeCertificateResponseObject, error)
 	// FetchDelivery Fetch the authorized projection, conditionally.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/delivery)
 	FetchDelivery(ctx context.Context, request FetchDeliveryRequestObject) (FetchDeliveryResponseObject, error)
@@ -61188,6 +71275,51 @@ type StrictServerInterface interface {
 	// UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
 	// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
 	UpdateSshProfile(ctx context.Context, request UpdateSshProfileRequestObject) (UpdateSshProfileResponseObject, error)
+	// ListTransitKeys List the environment's transit keys (metadata only, never material).
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+	ListTransitKeys(ctx context.Context, request ListTransitKeysRequestObject) (ListTransitKeysResponseObject, error)
+	// CreateTransitKey Create a named transit key with its first version.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys)
+	CreateTransitKey(ctx context.Context, request CreateTransitKeyRequestObject) (CreateTransitKeyResponseObject, error)
+	// ShowTransitKey Show one transit key with its versions and caller entries.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+	ShowTransitKey(ctx context.Context, request ShowTransitKeyRequestObject) (ShowTransitKeyResponseObject, error)
+	// ConfigureTransitKey Change a key's version window, rotation period or caller entries.
+	// (PATCH /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key})
+	ConfigureTransitKey(ctx context.Context, request ConfigureTransitKeyRequestObject) (ConfigureTransitKeyResponseObject, error)
+	// TransitDataKey Generate a data key, wrapped under the key and optionally in plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/datakey)
+	TransitDataKey(ctx context.Context, request TransitDataKeyRequestObject) (TransitDataKeyResponseObject, error)
+	// TransitDecrypt Decrypt a transit ciphertext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/decrypt)
+	TransitDecrypt(ctx context.Context, request TransitDecryptRequestObject) (TransitDecryptResponseObject, error)
+	// TransitEncrypt Encrypt plaintext under the key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/encrypt)
+	TransitEncrypt(ctx context.Context, request TransitEncryptRequestObject) (TransitEncryptResponseObject, error)
+	// TransitHMAC Compute an HMAC-SHA256 over a message.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac)
+	TransitHMAC(ctx context.Context, request TransitHMACRequestObject) (TransitHMACResponseObject, error)
+	// TransitVerifyHMAC Verify an HMAC-SHA256 in constant time.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/hmac-verify)
+	TransitVerifyHMAC(ctx context.Context, request TransitVerifyHMACRequestObject) (TransitVerifyHMACResponseObject, error)
+	// ChangeTransitKeyState Disable, enable, retire, compromise, schedule or cancel deletion.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/lifecycle)
+	ChangeTransitKeyState(ctx context.Context, request ChangeTransitKeyStateRequestObject) (ChangeTransitKeyStateResponseObject, error)
+	// TransitRewrap Move a ciphertext onto the latest key version without returning plaintext.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rewrap)
+	TransitRewrap(ctx context.Context, request TransitRewrapRequestObject) (TransitRewrapResponseObject, error)
+	// RotateTransitKey Append a new key version; new output uses it.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/rotate)
+	RotateTransitKey(ctx context.Context, request RotateTransitKeyRequestObject) (RotateTransitKeyResponseObject, error)
+	// TransitSign Sign a message with an Ed25519 key.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/sign)
+	TransitSign(ctx context.Context, request TransitSignRequestObject) (TransitSignResponseObject, error)
+	// TrimTransitKey Permanently delete versions below min_decrypt_version.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/trim)
+	TrimTransitKey(ctx context.Context, request TrimTransitKeyRequestObject) (TrimTransitKeyResponseObject, error)
+	// TransitVerify Verify an Ed25519 signature.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/transit-keys/{transit_key}/verify)
+	TransitVerify(ctx context.Context, request TransitVerifyRequestObject) (TransitVerifyResponseObject, error)
 	// ListValues The environment's resolved values.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values)
 	ListValues(ctx context.Context, request ListValuesRequestObject) (ListValuesResponseObject, error)
@@ -63454,6 +73586,487 @@ func (sh *strictHandler) PutOidcProvider(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// ListPkiIssuers operation middleware
+func (sh *strictHandler) ListPkiIssuers(w http.ResponseWriter, r *http.Request) {
+	var request ListPkiIssuersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPkiIssuers(ctx, request.(ListPkiIssuersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPkiIssuers")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPkiIssuersResponseObject); ok {
+		if err := validResponse.VisitListPkiIssuersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreatePkiIssuer operation middleware
+func (sh *strictHandler) CreatePkiIssuer(w http.ResponseWriter, r *http.Request) {
+	var request CreatePkiIssuerRequestObject
+
+	var body CreatePkiIssuerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePkiIssuer(ctx, request.(CreatePkiIssuerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePkiIssuer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreatePkiIssuerResponseObject); ok {
+		if err := validResponse.VisitCreatePkiIssuerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowPkiIssuer operation middleware
+func (sh *strictHandler) ShowPkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	var request ShowPkiIssuerRequestObject
+
+	request.Issuer = issuer
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowPkiIssuer(ctx, request.(ShowPkiIssuerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowPkiIssuer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowPkiIssuerResponseObject); ok {
+		if err := validResponse.VisitShowPkiIssuerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// InstallPkiIssuerCertificate operation middleware
+func (sh *strictHandler) InstallPkiIssuerCertificate(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	var request InstallPkiIssuerCertificateRequestObject
+
+	request.Issuer = issuer
+
+	var body InstallPkiIssuerCertificateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.InstallPkiIssuerCertificate(ctx, request.(InstallPkiIssuerCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "InstallPkiIssuerCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(InstallPkiIssuerCertificateResponseObject); ok {
+		if err := validResponse.VisitInstallPkiIssuerCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReleasePkiIssuerHold operation middleware
+func (sh *strictHandler) ReleasePkiIssuerHold(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	var request ReleasePkiIssuerHoldRequestObject
+
+	request.Issuer = issuer
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReleasePkiIssuerHold(ctx, request.(ReleasePkiIssuerHoldRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReleasePkiIssuerHold")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReleasePkiIssuerHoldResponseObject); ok {
+		if err := validResponse.VisitReleasePkiIssuerHoldResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RotatePkiIssuer operation middleware
+func (sh *strictHandler) RotatePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName) {
+	var request RotatePkiIssuerRequestObject
+
+	request.Issuer = issuer
+
+	var body RotatePkiIssuerJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RotatePkiIssuer(ctx, request.(RotatePkiIssuerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RotatePkiIssuer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RotatePkiIssuerResponseObject); ok {
+		if err := validResponse.VisitRotatePkiIssuerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPkiIssuerCrl operation middleware
+func (sh *strictHandler) GetPkiIssuerCrl(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion) {
+	var request GetPkiIssuerCrlRequestObject
+
+	request.Issuer = issuer
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPkiIssuerCrl(ctx, request.(GetPkiIssuerCrlRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPkiIssuerCrl")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetPkiIssuerCrlResponseObject); ok {
+		if err := validResponse.VisitGetPkiIssuerCrlResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PublishPkiIssuerCrl operation middleware
+func (sh *strictHandler) PublishPkiIssuerCrl(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion) {
+	var request PublishPkiIssuerCrlRequestObject
+
+	request.Issuer = issuer
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PublishPkiIssuerCrl(ctx, request.(PublishPkiIssuerCrlRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PublishPkiIssuerCrl")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PublishPkiIssuerCrlResponseObject); ok {
+		if err := validResponse.VisitPublishPkiIssuerCrlResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RetirePkiIssuer operation middleware
+func (sh *strictHandler) RetirePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion) {
+	var request RetirePkiIssuerRequestObject
+
+	request.Issuer = issuer
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RetirePkiIssuer(ctx, request.(RetirePkiIssuerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RetirePkiIssuer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RetirePkiIssuerResponseObject); ok {
+		if err := validResponse.VisitRetirePkiIssuerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokePkiIssuer operation middleware
+func (sh *strictHandler) RevokePkiIssuer(w http.ResponseWriter, r *http.Request, issuer PkiIssuerName, version PkiIssuerVersion) {
+	var request RevokePkiIssuerRequestObject
+
+	request.Issuer = issuer
+	request.Version = version
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokePkiIssuer(ctx, request.(RevokePkiIssuerRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokePkiIssuer")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokePkiIssuerResponseObject); ok {
+		if err := validResponse.VisitRevokePkiIssuerResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPkiProfiles operation middleware
+func (sh *strictHandler) ListPkiProfiles(w http.ResponseWriter, r *http.Request) {
+	var request ListPkiProfilesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPkiProfiles(ctx, request.(ListPkiProfilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPkiProfiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPkiProfilesResponseObject); ok {
+		if err := validResponse.VisitListPkiProfilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreatePkiProfile operation middleware
+func (sh *strictHandler) CreatePkiProfile(w http.ResponseWriter, r *http.Request) {
+	var request CreatePkiProfileRequestObject
+
+	var body CreatePkiProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreatePkiProfile(ctx, request.(CreatePkiProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreatePkiProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreatePkiProfileResponseObject); ok {
+		if err := validResponse.VisitCreatePkiProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeletePkiProfile operation middleware
+func (sh *strictHandler) DeletePkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName) {
+	var request DeletePkiProfileRequestObject
+
+	request.Profile = profile
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeletePkiProfile(ctx, request.(DeletePkiProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeletePkiProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeletePkiProfileResponseObject); ok {
+		if err := validResponse.VisitDeletePkiProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowPkiProfile operation middleware
+func (sh *strictHandler) ShowPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName) {
+	var request ShowPkiProfileRequestObject
+
+	request.Profile = profile
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowPkiProfile(ctx, request.(ShowPkiProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowPkiProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowPkiProfileResponseObject); ok {
+		if err := validResponse.VisitShowPkiProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdatePkiProfile operation middleware
+func (sh *strictHandler) UpdatePkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName) {
+	var request UpdatePkiProfileRequestObject
+
+	request.Profile = profile
+
+	var body UpdatePkiProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdatePkiProfile(ctx, request.(UpdatePkiProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdatePkiProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdatePkiProfileResponseObject); ok {
+		if err := validResponse.VisitUpdatePkiProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BindPkiProfile operation middleware
+func (sh *strictHandler) BindPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName) {
+	var request BindPkiProfileRequestObject
+
+	request.Profile = profile
+
+	var body BindPkiProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BindPkiProfile(ctx, request.(BindPkiProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BindPkiProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BindPkiProfileResponseObject); ok {
+		if err := validResponse.VisitBindPkiProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnbindPkiProfile operation middleware
+func (sh *strictHandler) UnbindPkiProfile(w http.ResponseWriter, r *http.Request, profile PkiProfileName, binding PkiBindingID) {
+	var request UnbindPkiProfileRequestObject
+
+	request.Profile = profile
+	request.Binding = binding
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnbindPkiProfile(ctx, request.(UnbindPkiProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnbindPkiProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnbindPkiProfileResponseObject); ok {
+		if err := validResponse.VisitUnbindPkiProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ReencryptInstance operation middleware
 func (sh *strictHandler) ReencryptInstance(w http.ResponseWriter, r *http.Request) {
 	var request ReencryptInstanceRequestObject
@@ -64952,6 +75565,130 @@ func (sh *strictHandler) RenameProject(w http.ResponseWriter, r *http.Request, o
 	}
 }
 
+// ListAccessPolicies operation middleware
+func (sh *strictHandler) ListAccessPolicies(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request ListAccessPoliciesRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccessPolicies(ctx, request.(ListAccessPoliciesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccessPolicies")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccessPoliciesResponseObject); ok {
+		if err := validResponse.VisitListAccessPoliciesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccessPolicy operation middleware
+func (sh *strictHandler) CreateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID) {
+	var request CreateAccessPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+
+	var body CreateAccessPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccessPolicy(ctx, request.(CreateAccessPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccessPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccessPolicyResponseObject); ok {
+		if err := validResponse.VisitCreateAccessPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteAccessPolicy operation middleware
+func (sh *strictHandler) DeleteAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	var request DeleteAccessPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Policy = policy
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAccessPolicy(ctx, request.(DeleteAccessPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAccessPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAccessPolicyResponseObject); ok {
+		if err := validResponse.VisitDeleteAccessPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateAccessPolicy operation middleware
+func (sh *strictHandler) UpdateAccessPolicy(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, policy ID) {
+	var request UpdateAccessPolicyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Policy = policy
+
+	var body UpdateAccessPolicyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateAccessPolicy(ctx, request.(UpdateAccessPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateAccessPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateAccessPolicyResponseObject); ok {
+		if err := validResponse.VisitUpdateAccessPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CancelAdapterMove operation middleware
 func (sh *strictHandler) CancelAdapterMove(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, move ID) {
 	var request CancelAdapterMoveRequestObject
@@ -66392,6 +77129,198 @@ func (sh *strictHandler) RenameEnvironment(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// ListAccessRequests operation middleware
+func (sh *strictHandler) ListAccessRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListAccessRequestsRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAccessRequests(ctx, request.(ListAccessRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAccessRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAccessRequestsResponseObject); ok {
+		if err := validResponse.VisitListAccessRequestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAccessRequest operation middleware
+func (sh *strictHandler) CreateAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request CreateAccessRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body CreateAccessRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAccessRequest(ctx, request.(CreateAccessRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAccessRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAccessRequestResponseObject); ok {
+		if err := validResponse.VisitCreateAccessRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// EmergencyAccess operation middleware
+func (sh *strictHandler) EmergencyAccess(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request EmergencyAccessRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body EmergencyAccessJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.EmergencyAccess(ctx, request.(EmergencyAccessRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "EmergencyAccess")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(EmergencyAccessResponseObject); ok {
+		if err := validResponse.VisitEmergencyAccessResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelAccessRequest operation middleware
+func (sh *strictHandler) CancelAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	var request CancelAccessRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.AccessRequest = accessRequest
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelAccessRequest(ctx, request.(CancelAccessRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelAccessRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelAccessRequestResponseObject); ok {
+		if err := validResponse.VisitCancelAccessRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeAccessRequest operation middleware
+func (sh *strictHandler) RevokeAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	var request RevokeAccessRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.AccessRequest = accessRequest
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeAccessRequest(ctx, request.(RevokeAccessRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeAccessRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeAccessRequestResponseObject); ok {
+		if err := validResponse.VisitRevokeAccessRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// VoteAccessRequest operation middleware
+func (sh *strictHandler) VoteAccessRequest(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, accessRequest ID) {
+	var request VoteAccessRequestRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.AccessRequest = accessRequest
+
+	var body VoteAccessRequestJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.VoteAccessRequest(ctx, request.(VoteAccessRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "VoteAccessRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(VoteAccessRequestResponseObject); ok {
+		if err := validResponse.VisitVoteAccessRequestResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListApprovalRequests operation middleware
 func (sh *strictHandler) ListApprovalRequests(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
 	var request ListApprovalRequestsRequestObject
@@ -66536,6 +77465,220 @@ func (sh *strictHandler) ExportEnvAudit(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ExportEnvAuditResponseObject); ok {
 		if err := validResponse.VisitExportEnvAuditResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCertificateProfiles operation middleware
+func (sh *strictHandler) ListCertificateProfiles(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListCertificateProfilesRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCertificateProfiles(ctx, request.(ListCertificateProfilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCertificateProfiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCertificateProfilesResponseObject); ok {
+		if err := validResponse.VisitListCertificateProfilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCertificates operation middleware
+func (sh *strictHandler) ListCertificates(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListCertificatesRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCertificates(ctx, request.(ListCertificatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCertificates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCertificatesResponseObject); ok {
+		if err := validResponse.VisitListCertificatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// IssueCertificate operation middleware
+func (sh *strictHandler) IssueCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request IssueCertificateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body IssueCertificateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.IssueCertificate(ctx, request.(IssueCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "IssueCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(IssueCertificateResponseObject); ok {
+		if err := validResponse.VisitIssueCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowCertificate operation middleware
+func (sh *strictHandler) ShowCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID) {
+	var request ShowCertificateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Certificate = certificate
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowCertificate(ctx, request.(ShowCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowCertificateResponseObject); ok {
+		if err := validResponse.VisitShowCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetCertificateCrl operation middleware
+func (sh *strictHandler) GetCertificateCrl(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID) {
+	var request GetCertificateCrlRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Certificate = certificate
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetCertificateCrl(ctx, request.(GetCertificateCrlRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetCertificateCrl")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetCertificateCrlResponseObject); ok {
+		if err := validResponse.VisitGetCertificateCrlResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RenewCertificate operation middleware
+func (sh *strictHandler) RenewCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID) {
+	var request RenewCertificateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Certificate = certificate
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RenewCertificate(ctx, request.(RenewCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RenewCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RenewCertificateResponseObject); ok {
+		if err := validResponse.VisitRenewCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeCertificate operation middleware
+func (sh *strictHandler) RevokeCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, certificate CertificateID) {
+	var request RevokeCertificateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.Certificate = certificate
+
+	var body RevokeCertificateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeCertificate(ctx, request.(RevokeCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeCertificateResponseObject); ok {
+		if err := validResponse.VisitRevokeCertificateResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -68017,6 +79160,516 @@ func (sh *strictHandler) UpdateSshProfile(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateSshProfileResponseObject); ok {
 		if err := validResponse.VisitUpdateSshProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTransitKeys operation middleware
+func (sh *strictHandler) ListTransitKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListTransitKeysRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTransitKeys(ctx, request.(ListTransitKeysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTransitKeys")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTransitKeysResponseObject); ok {
+		if err := validResponse.VisitListTransitKeysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateTransitKey operation middleware
+func (sh *strictHandler) CreateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request CreateTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body CreateTransitKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateTransitKey(ctx, request.(CreateTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateTransitKeyResponseObject); ok {
+		if err := validResponse.VisitCreateTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowTransitKey operation middleware
+func (sh *strictHandler) ShowTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request ShowTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowTransitKey(ctx, request.(ShowTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowTransitKeyResponseObject); ok {
+		if err := validResponse.VisitShowTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfigureTransitKey operation middleware
+func (sh *strictHandler) ConfigureTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request ConfigureTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body ConfigureTransitKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfigureTransitKey(ctx, request.(ConfigureTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfigureTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfigureTransitKeyResponseObject); ok {
+		if err := validResponse.VisitConfigureTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitDataKey operation middleware
+func (sh *strictHandler) TransitDataKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitDataKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitDataKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitDataKey(ctx, request.(TransitDataKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitDataKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitDataKeyResponseObject); ok {
+		if err := validResponse.VisitTransitDataKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitDecrypt operation middleware
+func (sh *strictHandler) TransitDecrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitDecryptRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitDecryptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitDecrypt(ctx, request.(TransitDecryptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitDecrypt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitDecryptResponseObject); ok {
+		if err := validResponse.VisitTransitDecryptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitEncrypt operation middleware
+func (sh *strictHandler) TransitEncrypt(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitEncryptRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitEncryptJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitEncrypt(ctx, request.(TransitEncryptRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitEncrypt")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitEncryptResponseObject); ok {
+		if err := validResponse.VisitTransitEncryptResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitHMAC operation middleware
+func (sh *strictHandler) TransitHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitHMACRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitHMACJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitHMAC(ctx, request.(TransitHMACRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitHMAC")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitHMACResponseObject); ok {
+		if err := validResponse.VisitTransitHMACResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitVerifyHMAC operation middleware
+func (sh *strictHandler) TransitVerifyHMAC(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitVerifyHMACRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitVerifyHMACJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitVerifyHMAC(ctx, request.(TransitVerifyHMACRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitVerifyHMAC")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitVerifyHMACResponseObject); ok {
+		if err := validResponse.VisitTransitVerifyHMACResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ChangeTransitKeyState operation middleware
+func (sh *strictHandler) ChangeTransitKeyState(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request ChangeTransitKeyStateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body ChangeTransitKeyStateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ChangeTransitKeyState(ctx, request.(ChangeTransitKeyStateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ChangeTransitKeyState")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ChangeTransitKeyStateResponseObject); ok {
+		if err := validResponse.VisitChangeTransitKeyStateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitRewrap operation middleware
+func (sh *strictHandler) TransitRewrap(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitRewrapRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitRewrapJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitRewrap(ctx, request.(TransitRewrapRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitRewrap")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitRewrapResponseObject); ok {
+		if err := validResponse.VisitTransitRewrapResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RotateTransitKey operation middleware
+func (sh *strictHandler) RotateTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request RotateTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RotateTransitKey(ctx, request.(RotateTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RotateTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RotateTransitKeyResponseObject); ok {
+		if err := validResponse.VisitRotateTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitSign operation middleware
+func (sh *strictHandler) TransitSign(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitSignRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitSignJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitSign(ctx, request.(TransitSignRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitSign")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitSignResponseObject); ok {
+		if err := validResponse.VisitTransitSignResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TrimTransitKey operation middleware
+func (sh *strictHandler) TrimTransitKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TrimTransitKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TrimTransitKey(ctx, request.(TrimTransitKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TrimTransitKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TrimTransitKeyResponseObject); ok {
+		if err := validResponse.VisitTrimTransitKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// TransitVerify operation middleware
+func (sh *strictHandler) TransitVerify(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, transitKey TransitKeyName) {
+	var request TransitVerifyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.TransitKey = transitKey
+
+	var body TransitVerifyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransitVerify(ctx, request.(TransitVerifyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransitVerify")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransitVerifyResponseObject); ok {
+		if err := validResponse.VisitTransitVerifyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

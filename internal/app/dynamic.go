@@ -96,3 +96,24 @@ func (w *dynamicWorker) Run(ctx context.Context) {
 		}
 	}
 }
+
+// transitGaugeSource feeds the label-free transit gauges at scrape time (#156).
+// A datastore hiccup is reported as an error so the collector marks the gauges
+// unknown for that scrape instead of rendering zeros.
+type transitGaugeSource struct {
+	runtime *store.TransitRuntime
+	log     *slog.Logger
+}
+
+// TransitSnapshot reads current transit counts with a two-second timeout.
+// A read failure returns zero counts and the error so the scrape is marked unknown.
+func (s transitGaugeSource) TransitSnapshot() (live, rotationDue, pendingDeletion int64, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	g, err := s.runtime.Gauges(ctx, time.Now().UTC())
+	if err != nil {
+		s.log.Warn("transit gauge scrape failed", "err", err)
+		return 0, 0, 0, err
+	}
+	return g.Live, g.RotationDue, g.PendingDeletion, nil
+}

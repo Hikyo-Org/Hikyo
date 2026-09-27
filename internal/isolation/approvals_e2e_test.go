@@ -274,8 +274,14 @@ func runApprovalEdges(t *testing.T, db *store.DB) {
 	// (b) A merge after the policy is deleted invalidates, never publishes.
 	envB, scopeB := newCoveredEnv("edges-b")
 	reqB := stage(scopeB, "EDGE_B").CreatedApprovalRequest.ID
-	if err := approvals.DeletePolicy(ctx, service.LocalPrincipal(orgAdmin), projectScope, policyIDForEnv(t, db, approvals, envB)); err != nil {
+	policyB := policyIDForEnv(t, db, approvals, envB)
+	if err := approvals.DeletePolicy(ctx, service.LocalPrincipal(orgAdmin), projectScope, policyB); err != nil {
 		t.Fatalf("delete policy: %v", err)
+	}
+	// The deletion record states what was removed, not zeroed defaults.
+	if n := queryInt(t, db, "SELECT COUNT(*) FROM audit_tenant_events WHERE type = 'approval.policy_changed' AND object_id = '"+policyB+
+		`' AND payload LIKE '%"action":"deleted"%' AND payload LIKE '%"enabled":true%' AND payload LIKE '%"approver_count":1%'`); n != 1 {
+		t.Fatalf("policy deletion audit records = %d, want 1 carrying enabled and the approver count", n)
 	}
 	if _, err := revisions.PublishPlanned(ctx, service.LocalPrincipal(alice), scopeB, service.PublishRequest{ApprovalRequestID: reqB}); !errors.Is(err, domain.ErrConflict) {
 		t.Fatalf("merge after policy delete = %v, want conflict", err)

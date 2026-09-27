@@ -4,7 +4,7 @@ import "testing"
 
 func TestGitLabTargetInputMapsKindsAndFlags(t *testing.T) {
 	flags := gitLabTargetFlags{scope: "production", protected: true, hidden: true}
-	input, err := adapterTargetInput("", "env_1", "project", "platform/backend", "api", "", "", "", "", "key_1", adapterKeySelection{}, &flags)
+	input, err := adapterTargetInput("", "env_1", "project", "platform/backend", "api", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, &flags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -14,7 +14,7 @@ func TestGitLabTargetInputMapsKindsAndFlags(t *testing.T) {
 	if *input.DestinationScope != "production" || !*input.VariableProtected || !*input.VariableHidden || *input.VariableExpand {
 		t.Fatalf("flags = %+v", input)
 	}
-	group, err := adapterTargetInput("", "env_1", "group", "platform", "", "", "", "", "", "key_1", adapterKeySelection{}, &gitLabTargetFlags{})
+	group, err := adapterTargetInput("", "env_1", "group", "platform", "", "", "", "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, &gitLabTargetFlags{})
 	if err != nil || group.DestinationKind != "organization" || group.Visibility != "" {
 		t.Fatalf("group mapping = %+v, %v", group, err)
 	}
@@ -28,7 +28,7 @@ func TestGitLabTargetInputRefusesGitHubRouting(t *testing.T) {
 		"project without repo":    {"project", "platform", "", "", ""},
 		"destination environment": {"project", "platform", "api", "prod", ""},
 	} {
-		if _, err := adapterTargetInput("", "env_1", args[0], args[1], args[2], args[3], args[4], "", "", "key_1", adapterKeySelection{}, &gitLabTargetFlags{}); err == nil {
+		if _, err := adapterTargetInput("", "env_1", args[0], args[1], args[2], args[3], args[4], "", "", "key_1", adapterKeySelection{}, adapterAWSDestination{}, &gitLabTargetFlags{}); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}

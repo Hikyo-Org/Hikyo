@@ -8,6 +8,86 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AccessGrant struct {
+	ID          string
+	PrincipalID string
+	Capability  string
+	OrgID       string
+	ProjectID   string
+	EnvID       string
+	RequestID   string
+	CreatedAt   pgtype.Timestamptz
+	ExpiresAt   pgtype.Timestamptz
+}
+
+type AccessPolicy struct {
+	ID                 string
+	OrgID              string
+	ProjectID          string
+	EnvironmentID      string
+	Capabilities       string
+	MaxDurationSeconds int32
+	MinApprovals       int32
+	AllowSelfApproval  bool
+	RequestTtlSeconds  int32
+	Enabled            bool
+	Version            int64
+	CreatedBy          string
+	CreatedAt          pgtype.Timestamptz
+	UpdatedAt          pgtype.Timestamptz
+}
+
+type AccessPolicyApprover struct {
+	ID             string
+	OrgID          string
+	ProjectID      string
+	PolicyID       string
+	Kind           string
+	SubjectID      string
+	ScopeBindingID string
+}
+
+type AccessPolicyBypasser struct {
+	ID          string
+	OrgID       string
+	ProjectID   string
+	PolicyID    string
+	PrincipalID string
+}
+
+type AccessRequest struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	PolicyID             string
+	PolicyVersion        int64
+	RequesterPrincipalID string
+	Capabilities         string
+	DurationSeconds      int32
+	Reason               string
+	Bypassed             bool
+	State                string
+	InvalidatedCause     string
+	ResolvedBy           string
+	CreatedAt            pgtype.Timestamptz
+	ReviewExpiresAt      pgtype.Timestamptz
+	GrantedAt            pgtype.Timestamptz
+	ExpiresAt            pgtype.Timestamptz
+	ResolvedAt           pgtype.Timestamptz
+}
+
+type AccessVote struct {
+	ID            string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	RequestID     string
+	PrincipalID   string
+	Decision      string
+	CreatedAt     pgtype.Timestamptz
+}
+
 type Account struct {
 	ID                 string
 	PrincipalID        string
@@ -861,6 +941,88 @@ type PinGeneration struct {
 	Generation    int64
 }
 
+type PkiCertificate struct {
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	ProfileID        string
+	ProfileName      string
+	IssuerID         string
+	Serial           string
+	State            string
+	KeySource        string
+	KeyAlgorithm     string
+	KeyFingerprint   string
+	CommonName       string
+	Sans             string
+	NotBefore        pgtype.Timestamptz
+	NotAfter         pgtype.Timestamptz
+	CertificateDer   []byte
+	PrincipalID      string
+	PrincipalClass   string
+	RenewedFrom      pgtype.Text
+	RenewedBy        pgtype.Text
+	RevokedAt        pgtype.Timestamptz
+	RevocationReason pgtype.Text
+	IssuingDeadline  pgtype.Timestamptz
+	RowVersion       int64
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+}
+
+type PkiIssuer struct {
+	ID                  string
+	Name                string
+	Version             int32
+	Kind                string
+	Origin              string
+	ParentID            pgtype.Text
+	State               string
+	KeyAlgorithm        string
+	KeyFingerprint      string
+	EncryptedPrivateKey []byte
+	DekVersion          pgtype.Int8
+	CertificateDer      []byte
+	CsrDer              []byte
+	ChainPem            string
+	SubjectCn           string
+	SubjectOrg          string
+	NotBefore           pgtype.Timestamptz
+	NotAfter            pgtype.Timestamptz
+	CrlDistributionUrl  string
+	RestoreHold         int32
+	IssuedCount         int64
+	CrlDer              []byte
+	CrlNumber           int64
+	CrlThisUpdate       pgtype.Timestamptz
+	CrlNextUpdate       pgtype.Timestamptz
+	RowVersion          int64
+	CreatedBy           string
+	CreatedAt           pgtype.Timestamptz
+	UpdatedAt           pgtype.Timestamptz
+}
+
+type PkiProfile struct {
+	ID         string
+	Name       string
+	Policy     string
+	RowVersion int64
+	CreatedBy  string
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+}
+
+type PkiProfileBinding struct {
+	ID            string
+	ProfileID     string
+	OrgID         string
+	ProjectID     string
+	EnvironmentID pgtype.Text
+	CreatedBy     string
+	CreatedAt     pgtype.Timestamptz
+}
+
 type Principal struct {
 	ID                string
 	Kind              string
@@ -1458,6 +1620,52 @@ type TotpCredential struct {
 	CreatedStep     int64
 	ConfirmedAt     pgtype.Timestamptz
 	CreatedAt       pgtype.Timestamptz
+}
+
+type TransitKey struct {
+	ID                        string
+	OrgID                     string
+	ProjectID                 string
+	EnvironmentID             string
+	Name                      string
+	Algorithm                 string
+	Custody                   string
+	AllowedOperations         string
+	Exportable                int32
+	State                     string
+	LatestVersion             int32
+	MinEncryptVersion         int32
+	MinDecryptVersion         int32
+	MinAvailableVersion       int32
+	CompromisedThroughVersion int32
+	RotationPeriodSeconds     int64
+	PurgeStarted              int32
+	DeletionAfter             pgtype.Timestamptz
+	CreatedBy                 string
+	CreatedAt                 pgtype.Timestamptz
+	UpdatedAt                 pgtype.Timestamptz
+}
+
+type TransitKeyCaller struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	KeyID         string
+	PrincipalID   string
+	Operations    string
+}
+
+type TransitKeyVersion struct {
+	ID                 string
+	OrgID              string
+	ProjectID          string
+	EnvironmentID      string
+	KeyID              string
+	Version            int32
+	MaterialCiphertext []byte
+	ExternalRef        pgtype.Text
+	PublicKey          []byte
+	CreatedAt          pgtype.Timestamptz
 }
 
 type ValueEntry struct {

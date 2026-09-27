@@ -129,3 +129,66 @@ func FuzzParseArtifact(f *testing.F) {
 		}
 	})
 }
+
+// FuzzParseTransitValue checks the caller-facing transit wire parser: it never
+// panics, never accepts more than its bound, and anything it accepts
+// re-renders to exactly the input (the encoding is canonical, so two strings
+// never name one value).
+func FuzzParseTransitValue(f *testing.F) {
+	f.Add("hikyo:v1:AA")
+	f.Add("hikyo:v4294967295:AQID")
+	f.Add("hikyo:v01:AA")
+	f.Add("hikyo:v1:AA==")
+	f.Add("hikyo:v:")
+	f.Fuzz(func(t *testing.T, s string) {
+		v, payload, err := ParseTransitValue(s)
+		if err != nil {
+			return
+		}
+		if v == 0 || len(payload) == 0 || len(s) > MaxTransitWireBytes {
+			t.Fatalf("accepted degenerate value %q", s)
+		}
+		if got := FormatTransitValue(v, payload); got != s {
+			t.Fatalf("non-canonical accept: %q re-renders as %q", s, got)
+		}
+	})
+}
+
+// FuzzTransitDecrypt feeds arbitrary ciphertext strings through the full
+// parse-then-open path a decrypt request takes. Nothing may panic and nothing
+// but the genuine record may open.
+func FuzzTransitDecrypt(f *testing.F) {
+	b := TransitBinding{Algorithm: TransitXChaCha20Poly1305, OrgID: "o", ProjectID: "p", EnvID: "e", KeyID: "tk", Version: 1}
+	material := make([]byte, TransitMaterialSize)
+	k, err := OpenTransitKey(material, b)
+	if err != nil {
+		f.Fatal(err)
+	}
+	// A fixed nonce: fuzz workers are separate processes, and each must agree
+	// on which string is the one genuine record.
+	k.rnd = bytes.NewReader(bytes.Repeat([]byte{0x5A}, 24))
+	record, err := k.Encrypt([]byte("seed"), []byte("c"))
+	if err != nil {
+		f.Fatal(err)
+	}
+	genuine := FormatTransitValue(1, record)
+	f.Add(genuine, []byte("c"))
+	f.Add(genuine[:len(genuine)-2], []byte("c"))
+	f.Add("hikyo:v1:AQID", []byte{})
+	f.Fuzz(func(t *testing.T, s string, context []byte) {
+		v, rec, err := ParseTransitCiphertext(s, b.KeyID)
+		if err != nil {
+			return
+		}
+		if v != b.Version {
+			return
+		}
+		pt, err := k.Decrypt(rec, context)
+		if err != nil {
+			return
+		}
+		if s != genuine || string(context) != "c" || string(pt) != "seed" {
+			t.Fatalf("forged transit value opened: %q", s)
+		}
+	})
+}

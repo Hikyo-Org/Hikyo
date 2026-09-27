@@ -10,3 +10,4 @@ export { ProjectSettings } from '../../routes/ProjectSettings.tsx';
 export { ScimProvisioning } from '../../routes/ScimProvisioning.tsx';
 
 export { InstanceConfig } from '../../routes/InstanceConfig.tsx';
+export { TemporaryAccess } from '../../routes/TemporaryAccess.tsx';
