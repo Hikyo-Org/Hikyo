@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 61, while the
+// The runtime-created fixture includes migrations 45 through 62, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+17 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 61 only")
+	if len(current.Entries) != len(legacy.Entries)+18 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 62 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -314,8 +314,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target or SSH certificate evidence", query, err)
 		}
 	}
-	// Reverse 00061 (SSH user certificates) first, children before parents:
-	// newest migration first.
+	// Reverse 00062 (Cloudflare adapter) first: newest migration first.
+	reverseCloudflareAdapter(t, db)
+	// Reverse 00061 (SSH user certificates) next, children before parents.
 	for _, table := range []string{"ssh_certificates", "ssh_profile_requesters", "ssh_profiles", "ssh_ca_keys", "ssh_cas"} {
 		drillExec(t, db, "DROP TABLE "+table)
 	}
@@ -346,7 +347,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		drillExec(t, db, "DROP TABLE cli_reauth_handoffs")
 		drillExec(t, db, "CREATE TABLE cli_reauth_handoffs_new"+declaration)
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs_new RENAME TO cli_reauth_handoffs")
-		// 00054 (and 00060's provider widening, which rebuilt the same table)
+		// 00054 (and the 00060/00062 provider widenings, which rebuilt it)
 		// replaced the unconditional UNIQUE (org_id, project_id, origin)
 		// with a partial index. SQLite cannot drop an inline UNIQUE, so restore
 		// the legacy declaration from 00025 (created by name, so its stored text
@@ -435,10 +436,47 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62)",
 	} {
 		drillExec(t, db, query)
 	}
+}
+
+// reverseCloudflareAdapter undoes 00062 (Cloudflare adapter), which only
+// widened the provider and destination-kind CHECK lists. The evidence checks
+// above hold adapters empty, so every rebuilt child table is empty too.
+// PostgreSQL restores the 00025 constraints by name. SQLite cannot alter a
+// CHECK, so each table is recreated from its own stored declaration with the
+// added kinds removed; the later catalog inspection proves the result is the
+// legacy text byte-for-byte. adapters itself is recreated from 00025 below.
+func reverseCloudflareAdapter(t *testing.T, db *store.DB) {
+	t.Helper()
+	const added = ", 'workers-script', 'pages-project'"
+	tables := []string{"adapter_ledger", "adapter_route_move_claims", "adapter_route_move_targets", "adapter_targets"}
+	if db.Engine() != store.EngineSQLite {
+		// Restore the 00060 provider set; the 00060 reversal below narrows it
+		// to the legacy pair.
+		drillExec(t, db, "ALTER TABLE adapters DROP CONSTRAINT adapters_provider_check")
+		drillExec(t, db, "ALTER TABLE adapters ADD CONSTRAINT adapters_provider_check CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook'))")
+		for _, table := range tables {
+			drillExec(t, db, "ALTER TABLE "+table+" DROP CONSTRAINT "+table+"_destination_kind_check")
+			drillExec(t, db, "ALTER TABLE "+table+" ADD CONSTRAINT "+table+"_destination_kind_check CHECK (destination_kind IN ('repository', 'organization', 'environment'))")
+		}
+		return
+	}
+	for _, table := range tables {
+		var declaration string
+		if err := db.SQLiteRead().QueryRowContext(t.Context(), "SELECT sql FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&declaration); err != nil {
+			t.Fatal(err)
+		}
+		legacy := strings.ReplaceAll(declaration, added, "")
+		if legacy == declaration {
+			t.Fatal("00062 reversal found no cloudflare destination kinds in", table)
+		}
+		drillExec(t, db, "DROP TABLE "+table)
+		drillExec(t, db, legacy)
+	}
+	drillExec(t, db, "CREATE UNIQUE INDEX adapter_ledger_active_provider_name\n    ON adapter_ledger (provider_origin, destination_kind, repository_id, destination_id, surface, normalized_name)\n    WHERE state <> 'released'")
 }
 
 // reverseSocialSigninSQLite undoes 00057 on a pristine fixture (the evidence

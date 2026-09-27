@@ -12727,7 +12727,13 @@ components:
 
     AdapterDestinationKind:
       type: string
-      enum: [repository, organization, environment]
+      description: >-
+        repository, organization and environment are Forgejo and GitHub Actions
+        destinations. workers-script and pages-project are Cloudflare
+        destinations: destination_owner is the account id, destination_name
+        the Workers script or Pages project, and a pages-project target names
+        exactly one Pages environment (preview or production).
+      enum: [repository, organization, environment, workers-script, pages-project]
 
     AdapterVisibility:
       type: string
@@ -12740,7 +12746,7 @@ components:
         creation requires a provider supported by the receiving server.
         sealed-webhook binds only to an origin an instance admin activated in
         the server's sealed webhook registry.
-      x-extensible-enum: [forgejo, github-actions, sealed-webhook]
+      x-extensible-enum: [forgejo, github-actions, sealed-webhook, cloudflare]
 
     AdapterTargetInput:
       type: object
@@ -12757,11 +12763,11 @@ components:
         destination_name:
           type: string
           maxLength: 255
-          description: Repository name; empty for organization destinations.
+          description: Repository name, Workers script name or Pages project name; empty for organization destinations.
         destination_environment:
           type: string
           maxLength: 255
-          description: GitHub environment name; empty for repository and organization destinations.
+          description: GitHub environment name, or the Pages environment (preview or production) of a pages-project target; empty for other destinations.
         visibility:
           type: string
           enum: ["", all, private, selected]

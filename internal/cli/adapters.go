@@ -166,8 +166,16 @@ func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment
 		if repo == "" || destinationEnvironment == "" || visibility != "" || len(repositoryIDs) != 0 {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "environment target requires --repo and --destination-environment and refuses visibility routing")
 		}
+	case "workers-script":
+		if repo == "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "workers-script target requires --account and --script and refuses environment/visibility routing")
+		}
+	case "pages-project":
+		if repo == "" || (destinationEnvironment != "preview" && destinationEnvironment != "production") || visibility != "" || len(repositoryIDs) != 0 {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "pages-project target requires --account, --pages-project and --destination-environment preview|production")
+		}
 	default:
-		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--kind must be repository, organization, or environment")
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--kind must be repository, organization, environment, workers-script, or pages-project")
 	}
 	out := apigen.AdapterTargetInput{EnvironmentId: apigen.ID(env), DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: owner, DestinationName: repo, DestinationEnvironment: destinationEnvironment, Visibility: apigen.AdapterTargetInputVisibility(visibility), SelectedRepositoryIds: repositoryIDs, NamePrefix: prefix, KeyIds: []apigen.ID{}, KeySelection: selection.body()}
 	for _, id := range ids {
@@ -259,11 +267,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), or an instance-admin sealed-webhook origin")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, or https://api.cloudflare.com")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, or sealed-webhook")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, or cloudflare")
 		}
 		if sub == "update" {
 			fs.StringVar(&target, "target", "", "target id to mutate")
@@ -271,10 +279,13 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			fs.BoolVar(&cancelMove, "cancel-move", false, "cancel the move and reconverge the old route")
 		}
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
+			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, or pages-project")
 			fs.StringVar(&owner, "owner", "", "provider owner or organization (sealed-webhook: receiver namespace)")
+			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
 			fs.StringVar(&repo, "repo", "", "provider repository")
-			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name")
+			fs.StringVar(&repo, "script", "", "Cloudflare Workers script name (alias of --repo)")
+			fs.StringVar(&repo, "pages-project", "", "Cloudflare Pages project name (alias of --repo)")
+			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name, or Pages environment preview|production")
 			fs.StringVar(&visibility, "visibility", "", "GitHub organization visibility: all, private, or selected")
 			fs.StringVar(&selectedRepositories, "selected-repository-ids", "", "comma-separated GitHub numeric repository ids")
 			fs.StringVar(&prefix, "prefix", "", "structural name prefix")
@@ -305,6 +316,9 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err := flags.checkNoPositionals("adapter " + sub); err != nil {
 			return err
 		}
+	}
+	if sub == "create" && origin == "" && provider == "cloudflare" {
+		origin = "https://api.cloudflare.com"
 	}
 	if sub == "create" && origin == "" {
 		return failf(ExitUsage, "adapter create requires --origin")
@@ -371,8 +385,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
-		if provider != "forgejo" && provider != "github-actions" && provider != "sealed-webhook" {
-			return failf(ExitUsage, "--provider must be forgejo, github-actions, or sealed-webhook")
+		if provider != "forgejo" && provider != "github-actions" && provider != "sealed-webhook" && provider != "cloudflare" {
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, sealed-webhook, or cloudflare")
+		}
+		if cloudflareKind := kind == "workers-script" || kind == "pages-project"; cloudflareKind != (provider == "cloudflare") {
+			return failf(ExitUsage, "--provider cloudflare takes exactly --kind workers-script or pages-project")
 		}
 		envID, err := resolved.Require(DimEnv)
 		if err != nil {
@@ -610,10 +627,13 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		}
 		if sub == "add" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
+			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, or pages-project")
 			fs.StringVar(&owner, "owner", "", "provider owner or organization (sealed-webhook: receiver namespace)")
+			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
 			fs.StringVar(&repo, "repo", "", "provider repository")
-			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name")
+			fs.StringVar(&repo, "script", "", "Cloudflare Workers script name (alias of --repo)")
+			fs.StringVar(&repo, "pages-project", "", "Cloudflare Pages project name (alias of --repo)")
+			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name, or Pages environment preview|production")
 			fs.StringVar(&visibility, "visibility", "", "GitHub organization visibility: all, private, or selected")
 			fs.StringVar(&selectedRepositories, "selected-repository-ids", "", "comma-separated GitHub numeric repository ids")
 			fs.StringVar(&prefix, "prefix", "", "structural prefix")
