@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"time"
 
@@ -265,6 +266,16 @@ func (s *Approvals) DeletePolicy(ctx context.Context, actor Actor, scope domain.
 		if err != nil {
 			return err
 		}
+		// The deletion record states what was removed: read the member sets
+		// before the cascade takes them.
+		approvers, err := r.Approvals().ListApprovers(ctx, p, id)
+		if err != nil {
+			return err
+		}
+		bypassers, err := r.Approvals().ListBypassers(ctx, p, id)
+		if err != nil {
+			return err
+		}
 		deleted, err := r.Approvals().DeletePolicy(ctx, p, id)
 		if err != nil {
 			return err
@@ -273,7 +284,7 @@ func (s *Approvals) DeletePolicy(ctx context.Context, actor Actor, scope domain.
 			return domain.ErrNotFound
 		}
 		return recordPolicyChangeCounts(ctx, r, p, caller.Principal, id, "deleted", policy.EnvironmentID,
-			policy.MinApprovals, policy.AllowSelfApproval, false, 0, 0)
+			policy.MinApprovals, policy.AllowSelfApproval, policy.Enabled, len(approvers), len(bypassers))
 	})
 }
 
@@ -619,11 +630,13 @@ func (s *Approvals) OperationalCounts(ctx context.Context) (active, expired int6
 // --- shared helpers, also used by the publish gate ---
 
 func validatePolicyInput(input ApprovalPolicyInput) error {
-	if input.MinApprovals < 1 {
-		return fmt.Errorf("%w: min_approvals must be at least 1", domain.ErrInvalid)
+	// Both engines must store the same policy: postgres columns are int32, so
+	// a larger value would wrap there and not in SQLite.
+	if input.MinApprovals < 1 || input.MinApprovals > math.MaxInt32 {
+		return fmt.Errorf("%w: min_approvals must be between 1 and %d", domain.ErrInvalid, math.MaxInt32)
 	}
-	if input.RequestTTLSeconds <= 0 {
-		return fmt.Errorf("%w: request_ttl_seconds must be positive", domain.ErrInvalid)
+	if input.RequestTTLSeconds <= 0 || input.RequestTTLSeconds > math.MaxInt32 {
+		return fmt.Errorf("%w: request_ttl_seconds must be between 1 and %d", domain.ErrInvalid, math.MaxInt32)
 	}
 	if len(input.Approvers) > maxApprovalPolicyMembers {
 		return fmt.Errorf("%w: approvers cannot contain more than %d entries", domain.ErrInvalid, maxApprovalPolicyMembers)

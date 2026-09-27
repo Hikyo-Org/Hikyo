@@ -117,7 +117,9 @@ func ensureRevealWindow(ctx context.Context, client *Client, st *State, ios IO, 
 	// Approval votes and bypasses require publish authority, not reveal. Their
 	// failed action is the authoritative capability check, so the reveal-window
 	// affordance must not block their purpose-bound ceremony.
-	approvalDecision := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass"
+	// Emergency temporary access (#152) is likewise authorized by its own
+	// operation, not by reveal.
+	approvalDecision := d.purpose == "approve" || d.purpose == "reject" || d.purpose == "bypass" || d.purpose == "access"
 	if !window.CanReveal && !approvalDecision {
 		return refusal
 	}

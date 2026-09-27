@@ -305,6 +305,17 @@ export const SURFACES = defineSurfaceRegistry([
     mode: 'authenticated',
     chrome: 'shell',
   },
+  // Temporary access (#152). Project-scoped for the same reason: access
+  // policies are a project act, and the request queue reads one of the
+  // project's environments at a time.
+  {
+    id: 'temporary-access',
+    path: '/orgs/:org/projects/:project/temporary-access',
+    label: 'Temporary access',
+    section: 'project',
+    mode: 'authenticated',
+    chrome: 'shell',
+  },
   // Deployment adapters (#157): the multi-target synchronization surface.
   // Project-scoped like machine access: an adapter is project-owned, and the
   // sidebar's project context block fills the parameters from the route. The

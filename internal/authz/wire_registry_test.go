@@ -38,14 +38,14 @@ func TestWireRegistrySnapshot(t *testing.T) {
 	// operation, and three CLI transport verbs. #154 adds the private PKI: 24
 	// operation-linked routes (17 instance issuer and profile routes, 7
 	// environment certificate routes) and the `pki` and `cert` CLI verbs.
-	if got := len(facts.Wire()); got != 408 {
-		t.Fatalf("wire entries = %d, want 408", got)
+	if got := len(facts.Wire()); got != 418 {
+		t.Fatalf("wire entries = %d, want 418", got)
 	}
-	if got := len(facts.WireRoutes()); got != 299 {
-		t.Fatalf("operation-linked entries = %d, want 299", got)
+	if got := len(facts.WireRoutes()); got != 309 {
+		t.Fatalf("operation-linked entries = %d, want 309", got)
 	}
-	if got := len(facts.WireEvents()); got != 74 {
-		t.Fatalf("direct-event entries = %d, want 74", got)
+	if got := len(facts.WireEvents()); got != 83 {
+		t.Fatalf("direct-event entries = %d, want 83", got)
 	}
 }
 

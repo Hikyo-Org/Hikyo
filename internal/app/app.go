@@ -650,6 +650,23 @@ func (s *Server) Close() error {
 	return errors.Join(runtimeErr, s.publicLn.Close(), s.operationalLn.Close(), s.db.Close())
 }
 
+// accessMetricsSource adapts the temporary-access service to the metrics
+// collector's AccessSnapshot contract (#152), exactly like the approval source.
+type accessMetricsSource struct {
+	svc *service.Access
+	log *slog.Logger
+}
+
+func (s accessMetricsSource) AccessSnapshot() (int64, int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	open, active, err := s.svc.OperationalCounts(ctx)
+	if err != nil {
+		s.log.Warn("temporary-access gauge scrape failed", "err", err)
+	}
+	return open, active, err
+}
+
 // approvalMetricsSource adapts the change-approval service to the metrics
 // collector's synchronous ApprovalSnapshot contract (#151): a bounded read
 // whose failure is logged and returned, so the collector marks the gauges

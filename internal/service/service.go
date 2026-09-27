@@ -221,6 +221,9 @@ func authorize(ctx context.Context, az *authz.TxAuthorizer, actor Actor, op auth
 	if err != nil {
 		return
 	}
+	// Time-bound grants (#152) are judged against this operation's clock, so an
+	// expired temporary grant refuses on the very next protected operation.
+	az.SetClock(now)
 	proof, err = az.Authorize(ctx, caller, op, scope)
 	return
 }

@@ -75,6 +75,7 @@ import {
   authMethods,
   beginRecovery,
   bindPkiProfile,
+  cancelAccessRequest,
   cancelAdapterMove,
   changeEnvironmentParameter,
   changeTransitKeyState,
@@ -84,6 +85,8 @@ import {
   compromiseRetireSamlSpKey,
   configureTransitKey,
   copyValues,
+  createAccessPolicy,
+  createAccessRequest,
   createAdapter,
   createApprovalPolicy,
   createDefinitionsPlan,
@@ -110,6 +113,7 @@ import {
   createSshProfile,
   createTransitKey,
   declareValues,
+  deleteAccessPolicy,
   deleteAdapter,
   deleteApprovalPolicy,
   deleteDynamicProvider,
@@ -132,6 +136,7 @@ import {
   deleteSshProfile,
   diffRevisions,
   diffValues,
+  emergencyAccess,
   enrolPasskeyFinish,
   enrolPasskeyStart,
   enrolTotpConfirm,
@@ -186,6 +191,8 @@ import {
   issueCertificate,
   issueSshCertificate,
   linkIdentity,
+  listAccessPolicies,
+  listAccessRequests,
   listAdapters,
   listAdapterTargets,
   listApprovalPolicies,
@@ -300,6 +307,7 @@ import {
   revealValue,
   revealValueDiff,
   revealValues,
+  revokeAccessRequest,
   revokeAdapterCredential,
   revokeCertificate,
   revokeDynamicProviderCredential,
@@ -390,6 +398,7 @@ import {
   trimTransitKey,
   unbindPkiProfile,
   unlinkIdentity,
+  updateAccessPolicy,
   updateAdapterOrigin,
   updateAdapterTarget,
   updateApprovalPolicy,
@@ -400,6 +409,7 @@ import {
   updatePkiProfile,
   updateScimMapping,
   updateSshProfile,
+  voteAccessRequest,
   voteApprovalRequest,
   watchProjectEvents,
   whoami,
@@ -421,6 +431,7 @@ import type {
   AuthMethodsData,
   BeginRecoveryData,
   BindPkiProfileData,
+  CancelAccessRequestData,
   CancelAdapterMoveData,
   ChangeEnvironmentParameterData,
   ChangeTransitKeyStateData,
@@ -430,6 +441,8 @@ import type {
   CompromiseRetireSamlSpKeyData,
   ConfigureTransitKeyData,
   CopyValuesData,
+  CreateAccessPolicyData,
+  CreateAccessRequestData,
   CreateAdapterData,
   CreateApprovalPolicyData,
   CreateDefinitionsPlanData,
@@ -456,6 +469,7 @@ import type {
   CreateSshProfileData,
   CreateTransitKeyData,
   DeclareValuesData,
+  DeleteAccessPolicyData,
   DeleteAdapterData,
   DeleteApprovalPolicyData,
   DeleteDynamicProviderData,
@@ -478,6 +492,7 @@ import type {
   DeleteSshProfileData,
   DiffRevisionsData,
   DiffValuesData,
+  EmergencyAccessData,
   EnrolPasskeyFinishData,
   EnrolPasskeyStartData,
   EnrolTotpConfirmData,
@@ -532,6 +547,8 @@ import type {
   IssueCertificateData,
   IssueSshCertificateData,
   LinkIdentityData,
+  ListAccessPoliciesData,
+  ListAccessRequestsData,
   ListAdaptersData,
   ListAdapterTargetsData,
   ListApprovalPoliciesData,
@@ -646,6 +663,7 @@ import type {
   RevealValueData,
   RevealValueDiffData,
   RevealValuesData,
+  RevokeAccessRequestData,
   RevokeAdapterCredentialData,
   RevokeCertificateData,
   RevokeDynamicProviderCredentialData,
@@ -736,6 +754,7 @@ import type {
   TrimTransitKeyData,
   UnbindPkiProfileData,
   UnlinkIdentityData,
+  UpdateAccessPolicyData,
   UpdateAdapterOriginData,
   UpdateAdapterTargetData,
   UpdateApprovalPolicyData,
@@ -746,6 +765,7 @@ import type {
   UpdatePkiProfileData,
   UpdateScimMappingData,
   UpdateSshProfileData,
+  VoteAccessRequestData,
   VoteApprovalRequestData,
   WatchProjectEventsData,
   WhoamiData,
@@ -767,6 +787,7 @@ import {
   zAuthMethodsResponse,
   zBeginRecoveryResponse,
   zBindPkiProfileResponse,
+  zCancelAccessRequestResponse,
   zCancelAdapterMoveResponse,
   zChangeTransitKeyStateResponse,
   zCheckDefinitionsResponse,
@@ -775,6 +796,8 @@ import {
   zCompromiseRetireSamlSpKeyResponse,
   zConfigureTransitKeyResponse,
   zCopyValuesResponse,
+  zCreateAccessPolicyResponse,
+  zCreateAccessRequestResponse,
   zCreateAdapterResponse,
   zCreateApprovalPolicyResponse,
   zCreateDefinitionsPlanResponse,
@@ -807,6 +830,7 @@ import {
   zDeleteSshProfileResponse,
   zDiffRevisionsResponse,
   zDiffValuesResponse,
+  zEmergencyAccessResponse,
   zEnrolPasskeyFinishResponse,
   zEnrolPasskeyStartResponse,
   zEnrolTotpConfirmResponse,
@@ -860,6 +884,8 @@ import {
   zIssueCertificateResponse,
   zIssueSshCertificateResponse,
   zLinkIdentityResponse,
+  zListAccessPoliciesResponse,
+  zListAccessRequestsResponse,
   zListAdaptersResponse,
   zListAdapterTargetsResponse,
   zListApprovalPoliciesResponse,
@@ -970,6 +996,7 @@ import {
   zRevealValueDiffResponse,
   zRevealValueResponse,
   zRevealValuesResponse,
+  zRevokeAccessRequestResponse,
   zRevokeCertificateResponse,
   zRevokeLeaseResponse,
   zRevokePkiIssuerResponse,
@@ -1045,6 +1072,7 @@ import {
   zTrimTransitKeyResponse,
   zUnbindPkiProfileResponse,
   zUnlinkIdentityResponse,
+  zUpdateAccessPolicyResponse,
   zUpdateAdapterOriginResponse,
   zUpdateAdapterTargetResponse,
   zUpdateApprovalPolicyResponse,
@@ -1055,6 +1083,7 @@ import {
   zUpdatePkiProfileResponse,
   zUpdateScimMappingResponse,
   zUpdateSshProfileResponse,
+  zVoteAccessRequestResponse,
   zVoteApprovalRequestResponse,
   zWatchProjectEventsResponse,
   zWhoamiResponse,
@@ -1076,6 +1105,7 @@ export const approveWorkspaceHandoffOp: BodyOperation<ApproveWorkspaceHandoffDat
 export const authMethodsOp: BodyOperation<AuthMethodsData, typeof zAuthMethodsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(authMethods, [200], zAuthMethodsResponse);
 export const beginRecoveryOp: BodyOperation<BeginRecoveryData, typeof zBeginRecoveryResponse> = /* @__PURE__ */ new GeneratedBodyOperation(beginRecovery, [200], zBeginRecoveryResponse);
 export const bindPkiProfileOp: BodyOperation<BindPkiProfileData, typeof zBindPkiProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(bindPkiProfile, [200], zBindPkiProfileResponse);
+export const cancelAccessRequestOp: BodyOperation<CancelAccessRequestData, typeof zCancelAccessRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(cancelAccessRequest, [200], zCancelAccessRequestResponse);
 export const cancelAdapterMoveOp: BodyOperation<CancelAdapterMoveData, typeof zCancelAdapterMoveResponse> = /* @__PURE__ */ new GeneratedBodyOperation(cancelAdapterMove, [202], zCancelAdapterMoveResponse);
 export const changeTransitKeyStateOp: BodyOperation<ChangeTransitKeyStateData, typeof zChangeTransitKeyStateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(changeTransitKeyState, [200], zChangeTransitKeyStateResponse);
 export const checkDefinitionsOp: BodyOperation<CheckDefinitionsData, typeof zCheckDefinitionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(checkDefinitions, [200], zCheckDefinitionsResponse);
@@ -1084,6 +1114,8 @@ export const cloneEnvironmentOp: BodyOperation<CloneEnvironmentData, typeof zClo
 export const compromiseRetireSamlSpKeyOp: BodyOperation<CompromiseRetireSamlSpKeyData, typeof zCompromiseRetireSamlSpKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(compromiseRetireSamlSpKey, [200], zCompromiseRetireSamlSpKeyResponse);
 export const configureTransitKeyOp: BodyOperation<ConfigureTransitKeyData, typeof zConfigureTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(configureTransitKey, [200], zConfigureTransitKeyResponse);
 export const copyValuesOp: BodyOperation<CopyValuesData, typeof zCopyValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(copyValues, [200], zCopyValuesResponse);
+export const createAccessPolicyOp: BodyOperation<CreateAccessPolicyData, typeof zCreateAccessPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createAccessPolicy, [200], zCreateAccessPolicyResponse);
+export const createAccessRequestOp: BodyOperation<CreateAccessRequestData, typeof zCreateAccessRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createAccessRequest, [200], zCreateAccessRequestResponse);
 export const createAdapterOp: BodyOperation<CreateAdapterData, typeof zCreateAdapterResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createAdapter, [201], zCreateAdapterResponse);
 export const createApprovalPolicyOp: BodyOperation<CreateApprovalPolicyData, typeof zCreateApprovalPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createApprovalPolicy, [200], zCreateApprovalPolicyResponse);
 export const createDefinitionsPlanOp: BodyOperation<CreateDefinitionsPlanData, typeof zCreateDefinitionsPlanResponse> = /* @__PURE__ */ new GeneratedBodyOperation(createDefinitionsPlan, [201], zCreateDefinitionsPlanResponse);
@@ -1116,6 +1148,7 @@ export const deleteScimMappingOp: BodyOperation<DeleteScimMappingData, typeof zD
 export const deleteSshProfileOp: BodyOperation<DeleteSshProfileData, typeof zDeleteSshProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(deleteSshProfile, [200], zDeleteSshProfileResponse);
 export const diffRevisionsOp: BodyOperation<DiffRevisionsData, typeof zDiffRevisionsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(diffRevisions, [200], zDiffRevisionsResponse);
 export const diffValuesOp: BodyOperation<DiffValuesData, typeof zDiffValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(diffValues, [200], zDiffValuesResponse);
+export const emergencyAccessOp: BodyOperation<EmergencyAccessData, typeof zEmergencyAccessResponse> = /* @__PURE__ */ new GeneratedBodyOperation(emergencyAccess, [200], zEmergencyAccessResponse);
 export const enrolPasskeyFinishOp: BodyOperation<EnrolPasskeyFinishData, typeof zEnrolPasskeyFinishResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolPasskeyFinish, [200], zEnrolPasskeyFinishResponse);
 export const enrolPasskeyStartOp: BodyOperation<EnrolPasskeyStartData, typeof zEnrolPasskeyStartResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolPasskeyStart, [200], zEnrolPasskeyStartResponse);
 export const enrolTotpConfirmOp: BodyOperation<EnrolTotpConfirmData, typeof zEnrolTotpConfirmResponse> = /* @__PURE__ */ new GeneratedBodyOperation(enrolTotpConfirm, [200], zEnrolTotpConfirmResponse);
@@ -1169,6 +1202,8 @@ export const inviteOrgMemberOp: BodyOperation<InviteOrgMemberData, typeof zInvit
 export const issueCertificateOp: BodyOperation<IssueCertificateData, typeof zIssueCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(issueCertificate, [200], zIssueCertificateResponse);
 export const issueSshCertificateOp: BodyOperation<IssueSshCertificateData, typeof zIssueSshCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(issueSshCertificate, [200], zIssueSshCertificateResponse);
 export const linkIdentityOp: BodyOperation<LinkIdentityData, typeof zLinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(linkIdentity, [200], zLinkIdentityResponse);
+export const listAccessPoliciesOp: BodyOperation<ListAccessPoliciesData, typeof zListAccessPoliciesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAccessPolicies, [200], zListAccessPoliciesResponse);
+export const listAccessRequestsOp: BodyOperation<ListAccessRequestsData, typeof zListAccessRequestsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAccessRequests, [200], zListAccessRequestsResponse);
 export const listAdaptersOp: BodyOperation<ListAdaptersData, typeof zListAdaptersResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapters, [200], zListAdaptersResponse);
 export const listAdapterTargetsOp: BodyOperation<ListAdapterTargetsData, typeof zListAdapterTargetsResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listAdapterTargets, [200], zListAdapterTargetsResponse);
 export const listApprovalPoliciesOp: BodyOperation<ListApprovalPoliciesData, typeof zListApprovalPoliciesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(listApprovalPolicies, [200], zListApprovalPoliciesResponse);
@@ -1279,6 +1314,7 @@ export const revealRevisionDiffOp: BodyOperation<RevealRevisionDiffData, typeof 
 export const revealValueOp: BodyOperation<RevealValueData, typeof zRevealValueResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValue, [200], zRevealValueResponse);
 export const revealValueDiffOp: BodyOperation<RevealValueDiffData, typeof zRevealValueDiffResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValueDiff, [200], zRevealValueDiffResponse);
 export const revealValuesOp: BodyOperation<RevealValuesData, typeof zRevealValuesResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revealValues, [200], zRevealValuesResponse);
+export const revokeAccessRequestOp: BodyOperation<RevokeAccessRequestData, typeof zRevokeAccessRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revokeAccessRequest, [200], zRevokeAccessRequestResponse);
 export const revokeCertificateOp: BodyOperation<RevokeCertificateData, typeof zRevokeCertificateResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revokeCertificate, [200], zRevokeCertificateResponse);
 export const revokeLeaseOp: BodyOperation<RevokeLeaseData, typeof zRevokeLeaseResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revokeLease, [200], zRevokeLeaseResponse);
 export const revokePkiIssuerOp: BodyOperation<RevokePkiIssuerData, typeof zRevokePkiIssuerResponse> = /* @__PURE__ */ new GeneratedBodyOperation(revokePkiIssuer, [200], zRevokePkiIssuerResponse);
@@ -1354,6 +1390,7 @@ export const transitVerifyHmacOp: BodyOperation<TransitVerifyHmacData, typeof zT
 export const trimTransitKeyOp: BodyOperation<TrimTransitKeyData, typeof zTrimTransitKeyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(trimTransitKey, [200], zTrimTransitKeyResponse);
 export const unbindPkiProfileOp: BodyOperation<UnbindPkiProfileData, typeof zUnbindPkiProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(unbindPkiProfile, [200], zUnbindPkiProfileResponse);
 export const unlinkIdentityOp: BodyOperation<UnlinkIdentityData, typeof zUnlinkIdentityResponse> = /* @__PURE__ */ new GeneratedBodyOperation(unlinkIdentity, [200], zUnlinkIdentityResponse);
+export const updateAccessPolicyOp: BodyOperation<UpdateAccessPolicyData, typeof zUpdateAccessPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAccessPolicy, [200], zUpdateAccessPolicyResponse);
 export const updateAdapterOriginOp: BodyOperation<UpdateAdapterOriginData, typeof zUpdateAdapterOriginResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterOrigin, [202], zUpdateAdapterOriginResponse);
 export const updateAdapterTargetOp: BodyOperation<UpdateAdapterTargetData, typeof zUpdateAdapterTargetResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateAdapterTarget, [200, 202], zUpdateAdapterTargetResponse);
 export const updateApprovalPolicyOp: BodyOperation<UpdateApprovalPolicyData, typeof zUpdateApprovalPolicyResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateApprovalPolicy, [200], zUpdateApprovalPolicyResponse);
@@ -1364,9 +1401,11 @@ export const updateMyProfileOp: BodyOperation<UpdateMyProfileData, typeof zUpdat
 export const updatePkiProfileOp: BodyOperation<UpdatePkiProfileData, typeof zUpdatePkiProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updatePkiProfile, [200], zUpdatePkiProfileResponse);
 export const updateScimMappingOp: BodyOperation<UpdateScimMappingData, typeof zUpdateScimMappingResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateScimMapping, [200], zUpdateScimMappingResponse);
 export const updateSshProfileOp: BodyOperation<UpdateSshProfileData, typeof zUpdateSshProfileResponse> = /* @__PURE__ */ new GeneratedBodyOperation(updateSshProfile, [200], zUpdateSshProfileResponse);
+export const voteAccessRequestOp: BodyOperation<VoteAccessRequestData, typeof zVoteAccessRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(voteAccessRequest, [200], zVoteAccessRequestResponse);
 export const voteApprovalRequestOp: BodyOperation<VoteApprovalRequestData, typeof zVoteApprovalRequestResponse> = /* @__PURE__ */ new GeneratedBodyOperation(voteApprovalRequest, [200], zVoteApprovalRequestResponse);
 export const whoamiOp: BodyOperation<WhoamiData, typeof zWhoamiResponse> = /* @__PURE__ */ new GeneratedBodyOperation(whoami, [200], zWhoamiResponse);
 export const changeEnvironmentParameterOp: BodylessOperation<ChangeEnvironmentParameterData> = /* @__PURE__ */ new GeneratedBodylessOperation(changeEnvironmentParameter, [204]);
+export const deleteAccessPolicyOp: BodylessOperation<DeleteAccessPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteAccessPolicy, [204]);
 export const deleteApprovalPolicyOp: BodylessOperation<DeleteApprovalPolicyData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteApprovalPolicy, [204]);
 export const deleteEnvironmentOp: BodylessOperation<DeleteEnvironmentData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteEnvironment, [204]);
 export const deleteFederationIssuerOp: BodylessOperation<DeleteFederationIssuerData> = /* @__PURE__ */ new GeneratedBodylessOperation(deleteFederationIssuer, [204]);

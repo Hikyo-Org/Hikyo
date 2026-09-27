@@ -85,6 +85,14 @@ const (
 	// are omitted rather than rendered as zeros (a failed count is unknown,
 	// not empty). Check it before alerting on either, like capacity_known.
 	MetricApprovalGaugesKnown = "hikyo_approval_gauges_known"
+	// Approval-mediated temporary access (#152). Label-free like the approval
+	// gauges: open access requests awaiting a decision, and temporary grants
+	// currently in force (granted requests whose absolute expiry is ahead).
+	MetricAccessRequestsOpen = "hikyo_access_requests_open"
+	MetricAccessGrantsActive = "hikyo_access_grants_active"
+	// MetricAccessGaugesKnown is 1 when the two access gauges were measured on
+	// this scrape; they are omitted when it is 0.
+	MetricAccessGaugesKnown = "hikyo_access_gauges_known"
 	// Disaster-recovery gauges (#145, ops-spec section 11). Label-free like
 	// every other operator gauge: one series each, no archive name, no path.
 	MetricLastBackupExportSuccess = "hikyo_last_backup_export_success_timestamp_seconds"
@@ -283,6 +291,7 @@ type Metrics struct {
 	mcpDurations *prometheus.HistogramVec
 	ha           *haCollector
 	approvals    *approvalCollector
+	access       *accessCollector
 	dyn          *dynamicCollector
 	ssh          *sshCollector
 	transit      *transitCollector
@@ -331,16 +340,17 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	}, []string{"method", "tool"})
 	ha := newHACollector()
 	approvals := newApprovalCollector()
+	access := newAccessCollector()
 	dyn := newDynamicCollector()
 	sshc := newSSHCollector()
 	tr := newTransitCollector()
 	pkiGauges := newPKICollector()
-	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, dyn, sshc, pkiGauges, tr)
+	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc, pkiGauges, tr)
 
 	m := &Metrics{
 		registry: registry, inFlight: inFlight,
 		mcpRequests: mcpRequests, mcpInFlight: mcpInFlight, mcpDurations: mcpDurations,
-		ha: ha, approvals: approvals, dyn: dyn, ssh: sshc, pki: pkiGauges, transit: tr,
+		ha: ha, approvals: approvals, access: access, dyn: dyn, ssh: sshc, pki: pkiGauges, transit: tr,
 	}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
@@ -557,6 +567,47 @@ func (c *approvalCollector) Describe(ch chan<- *prometheus.Desc) {
 		ch <- desc
 	}
 	ch <- c.known
+}
+
+// AccessSnapshotter supplies the temporary-access gauges at scrape time (#152).
+// Same contract as ApprovalSnapshotter: quick, non-blocking, and an error
+// marks the gauges unknown for this scrape.
+type AccessSnapshotter interface {
+	AccessSnapshot() (open, active int64, err error)
+}
+
+// SetAccessSource attaches the temporary-access gauge source once at boot.
+func (m *Metrics) SetAccessSource(source AccessSnapshotter) { m.access.source.Store(&source) }
+
+type accessCollector struct {
+	source atomic.Pointer[AccessSnapshotter]
+	descs  [2]*prometheus.Desc
+	known  *prometheus.Desc
+}
+
+func newAccessCollector() *accessCollector {
+	return &accessCollector{descs: [2]*prometheus.Desc{
+		prometheus.NewDesc(MetricAccessRequestsOpen, "Temporary-access requests awaiting a decision.", nil, nil),
+		prometheus.NewDesc(MetricAccessGrantsActive, "Temporary-access grants currently in force.", nil, nil),
+	}, known: prometheus.NewDesc(MetricAccessGaugesKnown, "Whether the temporary-access gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
+}
+
+func (c *accessCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+	ch <- c.known
+}
+
+func (c *accessCollector) Collect(ch chan<- prometheus.Metric) {
+	var values [2]float64
+	measured := false
+	if p := c.source.Load(); p != nil && *p != nil {
+		if open, active, err := (*p).AccessSnapshot(); err == nil {
+			values, measured = [2]float64{float64(open), float64(active)}, true
+		}
+	}
+	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
 }
 
 // DynamicSnapshotter is the dynamic-secret gauge source, read at scrape time.

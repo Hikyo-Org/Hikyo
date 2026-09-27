@@ -27,15 +27,32 @@ WHERE org_id = ? AND project_id = ? AND id = ?;
 -- conjunct of the SAME query rather than a second read, so no caller can
 -- forget it and the pinned query count is unchanged. Never restored means
 -- restore_epoch = 0, which every principal's default already satisfies.
+--
+-- The second branch is approval-mediated temporary access (#152): the
+-- principal's access_grants rows whose absolute expiry is after the
+-- transaction clock. The expiry filter lives in THIS query, so it binds every
+-- protected operation, every session and every node without a sweep and
+-- without client cooperation, and a restored or privacy-erased principal's
+-- temporary rows are inert under exactly the same gates as their permanent
+-- ones.
 -- hikyo:authn-resolution
 -- name: ListGrantsForPrincipal :many
 SELECT g.capability, g.org_id, g.project_id, g.env_id,
   CAST(COALESCE((SELECT org_id FROM self_config_binding WHERE id = 1), '') AS TEXT) AS self_config_org_id
 FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
-WHERE g.principal_id = ?
+WHERE g.principal_id = sqlc.arg(principal_id)
   AND p.privacy_state = 'active'
-  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1);
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1)
+UNION ALL
+SELECT j.capability, j.org_id, j.project_id, j.env_id,
+  CAST(COALESCE((SELECT org_id FROM self_config_binding WHERE id = 1), '') AS TEXT) AS self_config_org_id
+FROM access_grants AS j
+JOIN principals AS jp ON jp.id = j.principal_id
+WHERE j.principal_id = sqlc.arg(principal_id)
+  AND j.expires_at > sqlc.arg(now)
+  AND jp.privacy_state = 'active'
+  AND jp.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1);
 
 -- The denial writer's actor-class lookup (#45, audit-model ADR amendment
 -- part 4): the flush transaction resolves the denied principal's kind for
@@ -790,6 +807,19 @@ UPDATE oauth2_providers SET client_secret=sqlc.arg(ct), dek_version=sqlc.arg(dek
 -- hikyo:authn-resolution
 -- name: RecoveryListGrantsBeforeSelfConfig :many
 SELECT g.capability, g.org_id, g.project_id, g.env_id FROM grants AS g
+JOIN principals AS p ON p.id = g.principal_id
+WHERE g.principal_id = ?
+  AND p.privacy_state = 'active'
+  AND p.reconciled_epoch >= (SELECT restore_epoch FROM auth_instance_state WHERE auth_instance_state.id = 1);
+
+-- Verified source schemas 50 through 59 predate temporary access (#152): the
+-- chokepoint projection without the access_grants branch, for guarded
+-- historical recovery only. Same privacy and restore reconciliation gates.
+-- hikyo:authn-resolution
+-- name: RecoveryListGrantsBeforeAccess :many
+SELECT g.capability, g.org_id, g.project_id, g.env_id,
+  CAST(COALESCE((SELECT org_id FROM self_config_binding WHERE id = 1), '') AS TEXT) AS self_config_org_id
+FROM grants AS g
 JOIN principals AS p ON p.id = g.principal_id
 WHERE g.principal_id = ?
   AND p.privacy_state = 'active'

@@ -50,6 +50,7 @@ describe('sidebarModel', () => {
       ['Environment matrix', '/orgs/org_1/projects/prj_1/matrix'],
       ['Machine access', '/orgs/org_1/projects/prj_1/machine-access'],
       ['Change approvals', '/orgs/org_1/projects/prj_1/change-approvals'],
+      ['Temporary access', '/orgs/org_1/projects/prj_1/temporary-access'],
       ['Deployment adapters', '/orgs/org_1/projects/prj_1/adapters'],
       ['Project audit', '/orgs/org_1/projects/prj_1/audit'],
       ['Members', '/orgs/org_1/members?project=prj_1'],
@@ -139,6 +140,7 @@ describe('sidebarModel in the Hikyo system scope', () => {
     expect(model.context?.links.map((l) => l.label)).toEqual([
       'Environment matrix',
       'Change approvals',
+      'Temporary access',
       'Project audit',
       'Members',
       'Project settings',

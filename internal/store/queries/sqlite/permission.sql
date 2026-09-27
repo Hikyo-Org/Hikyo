@@ -117,3 +117,24 @@ SELECT kind, subject FROM grant_origins WHERE grant_id = ? ORDER BY kind, subjec
 -- hikyo:authn-resolution
 -- name: CountGrantsForOrg :one
 SELECT COUNT(*) FROM grants WHERE org_id = ?;
+
+-- Approval-mediated temporary access (#152). The time-bound grant rows are on
+-- the resolution surface for the same reason `grants` is: authorize() reads
+-- them. The writers take the principal-row lock like every grant writer.
+-- hikyo:authn-resolution
+-- name: InsertAccessGrant :exec
+INSERT INTO access_grants (id, principal_id, capability, org_id, project_id, env_id, request_id, created_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Revocation and expiry release a request's rows together.
+-- hikyo:authn-resolution
+-- name: DeleteAccessGrantsForRequest :execrows
+DELETE FROM access_grants WHERE request_id = ? AND principal_id = ?;
+
+-- A principal's live temporary grants, for the membership surface.
+-- hikyo:authn-resolution
+-- name: ListLiveAccessGrantsForPrincipal :many
+SELECT id, capability, org_id, project_id, env_id, request_id, created_at, expires_at
+FROM access_grants
+WHERE principal_id = ? AND expires_at > ?
+ORDER BY expires_at, id;

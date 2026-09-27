@@ -52,16 +52,19 @@ func TestTransitTrimFencesConfigurationAndPreservesUnprocessedMaterial(t *testin
 		svc.Custody = transit.NewRegistry(&transit.Software{Keyring: svc.Keyring}, provider)
 		provider.beforeDestroy = func() {
 			if _, err := svc.ConfigureKey(ctx, actor, transitScope, key.Name, service.ConfigureTransitKeyRequest{MinDecryptVersion: &one}); !errors.Is(err, domain.ErrInvalid) {
-				t.Fatalf("lowering fenced floor: %v", err)
+				t.Errorf("lowering fenced floor: %v", err)
+				return
 			}
 			if _, err := svc.ConfigureKey(ctx, actor, transitScope, key.Name, service.ConfigureTransitKeyRequest{MinEncryptVersion: &three, MinDecryptVersion: &three}); err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return
 			}
 			provider.failVersion = 2
+			defer func() { provider.failVersion = 0 }()
 			if _, _, err := svc.TrimKey(ctx, actor, transitScope, key.Name); err == nil {
-				t.Fatal("provider failure accepted")
+				t.Error("provider failure accepted")
+				return
 			}
-			provider.failVersion = 0
 		}
 		view, n, err := svc.TrimKey(ctx, actor, transitScope, key.Name)
 		if err != nil || n != 1 {
@@ -106,12 +109,13 @@ func TestTransitConcurrentCreateHonorsEnvironmentLimit(t *testing.T) {
 		start := make(chan struct{})
 		results := make(chan error, contenders)
 		var wg sync.WaitGroup
+		ctx := tctx(t)
 		for i := 0; i < contenders; i++ {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				<-start
-				_, err := svc.CreateKey(tctx(t), service.LocalPrincipal(alice), transitScope, service.CreateTransitKeyRequest{Name: fmt.Sprintf("contender-%d", i), Algorithm: "xchacha20-poly1305"})
+				_, err := svc.CreateKey(ctx, service.LocalPrincipal(alice), transitScope, service.CreateTransitKeyRequest{Name: fmt.Sprintf("contender-%d", i), Algorithm: "xchacha20-poly1305"})
 				results <- err
 			}()
 		}

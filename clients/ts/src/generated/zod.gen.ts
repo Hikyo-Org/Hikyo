@@ -1467,6 +1467,122 @@ export const zApprovalVoteRequest = z.object({
     decision: z.enum(['approve', 'reject'])
 });
 
+/**
+ * The closed set of capabilities temporary access may confer.
+ */
+export const zAccessCapability = z.enum([
+    'read',
+    'reveal',
+    'reveal-history',
+    'edit',
+    'publish',
+    'pin'
+]);
+
+export const zAccessPolicyInput = z.object({
+    environment_id: z.string().max(64).optional(),
+    capabilities: z.array(zAccessCapability).min(1),
+    max_duration_seconds: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    min_approvals: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    allow_self_approval: z.boolean().optional(),
+    request_ttl_seconds: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    enabled: z.boolean(),
+    approvers: z.array(zApprovalApprover).min(1).max(100),
+    bypassers: z.array(zId).max(100).optional()
+});
+
+export const zAccessPolicy = z.object({
+    principal_names: z.record(z.string(), z.string()).optional(),
+    id: zId,
+    environment_id: z.string().max(64),
+    capabilities: z.array(zAccessCapability),
+    max_duration_seconds: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    allow_self_approval: z.boolean(),
+    request_ttl_seconds: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    enabled: z.boolean(),
+    version: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    approvers: z.array(zApprovalApprover),
+    bypassers: z.array(zId),
+    created_at: zTimestamp,
+    updated_at: zTimestamp
+});
+
+export const zAccessPolicyList = z.object({
+    items: z.array(zAccessPolicy)
+});
+
+/**
+ * What may be requested in this environment. The approver roster is deliberately absent.
+ */
+export const zAccessOffer = z.object({
+    policy_id: zId,
+    policy_version: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    capabilities: z.array(zAccessCapability),
+    max_duration_seconds: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    enabled: z.boolean(),
+    caller_may_bypass: z.boolean()
+});
+
+export const zAccessRequestInput = z.object({
+    capabilities: z.array(zAccessCapability).min(1),
+    duration_seconds: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    reason: z.string().min(1).max(512)
+});
+
+export const zEmergencyAccessInput = z.object({
+    capabilities: z.array(zAccessCapability).min(1),
+    duration_seconds: z.int().gte(1).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }).optional(),
+    reason: z.string().min(1).max(512)
+});
+
+export const zAccessVoteRequest = z.object({
+    decision: z.enum(['approve', 'reject'])
+});
+
+export const zAccessRequest = z.object({
+    requester_name: z.string().optional(),
+    id: zId,
+    environment_id: zId,
+    policy_id: zId,
+    policy_version: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
+    requester: zId,
+    capabilities: z.array(zAccessCapability),
+    duration_seconds: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    reason: z.string(),
+    bypassed: z.boolean(),
+    state: z.enum([
+        'open',
+        'granted',
+        'rejected',
+        'cancelled',
+        'expired',
+        'invalidated',
+        'revoked'
+    ]),
+    invalidated_cause: z.enum([
+        '',
+        'policy_changed',
+        'policy_disabled',
+        'approver_removed'
+    ]),
+    resolved_by: zId.optional(),
+    min_approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    approvals: z.int().min(-2147483648, { error: 'Invalid value: Expected int32 to be >= -2147483648' }).max(2147483647, { error: 'Invalid value: Expected int32 to be <= 2147483647' }),
+    votes: z.array(zApprovalVote),
+    created_at: zTimestamp,
+    review_expires_at: zTimestamp,
+    granted_at: zTimestamp.optional(),
+    expires_at: zTimestamp.optional(),
+    resolved_at: zTimestamp.optional()
+});
+
+export const zAccessQueue = z.object({
+    offer: zAccessOffer.optional(),
+    items: z.array(zAccessRequest)
+});
+
 export const zRevisionDiffRequest = z.object({
     left_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     right_revision: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' })
@@ -3367,7 +3483,8 @@ export const zReauthPurpose = z.enum([
     'self-config',
     'approve',
     'reject',
-    'bypass'
+    'bypass',
+    'access'
 ]);
 
 /**
@@ -6889,6 +7006,127 @@ export const zGetApprovalCeremonyPath = z.object({
  * The exact approval ceremony binding.
  */
 export const zGetApprovalCeremonyResponse = zApprovalCeremonyBinding;
+
+export const zListAccessPoliciesPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The project's access policies.
+ */
+export const zListAccessPoliciesResponse = zAccessPolicyList;
+
+export const zCreateAccessPolicyBody = zAccessPolicyInput;
+
+export const zCreateAccessPolicyPath = z.object({
+    org: zId,
+    project: zId
+});
+
+/**
+ * The created policy.
+ */
+export const zCreateAccessPolicyResponse = zAccessPolicy;
+
+export const zDeleteAccessPolicyPath = z.object({
+    org: zId,
+    project: zId,
+    policy: zId
+});
+
+/**
+ * The policy was deleted.
+ */
+export const zDeleteAccessPolicyResponse = z.void();
+
+export const zUpdateAccessPolicyBody = zAccessPolicyInput;
+
+export const zUpdateAccessPolicyPath = z.object({
+    org: zId,
+    project: zId,
+    policy: zId
+});
+
+/**
+ * The updated policy.
+ */
+export const zUpdateAccessPolicyResponse = zAccessPolicy;
+
+export const zListAccessRequestsPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The offer and the request queue.
+ */
+export const zListAccessRequestsResponse = zAccessQueue;
+
+export const zCreateAccessRequestBody = zAccessRequestInput;
+
+export const zCreateAccessRequestPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The filed request.
+ */
+export const zCreateAccessRequestResponse = zAccessRequest;
+
+export const zEmergencyAccessBody = zEmergencyAccessInput;
+
+export const zEmergencyAccessPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId
+});
+
+/**
+ * The granted emergency request.
+ */
+export const zEmergencyAccessResponse = zAccessRequest;
+
+export const zVoteAccessRequestBody = zAccessVoteRequest;
+
+export const zVoteAccessRequestPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    accessRequest: zId
+});
+
+/**
+ * The request after the change.
+ */
+export const zVoteAccessRequestResponse = zAccessRequest;
+
+export const zCancelAccessRequestPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    accessRequest: zId
+});
+
+/**
+ * The request after the change.
+ */
+export const zCancelAccessRequestResponse = zAccessRequest;
+
+export const zRevokeAccessRequestPath = z.object({
+    org: zId,
+    project: zId,
+    environment: zId,
+    accessRequest: zId
+});
+
+/**
+ * The request after the change.
+ */
+export const zRevokeAccessRequestResponse = zAccessRequest;
 
 export const zDiffRevisionsBody = zRevisionDiffRequest;
 

@@ -373,6 +373,10 @@ func TestInvariant11SystemProofEnumeration(t *testing.T) {
 		authz.StoreApprovalRequestSelectExpiry: true,
 		authz.StoreApprovalRequestMarkExpired:  true,
 		authz.StoreApprovalRequestCounts:       true,
+		// Temporary access (#152): the hourly sweep and the /metrics counts.
+		authz.StoreAccessRequestSelectDue:   true,
+		authz.StoreAccessRequestMarkExpired: true,
+		authz.StoreAccessRequestCounts:      true,
 		// The delivery-target 30-day purge (#788): the installation-wide read
 		// of expired rows and the guarded per-row delete. A reviewed widening.
 		authz.StoreDeliveryTargetsSelectExpired: true,

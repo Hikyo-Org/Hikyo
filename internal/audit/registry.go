@@ -289,6 +289,23 @@ const (
 	EventApprovalExpired       EventType = "approval.expired"
 	EventApprovalBypassed      EventType = "approval.bypassed"
 
+	// access.* - approval-mediated temporary access (#152). All tenant-trail,
+	// all SECURITY retention: who held which capability in which environment,
+	// from when until when, and on whose approval, is the evidence an access
+	// review starts from. access.bypassed is the high-signal one (the
+	// emergency path), carrying the requester's reason. None carries value
+	// material.
+	EventAccessPolicyChanged EventType = "access.policy_changed"
+	EventAccessPolicyRead    EventType = "access.policy_read"
+	EventAccessRequested     EventType = "access.requested"
+	EventAccessVoted         EventType = "access.voted"
+	EventAccessGranted       EventType = "access.granted"
+	EventAccessCancelled     EventType = "access.cancelled"
+	EventAccessInvalidated   EventType = "access.invalidated"
+	EventAccessRevoked       EventType = "access.revoked"
+	EventAccessExpired       EventType = "access.expired"
+	EventAccessBypassed      EventType = "access.bypassed"
+
 	// backup.* / restore.* — the operator lifecycle (#76, encryption-model ADR
 	// § Propagations "export and restore are auditable events"; ops spec § 11).
 	// All four are instance-trail, local host authority, and all four are
@@ -2249,6 +2266,131 @@ var registry = map[EventType]TypeSpec{
 			"reason":         {Kind: KindFreeText, Required: true, MaxBytes: 512},
 			"revision":       {Kind: KindInt, Required: true, NonNegative: true},
 			"preview_digest": {Kind: KindString, Required: true, Digest: true},
+		},
+	},
+	// Approval-mediated temporary access (#152). Tenant trail, SECURITY
+	// retention. Objects are the policy or the request; payloads name
+	// capabilities, durations and outcomes, never a value.
+	EventAccessPolicyChanged: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"action":               {Kind: KindString, Required: true, Enum: []string{"created", "updated", "deleted"}},
+			"environment":          {Kind: KindString, Required: true}, // "" = all environments in the project
+			"capabilities":         {Kind: KindStringList, Required: true},
+			"max_duration_seconds": {Kind: KindInt, Required: true, NonNegative: true},
+			"min_approvals":        {Kind: KindInt, Required: true, NonNegative: true},
+			"self_approval":        {Kind: KindBool, Required: true},
+			"enabled":              {Kind: KindBool, Required: true},
+			"approver_count":       {Kind: KindInt, Required: true, NonNegative: true},
+			"bypasser_count":       {Kind: KindInt, Required: true, NonNegative: true},
+		},
+	},
+	EventAccessPolicyRead: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"policy_count": {Kind: KindInt, Required: true, NonNegative: true},
+		},
+	},
+	EventAccessRequested: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"policy_id":        {Kind: KindString, Required: true},
+			"policy_version":   {Kind: KindInt, Required: true, NonNegative: true},
+			"capabilities":     {Kind: KindStringList, Required: true},
+			"duration_seconds": {Kind: KindInt, Required: true, NonNegative: true},
+			"reason":           {Kind: KindFreeText, Required: true, MaxBytes: 512},
+		},
+	},
+	EventAccessVoted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"decision":      {Kind: KindString, Required: true, Enum: []string{"approve", "reject"}},
+			"self_approval": {Kind: KindBool, Required: true},
+		},
+	},
+	// The grant itself: which principal now holds which capabilities in the
+	// request's environment, and the absolute instant they stop.
+	EventAccessGranted: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"target_principal": {Kind: KindString, Required: true},
+			"capabilities":     {Kind: KindStringList, Required: true},
+			"expires_at":       {Kind: KindString, Required: true},
+			"approvals":        {Kind: KindInt, Required: true, NonNegative: true},
+		},
+	},
+	EventAccessCancelled: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema:        Schema{},
+	},
+	EventAccessInvalidated: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"cause": {Kind: KindString, Required: true, Enum: []string{"policy_changed", "policy_disabled", "approver_removed"}},
+		},
+	},
+	EventAccessRevoked: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"target_principal": {Kind: KindString, Required: true},
+			"capabilities":     {Kind: KindStringList, Required: true},
+			"released_rows":    {Kind: KindInt, Required: true, NonNegative: true},
+			"self_revoked":     {Kind: KindBool, Required: true},
+		},
+	},
+	// Emitted by the scheduler for an open request whose review window lapsed
+	// (phase "review") and for granted access that reached its absolute expiry
+	// (phase "grant").
+	EventAccessExpired: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"phase":            {Kind: KindString, Required: true, Enum: []string{"review", "grant"}},
+			"target_principal": {Kind: KindString, Required: true},
+			"released_rows":    {Kind: KindInt, Required: true, NonNegative: true},
+			"expired_at":       {Kind: KindString, Required: true},
+		},
+	},
+	// The high-signal emergency path: time-bound like every temporary grant,
+	// reauthenticated, and carrying the operator's reason.
+	EventAccessBypassed: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"policy_id":        {Kind: KindString, Required: true},
+			"policy_version":   {Kind: KindInt, Required: true, NonNegative: true},
+			"capabilities":     {Kind: KindStringList, Required: true},
+			"duration_seconds": {Kind: KindInt, Required: true, NonNegative: true},
+			"expires_at":       {Kind: KindString, Required: true},
+			"reason":           {Kind: KindFreeText, Required: true, MaxBytes: 512},
 		},
 	},
 	// Backup and restore (#76). Instance trail only: every one of these runs

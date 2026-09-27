@@ -48,13 +48,17 @@ import (
 // "grant it to the whole instance".
 
 func runAccess(ctx context.Context, ios IO, args []string) error {
-	sub, rest, err := subverb("access", args, "grant", "member", "registration")
+	sub, rest, err := subverb("access", args, "grant", "member", "registration", "policy", "request")
 	if err != nil {
 		return err
 	}
 	switch sub {
 	case "grant":
 		return runAccessGrant(ctx, ios, rest)
+	case "policy":
+		return runAccessPolicy(ctx, ios, rest)
+	case "request":
+		return runAccessRequest(ctx, ios, rest)
 	case "registration":
 		return runAccessRegistration(ctx, ios, rest)
 	default:

@@ -140,14 +140,20 @@ var ResolutionSurfaceWriters = map[string]bool{
 	"writeProofFreeEvent": true,
 	// Bootstrap under local host authority (#47) — the closed local-authority
 	// exception set's boot/bootstrap member, never reachable over the network.
-	"CreatePrincipal":           true,
-	"CorrectPrivacyAccount":     true,
-	"UpdateAccountProfile":      true,
-	"RestrictPrivacyPrincipal":  true,
-	"ErasePrivacyAccount":       true,
-	"CreateAccount":             true,
-	"CreateGrant":               true,
-	"CreateCredentialAuthority": true,
+	"CreatePrincipal":          true,
+	"CorrectPrivacyAccount":    true,
+	"UpdateAccountProfile":     true,
+	"RestrictPrivacyPrincipal": true,
+	"ErasePrivacyAccount":      true,
+	"CreateAccount":            true,
+	"CreateGrant":              true,
+	// Approval-mediated temporary access (#152): the time-bound grant rows are
+	// read by authorize(), so they are written on the resolution surface after
+	// the access service proved its own chokepoint operation, under the
+	// principal-row lock like every grant writer.
+	"CreateAccessGrant":            true,
+	"DeleteAccessGrantsForRequest": true,
+	"CreateCredentialAuthority":    true,
 	// Credential establishment and the local floor (#47). None of these can
 	// hold a proof: the first has no session by design, the rest are the
 	// session's own lifecycle.
