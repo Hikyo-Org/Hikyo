@@ -568,7 +568,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
 		if _, err := adapter.ParseProvider(provider); err != nil {
-			return failf(ExitUsage, "--provider must be forgejo, github-actions, sealed-webhook, cloudflare, vault-kv, or aws-secrets-manager")
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, gitlab, sealed-webhook, cloudflare, vault-kv, or aws-secrets-manager")
 		}
 		awsKind := kind == "json-object" || kind == "per-key"
 		if (provider == string(adapter.AWSSecretsManagerProvider)) != awsKind {
