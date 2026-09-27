@@ -442,3 +442,45 @@ decisions address one environment. Every verb is human-session only.
 - `access request cancel <request>`: the requester withdraws an open request.
 - `access request revoke <request>`: end granted access now (holder, approver or member manager).
 - `access request emergency --capability C --reason R [--duration 30m]`: emergency access for a named principal; runs the environment's reauthentication ceremony (inline TOTP where the window slides).
+
+## Local repository and CI secret scanning ([secret-scanning.md](../adr/secret-scanning.md) and [api-cli-surface.md](../adr/api-cli-surface.md) amendments 2026-09-26, [#153](https://github.com/Hikyo-Org/Hikyo/issues/153))
+
+```
+hikyo scan [PATH...]                 # files and directories; default: the working directory
+hikyo scan --staged                  # the index: exactly what the next commit records
+hikyo scan --unstaged                # unstaged working-tree changes plus untracked, non-ignored files
+hikyo scan --history                 # every blob every reachable commit introduced
+hikyo scan --range A..B              # the commits of an explicit revision range
+    [--config FILE] [--suppressions FILE]
+    [--exclude-path GLOB]... [--exclude-rule ID]...
+    [--timeout DURATION] [-o table|json|sarif]
+```
+
+The modes are mutually exclusive and a Git mode takes no paths. The verb is
+client-local: no context, no session, no request. Flag names avoid the SS3
+blanket-override vocabulary (`TestNoBlanketScanOverrideFlag`): every narrowing
+is a named, reviewable exclusion or a per-fingerprint suppression.
+
+`-o json` is the `hikyo.scan/v1` document: `schema`, `mode`, `ruleset`
+(`snapshot`, `rules[{id, semantic_digest}]`, `excluded_rules`), `findings[]`
+(`rule_id`, `rule_digest`, `path`, `line`, `commit?`, `fingerprint`,
+`suppressed?` = `inline|fingerprint`), and `summary` (scanned files, bytes and
+commits, finding and suppression counts, expired suppressions, per-reason skip
+counts, and the budgets). It is additive-only. `-o sarif` is SARIF 2.1.0 with
+`partialFingerprints["hikyo/v1"]` and no snippet or content-derived message.
+
+`.hikyo-scan.toml` (read from the repository top level, or from `--config`):
+
+```toml
+version = 1
+exclude_paths = ["vendor/**", "**/*.golden"]
+exclude_rules = ["slack-bot-token"]
+
+[[suppressions]]
+fingerprint = "<64 lowercase hex>"
+reason = "fixture token, not live"
+expires = 2026-12-31            # optional TOML date; inclusive
+```
+
+Exit codes: `0` clean, `1` unsuppressed findings, `2` usage or configuration,
+`4` refused or failed, `6` `git` unavailable.

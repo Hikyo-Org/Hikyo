@@ -232,3 +232,37 @@ func containsRule(fs []Finding, id string) bool {
 	}
 	return false
 }
+
+// TestSubsetNarrowsWithoutChangingVerdicts: a subset keeps the selected rules'
+// digests, snapshot and verdicts, drops the rest, and refuses an unknown,
+// duplicate or empty selection rather than widening or silently emptying.
+func TestSubsetNarrowsWithoutChangingVerdicts(t *testing.T) {
+	rs := mustLoad(t)
+	sub, err := rs.Subset([]string{"github-pat"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sub.RuleIDs(); len(got) != 1 || got[0] != "github-pat" {
+		t.Fatalf("subset rule ids = %v", got)
+	}
+	if sub.SnapshotVersion() != rs.SnapshotVersion() {
+		t.Fatal("subset changed the snapshot version")
+	}
+	want, _ := rs.SemanticDigest("github-pat")
+	if got, ok := sub.SemanticDigest("github-pat"); !ok || got != want {
+		t.Fatalf("subset digest = %q, want %q", got, want)
+	}
+	if _, ok := sub.SemanticDigest("aws-access-token"); ok {
+		t.Fatal("subset kept a digest for a dropped rule")
+	}
+	content := []byte("x ghp_" + strings.Repeat("A0b1C2d3E4", 3) + "ZZZZZZ AKIAIOSFODNN7EXAMPLE")
+	findings, err := sub.Scan(context.Background(), content)
+	if err != nil || len(findings) != 1 || findings[0].RuleID != "github-pat" {
+		t.Fatalf("subset scan = %v, %v", findings, err)
+	}
+	for _, bad := range [][]string{nil, {"no-such-rule"}, {"github-pat", "github-pat"}} {
+		if _, err := rs.Subset(bad); err == nil {
+			t.Errorf("Subset(%v) succeeded", bad)
+		}
+	}
+}
