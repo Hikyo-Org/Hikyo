@@ -337,6 +337,30 @@ it('offers self-approval only when the server grants the request affordance', as
     await act(async () => selectValue(select, env.id));
     await settleTask();
     expect(button(container, 'Approve').disabled).toBe(false);
+    expect(button(container, 'Reject').disabled).toBe(false);
     expect(button(container, 'Withdraw')).toBeDefined();
+  } finally { await unmount(); }
+});
+
+
+it.each([false, undefined])('hides both voting actions when eligibility is %s', async (canApprove) => {
+  vi.stubGlobal('fetch', async (req: Request) => {
+    const path = new URL(req.url).pathname;
+    if (path.endsWith('/environments')) return Response.json({ items: [env], count: 1 });
+    if (path.endsWith('/access-policies')) return Response.json({ items: [] });
+    if (path.endsWith('/access-requests')) return Response.json({ offer, items: [request({ can_approve: canApprove })] });
+    throw new Error(`unexpected ${req.method} ${path}`);
+  });
+  const { container, unmount } = await mount();
+  try {
+    await settleTask();
+    const select = container.querySelector('#ta-env');
+    if (!(select instanceof HTMLSelectElement)) throw new Error('environment select missing');
+    await act(async () => selectValue(select, env.id));
+    await settleTask();
+    expect(container.textContent).toContain('Dana Jacobs');
+    const actions = [...container.querySelectorAll('button')].map((entry) => entry.textContent);
+    expect(actions).not.toContain('Approve');
+    expect(actions).not.toContain('Reject');
   } finally { await unmount(); }
 });
