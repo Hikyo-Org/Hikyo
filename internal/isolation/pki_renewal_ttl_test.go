@@ -1,11 +1,12 @@
 package isolation
 
 import (
+	"testing"
+	"time"
+
 	"github.com/Hikyo-Org/hikyo/internal/domain"
 	"github.com/Hikyo-Org/hikyo/internal/service"
 	"github.com/Hikyo-Org/hikyo/internal/store"
-	"testing"
-	"time"
 )
 
 func TestPKIRenewalPreservesSecondPrecisionBounds(t *testing.T) {
