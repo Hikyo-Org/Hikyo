@@ -140,10 +140,16 @@ type Client struct {
 
 var _ API = (*Client)(nil)
 
+// NewClient prepares a client without contacting the server. Deadline must be
+// positive and shorter than adapter.LeaseTime. Invalid origins, credentials,
+// trust material, deadlines, or egress policies return errors. Call Forget
+// when the attempt ends to release credentials and any AppRole login token.
 func NewClient(cfg ClientConfig) (*Client, error) {
 	return newClient(cfg, net.DefaultResolver, &net.Dialer{Timeout: cfg.Deadline})
 }
 
+// newClient constructs a client using the supplied DNS resolver and dialer
+// for egress enforcement, returning the same configuration errors as NewClient.
 func newClient(cfg ClientConfig, resolver netpolicy.Resolver, dialer netpolicy.Dialer) (*Client, error) {
 	origin, err := ParseOrigin(cfg.Origin)
 	if err != nil {
@@ -310,6 +316,11 @@ func definitive(err error) bool {
 	return response.Status >= 400 && response.Status < 500
 }
 
+// authorize returns the static token or logs in with AppRole on first use.
+// A login token nearing expiry is renewed at most twice per client. Released
+// credentials, missing login tokens, and insufficient remaining token lifetime
+// return adapter.ErrProviderAuth. Valid leases remain usable after the renewal
+// budget is exhausted; request failures pass through loginError.
 func (c *Client) authorize(ctx context.Context) (string, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -371,6 +382,8 @@ func (c *Client) setLease(seconds int64) {
 	c.renewAt = c.expires.Add(-min(renewMargin, ttl/2))
 }
 
+// loginError adds adapter.ErrProviderAuth to provider 4xx login or renewal
+// refusals other than rate limits, preserving the original error.
 func loginError(err error) error {
 	var response *ResponseError
 	if errors.As(err, &response) && response.Status >= 400 && response.Status < 500 && response.Status != http.StatusTooManyRequests {
@@ -379,6 +392,8 @@ func loginError(err error) error {
 	return err
 }
 
+// do authorizes and sends a registered operation, rejecting unknown keys.
+// Authorization and send errors propagate to the caller.
 func (c *Client) do(ctx context.Context, key string, params map[string]string, body, out any) error {
 	op, ok := operationRegistry[key]
 	if !ok {
@@ -394,6 +409,12 @@ func (c *Client) do(ctx context.Context, key string, params map[string]string, b
 	return c.send(ctx, op, params, token, body, out)
 }
 
+// send sends a JSON request and decodes a nonempty successful response into
+// out when supplied. Responses over 1 MiB, unreadable bodies, and decoding
+// failures return errors. A 429 returns adapter.ErrRateLimited with a retry deadline;
+// other non-2xx responses return ResponseError, joined with
+// adapter.ErrProviderAuth for 401 or 403. Encoding, request construction, and
+// transport errors propagate without including provider response bodies.
 func (c *Client) send(ctx context.Context, op operation, params map[string]string, token string, body, out any) error {
 	path := op.Path
 	for name, value := range params {
@@ -468,6 +489,8 @@ func (c *Client) send(ctx context.Context, op operation, params map[string]strin
 	return nil
 }
 
+// retryAt interprets Retry-After as nonnegative seconds or an HTTP date,
+// falling back to 30 seconds from now when the header is absent or invalid.
 func (c *Client) retryAt(header http.Header) time.Time {
 	now := c.now()
 	if raw := header.Get("Retry-After"); raw != "" {
@@ -491,6 +514,7 @@ func redactURLError(err error) error {
 	return err
 }
 
+// escapePath URL-escapes each path segment while preserving slash separators.
 func escapePath(path string) string {
 	segments := strings.Split(path, "/")
 	for i, segment := range segments {
@@ -499,6 +523,9 @@ func escapePath(path string) string {
 	return strings.Join(segments, "/")
 }
 
+// Health reads server initialization, seal state, and version without a token
+// or namespace header. Sealed and uninitialized states are returned as data;
+// request and response-decoding failures are returned as errors.
 func (c *Client) Health(ctx context.Context) (Health, error) {
 	var out struct {
 		Initialized bool   `json:"initialized"`
@@ -513,6 +540,8 @@ func (c *Client) Health(ctx context.Context) (Health, error) {
 	return Health{Initialized: out.Initialized, Sealed: out.Sealed, Version: out.Version}, nil
 }
 
+// MountInfo returns the engine type, version, and identity for a mount path.
+// Authentication, request, and response-decoding errors propagate to the caller.
 func (c *Client) MountInfo(ctx context.Context, mount string) (Mount, error) {
 	var out struct {
 		Data struct {
@@ -532,7 +561,8 @@ func (c *Client) MountInfo(ctx context.Context, mount string) (Mount, error) {
 
 // LookupSelf reports the expiry of an operator-supplied token. An AppRole
 // login token lives only for one attempt, so its expiry says nothing about the
-// credential and no request is made.
+// credential and no request is made. Missing or malformed expiry timestamps
+// produce a zero ExpireTime; request errors still propagate.
 func (c *Client) LookupSelf(ctx context.Context) (TokenInfo, error) {
 	c.mu.Lock()
 	approle := c.credential.Method == AppRoleAuth
@@ -557,6 +587,10 @@ func (c *Client) LookupSelf(ctx context.Context) (TokenInfo, error) {
 	return info, nil
 }
 
+// ReadMetadata returns version and ownership metadata without reading values.
+// A deletion time at or before now marks a version deleted; a future time does
+// not. Invalid version numbers or deletion timestamps return errors, as do
+// request failures, including a 404 for missing metadata.
 func (c *Client) ReadMetadata(ctx context.Context, mount, path string) (Metadata, error) {
 	var out struct {
 		Data struct {
@@ -596,10 +630,16 @@ func (c *Client) ReadMetadata(ctx context.Context, mount, path string) (Metadata
 	return meta, nil
 }
 
+// PatchCustomMetadata merge-patches the named custom metadata fields; a nil
+// value removes its field. Authentication and request errors propagate.
 func (c *Client) PatchCustomMetadata(ctx context.Context, mount, path string, custom map[string]*string) error {
 	return c.do(ctx, "patch-metadata", map[string]string{"mount": mount, "path": path}, map[string]any{"custom_metadata": custom}, nil)
 }
 
+// WriteCAS writes a single "value" field, using cas as the expected current
+// version (zero requests creation). It returns the new version, or
+// adapter.ErrIndeterminate if the reported version is not cas+1. Request
+// errors propagate, including refusals recognized by IsCASMismatch.
 func (c *Client) WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error) {
 	var out struct {
 		Data struct {
@@ -616,6 +656,9 @@ func (c *Client) WriteCAS(ctx context.Context, mount, path, value string, cas in
 	return out.Data.Version, nil
 }
 
+// DeleteVersion soft-deletes only the specified version, preserving metadata
+// and other versions. Authentication and request errors, including 404s,
+// propagate to the caller.
 func (c *Client) DeleteVersion(ctx context.Context, mount, path string, version int64) error {
 	return c.do(ctx, "soft-delete-data", map[string]string{"mount": mount, "path": path}, map[string][]int64{"versions": {version}}, nil)
 }

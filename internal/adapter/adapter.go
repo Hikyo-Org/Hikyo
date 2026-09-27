@@ -360,6 +360,9 @@ var cloudflareName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // ValidateCloudflareManifest applies the Workers binding-name rule shared by
 // Workers secrets and Pages variables. Every entry, including config, is
 // delivered as secret_text, so classification never selects a plaintext type.
+// Effective names are limited to 64 bytes and must be unique ignoring case.
+// When values is true, values must be UTF-8 and at most CloudflareValueLimit
+// bytes. Invalid classifications, names, or checked values return an error.
 func ValidateCloudflareManifest(prefix string, entries []ManifestEntry, values bool) error {
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
@@ -389,6 +392,9 @@ func ValidateCloudflareManifest(prefix string, entries []ManifestEntry, values b
 	return nil
 }
 
+// ValidateProviderManifest applies the named provider's manifest rules,
+// returning an error for an unknown provider or invalid entries. The values
+// flag enables value checks where the provider's validator supports them.
 func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, values bool) error {
 	kind, err := ParseProvider(provider)
 	if err != nil {
@@ -410,8 +416,10 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 	}
 }
 
-// Workflow renders names only. Prefixing is provider wiring; applications
-// continue to receive canonical names in every environment.
+// WorkflowForProvider validates names and renders provider wiring: Cloudflare
+// bindings, an empty string for sealed-webhook, or workflow mappings otherwise.
+// Prefixing is provider wiring; applications continue to receive canonical
+// names in every environment. Manifest validation errors propagate.
 func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (string, error) {
 	if err := ValidateProviderManifest(provider, prefix, entries, false); err != nil {
 		return "", err
@@ -435,7 +443,10 @@ var vaultKVName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 // ValidateVaultKVManifest applies the Vault/OpenBao KV v2 path contract. Every
 // effective name becomes exactly one path segment under the target's path
 // prefix, holding a single "value" field. Secret and config classifications
-// share that one tree, so names must be unique across both surfaces.
+// share that one tree, so names must be unique across both surfaces ignoring
+// case. Effective names are limited to 255 bytes. When values is true, values
+// must be UTF-8 and at most VaultKVValueLimit bytes. Invalid classifications,
+// names, or checked values return an error.
 func ValidateVaultKVManifest(prefix string, entries []ManifestEntry, values bool) error {
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
