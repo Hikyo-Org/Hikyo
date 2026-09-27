@@ -62,7 +62,7 @@ func (g *runningGeneration) start(ctx context.Context) {
 	ctx, g.cancelWorkers = context.WithCancel(ctx)
 	g.workersDone = make(chan struct{})
 	var workers sync.WaitGroup
-	for _, run := range []func(context.Context){g.graph.scheduler.Run, g.graph.adapterWorker.Run, g.graph.dynamicWorker.Run, g.graph.sshSweeper.Run, g.graph.updateReconciler.Run} {
+	for _, run := range []func(context.Context){g.graph.scheduler.Run, g.graph.adapterWorker.Run, g.graph.dynamicWorker.Run, g.graph.sshSweeper.Run, g.graph.pkiWorker.Run, g.graph.updateReconciler.Run} {
 		workers.Add(1)
 		go func() { defer workers.Done(); run(ctx) }()
 	}

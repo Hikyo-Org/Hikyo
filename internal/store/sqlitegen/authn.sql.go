@@ -1256,6 +1256,19 @@ func (q *Queries) GetSessionByVerifier(ctx context.Context, verifier []byte) (Ge
 	return i, err
 }
 
+const holdRestoredPKIIssuers = `-- name: HoldRestoredPKIIssuers :exec
+UPDATE pki_issuers SET restore_hold = 1
+`
+
+// A restore can resurrect certificates revoked after the backup was taken, so
+// every restored CA issuer is held (no minting) until an operator releases
+// the hold with `hikyo pki issuer release-hold` (#154, pki ADR D8). CRLs still publish.
+// hikyo:authn-resolution
+func (q *Queries) HoldRestoredPKIIssuers(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, holdRestoredPKIIssuers)
+	return err
+}
+
 const insertAccount = `-- name: InsertAccount :exec
 INSERT INTO accounts (id, principal_id, username, display_name, created_at)
 VALUES (?, ?, ?, ?, ?)

@@ -274,6 +274,11 @@ func runImport(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
+	if *live && source == "vault" {
+		if err := refuseVaultImportLoop(ctx, client, project, result); err != nil {
+			return err
+		}
+	}
 
 	// Multi-environment replay fans the one recorded source read over every
 	// environment the template names — presence varies per environment, the

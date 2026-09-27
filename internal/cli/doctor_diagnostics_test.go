@@ -33,7 +33,8 @@ func TestDoctorDiagnosticVerdictsAndExitCodes(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			now := time.Now().UTC()
-			health := apigen.RetentionHealth{LastPruneSuccess: &now, Backup: healthyBackup(now), Diagnostics: tc.diagnostics}
+			zero := 0
+			health := apigen.RetentionHealth{LastPruneSuccess: &now, Backup: healthyBackup(now), Diagnostics: tc.diagnostics, PkiCertificatesUnknown: &zero, PkiIssuersOnHold: &zero}
 			requests := 0
 			server := newRevisionAwareFixtureServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++
@@ -121,11 +122,11 @@ func TestDoctorPreservesAllOperationalDiagnosticCodes(t *testing.T) {
 		diagnostics = append(diagnostics, apigen.OpsDiagnosticFinding{Code: code, Severity: apigen.OpsDiagnosticFindingSeverityUnknown, Message: "server measurement: " + code})
 	}
 	result, _ := doctorResults(apigen.SamlProviderList{}, apigen.RetentionHealth{Diagnostics: &diagnostics}, time.Now())
-	if len(result.Findings) != 12 || result.Status != "warning" {
+	if len(result.Findings) != 13 || result.Status != "warning" {
 		t.Fatalf("doctor lost existing or new families: %+v", result)
 	}
 	for i, code := range codes {
-		if got := result.Findings[i+5]; got.Code != code || got.Severity != "unknown" || got.Message != diagnostics[i].Message {
+		if got := result.Findings[i+6]; got.Code != code || got.Severity != "unknown" || got.Message != diagnostics[i].Message {
 			t.Fatalf("diagnostic was recalculated or discarded: %+v", got)
 		}
 	}

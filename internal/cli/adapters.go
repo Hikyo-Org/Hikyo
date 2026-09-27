@@ -166,14 +166,39 @@ func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment
 		if repo == "" || destinationEnvironment == "" || visibility != "" || len(repositoryIDs) != 0 {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "environment target requires --repo and --destination-environment and refuses visibility routing")
 		}
+	case "workers-script":
+		if repo == "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "workers-script target requires --account and --script and refuses environment/visibility routing")
+		}
+	case "pages-project":
+		if repo == "" || (destinationEnvironment != "preview" && destinationEnvironment != "production") || visibility != "" || len(repositoryIDs) != 0 {
+			return apigen.AdapterTargetInput{}, failf(ExitUsage, "pages-project target requires --account, --pages-project and --destination-environment preview|production")
+		}
 	default:
-		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--kind must be repository, organization, or environment")
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "--kind must be repository, organization, environment, workers-script, or pages-project")
 	}
 	out := apigen.AdapterTargetInput{EnvironmentId: apigen.ID(env), DestinationKind: apigen.AdapterDestinationKind(kind), DestinationOwner: owner, DestinationName: repo, DestinationEnvironment: destinationEnvironment, Visibility: apigen.AdapterTargetInputVisibility(visibility), SelectedRepositoryIds: repositoryIDs, NamePrefix: prefix, KeyIds: []apigen.ID{}, KeySelection: selection.body()}
 	for _, id := range ids {
 		out.KeyIds = append(out.KeyIds, apigen.ID(id))
 	}
 	return out, nil
+}
+
+// kvAddressing maps --mount/--path onto the repository destination a
+// Vault/OpenBao KV target rides: owner is the mount, name is the path prefix.
+// Mixing spellings would make one of them lie, so it is refused.
+func kvAddressing(kind, owner, repo *string, mount, kvPath, destinationEnvironment, visibility, selectedRepositories string) error {
+	if mount == "" && kvPath == "" {
+		return nil
+	}
+	if *owner != "" || *repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || (*kind != "" && *kind != "repository") {
+		return failf(ExitUsage, "--mount/--path address a Vault/OpenBao KV target and refuse --owner, --repo, and GitHub routing flags")
+	}
+	if mount == "" || kvPath == "" {
+		return failf(ExitUsage, "a Vault/OpenBao KV target requires both --mount and --path")
+	}
+	*kind, *owner, *repo = "repository", mount, kvPath
+	return nil
 }
 
 func splitAdapterRepositoryIDs(raw string) ([]int64, error) {
@@ -252,18 +277,18 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	case "plan", "sync", "test":
 		return runAdapterAction(ctx, ios, sub, rest)
 	}
-	var format, provider, origin, target, moveID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string
+	var format, provider, origin, target, moveID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, mount, kvPath string
 	var keepRemote, cancelMove, allowEnvironmentCreate bool
 	var source adapterCredentialSource
 	var selection adapterKeySelection
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), or an instance-admin sealed-webhook origin")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, https://api.cloudflare.com, or Vault/OpenBao address with optional /namespace")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, or sealed-webhook")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, cloudflare, or vault-kv")
 		}
 		if sub == "update" {
 			fs.StringVar(&target, "target", "", "target id to mutate")
@@ -271,10 +296,15 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			fs.BoolVar(&cancelMove, "cancel-move", false, "cancel the move and reconverge the old route")
 		}
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
+			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, or pages-project")
 			fs.StringVar(&owner, "owner", "", "provider owner or organization (sealed-webhook: receiver namespace)")
+			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
 			fs.StringVar(&repo, "repo", "", "provider repository")
-			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name")
+			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
+			fs.StringVar(&kvPath, "path", "", "Vault/OpenBao KV path prefix under the mount (vault-kv)")
+			fs.StringVar(&repo, "script", "", "Cloudflare Workers script name (alias of --repo)")
+			fs.StringVar(&repo, "pages-project", "", "Cloudflare Pages project name (alias of --repo)")
+			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name, or Pages environment preview|production")
 			fs.StringVar(&visibility, "visibility", "", "GitHub organization visibility: all, private, or selected")
 			fs.StringVar(&selectedRepositories, "selected-repository-ids", "", "comma-separated GitHub numeric repository ids")
 			fs.StringVar(&prefix, "prefix", "", "structural name prefix")
@@ -306,8 +336,17 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			return err
 		}
 	}
+	if sub == "create" && origin == "" && provider == "cloudflare" {
+		origin = "https://api.cloudflare.com"
+	}
 	if sub == "create" && origin == "" {
 		return failf(ExitUsage, "adapter create requires --origin")
+	}
+	if err := kvAddressing(&kind, &owner, &repo, mount, kvPath, destinationEnvironment, visibility, selectedRepositories); err != nil {
+		return err
+	}
+	if sub == "create" && provider == "vault-kv" && (kind != "repository" || destinationEnvironment != "" || visibility != "") {
+		return failf(ExitUsage, "vault-kv targets take --mount and --path")
 	}
 	if sub == "update" {
 		targetFields := kind != "" || owner != "" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "" || prefix != "" || keys != "" || !selection.empty() || flags.Env != ""
@@ -371,8 +410,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
-		if provider != "forgejo" && provider != "github-actions" && provider != "sealed-webhook" {
-			return failf(ExitUsage, "--provider must be forgejo, github-actions, or sealed-webhook")
+		if provider != "forgejo" && provider != "github-actions" && provider != "sealed-webhook" && provider != "cloudflare" && provider != "vault-kv" {
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, sealed-webhook, cloudflare, or vault-kv")
+		}
+		if cloudflareKind := kind == "workers-script" || kind == "pages-project"; cloudflareKind != (provider == "cloudflare") {
+			return failf(ExitUsage, "--provider cloudflare takes exactly --kind workers-script or pages-project")
 		}
 		envID, err := resolved.Require(DimEnv)
 		if err != nil {
@@ -599,7 +641,7 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 	if err != nil {
 		return err
 	}
-	var adapterID, format, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, outFormat string
+	var adapterID, format, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, outFormat, mount, kvPath string
 	var keep, allowEnvironmentCreate bool
 	var selection adapterKeySelection
 	st, flags, err := parseCommon("adapter target "+sub, ios, rest, func(fs *flag.FlagSet) {
@@ -610,10 +652,15 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		}
 		if sub == "add" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&kind, "kind", "", "repository, organization, or environment")
+			fs.StringVar(&kind, "kind", "", "repository, organization, environment, workers-script, or pages-project")
 			fs.StringVar(&owner, "owner", "", "provider owner or organization (sealed-webhook: receiver namespace)")
+			fs.StringVar(&owner, "account", "", "Cloudflare account id (alias of --owner)")
 			fs.StringVar(&repo, "repo", "", "provider repository")
-			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name")
+			fs.StringVar(&mount, "mount", "", "Vault/OpenBao KV v2 mount path (vault-kv; implies --kind repository)")
+			fs.StringVar(&kvPath, "path", "", "Vault/OpenBao KV path prefix under the mount (vault-kv)")
+			fs.StringVar(&repo, "script", "", "Cloudflare Workers script name (alias of --repo)")
+			fs.StringVar(&repo, "pages-project", "", "Cloudflare Pages project name (alias of --repo)")
+			fs.StringVar(&destinationEnvironment, "destination-environment", "", "GitHub Actions environment name, or Pages environment preview|production")
 			fs.StringVar(&visibility, "visibility", "", "GitHub organization visibility: all, private, or selected")
 			fs.StringVar(&selectedRepositories, "selected-repository-ids", "", "comma-separated GitHub numeric repository ids")
 			fs.StringVar(&prefix, "prefix", "", "structural prefix")
@@ -640,6 +687,9 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 	}
 	if (sub == "add" || sub == "list") && adapterID == "" {
 		return failf(ExitUsage, "adapter target %s requires --adapter", sub)
+	}
+	if err := kvAddressing(&kind, &owner, &repo, mount, kvPath, destinationEnvironment, visibility, selectedRepositories); err != nil {
+		return err
 	}
 	client, artifact, resolved, err := authenticatedTarget(st, ios, flags)
 	if err != nil {

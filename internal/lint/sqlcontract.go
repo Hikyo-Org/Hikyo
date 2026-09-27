@@ -74,6 +74,7 @@ var approvedParameterNames = map[string]map[string]string{
 	"ListOidcProvidersForReencrypt":        aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListPasswordCredsForReencrypt":        aliases("AccountID", "Cursor", "Limit", "PageLimit"),
 	"ListPendingForReencrypt":              aliases("ID", "Cursor", "Limit", "PageLimit"),
+	"ListPkiIssuersForReencrypt":           aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListRecoveryCodesForReencrypt":        aliases("AccountID", "Cursor", "Limit", "PageLimit"),
 	"ListRemotesForReencrypt":              aliases("ID", "Cursor", "Limit", "PageLimit"),
 	"ListSamlKeysForReencrypt":             aliases("ID", "Cursor", "Limit", "PageLimit"),

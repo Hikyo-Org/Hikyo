@@ -15,6 +15,7 @@ import (
 	"github.com/Hikyo-Org/hikyo/internal/store"
 	"github.com/Hikyo-Org/hikyo/internal/store/keyring"
 	"github.com/Hikyo-Org/hikyo/internal/store/tx"
+	"github.com/Hikyo-Org/hikyo/internal/transit"
 )
 
 // Reencrypt walks a scope's retained ciphertext onto the active DEK version and
@@ -168,7 +169,7 @@ func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, pr
 	adapterAAD := func(row projectFieldRow) crypto.AAD {
 		return adapter.CredentialAAD(orgID, projectID, row.owner)
 	}
-	// The five project ciphertext tables, defined once and shared by the walk and
+	// The project ciphertext tables, defined once and shared by the walk and
 	// the retire's dryness gate — a DEK version is retired only when zero
 	// ciphertexts across ALL of them reference it, so both must cover the same set.
 	tables := []projectTable{
@@ -242,6 +243,19 @@ func (s *Reencrypt) ReencryptProject(ctx context.Context, actor Actor, orgID, pr
 			},
 			func(ctx context.Context, r store.Repos, p authz.Proof, id string, newCt, oldCt []byte) (bool, error) {
 				return r.SSH().ReencryptCAKey(ctx, p, id, newCt, oldCt)
+			}},
+		// Transit key-version material (#156): a project_field envelope bound
+		// to the version row, its environment and its transit key.
+		{"transit_key_version",
+			func(ctx context.Context, r store.Repos, p authz.Proof, cursor string) ([]projectFieldRow, error) {
+				rows, err := r.Transit().ListVersionsForReencrypt(ctx, p, cursor, s.chunkSize())
+				return fieldRows(rows), err
+			},
+			func(row projectFieldRow) crypto.AAD {
+				return transit.MaterialAADFor(orgID, projectID, row.env, row.key, row.id)
+			},
+			func(ctx context.Context, r store.Repos, p authz.Proof, id string, newCt, oldCt []byte) (bool, error) {
+				return r.Transit().ReencryptVersion(ctx, p, id, newCt, oldCt)
 			}},
 	}
 
@@ -383,6 +397,11 @@ func (s *Reencrypt) ReencryptInstance(ctx context.Context, actor Actor) (Reencry
 			reseal: func(r store.ReencryptRepo, ctx context.Context, p authz.Proof, row store.ReencryptInstanceRow, ciphertext []byte, _ uint32) (bool, error) {
 				return r.ReencryptRemote(ctx, p, row.ID, ciphertext, row.Ciphertext)
 			}},
+		{table: "pki_issuers",
+			list:      store.ReencryptRepo.ListPkiIssuersForReencrypt,
+			versionOf: instanceColumnVersion,
+			aad:       pkiIssuerKeyAAD,
+			reseal:    versionedInstanceReseal(store.ReencryptRepo.ReencryptPkiIssuer)},
 	}
 	for _, table := range tables {
 		if err := s.walkInstance(ctx, actor, table, &moved, sealer, active); err != nil {

@@ -261,6 +261,9 @@ func TestExitCodeMatrix(t *testing.T) {
 		{"access request emergency with a negative duration", []string{"access", "request", "emergency", "--capability", "reveal", "--reason", "r", "--duration", "-1h", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"access request emergency without a capability", []string{"access", "request", "emergency", "--reason", "r", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"stray positional on key group list", []string{"key", "group", "list", "stray", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"stray positional on transit key trim", []string{"transit", "key", "trim", "payments", "typo", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"stray positional on transit encrypt", []string{"transit", "encrypt", "payments", "typo", "--instance", "unknown-ref"}, cli.ExitUsage},
+		{"transit key show without a key", []string{"transit", "key", "show", "--instance", "unknown-ref"}, cli.ExitUsage},
 		{"key list with no session", []string{"key", "list", "--instance", "unknown-ref", "--org", "org_x", "--project", "prj_x"}, cli.ExitRefused},
 		// The import path (#68). Its usage boundary is pinned like every other
 		// verb family's, and the first case is the one the ADR states outright:

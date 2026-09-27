@@ -665,6 +665,13 @@ UPDATE adapters SET credential_ciphertext = NULL, credential_set_at = NULL;
 -- name: InvalidateRestoredDynamicProviderCredentials :exec
 UPDATE dynamic_providers SET admin_credential_ciphertext = NULL, credential_set_at = NULL;
 
+-- A restore can resurrect certificates revoked after the backup was taken, so
+-- every restored CA issuer is held (no minting) until an operator releases
+-- the hold with `hikyo pki issuer release-hold` (#154, pki ADR D8). CRLs still publish.
+-- hikyo:authn-resolution
+-- name: HoldRestoredPKIIssuers :exec
+UPDATE pki_issuers SET restore_hold = 1;
+
 -- The operator's commit covers `manual` origins ONLY (#73, scim-provisioning
 -- ADR section 9.1). A restored `scim` origin is a claim about what an identity
 -- provider asserted BEFORE the backup was taken, and the whole point of the

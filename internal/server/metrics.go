@@ -118,6 +118,23 @@ const (
 	// MetricSSHGaugesKnown is 1 when the two SSH gauges were measured on this
 	// scrape; 0 means they are omitted rather than rendered as zeros.
 	MetricSSHGaugesKnown = "hikyo_ssh_gauges_known"
+	// Transit (#156): live managed keys, keys whose rotation period has
+	// elapsed, and keys waiting out their deletion delay. Label-free; the
+	// known flag is 0 when the scrape could not measure them, and the three
+	// value gauges are then omitted rather than rendered as zeros.
+	MetricTransitKeysLive            = "hikyo_transit_keys_live"
+	MetricTransitKeysRotationDue     = "hikyo_transit_keys_rotation_due"
+	MetricTransitKeysPendingDeletion = "hikyo_transit_keys_pending_deletion"
+	MetricTransitGaugesKnown         = "hikyo_transit_gauges_known"
+
+	// Private-PKI gauges (#154). Label-free, cardinality one each: live leaf
+	// certificates, certificates in the uncertain `unknown` state (published on
+	// the CRL as revoked), and issuers held after a restore. The known flag has
+	// the dynamic-gauge semantics: 0 means unmeasured, and the values are omitted.
+	MetricPKICertificatesLive    = "hikyo_pki_certificates_live"
+	MetricPKICertificatesUnknown = "hikyo_pki_certificates_unknown"
+	MetricPKIIssuersOnHold       = "hikyo_pki_issuers_on_hold"
+	MetricPKIGaugesKnown         = "hikyo_pki_gauges_known"
 
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
@@ -277,6 +294,8 @@ type Metrics struct {
 	access       *accessCollector
 	dyn          *dynamicCollector
 	ssh          *sshCollector
+	transit      *transitCollector
+	pki          *pkiCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -324,12 +343,14 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	access := newAccessCollector()
 	dyn := newDynamicCollector()
 	sshc := newSSHCollector()
-	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc)
+	tr := newTransitCollector()
+	pkiGauges := newPKICollector()
+	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc, pkiGauges, tr)
 
 	m := &Metrics{
 		registry: registry, inFlight: inFlight,
 		mcpRequests: mcpRequests, mcpInFlight: mcpInFlight, mcpDurations: mcpDurations,
-		ha: ha, approvals: approvals, access: access, dyn: dyn, ssh: sshc,
+		ha: ha, approvals: approvals, access: access, dyn: dyn, ssh: sshc, pki: pkiGauges, transit: tr,
 	}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
@@ -586,7 +607,7 @@ func (c *accessCollector) Collect(ch chan<- prometheus.Metric) {
 			values, measured = [2]float64{float64(open), float64(active)}, true
 		}
 	}
-	collectMeasured(ch, c.descs, c.known, values, measured)
+	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
 }
 
 // DynamicSnapshotter is the dynamic-secret gauge source, read at scrape time.
@@ -620,10 +641,10 @@ func (c *dynamicCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.known
 }
 
-// collectMeasured renders a pair of gauges plus their known flag. A failed or
+// collectMeasured renders a set of gauges plus their known flag. A failed or
 // absent measurement emits only known=0: an omitted series is "unknown" to an
 // alert, a zero is "healthy", and the two must never be confused.
-func collectMeasured(ch chan<- prometheus.Metric, descs [2]*prometheus.Desc, known *prometheus.Desc, values [2]float64, measured bool) {
+func collectMeasured(ch chan<- prometheus.Metric, descs []*prometheus.Desc, known *prometheus.Desc, values []float64, measured bool) {
 	if measured {
 		for i, desc := range descs {
 			ch <- prometheus.MustNewConstMetric(desc, prometheus.GaugeValue, values[i])
@@ -644,7 +665,7 @@ func (c *approvalCollector) Collect(ch chan<- prometheus.Metric) {
 			values, measured = [2]float64{stats.Open, stats.Expired}, true
 		}
 	}
-	collectMeasured(ch, c.descs, c.known, values, measured)
+	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
 }
 
 func (c *dynamicCollector) Collect(ch chan<- prometheus.Metric) {
@@ -655,7 +676,7 @@ func (c *dynamicCollector) Collect(ch chan<- prometheus.Metric) {
 			values, measured = [2]float64{float64(active), float64(unknown)}, true
 		}
 	}
-	collectMeasured(ch, c.descs, c.known, values, measured)
+	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
 }
 
 // SSHSnapshotter is the SSH certificate gauge source, read at scrape time.
@@ -687,6 +708,36 @@ func (c *sshCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.known
 }
 
+// PKISnapshotter is the private-PKI gauge source, read at scrape time, with
+// the DynamicSnapshotter failure semantics.
+type PKISnapshotter interface {
+	PKISnapshot() (live, unknown, held int64, err error)
+}
+
+// SetPKISource attaches the private-PKI gauge source once at boot.
+func (m *Metrics) SetPKISource(source PKISnapshotter) { m.pki.source.Store(&source) }
+
+type pkiCollector struct {
+	source atomic.Pointer[PKISnapshotter]
+	descs  [3]*prometheus.Desc
+	known  *prometheus.Desc
+}
+
+func newPKICollector() *pkiCollector {
+	return &pkiCollector{descs: [3]*prometheus.Desc{
+		prometheus.NewDesc(MetricPKICertificatesLive, "Number of issued, unexpired private-PKI leaf certificates.", nil, nil),
+		prometheus.NewDesc(MetricPKICertificatesUnknown, "Number of private-PKI certificates in the uncertain unknown state, published on the CRL as revoked.", nil, nil),
+		prometheus.NewDesc(MetricPKIIssuersOnHold, "Number of private-PKI issuer versions held after a restore until reconciled.", nil, nil),
+	}, known: prometheus.NewDesc(MetricPKIGaugesKnown, "Whether the private-PKI gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
+}
+
+func (c *pkiCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+	ch <- c.known
+}
+
 func (c *sshCollector) Collect(ch chan<- prometheus.Metric) {
 	var values [2]float64
 	measured := false
@@ -695,7 +746,31 @@ func (c *sshCollector) Collect(ch chan<- prometheus.Metric) {
 			values, measured = [2]float64{float64(active), float64(krl)}, true
 		}
 	}
-	collectMeasured(ch, c.descs, c.known, values, measured)
+	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
+}
+
+func (c *transitCollector) Collect(ch chan<- prometheus.Metric) {
+	measured := false
+	var values [3]float64
+	if p := c.source.Load(); p != nil && *p != nil {
+		if live, due, pending, err := (*p).TransitSnapshot(); err == nil {
+			values, measured = [3]float64{float64(live), float64(due), float64(pending)}, true
+		}
+	}
+	collectMeasured(ch, c.descs[:], c.known, values[:], measured)
+}
+
+func (c *pkiCollector) Collect(ch chan<- prometheus.Metric) {
+	known := 0.0
+	if p := c.source.Load(); p != nil && *p != nil {
+		if live, unknown, held, err := (*p).PKISnapshot(); err == nil {
+			for i, value := range []int64{live, unknown, held} {
+				ch <- prometheus.MustNewConstMetric(c.descs[i], prometheus.GaugeValue, float64(value))
+			}
+			known = 1
+		}
+	}
+	ch <- prometheus.MustNewConstMetric(c.known, prometheus.GaugeValue, known)
 }
 
 // observe is the outer public-router leg for /api/v1 traffic. Its placement
@@ -736,4 +811,34 @@ func (a *API) observe(next http.Handler) http.Handler {
 				"duration_ms", dur.Milliseconds())
 		}
 	})
+}
+
+// TransitSnapshotter is the transit gauge source, read at scrape time. An
+// error (or a nil source) marks the gauges unknown for this scrape.
+type TransitSnapshotter interface {
+	TransitSnapshot() (live, rotationDue, pendingDeletion int64, err error)
+}
+
+// SetTransitSource attaches the transit gauge source once at boot.
+func (m *Metrics) SetTransitSource(source TransitSnapshotter) { m.transit.source.Store(&source) }
+
+type transitCollector struct {
+	source atomic.Pointer[TransitSnapshotter]
+	descs  [3]*prometheus.Desc
+	known  *prometheus.Desc
+}
+
+func newTransitCollector() *transitCollector {
+	return &transitCollector{descs: [3]*prometheus.Desc{
+		prometheus.NewDesc(MetricTransitKeysLive, "Number of transit keys that are not destroyed.", nil, nil),
+		prometheus.NewDesc(MetricTransitKeysRotationDue, "Number of active transit keys whose rotation period has elapsed.", nil, nil),
+		prometheus.NewDesc(MetricTransitKeysPendingDeletion, "Number of transit keys waiting out their deletion delay.", nil, nil),
+	}, known: prometheus.NewDesc(MetricTransitGaugesKnown, "Whether the transit gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
+}
+
+func (c *transitCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+	ch <- c.known
 }

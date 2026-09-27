@@ -50,4 +50,5 @@ var (
 	_ redactionSurface = keyHandle{}
 	_ redactionSurface = swapHandle{}
 	_ redactionSurface = dekEntry{}
+	_ redactionSurface = (*TransitKey)(nil)
 )

@@ -83,6 +83,9 @@ hikyo access request create --capability reveal --reason r --duration 1193047h -
 hikyo access request emergency --capability reveal --reason r --duration -1h --instance unknown-ref -> 2 usage
 hikyo access request emergency --reason r --instance unknown-ref -> 2 usage
 hikyo key group list stray --instance unknown-ref -> 2 usage
+hikyo transit key trim payments typo --instance unknown-ref -> 2 usage
+hikyo transit encrypt payments typo --instance unknown-ref -> 2 usage
+hikyo transit key show --instance unknown-ref -> 2 usage
 hikyo key list --instance unknown-ref --org org_x --project prj_x -> 4 refused
 hikyo import -> 2 usage
 hikyo import --from k8s --mapping m.json -> 2 usage

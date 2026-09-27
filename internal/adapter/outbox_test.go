@@ -358,3 +358,21 @@ func (workerJournal) Prepare(context.Context, Effect, LedgerState) error { retur
 func (workerJournal) Finish(context.Context, Effect, Completion) error   { return nil }
 func (workerJournal) Refuse(context.Context, Effect) error               { return nil }
 func (workerJournal) ReleaseReservation(context.Context, Effect) error   { return nil }
+
+func TestRetryDueCapsProviderDeadline(t *testing.T) {
+	now := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	for name, tc := range map[string]struct{ at, want time.Time }{
+		"within cap": {now.Add(10 * time.Minute), now.Add(10 * time.Minute)},
+		"beyond cap": {now.Add(72 * time.Hour), now.Add(RetryCap)},
+	} {
+		if got := retryDue(now, 1, nil, testRetryAtError{at: tc.at}); !got.Equal(tc.want) {
+			t.Errorf("%s: retryDue = %s, want %s", name, got, tc.want)
+		}
+	}
+}
+
+type testRetryAtError struct{ at time.Time }
+
+func (e testRetryAtError) Error() string      { return ErrRateLimited.Error() }
+func (e testRetryAtError) Unwrap() error      { return ErrRateLimited }
+func (e testRetryAtError) RetryAt() time.Time { return e.at }
