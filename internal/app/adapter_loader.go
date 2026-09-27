@@ -160,6 +160,7 @@ func (l *adapterLoader) Load(ctx context.Context, job adapter.Job, journal adapt
 	request := adapter.SyncRequest{
 		Config: adapter.Config{Origin: material.Origin}, Target: material.Target,
 		Manifest: manifest, Ledger: material.Ledger,
+		Source: adapter.Source{OrgID: job.OrgID, ProjectID: job.ProjectID, EnvironmentID: job.EnvironmentID, Revision: material.Revision},
 	}
 	release := sync.OnceFunc(func() {
 		for i := range manifest {

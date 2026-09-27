@@ -224,7 +224,7 @@ func newUpgradeDrillFixture(t *testing.T, engine store.Engine, secret, hierarchy
 	return upgradeDrillFixture{cfg: cfg, bundle: bundle, request: request, source: inspected, proposal: proposal, signer: bundle.Signer, archive: exported.Path, root: root}
 }
 
-// The runtime-created fixture includes migrations 45 through 60, while the
+// The runtime-created fixture includes migrations 45 through 61 plus 66, while the
 // sole admitted legacy genesis ends at 44. Model that historical archive by
 // removing only the enumerated, pristine additions. Any recorded diagnostics,
 // audit policy, privacy restriction, configuration, ceremony, adapter finding,
@@ -243,10 +243,10 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(current.Entries) != len(legacy.Entries)+16 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
-		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 60 only")
+	if len(current.Entries) != len(legacy.Entries)+18 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
+		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 61 plus 66 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 66} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}
@@ -296,7 +296,14 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// notice may be discarded by the reversal below.
 		"SELECT COUNT(*) FROM delivery_target_reports",
 		"SELECT COUNT(*) FROM delivery_target_quota_notices",
-		// 00060 (temporary access, #152): no policy, request, vote or
+		// 00061 (SSH user certificates): no CA, key, profile, requester or
+		// certificate record may be discarded by the reversal below.
+		"SELECT COUNT(*) FROM ssh_cas",
+		"SELECT COUNT(*) FROM ssh_ca_keys",
+		"SELECT COUNT(*) FROM ssh_profiles",
+		"SELECT COUNT(*) FROM ssh_profile_requesters",
+		"SELECT COUNT(*) FROM ssh_certificates",
+		// 00062 (temporary access, #152): no policy, request, vote or
 		// time-bound grant may be discarded by the reversal below.
 		"SELECT COUNT(*) FROM access_policies",
 		"SELECT COUNT(*) FROM access_policy_approvers",
@@ -312,12 +319,20 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 			err = db.PG().QueryRow(t.Context(), query).Scan(&evidence)
 		}
 		if err != nil || evidence != 0 {
-			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target or temporary-access evidence", query, err)
+			t.Fatal("legacy drill fixture cannot discard policy, privacy, configuration, ceremony, adapter finding, contact email, issuer trust, parameter, registration, delivery-target, SSH certificate or temporary-access evidence", query, err)
 		}
 	}
-	// Reverse 00059 (delivery-target condition reporting) first: newest
-	// migration first, before 00057's reversal rebuilds tables its rows
-	// reference.
+	// Reverse 00062 (temporary access, #152) first, children before parents:
+	// newest migration first.
+	for _, table := range []string{"access_grants", "access_votes", "access_requests", "access_policy_bypassers", "access_policy_approvers", "access_policies"} {
+		drillExec(t, db, "DROP TABLE "+table)
+	}
+	// Reverse 00061 (SSH user certificates) next, children before parents.
+	for _, table := range []string{"ssh_certificates", "ssh_profile_requesters", "ssh_profiles", "ssh_ca_keys", "ssh_cas"} {
+		drillExec(t, db, "DROP TABLE "+table)
+	}
+	// Reverse 00059 (delivery-target condition reporting) next, before
+	// 00057's reversal rebuilds tables its rows reference.
 	for _, query := range []string{
 		"DROP INDEX audit_tenant_events_env_actor_type_seq",
 		"DROP TABLE delivery_target_quota_notices",
@@ -343,7 +358,8 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		drillExec(t, db, "DROP TABLE cli_reauth_handoffs")
 		drillExec(t, db, "CREATE TABLE cli_reauth_handoffs_new"+declaration)
 		drillExec(t, db, "ALTER TABLE cli_reauth_handoffs_new RENAME TO cli_reauth_handoffs")
-		// 00054 replaced the unconditional UNIQUE (org_id, project_id, origin)
+		// 00054 (and 00060's provider widening, which rebuilt the same table)
+		// replaced the unconditional UNIQUE (org_id, project_id, origin)
 		// with a partial index. SQLite cannot drop an inline UNIQUE, so restore
 		// the legacy declaration from 00025 (created by name, so its stored text
 		// matches the legacy genesis byte-for-byte) and let the partial index
@@ -394,6 +410,9 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// Reverse 00054: drop the partial index and restore the unconditional
 		// UNIQUE constraint under its original name so the backing index matches
 		// the legacy genesis declaration.
+		// Reverse 00060: narrow the provider set back to the legacy pair.
+		drillExec(t, db, "ALTER TABLE adapters DROP CONSTRAINT adapters_provider_check")
+		drillExec(t, db, "ALTER TABLE adapters ADD CONSTRAINT adapters_provider_check CHECK (provider IN ('forgejo', 'github-actions'))")
 		drillExec(t, db, "DROP INDEX adapters_active_origin")
 		drillExec(t, db, "ALTER TABLE adapters ADD CONSTRAINT adapters_org_id_project_id_origin_key UNIQUE (org_id, project_id, origin)")
 		// Reverse 00056's webauthn_ceremonies purpose CHECK widening.
@@ -402,14 +421,6 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		reverseSocialSigninPostgres(t, db)
 	}
 	for _, query := range []string{
-		// Reverse 00060 (temporary access, #152): the six new tables, children
-		// first.
-		"DROP TABLE access_grants",
-		"DROP TABLE access_votes",
-		"DROP TABLE access_requests",
-		"DROP TABLE access_policy_bypassers",
-		"DROP TABLE access_policy_approvers",
-		"DROP TABLE access_policies",
 		"DROP INDEX audit_tenant_events_env_seq",
 		"DROP INDEX audit_tenant_events_project_seq",
 		"ALTER TABLE snapshots DROP COLUMN parameter_contract",
@@ -436,7 +447,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 		// the enrolment gate column.
 		"DROP TABLE login_challenges",
 		"ALTER TABLE sessions DROP COLUMN enrolment_required",
-		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60)",
+		"DELETE FROM goose_db_version WHERE version_id IN (45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,66)",
 	} {
 		drillExec(t, db, query)
 	}

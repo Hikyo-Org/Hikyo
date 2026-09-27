@@ -93,6 +93,8 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		authz.OpRotateMasterKey)
 	add(budgetClassDefaultExpensive, "dynamic secret: in-request external PostgreSQL round-trip (provider connection test / synchronous lease mint)",
 		authz.OpDynamicProviderConfigure, authz.OpDynamicProviderCredentialSet, authz.OpLeaseMint)
+	add(budgetClassDefaultExpensive, "ssh certificates: in-request key generation (RSA-3072 is the costly case) and signing",
+		authz.OpSSHCAConfigure, authz.OpSSHCARotate, authz.OpSSHCertIssue)
 
 	// ---- EXEMPT ----
 	add(budgetClassExempt, "self-configuration: one unresolved durable apply, 10 intents/minute/instance and 30-second preparation deadline",
@@ -211,6 +213,12 @@ func buildBudgetClassification() map[authz.Operation]budgetClassification {
 		// concurrency cap; the request itself only writes a row)
 		authz.OpDynamicProviderInspect, authz.OpDynamicProviderCredentialRevoke, authz.OpDynamicProviderDelete,
 		authz.OpLeaseInspect, authz.OpLeaseRenew, authz.OpLeaseRevoke, authz.OpLeaseSettle,
+		// ssh certificates (#155): bounded reads of one environment's CAs,
+		// profiles and certificates (the KRL read is capped at its serial
+		// bound), and single-row lifecycle writes with no external call
+		authz.OpSSHCAInspect, authz.OpSSHCARetireKey, authz.OpSSHCADelete,
+		authz.OpSSHProfileConfigure, authz.OpSSHProfileInspect, authz.OpSSHProfileDelete,
+		authz.OpSSHCertInspect, authz.OpSSHCertRevoke,
 	)
 
 	return m

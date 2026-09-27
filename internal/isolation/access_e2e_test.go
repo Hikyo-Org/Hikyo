@@ -624,3 +624,50 @@ func TestAccessExpiryAcrossNodes(t *testing.T) {
 		}
 	})
 }
+
+func TestAccessEmergencyRejectsDurationOverflow(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		h := newAccessHarness(t, db)
+		if _, err := h.access.CreatePolicy(t.Context(), service.LocalPrincipal(orgAdmin), h.proj, h.policy([]string{string(reader)}, custodian)); err != nil {
+			t.Fatal(err)
+		}
+		actor := h.session(reader, false)
+		for _, seconds := range []int{-1, 3601, 18446744074 + 3600} {
+			_, err := h.access.EmergencyAccess(t.Context(), actor, h.scope, service.AccessRequestInput{Capabilities: []string{"edit"}, DurationSeconds: seconds, Reason: "restore service"})
+			if !errors.Is(err, service.ErrAccessExceedsPolicy) {
+				t.Fatalf("duration %d: %v", seconds, err)
+			}
+		}
+	})
+}
+
+func TestAccessEmergencyPolicyCannotBypassGrantorBound(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		h := newAccessHarness(t, db)
+		manager := service.LocalPrincipal(domain.PrincipalID("usr_prjadmin"))
+		input := h.policy([]string{"usr_prjadmin"}, custodian)
+		if _, err := h.access.CreatePolicy(t.Context(), manager, h.proj, input); !errors.Is(err, service.ErrGrantorLacksCapability) {
+			t.Fatalf("project manager created unheld emergency delegation: %v", err)
+		}
+		input.Bypassers = nil
+		policy, err := h.access.CreatePolicy(t.Context(), manager, h.proj, input)
+		if err != nil {
+			t.Fatalf("ordinary approval policy: %v", err)
+		}
+		input.Bypassers = []string{"usr_prjadmin"}
+		if _, err := h.access.UpdatePolicy(t.Context(), manager, h.proj, policy.ID, input); !errors.Is(err, service.ErrGrantorLacksCapability) {
+			t.Fatalf("project manager added unheld emergency delegation: %v", err)
+		}
+		if _, err := h.access.UpdatePolicy(t.Context(), service.LocalPrincipal(orgAdmin), h.proj, policy.ID, input); err != nil {
+			t.Fatalf("org admin emergency delegation: %v", err)
+		}
+		input.Enabled = false
+		if _, err := h.access.UpdatePolicy(t.Context(), manager, h.proj, policy.ID, input); err != nil {
+			t.Fatalf("manager could not disable emergency delegation: %v", err)
+		}
+		input.Enabled = true
+		if _, err := h.access.UpdatePolicy(t.Context(), manager, h.proj, policy.ID, input); !errors.Is(err, service.ErrGrantorLacksCapability) {
+			t.Fatalf("manager reenabled unheld emergency delegation: %v", err)
+		}
+	})
+}

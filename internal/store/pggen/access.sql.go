@@ -98,6 +98,7 @@ SELECT id, org_id, project_id, environment_id, capabilities, max_duration_second
     created_by, created_at, updated_at
 FROM access_policies
 WHERE org_id = $1 AND project_id = $2 AND id = $3
+FOR UPDATE
 `
 
 type GetAccessPolicyParams struct {
@@ -106,6 +107,7 @@ type GetAccessPolicyParams struct {
 	ID        string
 }
 
+// Policy reads hold the decision lock through approval or emergency grant commit.
 func (q *Queries) GetAccessPolicy(ctx context.Context, arg GetAccessPolicyParams) (AccessPolicy, error) {
 	row := q.db.QueryRow(ctx, getAccessPolicy, arg.OrgID, arg.ProjectID, arg.ID)
 	var i AccessPolicy
@@ -158,6 +160,7 @@ SELECT id, org_id, project_id, environment_id, capabilities, max_duration_second
     created_by, created_at, updated_at
 FROM access_policies
 WHERE org_id = $1 AND project_id = $2 AND environment_id = $3
+FOR UPDATE
 `
 
 type GetAccessPolicyForEnvironmentParams struct {
@@ -198,6 +201,7 @@ SELECT id, org_id, project_id, environment_id, policy_id, policy_version,
     granted_at, expires_at, resolved_at
 FROM access_requests
 WHERE org_id = $1 AND project_id = $2 AND environment_id = $3 AND id = $4
+FOR UPDATE
 `
 
 type GetAccessRequestParams struct {
@@ -207,6 +211,7 @@ type GetAccessRequestParams struct {
 	ID            string
 }
 
+// Serialize votes and lifecycle transitions before reading state and quorum.
 func (q *Queries) GetAccessRequest(ctx context.Context, arg GetAccessRequestParams) (AccessRequest, error) {
 	row := q.db.QueryRow(ctx, getAccessRequest,
 		arg.OrgID,

@@ -11,7 +11,7 @@ Spec: `docs/adr/mvp-boundary.md` declared amendment 5 + criterion **C-ACC**;
 
 Full vertical, both engines (sqlite + postgres):
 
-- **Migration 00060**: `access_policies`, `access_policy_approvers`,
+- **Migration 00066**: `access_policies`, `access_policy_approvers`,
   `access_policy_bypassers`, `access_requests`, `access_votes` (proof-bound,
   project/environment classes) and `access_grants` (class `authn`, the
   time-bound grant rows). Env deletion cascades requests and rows.
@@ -19,7 +19,7 @@ Full vertical, both engines (sqlite + postgres):
   `access_grants` rows whose `expires_at` is after the transaction clock, under
   the same privacy and restore-reconciliation gates. The service `authorize`
   prelude fixes the clock (`TxAuthorizer.SetClock`); an unset clock is the wall
-  clock. Historical recovery of schemas 50-59 uses a pre-60 projection.
+  clock. Historical recovery of schemas 50-65 uses a pre-66 projection.
 - **authz**: `access.policy-write` / `access.policy-read`
   (`manage-members@project`), `access.request-create`, `access.request-read`
   (audited-none), `access.vote`, `access.cancel`, `access.revoke`,
@@ -117,3 +117,13 @@ Full vertical, both engines (sqlite + postgres):
 - Re-pin `annotated_queries.json` / `operation_formulas.json` from the failing
   test's `current:` block, and the web `sensitiveInventory.json` with a review
   note.
+
+
+## PR 827 review repair (2026-09-27)
+
+- Reserved migration 00066 and moved historical recovery's access-table boundary to 66. Merged current main and regenerated API clients, SQL models and compatibility against actual SQLite and PostgreSQL catalogs.
+- PostgreSQL policy/request reads lock the decision rows until commit. Concurrent approvers cannot strand a complete quorum; policy changes cannot race an approval or emergency grant after its policy check.
+- Creating, enabling or widening emergency delegations applies the ordinary permanent grantor bound. A project member manager cannot use an emergency allowlist to acquire capabilities they cannot grant. Disabling or narrowing a delegation remains possible without holding its capabilities.
+- Emergency duration seconds are bounded before conversion to prevent integer overflow bypasses.
+- Regression entry point: `go test -p 1 -parallel 2 ./internal/isolation -run TestAccess` with a dedicated `HIKYO_TEST_POSTGRES_DSN`. Client checks: `pnpm --dir clients/ts verify`; web checks: `pnpm --dir web typecheck`, `pnpm --dir web lint`, `pnpm --dir web test`.
+- Cross-provider review remains skipped under the central quota gate; ordinary adversarial inspection and regression evidence are separate.

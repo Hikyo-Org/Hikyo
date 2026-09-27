@@ -207,6 +207,11 @@ func (s *Access) CreatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		if err := validatePolicyEnvironment(ctx, az, input.EnvironmentID); err != nil {
 			return err
 		}
+		if input.Enabled && len(input.Bypassers) > 0 {
+			if err := requireEmergencyGrantBound(ctx, az, caller.Principal, scope, input.EnvironmentID, caps); err != nil {
+				return err
+			}
+		}
 		id, err := newID("xpol")
 		if err != nil {
 			return err
@@ -252,6 +257,26 @@ func (s *Access) UpdatePolicy(ctx context.Context, actor Actor, scope domain.Sco
 		}
 		if input.EnvironmentID != current.EnvironmentID {
 			return fmt.Errorf("%w: an access policy's environment cannot be changed; create a replacement policy", domain.ErrInvalid)
+		}
+		// An emergency allowlist is a standing delegation. Creating or widening
+		// it obeys the same permanent grantor bound as a direct grant.
+		if input.Enabled && len(input.Bypassers) > 0 {
+			bypassers, err := r.Access().ListBypassers(ctx, p, id)
+			if err != nil {
+				return err
+			}
+			widening := !current.Enabled || input.MaxDurationSeconds > current.MaxDurationSeconds
+			for _, capability := range caps {
+				widening = widening || !slices.Contains(current.Capabilities, capability)
+			}
+			for _, principal := range input.Bypassers {
+				widening = widening || !slices.ContainsFunc(bypassers, func(b store.ApprovalBypasser) bool { return b.PrincipalID == principal })
+			}
+			if widening {
+				if err := requireEmergencyGrantBound(ctx, az, caller.Principal, scope, input.EnvironmentID, caps); err != nil {
+					return err
+				}
+			}
 		}
 		updated, err := r.Access().UpdatePolicy(ctx, p, store.AccessPolicyUpdate{
 			ID: id, Capabilities: caps, MaxDurationSeconds: input.MaxDurationSeconds,
@@ -764,6 +789,10 @@ func (s *Access) EmergencyAccess(ctx context.Context, actor Actor, scope domain.
 		if err != nil {
 			return err
 		}
+		// Bound seconds before conversion, which can overflow time.Duration.
+		if input.DurationSeconds < 0 || input.DurationSeconds > policy.MaxDurationSeconds {
+			return fmt.Errorf("%w: duration must be between 1 and %d seconds", ErrAccessExceedsPolicy, policy.MaxDurationSeconds)
+		}
 		maxDuration := time.Duration(policy.MaxDurationSeconds) * time.Second
 		duration := time.Duration(input.DurationSeconds) * time.Second
 		if input.DurationSeconds == 0 {
@@ -1039,6 +1068,21 @@ func commitAccessInvalidation(ctx context.Context, r store.Repos, p authz.Proof,
 
 func accessStaleRefusal(cause string) error {
 	return fmt.Errorf("%w: the access request was invalidated (%s)", domain.ErrConflict, cause)
+}
+
+// requireEmergencyGrantBound applies the ordinary grantor bound to a
+// standing emergency delegation. A project-wide policy must be backed by
+// authority at project scope, including environments created in the future.
+func requireEmergencyGrantBound(ctx context.Context, az *authz.TxAuthorizer, principal domain.PrincipalID, scope domain.Scope, env string, caps []string) error {
+	scope.Env = domain.EnvID(env)
+	can, err := canGrantAll(ctx, az, principal, caps, scope)
+	if err != nil {
+		return err
+	}
+	if !can {
+		return ErrGrantorLacksCapability
+	}
+	return nil
 }
 
 // canGrantAll reports whether principal could grant every capability at scope

@@ -18,12 +18,14 @@ INSERT INTO access_policies (
     created_by, created_at, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
 
+-- Policy reads hold the decision lock through approval or emergency grant commit.
 -- name: GetAccessPolicy :one
 SELECT id, org_id, project_id, environment_id, capabilities, max_duration_seconds,
     min_approvals, allow_self_approval, request_ttl_seconds, enabled, version,
     created_by, created_at, updated_at
 FROM access_policies
-WHERE org_id = $1 AND project_id = $2 AND id = $3;
+WHERE org_id = $1 AND project_id = $2 AND id = $3
+FOR UPDATE;
 
 -- GetAccessPolicyForEnvironment is the coverage lookup: the service asks for
 -- the concrete environment first, then '' for the project-wide policy.
@@ -33,7 +35,8 @@ SELECT id, org_id, project_id, environment_id, capabilities, max_duration_second
     min_approvals, allow_self_approval, request_ttl_seconds, enabled, version,
     created_by, created_at, updated_at
 FROM access_policies
-WHERE org_id = $1 AND project_id = $2 AND environment_id = $3;
+WHERE org_id = $1 AND project_id = $2 AND environment_id = $3
+FOR UPDATE;
 
 -- name: ListAccessPolicies :many
 SELECT id, org_id, project_id, environment_id, capabilities, max_duration_seconds,
@@ -97,13 +100,15 @@ INSERT INTO access_requests (
     state, resolved_by, created_at, review_expires_at, granted_at, expires_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17);
 
+-- Serialize votes and lifecycle transitions before reading state and quorum.
 -- name: GetAccessRequest :one
 SELECT id, org_id, project_id, environment_id, policy_id, policy_version,
     requester_principal_id, capabilities, duration_seconds, reason, bypassed,
     state, invalidated_cause, resolved_by, created_at, review_expires_at,
     granted_at, expires_at, resolved_at
 FROM access_requests
-WHERE org_id = $1 AND project_id = $2 AND environment_id = $3 AND id = $4;
+WHERE org_id = $1 AND project_id = $2 AND environment_id = $3 AND id = $4
+FOR UPDATE;
 
 -- name: ListAccessRequestsForEnvironment :many
 SELECT id, org_id, project_id, environment_id, policy_id, policy_version,

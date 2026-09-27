@@ -11,20 +11,20 @@ import (
 // Historical constructors are confined to tx/recovery.go. They may be selected
 // only from the verified source manifest under guarded RecoveryDB authority.
 // Their compatibility differences are the pre-47 privacy, pre-50 profile and
-// pre-60 temporary-access projections; they do
+// pre-66 temporary-access projections; they do
 // not add a session/login path or remove the restore reconciliation gate.
 func NewHistoricalRecoverySQLite(db sqlitegen.DBTX, version uint64) *Resolver {
 	r := NewSQLite(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
 	r.historicalRecoveryBeforeSelfConfig = version < 50
-	r.historicalRecoveryBeforeAccess = version < 60
+	r.historicalRecoveryBeforeAccess = version < 66
 	return r
 }
 func NewHistoricalRecoveryPG(db pggen.DBTX, version uint64) *Resolver {
 	r := NewPG(db)
 	r.historicalRecoveryBeforePrivacy = version < 47
 	r.historicalRecoveryBeforeSelfConfig = version < 50
-	r.historicalRecoveryBeforeAccess = version < 60
+	r.historicalRecoveryBeforeAccess = version < 66
 	return r
 }
 func (r *Resolver) recoveryGrantsBeforePrivacy(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
@@ -54,7 +54,7 @@ func (r *Resolver) recoveryGrantsBeforeSelfConfig(ctx context.Context, p domain.
 }
 
 // recoveryGrantsBeforeAccess is the chokepoint projection for verified source
-// schemas 50 through 59, which have no access_grants table (#152).
+// schemas 50 through 65, which have no access_grants table (#152).
 func (r *Resolver) recoveryGrantsBeforeAccess(ctx context.Context, p domain.PrincipalID) ([]domain.Grant, error) {
 	if r.sq != nil {
 		rows, err := r.sq.RecoveryListGrantsBeforeAccess(ctx, string(p))

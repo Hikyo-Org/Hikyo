@@ -101,6 +101,20 @@ func TestWorkloadRevealHistoryWireSurfaceStaysPinBound(t *testing.T) {
 		"revokeLease": "lease lifecycle, no stored value",
 		"listLeases":  "non-value-bearing lease metadata",
 		"showLease":   "non-value-bearing lease metadata",
+		// SSH user certificates (#155): a workload requests certificates only
+		// through a profile that names it; a generated private key is created
+		// for this response and disclosed once, never a stored value. Reads are
+		// public trust material and certificate metadata.
+		"issueSshCertificate":  "display-once generated SSH key or signature over a supplied key, requester list required",
+		"revokeSshCertificate": "certificate lifecycle, no stored value",
+		"listSshCertificates":  "non-value-bearing certificate metadata",
+		"showSshCertificate":   "non-value-bearing certificate metadata",
+		"listSshCas":           "public CA keys and metadata",
+		"showSshCa":            "public CA keys and metadata",
+		"getSshTrustedKeys":    "public CA keys",
+		"getSshKrl":            "public revocation list",
+		"listSshProfiles":      "non-value-bearing profile metadata",
+		"showSshProfile":       "non-value-bearing profile metadata",
 	}
 	seen := make(map[string]bool, len(wantMachine))
 	for _, operation := range operations {

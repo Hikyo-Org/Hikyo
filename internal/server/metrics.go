@@ -110,6 +110,14 @@ const (
 	// measured on this scrape and 0 when the source failed, in which case both
 	// are omitted: a datastore outage must not read as "no unknown effects".
 	MetricDynamicGaugesKnown = "hikyo_dynamic_gauges_known"
+	// SSH certificate gauges (#155). Label-free, cardinality one each. active
+	// counts issued, unexpired certificates; krl_entries counts the serials
+	// every KRL currently publishes (bounded per CA by sshca.MaxKRLSerials).
+	MetricSSHCertificatesActive = "hikyo_ssh_certificates_active"
+	MetricSSHKRLEntries         = "hikyo_ssh_krl_entries"
+	// MetricSSHGaugesKnown is 1 when the two SSH gauges were measured on this
+	// scrape; 0 means they are omitted rather than rendered as zeros.
+	MetricSSHGaugesKnown = "hikyo_ssh_gauges_known"
 
 	// MetricSeriesBudget is the ops-spec ceiling for every registered series.
 	MetricSeriesBudget = 1000
@@ -268,6 +276,7 @@ type Metrics struct {
 	approvals    *approvalCollector
 	access       *accessCollector
 	dyn          *dynamicCollector
+	ssh          *sshCollector
 }
 
 // SetHASource attaches the multi-node HA gauge source. It is called once
@@ -314,12 +323,13 @@ func NewMetrics(adm AdmissionSnapshotter) *Metrics {
 	approvals := newApprovalCollector()
 	access := newAccessCollector()
 	dyn := newDynamicCollector()
-	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn)
+	sshc := newSSHCollector()
+	registry.MustRegister(requests, errors, inFlight, durations, mcpRequests, mcpInFlight, mcpDurations, newAdmissionCollector(adm), ha, approvals, access, dyn, sshc)
 
 	m := &Metrics{
 		registry: registry, inFlight: inFlight,
 		mcpRequests: mcpRequests, mcpInFlight: mcpInFlight, mcpDurations: mcpDurations,
-		ha: ha, approvals: approvals, access: access, dyn: dyn,
+		ha: ha, approvals: approvals, access: access, dyn: dyn, ssh: sshc,
 	}
 	for c := surfaceClass(0); c < numClasses; c++ {
 		for s := statusBucket(0); s < numStatusBuckets; s++ {
@@ -643,6 +653,46 @@ func (c *dynamicCollector) Collect(ch chan<- prometheus.Metric) {
 	if p := c.source.Load(); p != nil && *p != nil {
 		if active, unknown, err := (*p).DynamicSnapshot(); err == nil {
 			values, measured = [2]float64{float64(active), float64(unknown)}, true
+		}
+	}
+	collectMeasured(ch, c.descs, c.known, values, measured)
+}
+
+// SSHSnapshotter is the SSH certificate gauge source, read at scrape time.
+// An error (or a nil source) marks the gauges unknown for this scrape.
+type SSHSnapshotter interface {
+	SSHSnapshot() (activeCertificates, krlEntries int64, err error)
+}
+
+// SetSSHSource attaches the SSH certificate gauge source once at boot.
+func (m *Metrics) SetSSHSource(source SSHSnapshotter) { m.ssh.source.Store(&source) }
+
+type sshCollector struct {
+	source atomic.Pointer[SSHSnapshotter]
+	descs  [2]*prometheus.Desc
+	known  *prometheus.Desc
+}
+
+func newSSHCollector() *sshCollector {
+	return &sshCollector{descs: [2]*prometheus.Desc{
+		prometheus.NewDesc(MetricSSHCertificatesActive, "Number of issued, unexpired SSH user certificates.", nil, nil),
+		prometheus.NewDesc(MetricSSHKRLEntries, "Number of serials published across every SSH CA's key revocation list.", nil, nil),
+	}, known: prometheus.NewDesc(MetricSSHGaugesKnown, "Whether the SSH certificate gauges were measured on this scrape; they are omitted when 0.", nil, nil)}
+}
+
+func (c *sshCollector) Describe(ch chan<- *prometheus.Desc) {
+	for _, desc := range c.descs {
+		ch <- desc
+	}
+	ch <- c.known
+}
+
+func (c *sshCollector) Collect(ch chan<- prometheus.Metric) {
+	var values [2]float64
+	measured := false
+	if p := c.source.Load(); p != nil && *p != nil {
+		if active, krl, err := (*p).SSHSnapshot(); err == nil {
+			values, measured = [2]float64{float64(active), float64(krl)}, true
 		}
 	}
 	collectMeasured(ch, c.descs, c.known, values, measured)

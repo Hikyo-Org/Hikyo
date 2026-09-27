@@ -624,6 +624,25 @@ const (
 	OpLeaseRevoke                     Operation = "lease.revoke"
 	OpLeaseSettle                     Operation = "lease.settle"
 
+	// SSH user certificates (#155). Everything is environment-scoped. CA and
+	// profile management is manage-identities@project; reads of public trust
+	// material and metadata are read@environment (machine-holdable, so a host
+	// holding a workload credential fetches its trust bundle and KRL). Issue
+	// is read@environment like lease.mint; the per-profile requester list and
+	// the human mint ceremony are its service-side conjuncts. Revoke is
+	// read@environment plus "requester or manage-identities" in the service.
+	OpSSHCAConfigure      Operation = "ssh-ca.configure"
+	OpSSHCAInspect        Operation = "ssh-ca.inspect"
+	OpSSHCARotate         Operation = "ssh-ca.rotate"
+	OpSSHCARetireKey      Operation = "ssh-ca.retire-key"
+	OpSSHCADelete         Operation = "ssh-ca.delete"
+	OpSSHProfileConfigure Operation = "ssh-profile.configure"
+	OpSSHProfileInspect   Operation = "ssh-profile.inspect"
+	OpSSHProfileDelete    Operation = "ssh-profile.delete"
+	OpSSHCertIssue        Operation = "ssh-cert.issue"
+	OpSSHCertInspect      Operation = "ssh-cert.inspect"
+	OpSSHCertRevoke       Operation = "ssh-cert.revoke"
+
 	// NOT REGISTERED, deliberately: the active-session listing and its revoke
 	// (#71 criterion 5). Both are SELF-SCOPED — they address the caller's own
 	// principal and nothing else — so they take the shape /api/v1/me/orgs
@@ -808,6 +827,34 @@ const (
 	StoreDynamicLeasesList                    StoreOp = "dynamic.ListLeasesForEnvironment"
 	StoreDynamicLeasesFinishMint              StoreOp = "dynamic.FinishMint"
 	StoreDynamicLeasesEnqueueTransition       StoreOp = "dynamic.EnqueueTransition"
+
+	// SSH user certificates (#155). Proof-carrying, environment-bound; the
+	// sweeper's revocation SQL runs through the proof-free SSHRuntime.
+	StoreSSHCreateCA                  StoreOp = "ssh.CreateCA"
+	StoreSSHInsertCAKey               StoreOp = "ssh.InsertCAKey"
+	StoreSSHGetCA                     StoreOp = "ssh.GetCA"
+	StoreSSHListCAs                   StoreOp = "ssh.ListCAs"
+	StoreSSHActiveCAKey               StoreOp = "ssh.ActiveCAKey"
+	StoreSSHRetireActiveCAKey         StoreOp = "ssh.RetireActiveCAKey"
+	StoreSSHRetireCAKey               StoreOp = "ssh.RetireCAKey"
+	StoreSSHDeleteCA                  StoreOp = "ssh.DeleteCA"
+	StoreSSHCountLiveProfilesForCA    StoreOp = "ssh.CountLiveProfilesForCA"
+	StoreSSHActiveKeyLastExpiry       StoreOp = "ssh.ActiveKeyLastExpiry"
+	StoreSSHGetProfile                StoreOp = "ssh.GetProfile"
+	StoreSSHListProfiles              StoreOp = "ssh.ListProfiles"
+	StoreSSHCreateProfile             StoreOp = "ssh.CreateProfile"
+	StoreSSHUpdateProfile             StoreOp = "ssh.UpdateProfile"
+	StoreSSHDeleteProfile             StoreOp = "ssh.DeleteProfile"
+	StoreSSHIsRequester               StoreOp = "ssh.IsRequester"
+	StoreSSHInsertCertificate         StoreOp = "ssh.InsertCertificate"
+	StoreSSHGetCertificate            StoreOp = "ssh.GetCertificate"
+	StoreSSHListCertificates          StoreOp = "ssh.ListCertificates"
+	StoreSSHRevokeCertificate         StoreOp = "ssh.RevokeCertificate"
+	StoreSSHRevokeProfileCertificates StoreOp = "ssh.RevokeProfileCertificates"
+	StoreSSHRevokedSerials            StoreOp = "ssh.RevokedSerials"
+	StoreSSHListCAKeysForReencrypt    StoreOp = "ssh.ListCAKeysForReencrypt"
+	StoreSSHReencryptCAKey            StoreOp = "ssh.ReencryptCAKey"
+	StoreSSHPurgeEnvironment          StoreOp = "ssh.PurgeEnvironment"
 
 	StoreFoldersCreate StoreOp = "folders.Create"
 	StoreFoldersGet    StoreOp = "folders.Get"
@@ -1164,9 +1211,17 @@ var readOnlyStoreOps = map[StoreOp]bool{
 	// read-only for the auditedNone check (#147).
 	StoreDynamicLeasesGet:  true,
 	StoreDynamicLeasesList: true,
-	StoreProjectsGet:       true,
-	StoreProjectsList:      true,
-	StoreProjectsListAll:   true,
+	// SSH reads of public trust material and certificate metadata (#155).
+	StoreSSHGetCA:            true,
+	StoreSSHListCAs:          true,
+	StoreSSHRevokedSerials:   true,
+	StoreSSHGetProfile:       true,
+	StoreSSHListProfiles:     true,
+	StoreSSHGetCertificate:   true,
+	StoreSSHListCertificates: true,
+	StoreProjectsGet:         true,
+	StoreProjectsList:        true,
+	StoreProjectsListAll:     true,
 	// The definitions-settings read is `read@project`, audited-none; its only
 	// non-project store op is the latest-applied-plan lookup (#70).
 	StoreDefinitionsLatestAppliedPlan: true,
@@ -1952,7 +2007,10 @@ var operationTable = map[Operation]opSpec{
 			StoreValuesClearEnvironment:    true,
 			StorePendingDiscardEnvironment: true, StoreSnapshotsDeleteEnvironment: true,
 			StorePinsDeleteEnvironment: true,
-			StoreEnvironmentsDelete:    true, StoreAuditTenantInsert: true,
+			// SSH rows (#155) go with the environment, but only once no live
+			// CA remains: the purge refuses otherwise.
+			StoreSSHPurgeEnvironment: true,
+			StoreEnvironmentsDelete:  true, StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{audit.EventEnvDeleted, audit.EventGrantRevoked},
 	},
@@ -2270,8 +2328,8 @@ var operationTable = map[Operation]opSpec{
 			StorePendingDiscardKey:             true,
 			StoreScanningDismissalsDeleteByKey: true,
 			StoreSnapshotsProjectRevisions:     true, StoreSnapshotsDeleteEnvironment: true,
-			StorePinsDeleteEnvironment: true,
-			StoreDefinitionsPlanGet:    true, StoreDefinitionsPlanApply: true,
+			StorePinsDeleteEnvironment: true, StoreSSHPurgeEnvironment: true,
+			StoreDefinitionsPlanGet: true, StoreDefinitionsPlanApply: true,
 			StoreAuditTenantInsert: true,
 		},
 		events: []audit.EventType{
@@ -3035,6 +3093,8 @@ var operationTable = map[Operation]opSpec{
 			StoreAdaptersReencryptMove:            true,
 			StoreDynamicProvidersListForReencrypt: true,
 			StoreDynamicProvidersReencrypt:        true,
+			StoreSSHListCAKeysForReencrypt:        true,
+			StoreSSHReencryptCAKey:                true,
 			StoreKeysAssertActiveDEKVersion:       true,
 			StoreKeysRetireRetiringTier3:          true,
 			StoreReencryptSuccessWrite:            true,
@@ -4531,6 +4591,74 @@ var operationTable = map[Operation]opSpec{
 		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
 		storeOps: map[StoreOp]bool{StoreDynamicLeasesGet: true, StoreDynamicLeasesEnqueueTransition: true, StoreAuditTenantInsert: true},
 		events:   []audit.EventType{audit.EventDynamicLeaseSettleRequested},
+	},
+
+	// --- SSH user certificates (#155) -----------------------------------------
+	OpSSHCAConfigure: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreSSHCreateCA: true, StoreSSHInsertCAKey: true, StoreSSHGetCA: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSSHCAConfigured},
+	},
+	OpSSHCAInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreSSHGetCA: true, StoreSSHListCAs: true, StoreSSHRevokedSerials: true},
+		auditedNone: true,
+	},
+	OpSSHCARotate: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreSSHGetCA: true, StoreSSHActiveKeyLastExpiry: true, StoreSSHRetireActiveCAKey: true, StoreSSHInsertCAKey: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSSHCARotated},
+	},
+	OpSSHCARetireKey: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreSSHGetCA: true, StoreSSHRetireCAKey: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSSHCAKeyRetired},
+	},
+	OpSSHCADelete: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreSSHGetCA: true, StoreSSHCountLiveProfilesForCA: true, StoreSSHDeleteCA: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSSHCADeleted},
+	},
+	OpSSHProfileConfigure: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreSSHGetCA: true, StoreSSHGetProfile: true, StoreSSHCreateProfile: true, StoreSSHUpdateProfile: true, StoreSSHRevokeProfileCertificates: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSSHProfileConfigured, audit.EventSSHCertificateRevoked},
+	},
+	OpSSHProfileInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreSSHGetProfile: true, StoreSSHListProfiles: true},
+		auditedNone: true,
+	},
+	OpSSHProfileDelete: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapManageIdentities, At: domain.LevelProject}},
+		storeOps: map[StoreOp]bool{StoreSSHGetProfile: true, StoreSSHDeleteProfile: true, StoreSSHRevokeProfileCertificates: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSSHProfileDeleted, audit.EventSSHCertificateRevoked},
+	},
+	OpSSHCertIssue: {
+		class: ClassTenant, level: domain.LevelEnv, postGrantForbidden: true,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreSSHGetProfile: true, StoreSSHIsRequester: true, StoreSSHActiveCAKey: true, StoreSSHInsertCertificate: true, StoreSSHGetCertificate: true, StoreKeysAssertActiveDEKVersion: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSSHCertificateIssued},
+	},
+	OpSSHCertInspect: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:     Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps:    map[StoreOp]bool{StoreSSHGetCertificate: true, StoreSSHListCertificates: true},
+		auditedNone: true,
+	},
+	OpSSHCertRevoke: {
+		class: ClassTenant, level: domain.LevelEnv,
+		formula:  Formula{{Cap: domain.CapRead, At: domain.LevelEnv}},
+		storeOps: map[StoreOp]bool{StoreSSHGetCertificate: true, StoreSSHRevokeCertificate: true, StoreAuditTenantInsert: true},
+		events:   []audit.EventType{audit.EventSSHCertificateRevoked},
 	},
 }
 
