@@ -403,3 +403,29 @@ func TestSignLeafDoesNotInventKeyUsages(t *testing.T) {
 		t.Fatal("incompatible key usage passed policy preflight")
 	}
 }
+
+func TestVerifyCASelfIssuedCrossSignedRollover(t *testing.T) {
+	oldKey, err := GenerateKey(ECDSAP256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newKey, err := GenerateKey(ECDSAP256)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootDER, err := CreateRoot(oldKey, Subject{CommonName: "unchanged CA name"}, epoch, 365*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := x509.ParseCertificate(rootDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	der, err := SignIntermediate(Parent{Certificate: root, Signer: oldKey}, newKey.Public(), Subject{CommonName: "unchanged CA name"}, epoch, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := VerifyCA(der, newKey.Public(), []*x509.Certificate{root}, epoch); err != nil {
+		t.Fatalf("valid self-issued rollover rejected: %v", err)
+	}
+}
