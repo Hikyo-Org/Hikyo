@@ -557,3 +557,30 @@ func TestOperationParametersCannotChangeLinkedEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOperationParametersStayInPath(t *testing.T) {
+	requests := 0
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.RawQuery != "" || r.URL.Fragment != "" || r.URL.EscapedPath() != "/v1/secret/metadata/p%3Fx=1%23frag@evil" {
+			t.Errorf("parameters escaped path boundary: %s", r.URL.String())
+		}
+		_, _ = io.WriteString(w, `{"data":{"current_version":0,"versions":{}}}`)
+	}))
+	defer server.Close()
+	client := pinnedClient(t, server, "", "hvs.fixture")
+	for _, path := range []string{"../data/p", "p/../../sys/raw", "/evil", "p//evil", "p/./evil"} {
+		if _, err := client.ReadMetadata(t.Context(), "secret", path); err == nil {
+			t.Errorf("accepted path traversal %q", path)
+		}
+	}
+	if requests != 0 {
+		t.Fatal("invalid paths reached transport")
+	}
+	if _, err := client.ReadMetadata(t.Context(), "secret", "p?x=1#frag@evil"); err != nil {
+		t.Fatal(err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests=%d, want 1", requests)
+	}
+}
