@@ -55,6 +55,7 @@ describe('certificate refusal text', () => {
   });
 
   it('warns that a failure after the request left may have issued a certificate', () => {
-    expect(issueFailureText(new ApiError(500, 'internal'))).toMatch(/revoke any certificate/);
+    expect(issueFailureText(new ApiError(500, 'internal'), 'generated')).toMatch(/without its key reaching you: revoke any certificate/);
+    expect(issueFailureText(new ApiError(500, 'internal'), 'csr')).toMatch(/without reaching you: revoke any certificate/);
   });
 });

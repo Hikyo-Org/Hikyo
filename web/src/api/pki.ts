@@ -467,7 +467,13 @@ export function certificateRefusalText(error: unknown, action: string): string {
 }
 
 /** issueFailureText is for a failure AFTER the issue request left: the server
- * may have committed a certificate whose key is now gone. */
-export function issueFailureText(error: unknown): string {
-  return `${certificateRefusalText(error, 'issue the certificate')} A certificate may still have been issued without its key reaching you: revoke any certificate below you did not expect.`;
+ * may have committed a certificate anyway. With a generated key that key is
+ * now gone; with a CSR the caller still holds it, but the certificate is still
+ * one they did not receive. */
+export function issueFailureText(error: unknown, method: 'generated' | 'csr'): string {
+  const detail =
+    method === 'generated'
+      ? 'A certificate may still have been issued without its key reaching you'
+      : 'A certificate may still have been issued without reaching you';
+  return `${certificateRefusalText(error, 'issue the certificate')} ${detail}: revoke any certificate below you did not expect.`;
 }

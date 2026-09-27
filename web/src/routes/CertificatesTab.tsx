@@ -331,7 +331,7 @@ function IssueDialog({
             setCertificatePem(`${result.certificate.certificate_pem ?? ''}${result.certificate.chain_pem ?? ''}`);
             onIssued(`Issued ${result.certificate.serial}.`);
           },
-          onError: (error) => setFailure(certificateRefusalText(error, 'issue the certificate')),
+          onError: (error) => setFailure(issueFailureText(error, 'csr')),
         },
       );
       return;
@@ -348,7 +348,7 @@ function IssueDialog({
       setCertificatePem(`${result.certificate.certificate_pem ?? ''}${result.certificate.chain_pem ?? ''}`);
       onIssued(`Issued ${result.certificate.serial} with a generated key.`);
     } catch (error) {
-      setFailure(sent ? issueFailureText(error) : certificateRefusalText(error, 'issue the certificate'));
+      setFailure(sent ? issueFailureText(error, 'generated') : certificateRefusalText(error, 'issue the certificate'));
     } finally {
       refresh(environment);
       setBusy(false);
