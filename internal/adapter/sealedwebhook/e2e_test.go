@@ -699,3 +699,50 @@ func TestPlanIsNetworkFreeAndValueBlind(t *testing.T) {
 		t.Fatal("plan made a request")
 	}
 }
+
+func TestRevisionZeroIsANoOpOnlyWhileTheRouteHoldsNoName(t *testing.T) {
+	h := newHarness(t)
+	j := newJournal()
+	result, err := h.sync(j, 0, nil, false)
+	h.mu.Lock()
+	requests := len(h.log)
+	h.mu.Unlock()
+	if err != nil || len(result.Changes) != 0 || requests != 0 {
+		t.Fatalf("empty route at revision 0 = %+v, %v, %d requests", result, err, requests)
+	}
+	if _, err := h.sync(j, 1, manifest(marker), false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.sync(j, 0, nil, false); err == nil {
+		t.Fatal("route holding names accepted an unsigned revision 0 converge")
+	}
+}
+
+func TestReceiverPersistFailureRollsBackAndWithholdsAcknowledgement(t *testing.T) {
+	h := newHarness(t)
+	h.receiver.SetPersist(func(sealedreceiver.State) error { return errors.New("disk full") })
+	j := newJournal()
+	_, err := h.sync(j, 1, manifest(marker), false)
+	if !errors.Is(err, adapter.ErrIndeterminate) {
+		t.Fatalf("persist failure error = %v, want indeterminate", err)
+	}
+	if c := j.last(); c.Outcome != adapter.OutcomeUnknown || c.State != adapter.Dispatched {
+		t.Fatalf("persist failure completion = %+v, want unknown/dispatched", c)
+	}
+	if got := h.receiver.Keys(namespace); len(got) != 0 {
+		t.Fatalf("receiver kept unpersisted values in memory: %v", got)
+	}
+	h.receiver.SetPersist(nil)
+	if _, err := h.sync(j, 1, manifest(marker), false); err != nil {
+		t.Fatalf("retry after persist recovery: %v", err)
+	}
+	h.mu.Lock()
+	first, retry := idemOf(t, h.log[0].body), idemOf(t, h.log[1].body)
+	h.mu.Unlock()
+	if first != retry {
+		t.Fatal("retry did not reuse the idempotency key")
+	}
+	if h.receiver.Snapshot(namespace)["secret/DB_PASSWORD"].Value != marker {
+		t.Fatal("retry did not apply the value")
+	}
+}

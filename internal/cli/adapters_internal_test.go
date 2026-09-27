@@ -183,3 +183,28 @@ func TestAdapterCancelMoveRequiresOnlyExplicitMove(t *testing.T) {
 		}
 	}
 }
+
+func TestAdapterTargetInputRoutesSealedWebhookToNamespaceOnly(t *testing.T) {
+	const env = "env_019c1234-1234-7123-8123-123456789abc"
+	const key = "key_019c1234-1234-7123-8123-123456789abc"
+	got, err := adapterTargetInput("sealed-webhook", env, "organization", "prod", "", "", "", "", "", key, adapterKeySelection{})
+	if err != nil {
+		t.Fatalf("sealed-webhook namespace target refused: %v", err)
+	}
+	if got.DestinationKind != "organization" || got.DestinationOwner != "prod" || got.Visibility != "" {
+		t.Fatalf("sealed-webhook target=%+v", got)
+	}
+	for name, args := range map[string][5]string{
+		"repository kind": {"repository", "prod", "repo", "", ""},
+		"repo":            {"organization", "prod", "repo", "", ""},
+		"environment":     {"organization", "prod", "", "staging", ""},
+		"visibility":      {"organization", "prod", "", "", "all"},
+	} {
+		if _, err := adapterTargetInput("sealed-webhook", env, args[0], args[1], args[2], args[3], args[4], "", "", key, adapterKeySelection{}); err == nil {
+			t.Fatalf("sealed-webhook accepted %s routing", name)
+		}
+	}
+	if _, err := adapterTargetInput("github-actions", env, "organization", "team", "", "", "", "", "", key, adapterKeySelection{}); err == nil {
+		t.Fatal("github-actions organization target accepted without visibility")
+	}
+}

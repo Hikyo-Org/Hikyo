@@ -51,7 +51,7 @@ export type AdapterDestinationKind = 'repository' | 'organization' | 'environmen
 export type AdapterVisibility = 'all' | 'private' | 'selected';
 
 /**
- * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+ * Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
  */
 export type AdapterProvider = string;
 

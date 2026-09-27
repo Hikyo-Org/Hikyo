@@ -308,6 +308,9 @@ receiver that already applied it answers `already_applied`. A forged
 acknowledgement (wrong key, bad signature, wrong request binding) fails the
 job and marks the target as needing attention. A receiver refuses to
 overwrite a name it did not receive from this target and answers `conflict`.
+Resolve it by releasing the name on the receiver or renaming with a prefix;
+`hikyo adapter adopt` is refused for sealed-webhook targets because the
+protocol has no adopt intent.
 
 **Rotation.** To rotate the Hikyo signing key, pin the new public key on the
 receiver with the old key's `not_after` at least a day ahead, replace

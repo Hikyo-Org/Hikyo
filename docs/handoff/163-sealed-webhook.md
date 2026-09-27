@@ -32,7 +32,10 @@ branch; it does not claim a merge or a live third-party receiver pass.
 - **Seam changes (`internal/adapter`)**: `SealedWebhookProvider` registered;
   `ValidateSealedWebhookManifest`; `SyncRequest.Source` (org, project,
   environment, revision) filled by the loader; `ErrAckForged` classifies as
-  `provider_ambiguous` (needs attention) and is terminal in the outbox.
+  `provider_ambiguous` (needs attention) and is terminal in the outbox on both
+  the activation and sync paths. Adoption is refused for sealed-webhook
+  targets (the protocol has no adopt intent); a sync at revision 0 is a no-op
+  only while the route holds no name.
 - **Instance-admin registry**: `HIKYO_SEALED_WEBHOOK_FILE` (strict JSON,
   signing key file must be `0600`), validated at boot by
   `activateSealedWebhookEndpoints`; any unconfirmed or mismatched fingerprint

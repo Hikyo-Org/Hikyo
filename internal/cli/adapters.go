@@ -118,7 +118,20 @@ func (s *adapterKeySelection) flags(fs *flag.FlagSet) {
 	fs.StringVar(&s.classification, "classification", "", "keep only secret or config keys from the pattern selection")
 }
 
-func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection) (apigen.AdapterTargetInput, error) {
+// adapterProvider reads the adapter's provider so target validation matches the
+// routing shape that provider accepts.
+func adapterProvider(ctx context.Context, client *Client, base, adapterID string) (string, error) {
+	var out apigen.Adapter
+	if err := client.Do(ctx, http.MethodGet, base+"/adapters/"+url.PathEscape(adapterID), nil, &out); err != nil {
+		return "", err
+	}
+	return string(out.Provider), nil
+}
+
+// adapterTargetInput validates target routing for the adapter's provider. A
+// sealed-webhook target routes to a receiver namespace only: --kind
+// organization with --owner, and no repository, environment, or visibility.
+func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection) (apigen.AdapterTargetInput, error) {
 	ids := splitAdapterKeys(keys)
 	if env == "" || kind == "" || owner == "" || (len(ids) == 0 && selection.empty()) {
 		return apigen.AdapterTargetInput{}, failf(ExitUsage, "target requires --env, --kind, --owner, and keys via --keys, --names, --include, or --classification")
@@ -127,12 +140,22 @@ func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibili
 	if err != nil {
 		return apigen.AdapterTargetInput{}, err
 	}
+	sealed := provider == "sealed-webhook"
+	if sealed && kind != "organization" {
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "sealed-webhook target takes --kind organization and --owner <receiver namespace> only")
+	}
 	switch kind {
 	case "repository":
 		if repo == "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "repository target requires --repo and refuses environment/visibility routing")
 		}
 	case "organization":
+		if sealed {
+			if repo != "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
+				return apigen.AdapterTargetInput{}, failf(ExitUsage, "sealed-webhook target takes --kind organization and --owner <receiver namespace> only")
+			}
+			break
+		}
 		if repo != "" || destinationEnvironment != "" || (visibility != "all" && visibility != "private" && visibility != "selected") {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "organization target requires --visibility all|private|selected and refuses --repo/--destination-environment")
 		}
@@ -351,14 +374,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if provider != "forgejo" && provider != "github-actions" && provider != "sealed-webhook" {
 			return failf(ExitUsage, "--provider must be forgejo, github-actions, or sealed-webhook")
 		}
-		if provider == "sealed-webhook" && (kind != "organization" || repo != "" || destinationEnvironment != "" || visibility != "" || selectedRepositories != "") {
-			return failf(ExitUsage, "--provider sealed-webhook takes --kind organization and --owner <receiver namespace> only")
-		}
 		envID, err := resolved.Require(DimEnv)
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
 		if err != nil {
 			return err
 		}
@@ -428,7 +448,11 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
+		provider, err := adapterProvider(ctx, client, base, adapterID)
+		if err != nil {
+			return err
+		}
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
 		if err != nil {
 			return err
 		}
@@ -642,10 +666,14 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		provider, err := adapterProvider(ctx, client, base, adapterID)
+		if err != nil {
+			return err
+		}
 		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, adapterID, "adapter.configure", envID); err != nil {
 			return err
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection)
 		if err != nil {
 			return err
 		}

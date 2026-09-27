@@ -180,7 +180,7 @@ in the same revision reuses it; a new revision derives a new one.
 | Result | Ledger | Outbox |
 |---|---|---|
 | verified `applied` / `already_applied` | owned (upsert) or released (prune) | continue |
-| verified `conflict` | bare reservation released with a conflict artifact; claimed state kept | conflict, needs attention; retried until an operator adopts or renames |
+| verified `conflict` | bare reservation released with a conflict artifact; claimed state kept | conflict, needs attention; retried until the receiver releases the name or an operator renames. `adapter adopt` is refused for this provider: the protocol carries no adopt intent, so a receiver never transfers an unowned name to a route |
 | verified `rejected/unauthorized` | reservation released; claimed state kept | terminal provider-auth failure |
 | verified `rejected/*` | reservation released; claimed state kept | failure, retried |
 | no acknowledgement (transport error, timeout, non-200, oversized, malformed, wrong media type) | **dispatched**, outcome **unknown** | retried with the same idempotency key |

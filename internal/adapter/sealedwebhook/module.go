@@ -239,7 +239,7 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 	if err := adapter.ValidateSealedWebhookManifest(req.Target.NamePrefix, req.Manifest, true); err != nil {
 		return adapter.SyncResult{}, err
 	}
-	if req.Source.Revision < 1 || req.Source.OrgID == "" || req.Source.ProjectID == "" || req.Source.EnvironmentID == "" {
+	if req.Source.Revision < 0 || req.Source.OrgID == "" || req.Source.ProjectID == "" || req.Source.EnvironmentID == "" {
 		return adapter.SyncResult{}, errors.New("sealed-webhook: sync requires a pinned source revision")
 	}
 	inspect := adapter.Effect{Surface: adapter.Secret, EffectiveName: "*", Disposition: adapter.Update}
@@ -249,6 +249,15 @@ func (m *Module) Sync(ctx context.Context, req adapter.SyncRequest, journal adap
 	namespace, err := m.verifyDestination(req.Target)
 	if err != nil {
 		return adapter.SyncResult{}, err
+	}
+	if req.Source.Revision == 0 {
+		if len(req.Manifest) == 0 && !holdsNames(req.Ledger) {
+			// No payload-present snapshot exists yet and the route holds no
+			// name: the receiver already matches the empty desired state.
+			return adapter.SyncResult{}, nil
+		}
+		// Pruning held names needs a signed revision >= 1.
+		return adapter.SyncResult{}, errors.New("sealed-webhook: sync requires a pinned source revision")
 	}
 	sc := syncContext{
 		namespace: namespace, route: req.Target.ID, target: req.Target, revision: req.Source.Revision,
@@ -420,4 +429,14 @@ func pruneCompletion(ack sealedhook.Ack, err error, row adapter.LedgerEntry) (ad
 		return adapter.Completion{Outcome: adapter.OutcomeFailure, State: row.State, ProviderStatus: 200, Conflict: ack.Status == sealedhook.AckConflict}, outErr
 	}
 	return adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Released, ProviderStatus: 200}, nil
+}
+
+// holdsNames reports whether any ledger entry still reserves or owns a name.
+func holdsNames(ledger []adapter.LedgerEntry) bool {
+	for _, entry := range ledger {
+		if entry.State != adapter.Released {
+			return true
+		}
+	}
+	return false
 }

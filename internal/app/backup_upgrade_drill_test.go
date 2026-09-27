@@ -246,7 +246,7 @@ func removePostLegacyAdditionsFixture(t *testing.T, db *store.DB) {
 	if len(current.Entries) != len(legacy.Entries)+16 || !slices.Equal(current.Entries[:len(legacy.Entries)], legacy.Entries) {
 		t.Fatal("legacy drill fixture requires the immutable migration prefix plus migrations 45 through 60 only")
 	}
-	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59} {
+	for i, version := range []uint64{45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60} {
 		if current.Entries[len(legacy.Entries)+i].Version != version {
 			t.Fatal("legacy drill fixture has an unreviewed post-legacy migration")
 		}

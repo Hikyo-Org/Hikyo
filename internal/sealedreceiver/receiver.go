@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"mime"
 	"net/http"
 	"sort"
@@ -92,6 +93,13 @@ func (r *Receiver) SetAfterApply(fn func(http.ResponseWriter) bool) {
 	r.cfg.AfterApply = fn
 }
 
+// SetPersist installs the persistence hook while the receiver may be serving.
+func (r *Receiver) SetPersist(fn func(State) error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.Persist = fn
+}
+
 // Restore replaces the state (for example from a state file after restart).
 func (r *Receiver) Restore(s State) {
 	r.mu.Lock()
@@ -164,7 +172,13 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "envelope refused", http.StatusBadRequest)
 		return
 	}
-	status, reason, applied := r.apply(opened)
+	status, reason, applied, err := r.apply(opened)
+	if err != nil {
+		// Not durably applied: no acknowledgement, so the sender records the
+		// outcome as unknown and retries under the same idempotency key.
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+		return
+	}
 	r.mu.Lock()
 	after := r.cfg.AfterApply
 	r.mu.Unlock()
@@ -180,38 +194,46 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	_, _ = w.Write(ack)
 }
 
-func (r *Receiver) apply(o sealedhook.Opened) (sealedhook.AckStatus, string, bool) {
+func (r *Receiver) apply(o sealedhook.Opened) (sealedhook.AckStatus, string, bool, error) {
 	e := o.Envelope
 	if e.TargetID != r.cfg.TargetID || e.InstanceID != r.cfg.InstanceID {
-		return sealedhook.AckRejected, "wrong_target", false
+		return sealedhook.AckRejected, "wrong_target", false, nil
 	}
 	if e.Generation != r.cfg.Generation {
-		return sealedhook.AckRejected, "generation_mismatch", false
+		return sealedhook.AckRejected, "generation_mismatch", false, nil
 	}
 	want, ok := r.cfg.Bindings[e.Namespace]
 	if !ok || subtle.ConstantTimeCompare([]byte(want), []byte(o.Payload.Binding)) != 1 {
-		return sealedhook.AckRejected, "unauthorized", false
+		return sealedhook.AckRejected, "unauthorized", false, nil
 	}
 	if e.Op == sealedhook.OpProbe {
-		return sealedhook.AckApplied, "", false
+		return sealedhook.AckApplied, "", false, nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if prior, seen := r.state.Seen[e.IdempotencyKey]; seen {
 		if prior.Status == sealedhook.AckApplied {
-			return sealedhook.AckAlreadyApplied, "", false
+			return sealedhook.AckAlreadyApplied, "", false, nil
 		}
-		return prior.Status, prior.Reason, false
+		return prior.Status, prior.Reason, false, nil
 	}
+	before, hadBucket := r.state.Values[e.Namespace]
+	before = maps.Clone(before)
 	result := r.mutate(e, o.Payload)
 	r.state.Seen[e.IdempotencyKey] = result
 	if r.Persist != nil {
 		if err := r.Persist(r.state); err != nil {
+			// Roll memory back so it never disagrees with disk.
 			delete(r.state.Seen, e.IdempotencyKey)
-			return sealedhook.AckRejected, "persist_failed", false
+			if hadBucket {
+				r.state.Values[e.Namespace] = before
+			} else {
+				delete(r.state.Values, e.Namespace)
+			}
+			return "", "", false, err
 		}
 	}
-	return result.Status, result.Reason, result.Status == sealedhook.AckApplied
+	return result.Status, result.Reason, result.Status == sealedhook.AckApplied, nil
 }
 
 func (r *Receiver) mutate(e sealedhook.Envelope, p sealedhook.Payload) outcome {
