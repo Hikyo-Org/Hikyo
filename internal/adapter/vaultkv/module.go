@@ -261,14 +261,16 @@ func (m *Module) inspect(ctx context.Context, target adapter.Target, name string
 // when this target's own marker shows a released (soft-deleted) earlier
 // delivery; everything else is `exists, unowned`. Claimed paths refuse
 // another target's marker and external version movement.
-func writable(claimed bool, state pathState) bool {
+func writable(claimed bool, claim adapter.LedgerState, state pathState) bool {
 	switch state.kind {
 	case pathAbsent:
 		return true
 	case pathClean, pathLanded:
 		return claimed || state.released
 	case pathUnmarked:
-		return claimed
+		// A dispatched unmarked create can only have produced version one.
+		// Owned unmarked rows are explicit adoptions and retain that authority.
+		return claimed && (claim == adapter.Owned || state.version == 1)
 	default:
 		return false
 	}
@@ -318,7 +320,7 @@ func (m *Module) Plan(ctx context.Context, req adapter.PlanRequest) (adapter.Pla
 		}
 		disposition := adapter.Create
 		switch {
-		case !writable(owned, state):
+		case !writable(owned, record.State, state):
 			disposition = adapter.Conflict
 		case owned && state.kind != pathAbsent:
 			disposition = adapter.Update
@@ -435,7 +437,7 @@ func (m *Module) syncRow(ctx context.Context, target adapter.Target, row adapter
 		return err
 	}
 	conflict := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Conflict}
-	if !writable(owned, live) {
+	if !writable(owned, record.State, live) {
 		if state == adapter.Reserved {
 			if err := journal.Refuse(ctx, effect); err != nil {
 				return err
@@ -580,7 +582,12 @@ func (m *Module) write(ctx context.Context, target adapter.Target, row adapter.D
 	// The value is delivered. A failed finalize leaves either a pending
 	// version equal to current_version, which the next attempt finalizes as
 	// landed, or an unmarked create held by the dispatched claim.
-	_ = m.finalize(ctx, target, path, version)
+	if err := m.finalize(ctx, target, path, version); err != nil {
+		// The value write succeeded, so even a definitive metadata refusal
+		// cannot prove the overall effect did not apply. Keep a dispatched
+		// claim and never wrap the metadata error as a definitive write error.
+		return fmt.Errorf("%w: metadata finalization failed: %v", adapter.ErrIndeterminate, err)
+	}
 	return nil
 }
 
@@ -618,6 +625,9 @@ func (m *Module) pruneRow(ctx context.Context, target adapter.Target, row adapte
 		return gateErr
 	}
 	deleted := adapter.Change{Surface: row.Surface, EffectiveName: row.EffectiveName, Disposition: adapter.Delete}
+	if live.kind == pathUnmarked && row.State == adapter.Dispatched && live.version != 1 {
+		live.kind = pathMoved
+	}
 	switch live.kind {
 	case pathAbsent:
 		if err := journal.Finish(ctx, effect, adapter.Completion{Outcome: adapter.OutcomeSuccess, State: adapter.Released}); err != nil {

@@ -100,7 +100,7 @@ type operation struct {
 // client makes resolves through it; the structural test refuses any GET or
 // LIST on a /data/ path and any destroy or metadata delete.
 var operationRegistry = map[string]operation{
-	"health":           {Method: http.MethodGet, Path: "/v1/sys/health", RootOnly: true},
+	"health":           {Method: http.MethodGet, Path: "/v1/sys/health?standbyok=true&perfstandbyok=true&sealedcode=200&uninitcode=200&drsecondarycode=200&performancestandbycode=200", RootOnly: true},
 	"mount-info":       {Method: http.MethodGet, Path: "/v1/sys/internal/ui/mounts/{mount}", Authenticated: true},
 	"approle-login":    {Method: http.MethodPost, Path: "/v1/auth/{auth_mount}/login"},
 	"token-lookup":     {Method: http.MethodGet, Path: "/v1/auth/token/lookup-self", Authenticated: true},
@@ -134,6 +134,8 @@ type Client struct {
 	expires    time.Time
 	loggedIn   bool
 	renewals   int
+	renewAt    time.Time
+	renewable  bool
 }
 
 var _ API = (*Client)(nil)
@@ -196,7 +198,7 @@ func (c *Client) Forget() {
 	c.mu.Unlock()
 	if minted {
 		ctx, cancel := context.WithTimeout(context.Background(), c.deadline)
-		_ = c.send(ctx, operationRegistry["token-revoke"], "/v1/auth/token/revoke-self", token, nil, nil)
+		_ = c.send(ctx, operationRegistry["token-revoke"], nil, token, nil, nil)
 		cancel()
 	}
 	c.mu.Lock()
@@ -323,8 +325,8 @@ func (c *Client) authorize(ctx context.Context) (string, error) {
 			} `json:"auth"`
 		}
 		body := map[string]string{"role_id": c.credential.RoleID, "secret_id": c.credential.SecretID}
-		path := "/v1/auth/" + escapePath(c.credential.Mount) + "/login"
-		if err := c.send(ctx, operationRegistry["approle-login"], path, "", body, &out); err != nil {
+		params := map[string]string{"auth_mount": c.credential.Mount}
+		if err := c.send(ctx, operationRegistry["approle-login"], params, "", body, &out); err != nil {
 			return "", loginError(err)
 		}
 		if out.Auth == nil || out.Auth.ClientToken == "" {
@@ -333,32 +335,40 @@ func (c *Client) authorize(ctx context.Context) (string, error) {
 		c.token = out.Auth.ClientToken
 		c.loggedIn = true
 		if out.Auth.LeaseDuration > 0 {
-			c.expires = c.now().Add(time.Duration(out.Auth.LeaseDuration) * time.Second)
+			c.setLease(out.Auth.LeaseDuration)
 		}
-		return c.token, nil
+		c.renewable = out.Auth.Renewable
 	}
 	if c.token == "" {
 		return "", fmt.Errorf("%w: the adapter credential was already released", adapter.ErrProviderAuth)
 	}
-	if c.loggedIn && !c.expires.IsZero() && c.now().Add(renewMargin).After(c.expires) {
-		if c.renewals >= maxRenewals {
-			return "", fmt.Errorf("%w: login token renewal budget for this attempt is exhausted", adapter.ErrProviderAuth)
-		}
+	if c.loggedIn && c.renewable && !c.expires.IsZero() && (!c.now().Before(c.renewAt) || !c.now().Add(c.deadline).Before(c.expires)) && c.renewals < maxRenewals {
 		c.renewals++
 		var out struct {
 			Auth *struct {
 				LeaseDuration int64 `json:"lease_duration"`
 			} `json:"auth"`
 		}
-		if err := c.send(ctx, operationRegistry["token-renew"], "/v1/auth/token/renew-self", c.token, map[string]string{}, &out); err != nil {
+		if err := c.send(ctx, operationRegistry["token-renew"], nil, c.token, map[string]string{}, &out); err != nil {
 			return "", loginError(err)
 		}
 		if out.Auth == nil || out.Auth.LeaseDuration <= 0 {
 			return "", fmt.Errorf("%w: login token could not be renewed", adapter.ErrProviderAuth)
 		}
-		c.expires = c.now().Add(time.Duration(out.Auth.LeaseDuration) * time.Second)
+		c.setLease(out.Auth.LeaseDuration)
+	}
+	if c.loggedIn && !c.expires.IsZero() && !c.now().Add(c.deadline).Before(c.expires) {
+		return "", fmt.Errorf("%w: login token cannot outlive the request deadline; renewal budget exhausted or lease not renewable", adapter.ErrProviderAuth)
 	}
 	return c.token, nil
+}
+
+func (c *Client) setLease(seconds int64) {
+	ttl := time.Duration(seconds) * time.Second
+	now := c.now()
+	c.expires = now.Add(ttl)
+	// A short lease must not trigger another immediate renewal.
+	c.renewAt = c.expires.Add(-min(renewMargin, ttl/2))
 }
 
 func loginError(err error) error {
@@ -369,7 +379,7 @@ func loginError(err error) error {
 	return err
 }
 
-func (c *Client) do(ctx context.Context, key, path string, body, out any) error {
+func (c *Client) do(ctx context.Context, key string, params map[string]string, body, out any) error {
 	op, ok := operationRegistry[key]
 	if !ok {
 		return fmt.Errorf("vault-kv: operation %q is not linked", key)
@@ -381,10 +391,22 @@ func (c *Client) do(ctx context.Context, key, path string, body, out any) error 
 			return err
 		}
 	}
-	return c.send(ctx, op, path, token, body, out)
+	return c.send(ctx, op, params, token, body, out)
 }
 
-func (c *Client) send(ctx context.Context, op operation, path, token string, body, out any) error {
+func (c *Client) send(ctx context.Context, op operation, params map[string]string, token string, body, out any) error {
+	path := op.Path
+	for name, value := range params {
+		placeholder := "{" + name + "}"
+		if value == "" || !strings.Contains(path, placeholder) {
+			return errors.New("vault-kv: invalid operation path parameter")
+		}
+		path = strings.ReplaceAll(path, placeholder, escapePath(value))
+	}
+	if strings.ContainsAny(path, "{}") {
+		return errors.New("vault-kv: missing operation path parameter")
+	}
+
 	var input io.Reader
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -477,10 +499,6 @@ func escapePath(path string) string {
 	return strings.Join(segments, "/")
 }
 
-func kvPath(key, mount, path string) string {
-	return "/v1/" + escapePath(mount) + "/" + key + "/" + escapePath(path)
-}
-
 func (c *Client) Health(ctx context.Context) (Health, error) {
 	var out struct {
 		Initialized bool   `json:"initialized"`
@@ -489,8 +507,7 @@ func (c *Client) Health(ctx context.Context) (Health, error) {
 	}
 	// Status codes are pinned to 200 so a sealed or uninitialized server is
 	// reported by body rather than conflated with a transport failure.
-	query := "?standbyok=true&perfstandbyok=true&sealedcode=200&uninitcode=200&drsecondarycode=200&performancestandbycode=200"
-	if err := c.do(ctx, "health", "/v1/sys/health"+query, nil, &out); err != nil {
+	if err := c.do(ctx, "health", nil, nil, &out); err != nil {
 		return Health{}, err
 	}
 	return Health{Initialized: out.Initialized, Sealed: out.Sealed, Version: out.Version}, nil
@@ -507,7 +524,7 @@ func (c *Client) MountInfo(ctx context.Context, mount string) (Mount, error) {
 			} `json:"options"`
 		} `json:"data"`
 	}
-	if err := c.do(ctx, "mount-info", "/v1/sys/internal/ui/mounts/"+escapePath(mount), nil, &out); err != nil {
+	if err := c.do(ctx, "mount-info", map[string]string{"mount": mount}, nil, &out); err != nil {
 		return Mount{}, err
 	}
 	return Mount{Type: out.Data.Type, Version: out.Data.Options.Version, UUID: out.Data.UUID, Accessor: out.Data.Accessor}, nil
@@ -528,7 +545,7 @@ func (c *Client) LookupSelf(ctx context.Context) (TokenInfo, error) {
 			ExpireTime *string `json:"expire_time"`
 		} `json:"data"`
 	}
-	if err := c.do(ctx, "token-lookup", "/v1/auth/token/lookup-self", nil, &out); err != nil {
+	if err := c.do(ctx, "token-lookup", nil, nil, &out); err != nil {
 		return TokenInfo{}, err
 	}
 	info := TokenInfo{}
@@ -551,7 +568,7 @@ func (c *Client) ReadMetadata(ctx context.Context, mount, path string) (Metadata
 			} `json:"versions"`
 		} `json:"data"`
 	}
-	if err := c.do(ctx, "read-metadata", kvPath("metadata", mount, path), nil, &out); err != nil {
+	if err := c.do(ctx, "read-metadata", map[string]string{"mount": mount, "path": path}, nil, &out); err != nil {
 		return Metadata{}, err
 	}
 	meta := Metadata{CurrentVersion: out.Data.CurrentVersion, CustomMetadata: out.Data.CustomMetadata, Versions: map[int64]VersionMetadata{}}
@@ -580,7 +597,7 @@ func (c *Client) ReadMetadata(ctx context.Context, mount, path string) (Metadata
 }
 
 func (c *Client) PatchCustomMetadata(ctx context.Context, mount, path string, custom map[string]*string) error {
-	return c.do(ctx, "patch-metadata", kvPath("metadata", mount, path), map[string]any{"custom_metadata": custom}, nil)
+	return c.do(ctx, "patch-metadata", map[string]string{"mount": mount, "path": path}, map[string]any{"custom_metadata": custom}, nil)
 }
 
 func (c *Client) WriteCAS(ctx context.Context, mount, path, value string, cas int64) (int64, error) {
@@ -590,7 +607,7 @@ func (c *Client) WriteCAS(ctx context.Context, mount, path, value string, cas in
 		} `json:"data"`
 	}
 	body := map[string]any{"data": map[string]string{"value": value}, "options": map[string]int64{"cas": cas}}
-	if err := c.do(ctx, "write-cas", kvPath("data", mount, path), body, &out); err != nil {
+	if err := c.do(ctx, "write-cas", map[string]string{"mount": mount, "path": path}, body, &out); err != nil {
 		return 0, err
 	}
 	if out.Data.Version != cas+1 {
@@ -600,5 +617,5 @@ func (c *Client) WriteCAS(ctx context.Context, mount, path, value string, cas in
 }
 
 func (c *Client) DeleteVersion(ctx context.Context, mount, path string, version int64) error {
-	return c.do(ctx, "soft-delete-data", kvPath("delete", mount, path), map[string][]int64{"versions": {version}}, nil)
+	return c.do(ctx, "soft-delete-data", map[string]string{"mount": mount, "path": path}, map[string][]int64{"versions": {version}}, nil)
 }
