@@ -52,7 +52,7 @@ var (
 	ErrPKIIssuerExists   = fmt.Errorf("%w: a PKI issuer with this name already exists; rotate it instead", domain.ErrConflict)
 	ErrPKIIssuerState    = fmt.Errorf("%w: the PKI issuer version is not in the required lifecycle state", domain.ErrConflict)
 	ErrPKIIssuerRace     = fmt.Errorf("%w: the PKI issuer changed underneath this write", domain.ErrConflict)
-	ErrPKIIssuerLive     = fmt.Errorf("%w: the PKI issuer version still has live certificates; wait for them to expire or revoke them", domain.ErrConflict)
+	ErrPKIIssuerLive     = fmt.Errorf("%w: the PKI issuer version still has unexpired certificates requiring CRL coverage; wait for them to expire", domain.ErrConflict)
 	ErrPKIIssuerHeld     = fmt.Errorf("%w: the PKI issuer is held after a restore; release its hold (`hikyo pki issuer release-hold`) before issuing", domain.ErrConflict)
 	ErrPKINoActiveIssuer = fmt.Errorf("%w: none of the profile's issuers has an active version", domain.ErrConflict)
 	ErrPKIProfileExists  = fmt.Errorf("%w: a certificate profile with this name already exists", domain.ErrConflict)
@@ -787,7 +787,7 @@ func (s *PKI) InstallIssuerCertificate(ctx context.Context, actor Actor, name, c
 }
 
 // RetireIssuer ends an overlap: the version stops signing CRLs and its key is
-// destroyed. It refuses while the version still has live leaves.
+// destroyed. It refuses while unexpired leaves or child CAs need CRL coverage.
 func (s *PKI) RetireIssuer(ctx context.Context, actor Actor, name string, version int64) (PKIIssuerView, error) {
 	var out PKIIssuerView
 	err := tx.Write(ctx, s.DB, func(ctx context.Context, r store.Repos, az *authz.TxAuthorizer) error {
