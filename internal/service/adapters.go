@@ -255,7 +255,14 @@ func (r CreateAdapterRequest) config() adapter.Config {
 	return adapter.Config{Origin: r.Origin, SPKIPin: r.SPKIPin, CABundlePEM: r.CABundlePEM, AllowPersonalToken: r.AllowPersonalToken}
 }
 
+// AdapterTargetFlagPatch preserves omitted transport fields during target updates.
+// A nil patch means the caller supplied complete target state.
+type AdapterTargetFlagPatch struct {
+	VariableProtected, VariableHidden, VariableExpand *bool
+}
+
 type UpdateAdapterTargetRequest struct {
+	Flags              *AdapterTargetFlagPatch
 	TargetID           string
 	ExpectedGeneration int64
 	Target             AdapterTargetInput
@@ -686,7 +693,7 @@ func targetDestinationChanged(current store.AdapterTarget, requested AdapterTarg
 // prepareTargetMutation performs only the provider-preflight classification.
 // ApplyTargetMutation repeats the authoritative decision in its write
 // transaction before selecting either result branch.
-func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope domain.Scope, request UpdateAdapterTargetRequest) (bool, error) {
+func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope domain.Scope, request *UpdateAdapterTargetRequest) (bool, error) {
 	if scope.Project == "" || scope.Env != "" || request.TargetID == "" || request.ExpectedGeneration <= 0 || len(request.Target.KeyIDs) == 0 {
 		return false, fmt.Errorf("%w: target mutation requires target, generation, and full keys replacement", domain.ErrInvalid)
 	}
@@ -706,6 +713,23 @@ func (s *Adapters) prepareTargetMutation(ctx context.Context, actor Actor, scope
 		if request.Target.EnvironmentID != current.EnvironmentID {
 			return fmt.Errorf("%w: target environment is immutable; remove and add the target", domain.ErrConflict)
 		}
+		if request.Flags != nil {
+			request.Target.VariableProtected = current.VariableProtected
+			request.Target.VariableHidden = current.VariableHidden
+			request.Target.VariableExpand = current.VariableExpand
+			if request.Flags.VariableProtected != nil {
+				request.Target.VariableProtected = *request.Flags.VariableProtected
+			}
+			if request.Flags.VariableHidden != nil {
+				request.Target.VariableHidden = *request.Flags.VariableHidden
+			}
+			if request.Flags.VariableExpand != nil {
+				request.Target.VariableExpand = *request.Flags.VariableExpand
+			}
+		}
+		if current.Provider == string(adapter.GitLabProvider) && request.Target.DestinationScope == "" {
+			request.Target.DestinationScope = current.DestinationScope
+		}
 		move = targetDestinationChanged(current, request.Target)
 		return nil
 	})
@@ -722,7 +746,7 @@ func (s *Adapters) ApplyTargetMutation(ctx context.Context, actor Actor, scope d
 	if err := s.resolveTargetKeys(ctx, actor, scope, &request.Target); err != nil {
 		return nil, err
 	}
-	preparedMove, err := s.prepareTargetMutation(ctx, actor, scope, request)
+	preparedMove, err := s.prepareTargetMutation(ctx, actor, scope, &request)
 	if err != nil {
 		return nil, err
 	}
@@ -812,7 +836,8 @@ func (s *Adapters) applyTargetUpdate(ctx context.Context, r store.Repos, az *aut
 	// Dropping GitLab protection widens who can read delivered values to
 	// unprotected branches, so it takes the full ceremony like a key widening.
 	unprotected := current.VariableProtected && !request.Target.VariableProtected
-	full := widened || unprotected || request.Target.NamePrefix != current.NamePrefix ||
+	unhidden := current.VariableHidden && !request.Target.VariableHidden
+	full := widened || unprotected || unhidden || request.Target.NamePrefix != current.NamePrefix ||
 		adapter.RecipientSetNeedsCeremony(current.Visibility, current.SelectedRepositoryIDs, request.Target.Visibility, request.Target.SelectedRepositoryIDs)
 	authority := current.AuthorityPrincipalID
 	if full {
@@ -1787,6 +1812,12 @@ func (s *Adapters) Adopt(ctx context.Context, actor Actor, scope domain.Scope, r
 			target, err := r.Adapters().Target(ctx, p, request.TargetID)
 			if err != nil {
 				return err
+			}
+			if target.Provider == string(adapter.SealedWebhookProvider) {
+				// The sealed protocol carries no adopt intent: a receiver never
+				// transfers an unowned name to a route, so adoption could only
+				// loop on conflict. The receiver releases the name instead.
+				return fmt.Errorf("%w: sealed-webhook conflicts resolve by releasing the name on the receiver or renaming, not adoption", domain.ErrInvalid)
 			}
 			if target.Generation != request.ExpectedGeneration || target.RepositoryID != request.ExpectedRepositoryID || target.DestinationID != request.ExpectedDestinationID {
 				return fmt.Errorf("%w: adoption target no longer matches the selected artifact", domain.ErrConflict)

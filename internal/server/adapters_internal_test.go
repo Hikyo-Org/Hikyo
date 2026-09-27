@@ -155,12 +155,17 @@ func TestUpdateAdapterTargetMapsOneIntentToServiceResult(t *testing.T) {
 				DestinationName: "app", Visibility: "", NamePrefix: "PROD_",
 				KeyIds: []apigen.ID{"key_one"}, ExpectedGeneration: 7, KeepRemote: &keepRemote,
 			}
+			disabled := false
+			body.VariableHidden = &disabled
 			stub := &recordingTargetMutationService{result: tt.result}
 			response, err := updateAdapterTarget(withBearer(t.Context(), "bearer"), stub, apigen.UpdateAdapterTargetRequestObject{
 				Org: "org_one", Project: "prj_one", Target: "tgt_one", Body: &body,
 			})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if stub.request.Flags == nil || stub.request.Flags.VariableProtected != nil || stub.request.Flags.VariableHidden == nil || *stub.request.Flags.VariableHidden {
+				t.Fatalf("optional flag presence lost: %+v", stub.request.Flags)
 			}
 			recorder := httptest.NewRecorder()
 			if err := response.VisitUpdateAdapterTargetResponse(recorder); err != nil {

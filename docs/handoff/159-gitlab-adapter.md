@@ -25,14 +25,14 @@ Branch: `claude/modest-feynman-hm8knz`. Spec: `docs/adr/gitlab-adapter.md`
   index, and `refuseDestinationNameCollision` compares scope, so one project can
   hold the same key under different scopes. Scope is immutable on update
   (store refuses a change).
-- **Migration:** `00060_gitlab_adapter.sql` on both engines. The legacy upgrade
+- **Migration:** `00068_gitlab_adapter.sql` on both engines. The legacy upgrade
   drill (`internal/app/backup_upgrade_drill_test.go`) reverses it, and
   `internal/buildcompat/development.json` was regenerated with
   `go run ./scripts/release/compatibility --development` against PostgreSQL
   18.4 (PostgreSQL 16 produces a different schema digest).
 - **Service:** `normalizeTargetInput` defaults the scope to `*`, restricts
   GitLab to project and group kinds, and refuses GitLab-only fields elsewhere.
-  Dropping `protected` on update takes the full ceremony. The create audit
+  Dropping `protected` or `hidden` on update takes the full ceremony. Omitted update flags preserve their stored values; the CLI preserves options not explicitly supplied. The create audit
   payload records `spki_pin` and `personal_credential_accepted` (a field name
   containing `token` is forbidden by the audit registry).
 - **API/CLI/web:** optional OpenAPI fields (`destination_scope`,
@@ -71,3 +71,18 @@ Branch: `claude/modest-feynman-hm8knz`. Spec: `docs/adr/gitlab-adapter.md`
 - Pin and CA bundle are fixed per adapter; changing them means a new adapter.
 - File-type variables and group-to-project inheritance management are out of
   scope, as the issue states.
+
+## Integration review (2026-09-27)
+
+Merged the current SSH and sealed-webhook base without removing either provider.
+The migration is reserved as68 for the ordered feature stack. The update boundary
+preserves omitted boolean fields under the same generation check as the mutation;
+explicit false remains supported. Disabling hidden delivery now requires the full
+adapter ceremony, and regression coverage verifies refusal leaves state unchanged.
+GitLab CI bootstrap validates the created namespace ID before creating projects.
+Provider changes in the create form clear the sensitive credential.
+
+Local validation includes all1170 web tests, typecheck/lint and20 generated-client
+tests. Native cross-provider review was skipped because current quota evidence was
+unavailable; this is not a clean cross-provider review result. Remote CI and stack
+integration remain separate delivery gates.

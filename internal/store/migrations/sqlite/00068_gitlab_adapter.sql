@@ -18,7 +18,7 @@ CREATE TABLE adapters (
     id TEXT PRIMARY KEY,
     org_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
-    provider TEXT NOT NULL CHECK (provider IN ('forgejo', 'github-actions', 'gitlab')),
+    provider TEXT NOT NULL CHECK (provider IN ('forgejo', 'github-actions', 'sealed-webhook', 'gitlab')),
     origin TEXT NOT NULL,
     credential_ciphertext BLOB,
     credential_set_at TEXT,

@@ -31,6 +31,9 @@ type Adapter struct {
 	State                string
 	CreatedAt            pgtype.Timestamptz
 	CredentialExpiresAt  pgtype.Timestamptz
+	SpkiPin              string
+	CaBundlePem          string
+	AllowPersonalToken   bool
 }
 
 type AdapterConfigureFence struct {
@@ -86,21 +89,22 @@ type AdapterEffect struct {
 }
 
 type AdapterLedger struct {
-	ID              string
-	OrgID           string
-	ProjectID       string
-	EnvironmentID   string
-	TargetID        string
-	ProviderOrigin  string
-	DestinationID   int64
-	Surface         string
-	EffectiveName   string
-	NormalizedName  string
-	State           string
-	UpdatedAt       pgtype.Timestamptz
-	DestinationKind string
-	RepositoryID    int64
-	Missing         bool
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	TargetID         string
+	ProviderOrigin   string
+	DestinationID    int64
+	Surface          string
+	EffectiveName    string
+	NormalizedName   string
+	State            string
+	UpdatedAt        pgtype.Timestamptz
+	DestinationKind  string
+	RepositoryID     int64
+	Missing          bool
+	DestinationScope string
 }
 
 type AdapterOutbox struct {
@@ -213,6 +217,10 @@ type AdapterTarget struct {
 	LastAttemptedAt        pgtype.Timestamptz
 	LastErrorClass         pgtype.Text
 	DriftAttention         bool
+	DestinationScope       string
+	VariableProtected      bool
+	VariableHidden         bool
+	VariableExpand         bool
 }
 
 type AdapterTargetKey struct {
@@ -1331,6 +1339,87 @@ type SnapshotEntry struct {
 	Classification string
 	Ciphertext     []byte
 	ValueEntryID   string
+}
+
+type SshCa struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	Name                 string
+	State                string
+	AuthorityPrincipalID string
+	CreatedAt            pgtype.Timestamptz
+}
+
+type SshCaKey struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	CaID                 string
+	Algorithm            string
+	PublicKey            string
+	Fingerprint          string
+	Origin               string
+	PrivateKeyCiphertext []byte
+	State                string
+	CreatedAt            pgtype.Timestamptz
+	RetiringAt           pgtype.Timestamptz
+	RetireAfter          pgtype.Timestamptz
+	RetiredAt            pgtype.Timestamptz
+}
+
+type SshCertificate struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	CaID                 string
+	CaKeyID              string
+	ProfileID            string
+	Serial               int64
+	KeyID                string
+	Principals           string
+	PublicKeyFingerprint string
+	KeyAlgorithm         string
+	KeyOrigin            string
+	ValidAfter           pgtype.Timestamptz
+	ValidBefore          pgtype.Timestamptz
+	RequesterPrincipalID string
+	RequesterClass       string
+	State                string
+	RevokedAt            pgtype.Timestamptz
+	RevocationReason     pgtype.Text
+	CreatedAt            pgtype.Timestamptz
+}
+
+type SshProfile struct {
+	ID                string
+	OrgID             string
+	ProjectID         string
+	EnvironmentID     string
+	CaID              string
+	Name              string
+	Principals        string
+	ForceCommand      string
+	SourceAddresses   string
+	Extensions        string
+	KeyAlgorithms     string
+	DefaultTtlSeconds int64
+	MaxTtlSeconds     int64
+	State             string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+type SshProfileRequester struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProfileID     string
+	PrincipalID   string
+	CreatedAt     pgtype.Timestamptz
 }
 
 type Tier3Key struct {

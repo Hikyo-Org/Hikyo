@@ -124,6 +124,8 @@ function providerLabel(provider: string): string {
       return 'GitHub Actions';
     case 'gitlab':
       return 'GitLab';
+    case 'sealed-webhook':
+      return 'Sealed webhook';
     default:
       return provider;
   }
@@ -901,6 +903,7 @@ function CreateAdapterPanel({
               const value = event.target.value;
               const next: AdapterProviderName = value === 'github-actions' || value === 'gitlab' ? value : 'forgejo';
               setProvider(next);
+              setCredential('');
               setOrigin(next === 'github-actions' ? 'https://api.github.com' : next === 'gitlab' ? 'https://gitlab.com' : '');
             }
             }

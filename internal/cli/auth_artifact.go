@@ -113,6 +113,8 @@ var authRuleRows = []authRuleRow{
 		"dynamic-provider create", "dynamic-provider list", "dynamic-provider show", "dynamic-provider delete",
 		"dynamic-provider credential set", "dynamic-provider credential revoke",
 		"lease settle",
+		"ssh-ca create", "ssh-ca rotate", "ssh-ca retire-key", "ssh-ca delete",
+		"ssh-profile create", "ssh-profile update", "ssh-profile delete",
 	)},
 	{Kinds: humanOrMachine, Operations: authOperations(
 		"env list", "env show", "env create", "env delete",
@@ -122,6 +124,9 @@ var authRuleRows = []authRuleRow{
 		"key group create", "key group rename", "key group delete",
 		"values export", "run",
 		"lease mint", "lease list", "lease show", "lease renew", "lease revoke",
+		"ssh-ca list", "ssh-ca show", "ssh-ca trusted-keys", "ssh-ca krl",
+		"ssh-profile list", "ssh-profile show",
+		"ssh-cert issue", "ssh-cert list", "ssh-cert show", "ssh-cert revoke",
 	)},
 	{Kinds: machineOnly, Operations: authOperations(
 		"compose render", "compose sync", "compose doctor",

@@ -53,7 +53,7 @@ token.save!
 api() {
 	curl -fsS --cacert "$dir/127.0.0.1.crt" -H "PRIVATE-TOKEN: $root_token" -H 'Content-Type: application/json' "$@"
 }
-group_id=$(api -X POST "$origin/api/v4/groups" -d '{"name":"hikyo-e2e","path":"hikyo-e2e","visibility":"private"}' | jq -r .id)
+group_id=$(api -X POST "$origin/api/v4/groups" -d '{"name":"hikyo-e2e","path":"hikyo-e2e","visibility":"private"}' | jq -er '.id | select(type == "number" and . > 0 and . == floor)')
 api -X POST "$origin/api/v4/projects" -d "{\"name\":\"app\",\"path\":\"app\",\"namespace_id\":$group_id,\"visibility\":\"private\"}" >/dev/null
 expires=$(date -u -d '+2 days' +%F)
 # Group CI/CD variables require the Owner role (50); project variables need

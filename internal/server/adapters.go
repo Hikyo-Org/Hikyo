@@ -363,7 +363,7 @@ func updateAdapterTarget(ctx context.Context, adapters targetMutationService, re
 	for _, id := range req.Body.KeyIds {
 		input.KeyIDs = append(input.KeyIDs, string(id))
 	}
-	request := service.UpdateAdapterTargetRequest{TargetID: string(req.Target), ExpectedGeneration: req.Body.ExpectedGeneration, Target: input}
+	request := service.UpdateAdapterTargetRequest{TargetID: string(req.Target), ExpectedGeneration: req.Body.ExpectedGeneration, Target: input, Flags: &service.AdapterTargetFlagPatch{VariableProtected: req.Body.VariableProtected, VariableHidden: req.Body.VariableHidden, VariableExpand: req.Body.VariableExpand}}
 	result, err := adapters.ApplyTargetMutation(ctx, service.Bearer(bearer(ctx)), adapterScope(req.Org, req.Project), request, req.Body.KeepRemote != nil && *req.Body.KeepRemote)
 	if err != nil {
 		return nil, err

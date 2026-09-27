@@ -71,7 +71,7 @@ results and errors keep their existing formats.
 | Command family | Purpose |
 | --- | --- |
 | `server`, `migrate` | Serve Hikyo and manage schema state. |
-| `upgrade` | `sudo hikyo upgrade` performs the verified in-place upgrade on a systemd host; `upgrade operator rotate` rotates the deployment authority. |
+| `upgrade` | `sudo hikyo upgrade` performs the verified in-place upgrade on a Linux systemd host; on macOS and Windows, `hikyo upgrade` installs the newest verified CLI release; `upgrade operator rotate` rotates the deployment authority. |
 | `admin` | Bootstrap, break-glass account authority, privacy actions, and configuration recovery on the server host. |
 | `backup`, `restore` | Export, reconstruct, inspect, drill, and reconcile an instance. |
 | `escrow` | Prove the separately held root escrow matches this instance. |
@@ -103,6 +103,7 @@ stored locally and are never printed as a login receipt.
 | `access`, `project-settings` | Manage grants, members, and protected environments. |
 | `adapter` | Configure Forgejo and GitHub Actions deployment adapters, targets, plans, adoption, and converge jobs. |
 | `dynamic-provider`, `lease` | Register dynamic-secret providers and mint, renew, revoke, and settle short-lived leases. |
+| `ssh-ca`, `ssh-profile`, `ssh-cert` | Run SSH user CAs, define signing profiles, and issue and revoke short-lived SSH certificates. See [SSH certificates](/docs/ssh-certificates/). |
 | `revision`, `pin`, `approval` | Inspect lineage, pin workloads to a revision, and run change-approval policies and requests. |
 | `definitions`, `import` | Author and apply the reviewable catalogue, and stage values from other systems. |
 | `remote`, `remote-credential` | Peer instances and the credentials they present. |
@@ -118,7 +119,7 @@ its first target. Credential input is a no-echo terminal, `--stdin`, or
 `--value-file`; it is never accepted as an argument value.
 
 ```text
-hikyo adapter create --provider forgejo|github-actions --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
+hikyo adapter create --provider forgejo|github-actions|sealed-webhook --origin URL --env ENV --kind repository|organization|environment --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter create --provider gitlab --origin URL --env ENV --kind project|group --owner NAMESPACE [--repo PROJECT] [--scope SCOPE] [--protected] [--hidden] [--expand-variables] [--spki-pin PIN] [--ca-bundle-file FILE] [--allow-personal-token] --prefix PREFIX --keys ID,ID [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --origin URL [--keep-remote] [--stdin|--value-file FILE]
 hikyo adapter update ADAPTER --target TARGET --env ENV --kind KIND --owner OWNER [--repo REPO] [--destination-environment NAME] [--visibility all|private|selected] [--selected-repository-ids ID,ID] --prefix PREFIX --keys ID,ID [--keep-remote]

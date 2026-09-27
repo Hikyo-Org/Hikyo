@@ -204,9 +204,12 @@ to scratch, migration and verified restart. Its first-use bootstrap also covers
 older binaries without the command. See the [one-command upgrade instructions](https://hikyo.app/docs/upgrades/).
 The remaining steps describe manual preparation for other deployment types.
 
-In clients carrying the new trust stamp, `hikyo update check` verifies and stages
+In clients carrying the new trust stamp, `hikyo update check` on Linux verifies and stages
 the complete signed nightly and assembles its runtime bundle in the CLI state
-directory. It preserves the installed executable and reports both paths. Unsigned assets, rollback,
+directory. It preserves the installed executable and reports both paths. On
+macOS and Windows, which have no supported server host, `hikyo upgrade` and an
+accepted `hikyo update check` apply the same verification and then replace the
+CLI executable in place, keeping only that release in the cache. Unsigned assets, rollback,
 equivocation or missing trust refuse. Older clients cannot safely bootstrap this
 trust through their old binary-only self-update flow; perform the first
 installation with independently authenticated public trust and downloads.

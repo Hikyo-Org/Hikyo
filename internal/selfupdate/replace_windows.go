@@ -18,6 +18,9 @@ import (
 // original path. Existing processes keep using the old mapping while every new
 // invocation opens the replacement. The update completes before Apply reports
 // success.
+// Windows has no effective-UID ownership trap: Geteuid is always -1.
+func checkReplacementOwner(string, os.FileInfo, int) error { return nil }
+
 func replaceBinary(_ context.Context, target string, binary []byte, _ os.FileMode) (err error) {
 	lock := flock.New(target + ".update.lock")
 	locked, err := lock.TryLock()

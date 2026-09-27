@@ -141,7 +141,20 @@ func gitLabMode(provider, kind string, g gitLabTargetFlags) bool {
 	return provider == "gitlab" || kind == "project" || kind == "group" || g.set()
 }
 
-func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection, gitlab *gitLabTargetFlags) (apigen.AdapterTargetInput, error) {
+// adapterProvider reads the adapter's provider so target validation matches the
+// routing shape that provider accepts.
+func adapterProvider(ctx context.Context, client *Client, base, adapterID string) (string, error) {
+	var out apigen.Adapter
+	if err := client.Do(ctx, http.MethodGet, base+"/adapters/"+url.PathEscape(adapterID), nil, &out); err != nil {
+		return "", err
+	}
+	return string(out.Provider), nil
+}
+
+// adapterTargetInput validates target routing for the adapter's provider. A
+// sealed-webhook target routes to a receiver namespace only: --kind
+// organization with --owner, and no repository, environment, or visibility.
+func adapterTargetInput(provider, env, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys string, selection adapterKeySelection, gitlab *gitLabTargetFlags) (apigen.AdapterTargetInput, error) {
 	ids := splitAdapterKeys(keys)
 	if env == "" || kind == "" || owner == "" || (len(ids) == 0 && selection.empty()) {
 		return apigen.AdapterTargetInput{}, failf(ExitUsage, "target requires --env, --kind, --owner, and keys via --keys, --names, --include, or --classification")
@@ -153,12 +166,22 @@ func adapterTargetInput(env, kind, owner, repo, destinationEnvironment, visibili
 	if err != nil {
 		return apigen.AdapterTargetInput{}, err
 	}
+	sealed := provider == "sealed-webhook"
+	if sealed && kind != "organization" {
+		return apigen.AdapterTargetInput{}, failf(ExitUsage, "sealed-webhook target takes --kind organization and --owner <receiver namespace> only")
+	}
 	switch kind {
 	case "repository":
 		if repo == "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "repository target requires --repo and refuses environment/visibility routing")
 		}
 	case "organization":
+		if sealed {
+			if repo != "" || destinationEnvironment != "" || visibility != "" || len(repositoryIDs) != 0 {
+				return apigen.AdapterTargetInput{}, failf(ExitUsage, "sealed-webhook target takes --kind organization and --owner <receiver namespace> only")
+			}
+			break
+		}
 		if repo != "" || destinationEnvironment != "" || (visibility != "all" && visibility != "private" && visibility != "selected") {
 			return apigen.AdapterTargetInput{}, failf(ExitUsage, "organization target requires --visibility all|private|selected and refuses --repo/--destination-environment")
 		}
@@ -293,14 +316,16 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 	var source adapterCredentialSource
 	var selection adapterKeySelection
 	var gitlab gitLabTargetFlags
+	var targetFlagSet *flag.FlagSet
 	st, flags, err := parseCommon("adapter "+sub, ios, rest, func(fs *flag.FlagSet) {
+		targetFlagSet = fs
 		fs.StringVar(&format, "o", "table", "output format: table or json")
 		if sub == "create" || sub == "update" {
-			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), or GitLab base URL")
+			fs.StringVar(&origin, "origin", "", "Forgejo origin, GitHub API base URL (GHES: https://HOST/api/v3), an instance-admin sealed-webhook origin, or GitLab base URL")
 		}
 		if sub == "create" {
 			fs.BoolVar(&allowEnvironmentCreate, "create-environment", false, "consent to create a missing GitHub environment; requires Administration:write")
-			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, or gitlab")
+			fs.StringVar(&provider, "provider", "forgejo", "forgejo, github-actions, sealed-webhook, or gitlab")
 			fs.StringVar(&spkiPin, "spki-pin", "", "GitLab: base64(sha256(SubjectPublicKeyInfo)) the server must present")
 			fs.StringVar(&caBundleFile, "ca-bundle-file", "", "GitLab: PEM file of extra trust anchors for a self-hosted instance")
 			fs.BoolVar(&allowPersonalToken, "allow-personal-token", false, "GitLab: accept a personal access token, which can act as its owner everywhere they have access (refused by default)")
@@ -412,8 +437,8 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		}
 		return Render(ios.Stdout, f, adapterDetailTable(out))
 	case "create":
-		if provider != "forgejo" && provider != "github-actions" && provider != "gitlab" {
-			return failf(ExitUsage, "--provider must be forgejo, github-actions, or gitlab")
+		if provider != "forgejo" && provider != "github-actions" && provider != "sealed-webhook" && provider != "gitlab" {
+			return failf(ExitUsage, "--provider must be forgejo, github-actions, sealed-webhook, or gitlab")
 		}
 		if provider != "gitlab" && (spkiPin != "" || caBundleFile != "" || allowPersonalToken || gitlab.set()) {
 			return failf(ExitUsage, "--spki-pin, --ca-bundle-file, --allow-personal-token, --scope, --protected, --hidden, and --expand-variables require --provider gitlab")
@@ -426,7 +451,7 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if provider == "gitlab" {
 			gitlabInput = &gitlab
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, gitlabInput)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, gitlabInput)
 		if err != nil {
 			return err
 		}
@@ -508,11 +533,15 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		provider, err := adapterProvider(ctx, client, base, adapterID)
+		if err != nil {
+			return err
+		}
 		var gitlabInput *gitLabTargetFlags
-		if gitLabMode("", kind, gitlab) {
+		if gitLabMode(provider, kind, gitlab) {
 			gitlabInput = &gitlab
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, gitlabInput)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, gitlabInput)
 		if err != nil {
 			return err
 		}
@@ -538,8 +567,24 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			if gitLabTarget && gitlabInput == nil {
 				// A GitLab target is updated with GitLab semantics even when
 				// named by its stored kind (repository or organization).
-				if input, err = adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, &gitlab); err != nil {
+				if input, err = adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, &gitlab); err != nil {
 					return err
+				}
+			}
+			if gitLabTarget {
+				specified := map[string]bool{}
+				targetFlagSet.Visit(func(f *flag.Flag) { specified[f.Name] = true })
+				if !specified["protected"] {
+					input.VariableProtected = current.Target.VariableProtected
+				}
+				if !specified["hidden"] {
+					input.VariableHidden = current.Target.VariableHidden
+				}
+				if !specified["expand-variables"] {
+					input.VariableExpand = current.Target.VariableExpand
+				}
+				if !specified["scope"] {
+					input.DestinationScope = current.Target.DestinationScope
 				}
 			}
 			existing := make([]string, 0, len(current.Mapping))
@@ -555,7 +600,8 @@ func runAdapter(ctx context.Context, ios IO, args []string) error {
 			}
 			destinationChanged := input.DestinationKind != current.Target.DestinationKind || input.DestinationOwner != current.Target.DestinationOwner || input.DestinationName != current.Target.DestinationName || input.DestinationEnvironment != current.Target.DestinationEnvironment
 			unprotected := current.Target.VariableProtected != nil && *current.Target.VariableProtected && (input.VariableProtected == nil || !*input.VariableProtected)
-			full := destinationChanged || unprotected || input.NamePrefix != current.Target.NamePrefix || widened || adapter.RecipientSetNeedsCeremony(string(current.Target.Visibility), current.Target.SelectedRepositoryIds, string(input.Visibility), input.SelectedRepositoryIds)
+			unhidden := current.Target.VariableHidden != nil && *current.Target.VariableHidden && (input.VariableHidden == nil || !*input.VariableHidden)
+			full := destinationChanged || unprotected || unhidden || input.NamePrefix != current.Target.NamePrefix || widened || adapter.RecipientSetNeedsCeremony(string(current.Target.Visibility), current.Target.SelectedRepositoryIds, string(input.Visibility), input.SelectedRepositoryIds)
 			if full {
 				if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, adapterID, "adapter.configure"); err != nil {
 					return err
@@ -737,14 +783,18 @@ func runAdapterTarget(ctx context.Context, ios IO, args []string) error {
 		if err != nil {
 			return err
 		}
+		provider, err := adapterProvider(ctx, client, base, adapterID)
+		if err != nil {
+			return err
+		}
 		if err := runAdapterCeremony(ctx, ios, client, st, artifact, base, adapterID, "adapter.configure", envID); err != nil {
 			return err
 		}
 		var gitlabInput *gitLabTargetFlags
-		if gitLabMode("", kind, gitlab) {
+		if gitLabMode(provider, kind, gitlab) {
 			gitlabInput = &gitlab
 		}
-		input, err := adapterTargetInput(envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, gitlabInput)
+		input, err := adapterTargetInput(provider, envID, kind, owner, repo, destinationEnvironment, visibility, selectedRepositories, prefix, keys, selection, gitlabInput)
 		if err != nil {
 			return err
 		}

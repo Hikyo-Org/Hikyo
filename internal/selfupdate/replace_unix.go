@@ -8,9 +8,24 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/gofrs/flock"
 )
+
+// checkReplacementOwner refuses a privileged replacement of a user-owned
+// executable: the rename would leave it root-owned and break every later
+// unprivileged update. A root-owned install directory still updates under sudo.
+func checkReplacementOwner(target string, info os.FileInfo, euid int) error {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("selfupdate: inspect owner of %s", target)
+	}
+	if euid == 0 && stat.Uid != 0 {
+		return fmt.Errorf("selfupdate: %s is owned by uid %d; run the update without sudo", target, stat.Uid)
+	}
+	return nil
+}
 
 func replaceBinary(ctx context.Context, target string, binary []byte, mode os.FileMode) (err error) {
 	lock := flock.New(target + ".update.lock")

@@ -13,7 +13,7 @@ import (
 )
 
 func TestAdapterModuleFactoryRegistryIsTotal(t *testing.T) {
-	registry := deploymentProviderRegistry()
+	registry := deploymentProviderRegistry(nil)
 	if len(registry) != len(adapter.SupportedProviders()) {
 		t.Fatalf("registry entries = %d, supported providers = %d", len(registry), len(adapter.SupportedProviders()))
 	}
@@ -25,7 +25,7 @@ func TestAdapterModuleFactoryRegistryIsTotal(t *testing.T) {
 }
 
 func TestAdapterModuleFactoryDispatchesCompiledInProviders(t *testing.T) {
-	factory := newAdapterModuleFactory(nil)
+	factory := newAdapterModuleFactory(nil, nil)
 	forgejoLease, err := factory.Build(adapter.ForgejoProvider, adapter.Config{Origin: "https://forgejo.example"}, "scoped-token")
 	if err != nil {
 		t.Fatal(err)
@@ -84,14 +84,14 @@ func TestAdapterModuleLeaseReleasesSuccessOnce(t *testing.T) {
 }
 
 func TestDeploymentModuleRefusesClassicGitHubPAT(t *testing.T) {
-	_, err := newAdapterModuleFactory(nil).Build(adapter.GitHubActionsProvider, adapter.Config{Origin: "https://api.github.com"}, "ghp_classic")
+	_, err := newAdapterModuleFactory(nil, nil).Build(adapter.GitHubActionsProvider, adapter.Config{Origin: "https://api.github.com"}, "ghp_classic")
 	if err == nil || !strings.Contains(err.Error(), "classic") {
 		t.Fatalf("deploymentModule() = %v, want named classic PAT refusal", err)
 	}
 }
 
 func TestDeploymentModuleNeverInfersProviderFromCredential(t *testing.T) {
-	_, err := newAdapterModuleFactory(nil).Build(adapter.Provider(""), adapter.Config{Origin: "https://api.github.com"}, "github_pat_fine")
+	_, err := newAdapterModuleFactory(nil, nil).Build(adapter.Provider(""), adapter.Config{Origin: "https://api.github.com"}, "github_pat_fine")
 	if err == nil || !strings.Contains(err.Error(), "unsupported") {
 		t.Fatalf("deploymentModule() = %v, want missing persisted provider refusal", err)
 	}

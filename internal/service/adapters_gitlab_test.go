@@ -51,6 +51,35 @@ func TestGitLabAdapterPersistsTransportPolicyScopeAndFlags(t *testing.T) {
 		t.Fatalf("Get() = %+v", shown)
 	}
 
+	// Older clients omit the optional flags. Preserve all persisted options.
+	result, err := svc.ApplyTargetMutation(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
+		TargetID: target.ID, ExpectedGeneration: target.Generation,
+		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "platform", DestinationName: "api", KeyIDs: []string{"key_gitlab"}},
+		Flags:  &AdapterTargetFlagPatch{},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, ok := result.(TargetMutationUpdated)
+	if !ok || !updated.Target.VariableProtected || !updated.Target.VariableHidden || updated.Target.VariableExpand || updated.Target.DestinationScope != "*" {
+		t.Fatalf("omitted flags changed target: %+v", result)
+	}
+	// Explicit false must still be applied, rather than mistaken for omission.
+	disabled := false
+	result, err = svc.ApplyTargetMutation(t.Context(), LocalPrincipal("usr_adapter"), adapterScope, UpdateAdapterTargetRequest{
+		TargetID: target.ID, ExpectedGeneration: updated.Target.Generation,
+		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "platform", DestinationName: "api", KeyIDs: []string{"key_gitlab"}},
+		Flags:  &AdapterTargetFlagPatch{VariableHidden: &disabled},
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	updated, ok = result.(TargetMutationUpdated)
+	if !ok || updated.Target.VariableHidden || !updated.Target.VariableProtected {
+		t.Fatalf("explicit false was not applied: %+v", result)
+	}
+
 	if _, err := db.SQLiteWrite().ExecContext(t.Context(), `INSERT INTO grants (id,principal_id,capability,org_id,project_id,env_id,created_at) VALUES ('gr_gitlab_two','usr_adapter','reveal','org_adapter','prj_adapter','env_two','2026-08-17T00:00:00Z')`); err != nil {
 		t.Fatal(err)
 	}
@@ -131,4 +160,32 @@ func (m recordingConfigureModule) TestConnection(ctx context.Context, request ad
 	}
 	*m.destinations = append(*m.destinations, request.Destination)
 	return adapter.Connection{Version: "17.5.0", DestinationID: 77}, nil
+}
+
+func TestGitLabDisablingHiddenRequiresCeremony(t *testing.T) {
+	db := adapterServiceDB(t)
+	seedAdapterUpdateKeys(t, db, false)
+	for _, query := range []string{
+		`UPDATE adapters SET provider='gitlab' WHERE id='adp_1'`,
+		`UPDATE adapter_targets SET destination_scope='*', variable_hidden=1 WHERE id='tgt_one'`,
+	} {
+		if _, err := db.SQLiteWrite().ExecContext(t.Context(), query); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bearer := adapterCLISession(t, db)
+	_, err := (&Adapters{DB: db, Auth: &Auth{DB: db}}).updateTarget(t.Context(), Bearer(bearer), adapterScope, UpdateAdapterTargetRequest{
+		TargetID: "tgt_one", ExpectedGeneration: 1,
+		Target: AdapterTargetInput{EnvironmentID: "env_one", DestinationKind: "repository", DestinationOwner: "acme", DestinationName: "app", DestinationScope: "*", NamePrefix: "ONE_", KeyIDs: []string{"key_update_a"}},
+	})
+	if !errors.Is(err, ErrReauthRequired) {
+		t.Fatalf("unhide error = %v, want reauthentication", err)
+	}
+	var hidden, generation int
+	if err := db.SQLiteRead().QueryRowContext(t.Context(), `SELECT variable_hidden,generation FROM adapter_targets WHERE id='tgt_one'`).Scan(&hidden, &generation); err != nil {
+		t.Fatal(err)
+	}
+	if hidden != 1 || generation != 1 {
+		t.Fatalf("refused unhide mutated target: hidden=%d generation=%d", hidden, generation)
+	}
 }

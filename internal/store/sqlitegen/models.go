@@ -31,6 +31,9 @@ type Adapter struct {
 	AuthorityPrincipalID string
 	State                string
 	CreatedAt            string
+	SpkiPin              string
+	CaBundlePem          string
+	AllowPersonalToken   int64
 }
 
 type AdapterConfigureFence struct {
@@ -86,21 +89,22 @@ type AdapterEffect struct {
 }
 
 type AdapterLedger struct {
-	ID              string
-	OrgID           string
-	ProjectID       string
-	EnvironmentID   string
-	TargetID        string
-	ProviderOrigin  string
-	DestinationID   int64
-	Surface         string
-	EffectiveName   string
-	NormalizedName  string
-	State           string
-	UpdatedAt       string
-	DestinationKind string
-	RepositoryID    int64
-	Missing         int64
+	ID               string
+	OrgID            string
+	ProjectID        string
+	EnvironmentID    string
+	TargetID         string
+	ProviderOrigin   string
+	DestinationID    int64
+	Surface          string
+	EffectiveName    string
+	NormalizedName   string
+	State            string
+	UpdatedAt        string
+	DestinationKind  string
+	RepositoryID     int64
+	Missing          int64
+	DestinationScope string
 }
 
 type AdapterOutbox struct {
@@ -213,6 +217,10 @@ type AdapterTarget struct {
 	LastAttemptedAt        sql.NullString
 	LastErrorClass         sql.NullString
 	DriftAttention         int64
+	DestinationScope       string
+	VariableProtected      int64
+	VariableHidden         int64
+	VariableExpand         int64
 }
 
 type AdapterTargetKey struct {
@@ -1329,6 +1337,87 @@ type SnapshotEntry struct {
 	Classification string
 	Ciphertext     []byte
 	ValueEntryID   string
+}
+
+type SshCa struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	Name                 string
+	State                string
+	AuthorityPrincipalID string
+	CreatedAt            string
+}
+
+type SshCaKey struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	CaID                 string
+	Algorithm            string
+	PublicKey            string
+	Fingerprint          string
+	Origin               string
+	PrivateKeyCiphertext []byte
+	State                string
+	CreatedAt            string
+	RetiringAt           sql.NullString
+	RetireAfter          sql.NullString
+	RetiredAt            sql.NullString
+}
+
+type SshCertificate struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	CaID                 string
+	CaKeyID              string
+	ProfileID            string
+	Serial               int64
+	KeyID                string
+	Principals           string
+	PublicKeyFingerprint string
+	KeyAlgorithm         string
+	KeyOrigin            string
+	ValidAfter           string
+	ValidBefore          string
+	RequesterPrincipalID string
+	RequesterClass       string
+	State                string
+	RevokedAt            sql.NullString
+	RevocationReason     sql.NullString
+	CreatedAt            string
+}
+
+type SshProfile struct {
+	ID                string
+	OrgID             string
+	ProjectID         string
+	EnvironmentID     string
+	CaID              string
+	Name              string
+	Principals        string
+	ForceCommand      string
+	SourceAddresses   string
+	Extensions        string
+	KeyAlgorithms     string
+	DefaultTtlSeconds int64
+	MaxTtlSeconds     int64
+	State             string
+	CreatedAt         string
+	UpdatedAt         string
+}
+
+type SshProfileRequester struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProfileID     string
+	PrincipalID   string
+	CreatedAt     string
 }
 
 type Tier3Key struct {

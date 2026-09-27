@@ -1,6 +1,6 @@
 ---
 title: Deployment adapters
-description: Push selected published values to Forgejo, GitHub Actions, or GitLab CI/CD variables without reading provider values back.
+description: Push selected published values to Forgejo, GitHub Actions, GitLab CI/CD variables, or a sealed webhook receiver without reading provider values back.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/deployment-adapters.mdx
 ---
 
@@ -11,13 +11,15 @@ fetch.
 For a CI job that creates and tears down its own environments, use the
 [pull-request preview guide](/docs/preview-environments/).
 
-All three compiled-in adapters are one-way and value-blind. They write selected
+The Forgejo and GitHub Actions adapters are one-way and value-blind. They write selected
 values from one Hikyo environment to a repository, organization, or GitHub
 repository-environment Actions namespace, or to GitLab project or group CI/CD
 variables. No adapter links a variable GET or list endpoint. Secret planning reads
 names only; variable planning uses Hikyo's ownership ledger. Hikyo therefore
 cannot detect provider-side value drift. Run a converge to restore the last
-published Hikyo state.
+published Hikyo state. The third adapter, the
+[sealed webhook](#sealed-webhook-receivers), pushes to a generic HTTPS receiver
+an instance administrator has pinned; it has no read path at all.
 
 ## Requirements
 
@@ -325,3 +327,62 @@ DNS rebinding protection, and the no-redirect rule remain mandatory.
 GitHub Enterprise Server uses its configured HTTPS API base and inherits the
 GitHub contract best-effort; github.com contract pins do not claim every GHES
 version behaves identically.
+
+## Sealed webhook receivers
+
+The `sealed-webhook` adapter pushes values to your own HTTPS service. Each
+value is encrypted to the receiver's pinned age key and each request is
+signed by the Hikyo instance, so the values never appear in a URL, header,
+log, audit payload, or response. The receiver answers with a signed
+acknowledgement bound to the exact request. The wire contract is
+[the sealed webhook protocol](https://github.com/Hikyo-Org/Hikyo/blob/main/docs/spec/sealed-webhook.md),
+and `cmd/hikyo-receiver-example` is a reference receiver.
+
+**Endpoints are instance configuration.** A project cannot point Hikyo at an
+arbitrary URL. The instance administrator lists receivers in the file named by
+`HIKYO_SEALED_WEBHOOK_FILE` (see [server configuration](/docs/configuration/)):
+
+1. The receiver operator runs `hikyo-receiver-example keygen -dir DIR`, which
+   writes the receiver's secret keys with mode `0600` and prints the public
+   `recipient_key` and `ack_key`.
+2. The receiver operator runs `hikyo-receiver-example fingerprint -origin
+   https://recv.example -recipient age1... -ack-key ed25519:... -generation 1`
+   and reads the result to the instance administrator over a separate,
+   trusted channel.
+3. The administrator adds the endpoint with that value as
+   `confirmed_fingerprint` and restarts. A missing or different fingerprint
+   refuses startup; a changed host, port, or key changes the fingerprint.
+
+**Binding a project.** A project administrator creates the adapter with the
+activated origin, the receiver namespace as `--owner`, and a binding
+credential the receiver operator issued for that namespace:
+
+```sh
+hikyo adapter create --provider sealed-webhook --origin https://recv.example \
+  --env prod --kind organization --owner payments-prod --prefix "" --keys KEY_ID,KEY_ID
+```
+
+The binding credential is read like every adapter credential (no-echo
+terminal, `--stdin`, or `--value-file`) and travels only inside the
+encrypted payload. The connection test sends a signed probe and requires a
+valid acknowledgement.
+
+**Outcomes.** A verified `applied` or `already_applied` acknowledgement
+advances the target. A missing, oversized, or malformed answer records the
+effect as `unknown` and the retry reuses the same idempotency key, so a
+receiver that already applied it answers `already_applied`. A forged
+acknowledgement (wrong key, bad signature, wrong request binding) fails the
+job and marks the target as needing attention. A receiver refuses to
+overwrite a name it did not receive from this target and answers `conflict`.
+Resolve it by releasing the name on the receiver or renaming with a prefix;
+`hikyo adapter adopt` is refused for sealed-webhook targets because the
+protocol has no adopt intent.
+
+**Rotation.** To rotate the Hikyo signing key, pin the new public key on the
+receiver with the old key's `not_after` at least a day ahead, replace
+`signing_key_file`, and restart. Rotating a receiver key or moving its host is
+a new trust boundary: bump `generation` and confirm the new fingerprint.
+Targets bound under the old fingerprint stop before sending anything. Remove
+them (pruning before you change the registry, or keeping the
+remote values and asking the receiver operator to release those names), then
+add them again. A receiver only lets the target that wrote a name change it.
