@@ -444,7 +444,7 @@ func (s *fileSyncSession) offline(ctx context.Context, ios IO, dest *filesync.De
 // said on stderr, never turned into a failed render.
 func (s *fileSyncSession) report(ctx context.Context, ios IO, state string, revision, generation int64, stamp string) {
 	if generation <= 0 {
-		fmt.Fprintln(ios.Stderr, "file-sync: the server did not name the target generation; no report sent (server older than API revision 6?)")
+		fmt.Fprintln(ios.Stderr, "file-sync: the server did not name the target generation; no report sent (server older than API revision 7?)")
 		return
 	}
 	body := apigen.FileTargetReportRequest{State: apigen.FileTargetState(state), Revision: revision, Generation: generation, ReportedAt: ios.now().UTC()}

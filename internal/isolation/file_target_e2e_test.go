@@ -3,6 +3,7 @@ package isolation
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,6 +154,15 @@ func TestFileTargetLifecycle(t *testing.T) {
 		if n := dtEvents(t, db, "file_target.applied", ""); n != 1 {
 			t.Fatalf("applied events = %d, want 1 (a repeat report is not audited)", n)
 		}
+		stale := report
+		stale.ReportedAt = ftNow
+		stale.State = service.FileTargetFailed
+		if err := del.ReportFileTarget(t.Context(), minted.Value, env, target.ID, stale); !errors.Is(err, domain.ErrConflict) {
+			t.Fatalf("stale report = %v, want conflict", err)
+		}
+		if n := dtEvents(t, db, "file_target.applied", ""); n != 1 {
+			t.Fatalf("stale report emitted event: %d", n)
+		}
 		_, other := reportingWorkload(t, db, "other-sync", env)
 		if err := del.ReportFileTarget(t.Context(), other.Value, env, target.ID, report); !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("report by an unbound principal = %v, want not found", err)
@@ -223,4 +233,34 @@ func runFileTargetAuditLifecycle(t *testing.T, db *store.DB) {
 	if err := dtService(t, db, ftNow).ReportFileTarget(t.Context(), minted.Value, env, target.ID, report); err != nil {
 		t.Fatalf("file_target.applied: %v", err)
 	}
+}
+
+func TestFileTargetListKeepsSelectionsSeparate(t *testing.T) {
+	forEngines(t, func(t *testing.T, db *store.DB) {
+		identityFixtures(t, db)
+		seedDeliveryCatalogue(t, db)
+		admin := fileTargetAdmin(t, db)
+		svc := fileTargetSvc(db)
+		expected := map[string]string{}
+		for _, name := range []string{"DATABASE_URL", "DATABASE_PASSWORD"} {
+			sa, _ := reportingWorkload(t, db, name, envScope(envA1))
+			target, err := svc.Create(t.Context(), admin, prjScope(), service.FileTargetInput{EnvironmentID: string(envA1), Name: strings.ReplaceAll(strings.ToLower(name), "_", "-"), ServiceAccountID: sa.ID, KeySelection: service.AdapterKeySelection{Names: []string{name}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected[target.ID] = name
+		}
+		targets, err := svc.List(t.Context(), admin, prjScope())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(targets) != 2 {
+			t.Fatalf("targets = %d", len(targets))
+		}
+		for _, target := range targets {
+			if len(target.Keys) != 1 || target.Keys[0].Name != expected[target.ID] {
+				t.Fatalf("wrong selection: %+v", target)
+			}
+		}
+	})
 }

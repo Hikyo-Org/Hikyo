@@ -32,7 +32,7 @@ and the `hikyo file-sync` client. The browser surface is tracked in #819.
     prunes or retains dropped names, and collects all but the new and the
     previous generation. `recover` removes torn generations and stale temp
     links. `Intact` re-derives the keyed stamp from the bytes on disk.
-- **Server** (migration 00060, both engines): `file_targets` (environment,
+- **Server** (migration 00069, both engines): `file_targets` (environment,
   name, service account, principal, generation, last report) and
   `file_target_keys` (membership by key id). Cascades: service account,
   environment and key deletion. Operations `file-target.create|update|delete`
@@ -43,7 +43,7 @@ and the `hikyo file-sync` client. The browser surface is tracked in #819.
   name its target and is narrowed to the selection before any value is
   opened; an unbound caller naming a target, or a bound one naming another,
   is the uniform 404. The fetch audit record carries `file_target`; the
-  response carries `file_target_generation`. API revision 6.
+  response carries `file_target_generation`. API revision 7.
 - **CLI**: `hikyo file-target create|list|show|update|delete` and
   `hikyo file-sync render|doctor --config FILE` (help golden, spellings §10).
   The render pass: open and lock the destination, flush pending offline
@@ -102,3 +102,20 @@ and the `hikyo file-sync` client. The browser surface is tracked in #819.
 `HIKYO_TEST_POSTGRES_DSN` against postgres:18 (both engines), sqlc and
 oapi-codegen regenerated, `pnpm --dir clients/ts run verify`,
 `GOOS=darwin|windows go vet ./internal/filesync`.
+
+
+## PR #830 reconciliation and review
+
+Merged current main without rewriting signed PR commits. File-target migration
+is reserved as 00069 in both engines; API revision is 7. Regenerated API outputs
+and the development compatibility declaration from a dedicated scratch database.
+
+Review fixes: compare committed generation stamps before reusing files; reject
+reports older than the stored timestamp; reuse one project catalogue across a
+list; create stable symlinks atomically without overwriting concurrent foreign
+entries. Documentation now distinguishes inspection privileges, secret setup,
+offline reporting and failures before/after the publication commit point.
+Regression coverage includes stamp-key replacement, foreign-file preservation,
+report ordering and independent target selections. Cross-provider review was
+skipped by the coordinating agent because quota was unconfirmed; ordinary
+adversarial review was performed locally.

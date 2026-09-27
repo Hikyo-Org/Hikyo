@@ -505,6 +505,10 @@ func runAuditSuite(t *testing.T, db *store.DB) {
 		// once), worker-driven renew/revoke, an ambiguous outcome, reconcile and
 		// provider deletion all traverse the real service, runtime and store.
 		runDynamicLifecycle(t, db)
+		// SSH user certificates (#155): CA create/rotate/retire/delete,
+		// profile configure/delete, issuance and revocation all traverse the
+		// real service and store.
+		runSSHLifecycle(t, db, false)
 		// The multi-instance surface (#71): both tiers, against a real pinned
 		// TLS peer, so every remote.* type has a real emitter behind it too.
 		// Before the backup lifecycle, because that one advances the restore

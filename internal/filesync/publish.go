@@ -533,9 +533,20 @@ func (d *Destination) generationFiles(gen string) ([]string, error) {
 	return names, nil
 }
 
-// generationMatches reports whether gen holds exactly plan's files with the
-// planned content, mode and ownership.
+// generationMatches reports whether gen was committed under plan's keyed
+// stamp and holds exactly plan's files with the planned content, mode and
+// ownership. The stamp check matters: a recreated local key or a policy
+// change that ownedAs tolerates (owner unset -> the process's own uid) keeps
+// the bytes identical but changes the stamp, and reusing the generation would
+// leave a .complete that Intact can never match again.
 func (d *Destination) generationMatches(gen string, plan Plan) (bool, error) {
+	stamp, err := d.root.ReadFile(path.Join(genDir, gen, completeName))
+	if err != nil {
+		return false, fmt.Errorf("filesync: generation %s is incomplete: %w", gen, err)
+	}
+	if strings.TrimSpace(string(stamp)) != plan.Stamp {
+		return false, nil
+	}
 	names, err := d.generationFiles(gen)
 	if err != nil {
 		return false, err
@@ -714,7 +725,7 @@ func (d *Destination) swapCurrent(gen string) error {
 }
 
 // ensureLinks creates the stable per-name links that do not exist yet. Each is
-// created under a temporary name and renamed into place.
+// created atomically without replacing anything that appeared since preflight.
 func (d *Destination) ensureLinks(files []Rendered) error {
 	created := false
 	for _, f := range files {
@@ -725,22 +736,12 @@ func (d *Destination) ensureLinks(files []Rendered) error {
 		if ok {
 			continue
 		}
-		suffix, err := randomHex(8)
-		if err != nil {
-			return err
-		}
-		tmp := tmpLinkPrefix + suffix + ".tmp"
-		if err := d.root.Symlink(linkTarget(f.Name), tmp); err != nil {
-			return err
-		}
-		// Rename would silently replace a file that appeared since the
-		// preflight, so the name is checked again immediately before it.
-		if _, err := d.root.Lstat(f.Name); err == nil {
-			_ = d.root.Remove(tmp)
-			return fmt.Errorf("%w: %s", ErrForeign, path.Join(d.dir, f.Name))
-		}
-		if err := d.root.Rename(tmp, f.Name); err != nil {
-			_ = d.root.Remove(tmp)
+		// Symlink creation is atomic and refuses an existing name. A
+		// check followed by rename would overwrite a concurrently added file.
+		if err := d.root.Symlink(linkTarget(f.Name), f.Name); err != nil {
+			if errors.Is(err, fs.ErrExist) {
+				return fmt.Errorf("%w: %s", ErrForeign, path.Join(d.dir, f.Name))
+			}
 			return err
 		}
 		created = true

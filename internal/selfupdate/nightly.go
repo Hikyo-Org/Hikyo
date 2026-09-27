@@ -18,9 +18,10 @@ import (
 	"github.com/gofrs/flock"
 )
 
-// StagedNightly reports a verified manual-upgrade download, never replacement
-// of the running executable. Installing a server also requires its local gate,
-// backup/drill evidence and complete runtime bundle.
+// StagedNightly reports a verified manual-upgrade download on Linux, never
+// replacement of the running executable: it may be a server's, and installing
+// a server also requires its local gate, backup/drill evidence and complete
+// runtime bundle. Other platforms replace the CLI instead (see StagesNightlies).
 type StagedNightly struct {
 	Directory       string
 	BundleDirectory string

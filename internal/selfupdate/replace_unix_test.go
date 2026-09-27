@@ -35,3 +35,23 @@ func TestReplaceBinaryRefusesAConcurrentUpdaterWithoutRemovingTheTarget(t *testi
 		t.Fatalf("target = %q after lock refusal, want old", raw)
 	}
 }
+
+func TestPrivilegedUpdateRefusesAUserOwnedExecutable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("needs a non-root file owner")
+	}
+	target := filepath.Join(t.TempDir(), "hikyo")
+	if err := os.WriteFile(target, []byte("old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkReplacementOwner(target, info, 0); err == nil || !strings.Contains(err.Error(), "without sudo") {
+		t.Fatalf("root replacement of user-owned executable: %v", err)
+	}
+	if err := checkReplacementOwner(target, info, os.Geteuid()); err != nil {
+		t.Fatalf("owner replacement refused: %v", err)
+	}
+}

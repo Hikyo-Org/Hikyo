@@ -246,10 +246,16 @@ func (s *FileTargets) List(ctx context.Context, actor Actor, scope domain.Scope)
 		if out, err = r.FileTargets().List(ctx, p); err != nil {
 			return err
 		}
+		ids := make([]string, len(out))
 		for i := range out {
-			if out[i].Keys, err = r.FileTargets().Keys(ctx, p, out[i].ID); err != nil {
-				return err
-			}
+			ids[i] = out[i].ID
+		}
+		selections, err := r.FileTargets().KeysForTargets(ctx, p, ids)
+		if err != nil {
+			return err
+		}
+		for i := range out {
+			out[i].Keys = selections[out[i].ID]
 		}
 		return insertInspected(ctx, r, p, caller.Principal, audit.EventFileTargetInspected, audit.Object{Type: "file-target-list", ID: string(scope.Project)}, int64(len(out)))
 	})
@@ -383,6 +389,9 @@ func (s *Delivery) ReportFileTargetAs(ctx context.Context, actor Actor, scope do
 		}
 		if current.PrincipalID != string(caller.Principal) || current.EnvironmentID != string(scope.Env) {
 			return domain.ErrNotFound
+		}
+		if prev := current.Report; prev != nil && report.ReportedAt.Before(prev.ReportedAt) {
+			return &detailErr{detail: "report reported_at is older than the last accepted report", err: fmt.Errorf("%w: out-of-order file-target report", domain.ErrConflict)}
 		}
 		report.ReceivedAt = now
 		ok, err := r.FileTargets().RecordReport(ctx, p, targetID, string(caller.Principal), report)

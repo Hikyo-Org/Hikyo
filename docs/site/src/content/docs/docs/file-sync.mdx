@@ -31,7 +31,9 @@ into a directory named only in its own local config.
 
 Create a workload service account, grant it `read` on the environment (and
 `reveal` under the project's machine-reveal opt-in if secrets must render),
-plus `report-delivery-status` so it can report what it applied. Then bind it:
+plus `report-delivery-status` so it can report what it applied. Then bind it. The commands below assume both selected keys are classified as
+`config`; secret keys additionally require the project machine-reveal opt-in
+and an environment `reveal` grant:
 
 ```sh
 hikyo sa create --name web-host-files --kind workload
@@ -140,3 +142,6 @@ leaves the last generation in place and exits 6.
 - `require_tmpfs` can only be verified on Linux; on macOS it refuses.
 - The server shows the client's last report (`applied`, `current`, `offline`,
   `refused` or `failed`) as an assertion, not as verified host state.
+  `offline` is accepted by the API, but this client does not report snapshot
+  serving during an outage. The last server report cannot detect that offline
+  serve; the next online pass reports `current` or `applied`.

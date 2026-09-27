@@ -51,9 +51,11 @@ var SpecYAML []byte
 // Revision 4 adds public runtime maintenance status.
 // Revision 5 adds delivery-target condition reporting (report, tombstone,
 // list) and its `/meta` protocol capability.
-// Revision 6 adds generic file destinations (#164): file-target operations,
+// Revision 6 adds SSH user certificates (#155): CAs, profiles, issuance,
+// revocation, the host trust bundle and the KRL.
+// Revision 7 adds generic file destinations (#164): file-target operations,
 // the bound client's report and the delivery `target` parameter.
-const Revision = 6
+const Revision = 7
 
 // PathPrefix is the URL version prefix. A future break gets `/api/v2`; v1
 // explicitly does not plan one.

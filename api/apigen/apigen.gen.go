@@ -2291,6 +2291,159 @@ func (e RuntimeStatusState) Valid() bool {
 	}
 }
 
+// Defines values for SSHCAKeyOrigin.
+const (
+	SSHCAKeyOriginGenerated SSHCAKeyOrigin = "generated"
+	SSHCAKeyOriginImported  SSHCAKeyOrigin = "imported"
+)
+
+// Valid indicates whether the value is a known member of the SSHCAKeyOrigin enum.
+func (e SSHCAKeyOrigin) Valid() bool {
+	switch e {
+	case SSHCAKeyOriginGenerated:
+		return true
+	case SSHCAKeyOriginImported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SSHCAKeyState.
+const (
+	SSHCAKeyStateActive   SSHCAKeyState = "active"
+	SSHCAKeyStateRetired  SSHCAKeyState = "retired"
+	SSHCAKeyStateRetiring SSHCAKeyState = "retiring"
+)
+
+// Valid indicates whether the value is a known member of the SSHCAKeyState enum.
+func (e SSHCAKeyState) Valid() bool {
+	switch e {
+	case SSHCAKeyStateActive:
+		return true
+	case SSHCAKeyStateRetired:
+		return true
+	case SSHCAKeyStateRetiring:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SSHCertificateKeyOrigin.
+const (
+	SSHCertificateKeyOriginGenerated SSHCertificateKeyOrigin = "generated"
+	SSHCertificateKeyOriginSupplied  SSHCertificateKeyOrigin = "supplied"
+)
+
+// Valid indicates whether the value is a known member of the SSHCertificateKeyOrigin enum.
+func (e SSHCertificateKeyOrigin) Valid() bool {
+	switch e {
+	case SSHCertificateKeyOriginGenerated:
+		return true
+	case SSHCertificateKeyOriginSupplied:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SSHCertificateRevocationReason.
+const (
+	SSHCertificateRevocationReasonAuthorityWithdrawn SSHCertificateRevocationReason = "authority-withdrawn"
+	SSHCertificateRevocationReasonExplicit           SSHCertificateRevocationReason = "explicit"
+	SSHCertificateRevocationReasonLessThannil        SSHCertificateRevocationReason = "<nil>"
+	SSHCertificateRevocationReasonProfileDeleted     SSHCertificateRevocationReason = "profile-deleted"
+)
+
+// Valid indicates whether the value is a known member of the SSHCertificateRevocationReason enum.
+func (e SSHCertificateRevocationReason) Valid() bool {
+	switch e {
+	case SSHCertificateRevocationReasonAuthorityWithdrawn:
+		return true
+	case SSHCertificateRevocationReasonExplicit:
+		return true
+	case SSHCertificateRevocationReasonLessThannil:
+		return true
+	case SSHCertificateRevocationReasonProfileDeleted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SSHCertificateStatus.
+const (
+	SSHCertificateStatusActive    SSHCertificateStatus = "active"
+	SSHCertificateStatusExpired   SSHCertificateStatus = "expired"
+	SSHCertificateStatusRevoked   SSHCertificateStatus = "revoked"
+	SSHCertificateStatusUntrusted SSHCertificateStatus = "untrusted"
+)
+
+// Valid indicates whether the value is a known member of the SSHCertificateStatus enum.
+func (e SSHCertificateStatus) Valid() bool {
+	switch e {
+	case SSHCertificateStatusActive:
+		return true
+	case SSHCertificateStatusExpired:
+		return true
+	case SSHCertificateStatusRevoked:
+		return true
+	case SSHCertificateStatusUntrusted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SSHExtension.
+const (
+	PermitAgentForwarding SSHExtension = "permit-agent-forwarding"
+	PermitPortForwarding  SSHExtension = "permit-port-forwarding"
+	PermitPty             SSHExtension = "permit-pty"
+	PermitUserRc          SSHExtension = "permit-user-rc"
+	PermitX11Forwarding   SSHExtension = "permit-X11-forwarding"
+)
+
+// Valid indicates whether the value is a known member of the SSHExtension enum.
+func (e SSHExtension) Valid() bool {
+	switch e {
+	case PermitAgentForwarding:
+		return true
+	case PermitPortForwarding:
+		return true
+	case PermitPty:
+		return true
+	case PermitUserRc:
+		return true
+	case PermitX11Forwarding:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SSHKeyAlgorithm.
+const (
+	EcdsaP256 SSHKeyAlgorithm = "ecdsa-p256"
+	Ed25519   SSHKeyAlgorithm = "ed25519"
+	Rsa3072   SSHKeyAlgorithm = "rsa-3072"
+)
+
+// Valid indicates whether the value is a known member of the SSHKeyAlgorithm enum.
+func (e SSHKeyAlgorithm) Valid() bool {
+	switch e {
+	case EcdsaP256:
+		return true
+	case Ed25519:
+		return true
+	case Rsa3072:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SamlMetadataSource.
 const (
 	SamlMetadataSourceFile SamlMetadataSource = "file"
@@ -3349,7 +3502,7 @@ type Adapter struct {
 	Id     ID     `json:"id"`
 	Origin string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
 	Provider AdapterProvider `json:"provider"`
 	State    AdapterState    `json:"state"`
 	Targets  []AdapterTarget `json:"targets"`
@@ -3544,7 +3697,7 @@ type AdapterPlan struct {
 	Warnings   []string        `json:"warnings"`
 }
 
-// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+// AdapterProvider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
 type AdapterProvider = string
 
 // AdapterResume defines model for AdapterResume.
@@ -4380,7 +4533,7 @@ type CreateAdapterRequest struct {
 	Credential string `json:"credential"`
 	Origin     string `json:"origin"`
 
-	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server.
+	// Provider Open provider discriminator. Clients preserve unknown response values; creation requires a provider supported by the receiving server. sealed-webhook binds only to an origin an instance admin activated in the server's sealed webhook registry.
 	Provider AdapterProvider    `json:"provider"`
 	Target   AdapterTargetInput `json:"target"`
 }
@@ -4649,6 +4802,16 @@ type CreateProjectRequest struct {
 	// and is still refused by the server with `bad_request`. Clients that want
 	// to pre-validate must measure the UTF-8 encoding, not the string length.
 	Name EntityName `json:"name"`
+}
+
+// CreateSSHCARequest defines model for CreateSSHCARequest.
+type CreateSSHCARequest struct {
+	// Algorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+	Algorithm *SSHKeyAlgorithm `json:"algorithm,omitempty"`
+	Name      SSHName          `json:"name"`
+
+	// PrivateKey An unencrypted OpenSSH or PKCS#8 PEM private key to import. Omit to generate.
+	PrivateKey *string `json:"private_key,omitempty"`
 }
 
 // CreateScimBindingRequest defines model for CreateScimBindingRequest.
@@ -5009,7 +5172,7 @@ type DeliveryResponse struct {
 	// FileTargetGeneration Present when the fetch named a file target (#164): the target's
 	// configuration generation this delivery was narrowed under, on both
 	// dispositions, so the bound client can report exactly what it
-	// rendered. Added in API revision 6.
+	// rendered. Added in API revision 7.
 	FileTargetGeneration *int64 `json:"file_target_generation,omitempty"`
 
 	// IssuedAt RFC 3339 UTC, microsecond precision.
@@ -6169,6 +6332,26 @@ type InviteMemberRequest struct {
 
 	// Username The invitee's local login handle; globally unique.
 	Username string `json:"username"`
+}
+
+// IssueSSHCertificateRequest defines model for IssueSSHCertificateRequest.
+type IssueSSHCertificateRequest struct {
+	// Extensions A subset of the profile's extensions. Omit for the profile's set; an empty list asks for none.
+	Extensions *[]SSHExtension `json:"extensions,omitempty"`
+
+	// KeyAlgorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+	KeyAlgorithm *SSHKeyAlgorithm `json:"key_algorithm,omitempty"`
+
+	// Principals A subset of the profile's principals; required when it allows several.
+	Principals *[]string `json:"principals,omitempty"`
+
+	// ProfileId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProfileId ID `json:"profile_id"`
+
+	// PublicKey An authorized_keys line to certify. Omit to have a key pair generated.
+	PublicKey       *string   `json:"public_key,omitempty"`
+	SourceAddresses *[]string `json:"source_addresses,omitempty"`
+	TtlSeconds      *int64    `json:"ttl_seconds,omitempty"`
 }
 
 // IssuerType The federation issuer's platform. It is DECLARED rather than inferred
@@ -7806,6 +7989,18 @@ type RotateRootKeyRequest struct {
 // old wrapper. Run in that order.
 type RotateRootKeyRequestPhase string
 
+// RotateSSHCARequest defines model for RotateSSHCARequest.
+type RotateSSHCARequest struct {
+	// Algorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+	Algorithm *SSHKeyAlgorithm `json:"algorithm,omitempty"`
+
+	// OverlapSeconds How long the old key stays trusted. Defaults to the time until the latest expiry among the live certificates the old key signed, capped at 30 days.
+	OverlapSeconds *int64 `json:"overlap_seconds,omitempty"`
+
+	// PrivateKey An unencrypted private key to import as the new key. Omit to generate.
+	PrivateKey *string `json:"private_key,omitempty"`
+}
+
 // RuntimeStatus defines model for RuntimeStatus.
 type RuntimeStatus struct {
 	Phase *RuntimeStatusPhase `json:"phase"`
@@ -7817,6 +8012,204 @@ type RuntimeStatusPhase string
 
 // RuntimeStatusState defines model for RuntimeStatus.State.
 type RuntimeStatusState string
+
+// SSHCA defines model for SSHCA.
+type SSHCA struct {
+	// AuthorityPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	AuthorityPrincipalId ID `json:"authority_principal_id"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id ID `json:"id"`
+
+	// Keys Newest first. At most one key is active.
+	Keys []SSHCAKey `json:"keys"`
+	Name SSHName    `json:"name"`
+}
+
+// SSHCAKey defines model for SSHCAKey.
+type SSHCAKey struct {
+	// Algorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+	Algorithm SSHKeyAlgorithm `json:"algorithm"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// Fingerprint OpenSSH SHA256 fingerprint.
+	Fingerprint string `json:"fingerprint"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id     ID             `json:"id"`
+	Origin SSHCAKeyOrigin `json:"origin"`
+
+	// PublicKey The public key in authorized_keys format.
+	PublicKey string `json:"public_key"`
+
+	// RetireAfter End of the rotation overlap.
+	RetireAfter *time.Time    `json:"retire_after,omitempty"`
+	RetiredAt   *time.Time    `json:"retired_at,omitempty"`
+	RetiringAt  *time.Time    `json:"retiring_at,omitempty"`
+	State       SSHCAKeyState `json:"state"`
+
+	// Trusted Whether hosts following the trust bundle accept this key now.
+	Trusted bool `json:"trusted"`
+}
+
+// SSHCAKeyOrigin defines model for SSHCAKey.Origin.
+type SSHCAKeyOrigin string
+
+// SSHCAKeyState defines model for SSHCAKey.State.
+type SSHCAKeyState string
+
+// SSHCAList defines model for SSHCAList.
+type SSHCAList struct {
+	Items []SSHCA `json:"items"`
+}
+
+// SSHCertificate defines model for SSHCertificate.
+type SSHCertificate struct {
+	// CaId A prefixed UUIDv7, e.g. `org_0198…`.
+	CaId ID `json:"ca_id"`
+
+	// CaKeyId A prefixed UUIDv7, e.g. `org_0198…`.
+	CaKeyId ID `json:"ca_key_id"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt Timestamp `json:"created_at"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id    ID   `json:"id"`
+	InKrl bool `json:"in_krl"`
+
+	// KeyAlgorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+	KeyAlgorithm SSHKeyAlgorithm         `json:"key_algorithm"`
+	KeyId        string                  `json:"key_id"`
+	KeyOrigin    SSHCertificateKeyOrigin `json:"key_origin"`
+	Principals   []string                `json:"principals"`
+
+	// ProfileId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProfileId            ID     `json:"profile_id"`
+	PublicKeyFingerprint string `json:"public_key_fingerprint"`
+	RequesterClass       string `json:"requester_class"`
+
+	// RequesterPrincipalId A prefixed UUIDv7, e.g. `org_0198…`.
+	RequesterPrincipalId ID                              `json:"requester_principal_id"`
+	RevocationReason     *SSHCertificateRevocationReason `json:"revocation_reason,omitempty"`
+	RevokedAt            *time.Time                      `json:"revoked_at,omitempty"`
+
+	// Serial The certificate serial as a decimal string (64-bit).
+	Serial string `json:"serial"`
+
+	// Status revoked: cryptographically revoked (in_krl says whether the KRL
+	// still needs to carry it); expired: past valid_before; untrusted:
+	// its signing key was retired or its CA deleted, so hosts that follow
+	// the trust bundle refuse it; active: none of these.
+	Status SSHCertificateStatus `json:"status"`
+
+	// ValidAfter RFC 3339 UTC, microsecond precision.
+	ValidAfter Timestamp `json:"valid_after"`
+
+	// ValidBefore RFC 3339 UTC, microsecond precision.
+	ValidBefore Timestamp `json:"valid_before"`
+}
+
+// SSHCertificateKeyOrigin defines model for SSHCertificate.KeyOrigin.
+type SSHCertificateKeyOrigin string
+
+// SSHCertificateRevocationReason defines model for SSHCertificate.RevocationReason.
+type SSHCertificateRevocationReason string
+
+// SSHCertificateStatus revoked: cryptographically revoked (in_krl says whether the KRL
+// still needs to carry it); expired: past valid_before; untrusted:
+// its signing key was retired or its CA deleted, so hosts that follow
+// the trust bundle refuse it; active: none of these.
+type SSHCertificateStatus string
+
+// SSHCertificateIssue defines model for SSHCertificateIssue.
+type SSHCertificateIssue struct {
+	Certificate SSHCertificate `json:"certificate"`
+
+	// CertificateText The certificate in authorized_keys format (save as <key>-cert.pub).
+	CertificateText string `json:"certificate_text"`
+
+	// PrivateKey For a generated key only: the OpenSSH private key, returned EXACTLY
+	// ONCE to exactly one caller and never stored. No other route returns it.
+	PrivateKey *string `json:"private_key,omitempty"`
+	PublicKey  string  `json:"public_key"`
+}
+
+// SSHCertificateList defines model for SSHCertificateList.
+type SSHCertificateList struct {
+	Items []SSHCertificate `json:"items"`
+}
+
+// SSHExtension defines model for SSHExtension.
+type SSHExtension string
+
+// SSHKeyAlgorithm The closed key algorithm set; rsa-3072 means RSA of at least 3072 bits.
+type SSHKeyAlgorithm string
+
+// SSHName defines model for SSHName.
+type SSHName = string
+
+// SSHProfile defines model for SSHProfile.
+type SSHProfile struct {
+	// CaId A prefixed UUIDv7, e.g. `org_0198…`.
+	CaId ID `json:"ca_id"`
+
+	// CreatedAt RFC 3339 UTC, microsecond precision.
+	CreatedAt         Timestamp      `json:"created_at"`
+	DefaultTtlSeconds int64          `json:"default_ttl_seconds"`
+	Enabled           bool           `json:"enabled"`
+	Extensions        []SSHExtension `json:"extensions"`
+	ForceCommand      string         `json:"force_command"`
+
+	// Id A prefixed UUIDv7, e.g. `org_0198…`.
+	Id              ID                `json:"id"`
+	KeyAlgorithms   []SSHKeyAlgorithm `json:"key_algorithms"`
+	MaxTtlSeconds   int64             `json:"max_ttl_seconds"`
+	Name            SSHName           `json:"name"`
+	Principals      []string          `json:"principals"`
+	Requesters      []ID              `json:"requesters"`
+	SourceAddresses []string          `json:"source_addresses"`
+
+	// UpdatedAt RFC 3339 UTC, microsecond precision.
+	UpdatedAt Timestamp `json:"updated_at"`
+}
+
+// SSHProfileDeletion defines model for SSHProfileDeletion.
+type SSHProfileDeletion struct {
+	// ProfileId A prefixed UUIDv7, e.g. `org_0198…`.
+	ProfileId               ID    `json:"profile_id"`
+	RevokedCertificateCount int64 `json:"revoked_certificate_count"`
+}
+
+// SSHProfileList defines model for SSHProfileList.
+type SSHProfileList struct {
+	Items []SSHProfile `json:"items"`
+}
+
+// SSHProfileRequest defines model for SSHProfileRequest.
+type SSHProfileRequest struct {
+	// CaId A prefixed UUIDv7, e.g. `org_0198…`.
+	CaId              ID                `json:"ca_id"`
+	DefaultTtlSeconds int64             `json:"default_ttl_seconds"`
+	Enabled           *bool             `json:"enabled,omitempty"`
+	Extensions        *[]SSHExtension   `json:"extensions,omitempty"`
+	ForceCommand      *string           `json:"force_command,omitempty"`
+	KeyAlgorithms     []SSHKeyAlgorithm `json:"key_algorithms"`
+	MaxTtlSeconds     int64             `json:"max_ttl_seconds"`
+	Name              SSHName           `json:"name"`
+	Principals        []string          `json:"principals"`
+
+	// Requesters The principals allowed to request certificates through this profile.
+	Requesters *[]ID `json:"requesters,omitempty"`
+
+	// SourceAddresses CIDRs a certificate is bound to (source-address); a request may only narrow them.
+	SourceAddresses *[]string `json:"source_addresses,omitempty"`
+}
 
 // SamlACSRequest defines model for SamlACSRequest.
 type SamlACSRequest struct {
@@ -9309,6 +9702,18 @@ type RevisionBefore = int64
 // RevisionLimit defines model for RevisionLimit.
 type RevisionLimit = int
 
+// SSHCAID A prefixed UUIDv7, e.g. `org_0198…`.
+type SSHCAID = ID
+
+// SSHCAKeyID A prefixed UUIDv7, e.g. `org_0198…`.
+type SSHCAKeyID = ID
+
+// SSHCertificateID A prefixed UUIDv7, e.g. `org_0198…`.
+type SSHCertificateID = ID
+
+// SSHProfileID A prefixed UUIDv7, e.g. `org_0198…`.
+type SSHProfileID = ID
+
 // ScimBindingID A prefixed UUIDv7, e.g. `org_0198…`.
 type ScimBindingID = ID
 
@@ -9843,7 +10248,7 @@ type FetchDeliveryParams struct {
 	// account is delivered that target's key selection only and must name
 	// it (400 otherwise); naming a target the caller is not bound to, or one
 	// in another environment, is the uniform 404. Unbound callers omit it.
-	// Added in API revision 6.
+	// Added in API revision 7.
 	Target *DeliveryFileTarget `form:"target,omitempty" json:"target,omitempty"`
 
 	// Parameters JSON object of public parameter names and string values. All declared parameters are required. Never supply secrets.
@@ -9878,6 +10283,12 @@ type ListRevisionsParams struct {
 
 	// Limit Maximum revisions returned on this page.
 	Limit *RevisionLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// DeleteSshProfileParams defines parameters for DeleteSshProfile.
+type DeleteSshProfileParams struct {
+	// RevokeIssued Also revoke every live certificate issued through this profile.
+	RevokeIssued *bool `form:"revoke_issued,omitempty" json:"revoke_issued,omitempty"`
 }
 
 // RevokeProjectGrantParams defines parameters for RevokeProjectGrant.
@@ -10276,6 +10687,21 @@ type RollbackRevisionJSONRequestBody = RollbackRequest
 
 // SetEnvironmentSettingsJSONRequestBody defines body for SetEnvironmentSettings for application/json ContentType.
 type SetEnvironmentSettingsJSONRequestBody = EnvironmentSettings
+
+// CreateSshCaJSONRequestBody defines body for CreateSshCa for application/json ContentType.
+type CreateSshCaJSONRequestBody = CreateSSHCARequest
+
+// RotateSshCaJSONRequestBody defines body for RotateSshCa for application/json ContentType.
+type RotateSshCaJSONRequestBody = RotateSSHCARequest
+
+// IssueSshCertificateJSONRequestBody defines body for IssueSshCertificate for application/json ContentType.
+type IssueSshCertificateJSONRequestBody = IssueSSHCertificateRequest
+
+// CreateSshProfileJSONRequestBody defines body for CreateSshProfile for application/json ContentType.
+type CreateSshProfileJSONRequestBody = SSHProfileRequest
+
+// UpdateSshProfileJSONRequestBody defines body for UpdateSshProfile for application/json ContentType.
+type UpdateSshProfileJSONRequestBody = SSHProfileRequest
 
 // ExportValuesJSONRequestBody defines body for ExportValues for application/json ContentType.
 type ExportValuesJSONRequestBody = ExportValuesRequest
@@ -11303,6 +11729,57 @@ type ServerInterface interface {
 	// GetEnvironmentSignals The matrix signals for one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals)
 	GetEnvironmentSignals(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ListSshCas List an environment's SSH user CAs and their public keys.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas)
+	ListSshCas(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CreateSshCa Create an SSH user CA with a generated key, or import one; the private key is write-only.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas)
+	CreateSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// DeleteSshCa Delete a CA and destroy its signing material; record deletion, not revocation.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA})
+	DeleteSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID)
+	// ShowSshCa Show one SSH CA, its keys and which of them hosts trust now.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA})
+	ShowSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID)
+	// RetireSshCaKey End a retiring key's overlap now; it leaves the trust bundle.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire)
+	RetireSshCaKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID, sshCAKey SSHCAKeyID)
+	// GetSshKrl The CA's OpenSSH Key Revocation List for sshd RevokedKeys.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl)
+	GetSshKrl(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID)
+	// RotateSshCa Rotate a CA to a new key; the old key stays trusted, never signing, for a bounded overlap.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate)
+	RotateSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID)
+	// GetSshTrustedKeys The CA's host trust bundle in sshd TrustedUserCAKeys format.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys)
+	GetSshTrustedKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID)
+	// ListSshCertificates List an environment's most recent certificates with derived status.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates)
+	ListSshCertificates(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// IssueSshCertificate Issue one short-lived SSH user certificate through a profile.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates)
+	IssueSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// ShowSshCertificate Show one certificate record and its derived status.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate})
+	ShowSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCertificate SSHCertificateID)
+	// RevokeSshCertificate Revoke a certificate; its serial enters the CA's KRL. Idempotent.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke)
+	RevokeSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCertificate SSHCertificateID)
+	// ListSshProfiles List an environment's SSH certificate profiles.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles)
+	ListSshProfiles(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// CreateSshProfile Create a profile bounding principals, options, extensions, algorithms, TTL and requesters.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles)
+	CreateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
+	// DeleteSshProfile Delete a profile; issued certificates stay valid unless revoke_issued.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+	DeleteSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID, params DeleteSshProfileParams)
+	// ShowSshProfile Show one SSH certificate profile.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+	ShowSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID)
+	// UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+	UpdateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID)
 	// ListValues The environment's resolved values.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values)
 	ListValues(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID)
@@ -12815,6 +13292,108 @@ func (_ Unimplemented) SetEnvironmentSettings(w http.ResponseWriter, r *http.Req
 // GetEnvironmentSignals The matrix signals for one environment.
 // (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals)
 func (_ Unimplemented) GetEnvironmentSignals(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListSshCas List an environment's SSH user CAs and their public keys.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas)
+func (_ Unimplemented) ListSshCas(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateSshCa Create an SSH user CA with a generated key, or import one; the private key is write-only.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas)
+func (_ Unimplemented) CreateSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteSshCa Delete a CA and destroy its signing material; record deletion, not revocation.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA})
+func (_ Unimplemented) DeleteSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowSshCa Show one SSH CA, its keys and which of them hosts trust now.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA})
+func (_ Unimplemented) ShowSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RetireSshCaKey End a retiring key's overlap now; it leaves the trust bundle.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire)
+func (_ Unimplemented) RetireSshCaKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID, sshCAKey SSHCAKeyID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetSshKrl The CA's OpenSSH Key Revocation List for sshd RevokedKeys.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl)
+func (_ Unimplemented) GetSshKrl(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RotateSshCa Rotate a CA to a new key; the old key stays trusted, never signing, for a bounded overlap.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate)
+func (_ Unimplemented) RotateSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetSshTrustedKeys The CA's host trust bundle in sshd TrustedUserCAKeys format.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys)
+func (_ Unimplemented) GetSshTrustedKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListSshCertificates List an environment's most recent certificates with derived status.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates)
+func (_ Unimplemented) ListSshCertificates(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// IssueSshCertificate Issue one short-lived SSH user certificate through a profile.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates)
+func (_ Unimplemented) IssueSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowSshCertificate Show one certificate record and its derived status.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate})
+func (_ Unimplemented) ShowSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCertificate SSHCertificateID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RevokeSshCertificate Revoke a certificate; its serial enters the CA's KRL. Idempotent.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke)
+func (_ Unimplemented) RevokeSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCertificate SSHCertificateID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ListSshProfiles List an environment's SSH certificate profiles.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles)
+func (_ Unimplemented) ListSshProfiles(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CreateSshProfile Create a profile bounding principals, options, extensions, algorithms, TTL and requesters.
+// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles)
+func (_ Unimplemented) CreateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeleteSshProfile Delete a profile; issued certificates stay valid unless revoke_issued.
+// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+func (_ Unimplemented) DeleteSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID, params DeleteSshProfileParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ShowSshProfile Show one SSH certificate profile.
+// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+func (_ Unimplemented) ShowSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
+// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+func (_ Unimplemented) UpdateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -20564,6 +21143,878 @@ func (siw *ServerInterfaceWrapper) GetEnvironmentSignals(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// ListSshCas operation middleware
+func (siw *ServerInterfaceWrapper) ListSshCas(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSshCas(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSshCa operation middleware
+func (siw *ServerInterfaceWrapper) CreateSshCa(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSshCa(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSshCa operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSshCa(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCA" -------------
+	var sshCA SSHCAID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCA", chi.URLParam(r, "sshCA"), &sshCA, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCA", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSshCa(w, r, org, project, environment, sshCA)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowSshCa operation middleware
+func (siw *ServerInterfaceWrapper) ShowSshCa(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCA" -------------
+	var sshCA SSHCAID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCA", chi.URLParam(r, "sshCA"), &sshCA, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCA", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowSshCa(w, r, org, project, environment, sshCA)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetireSshCaKey operation middleware
+func (siw *ServerInterfaceWrapper) RetireSshCaKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCA" -------------
+	var sshCA SSHCAID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCA", chi.URLParam(r, "sshCA"), &sshCA, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCA", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCAKey" -------------
+	var sshCAKey SSHCAKeyID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCAKey", chi.URLParam(r, "sshCAKey"), &sshCAKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCAKey", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetireSshCaKey(w, r, org, project, environment, sshCA, sshCAKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSshKrl operation middleware
+func (siw *ServerInterfaceWrapper) GetSshKrl(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCA" -------------
+	var sshCA SSHCAID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCA", chi.URLParam(r, "sshCA"), &sshCA, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCA", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSshKrl(w, r, org, project, environment, sshCA)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RotateSshCa operation middleware
+func (siw *ServerInterfaceWrapper) RotateSshCa(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCA" -------------
+	var sshCA SSHCAID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCA", chi.URLParam(r, "sshCA"), &sshCA, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCA", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RotateSshCa(w, r, org, project, environment, sshCA)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSshTrustedKeys operation middleware
+func (siw *ServerInterfaceWrapper) GetSshTrustedKeys(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCA" -------------
+	var sshCA SSHCAID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCA", chi.URLParam(r, "sshCA"), &sshCA, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCA", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSshTrustedKeys(w, r, org, project, environment, sshCA)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSshCertificates operation middleware
+func (siw *ServerInterfaceWrapper) ListSshCertificates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSshCertificates(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// IssueSshCertificate operation middleware
+func (siw *ServerInterfaceWrapper) IssueSshCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.IssueSshCertificate(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowSshCertificate operation middleware
+func (siw *ServerInterfaceWrapper) ShowSshCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCertificate" -------------
+	var sshCertificate SSHCertificateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCertificate", chi.URLParam(r, "sshCertificate"), &sshCertificate, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCertificate", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowSshCertificate(w, r, org, project, environment, sshCertificate)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeSshCertificate operation middleware
+func (siw *ServerInterfaceWrapper) RevokeSshCertificate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshCertificate" -------------
+	var sshCertificate SSHCertificateID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshCertificate", chi.URLParam(r, "sshCertificate"), &sshCertificate, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshCertificate", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeSshCertificate(w, r, org, project, environment, sshCertificate)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSshProfiles operation middleware
+func (siw *ServerInterfaceWrapper) ListSshProfiles(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSshProfiles(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSshProfile operation middleware
+func (siw *ServerInterfaceWrapper) CreateSshProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSshProfile(w, r, org, project, environment)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSshProfile operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSshProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshProfile" -------------
+	var sshProfile SSHProfileID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshProfile", chi.URLParam(r, "sshProfile"), &sshProfile, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshProfile", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteSshProfileParams
+
+	// ------------- Optional query parameter "revoke_issued" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "revoke_issued", r.URL.Query(), &params.RevokeIssued, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "revoke_issued"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "revoke_issued", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSshProfile(w, r, org, project, environment, sshProfile, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ShowSshProfile operation middleware
+func (siw *ServerInterfaceWrapper) ShowSshProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshProfile" -------------
+	var sshProfile SSHProfileID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshProfile", chi.URLParam(r, "sshProfile"), &sshProfile, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshProfile", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ShowSshProfile(w, r, org, project, environment, sshProfile)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSshProfile operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSshProfile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "org" -------------
+	var org OrgID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "org", chi.URLParam(r, "org"), &org, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", chi.URLParam(r, "project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "environment" -------------
+	var environment EnvironmentID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "environment", chi.URLParam(r, "environment"), &environment, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "environment", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sshProfile" -------------
+	var sshProfile SSHProfileID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sshProfile", chi.URLParam(r, "sshProfile"), &sshProfile, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sshProfile", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSshProfile(w, r, org, project, environment, sshProfile)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListValues operation middleware
 func (siw *ServerInterfaceWrapper) ListValues(w http.ResponseWriter, r *http.Request) {
 
@@ -25382,6 +26833,57 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/leases/{lease}/settle", wrapper.SettleLease)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas", wrapper.ListSshCas)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas", wrapper.CreateSshCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}", wrapper.DeleteSshCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}", wrapper.ShowSshCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate", wrapper.RotateSshCa)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire", wrapper.RetireSshCaKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys", wrapper.GetSshTrustedKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl", wrapper.GetSshKrl)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles", wrapper.ListSshProfiles)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles", wrapper.CreateSshProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.DeleteSshProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.ShowSshProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile}", wrapper.UpdateSshProfile)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates", wrapper.ListSshCertificates)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates", wrapper.IssueSshCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}", wrapper.ShowSshCertificate)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke", wrapper.RevokeSshCertificate)
 	})
 
 	return r
@@ -45293,6 +46795,20 @@ func (response ReportFileTarget404JSONResponse) VisitReportFileTargetResponse(w 
 	return err
 }
 
+type ReportFileTarget409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ReportFileTarget409JSONResponse) VisitReportFileTargetResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReportFileTarget429JSONResponse struct{ TooManyRequestsJSONResponse }
 
 func (response ReportFileTarget429JSONResponse) VisitReportFileTargetResponse(w http.ResponseWriter) error {
@@ -48063,6 +49579,1594 @@ func (response GetEnvironmentSignals500JSONResponse) VisitGetEnvironmentSignalsR
 type GetEnvironmentSignals503JSONResponse struct{ ServiceUnavailableJSONResponse }
 
 func (response GetEnvironmentSignals503JSONResponse) VisitGetEnvironmentSignalsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCasRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListSshCasResponseObject interface {
+	VisitListSshCasResponse(w http.ResponseWriter) error
+}
+
+type ListSshCas200JSONResponse SSHCAList
+
+func (response ListSshCas200JSONResponse) VisitListSshCasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCas401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListSshCas401JSONResponse) VisitListSshCasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCas404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListSshCas404JSONResponse) VisitListSshCasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCas500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListSshCas500JSONResponse) VisitListSshCasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCas503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListSshCas503JSONResponse) VisitListSshCasResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshCaRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *CreateSshCaJSONRequestBody
+}
+
+type CreateSshCaResponseObject interface {
+	VisitCreateSshCaResponse(w http.ResponseWriter) error
+}
+
+type CreateSshCa201JSONResponse SSHCA
+
+func (response CreateSshCa201JSONResponse) VisitCreateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshCa400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateSshCa400JSONResponse) VisitCreateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshCa401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateSshCa401JSONResponse) VisitCreateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshCa404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateSshCa404JSONResponse) VisitCreateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshCa409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateSshCa409JSONResponse) VisitCreateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshCa500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateSshCa500JSONResponse) VisitCreateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshCa503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateSshCa503JSONResponse) VisitCreateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshCaRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshCA       SSHCAID       `json:"sshCA"`
+}
+
+type DeleteSshCaResponseObject interface {
+	VisitDeleteSshCaResponse(w http.ResponseWriter) error
+}
+
+type DeleteSshCa204Response struct {
+}
+
+func (response DeleteSshCa204Response) VisitDeleteSshCaResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSshCa401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteSshCa401JSONResponse) VisitDeleteSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshCa404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteSshCa404JSONResponse) VisitDeleteSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshCa409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteSshCa409JSONResponse) VisitDeleteSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshCa500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteSshCa500JSONResponse) VisitDeleteSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshCa503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteSshCa503JSONResponse) VisitDeleteSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCaRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshCA       SSHCAID       `json:"sshCA"`
+}
+
+type ShowSshCaResponseObject interface {
+	VisitShowSshCaResponse(w http.ResponseWriter) error
+}
+
+type ShowSshCa200JSONResponse SSHCA
+
+func (response ShowSshCa200JSONResponse) VisitShowSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCa401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowSshCa401JSONResponse) VisitShowSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCa404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowSshCa404JSONResponse) VisitShowSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCa500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowSshCa500JSONResponse) VisitShowSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCa503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowSshCa503JSONResponse) VisitShowSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireSshCaKeyRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshCA       SSHCAID       `json:"sshCA"`
+	SshCAKey    SSHCAKeyID    `json:"sshCAKey"`
+}
+
+type RetireSshCaKeyResponseObject interface {
+	VisitRetireSshCaKeyResponse(w http.ResponseWriter) error
+}
+
+type RetireSshCaKey200JSONResponse SSHCA
+
+func (response RetireSshCaKey200JSONResponse) VisitRetireSshCaKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireSshCaKey401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RetireSshCaKey401JSONResponse) VisitRetireSshCaKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireSshCaKey404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RetireSshCaKey404JSONResponse) VisitRetireSshCaKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireSshCaKey409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RetireSshCaKey409JSONResponse) VisitRetireSshCaKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireSshCaKey500JSONResponse struct{ InternalJSONResponse }
+
+func (response RetireSshCaKey500JSONResponse) VisitRetireSshCaKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RetireSshCaKey503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RetireSshCaKey503JSONResponse) VisitRetireSshCaKeyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshKrlRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshCA       SSHCAID       `json:"sshCA"`
+}
+
+type GetSshKrlResponseObject interface {
+	VisitGetSshKrlResponse(w http.ResponseWriter) error
+}
+
+type GetSshKrl200ApplicationoctetStreamResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response GetSshKrl200ApplicationoctetStreamResponse) VisitGetSshKrlResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type GetSshKrl401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSshKrl401JSONResponse) VisitGetSshKrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshKrl404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSshKrl404JSONResponse) VisitGetSshKrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshKrl409JSONResponse struct{ ConflictJSONResponse }
+
+func (response GetSshKrl409JSONResponse) VisitGetSshKrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshKrl500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetSshKrl500JSONResponse) VisitGetSshKrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshKrl503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetSshKrl503JSONResponse) VisitGetSshKrlResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateSshCaRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshCA       SSHCAID       `json:"sshCA"`
+	Body        *RotateSshCaJSONRequestBody
+}
+
+type RotateSshCaResponseObject interface {
+	VisitRotateSshCaResponse(w http.ResponseWriter) error
+}
+
+type RotateSshCa200JSONResponse SSHCA
+
+func (response RotateSshCa200JSONResponse) VisitRotateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateSshCa400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response RotateSshCa400JSONResponse) VisitRotateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateSshCa401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RotateSshCa401JSONResponse) VisitRotateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateSshCa404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RotateSshCa404JSONResponse) VisitRotateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateSshCa409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RotateSshCa409JSONResponse) VisitRotateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateSshCa500JSONResponse struct{ InternalJSONResponse }
+
+func (response RotateSshCa500JSONResponse) VisitRotateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RotateSshCa503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RotateSshCa503JSONResponse) VisitRotateSshCaResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshTrustedKeysRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshCA       SSHCAID       `json:"sshCA"`
+}
+
+type GetSshTrustedKeysResponseObject interface {
+	VisitGetSshTrustedKeysResponse(w http.ResponseWriter) error
+}
+
+type GetSshTrustedKeys200TextResponse string
+
+func (response GetSshTrustedKeys200TextResponse) VisitGetSshTrustedKeysResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(200)
+
+	_, err := w.Write([]byte(fmt.Sprint(response)))
+	return err
+}
+
+type GetSshTrustedKeys401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response GetSshTrustedKeys401JSONResponse) VisitGetSshTrustedKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshTrustedKeys404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetSshTrustedKeys404JSONResponse) VisitGetSshTrustedKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshTrustedKeys500JSONResponse struct{ InternalJSONResponse }
+
+func (response GetSshTrustedKeys500JSONResponse) VisitGetSshTrustedKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSshTrustedKeys503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response GetSshTrustedKeys503JSONResponse) VisitGetSshTrustedKeysResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCertificatesRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListSshCertificatesResponseObject interface {
+	VisitListSshCertificatesResponse(w http.ResponseWriter) error
+}
+
+type ListSshCertificates200JSONResponse SSHCertificateList
+
+func (response ListSshCertificates200JSONResponse) VisitListSshCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCertificates401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListSshCertificates401JSONResponse) VisitListSshCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCertificates404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListSshCertificates404JSONResponse) VisitListSshCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCertificates500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListSshCertificates500JSONResponse) VisitListSshCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshCertificates503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListSshCertificates503JSONResponse) VisitListSshCertificatesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueSshCertificateRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *IssueSshCertificateJSONRequestBody
+}
+
+type IssueSshCertificateResponseObject interface {
+	VisitIssueSshCertificateResponse(w http.ResponseWriter) error
+}
+
+type IssueSshCertificate200JSONResponse SSHCertificateIssue
+
+func (response IssueSshCertificate200JSONResponse) VisitIssueSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueSshCertificate400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response IssueSshCertificate400JSONResponse) VisitIssueSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueSshCertificate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response IssueSshCertificate401JSONResponse) VisitIssueSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueSshCertificate403JSONResponse struct{ ForbiddenJSONResponse }
+
+func (response IssueSshCertificate403JSONResponse) VisitIssueSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueSshCertificate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response IssueSshCertificate404JSONResponse) VisitIssueSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueSshCertificate409JSONResponse struct{ ConflictJSONResponse }
+
+func (response IssueSshCertificate409JSONResponse) VisitIssueSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueSshCertificate500JSONResponse struct{ InternalJSONResponse }
+
+func (response IssueSshCertificate500JSONResponse) VisitIssueSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type IssueSshCertificate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response IssueSshCertificate503JSONResponse) VisitIssueSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCertificateRequestObject struct {
+	Org            OrgID            `json:"org"`
+	Project        ProjectID        `json:"project"`
+	Environment    EnvironmentID    `json:"environment"`
+	SshCertificate SSHCertificateID `json:"sshCertificate"`
+}
+
+type ShowSshCertificateResponseObject interface {
+	VisitShowSshCertificateResponse(w http.ResponseWriter) error
+}
+
+type ShowSshCertificate200JSONResponse SSHCertificate
+
+func (response ShowSshCertificate200JSONResponse) VisitShowSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCertificate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowSshCertificate401JSONResponse) VisitShowSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCertificate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowSshCertificate404JSONResponse) VisitShowSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCertificate500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowSshCertificate500JSONResponse) VisitShowSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshCertificate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowSshCertificate503JSONResponse) VisitShowSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeSshCertificateRequestObject struct {
+	Org            OrgID            `json:"org"`
+	Project        ProjectID        `json:"project"`
+	Environment    EnvironmentID    `json:"environment"`
+	SshCertificate SSHCertificateID `json:"sshCertificate"`
+}
+
+type RevokeSshCertificateResponseObject interface {
+	VisitRevokeSshCertificateResponse(w http.ResponseWriter) error
+}
+
+type RevokeSshCertificate200JSONResponse SSHCertificate
+
+func (response RevokeSshCertificate200JSONResponse) VisitRevokeSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeSshCertificate401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response RevokeSshCertificate401JSONResponse) VisitRevokeSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeSshCertificate404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RevokeSshCertificate404JSONResponse) VisitRevokeSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeSshCertificate500JSONResponse struct{ InternalJSONResponse }
+
+func (response RevokeSshCertificate500JSONResponse) VisitRevokeSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeSshCertificate503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response RevokeSshCertificate503JSONResponse) VisitRevokeSshCertificateResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshProfilesRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+}
+
+type ListSshProfilesResponseObject interface {
+	VisitListSshProfilesResponse(w http.ResponseWriter) error
+}
+
+type ListSshProfiles200JSONResponse SSHProfileList
+
+func (response ListSshProfiles200JSONResponse) VisitListSshProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshProfiles401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ListSshProfiles401JSONResponse) VisitListSshProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshProfiles404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListSshProfiles404JSONResponse) VisitListSshProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshProfiles500JSONResponse struct{ InternalJSONResponse }
+
+func (response ListSshProfiles500JSONResponse) VisitListSshProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSshProfiles503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ListSshProfiles503JSONResponse) VisitListSshProfilesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshProfileRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	Body        *CreateSshProfileJSONRequestBody
+}
+
+type CreateSshProfileResponseObject interface {
+	VisitCreateSshProfileResponse(w http.ResponseWriter) error
+}
+
+type CreateSshProfile201JSONResponse SSHProfile
+
+func (response CreateSshProfile201JSONResponse) VisitCreateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateSshProfile400JSONResponse) VisitCreateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response CreateSshProfile401JSONResponse) VisitCreateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateSshProfile404JSONResponse) VisitCreateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateSshProfile409JSONResponse) VisitCreateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response CreateSshProfile500JSONResponse) VisitCreateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSshProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response CreateSshProfile503JSONResponse) VisitCreateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshProfileRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshProfile  SSHProfileID  `json:"sshProfile"`
+	Params      DeleteSshProfileParams
+}
+
+type DeleteSshProfileResponseObject interface {
+	VisitDeleteSshProfileResponse(w http.ResponseWriter) error
+}
+
+type DeleteSshProfile200JSONResponse SSHProfileDeletion
+
+func (response DeleteSshProfile200JSONResponse) VisitDeleteSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response DeleteSshProfile401JSONResponse) VisitDeleteSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteSshProfile404JSONResponse) VisitDeleteSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response DeleteSshProfile500JSONResponse) VisitDeleteSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSshProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response DeleteSshProfile503JSONResponse) VisitDeleteSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshProfileRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshProfile  SSHProfileID  `json:"sshProfile"`
+}
+
+type ShowSshProfileResponseObject interface {
+	VisitShowSshProfileResponse(w http.ResponseWriter) error
+}
+
+type ShowSshProfile200JSONResponse SSHProfile
+
+func (response ShowSshProfile200JSONResponse) VisitShowSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response ShowSshProfile401JSONResponse) VisitShowSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ShowSshProfile404JSONResponse) VisitShowSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response ShowSshProfile500JSONResponse) VisitShowSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ShowSshProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response ShowSshProfile503JSONResponse) VisitShowSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", fmt.Sprint(response.Headers.RetryAfter))
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSshProfileRequestObject struct {
+	Org         OrgID         `json:"org"`
+	Project     ProjectID     `json:"project"`
+	Environment EnvironmentID `json:"environment"`
+	SshProfile  SSHProfileID  `json:"sshProfile"`
+	Body        *UpdateSshProfileJSONRequestBody
+}
+
+type UpdateSshProfileResponseObject interface {
+	VisitUpdateSshProfileResponse(w http.ResponseWriter) error
+}
+
+type UpdateSshProfile200JSONResponse SSHProfile
+
+func (response UpdateSshProfile200JSONResponse) VisitUpdateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSshProfile400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response UpdateSshProfile400JSONResponse) VisitUpdateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSshProfile401JSONResponse struct{ UnauthenticatedJSONResponse }
+
+func (response UpdateSshProfile401JSONResponse) VisitUpdateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSshProfile404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response UpdateSshProfile404JSONResponse) VisitUpdateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSshProfile409JSONResponse struct{ ConflictJSONResponse }
+
+func (response UpdateSshProfile409JSONResponse) VisitUpdateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSshProfile500JSONResponse struct{ InternalJSONResponse }
+
+func (response UpdateSshProfile500JSONResponse) VisitUpdateSshProfileResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSshProfile503JSONResponse struct{ ServiceUnavailableJSONResponse }
+
+func (response UpdateSshProfile503JSONResponse) VisitUpdateSshProfileResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -59128,6 +62232,57 @@ type StrictServerInterface interface {
 	// GetEnvironmentSignals The matrix signals for one environment.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/signals)
 	GetEnvironmentSignals(ctx context.Context, request GetEnvironmentSignalsRequestObject) (GetEnvironmentSignalsResponseObject, error)
+	// ListSshCas List an environment's SSH user CAs and their public keys.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas)
+	ListSshCas(ctx context.Context, request ListSshCasRequestObject) (ListSshCasResponseObject, error)
+	// CreateSshCa Create an SSH user CA with a generated key, or import one; the private key is write-only.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas)
+	CreateSshCa(ctx context.Context, request CreateSshCaRequestObject) (CreateSshCaResponseObject, error)
+	// DeleteSshCa Delete a CA and destroy its signing material; record deletion, not revocation.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA})
+	DeleteSshCa(ctx context.Context, request DeleteSshCaRequestObject) (DeleteSshCaResponseObject, error)
+	// ShowSshCa Show one SSH CA, its keys and which of them hosts trust now.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA})
+	ShowSshCa(ctx context.Context, request ShowSshCaRequestObject) (ShowSshCaResponseObject, error)
+	// RetireSshCaKey End a retiring key's overlap now; it leaves the trust bundle.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/keys/{sshCAKey}/retire)
+	RetireSshCaKey(ctx context.Context, request RetireSshCaKeyRequestObject) (RetireSshCaKeyResponseObject, error)
+	// GetSshKrl The CA's OpenSSH Key Revocation List for sshd RevokedKeys.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/krl)
+	GetSshKrl(ctx context.Context, request GetSshKrlRequestObject) (GetSshKrlResponseObject, error)
+	// RotateSshCa Rotate a CA to a new key; the old key stays trusted, never signing, for a bounded overlap.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/rotate)
+	RotateSshCa(ctx context.Context, request RotateSshCaRequestObject) (RotateSshCaResponseObject, error)
+	// GetSshTrustedKeys The CA's host trust bundle in sshd TrustedUserCAKeys format.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-cas/{sshCA}/trusted-keys)
+	GetSshTrustedKeys(ctx context.Context, request GetSshTrustedKeysRequestObject) (GetSshTrustedKeysResponseObject, error)
+	// ListSshCertificates List an environment's most recent certificates with derived status.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates)
+	ListSshCertificates(ctx context.Context, request ListSshCertificatesRequestObject) (ListSshCertificatesResponseObject, error)
+	// IssueSshCertificate Issue one short-lived SSH user certificate through a profile.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates)
+	IssueSshCertificate(ctx context.Context, request IssueSshCertificateRequestObject) (IssueSshCertificateResponseObject, error)
+	// ShowSshCertificate Show one certificate record and its derived status.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate})
+	ShowSshCertificate(ctx context.Context, request ShowSshCertificateRequestObject) (ShowSshCertificateResponseObject, error)
+	// RevokeSshCertificate Revoke a certificate; its serial enters the CA's KRL. Idempotent.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-certificates/{sshCertificate}/revoke)
+	RevokeSshCertificate(ctx context.Context, request RevokeSshCertificateRequestObject) (RevokeSshCertificateResponseObject, error)
+	// ListSshProfiles List an environment's SSH certificate profiles.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles)
+	ListSshProfiles(ctx context.Context, request ListSshProfilesRequestObject) (ListSshProfilesResponseObject, error)
+	// CreateSshProfile Create a profile bounding principals, options, extensions, algorithms, TTL and requesters.
+	// (POST /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles)
+	CreateSshProfile(ctx context.Context, request CreateSshProfileRequestObject) (CreateSshProfileResponseObject, error)
+	// DeleteSshProfile Delete a profile; issued certificates stay valid unless revoke_issued.
+	// (DELETE /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+	DeleteSshProfile(ctx context.Context, request DeleteSshProfileRequestObject) (DeleteSshProfileResponseObject, error)
+	// ShowSshProfile Show one SSH certificate profile.
+	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+	ShowSshProfile(ctx context.Context, request ShowSshProfileRequestObject) (ShowSshProfileResponseObject, error)
+	// UpdateSshProfile Replace a profile; a removed requester's live certificates are revoked in the same write.
+	// (PUT /api/v1/orgs/{org}/projects/{project}/environments/{environment}/ssh-profiles/{sshProfile})
+	UpdateSshProfile(ctx context.Context, request UpdateSshProfileRequestObject) (UpdateSshProfileResponseObject, error)
 	// ListValues The environment's resolved values.
 	// (GET /api/v1/orgs/{org}/projects/{project}/environments/{environment}/values)
 	ListValues(ctx context.Context, request ListValuesRequestObject) (ListValuesResponseObject, error)
@@ -65481,6 +68636,533 @@ func (sh *strictHandler) GetEnvironmentSignals(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetEnvironmentSignalsResponseObject); ok {
 		if err := validResponse.VisitGetEnvironmentSignalsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSshCas operation middleware
+func (sh *strictHandler) ListSshCas(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListSshCasRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSshCas(ctx, request.(ListSshCasRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSshCas")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSshCasResponseObject); ok {
+		if err := validResponse.VisitListSshCasResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSshCa operation middleware
+func (sh *strictHandler) CreateSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request CreateSshCaRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body CreateSshCaJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSshCa(ctx, request.(CreateSshCaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSshCa")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSshCaResponseObject); ok {
+		if err := validResponse.VisitCreateSshCaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSshCa operation middleware
+func (sh *strictHandler) DeleteSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	var request DeleteSshCaRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshCA = sshCA
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSshCa(ctx, request.(DeleteSshCaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSshCa")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSshCaResponseObject); ok {
+		if err := validResponse.VisitDeleteSshCaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowSshCa operation middleware
+func (sh *strictHandler) ShowSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	var request ShowSshCaRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshCA = sshCA
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowSshCa(ctx, request.(ShowSshCaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowSshCa")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowSshCaResponseObject); ok {
+		if err := validResponse.VisitShowSshCaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RetireSshCaKey operation middleware
+func (sh *strictHandler) RetireSshCaKey(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID, sshCAKey SSHCAKeyID) {
+	var request RetireSshCaKeyRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshCA = sshCA
+	request.SshCAKey = sshCAKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RetireSshCaKey(ctx, request.(RetireSshCaKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RetireSshCaKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RetireSshCaKeyResponseObject); ok {
+		if err := validResponse.VisitRetireSshCaKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSshKrl operation middleware
+func (sh *strictHandler) GetSshKrl(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	var request GetSshKrlRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshCA = sshCA
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSshKrl(ctx, request.(GetSshKrlRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSshKrl")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSshKrlResponseObject); ok {
+		if err := validResponse.VisitGetSshKrlResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RotateSshCa operation middleware
+func (sh *strictHandler) RotateSshCa(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	var request RotateSshCaRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshCA = sshCA
+
+	var body RotateSshCaJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if !errors.Is(err, io.EOF) {
+			sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+			return
+		}
+	} else {
+		request.Body = &body
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RotateSshCa(ctx, request.(RotateSshCaRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RotateSshCa")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RotateSshCaResponseObject); ok {
+		if err := validResponse.VisitRotateSshCaResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSshTrustedKeys operation middleware
+func (sh *strictHandler) GetSshTrustedKeys(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCA SSHCAID) {
+	var request GetSshTrustedKeysRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshCA = sshCA
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSshTrustedKeys(ctx, request.(GetSshTrustedKeysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSshTrustedKeys")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSshTrustedKeysResponseObject); ok {
+		if err := validResponse.VisitGetSshTrustedKeysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSshCertificates operation middleware
+func (sh *strictHandler) ListSshCertificates(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListSshCertificatesRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSshCertificates(ctx, request.(ListSshCertificatesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSshCertificates")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSshCertificatesResponseObject); ok {
+		if err := validResponse.VisitListSshCertificatesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// IssueSshCertificate operation middleware
+func (sh *strictHandler) IssueSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request IssueSshCertificateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body IssueSshCertificateJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.IssueSshCertificate(ctx, request.(IssueSshCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "IssueSshCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(IssueSshCertificateResponseObject); ok {
+		if err := validResponse.VisitIssueSshCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowSshCertificate operation middleware
+func (sh *strictHandler) ShowSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCertificate SSHCertificateID) {
+	var request ShowSshCertificateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshCertificate = sshCertificate
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowSshCertificate(ctx, request.(ShowSshCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowSshCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowSshCertificateResponseObject); ok {
+		if err := validResponse.VisitShowSshCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeSshCertificate operation middleware
+func (sh *strictHandler) RevokeSshCertificate(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshCertificate SSHCertificateID) {
+	var request RevokeSshCertificateRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshCertificate = sshCertificate
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeSshCertificate(ctx, request.(RevokeSshCertificateRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeSshCertificate")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeSshCertificateResponseObject); ok {
+		if err := validResponse.VisitRevokeSshCertificateResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSshProfiles operation middleware
+func (sh *strictHandler) ListSshProfiles(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request ListSshProfilesRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSshProfiles(ctx, request.(ListSshProfilesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSshProfiles")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSshProfilesResponseObject); ok {
+		if err := validResponse.VisitListSshProfilesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSshProfile operation middleware
+func (sh *strictHandler) CreateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID) {
+	var request CreateSshProfileRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+
+	var body CreateSshProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSshProfile(ctx, request.(CreateSshProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSshProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSshProfileResponseObject); ok {
+		if err := validResponse.VisitCreateSshProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSshProfile operation middleware
+func (sh *strictHandler) DeleteSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID, params DeleteSshProfileParams) {
+	var request DeleteSshProfileRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshProfile = sshProfile
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSshProfile(ctx, request.(DeleteSshProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSshProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSshProfileResponseObject); ok {
+		if err := validResponse.VisitDeleteSshProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ShowSshProfile operation middleware
+func (sh *strictHandler) ShowSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID) {
+	var request ShowSshProfileRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshProfile = sshProfile
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ShowSshProfile(ctx, request.(ShowSshProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ShowSshProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ShowSshProfileResponseObject); ok {
+		if err := validResponse.VisitShowSshProfileResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSshProfile operation middleware
+func (sh *strictHandler) UpdateSshProfile(w http.ResponseWriter, r *http.Request, org OrgID, project ProjectID, environment EnvironmentID, sshProfile SSHProfileID) {
+	var request UpdateSshProfileRequestObject
+
+	request.Org = org
+	request.Project = project
+	request.Environment = environment
+	request.SshProfile = sshProfile
+
+	var body UpdateSshProfileJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSshProfile(ctx, request.(UpdateSshProfileRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSshProfile")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSshProfileResponseObject); ok {
+		if err := validResponse.VisitUpdateSshProfileResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

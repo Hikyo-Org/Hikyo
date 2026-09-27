@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -59,6 +61,7 @@ type FileTargetReader interface {
 	List(ctx context.Context, p authz.Proof) ([]FileTarget, error)
 	Get(ctx context.Context, p authz.Proof, id string) (FileTarget, error)
 	Keys(ctx context.Context, p authz.Proof, id string) ([]FileTargetKey, error)
+	KeysForTargets(ctx context.Context, p authz.Proof, ids []string) (map[string][]FileTargetKey, error)
 	// ForPrincipal returns the target a workload principal is bound to in the
 	// proof's project, or ErrNotFound when it is bound to none.
 	ForPrincipal(ctx context.Context, p authz.Proof, principalID string) (FileTarget, error)
@@ -178,11 +181,12 @@ func (r sqliteFileTargets) ForPrincipal(ctx context.Context, p authz.Proof, prin
 }
 
 func (r sqliteFileTargets) Keys(ctx context.Context, p authz.Proof, id string) ([]FileTargetKey, error) {
+	selections, err := r.KeysForTargets(ctx, p, []string{id})
+	return selections[id], err
+}
+
+func (r sqliteFileTargets) KeysForTargets(ctx context.Context, p authz.Proof, ids []string) (map[string][]FileTargetKey, error) {
 	chain, err := authz.Verify(p, authz.StoreFileTargetsKeys, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	ids, err := r.q.ListFileTargetKeyIDs(ctx, sqlitegen.ListFileTargetKeyIDsParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), TargetID: id})
 	if err != nil {
 		return nil, err
 	}
@@ -190,15 +194,29 @@ func (r sqliteFileTargets) Keys(ctx context.Context, p authz.Proof, id string) (
 	if err != nil {
 		return nil, err
 	}
-	selected := make(map[string]bool, len(ids))
-	for _, keyID := range ids {
-		selected[keyID] = true
-	}
-	out := make([]FileTargetKey, 0, len(ids))
+	catalogue := make(map[string]FileTargetKey, len(rows))
 	for _, row := range rows {
-		if selected[row.ID] {
-			out = append(out, FileTargetKey{KeyID: row.ID, Name: row.Name, Classification: row.Classification})
+		catalogue[row.ID] = FileTargetKey{KeyID: row.ID, Name: row.Name, Classification: row.Classification}
+	}
+	out := make(map[string][]FileTargetKey, len(ids))
+	for _, id := range ids {
+		selected, err := r.q.ListFileTargetKeyIDs(ctx, sqlitegen.ListFileTargetKeyIDsParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), TargetID: id})
+		if err != nil {
+			return nil, err
 		}
+		keys := make([]FileTargetKey, 0, len(selected))
+		for _, keyID := range selected {
+			if key, ok := catalogue[keyID]; ok {
+				keys = append(keys, key)
+			}
+		}
+		slices.SortFunc(keys, func(a, b FileTargetKey) int {
+			if c := strings.Compare(a.Name, b.Name); c != 0 {
+				return c
+			}
+			return strings.Compare(a.KeyID, b.KeyID)
+		})
+		out[id] = keys
 	}
 	return out, nil
 }
@@ -347,11 +365,12 @@ func (r pgFileTargets) ForPrincipal(ctx context.Context, p authz.Proof, principa
 }
 
 func (r pgFileTargets) Keys(ctx context.Context, p authz.Proof, id string) ([]FileTargetKey, error) {
+	selections, err := r.KeysForTargets(ctx, p, []string{id})
+	return selections[id], err
+}
+
+func (r pgFileTargets) KeysForTargets(ctx context.Context, p authz.Proof, ids []string) (map[string][]FileTargetKey, error) {
 	chain, err := authz.Verify(p, authz.StoreFileTargetsKeys, r.tok)
-	if err != nil {
-		return nil, err
-	}
-	ids, err := r.q.ListFileTargetKeyIDs(ctx, pggen.ListFileTargetKeyIDsParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), TargetID: id})
 	if err != nil {
 		return nil, err
 	}
@@ -359,15 +378,29 @@ func (r pgFileTargets) Keys(ctx context.Context, p authz.Proof, id string) ([]Fi
 	if err != nil {
 		return nil, err
 	}
-	selected := make(map[string]bool, len(ids))
-	for _, keyID := range ids {
-		selected[keyID] = true
-	}
-	out := make([]FileTargetKey, 0, len(ids))
+	catalogue := make(map[string]FileTargetKey, len(rows))
 	for _, row := range rows {
-		if selected[row.ID] {
-			out = append(out, FileTargetKey{KeyID: row.ID, Name: row.Name, Classification: row.Classification})
+		catalogue[row.ID] = FileTargetKey{KeyID: row.ID, Name: row.Name, Classification: row.Classification}
+	}
+	out := make(map[string][]FileTargetKey, len(ids))
+	for _, id := range ids {
+		selected, err := r.q.ListFileTargetKeyIDs(ctx, pggen.ListFileTargetKeyIDsParams{ChainOrgID: string(chain.Org), ChainProjectID: string(chain.Project), TargetID: id})
+		if err != nil {
+			return nil, err
 		}
+		keys := make([]FileTargetKey, 0, len(selected))
+		for _, keyID := range selected {
+			if key, ok := catalogue[keyID]; ok {
+				keys = append(keys, key)
+			}
+		}
+		slices.SortFunc(keys, func(a, b FileTargetKey) int {
+			if c := strings.Compare(a.Name, b.Name); c != 0 {
+				return c
+			}
+			return strings.Compare(a.KeyID, b.KeyID)
+		})
+		out[id] = keys
 	}
 	return out, nil
 }

@@ -192,6 +192,28 @@ func TestPublishModeChangeRebuilds(t *testing.T) {
 	}
 }
 
+// A recreated state dir (new local key) keeps the destination bytes identical
+// but changes the keyed stamp. Publish must rebuild under the new stamp rather
+// than reuse the old generation, or Intact can never match it again.
+func TestPublishStampChangeRebuilds(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	first := f.mustPublish(file("a", "1"))
+	f.keys = testKeys(t)
+	res := f.mustPublish(file("a", "1"))
+	if !res.Changed || res.Generation == first.Generation {
+		t.Fatalf("stamp change reused generation: %+v", res)
+	}
+	d, err := OpenDestination(f.dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if _, ok, err := d.Intact(f.keys, testTarget, f.pol, []string{"a"}); err != nil || !ok {
+		t.Fatalf("rebuilt generation not intact under the new key: %v", err)
+	}
+}
+
 func TestPublishRefusesForeignFilesAndSymlinks(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -605,5 +627,25 @@ func TestIntactDetectsTamperingAndPolicyChange(t *testing.T) {
 	}
 	if _, ok, _ := d.Intact(f.keys, testTarget, f.pol, []string{"a", "b"}); ok {
 		t.Fatal("tampered content read as intact")
+	}
+}
+
+func TestEnsureLinksPreservesForeignEntries(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	d, err := OpenDestination(f.dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Close()
+	if err := os.WriteFile(filepath.Join(f.dir, "a"), []byte("foreign"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.ensureLinks([]Rendered{file("a", "secret")}); !errors.Is(err, ErrForeign) {
+		t.Fatalf("foreign entry: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(f.dir, "a"))
+	if err != nil || string(got) != "foreign" {
+		t.Fatalf("foreign entry changed: %q, %v", got, err)
 	}
 }

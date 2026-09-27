@@ -26,6 +26,7 @@ func runAdapterEnvironmentChainRefusal(t *testing.T, cfg store.Config) {
 			`INSERT INTO principals (id,kind,created_at) VALUES ('usr_adapter','human','2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_1','org_adapter','prj_adapter','forgejo','https://git.example','usr_adapter','active','2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_github','org_adapter','prj_adapter','github-actions','https://api.github.com','usr_adapter','active','2026-08-17T00:00:00Z')`,
+			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sealed','org_adapter','prj_adapter','sealed-webhook','https://recv.example','usr_adapter','active','2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_1','org_adapter','prj_adapter','env_adapter_a','adp_1','repository','acme','app',42,'',1,'active','never','2026-08-17T00:00:00Z')`,
 			`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_2','org_adapter','prj_adapter','env_adapter_b','adp_1','repository','acme','app',42,'TWO_',1,'active','never','2026-08-17T00:00:00Z')`,
 		}
@@ -206,4 +207,79 @@ func TestGitHubAdapterSQLiteMigrationIsAtomicAndRetrySafe(t *testing.T) {
 
 func TestAdapterEnvironmentChainRefusalPostgres(t *testing.T) {
 	runAdapterEnvironmentChainRefusal(t, postgresTestConfig(t, "adapter_migration"))
+}
+
+func runSealedWebhookProviderMigration(t *testing.T, cfg store.Config) {
+	t.Helper()
+	if err := RunUpTo(t.Context(), cfg, 59); err != nil {
+		t.Fatal(err)
+	}
+	err := withProvider(t.Context(), cfg, func(_ *goose.Provider, db *sql.DB) error {
+		for _, statement := range []string{
+			`INSERT INTO orgs (id,name,active,metadata,created_at) VALUES ('org_sw','SW',TRUE,'{}','2026-09-26T00:00:00Z')`,
+			`INSERT INTO projects (id,org_id,name,created_at) VALUES ('prj_sw','org_sw','SW','2026-09-26T00:00:00Z')`,
+			`INSERT INTO environments (id,org_id,project_id,name,note,created_at,display_order) VALUES ('env_sw','org_sw','prj_sw','prod','','2026-09-26T00:00:00Z',0)`,
+			`INSERT INTO principals (id,kind,created_at) VALUES ('usr_sw','human','2026-09-26T00:00:00Z')`,
+			`INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_fj','org_sw','prj_sw','forgejo','https://git.example','usr_sw','active','2026-09-26T00:00:00Z')`,
+			`INSERT INTO adapter_targets (id,org_id,project_id,environment_id,adapter_id,destination_kind,destination_owner,destination_name,destination_id,name_prefix,generation,state,sync_status,created_at) VALUES ('tgt_fj','org_sw','prj_sw','env_sw','adp_fj','repository','acme','app',7,'',1,'active','never','2026-09-26T00:00:00Z')`,
+		} {
+			if _, err := db.ExecContext(t.Context(), statement); err != nil {
+				return err
+			}
+		}
+		_, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_early','org_sw','prj_sw','sealed-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:00Z')`)
+		if err == nil {
+			return fmt.Errorf("pre-00060 schema accepted the sealed-webhook provider")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(t.Context(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	err = withProvider(t.Context(), cfg, func(_ *goose.Provider, db *sql.DB) error {
+		var carried int
+		if err := db.QueryRowContext(t.Context(), `SELECT COUNT(*) FROM adapters a JOIN adapter_targets t ON t.adapter_id=a.id WHERE a.id='adp_fj' AND a.provider='forgejo'`).Scan(&carried); err != nil || carried != 1 {
+			return fmt.Errorf("existing adapter and its target were not carried across the rebuild: %d %v", carried, err)
+		}
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sw','org_sw','prj_sw','sealed-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:00Z')`); err != nil {
+			return fmt.Errorf("sealed-webhook provider refused: %w", err)
+		}
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_bad','org_sw','prj_sw','webhook','https://other.example','usr_sw','active','2026-09-26T00:00:00Z')`); err == nil {
+			return fmt.Errorf("unknown provider accepted")
+		}
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_dup','org_sw','prj_sw','sealed-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:00Z')`); err == nil {
+			return fmt.Errorf("active origin uniqueness was lost in the rebuild")
+		}
+		if _, err := db.ExecContext(t.Context(), `UPDATE adapters SET state='tombstoned' WHERE id='adp_sw'`); err != nil {
+			return err
+		}
+		if _, err := db.ExecContext(t.Context(), `INSERT INTO adapters (id,org_id,project_id,provider,origin,authority_principal_id,state,created_at) VALUES ('adp_sw2','org_sw','prj_sw','sealed-webhook','https://recv.example','usr_sw','active','2026-09-26T00:00:01Z')`); err != nil {
+			return fmt.Errorf("tombstoned origin still reserved after the rebuild: %w", err)
+		}
+		if cfg.Engine == store.EngineSQLite {
+			rows, err := db.QueryContext(t.Context(), `PRAGMA foreign_key_check`)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			if rows.Next() {
+				return fmt.Errorf("sqlite rebuild left a foreign-key violation")
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSealedWebhookProviderMigrationSQLite(t *testing.T) {
+	runSealedWebhookProviderMigration(t, store.Config{Engine: store.EngineSQLite, Path: filepath.Join(t.TempDir(), "sealed.db")})
+}
+
+func TestSealedWebhookProviderMigrationPostgres(t *testing.T) {
+	runSealedWebhookProviderMigration(t, postgresTestConfig(t, "sealed_webhook_migration"))
 }

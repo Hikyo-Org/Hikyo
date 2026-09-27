@@ -1359,6 +1359,87 @@ type SnapshotEntry struct {
 	ValueEntryID   string
 }
 
+type SshCa struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	Name                 string
+	State                string
+	AuthorityPrincipalID string
+	CreatedAt            string
+}
+
+type SshCaKey struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	CaID                 string
+	Algorithm            string
+	PublicKey            string
+	Fingerprint          string
+	Origin               string
+	PrivateKeyCiphertext []byte
+	State                string
+	CreatedAt            string
+	RetiringAt           sql.NullString
+	RetireAfter          sql.NullString
+	RetiredAt            sql.NullString
+}
+
+type SshCertificate struct {
+	ID                   string
+	OrgID                string
+	ProjectID            string
+	EnvironmentID        string
+	CaID                 string
+	CaKeyID              string
+	ProfileID            string
+	Serial               int64
+	KeyID                string
+	Principals           string
+	PublicKeyFingerprint string
+	KeyAlgorithm         string
+	KeyOrigin            string
+	ValidAfter           string
+	ValidBefore          string
+	RequesterPrincipalID string
+	RequesterClass       string
+	State                string
+	RevokedAt            sql.NullString
+	RevocationReason     sql.NullString
+	CreatedAt            string
+}
+
+type SshProfile struct {
+	ID                string
+	OrgID             string
+	ProjectID         string
+	EnvironmentID     string
+	CaID              string
+	Name              string
+	Principals        string
+	ForceCommand      string
+	SourceAddresses   string
+	Extensions        string
+	KeyAlgorithms     string
+	DefaultTtlSeconds int64
+	MaxTtlSeconds     int64
+	State             string
+	CreatedAt         string
+	UpdatedAt         string
+}
+
+type SshProfileRequester struct {
+	OrgID         string
+	ProjectID     string
+	EnvironmentID string
+	ProfileID     string
+	PrincipalID   string
+	CreatedAt     string
+}
+
 type Tier3Key struct {
 	ID               string
 	Purpose          string

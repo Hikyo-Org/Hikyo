@@ -802,6 +802,15 @@ const (
 	EventDynamicLeaseTransitionOutcome    EventType = "dynamic.lease_transition_outcome"
 	EventDynamicLeaseDisclosed            EventType = "dynamic.lease_disclosed"
 	EventDynamicLeaseSettleRequested      EventType = "dynamic.lease_settle_requested"
+	// SSH user certificates (#155).
+	EventSSHCAConfigured       EventType = "ssh.ca_configured"
+	EventSSHCARotated          EventType = "ssh.ca_rotated"
+	EventSSHCAKeyRetired       EventType = "ssh.ca_key_retired"
+	EventSSHCADeleted          EventType = "ssh.ca_deleted"
+	EventSSHProfileConfigured  EventType = "ssh.profile_configured"
+	EventSSHProfileDeleted     EventType = "ssh.profile_deleted"
+	EventSSHCertificateIssued  EventType = "ssh.certificate_issued"
+	EventSSHCertificateRevoked EventType = "ssh.certificate_revoked"
 
 	// remote.* — the multi-instance categories (#71, multi-instance ADR §
 	// Audit) ARE registered above, every one of them that has an honest
@@ -3227,6 +3236,66 @@ var registry = map[EventType]TypeSpec{
 		Trails:        map[Trail]bool{TrailTenant: true},
 		Schema: Schema{
 			"provider_handle": {Kind: KindString, Required: true},
+		},
+	},
+	// --- SSH user certificates (#155) ------------------------------------------
+	// No private key (CA or user) ever appears in a payload. Fingerprints,
+	// serials and principals are public certificate content.
+	EventSSHCAConfigured: adapterLifecycleEvent(Schema{
+		"origin":      {Kind: KindString, Required: true, Enum: []string{"generated", "imported"}},
+		"algorithm":   {Kind: KindString, Required: true, Enum: []string{"ed25519", "ecdsa-p256", "rsa-3072"}},
+		"fingerprint": {Kind: KindString, Required: true},
+		"authority":   {Kind: KindString, Required: true},
+	}),
+	EventSSHCARotated: adapterLifecycleEvent(Schema{
+		"origin":               {Kind: KindString, Required: true, Enum: []string{"generated", "imported"}},
+		"algorithm":            {Kind: KindString, Required: true, Enum: []string{"ed25519", "ecdsa-p256", "rsa-3072"}},
+		"fingerprint":          {Kind: KindString, Required: true},
+		"previous_fingerprint": {Kind: KindString, Required: true},
+		"overlap_seconds":      {Kind: KindInt, Required: true},
+	}),
+	EventSSHCAKeyRetired: adapterLifecycleEvent(Schema{
+		"fingerprint": {Kind: KindString, Required: true},
+	}),
+	EventSSHCADeleted: adapterLifecycleEvent(Schema{
+		"name": {Kind: KindString, Required: true},
+	}),
+	EventSSHProfileConfigured: adapterLifecycleEvent(Schema{
+		"mutation":        {Kind: KindString, Required: true, Enum: []string{"create", "update"}},
+		"enabled":         {Kind: KindBool, Required: true},
+		"requester_count": {Kind: KindInt, Required: true},
+		"max_ttl_seconds": {Kind: KindInt, Required: true},
+	}),
+	EventSSHProfileDeleted: adapterLifecycleEvent(Schema{
+		"revoked_certificate_count": {Kind: KindInt, Required: true},
+	}),
+	// The issuance record: one per certificate. key_origin=generated means a
+	// private key crossed to the requester once; it is never stored.
+	EventSSHCertificateIssued: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"serial":          {Kind: KindString, Required: true},
+			"profile_id":      {Kind: KindString, Required: true},
+			"principals":      {Kind: KindStringList, Required: true},
+			"key_origin":      {Kind: KindString, Required: true, Enum: []string{"generated", "supplied"}},
+			"key_fingerprint": {Kind: KindString, Required: true},
+			"principal_class": {Kind: KindString, Required: true},
+			"valid_before":    {Kind: KindString, Required: true},
+		},
+	},
+	// A cryptographic revocation: the serial enters the CA's KRL. The sweeper
+	// writes it with the system actor when a requester's authority lapses.
+	EventSSHCertificateRevoked: {
+		SchemaVersion: 1,
+		Retention:     RetentionSecurity,
+		Outcomes:      map[Outcome]bool{OutcomeSuccess: true},
+		Trails:        map[Trail]bool{TrailTenant: true},
+		Schema: Schema{
+			"serial": {Kind: KindString, Required: true},
+			"reason": {Kind: KindString, Required: true, Enum: []string{"explicit", "authority-withdrawn", "profile-deleted"}},
 		},
 	},
 	EventAdapterPlan: adapterLifecycleEvent(Schema{

@@ -443,6 +443,8 @@ type Repos interface {
 	Adapters() AdapterRepo
 	// Dynamic is the dynamic-secret provider + lease surface (#147).
 	Dynamic() DynamicRepo
+	// SSH is the SSH user-certificate surface (#155).
+	SSH() SSHRepo
 	// Definitions is the plan ledger behind definitions plan/apply (#70).
 	Definitions() DefinitionsRepo
 	// ScanningDismissals is the secret-scanning "keep as config" dismissal
@@ -509,6 +511,7 @@ type ReadRepos interface {
 	Remotes() RemoteReader
 	Adapters() AdapterReader
 	Dynamic() DynamicReader
+	SSH() SSHReader
 	Definitions() DefinitionsReader
 	DeliveryTargets() DeliveryTargetReader
 	FileTargets() FileTargetReader

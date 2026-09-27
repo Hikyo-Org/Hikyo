@@ -393,7 +393,8 @@ Existing open contracts `ProtocolCapability`, `SessionArtifact`, `AuthMethod` an
 ## 10. Generic file destinations ([#164](https://github.com/Hikyo-Org/Hikyo/issues/164), proposed amendment to [deployment-adapter.md](../adr/deployment-adapter.md))
 
 Two nouns. `file-target` administers the pull-class target (human session,
-`manage-adapters` and `manage-identities` on the project). `file-sync` is the
+`manage-adapters` on the project for `list` and `show`; `create`, `update`
+and `delete` also require `manage-identities`). `file-sync` is the
 client on the destination host (machine credential only, `--token-file` or
 `HIKYO_TOKEN`), configured by a client-local `hikyo-file-sync.yaml` that names
 the destination directory; the server never receives that path.
@@ -426,7 +427,9 @@ directory bound to another target, a dropped file under `on_removed: refuse`,
 holding the destination lock, and an expired or rolled-back offline snapshot
 → **4**; a transport failure with offline serve off, or a poll that never
 reached current within `refresh.timeout` → **6**; a filesystem failure while
-publishing (the last generation stands) → **1**.
+publishing → **1**. Failures before the `current` symlink swap preserve the
+prior generation. Failures after the swap can leave the new generation current
+and require inspection or repair.
 
 ### Stderr strings that are stable surface
 
