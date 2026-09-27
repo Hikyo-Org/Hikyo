@@ -175,3 +175,17 @@ compatibility were refreshed. Native cross-provider review skipped: session
 quota was still unknown after the policy response window. Ordinary review
 completed for this integration; remote CI and lower-PR integration remain
 required before merge.
+
+## Final feature-stack integration (2026-09-27)
+
+The ordered schema now includes Cloudflare 62, Vault 63, PKI 64, transit 65,
+temporary access 66 and AWS 67. AWS widening retains all prior provider and
+kind constraints. The empty legacy fixture reverses the combined adapter
+kind widenings once, retaining its exact legacy schema check.
+
+Validated the combined app/store/service/isolation paths on both engines,
+all provider and CLI tests, API/authz/conformance, generated TS 20 tests,
+and 1206 web tests with typecheck/lint. Final PKI documentation adds no
+runtime behavior; its reviewed sensitivity inventory is retained.
+Native cross-provider review remains skipped pending session quota evidence;
+the requested reviewer is Astra 6 at medium effort.
