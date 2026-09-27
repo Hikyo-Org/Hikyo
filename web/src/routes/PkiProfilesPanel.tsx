@@ -148,6 +148,9 @@ function ProfileRow({
 }) {
   const [mode, setMode] = useState<'idle' | 'edit' | 'bind' | 'delete'>('idle');
   const [draft, setDraft] = useState(() => policyText(profile.policy));
+  // The row version the draft was seeded from: saving sends it, so an edit
+  // made against a policy that changed underneath is refused as a conflict.
+  const [editedVersion, setEditedVersion] = useState(() => Number(profile.row_version));
   const [draftError, setDraftError] = useState<string | null>(null);
   const [target, setTarget] = useState({ org: '', project: '', environment: '' });
   const update = useUpdatePkiProfile();
@@ -157,6 +160,11 @@ function ProfileRow({
   const policy = profile.policy;
   const toggle = (next: typeof mode) => {
     onBusy();
+    if (next === 'edit' && mode !== 'edit') {
+      setDraft(policyText(profile.policy));
+      setEditedVersion(Number(profile.row_version));
+      setDraftError(null);
+    }
     setMode((current) => (current === next ? 'idle' : next));
   };
 
@@ -230,7 +238,7 @@ function ProfileRow({
                   return;
                 }
                 update.mutate(
-                  { name: profile.name, policy: next, rowVersion: Number(profile.row_version) },
+                  { name: profile.name, policy: next, rowVersion: editedVersion },
                   {
                     onSuccess: () => {
                       setMode('idle');

@@ -57,7 +57,7 @@ environment, through a profile bound there.
   `instance-config`; issuance is `issue-certificate@environment`. Holding one
   never implies the other.
 - Private material enters only as **protected input** (request body, CLI
-  `--key-file`/`--stdin`, never argv) and only through `pki-issuer.import`.
+  `--key-file`/`--key-stdin`, never argv) and only through `pki-issuer.import`.
 
 Issuer states (closed):
 
@@ -83,7 +83,7 @@ flag (D8) suspends minting on any state.
 - **Offline root (production):** `pki issuer create-intermediate` without
   `--parent` generates the key in Hikyo and returns a CSR; the version is
   `pending`. The operator signs the CSR with an offline root (runbook in the
-  docs page) and runs `pki issuer install-cert`, which verifies that the
+  docs page) and runs `pki issuer install`, which verifies that the
   certificate's public key matches the sealed key, that it is a CA with
   `KeyUsageCertSign`, and that the supplied chain verifies it, then activates it.
 - **Import:** `pki issuer import` accepts an existing CA key and certificate as

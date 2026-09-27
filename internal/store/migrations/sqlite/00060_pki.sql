@@ -56,7 +56,7 @@ CREATE TABLE pki_issuers (
     UNIQUE (name, version),
     CHECK ((state IN ('retired', 'revoked')) = (encrypted_private_key IS NULL)),
     CHECK ((encrypted_private_key IS NULL) = (dek_version IS NULL)),
-    CHECK (state = 'pending' OR certificate_der IS NOT NULL),
+    CHECK (state IN ('pending', 'revoked') OR certificate_der IS NOT NULL),
     CHECK (state <> 'pending' OR csr_der IS NOT NULL)
 );
 CREATE UNIQUE INDEX pki_issuers_one_active ON pki_issuers (name) WHERE state = 'active';
@@ -119,7 +119,7 @@ CREATE TABLE pki_certificates (
     UNIQUE (org_id, project_id, environment_id, id),
     CHECK ((state = 'revoked') = (revoked_at IS NOT NULL)),
     CHECK ((revoked_at IS NULL) = (revocation_reason IS NULL)),
-    CHECK (state IN ('issuing', 'unknown', 'failed') OR certificate_der IS NOT NULL),
+    CHECK (state IN ('issuing', 'unknown', 'failed', 'revoked') OR certificate_der IS NOT NULL),
     FOREIGN KEY (org_id, project_id, environment_id) REFERENCES environments (org_id, project_id, id)
 );
 CREATE INDEX pki_certificates_env ON pki_certificates (org_id, project_id, environment_id, created_at);

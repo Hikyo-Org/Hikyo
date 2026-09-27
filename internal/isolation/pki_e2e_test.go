@@ -205,7 +205,7 @@ func TestPKILifecycle(t *testing.T) {
 		}
 		widened := pkiWebPolicy()
 		widened.DNSPatterns = append(widened.DNSPatterns, "*.example.org")
-		if _, err := svc.UpdateProfile(ctx, op, "web", widened, 0); !errors.Is(err, domain.ErrConflict) || !errors.Is(err, domain.ErrConflict) {
+		if _, err := svc.UpdateProfile(ctx, op, "web", widened, 0); !errors.Is(err, domain.ErrConflict) {
 			t.Fatalf("widening update: %v", err)
 		}
 		narrowed := pkiWebPolicy()
@@ -384,6 +384,11 @@ func TestPKILifecycle(t *testing.T) {
 		if _, err := svc.PublishIssuerCRL(ctx, op, "issuing", 0); err != nil {
 			t.Fatalf("forced CRL publish: %v", err)
 		}
+		// An unknown-outcome leaf has no certificate DER; revoking it must
+		// still satisfy the table's DER-presence constraint.
+		if revokedUnknown, err := svc.RevokeCertificate(ctx, human, env, "cert_crash", "unspecified"); err != nil || revokedUnknown.State != "revoked" {
+			t.Fatalf("revoke unknown certificate: %v %+v", err, revokedUnknown)
+		}
 
 		// --- Overlap rotation -------------------------------------------------------
 		shortLived, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "web", CSRPEM: csrPEM, DNSNames: []string{"short.svc.example.com"}, TTL: 10 * time.Hour})
@@ -460,6 +465,8 @@ func TestPKILifecycle(t *testing.T) {
 		}
 
 		// --- Compromise ---------------------------------------------------------------
+		// An in-flight leaf (no DER yet) is swept into the cascade too.
+		execRaw(t, db, `INSERT INTO pki_certificates (id,org_id,project_id,environment_id,profile_id,profile_name,issuer_id,serial,state,key_source,key_algorithm,key_fingerprint,sans,not_before,not_after,principal_id,principal_class,issuing_deadline,created_at,updated_at) VALUES ('cert_inflight','org_a','prj_a1','env_a1','pkip_x','web','`+rotated.Issuer.ID+`','abcdef0124','issuing','csr','ecdsa-p256','sha256:y','{"dns":[],"ip":[],"uri":[]}',`+pkiStamp(db, clock.Now())+`,`+pkiStamp(db, clock.Now().Add(24*time.Hour))+`,'usr_alice','human',`+pkiStamp(db, clock.Now().Add(time.Hour))+`,`+pkiStamp(db, clock.Now())+`,`+pkiStamp(db, clock.Now())+`)`)
 		compromised, err := svc.RevokeIssuer(ctx, op, "issuing", 2)
 		if err != nil || compromised.State != "revoked" {
 			t.Fatalf("revoke issuer: %v %+v", err, compromised)
@@ -472,6 +479,16 @@ func TestPKILifecycle(t *testing.T) {
 		}
 		if _, err := svc.IssueCertificate(ctx, human, env, service.CertificateIssueRequest{Profile: "web", CSRPEM: csrPEM, DNSNames: []string{"x.svc.example.com"}}); !errors.Is(err, service.ErrPKINoActiveIssuer) {
 			t.Fatalf("issuance from a revoked issuer: %v", err)
+		}
+		if got := queryInt(t, db, "SELECT COUNT(*) FROM pki_certificates WHERE id='cert_inflight' AND state='revoked'"); got != 1 {
+			t.Fatal("issuer compromise left an in-flight leaf unrevoked")
+		}
+		// A pending version (CSR only, no certificate) can be revoked.
+		if _, err := svc.CreateIssuer(ctx, op, service.PKIIssuerRequest{Mode: "intermediate", Name: "abandoned", CommonName: "Abandoned CA"}); err != nil {
+			t.Fatalf("create pending intermediate: %v", err)
+		}
+		if abandoned, err := svc.RevokeIssuer(ctx, op, "abandoned", 1); err != nil || abandoned.State != "revoked" {
+			t.Fatalf("revoke pending issuer: %v %+v", err, abandoned)
 		}
 
 		// Inventory reads and profile teardown.

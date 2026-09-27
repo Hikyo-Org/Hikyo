@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 
 import { useSensitiveState } from '../api/sensitiveMutation.ts';
+import { useTransport } from '../api/transport.tsx';
 import {
   certificateRefusalText,
   fetchCertificateCrl,
@@ -73,6 +74,7 @@ export function CertificatesTab({
   const [feedback, setFeedback] = useState<{ failure: string | null; done: string | null }>({ failure: null, done: null });
   const [crl, setCrl] = useState<string | null>(null);
   const renew = useRenewCertificate(project);
+  const transport = useTransport();
   const revoke = useRevokeCertificate(project);
   const [revoking, setRevoking] = useState<{ row: CertificateRow; reason: RevocationReason } | null>(null);
   const clear = () => setFeedback({ failure: null, done: null });
@@ -165,7 +167,7 @@ export function CertificatesTab({
                     variant="quiet"
                     onClick={() => {
                       clear();
-                      fetchCertificateCrl({ ...project, environment: row.environmentId }, c.id).then(
+                      fetchCertificateCrl({ ...project, environment: row.environmentId }, c.id, transport).then(
                         (pem) => setCrl(pem),
                         (error: unknown) => setFeedback({ failure: certificateRefusalText(error, 'read the CRL'), done: null }),
                       );
@@ -288,6 +290,7 @@ function IssueDialog({
   const [stored, setStored] = useState(false);
   const csr = useIssueCsrCertificate(project);
   const refresh = useRefreshCertificates(project);
+  const transport = useTransport();
   const bound = profiles.data?.profiles ?? [];
   const chosenProfile = profile !== '' ? profile : (bound[0]?.name ?? '');
   const disclosed = privateKey !== null;
@@ -340,7 +343,7 @@ function IssueDialog({
     try {
       await runPasskeyCeremony({ operation: 'mint', environmentId: environment, keyIds: [] });
       sent = true;
-      const result = await issueGeneratedCertificate({ ...project, environment }, request, algorithm);
+      const result = await issueGeneratedCertificate({ ...project, environment }, request, algorithm, transport);
       setPrivateKey(result.privateKeyPem);
       setCertificatePem(`${result.certificate.certificate_pem ?? ''}${result.certificate.chain_pem ?? ''}`);
       onIssued(`Issued ${result.certificate.serial} with a generated key.`);

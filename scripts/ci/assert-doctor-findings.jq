@@ -3,7 +3,7 @@
 # the deployment under test so remote PostgreSQL capacity cannot pass as local.
 def expected_codes:
   ["adapter-targets", "argon2-floor", "backup-rpo", "data-volume",
-   "database-durability", "pin-expiry", "project-storage", "reencrypt",
+   "database-durability", "pin-expiry", "pki", "project-storage", "reencrypt",
    "restore-drill", "retention-prune", "root-escrow", "root-rotation"] | sort;
 
 (.status == (if $volume_severity == "error" then "error" else "warning" end)) and

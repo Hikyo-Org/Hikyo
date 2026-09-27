@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/Hikyo-Org/hikyo/api/apigen"
@@ -18,11 +19,20 @@ import (
 // this file has a field for a CA private key. The one private key that ever
 // crosses the wire is a server-generated leaf key, in the issue response only.
 
-func seconds(p *int64) time.Duration {
-	if p == nil {
-		return 0
+// seconds converts a wire second count to a Duration, refusing values that
+// would overflow int64 nanoseconds instead of letting them wrap.
+func seconds(v int64) (time.Duration, error) {
+	if v < 0 || v > math.MaxInt64/int64(time.Second) {
+		return 0, fmt.Errorf("%w: %d seconds is out of range", domain.ErrInvalid, v)
 	}
-	return time.Duration(*p) * time.Second
+	return time.Duration(v) * time.Second, nil
+}
+
+func optionalSeconds(p *int64) (time.Duration, error) {
+	if p == nil {
+		return 0, nil
+	}
+	return seconds(*p)
 }
 
 func pkiIssuerResponse(v service.PKIIssuerView) apigen.PkiIssuer {
@@ -75,11 +85,22 @@ func nonNilStrings(in []string) []string {
 	return in
 }
 
-func pkiPolicyRequest(p apigen.PkiPolicy) pki.Policy {
+func pkiPolicyRequest(p apigen.PkiPolicy) (pki.Policy, error) {
+	maxTTL, err := seconds(p.MaxTtlSeconds)
+	if err != nil {
+		return pki.Policy{}, err
+	}
+	defaultTTL, err := seconds(p.DefaultTtlSeconds)
+	if err != nil {
+		return pki.Policy{}, err
+	}
+	renewWindow, err := seconds(p.RenewWindowSeconds)
+	if err != nil {
+		return pki.Policy{}, err
+	}
 	out := pki.Policy{
 		AllowedIssuers: p.AllowedIssuers, DNSPatterns: p.DnsPatterns, IPRanges: p.IpRanges, URIPatterns: p.UriPatterns,
-		AllowWildcardNames: p.AllowWildcardNames, MaxTTL: time.Duration(p.MaxTtlSeconds) * time.Second,
-		DefaultTTL: time.Duration(p.DefaultTtlSeconds) * time.Second, RenewWindow: time.Duration(p.RenewWindowSeconds) * time.Second,
+		AllowWildcardNames: p.AllowWildcardNames, MaxTTL: maxTTL, DefaultTTL: defaultTTL, RenewWindow: renewWindow,
 		AllowCSR: p.AllowCsr, AllowGeneratedKey: p.AllowGeneratedKey, MachineIssuance: p.MachineIssuance,
 		Organization: p.Organization,
 	}
@@ -92,7 +113,7 @@ func pkiPolicyRequest(p apigen.PkiPolicy) pki.Policy {
 	for _, u := range p.ExtKeyUsages {
 		out.ExtKeyUsages = append(out.ExtKeyUsages, pki.ExtKeyUsage(u))
 	}
-	return out
+	return out, nil
 }
 
 func pkiProfileResponse(v service.PKIProfileView) apigen.PkiProfile {
@@ -143,12 +164,16 @@ func (a *API) ListPkiIssuers(ctx context.Context, _ apigen.ListPkiIssuersRequest
 	return apigen.ListPkiIssuers200JSONResponse(pkiIssuerList(views)), nil
 }
 
-func issuerRequest(mode, name, cn, org string, alg *string, ttl *int64, parent *string, crlURL *string, key []byte, cert, chain *string) service.PKIIssuerRequest {
+func issuerRequest(mode, name, cn, org string, alg *string, ttl *int64, parent *string, crlURL *string, key []byte, cert, chain *string) (service.PKIIssuerRequest, error) {
+	d, err := optionalSeconds(ttl)
+	if err != nil {
+		return service.PKIIssuerRequest{}, err
+	}
 	return service.PKIIssuerRequest{
 		Mode: mode, Name: name, CommonName: cn, Organization: org, KeyAlgorithm: deref(alg),
-		TTL: seconds(ttl), ParentName: deref(parent), CRLDistributionURL: deref(crlURL),
+		TTL: d, ParentName: deref(parent), CRLDistributionURL: deref(crlURL),
 		PrivateKeyPEM: key, CertificatePEM: deref(cert), ChainPEM: deref(chain),
-	}
+	}, nil
 }
 
 func (a *API) CreatePkiIssuer(ctx context.Context, req apigen.CreatePkiIssuerRequestObject) (apigen.CreatePkiIssuerResponseObject, error) {
@@ -163,8 +188,12 @@ func (a *API) CreatePkiIssuer(ctx context.Context, req apigen.CreatePkiIssuerReq
 	if b.KeyAlgorithm != nil {
 		alg = strPtr(b.KeyAlgorithm)
 	}
-	result, err := svc.CreateIssuer(ctx, service.Bearer(bearer(ctx)), issuerRequest(string(b.Mode), b.Name,
-		deref(b.CommonName), deref(b.Organization), alg, b.TtlSeconds, b.Parent, b.CrlDistributionUrl, key, b.CertificatePem, b.ChainPem))
+	ir, err := issuerRequest(string(b.Mode), b.Name,
+		deref(b.CommonName), deref(b.Organization), alg, b.TtlSeconds, b.Parent, b.CrlDistributionUrl, key, b.CertificatePem, b.ChainPem)
+	if err != nil {
+		return nil, err
+	}
+	result, err := svc.CreateIssuer(ctx, service.Bearer(bearer(ctx)), ir)
 	if err != nil {
 		return nil, err
 	}
@@ -198,8 +227,11 @@ func (a *API) RotatePkiIssuer(ctx context.Context, req apigen.RotatePkiIssuerReq
 	if b.KeyAlgorithm != nil {
 		alg = strPtr(b.KeyAlgorithm)
 	}
-	result, err := svc.RotateIssuer(ctx, service.Bearer(bearer(ctx)), req.Issuer,
-		issuerRequest("", req.Issuer, "", "", alg, b.TtlSeconds, nil, b.CrlDistributionUrl, key, b.CertificatePem, b.ChainPem))
+	ir, err := issuerRequest("", req.Issuer, "", "", alg, b.TtlSeconds, nil, b.CrlDistributionUrl, key, b.CertificatePem, b.ChainPem)
+	if err != nil {
+		return nil, err
+	}
+	result, err := svc.RotateIssuer(ctx, service.Bearer(bearer(ctx)), req.Issuer, ir)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +333,11 @@ func (a *API) CreatePkiProfile(ctx context.Context, req apigen.CreatePkiProfileR
 	if err != nil {
 		return nil, err
 	}
-	view, err := svc.CreateProfile(ctx, service.Bearer(bearer(ctx)), req.Body.Name, pkiPolicyRequest(req.Body.Policy))
+	policy, err := pkiPolicyRequest(req.Body.Policy)
+	if err != nil {
+		return nil, err
+	}
+	view, err := svc.CreateProfile(ctx, service.Bearer(bearer(ctx)), req.Body.Name, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +365,11 @@ func (a *API) UpdatePkiProfile(ctx context.Context, req apigen.UpdatePkiProfileR
 	if req.Body.RowVersion != nil {
 		expected = *req.Body.RowVersion
 	}
-	view, err := svc.UpdateProfile(ctx, service.Bearer(bearer(ctx)), req.Profile, pkiPolicyRequest(req.Body.Policy), expected)
+	policy, err := pkiPolicyRequest(req.Body.Policy)
+	if err != nil {
+		return nil, err
+	}
+	view, err := svc.UpdateProfile(ctx, service.Bearer(bearer(ctx)), req.Profile, policy, expected)
 	if err != nil {
 		return nil, err
 	}
@@ -418,11 +458,15 @@ func (a *API) IssueCertificate(ctx context.Context, req apigen.IssueCertificateR
 		return nil, err
 	}
 	b := req.Body
+	ttl, err := optionalSeconds(b.TtlSeconds)
+	if err != nil {
+		return nil, err
+	}
 	issue := service.CertificateIssueRequest{
 		Profile: b.Profile, Issuer: deref(b.Issuer), CSRPEM: deref(b.CsrPem),
 		GenerateKey: b.GenerateKey != nil && *b.GenerateKey, CommonName: deref(b.CommonName),
 		DNSNames: stringsOf(b.DnsNames), IPAddresses: stringsOf(b.IpAddresses), URIs: stringsOf(b.Uris),
-		TTL: seconds(b.TtlSeconds),
+		TTL: ttl,
 	}
 	if b.KeyAlgorithm != nil {
 		issue.KeyAlgorithm = string(*b.KeyAlgorithm)

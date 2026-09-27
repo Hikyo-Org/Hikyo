@@ -27,7 +27,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/rea
 import type { z } from 'zod';
 
 import { ApiError, ok, parsed, parsedPick } from './client.ts';
-import { useTransport } from './transport.tsx';
+import { type TransportOptions, useTransport } from './transport.tsx';
 
 // Private PKI (#154, docs/adr/pki.md). Issuers and profiles are instance
 // administration (`instance-config`); certificates are environment-scoped
@@ -318,11 +318,13 @@ function issueBody(draft: IssueDraft) {
  * certificate is secret, so an ordinary mutation is fine. */
 export function useIssueCsrCertificate(p: ProjectRef) {
   const refresh = useRefreshCertificates(p);
+  const transport = useTransport();
   return useMutation({
     mutationFn: (input: { environment: string; csrPem: string; draft: IssueDraft }) =>
       parsed(issueCertificateOp, {
         path: { org: p.org, project: p.project, environment: input.environment },
         body: { ...issueBody(input.draft), csr_pem: input.csrPem },
+        ...transport,
       }),
     onSettled: (_result, _error, input) => refresh(input.environment),
   });
@@ -336,18 +338,21 @@ export type GeneratedCertificate = { readonly certificate: Certificate; readonly
  * NOT a `useMutation`, for the same reason as `mintLease`: TanStack keeps a
  * mutation's result cached until garbage collection, and the private key's
  * whole contract is that it lives in exactly one place, the dialog that shows
- * it once. The caller must run the mint reauthentication ceremony first.
+ * it once. The caller must run the mint reauthentication ceremony first, and
+ * passes its `useTransport()` so a workspace issues on the remote it shows.
  */
 export async function issueGeneratedCertificate(
   p: ProjectRef & { readonly environment: string },
   draft: IssueDraft,
   keyAlgorithm: 'ecdsa-p256' | 'ecdsa-p384' | 'ed25519' | 'rsa-2048' | 'rsa-3072' | 'rsa-4096',
+  transport: TransportOptions,
 ): Promise<GeneratedCertificate> {
   const result = await parsedPick(
     issueCertificateOp,
     {
       path: { org: p.org, project: p.project, environment: p.environment },
       body: { ...issueBody(draft), generate_key: true, key_algorithm: keyAlgorithm },
+      ...transport,
     },
     { certificate: true, private_key_pem: true },
   );
@@ -359,10 +364,12 @@ export async function issueGeneratedCertificate(
 
 export function useRenewCertificate(p: ProjectRef) {
   const refresh = useRefreshCertificates(p);
+  const transport = useTransport();
   return useMutation({
     mutationFn: (input: { environment: string; certificate: string }) =>
       parsed(renewCertificateOp, {
         path: { org: p.org, project: p.project, environment: input.environment, certificate: input.certificate },
+        ...transport,
       }),
     onSuccess: (_result, input) => refresh(input.environment),
   });
@@ -378,20 +385,27 @@ export type RevocationReason =
 
 export function useRevokeCertificate(p: ProjectRef) {
   const refresh = useRefreshCertificates(p);
+  const transport = useTransport();
   return useMutation({
     mutationFn: (input: { environment: string; certificate: string; reason: RevocationReason }) =>
       parsed(revokeCertificateOp, {
         path: { org: p.org, project: p.project, environment: input.environment, certificate: input.certificate },
         body: { reason: input.reason },
+        ...transport,
       }),
     onSuccess: (_result, input) => refresh(input.environment),
   });
 }
 
 /** fetchCertificateCrl reads the CRL of the certificate's issuer version. */
-export async function fetchCertificateCrl(p: ProjectRef & { readonly environment: string }, certificate: string): Promise<string> {
+export async function fetchCertificateCrl(
+  p: ProjectRef & { readonly environment: string },
+  certificate: string,
+  transport: TransportOptions,
+): Promise<string> {
   const crl = await parsed(getCertificateCrlOp, {
     path: { org: p.org, project: p.project, environment: p.environment, certificate },
+    ...transport,
   });
   return crl.crl_pem;
 }

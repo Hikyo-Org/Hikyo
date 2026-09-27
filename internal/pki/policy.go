@@ -449,7 +449,12 @@ func (p Policy) Check(req Request) (Resolved, error) {
 	for _, raw := range req.URIs {
 		uri := strings.TrimSpace(raw)
 		parsed, err := url.Parse(uri)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || strings.Contains(uri, "*") {
+		// Only canonical URIs reach the prefix match: a query, fragment, opaque
+		// form, dot segment or alternate spelling could be normalized by a
+		// relying party into a path outside the profile's pattern.
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || strings.Contains(uri, "*") ||
+			parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Opaque != "" || parsed.String() != uri ||
+			slices.ContainsFunc(strings.Split(parsed.Path, "/"), func(s string) bool { return s == "." || s == ".." }) {
 			return refuse("uri %q is not a valid absolute URI", raw)
 		}
 		if !slices.ContainsFunc(p.URIPatterns, func(pattern string) bool { return uriPatternMatches(pattern, uri) }) {
