@@ -1,7 +1,6 @@
 ---
 title: Deployment adapters
-description: Push selected published values to Forgejo, GitHub Actions, AWS Secrets Manager, or a sealed webhook receiver without reading provider values back.
-description: Push selected published values to Forgejo, GitHub Actions, Cloudflare Workers and Pages, Vault/OpenBao KV v2, or a sealed webhook receiver without reading provider values back.
+description: Push selected published values to Forgejo, GitHub Actions, Cloudflare, Vault/OpenBao, AWS Secrets Manager, or a sealed webhook receiver without reading provider values back.
 editUrl: https://github.com/Hikyo-Org/Hikyo/edit/main/docs/site/src/content/docs/docs/deployment-adapters.mdx
 ---
 
@@ -12,23 +11,19 @@ fetch.
 For a CI job that creates and tears down its own environments, use the
 [pull-request preview guide](/docs/preview-environments/).
 
-The CI adapters (Forgejo and GitHub Actions) are one-way and value-blind. They
-write selected values from one Hikyo environment to a repository, organization,
-or GitHub repository-environment Actions namespace. The
-[AWS Secrets Manager adapter](#aws-secrets-manager) is one-way and value-blind
-too; it writes secrets into one AWS account and region. Neither adapter links a variable GET or list endpoint. Secret planning reads
-The Forgejo, GitHub Actions, and Cloudflare adapters are one-way and value-blind. The Forgejo and GitHub
-Actions adapters write selected values from one Hikyo environment to a
-repository, organization, or GitHub repository-environment Actions
-namespace. The Cloudflare adapter writes them as encrypted Workers secrets or
-Pages encrypted variables (see [Cloudflare Workers and Pages](#cloudflare-workers-and-pages)). The [Vault/OpenBao KV v2 adapter](#vaultopenbao-kv-v2) follows the same rules for a secret-manager destination. Forgejo and GitHub Actions link no variable GET or list endpoint: secret planning reads
-names only, and variable planning uses Hikyo's ownership ledger. Cloudflare reads
-Pages and Workers settings but decodes only names and types, discarding plaintext
-fields. Vault reads metadata only. Hikyo therefore
-cannot detect provider-side value drift. Run a converge to restore the last
-published Hikyo state. The
-[sealed webhook](#sealed-webhook-receivers) adapter pushes to a generic HTTPS receiver
-an instance administrator has pinned; it has no read path at all.
+The adapters are one-way and value-blind. Forgejo and GitHub Actions write
+selected values from one Hikyo environment to a repository, organization, or
+GitHub repository-environment Actions namespace. They link no variable GET or
+list endpoint: secret planning reads names only, and variable planning uses
+Hikyo's ownership ledger.
+
+[Cloudflare](#cloudflare-workers-and-pages) writes encrypted Workers secrets or
+Pages variables. Its settings reads decode names and types, discarding plaintext
+fields. [Vault/OpenBao KV v2](#vaultopenbao-kv-v2) and
+[AWS Secrets Manager](#aws-secrets-manager) read metadata only; their sections
+describe how metadata detects external changes. The
+[sealed webhook](#sealed-webhook-receivers) adapter pushes to an HTTPS receiver
+pinned by an instance administrator and has no read path at all.
 
 ## Requirements
 
