@@ -360,6 +360,9 @@ var cloudflareName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // ValidateCloudflareManifest applies the Workers binding-name rule shared by
 // Workers secrets and Pages variables. Every entry, including config, is
 // delivered as secret_text, so classification never selects a plaintext type.
+// Effective names are limited to 64 bytes and must be unique ignoring case.
+// When values is true, values must be UTF-8 and at most CloudflareValueLimit
+// bytes. Invalid classifications, names, or checked values return an error.
 func ValidateCloudflareManifest(prefix string, entries []ManifestEntry, values bool) error {
 	seen := make(map[string]struct{}, len(entries))
 	for _, entry := range entries {
@@ -389,6 +392,9 @@ func ValidateCloudflareManifest(prefix string, entries []ManifestEntry, values b
 	return nil
 }
 
+// ValidateProviderManifest applies the named provider's manifest rules,
+// returning an error for an unknown provider or invalid entries. The values
+// flag enables value checks where the provider's validator supports them.
 func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, values bool) error {
 	kind, err := ParseProvider(provider)
 	if err != nil {
@@ -401,6 +407,8 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 		return ValidateManifest(prefix, entries)
 	case SealedWebhookProvider:
 		return ValidateSealedWebhookManifest(prefix, entries, values)
+	case VaultKVProvider:
+		return ValidateVaultKVManifest(prefix, entries, values)
 	case CloudflareProvider:
 		return ValidateCloudflareManifest(prefix, entries, values)
 	default:
@@ -408,9 +416,14 @@ func ValidateProviderManifest(provider, prefix string, entries []ManifestEntry, 
 	}
 }
 
-// Workflow renders names only. Prefixing is provider wiring; applications
-// continue to receive canonical names in every environment.
+// WorkflowForProvider validates names and renders provider wiring: Cloudflare
+// bindings, an empty string for sealed-webhook, or workflow mappings otherwise.
+// Prefixing is provider wiring; applications continue to receive canonical
+// names in every environment. Manifest validation errors propagate.
 func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (string, error) {
+	if provider == string(VaultKVProvider) {
+		return "", fmt.Errorf("vault-kv: workflow mapping requires mount and path; use VaultKVMapping")
+	}
 	if err := ValidateProviderManifest(provider, prefix, entries, false); err != nil {
 		return "", err
 	}
@@ -422,6 +435,63 @@ func WorkflowForProvider(provider, prefix string, entries []ManifestEntry) (stri
 		return renderCloudflareBindings(prefix, entries), nil
 	}
 	return renderWorkflow(prefix, entries), nil
+}
+
+// VaultKVValueLimit keeps one KV v2 write inside the default 1 MiB integrated
+// storage entry after JSON escaping and version metadata.
+const VaultKVValueLimit = 512 << 10
+
+var vaultKVName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+// ValidateVaultKVManifest applies the Vault/OpenBao KV v2 path contract. Every
+// effective name becomes exactly one path segment under the target's path
+// prefix, holding a single "value" field. Secret and config classifications
+// share that one tree, so names must be unique across both surfaces ignoring
+// case. Effective names are limited to 255 bytes. When values is true, values
+// must be UTF-8 and at most VaultKVValueLimit bytes. Invalid classifications,
+// names, or checked values return an error.
+func ValidateVaultKVManifest(prefix string, entries []ManifestEntry, values bool) error {
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		name := prefix + entry.CanonicalName
+		switch {
+		case entry.Classification != SecretClassification && entry.Classification != ConfigClassification:
+			return fmt.Errorf("vault-kv: %s: unknown classification %q", entry.CanonicalName, entry.Classification)
+		case strings.EqualFold(name, prefix+SentinelName):
+			return fmt.Errorf("vault-kv: %s: effective name is reserved for the management sentinel", entry.CanonicalName)
+		case len(name) > 255:
+			return fmt.Errorf("vault-kv: %s: effective name exceeds the 255-byte path segment limit", entry.CanonicalName)
+		case !vaultKVName.MatchString(name) || name == "." || name == "..":
+			return fmt.Errorf("vault-kv: %s: effective name %q is not a single safe KV path segment", entry.CanonicalName, name)
+		case values && !utf8.ValidString(entry.Value):
+			return fmt.Errorf("vault-kv: %s: non-UTF-8 values cannot be represented byte-exactly by the KV v2 JSON API", entry.CanonicalName)
+		case values && len(entry.Value) > VaultKVValueLimit:
+			return fmt.Errorf("vault-kv: %s: value exceeds the %d-byte KV v2 delivery limit", entry.CanonicalName, VaultKVValueLimit)
+		}
+		normalized := strings.ToUpper(name)
+		if _, ok := seen[normalized]; ok {
+			return fmt.Errorf("vault-kv: %s: effective name %q collides case-insensitively", entry.CanonicalName, name)
+		}
+		seen[normalized] = struct{}{}
+	}
+	return nil
+}
+
+// VaultKVMapping renders names only: the KV v2 path each canonical name is
+// delivered to, for Vault Agent, External Secrets, or application wiring.
+func VaultKVMapping(mount, pathPrefix, prefix string, entries []ManifestEntry) (string, error) {
+	if err := ValidateVaultKVManifest(prefix, entries, false); err != nil {
+		return "", err
+	}
+	rows := slices.Clone(entries)
+	slices.SortFunc(rows, func(a, b ManifestEntry) int { return strings.Compare(a.CanonicalName, b.CanonicalName) })
+	var out strings.Builder
+	out.WriteString("# Vault/OpenBao KV v2: one secret per key, field \"value\".\n")
+	out.WriteString("env:\n")
+	for _, entry := range rows {
+		_, _ = fmt.Fprintf(&out, "  %s: %s/%s/%s%s#value\n", entry.CanonicalName, mount, pathPrefix, prefix, entry.CanonicalName)
+	}
+	return out.String(), nil
 }
 
 // RecipientSetNeedsCeremony classifies the exact locked narrowing cases.

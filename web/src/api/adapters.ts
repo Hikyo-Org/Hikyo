@@ -51,9 +51,6 @@ export type AdapterTargetDetail = z.infer<typeof zAdapterTargetDetail>;
 // two disagree on int64 (bigint in a parsed response, number on the wire).
 export type { AdapterTargetInput };
 
-/** The providers the web form can create. Responses may carry others. */
-export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'cloudflare';
-
 /** providerLabel names a provider for display; unknown values pass through. */
 export function providerLabel(provider: string): string {
   switch (provider) {
@@ -63,6 +60,8 @@ export function providerLabel(provider: string): string {
       return 'GitHub Actions';
     case 'sealed-webhook':
       return 'Sealed webhook';
+    case 'vault-kv':
+      return 'Vault / OpenBao KV';
     case 'cloudflare':
       return 'Cloudflare Workers & Pages';
     default:
@@ -203,8 +202,11 @@ function useInvalidateAdapters(ref: ProjectRef) {
   };
 }
 
+/** The providers this build can create; responses may name others. */
+export type AdapterProviderKind = 'forgejo' | 'github-actions' | 'sealed-webhook' | 'cloudflare' | 'vault-kv';
+
 export type CreateAdapterInput = {
-  readonly provider: AdapterProviderKind | 'sealed-webhook';
+  readonly provider: AdapterProviderKind;
   readonly origin: string;
   /** Write-only. Held in component state only for the request. */
   readonly credential: string;

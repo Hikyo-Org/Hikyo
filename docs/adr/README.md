@@ -63,6 +63,7 @@ for its ripple register.
 | tenant-isolation ADR | [tenant-isolation.md](./tenant-isolation.md) |
 | threat-model ADR | [threat-model.md](./threat-model.md) |
 | workload-push-delivery ADR (proposed) | [workload-push-delivery.md](./workload-push-delivery.md) |
+| vault-kv-adapter ADR | [vault-kv-adapter.md](./vault-kv-adapter.md) |
 
 Background research the ADRs cite lives in [`../research/`](../research/).
 

@@ -65,9 +65,12 @@ export type AdapterTargetInput = {
     allow_environment_create?: boolean;
     environment_id: Id;
     destination_kind: AdapterDestinationKind;
+    /**
+     * Repository or organization owner; the KV v2 mount path for vault-kv (destination_kind repository).
+     */
     destination_owner: string;
     /**
-     * Repository name, Workers script name or Pages project name; empty for organization destinations.
+     * Repository name, Workers script name or Pages project name; empty for organization destinations; the KV path prefix for vault-kv.
      */
     destination_name: string;
     /**

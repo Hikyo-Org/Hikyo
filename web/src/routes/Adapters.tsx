@@ -40,6 +40,7 @@ import {
   type AdapterPlan,
   type AdapterProviderKind,
   type AdapterTarget,
+  type AdapterTargetDetail,
   type AdapterTargetInput,
   type ProjectEnvironment,
   type ProjectKey,
@@ -879,7 +880,8 @@ function CreateAdapterPanel({
             onChange={(event) =>
               {
               const value = event.target.value;
-              const next: AdapterProviderKind = value === 'github-actions' || value === 'cloudflare' ? value : 'forgejo';
+              const next: AdapterProviderKind =
+                value === 'github-actions' || value === 'vault-kv' || value === 'cloudflare' ? value : 'forgejo';
               setProvider(next);
               setOrigin(next === 'github-actions' ? 'https://api.github.com' : next === 'cloudflare' ? 'https://api.cloudflare.com' : '');
             }
@@ -887,20 +889,35 @@ function CreateAdapterPanel({
           >
             <option value="forgejo">Forgejo</option>
             <option value="github-actions">GitHub Actions</option>
+            <option value="vault-kv">Vault / OpenBao KV v2</option>
             <option value="cloudflare">Cloudflare Workers &amp; Pages</option>
           </select>
         </label>
         <label className="field">
-          <span className="field__label">{provider === 'github-actions' ? 'GitHub API base URL' : 'Origin'}</span>
+          <span className="field__label">
+            {provider === 'github-actions' ? 'GitHub API base URL' : provider === 'vault-kv' ? 'Server address' : 'Origin'}
+          </span>
           <input
             value={origin}
             readOnly={provider === 'cloudflare'}
             onChange={(event) => setOrigin(event.target.value)}
-            placeholder={provider === 'github-actions' ? 'https://HOST/api/v3' : 'https://git.example.com'}
+            placeholder={
+              provider === 'github-actions'
+                ? 'https://HOST/api/v3'
+                : provider === 'vault-kv'
+                  ? 'https://vault.example.com:8200'
+                  : 'https://git.example.com'
+            }
             autoComplete="off"
           />
         </label>
         {provider === 'github-actions' ? <p className="field__hint">GitHub Enterprise Server: use https://HOST/api/v3. GHES support is best-effort; CI verifies github.com only.</p> : null}
+        {provider === 'vault-kv' ? (
+          <p className="field__hint">
+            Append /NAMESPACE for a Vault Enterprise or OpenBao namespace. Hikyo writes one secret per key with check-and-set
+            and never reads a value back.
+          </p>
+        ) : null}
         {provider === 'cloudflare' ? (
           <p className="field__hint">
             Use a scoped API token for exactly one account with Workers Scripts: Edit or Cloudflare Pages: Edit.
@@ -913,7 +930,11 @@ function CreateAdapterPanel({
           value={credential}
           onChange={(event) => setCredential(event.target.value)}
           autoComplete="new-password"
-          hint="Write-only. It is sealed on save and never shown again."
+          hint={
+            provider === 'vault-kv'
+              ? 'Write-only. A token, or JSON {"method":"approle","role_id":…,"secret_id":…} with optional ca_pem and spki_sha256. Sealed on save and never shown again.'
+              : 'Write-only. It is sealed on save and never shown again.'
+          }
         />
       </div>
       <TargetForm
@@ -986,7 +1007,7 @@ export function TargetForm({
   onSubmit,
 }: {
   readonly title: string;
-  /** Selects the destination vocabulary; Cloudflare has its own kinds. */
+  /** Selects destination vocabulary for each provider. */
   readonly provider?: string;
   readonly environments: readonly EnvironmentOption[];
   readonly keys: readonly ProjectKey[];
@@ -1002,6 +1023,10 @@ export function TargetForm({
   const [kind, setKind] = useState<AdapterTargetInput['destination_kind']>(
     initial?.destination_kind ?? (cloudflare ? 'workers-script' : 'repository'),
   );
+  const keyValue = provider === 'vault-kv';
+  // A KV target rides the repository destination: owner is the mount, name is
+  // the path prefix. There is no organization or environment routing.
+  const effectiveKind = keyValue ? 'repository' : kind;
   const [owner, setOwner] = useState(initial?.destination_owner ?? '');
   const [name, setName] = useState(initial?.destination_name ?? '');
   const [allowEnvironmentCreate, setAllowEnvironmentCreate] = useState(false);
@@ -1034,7 +1059,7 @@ export function TargetForm({
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const selectsRepositories = kind === 'organization' && visibility === 'selected';
+    const selectsRepositories = effectiveKind === 'organization' && visibility === 'selected';
     const parsedIds = selectsRepositories ? zRepositoryIdList.safeParse(repositoryIds) : null;
     if (parsedIds !== null && !parsedIds.success) {
       setRepositoryIdsError(parsedIds.error.issues[0]?.message ?? 'Repository ids are not valid.');
@@ -1053,13 +1078,13 @@ export function TargetForm({
           };
     void onSubmit({
       environment_id: effectiveEnvironmentId,
-      destination_kind: kind,
+      destination_kind: effectiveKind,
       destination_owner: owner,
-      destination_name: kind === 'organization' ? '' : name,
+      destination_name: effectiveKind === 'organization' ? '' : name,
       destination_environment:
-        kind === 'environment' ? destinationEnvironment : kind === 'pages-project' ? destinationEnvironment || 'production' : '',
-      allow_environment_create: kind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
-      visibility: kind === 'organization' ? visibility : '',
+        effectiveKind === 'environment' ? destinationEnvironment : effectiveKind === 'pages-project' ? destinationEnvironment || 'production' : '',
+      allow_environment_create: effectiveKind === 'environment' && lockRouting !== true && allowEnvironmentCreate,
+      visibility: effectiveKind === 'organization' ? visibility : '',
       selected_repository_ids: parsedIds?.success === true ? parsedIds.data : [],
       name_prefix: normalisePrefix(prefix),
       key_ids: [...keyIds],
@@ -1098,6 +1123,7 @@ export function TargetForm({
             ))}
           </select>
         </label>
+        {keyValue ? null : (
         <label className="field">
           <span className="field__label">Destination kind</span>
           {cloudflare ? (
@@ -1124,8 +1150,9 @@ export function TargetForm({
             </select>
           )}
         </label>
+        )}
         <label className="field">
-          <span className="field__label">{cloudflare ? 'Account id' : 'Owner'}</span>
+          <span className="field__label">{keyValue ? 'KV v2 mount' : cloudflare ? 'Account id' : 'Owner'}</span>
           <input value={owner} disabled={lockRouting === true} onChange={(event) => setOwner(event.target.value)} />
         </label>
         {kind === 'pages-project' ? (
@@ -1141,9 +1168,9 @@ export function TargetForm({
             </select>
           </label>
         ) : null}
-        {kind !== 'organization' ? (
+        {effectiveKind !== 'organization' ? (
           <label className="field">
-            <span className="field__label">{kind === 'workers-script' ? 'Script' : kind === 'pages-project' ? 'Project' : 'Repository'}</span>
+            <span className="field__label">{keyValue ? 'Path prefix' : kind === 'workers-script' ? 'Script' : kind === 'pages-project' ? 'Project' : 'Repository'}</span>
             <input value={name} disabled={lockRouting === true} onChange={(event) => setName(event.target.value)} />
           </label>
         ) : (
@@ -1164,7 +1191,7 @@ export function TargetForm({
             </select>
           </label>
         )}
-        {kind === 'organization' && visibility === 'selected' ? (
+        {effectiveKind === 'organization' && visibility === 'selected' ? (
           <Input
             label="Repository ids"
             mono
@@ -1184,7 +1211,7 @@ export function TargetForm({
             error={repositoryIdsError ?? undefined}
           />
         ) : null}
-        {kind === 'environment' ? (
+        {effectiveKind === 'environment' ? (
           <label className="field">
             <span className="field__label">GitHub environment</span>
             <input
@@ -1194,7 +1221,7 @@ export function TargetForm({
             />
           </label>
         ) : null}
-        {kind === 'environment' && lockRouting !== true ? (
+        {effectiveKind === 'environment' && lockRouting !== true ? (
           <div className="field">
             <Checkbox label="Create the GitHub environment if missing" aria-describedby={environmentCreateHintId} checked={allowEnvironmentCreate} onChange={(event) => setAllowEnvironmentCreate(event.target.checked)} />
             <p className="field__hint" id={environmentCreateHintId}>Requires Administration:write. Leave unchecked and pre-create the environment in GitHub to keep the token minimal.</p>
@@ -1256,6 +1283,20 @@ export function TargetForm({
       </div>
     </form>
   );
+}
+
+/** Names-only consumption hints use only the destination provider's syntax. */
+export function targetMappingText(
+  provider: string,
+  mapping: AdapterTargetDetail['mapping'],
+): string {
+  return mapping.map((entry) => {
+    let destination = entry.effective_name;
+    if (provider === 'forgejo' || provider === 'github-actions') {
+      destination = `\${{ ${entry.surface === 'secret' ? 'secrets' : 'vars'}.${entry.effective_name} }}`;
+    }
+    return `${entry.canonical_name}: ${destination}`;
+  }).join('\n');
 }
 
 function TargetDetail({
@@ -1468,7 +1509,7 @@ function TargetDetail({
           {editing ? (
             <TargetForm
               title="Edit keys and prefix"
-              provider={target.destination_kind === 'workers-script' || target.destination_kind === 'pages-project' ? 'cloudflare' : undefined}
+              provider={adapter.provider}
               environments={[{ id: target.environment_id, name: environmentName(target.environment_id) }]}
               keys={keys}
               initial={target}
@@ -1525,10 +1566,10 @@ function TargetDetail({
             </section>
           ) : null}
 
-          <h3>Workflow mapping</h3>
+          <h3>Destination mapping</h3>
           <p className="field__hint">Names only. Applications keep canonical names.</p>
           <pre className="adapters__workflow mono">
-            {detail.data?.mapping.map((entry) => `${entry.canonical_name}: \${{ ${entry.surface === 'secret' ? 'secrets' : 'vars'}.${entry.effective_name} }}`).join('\n')}
+            {detail.data === undefined ? '' : targetMappingText(adapter.provider, detail.data.mapping)}
           </pre>
         </>
       )}

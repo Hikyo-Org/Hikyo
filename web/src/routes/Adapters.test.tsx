@@ -5,7 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import type { AdapterTargetInput } from '../api/adapters.ts';
 import { renderForm, settleTask, typeInto } from '../testkit/renderForm.tsx';
-import { Adapters, TargetForm } from './Adapters.tsx';
+import { Adapters, TargetForm, targetMappingText } from './Adapters.tsx';
 
 function selectValue(select: HTMLSelectElement, value: string): void {
   const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set;
@@ -18,6 +18,7 @@ afterEach(() => vi.unstubAllGlobals());
 it.each([
   ['forgejo', 'Forgejo'],
   ['github-actions', 'GitHub Actions'],
+  ['vault-kv', 'Vault / OpenBao KV'],
   ['cloudflare', 'Cloudflare Workers & Pages'],
   ['future-provider', 'future-provider'],
 ])('renders the %s provider through the response decoder', async (provider, label) => {
@@ -181,6 +182,34 @@ it('requires an explicit environment auto-create checkbox before sending consent
   } finally { await unmount(); }
 });
 
+it('TargetForm addresses a vault-kv target by mount and path prefix on the repository destination', async () => {
+  const submitted: AdapterTargetInput[] = [];
+  const { container, unmount } = await renderForm(<TargetForm title="Add target" provider="vault-kv" environments={[{ id: 'env_1', name: 'prod' }]} keys={[]} busy={false} onCancel={() => undefined} onSubmit={(input) => { submitted.push(input); return Promise.resolve(); }} />);
+  try {
+    const labels = [...container.querySelectorAll('label')];
+    expect(labels.some((label) => label.textContent?.startsWith('Destination kind'))).toBe(false);
+    const field = (text: string) => {
+      const input = labels.find((label) => label.textContent?.startsWith(text))?.querySelector('input');
+      if (!(input instanceof HTMLInputElement)) throw new Error(`${text} missing`);
+      return input;
+    };
+    await act(async () => typeInto(field('KV v2 mount'), 'kv/team-a'));
+    await act(async () => typeInto(field('Path prefix'), 'apps/pay'));
+    const form = container.querySelector('form');
+    await act(async () => form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(submitted[0]).toMatchObject({
+      destination_kind: 'repository',
+      destination_owner: 'kv/team-a',
+      destination_name: 'apps/pay',
+      destination_environment: '',
+      visibility: '',
+      allow_environment_create: false,
+    });
+  } finally {
+    await unmount();
+  }
+});
+
 it('offers Cloudflare destinations and sends one Pages environment', async () => {
   const submitted: AdapterTargetInput[] = [];
   const { container, unmount } = await renderForm(<TargetForm title="Add target" provider="cloudflare" environments={[{ id: 'env_1', name: 'prod' }]} keys={[]} busy={false} onCancel={() => undefined} onSubmit={(input) => { submitted.push(input); return Promise.resolve(); }} />);
@@ -203,4 +232,18 @@ it('offers Cloudflare destinations and sends one Pages environment', async () =>
     expect(submitted[1]?.allow_environment_create).toBe(false);
     expect(field('Account id')).toBeDefined();
   } finally { await unmount(); }
+});
+
+it.each([
+  ['forgejo', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
+  ['github-actions', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
+  ['cloudflare', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['vault-kv', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['sealed-webhook', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['future-provider', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+])('renders %s destination mapping without another provider syntax', (provider, expected) => {
+  expect(targetMappingText(provider, [
+    { key_id: 'key_token', canonical_name: 'TOKEN', surface: 'secret', effective_name: 'P_TOKEN' },
+    { key_id: 'key_mode', canonical_name: 'MODE', surface: 'variable', effective_name: 'P_MODE' },
+  ])).toBe(expected);
 });
