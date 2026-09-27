@@ -128,7 +128,6 @@ Full vertical, both engines (sqlite + postgres):
 - Regression entry point: `go test -p 1 -parallel 2 ./internal/isolation -run TestAccess` with a dedicated `HIKYO_TEST_POSTGRES_DSN`. Client checks: `pnpm --dir clients/ts verify`; web checks: `pnpm --dir web typecheck`, `pnpm --dir web lint`, `pnpm --dir web test`.
 - Cross-provider review remains skipped under the central quota gate; ordinary adversarial inspection and regression evidence are separate.
 
-CLI policy updates preserve every omitted flag from the current policy. Explicit
-`--covers ""` selects project-wide coverage; `--clear-bypassers` removes the
-emergency-access list. Queue responses expose caller-specific `can_approve`,
+CLI policy updates preserve every omitted flag from the current policy. Creation uses `--covers ""` for project-wide coverage; updates cannot change
+a policy’s coverage. `--clear-bypassers` removes the emergency-access list. Queue responses expose caller-specific `can_approve`,
 including allowed self-approval, while vote execution still reauthorizes.
