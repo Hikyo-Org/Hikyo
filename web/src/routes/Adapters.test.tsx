@@ -237,12 +237,12 @@ it('offers Cloudflare destinations and sends one Pages environment', async () =>
 it.each([
   ['forgejo', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
   ['github-actions', 'TOKEN: ${{ secrets.P_TOKEN }}\nMODE: ${{ vars.P_MODE }}'],
-  ['cloudflare', 'TOKEN: env.P_TOKEN\nMODE: env.P_MODE'],
-  ['vault-kv', 'TOKEN: secret/apps/pay/P_TOKEN#value\nMODE: secret/apps/pay/P_MODE#value'],
+  ['cloudflare', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
+  ['vault-kv', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
   ['sealed-webhook', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
   ['future-provider', 'TOKEN: P_TOKEN\nMODE: P_MODE'],
 ])('renders %s destination mapping without another provider syntax', (provider, expected) => {
-  expect(targetMappingText(provider, { destination_owner: 'secret', destination_name: 'apps/pay' }, [
+  expect(targetMappingText(provider, [
     { key_id: 'key_token', canonical_name: 'TOKEN', surface: 'secret', effective_name: 'P_TOKEN' },
     { key_id: 'key_mode', canonical_name: 'MODE', surface: 'variable', effective_name: 'P_MODE' },
   ])).toBe(expected);
