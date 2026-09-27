@@ -310,6 +310,7 @@ transit (managed keys; key material never leaves custody):
 
   inputs come from stdin or a file, never argv. Decrypted plaintext and a
   plaintext data key are shown exactly once, through the print triad.
+
 private PKI:
   hikyo pki issuer list [-o table|json]
   hikyo pki issuer show <issuer> [-o table|json]
