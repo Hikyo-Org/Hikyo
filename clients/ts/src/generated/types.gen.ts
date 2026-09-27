@@ -411,15 +411,15 @@ export type UpdateAdapterTargetRequest = {
      */
     destination_scope?: string;
     /**
-     * GitLab only. Deliver managed variables as protected (protected branches and tags only).
+     * GitLab only. Deliver managed variables as protected (protected branches and tags only). Omission preserves the current value.
      */
     variable_protected?: boolean;
     /**
-     * GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab.
+     * GitLab only (>= 17.4). Create secret-classified variables as hidden in GitLab. Omission preserves the current value.
      */
     variable_hidden?: boolean;
     /**
-     * GitLab only. Allow `$VAR` expansion inside values; the default delivers values byte-exactly as raw variables.
+     * GitLab only. Allow `$VAR` expansion inside values. Omission preserves the current value.
      */
     variable_expand?: boolean;
     expected_generation: number;

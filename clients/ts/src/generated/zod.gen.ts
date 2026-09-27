@@ -404,9 +404,9 @@ export const zUpdateAdapterTargetRequest = z.object({
     key_ids: z.array(zId).min(0).max(512),
     key_selection: zAdapterKeySelection.optional(),
     destination_scope: z.string().max(255).optional(),
-    variable_protected: z.boolean().optional().default(false),
-    variable_hidden: z.boolean().optional().default(false),
-    variable_expand: z.boolean().optional().default(false),
+    variable_protected: z.boolean().optional(),
+    variable_hidden: z.boolean().optional(),
+    variable_expand: z.boolean().optional(),
     expected_generation: z.coerce.bigint().gte(BigInt(1)).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }),
     keep_remote: z.boolean().optional().default(false)
 });

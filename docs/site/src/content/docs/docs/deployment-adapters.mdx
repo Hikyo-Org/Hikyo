@@ -18,9 +18,9 @@ secrets or Pages variables. AWS Secrets Manager writes into one account and
 region, and Vault/OpenBao KV v2 writes one secret per key. CI variable planning
 uses Hikyo's ownership ledger, without variable GET or list endpoints. Cloudflare
 reads settings but decodes only names and types, discarding plaintext fields.
-AWS and Vault read metadata only. Hikyo therefore
-cannot detect provider-side value drift. Run a converge to restore the last
-published Hikyo state. The
+AWS and Vault read metadata only; their provider sections explain how metadata
+detects external changes. CI adapters cannot detect provider-side value drift;
+run a converge to restore published Hikyo values. The
 [sealed webhook](#sealed-webhook-receivers) adapter pushes to a generic HTTPS receiver
 an instance administrator has pinned; it has no read path at all.
 
